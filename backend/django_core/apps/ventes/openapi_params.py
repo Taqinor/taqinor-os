@@ -53,3 +53,23 @@ PERIODE = [
     qdate_ou_vide('start', 'Date de début (ISO), avec `end`.'),
     qdate_ou_vide('end', 'Date de fin incluse (ISO), avec `start`.'),
 ]
+
+
+def entier_requete(request, nom):
+    """CI #997 (2) — paramètre ``integer`` publié : absent → ``None`` ;
+    répété, vide ou non entier (``?client=null``) → 400 nommant le
+    paramètre (il était ignoré en silence, ou levait une 500 au filtre)."""
+    from core.pagination import valider_parametre_entier
+    brut = valider_parametre_entier(request, nom)
+    return None if brut is None else int(brut)
+
+
+def choix_requete(request, nom, choix):
+    """CI #997 (2) — paramètre à ``enum`` publiée : absent → ``None`` ;
+    répété ou hors liste (``?concevable=AAA``) → 400 nommant le paramètre."""
+    from core.parametres_requete import choix_ou_400
+    from rest_framework.exceptions import ValidationError
+    if len(request.query_params.getlist(nom)) > 1:
+        raise ValidationError(
+            {nom: [f"Le paramètre « {nom} » ne doit figurer qu'une fois."]})
+    return choix_ou_400(request, nom, choix)

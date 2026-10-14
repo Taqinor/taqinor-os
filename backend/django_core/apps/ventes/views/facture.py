@@ -1,4 +1,4 @@
-from ..openapi_params import ENTITE, qint
+from ..openapi_params import ENTITE, entier_requete, qint
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from . import openapi_docs as D
 from rest_framework.parsers import JSONParser
@@ -57,6 +57,7 @@ MESSAGE_MONTANT_FIGE = (
 
 @extend_schema_view(list=extend_schema(
     parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]),
+    create=extend_schema(request=D.FactureCreationSerializer),  # VNT89
     # VNT14 — seul un « BROUILLON-<id> » se supprime : 409 sinon (ENF11).
     destroy=extend_schema(
         responses={204: None, 409: D.ErreurSuppressionFacture}))
@@ -102,10 +103,12 @@ class FactureViewSet(FactureCycleActionsMixin,
     def get_queryset(self):
         qs = super().get_queryset()
         # AFAC17/ENF — `?client=` (réaffectation d'un paiement : factures du
-        # MÊME client) ; une valeur non numérique est ignorée.
-        client = self.request.query_params.get('client')
-        if self.action == 'list' and client and str(client).isdigit():
-            qs = qs.filter(client_id=int(client))
+        # MÊME client) ; CI #997 (2) : une valeur non entière ou répétée → 400
+        # nommé (elle était ignorée en silence).
+        client = (entier_requete(self.request, 'client')
+                  if self.action == 'list' else None)
+        if client is not None:
+            qs = qs.filter(client_id=client)
         # Portée de visibilité (Feature F) — factures créées par soi / l'équipe.
         return scope_queryset(qs, self.request.user, ['created_by'])
 

@@ -230,7 +230,9 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 enregistrer=lambda ref: serializer.save(
                     reference=ref, company=company))
         except BonCommandeExistant as exc:
-            raise ValidationError({'detail': exc.message})
+            # CI #997 (2) — corps conforme, c'est l'ÉTAT (BC déjà né) : 409.
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(exc.message)
 
     @extend_schema(request=None, responses=BonCommandeSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer',

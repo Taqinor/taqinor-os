@@ -94,6 +94,25 @@ class TestPaiementRejete(TestCase):
         self.paiement.refresh_from_db()
         self.assertEqual(self.paiement.statut, Paiement.Statut.ENCAISSE)
 
+    def test_corps_hors_forme_refuse(self):
+        """CI #997 (2) (cas Mm8hdE) — ``date_rejet: ""`` valait « aujourd'hui »
+        (200) ; ``motif: 5`` levait AttributeError (500). Le corps suit sa
+        forme publiée : 400 nommé, le paiement reste encaissé."""
+        url = f'/api/django/facturation/paiements/{self.paiement.id}/rejeter/'
+        for corps in ({'motif': 'x', 'date_rejet': ''},
+                      {'motif': 'x', 'date_rejet': '2026-1-5'},
+                      {'motif': 5}, {'motif': 'x', 'frais': 'abc'},
+                      [None, None]):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        self.paiement.refresh_from_db()
+        self.assertEqual(self.paiement.statut, Paiement.Statut.ENCAISSE)
+        r = self.api.post(url, {'motif': 'Chèque impayé', 'frais': 25,
+                                'date_rejet': '2026-10-05'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['date_rejet'], '2026-10-05')
+        self.assertEqual(r.data['frais_rejet'], '25.00')
+
     def test_double_rejet_refused(self):
         r1 = self.api.post(
             f'/api/django/ventes/paiements/{self.paiement.id}/rejeter/',

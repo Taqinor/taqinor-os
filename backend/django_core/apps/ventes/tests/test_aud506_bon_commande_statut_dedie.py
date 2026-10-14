@@ -175,7 +175,7 @@ class ConvertirEnBcTests(TestCase):
             '/api/django/ventes/bons-commande/',
             {'client': self.client_obj.id, 'devis': self.devis.id},
             format='json')
-        self.assertEqual(r3.status_code, 400, r3.data)
+        self.assertEqual(r3.status_code, 409, r3.data)  # CI #997 (2)
         self.assertIn(message, str(r3.data))
         self.assertEqual(BonCommande.objects.filter(devis=self.devis).count(),
                          1)

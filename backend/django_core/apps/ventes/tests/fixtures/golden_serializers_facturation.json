@@ -2627,7 +2627,7 @@
      true
     ],
     "montant_declare": [
-     "DecimalField",
+     "DecimalStricte",
      false,
      true,
      null,

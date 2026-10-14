@@ -213,6 +213,20 @@ class TestAvoirs(TestCase):
                 self.assertEqual(resp.status_code, 400, resp.data)
         self.assertEqual(Avoir.objects.count(), 0)
 
+    def test_motif_et_ligne_strictement_types(self):
+        # CI #997 (2) (cas 6kYQk5) — ``motif: 0`` créait l'avoir (201, motif
+        # « 0 ») ; ``produit: "5"`` / ``designation: 5`` étaient convertis.
+        api = self._api(self.admin)
+        url = f'/api/django/facturation/factures/{self.facture.id}/creer-avoir/'
+        ligne = {'produit': self.onduleur.id, 'designation': 'X',
+                 'quantite': '1', 'prix_unitaire': '1'}
+        for corps in ({'motif': 0}, {'motif': None},
+                      {'lignes': [dict(ligne, produit=str(self.onduleur.id))]},
+                      {'lignes': [dict(ligne, designation=5)]}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        self.assertEqual(Avoir.objects.count(), 0)
+
     # ── AUD126 — la garde de plafond est SÉRIALISÉE ──
     def test_creer_avoir_verrouille_la_facture_avant_de_lire_le_plafond(self):
         """AUD126 — `creer_avoir` n'avait ni `transaction.atomic` ni
