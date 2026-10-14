@@ -117,7 +117,11 @@ def _lignes_ecran(company, lignes):
 @permission_classes([IsAnyRole])
 def economie_pompage_preview(request):
     """POST /ventes/economie-pompage/preview/ — calcule, n'écrit rien."""
-    corps = request.data if isinstance(request.data, dict) else {}
+    # CI #997 — corps non objet (``[null, null]``) : 400, plus un calcul
+    # « omis » rendu 200 sur un corps hors schéma.
+    if not isinstance(request.data, dict):
+        return Response({'detail': 'Corps JSON objet attendu.'}, status=400)
+    corps = request.data
     company = getattr(request.user, 'company', None)
     saisies = corps.get('saisies')
     sortie = corps.get('sortie_etude_pompage')

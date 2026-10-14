@@ -139,6 +139,12 @@ class _Base(TestCase):
 
 
 class ContratTests(_Base):
+    def test_corps_tableau_400(self):
+        # CI #997 — un corps hors schéma (``[null, null]``) répondait 200
+        # (calcul « omis ») : 400.
+        rep = self.api.post(URL, [None, None], format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+
     def test_reponse_conforme_au_contrat(self):
         data = self.post(self.corps())
         exemple = CONTRAT['exemple']

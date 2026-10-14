@@ -45,21 +45,18 @@ __all__ = [
 def entite_id_demandee(request):
     """``?entite=<id>`` normalisé en entier, ou ``None``.
 
-    Une valeur absente, vide ou non numérique vaut « pas de filtre » — jamais
-    une erreur 500 ni une liste vide surprise.
+    Une valeur absente ou vide vaut « pas de filtre ». CI #997 — une valeur
+    non entière (``?entite=null``, ``abc``) répond 400 nommant le paramètre,
+    comme le schéma ``integer`` le déclare (elle était ignorée en silence) ;
+    jamais une erreur 500.
     """
     if request is None:
         return None
     params = getattr(request, 'query_params', None)
     if params is None:
         return None
-    brut = params.get('entite')
-    if brut in (None, ''):
-        return None
-    try:
-        return int(brut)
-    except (TypeError, ValueError):
-        return None
+    from core.champs_stricts import entier_ou_400
+    return entier_ou_400(params.get('entite'), 'entite')
 
 
 def filtre_entite_demandee(qs, request, champ='entite'):

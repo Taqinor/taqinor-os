@@ -119,12 +119,20 @@ class DevisCycleActionsMixin:
         """
         from ..services import save_devis_as_preset
         devis = self.get_object()
-        nom = (request.data.get('nom') or '').strip()
+        corps = request.data if isinstance(request.data, dict) else {}
+        nom = corps.get('nom')
+        nom = nom.strip() if isinstance(nom, str) else ''
         if not nom:
             return Response(
                 {'detail': 'Le nom du modèle est obligatoire.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        description = (request.data.get('description') or '').strip()
+        # CI #997 — ``description`` publiée chaîne : un objet (``{}``) était
+        # lu « vide » (201), un objet rempli levait AttributeError (500).
+        description = corps.get('description', '')
+        if not isinstance(description, str):
+            return Response({'description': ['Chaîne attendue.']},
+                            status=status.HTTP_400_BAD_REQUEST)
+        description = description.strip()
         try:
             preset = save_devis_as_preset(
                 devis, nom, description, user=request.user)

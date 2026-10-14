@@ -107,7 +107,11 @@ def economie_ci_preview(request):
     from .economie_ci import (
         SaisieEconomieCiInvalide, assembler_economie_ci, reglages_economie_ci)
 
-    corps = request.data if isinstance(request.data, dict) else {}
+    # CI #997 — corps non objet (``[null, null]``) : 400, plus un calcul
+    # « omis » rendu 200 sur un corps hors schéma.
+    if not isinstance(request.data, dict):
+        return Response({'detail': 'Corps JSON objet attendu.'}, status=400)
+    corps = request.data
     company = getattr(request.user, 'company', None)
     sortie = corps.get('sortie_etude_ci')
     saisies = corps.get('saisies')

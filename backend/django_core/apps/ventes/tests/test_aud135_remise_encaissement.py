@@ -67,6 +67,15 @@ class TestAud135RemiseEncaissement(TestCase):
             'lignes': [{'paiement': p.id} for p in paiements],
         }, format='json')
 
+    def test_note_strictement_en_chaine(self):
+        # CI #997 — ``note: 0`` était converti en « 0 » (201) : 400.
+        resp = self.api.post(URL, {
+            'technicien': self.user.id,
+            'date_collecte': date.today().isoformat(),
+            'montant_declare': '0', 'note': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('note', resp.data)
+
     # ── (1) unicité par PAIEMENT, pas par remise ─────────────────────────
     def test_deuxieme_remise_sur_le_meme_paiement_est_refusee(self):
         paiement = self._paiement()

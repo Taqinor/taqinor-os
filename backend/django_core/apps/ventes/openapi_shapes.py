@@ -14,6 +14,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers as s
 
+from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 
@@ -364,17 +365,29 @@ RoofLoadResponse = _ser('RoofLoadVerdict', {
     'interne': s.BooleanField(),
 })
 
+
 # ------------------------------------------------------ schéma unifilaire
+class _NombreJson(s.FloatField):
+    """Nombre JSON réel (``"1.5"``, ``true`` → 400)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+#: CI #997 — VALIDÉ par ``POST schema-unifilaire`` (``corps_valide``, JSON
+#: seul) : chaque champ n'accepte que son type JSON publié.
 SchemaUnifilaireRequest = _ser('SchemaUnifilaireRequest', {
-    'n_panneaux': s.IntegerField(required=False),
-    'puissance_panneau_wc': s.IntegerField(required=False),
-    'n_strings': s.IntegerField(required=False),
-    'onduleur': s.CharField(required=False, allow_blank=True),
-    'puissance_onduleur_kw': s.FloatField(required=False),
-    'phases': s.IntegerField(required=False),
-    'has_battery': s.BooleanField(required=False),
-    'injection': s.BooleanField(required=False),
-    'titre': s.CharField(required=False, allow_blank=True),
+    'n_panneaux': EntierStrict(required=False),
+    'puissance_panneau_wc': EntierStrict(required=False),
+    'n_strings': EntierStrict(required=False),
+    'onduleur': ChaineStricte(required=False, allow_blank=True),
+    'puissance_onduleur_kw': _NombreJson(required=False),
+    'phases': EntierStrict(required=False),
+    'has_battery': BooleenStrict(required=False),
+    'injection': BooleenStrict(required=False),
+    'titre': ChaineStricte(required=False, allow_blank=True),
     'etage_mt': s.DictField(required=False, allow_null=True),
 })
 SchemaUnifilaireJson = _ser('SchemaUnifilaireJson', {

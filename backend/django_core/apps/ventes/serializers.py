@@ -1,10 +1,12 @@
 from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema_field
-from django.db.models import Q
+from django.db.models import DecimalField, Q
 from rest_framework import serializers
 
-from core.champs_stricts import DecimalSoupleMixin
+from core.champs_stricts import (
+    ChampsStrictsSansDecimalMixin, DecimalSouple, DecimalSoupleMixin,
+)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
 from core.serializers import (
@@ -1062,6 +1064,13 @@ class DevisWriteSerializer(DecimalSoupleMixin, SameCompanyFKSerializerMixin,
     CI #997 — décimaux en ``DecimalSouple`` : chaîne OU nombre JSON (le
     générateur envoie des nombres), publiés ``anyOf`` au schéma.
     """
+    # CI #997 — décimaux souples (générateur : chaîne OU nombre) + texte et
+    # booléens STRICTS (``reference_commande_client: 0`` était converti).
+    serializer_field_mapping = {
+        **ChampsStrictsSansDecimalMixin.serializer_field_mapping,
+        DecimalField: DecimalSouple,
+    }
+
     same_company_fields = ('client', 'lead', 'entite')
 
     # ENF11 — lecture seule (posée par ``/accepter/``) : DRF retire
@@ -1293,7 +1302,8 @@ class _BooleenStrict(serializers.BooleanField):
         self.fail('invalid', input=data)
 
 
-class ListePrixSerializer(serializers.ModelSerializer):
+class ListePrixSerializer(ChampsStrictsSansDecimalMixin,
+                          serializers.ModelSerializer):
     """XSAL1/XSAL2 — liste de prix clients + ses règles de paliers.
     `company` toujours forcée côté serveur (jamais acceptée du body — voir
     ListePrixViewSet.perform_create)."""

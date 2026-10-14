@@ -81,6 +81,17 @@ class RegulatoryFkSocieteTests(TestCase):
         self.assertIn('chantier', r.data)
         self.assertEqual(Regularisation8221.objects.count(), avant)
 
+    def test_booleen_strict_400(self):
+        # CI #997 — ``etude_reglages_imposes: 0`` était converti (201).
+        dossier = self._dossier()
+        r = self.api.patch(f'{URL}{dossier.id}/',
+                           {'etude_reglages_imposes': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('etude_reglages_imposes', r.data)
+        r = self.api.patch(f'{URL}{dossier.id}/',
+                           {'etude_reglages_imposes': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
     def test_patch_chantier_etranger_400(self):
         dossier = self._dossier(chantier=self.chantier_a)
         r = self.api.patch(f'{URL}{dossier.id}/',

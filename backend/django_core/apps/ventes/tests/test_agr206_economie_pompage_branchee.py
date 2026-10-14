@@ -130,6 +130,12 @@ class LectureTests(_Base):
             f'/api/django/ventes/devis/{self.devis.pk}/economie-pompage/')
         self.assertEqual(rep.status_code, 404)
 
+    def test_corps_tableau_400(self):
+        # CI #997 — un corps hors schéma (``[null, null]``) répondait 200
+        # (calcul « omis ») : 400.
+        rep = self.api.post('/api/django/ventes/economie-pompage/preview/', [None, None], format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+
     def test_preview_n_ecrit_rien(self):
         avant = Devis.objects.get(pk=self.devis.pk)
         rep = self.api.post(

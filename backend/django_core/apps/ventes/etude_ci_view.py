@@ -82,7 +82,11 @@ def etude_ci_preview(request):
     """POST /ventes/etude-ci/preview/ — calcule, n'écrit rien."""
     from .domain.etude_ci import etudier_ci
 
-    corps = request.data if isinstance(request.data, dict) else {}
+    # CI #997 — corps non objet (``[null, null]``) : 400, plus un calcul
+    # « omis » rendu 200 sur un corps hors schéma.
+    if not isinstance(request.data, dict):
+        return Response({'detail': 'Corps JSON objet attendu.'}, status=400)
+    corps = request.data
     company = getattr(request.user, 'company', None)
     devis = _devis_de_la_societe(company, corps.get('devis'), request.user)
     if corps.get('devis') not in (None, '') and devis is None:
