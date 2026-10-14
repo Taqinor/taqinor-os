@@ -50,6 +50,7 @@ from .corps_requete import (
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
     GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
     _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides,
+    refus_cycle_vie,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
@@ -1256,8 +1257,10 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         try:
             services.move_document(document, new_folder, user=request.user)
         except ValueError as exc:
+            # ERR-ENF11-FUZZ-GED : document figé (archivé, write-once) =
+            # refus d'ÉTAT, 409.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         document.refresh_from_db()
         data = DocumentSerializer(document, context={'request': request}).data
         return Response(data)
@@ -1626,7 +1629,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         Collabora/OnlyOffice, key-gated).
 
         `POST …/documents/<id>/office-ouvrir/` — sans `GED_OFFICE_URL`
-        configuré : 400 explicite (aucune UI, aucun appel). Avec l'URL posée :
+        configuré : 404 explicite (aucune UI, aucun appel). Avec l'URL posée :
         pose le check-out (GED16) et renvoie `{"editor_url", "document_id"}`.
         Gardes GED23/24 respectées (403). Écriture : responsable/admin (même
         motif que check-out — ouvrir en édition verrouille le document)."""
@@ -1635,8 +1638,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             data = services.ouvrir_dans_editeur_office(
                 document, user=request.user)
         except ValueError as exc:
+            # ERR-ENF11-FUZZ-GED : fonction à clé non configurée
+            # (GED_OFFICE_URL absent) = désactivée, 404 comme toute route
+            # GATED sans clé — la requête, elle, était conforme.
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except (ArchivageLegalError, LegalHoldError) as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1655,8 +1661,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         Les statuts sont LOCAUX à la GED (brouillon → revue → approuvé →
         archivé → obsolète) et SÉPARÉS du funnel commercial `STAGES.py`. La
         transition est gardée côté serveur par la machine à états
-        (`services.change_lifecycle_status`) : une transition non autorisée ou
-        un statut inconnu renvoie 400. Le document est company-scopé (+ ACL
+        (`services.change_lifecycle_status`) : un statut inconnu renvoie 400,
+        une transition que l'état du document refuse 409 (ERR-ENF11-FUZZ-GED). Le document est company-scopé (+ ACL
         coffre) via `get_object()`. Écriture : responsable/admin.
         """
         document = self.get_object()
@@ -1669,8 +1675,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             doc = services.change_lifecycle_status(
                 document, target, user=request.user)
         except ValueError as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return refus_cycle_vie(exc, target)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1831,6 +1836,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response({'leves': leves}, status=status.HTTP_200_OK)
 
     @extend_schema(request=oa.CAVIARDER_CORPS,
+                   extensions=oa.CAVIARDER_ZONES_REQUISES,
                    responses={201: DocumentSerializer})
     @action(detail=True, methods=['post'], url_path='caviarder')
     def caviarder(self, request, pk=None):
@@ -3283,7 +3289,8 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
             DemandeSignatureDocumentSerializer(
                 demande, context={'request': request}).data)
 
-    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                              409: oa.REFUS_ETAT})
     @action(detail=True, methods=['get'], url_path='pdf-signe')
     def pdf_signe(self, request, pk=None):
         """XGED3/PACT185 — Télécharge le PDF final AVEC les champs de
@@ -3473,7 +3480,8 @@ class SignataireDemandeViewSet(CorpsObjetMixin, TenantMixin, mixins.ListModelMix
 
 @extend_schema_view(list=extend_schema(parameters=[
     oa.P('demande', oa.ID, description='Demande de signature.'),
-    oa.P('modele', oa.ID, description='Modèle de document.')]))
+    oa.P('modele', oa.ID, description='Modèle de document.')]),
+    create=extend_schema(extensions=oa.CHAMP_CIBLE_UNIQUE))
 class ChampSignatureViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED3 — Zones de champs positionnées (placement de modèle de signature).
 
@@ -4116,7 +4124,8 @@ class RegleApprobationGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelVie
             company=self.request.user.company, created_by=self.request.user)
 
 
-@extend_schema_view(list=extend_schema(parameters=oa.Q_ACLS))
+@extend_schema_view(list=extend_schema(parameters=oa.Q_ACLS),
+                    create=extend_schema(extensions=oa.ACL_CIBLE_UNIQUE))
 class AclGedViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     """WIR163 — API de gestion des droits d'accès GED19 (`AclGed`).
 

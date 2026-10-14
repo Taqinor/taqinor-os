@@ -545,3 +545,60 @@ class Enf11FuzzGedCorpsTests(TestCase):
         self.assertEqual(resp.data['crees'], 1)
         self.assertEqual(resp.data['erreurs'], [
             {'ligne': 2, 'detail': 'Nom : 255 caractères au plus.'}])
+
+
+class Enf11FuzzGedTour2Tests(TestCase):
+    """ERR-ENF11-FUZZ-GED (nocturne 13/10) — refus d'état en 409, doublons en
+    409, libellés nuls servis sur un PATCH, règles de corps publiées."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='enf11-ged-t2', defaults={'nom': 'ENF11 GED T2'})[0]
+        self.admin = User.objects.create_user(
+            username='enf11-ged-t2-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.api = auth(self.admin)
+
+    def test_patch_dossier_sert_parent_nom_nul(self):
+        resp = self.api.patch(f'{BASE}dossiers/{self.folder.pk}/', {},
+                              format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn('parent_nom', resp.data)
+        self.assertIsNone(resp.data['parent_nom'])
+
+    def test_cycle_vie_meme_statut_409_statut_inconnu_400(self):
+        doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='D')
+        url = f'{BASE}documents/{doc.pk}/cycle-vie/'
+        resp = self.api.post(url, {'statut': doc.statut}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        resp = self.api.post(url, {'statut': 'inconnu'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_routage_doublon_409(self):
+        corps = {'source': 'hypothese_interne', 'cabinet_cible': self.cab.pk}
+        premier = self.api.post(f'{BASE}routages-documentaires/', corps,
+                                format='json')
+        self.assertEqual(premier.status_code, 201, premier.content)
+        second = self.api.post(f'{BASE}routages-documentaires/', corps,
+                               format='json')
+        self.assertEqual(second.status_code, 409, second.content)
+
+    def test_regles_publiees_au_schema(self):
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.ged import urls as ged_urls
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ged/', include(ged_urls)),
+        ]).get_schema(request=None, public=True)
+        chemins = schema['paths']
+        pdf = chemins['/api/django/ged/demandes-signature/{id}/pdf-signe/']
+        self.assertIn('409', pdf['get']['responses'])
+        acl = chemins['/api/django/ged/acls/']['post']['requestBody']
+        corps = acl['content']['application/json']['schema']
+        self.assertIn('oneOf', corps['allOf'][1])

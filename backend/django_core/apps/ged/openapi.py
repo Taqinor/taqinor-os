@@ -6,8 +6,10 @@ par le crochet plateforme ``core.openapi_erreurs``. Les noms de composants sont
 préfixés ``Ged`` (``inline_serializer`` partage un espace de noms unique).
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, inline_serializer
 from rest_framework import serializers as s
+
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from apps.records.openapi import CibleModelField
 
@@ -374,3 +376,32 @@ PUBLIC_PARTAGE_CORPS = S('PartagePublicCorps', {
 PUBLIC_ERREUR = S('PublicDetail', {
     'detail': s.CharField(), 'code': s.CharField(required=False)})
 OTP_REPONSE = S('OtpReponse', {'detail': s.CharField(required=False)})
+
+
+# ── ERR-ENF11-FUZZ-GED — règles publiées (api-fuzz « rejected schema-compliant
+# request ») ; ``EXTENSION_CORPS_RESSERRE`` combine la règle en ``allOf`` au
+# corps publié de l'opération (``core.openapi_erreurs``), sans nouveau composant.
+
+#: 409 d'une LECTURE (le crochet plateforme ne déclare 409 que sur les
+#: écritures) : la demande n'est pas dans l'état requis.
+REFUS_ETAT = OpenApiResponse(
+    description="Conflit d'état : la ressource n'est pas dans l'état requis.")
+
+#: Caviardage : au moins une zone (``services.caviarder_document``).
+CAVIARDER_ZONES_REQUISES = {EXTENSION_CORPS_RESSERRE: {
+    'required': ['zones'],
+    'properties': {'zones': {'type': 'array', 'minItems': 1}}}}
+
+
+def _cible_unique(a, b):
+    """Exactement UN de ``a`` / ``b`` (entier) — l'autre absent ou nul."""
+    return {EXTENSION_CORPS_RESSERRE: {'oneOf': [
+        {'required': [a], 'properties': {a: {'type': 'integer'}}},
+        {'required': [b], 'properties': {b: {'type': 'integer'}}},
+    ]}}
+
+
+#: Une entrée ACL cible exactement un dossier OU un document (création).
+ACL_CIBLE_UNIQUE = _cible_unique('folder', 'document')
+#: Un champ de signature cible exactement une demande OU un modèle (création).
+CHAMP_CIBLE_UNIQUE = _cible_unique('demande', 'modele')

@@ -50,49 +50,6 @@ API accepted schema-violating request|GET /api/django/facturation/factures/
 API accepted schema-violating request|GET /api/django/facturation/niveaux-relance/
 API accepted schema-violating request|GET /api/django/facturation/notes-debit/
 API accepted schema-violating request|GET /api/django/facturation/paiements/
-API accepted schema-violating request|GET /api/django/ged/acls/
-API accepted schema-violating request|GET /api/django/ged/analytique/
-API accepted schema-violating request|GET /api/django/ged/annotations/
-API accepted schema-violating request|GET /api/django/ged/archivages-legaux/
-API accepted schema-violating request|GET /api/django/ged/cabinets/
-API accepted schema-violating request|GET /api/django/ged/champs-signature/
-API accepted schema-violating request|GET /api/django/ged/coffres/
-API accepted schema-violating request|GET /api/django/ged/demandes-approbation/
-API accepted schema-violating request|GET /api/django/ged/demandes-disposition/
-API accepted schema-violating request|GET /api/django/ged/demandes-document/
-API accepted schema-violating request|GET /api/django/ged/demandes-signature/
-API accepted schema-violating request|GET /api/django/ged/demandes-signature/tableau-bord/
-API accepted schema-violating request|GET /api/django/ged/depots-publics/
-API accepted schema-violating request|GET /api/django/ged/documents/corbeille/
-API accepted schema-violating request|GET /api/django/ged/documents/docqa/
-API accepted schema-violating request|GET /api/django/ged/documents/recherche/
-API accepted schema-violating request|GET /api/django/ged/documents/{id}/journal-acces/
-API accepted schema-violating request|GET /api/django/ged/dossiers/
-API accepted schema-violating request|GET /api/django/ged/exigences-dossier/
-API accepted schema-violating request|GET /api/django/ged/journal-acces/
-API accepted schema-violating request|GET /api/django/ged/legal-holds/
-API accepted schema-violating request|GET /api/django/ged/liens/
-API accepted schema-violating request|GET /api/django/ged/lots-envoi/
-API accepted schema-violating request|GET /api/django/ged/mes-recents/
-API accepted schema-violating request|GET /api/django/ged/modeles-document/
-API accepted schema-violating request|GET /api/django/ged/partages/
-API accepted schema-violating request|GET /api/django/ged/planifications/
-API accepted schema-violating request|GET /api/django/ged/politiques-retention/
-API accepted schema-violating request|GET /api/django/ged/quotas-stockage/
-API accepted schema-violating request|GET /api/django/ged/regles-acl-metadonnee/
-API accepted schema-violating request|GET /api/django/ged/regles-approbation/
-API accepted schema-violating request|GET /api/django/ged/regles-dossier/
-API accepted schema-violating request|GET /api/django/ged/roles-signataire/
-API accepted schema-violating request|GET /api/django/ged/routages-documentaires/
-API accepted schema-violating request|GET /api/django/ged/signataires-demande/
-API accepted schema-violating request|GET /api/django/ged/tag-assignments/
-API accepted schema-violating request|GET /api/django/ged/tags/
-API accepted schema-violating request|GET /api/django/ged/tags/{id}/documents/
-API accepted schema-violating request|GET /api/django/ged/tampons-societe/
-API accepted schema-violating request|GET /api/django/ged/types-champ-signature/
-API accepted schema-violating request|GET /api/django/ged/validations-ocr/
-API accepted schema-violating request|GET /api/django/ged/versions/
-API accepted schema-violating request|GET /api/django/ged/vues/
 API accepted schema-violating request|GET /api/django/identity/ip-allow-rules/
 API accepted schema-violating request|GET /api/django/identity/network-policies/
 API accepted schema-violating request|GET /api/django/identity/providers/
@@ -325,10 +282,6 @@ API accepted schema-violating request|PATCH /api/django/core/api-usage/plan/
 API accepted schema-violating request|PATCH /api/django/core/branded-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/core/ui-boutons/{id}/
 API accepted schema-violating request|PATCH /api/django/core/ui-onglets/{id}/
-API accepted schema-violating request|PATCH /api/django/ged/exigences-dossier/{id}/
-API accepted schema-violating request|PATCH /api/django/ged/roles-signataire/{id}/
-API accepted schema-violating request|PATCH /api/django/ged/tags/{id}/
-API accepted schema-violating request|PATCH /api/django/ged/tampons-societe/{id}/
 API accepted schema-violating request|PATCH /api/django/installations/categories-stockage/{id}/
 API accepted schema-violating request|PATCH /api/django/installations/checklist-etapes/{id}/
 API accepted schema-violating request|PATCH /api/django/installations/checklist-templates/{id}/
@@ -375,14 +328,6 @@ API accepted schema-violating request|POST /api/django/facturation/factures/{id}
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/envoyer-email/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/exclure-relance/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/whatsapp/
-API accepted schema-violating request|POST /api/django/ged/cabinets/
-API accepted schema-violating request|POST /api/django/ged/documents/classer-apres-vente/
-API accepted schema-violating request|POST /api/django/ged/documents/{id}/archiver-legalement/
-API accepted schema-violating request|POST /api/django/ged/documents/{id}/placer-legal-hold/
-API accepted schema-violating request|POST /api/django/ged/exigences-dossier/
-API accepted schema-violating request|POST /api/django/ged/roles-signataire/
-API accepted schema-violating request|POST /api/django/ged/tags/
-API accepted schema-violating request|POST /api/django/ged/tampons-societe/
 API accepted schema-violating request|POST /api/django/imports/export-object/
 API accepted schema-violating request|POST /api/django/imports/sauvegarde/
 API accepted schema-violating request|POST /api/django/installations/categories-stockage/
@@ -432,10 +377,6 @@ API accepted schema-violating request|PUT /api/django/core/api-usage/plan/
 API accepted schema-violating request|PUT /api/django/core/branded-templates/{id}/
 API accepted schema-violating request|PUT /api/django/core/ui-boutons/{id}/
 API accepted schema-violating request|PUT /api/django/core/ui-onglets/{id}/
-API accepted schema-violating request|PUT /api/django/ged/cabinets/{id}/
-API accepted schema-violating request|PUT /api/django/ged/exigences-dossier/{id}/
-API accepted schema-violating request|PUT /api/django/ged/roles-signataire/{id}/
-API accepted schema-violating request|PUT /api/django/ged/tampons-societe/{id}/
 API accepted schema-violating request|PUT /api/django/installations/categories-stockage/{id}/
 API accepted schema-violating request|PUT /api/django/installations/checklist-etapes/{id}/
 API accepted schema-violating request|PUT /api/django/installations/checklist-templates/{id}/
@@ -503,7 +444,6 @@ API rejected schema-compliant request|GET /api/django/crm/leads/{lead_id}/roof-f
 API rejected schema-compliant request|GET /api/django/crm/relance-etapes/controle/
 API rejected schema-compliant request|GET /api/django/crm/relance-etapes/suivi/
 API rejected schema-compliant request|GET /api/django/facturation/factures/{facture_id}/lettre-relance-pdf/
-API rejected schema-compliant request|GET /api/django/ged/demandes-signature/tableau-bord/
 API rejected schema-compliant request|GET /api/django/installations/chantiers/{id}/rapport-energie/
 API rejected schema-compliant request|GET /api/django/installations/controle-budgetaire/
 API rejected schema-compliant request|GET /api/django/installations/interventions/conflits-affectation/
@@ -687,35 +627,23 @@ API rejected schema-compliant request|POST /api/django/facturation/factures/{id}
 API rejected schema-compliant request|POST /api/django/facturation/niveaux-relance/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/enregistrer-avance/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/
-API rejected schema-compliant request|POST /api/django/ged/acls/
 API rejected schema-compliant request|POST /api/django/ged/annotations/
-API rejected schema-compliant request|POST /api/django/ged/archivages-legaux/
-API rejected schema-compliant request|POST /api/django/ged/champs-signature/
 API rejected schema-compliant request|POST /api/django/ged/coffres/
-API rejected schema-compliant request|POST /api/django/ged/demandes-disposition/
 API rejected schema-compliant request|POST /api/django/ged/demandes-document/
 API rejected schema-compliant request|POST /api/django/ged/demandes-signature/
 API rejected schema-compliant request|POST /api/django/ged/demandes-signature/creer-multi/
 API rejected schema-compliant request|POST /api/django/ged/depots-publics/
 API rejected schema-compliant request|POST /api/django/ged/documents/
-API rejected schema-compliant request|POST /api/django/ged/documents/operations-lot/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/archiver-legalement/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/caviarder/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/deplacer/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/office-ouvrir/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/office-sauvegarder/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/restaurer/
 API rejected schema-compliant request|POST /api/django/ged/documents/{id}/tagger/
-API rejected schema-compliant request|POST /api/django/ged/legal-holds/
 API rejected schema-compliant request|POST /api/django/ged/partages/
 API rejected schema-compliant request|POST /api/django/ged/planifications/
 API rejected schema-compliant request|POST /api/django/ged/politiques-retention/
 API rejected schema-compliant request|POST /api/django/ged/regles-acl-metadonnee/
 API rejected schema-compliant request|POST /api/django/ged/regles-approbation/
 API rejected schema-compliant request|POST /api/django/ged/regles-dossier/
-API rejected schema-compliant request|POST /api/django/ged/routages-documentaires/
 API rejected schema-compliant request|POST /api/django/ged/tag-assignments/
-API rejected schema-compliant request|POST /api/django/ged/types-champ-signature/
 API rejected schema-compliant request|POST /api/django/ged/versions/
 API rejected schema-compliant request|POST /api/django/identity/ip-allow-rules/
 API rejected schema-compliant request|POST /api/django/imports/commit/
@@ -940,9 +868,6 @@ API rejected schema-compliant request|PUT /api/django/calepinage/parametres/
 API rejected schema-compliant request|PUT /api/django/core/vues/{id}/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/facturation/factures-lignes/{id}/
-API rejected schema-compliant request|PUT /api/django/ged/exigences-dossier/{id}/
-API rejected schema-compliant request|PUT /api/django/ged/routages-documentaires/{id}/
-API rejected schema-compliant request|PUT /api/django/ged/types-champ-signature/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/checklist-etapes/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/programme-tickets/{id}/
@@ -1021,10 +946,6 @@ Response violates schema|GET /api/django/facturation/factures/{id}/relance-aperc
 Response violates schema|GET /api/django/facturation/factures/{id}/relances/
 Response violates schema|GET /api/django/facturation/paiements/attestations-ras-en-attente/
 Response violates schema|GET /api/django/facturation/paiements/avances-non-affectees/
-Response violates schema|GET /api/django/ged/documents/
-Response violates schema|GET /api/django/ged/documents/{id}/
-Response violates schema|GET /api/django/ged/mes-recents/
-Response violates schema|GET /api/django/ged/quotas-stockage/etat/
 Response violates schema|GET /api/django/installations/chantiers/
 Response violates schema|GET /api/django/installations/chantiers/{id}/
 Response violates schema|GET /api/django/installations/chantiers/{id}/historique/
@@ -1102,10 +1023,6 @@ Response violates schema|PATCH /api/django/automation/approval-delegations/{id}/
 Response violates schema|PATCH /api/django/calepinage/calepinages/{id}/
 Response violates schema|PATCH /api/django/core/dossiers/{id}/
 Response violates schema|PATCH /api/django/facturation/factures/{id}/
-Response violates schema|PATCH /api/django/ged/documents/{id}/
-Response violates schema|PATCH /api/django/ged/dossiers/{id}/
-Response violates schema|PATCH /api/django/ged/planifications/{id}/
-Response violates schema|PATCH /api/django/ged/tags/{id}/
 Response violates schema|PATCH /api/django/installations/chantiers/{id}/
 Response violates schema|PATCH /api/django/installations/checklist-templates/{id}/
 Response violates schema|PATCH /api/django/installations/dossiers-import/{id}/
@@ -1139,16 +1056,6 @@ Response violates schema|POST /api/django/calepinage/calepinages/{id}/raccordeme
 Response violates schema|POST /api/django/calepinage/calepinages/{id}/restaurer-corbeille/
 Response violates schema|POST /api/django/calepinage/calepinages/{id}/schema-unifilaire/
 Response violates schema|POST /api/django/facturation/factures/
-Response violates schema|POST /api/django/ged/documents/classer-apres-vente/
-Response violates schema|POST /api/django/ged/documents/{id}/assigner/
-Response violates schema|POST /api/django/ged/documents/{id}/check-in/
-Response violates schema|POST /api/django/ged/documents/{id}/check-out/
-Response violates schema|POST /api/django/ged/documents/{id}/classer/
-Response violates schema|POST /api/django/ged/documents/{id}/cycle-vie/
-Response violates schema|POST /api/django/ged/documents/{id}/detagger/
-Response violates schema|POST /api/django/ged/documents/{id}/deverrouiller/
-Response violates schema|POST /api/django/ged/documents/{id}/mettre-en-corbeille/
-Response violates schema|POST /api/django/ged/documents/{id}/ocr-piece/
 Response violates schema|POST /api/django/installations/chantiers/
 Response violates schema|POST /api/django/installations/chantiers/{id}/annuler/
 Response violates schema|POST /api/django/installations/chantiers/{id}/reactiver/
@@ -1179,7 +1086,6 @@ Response violates schema|POST /api/django/ventes/devis/{id}/acquitter-derive/
 Response violates schema|POST /api/django/ventes/devis/{id}/dupliquer-variante/
 Response violates schema|POST /api/django/ventes/factures/
 Response violates schema|PUT /api/django/facturation/factures/{id}/
-Response violates schema|PUT /api/django/ged/documents/{id}/
 Response violates schema|PUT /api/django/installations/chantiers/{id}/
 Response violates schema|PUT /api/django/installations/checklist-templates/{id}/
 Response violates schema|PUT /api/django/installations/dossiers-import/{id}/
@@ -1217,18 +1123,6 @@ Server error|POST /api/django/core/scheduled-exports/{id}/executer/
 Server error|POST /api/django/core/workflow-templates/installer/
 Server error|POST /api/django/core/workflows/approuver-en-masse/
 Server error|POST /api/django/facturation/paiements/enregistrer-avance/
-Server error|POST /api/django/ged/demandes-disposition/
-Server error|POST /api/django/ged/demandes-signature/
-Server error|POST /api/django/ged/documents/assembler-photos/
-Server error|POST /api/django/ged/documents/deposer-lot-scans-separe/
-Server error|POST /api/django/ged/documents/import-masse/
-Server error|POST /api/django/ged/documents/operations-lot/
-Server error|POST /api/django/ged/documents/scan-lot/
-Server error|POST /api/django/ged/documents/televerser/
-Server error|POST /api/django/ged/documents/{id}/deplacer/
-Server error|POST /api/django/ged/documents/{id}/restaurer/
-Server error|POST /api/django/ged/documents/{id}/tagger/
-Server error|POST /api/django/ged/legal-holds/
 Server error|POST /api/django/installations/approbations-bcf/approuver/
 Server error|POST /api/django/installations/chantiers/creer-depuis-devis/
 Server error|POST /api/django/installations/lots-prelevement/
@@ -1263,8 +1157,6 @@ Undocumented Content-Type|GET /api/django/core/workflows/rapport-conformite/
 Undocumented Content-Type|GET /api/django/facturation/avoirs/{id}/telecharger-pdf/
 Undocumented Content-Type|GET /api/django/facturation/factures/{id}/telecharger-pdf/
 Undocumented Content-Type|GET /api/django/facturation/factures/{id}/ubl/
-Undocumented Content-Type|GET /api/django/ged/documents/{id}/permissions-effectives/
-Undocumented Content-Type|GET /api/django/ged/dossiers/{id}/permissions-effectives/
 Undocumented Content-Type|GET /api/django/roles/revue-acces/
 Undocumented Content-Type|GET /api/django/ventes/avoirs/{id}/telecharger-pdf/
 Undocumented Content-Type|GET /api/django/ventes/bons-commande/{id}/pdf/
@@ -1526,32 +1418,17 @@ API rejected schema-compliant request|PUT /api/django/core/dashboards-partages-i
 API rejected schema-compliant request|PUT /api/django/core/workflow-definitions/{id}/
 API rejected schema-compliant request|PUT /api/django/core/workflow-step-definitions/{id}/
 # PR #991, 1er tirage (13/10/2026) — 6 constats PRÉ-EXISTANTS (ids FK du fuzz, énumérations de filtres, Allow OPTIONS portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -RECORDS / -PORTAIL.
-API accepted schema-violating request|GET /api/django/ged/documents/
 API accepted schema-violating request|GET /api/django/records/activities/
-API rejected schema-compliant request|PATCH /api/django/ged/routages-documentaires/{id}/
-API rejected schema-compliant request|POST /api/django/ged/vues/
 API rejected schema-compliant request|POST /api/django/records/activities/{id}/done/
 Invalid Allow header|OPTIONS /api/django/portail/paiements-facture-portail/
 # PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
 API accepted schema-violating request|GET /api/django/parametres/audit/
 # PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.
-API accepted schema-violating request|PATCH /api/django/ged/dossiers/{id}/
-API accepted schema-violating request|PATCH /api/django/ged/types-champ-signature/{id}/
-API accepted schema-violating request|POST /api/django/ged/types-champ-signature/
-API accepted schema-violating request|PUT /api/django/ged/dossiers/{id}/
-API accepted schema-violating request|PUT /api/django/ged/tags/{id}/
-API accepted schema-violating request|PUT /api/django/ged/types-champ-signature/{id}/
-API rejected schema-compliant request|PATCH /api/django/ged/exigences-dossier/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
-API rejected schema-compliant request|POST /api/django/ged/dossiers/{id}/deplacer/
-API rejected schema-compliant request|POST /api/django/ged/exigences-dossier/
-API rejected schema-compliant request|POST /api/django/ged/lots-envoi/envoi-masse/
 API rejected schema-compliant request|POST /api/django/ged/modeles-document/
 API rejected schema-compliant request|POST /api/django/portail/demandes-ticket-portail/
-API rejected schema-compliant request|PUT /api/django/ged/coffres/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/
-Response violates schema|PATCH /api/django/ged/coffres/{id}/
 # Groupe de merge #991 (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH portail/documents-client-portail, route non modifiée), porté par ERR-ENF11-FUZZ-PORTAIL (suite).
 API rejected schema-compliant request|PATCH /api/django/portail/documents-client-portail/{id}/
