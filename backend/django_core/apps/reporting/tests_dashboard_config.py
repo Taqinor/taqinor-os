@@ -149,6 +149,23 @@ class DashboardConfigCreateTests(TestCase):
         cfg = DashboardConfig.objects.get(pk=res.data['id'])
         self.assertEqual(cfg.cards, [])
 
+    def test_cards_non_liste_400_et_schema_publie_en_liste(self):
+        """ERR-ENF11-FUZZ-REPORTING — ``{}``/``null`` ne sont plus conformes
+        au schéma : ``cards`` est publié en liste de clés énumérées."""
+        from drf_spectacular.drainage import get_override
+
+        from .dashboard_config_api import DashboardConfigSerializer
+        for cards in ({}, None, 'abc'):
+            with self.subTest(cards=cards):
+                res = self.api.post(BASE_URL, {
+                    'user': self.admin.pk, 'menu_tier': '', 'cards': cards,
+                }, format='json')
+                self.assertEqual(res.status_code, 400)
+        publie = get_override(DashboardConfigSerializer().fields['cards'],
+                              'field')
+        self.assertEqual(publie['type'], 'array')
+        self.assertEqual(publie['items']['enum'], list(ALL_DASHBOARD_CARDS))
+
 
 class DashboardConfigEffectiveTests(TestCase):
     """Résolution de la config effective : per-user > palier > défaut Python."""
