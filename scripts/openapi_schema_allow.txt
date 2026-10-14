@@ -4,19 +4,3 @@
 # liste (nouveau serializer non resolu, nouvelle collision d'operationId,
 # nouveau type non resolu...). Une entree qui disparait est un progres :
 # elle peut etre retiree d'ici lors de la prochaine regeneration.
-Warning|<global>|encountered multiple names for the same choice set (MetricEnum). This may be unwanted even though the generated schema i
-Warning|<global>|encountered multiple names for the same choice set (Severit<hash>Enum). This may be unwanted even though the generated s
-Warning|<global>|encountered multiple names for the same choice set (SeveriteDe#Enum). This may be unwanted even though the generated sch
-Warning|<global>|encountered multiple names for the same choice set (StatutLegacyEnum). This may be unwanted even though the generated sc
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "canal". The same name has been used for m
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "gravite". The same name has been used for
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "kind". The same name has been used for mu
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "mode". The same name has been used for mu
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "niveau". The same name has been used for
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "priorite". The same name has been used fo
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "raccordement". The same name has been use
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "regime_#". The same name has been used fo
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "severite". The same name has been used fo
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "source". The same name has been used for
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "statut". The same name has been used for
-Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee

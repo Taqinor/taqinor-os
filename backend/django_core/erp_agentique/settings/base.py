@@ -989,6 +989,56 @@ SPECTACULAR_SETTINGS = {
         # SOLMVP30b). Le schéma régénéré (ci-après) confirme qu'aucune
         # collision « multiple names for the same choice set » ne réapparaît
         # sur les jeux entree/sortie restants (installations.GeofenceAlert…).
+        #
+        # ENF11 (14/10/2026) — les 16 dernières signatures de la base d'avertissements
+        # OpenAPI : un nom STABLE pour chaque jeu de choix partagé par plusieurs
+        # composants sous un même nom de champ (sinon `Statut4b1Enum`… et
+        # « multiple names for the same choice set »). Nommage uniquement.
+        # — champ « statut » (12 jeux)
+        'DevisStatutEnum': 'apps.ventes.models.Devis.Statut',
+        'FactureStatutEnum': 'apps.facturation.models.Facture.Statut',
+        'InstallationStatutEnum':
+            'apps.installations.models_installation.Installation.Statut',
+        'DemandeAchatStatutEnum':
+            'apps.installations.models_demande_achat.DemandeAchat.Statut',
+        'StatutIncidentPublicEnum': 'apps.statuspage.models.IncidentPublic.Statut',
+        'StatutApprobationEnum': 'apps.ged.models.APPROBATION_CHOICES',
+        'StatutBrouillonEmiseAnnuleeEnum':
+            'apps.ventes.models_commissioning.AttestationConformite.Statut',
+        'StatutBrouillonValideAnnuleEnum': 'apps.achats.models.RetourFournisseur.Statut',
+        'StatutBrouillonValideEnum':
+            'apps.installations.models_retour_materiel.RetourMateriel.Statut',
+        'StatutActifClosEnum': 'apps.stock.models_consignation.DepotConsignation.Statut',
+        'StatutPlanifieEnCoursTermineEnum':
+            'apps.installations.models_comptage.SessionComptage.Statut',
+        'StatutPlanifieEnCoursTermineAnnuleEnum':
+            'core.maintenance_windows.MaintenanceWindow.Statut',
+        # — autres champs
+        'CanalAcquisitionEnum': 'apps.crm.models.Lead.Canal',
+        'CanalRelanceEnum': 'apps.crm.models_cadence.RelanceEtape.Canal',
+        'CanalEnvoiRapportEnum': 'apps.reporting.models.SavedReport.CANAL_CHOICES',
+        'GraviteInfoWarningCritiqueEnum': 'apps.sav.models.AlarmeOnduleur.Gravite',
+        'GraviteMineureMajeureCritiqueEnum':
+            'apps.stock.models_incident_fournisseur.IncidentQualiteFournisseur.Gravite',
+        'KindActiviteEnum': 'apps.records.models.Activity.Kind',
+        'KindDemandePersonneEnum': 'core.models.DataSubjectRequest.KIND_CHOICES',
+        'ModePaiementClientEnum': 'apps.facturation.models.Paiement.Mode',
+        'ModePaiementFournisseurEnum': 'apps.achats.models.PaiementFournisseur.Mode',
+        'ModeImportEnum': 'apps.dataimport.views._MODES',
+        'NiveauAclEnum': 'apps.ged.models.ACL_CHOICES',
+        'PrioriteTroisNiveauxEnum': 'apps.crm.models.Lead.Priorite',
+        'PrioriteQuatreNiveauxEnum': 'apps.sav.models.Ticket.Priorite',
+        'RaccordementLeadEnum': 'apps.crm.models.Lead.Raccordement',
+        'RaccordementInstallationEnum':
+            'apps.installations.models_installation.Installation.Raccordement',
+        'Regime8221Enum': 'apps.ventes.models_regulatory.REGIME_CHOICES',
+        'LeadSourceEnum': 'apps.crm.models.Lead.Source',
+        # Clés de `_SOURCE_LOADERS` (déjà triées : le ChoiceField les trie).
+        'SourceApprobationEnum': 'apps.reporting.approbations._SOURCE_LOADERS',
+        'TypeInstallationLeadEnum': 'apps.crm.models.Lead.TypeInstallation',
+        'TypeInstallationChantierEnum':
+            'apps.installations.models_installation.Installation.TypeInstallation',
+        'MetriqueCommercialeEnum': 'apps.crm.models_clients.ObjectifCommercial.Metric',
     },
 }
 
