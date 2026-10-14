@@ -2750,9 +2750,11 @@ class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
     document créé (par `services.creer_revalorisation`, qui a figé le
     snapshot ancien coût/quantité/delta), `produit` et `nouveau_cout` ne se
     modifient plus : seul le motif reste éditable sur un brouillon."""
-    same_company_fields = ('produit',)
-    CHAMPS_FIGES_APRES_CREATION = ('produit', 'nouveau_cout')
+    same_company_fields, CHAMPS_FIGES_APRES_CREATION = (
+        ('produit',), ('produit', 'nouveau_cout'))
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    # CI #997 fuzz — `motif` : texte JSON seulement (une liste était lue).
+    motif = ChaineStricte(help_text='Motif obligatoire.')
 
     class Meta:
         model = RevalorisationStock
@@ -2767,10 +2769,6 @@ class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
             'date_validation',
         ]
 
-    def get_fields(self):
-        # CI #997 fuzz — `motif` : texte JSON seulement (une liste était lue).
-        return {**super().get_fields(), 'motif': ChaineStricte(
-            help_text='Motif obligatoire.')}
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
