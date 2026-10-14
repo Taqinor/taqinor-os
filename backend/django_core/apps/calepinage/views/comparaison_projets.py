@@ -41,6 +41,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutVoirCalepinage
 from ..serializers import forme_du_contrat
+from ..services.comparaison_projets import BORNE_PROJETS
 from .calepinages import CalepinageViewSet
 
 __all__ = ['comparer_projets', 'comparatif_xlsx']
@@ -49,7 +50,8 @@ __all__ = ['comparer_projets', 'comparatif_xlsx']
 @extend_schema(request=inline_serializer(
     'CalepinageComparerProjetsRequete', {
         'ids': drf_serializers.ListField(
-            child=drf_serializers.IntegerField())}),
+            child=drf_serializers.IntegerField(min_value=1),
+            min_length=1, max_length=BORNE_PROJETS)}),
     responses=forme_du_contrat('CalepinageComparaisonProjets',
                                'calepinage_comparaison_projets.json'))
 @action(detail=False, methods=['post'], url_path='comparer-projets',

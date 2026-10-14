@@ -137,7 +137,7 @@ class ApprobationEmpreinteTest(BaseApiCalepinage):
                                          lead_id=self.lead_2.pk, titre='Vide')
         reponse = self.api.post(f'{url_detail(vide.pk)}approbation/',
                                 {'decision': 'approuve'}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data['roof_layout'],
                          'Rien à approuver : dessinez la toiture')
         vide.refresh_from_db()

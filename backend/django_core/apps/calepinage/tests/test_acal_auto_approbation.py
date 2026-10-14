@@ -9,7 +9,7 @@ LE CONSTAT (C-ACAL-095, PLAUSIBLE → oracle) : ``services/approbation.decider``
 sur le commit pré-correctif (aucune garde dans ``decider``).
 
 Désormais : l'auteur du calepinage, son responsable et l'auteur de sa
-DERNIÈRE version reçoivent 400 ``{decision: …}`` sur un ACCORD, RIEN n'est
+DERNIÈRE version reçoivent 409 ``{decision: …}`` sur un ACCORD, RIEN n'est
 écrit (approbation et chatter inchangés) ; un REFUS reste admis ; un tiers
 approuve. Rôles réels, base réelle, route HTTP réelle, aucun mock.
 """
@@ -59,7 +59,7 @@ class AutoApprobationTest(BaseApiCalepinage):
     def _refus_sans_ecriture(self, calepinage):
         avant = self._notes(calepinage)
         reponse = self._decider(calepinage, decision='approuve')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data, {'decision': MESSAGE_AUTO_APPROBATION})
         calepinage.refresh_from_db()
         self.assertIsNone(calepinage.approbation)
@@ -146,5 +146,5 @@ class SeulApprobateurTest(BaseApiCalepinage):
         reponse = self.api.post(f'{url_detail(calepinage.pk)}approbation/',
                                 {'decision': 'approuve'}, format='json')
 
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data, {'decision': MESSAGE_AUTO_APPROBATION})

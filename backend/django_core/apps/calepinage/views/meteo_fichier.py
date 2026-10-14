@@ -233,15 +233,24 @@ def _retirer(calepinage, user):
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-@extend_schema(methods=['GET'], responses={
-    200: inline_serializer('CalepinageMeteoFichierRetenu', {
-        'piece_jointe': serializers.IntegerField(),
-        'nom': serializers.CharField(allow_null=True),
-        'fournisseur': serializers.CharField(allow_null=True),
-        'sha256': serializers.CharField(allow_null=True),
-        'depose_le': serializers.CharField(allow_null=True),
-        'depose_par': serializers.CharField(allow_null=True),
-    }, allow_null=True)})
+#: ACAL146 — le fichier RETENU, ou ``null`` quand aucun ne l'est
+#: (ERR-ENF11-FUZZ-CALEPINAGE : ``allow_null`` d'un ``inline_serializer`` n'est
+#: pas publié par drf-spectacular — le ``null`` servi sortait du schéma).
+_TEXTE_OU_NULL = {'type': 'string', 'nullable': True}
+_FICHIER_RETENU_OU_NULL = {
+    'type': 'object', 'nullable': True,
+    'properties': {
+        'piece_jointe': {'type': 'integer'},
+        'nom': _TEXTE_OU_NULL, 'fournisseur': _TEXTE_OU_NULL,
+        'sha256': _TEXTE_OU_NULL, 'depose_le': _TEXTE_OU_NULL,
+        'depose_par': _TEXTE_OU_NULL,
+    },
+    'required': ['piece_jointe', 'nom', 'fournisseur', 'sha256', 'depose_le',
+                 'depose_par'],
+}
+
+
+@extend_schema(methods=['GET'], responses={200: _FICHIER_RETENU_OU_NULL})
 @extend_schema(
     methods=['POST'],
     request=inline_serializer('CalepinageMeteoFichierCorps', {

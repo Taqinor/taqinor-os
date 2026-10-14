@@ -13,8 +13,10 @@ MÊME forme ``{source, lignes, total_prevu, total_pose, version_creee}`` :
   créée, 200 quand les mêmes écarts étaient déjà gelés.
 
 La garde est choisie PAR MÉTHODE (``PeutLireOuEcrireCalepinage``). Un refus
-métier est un 400 qui NOMME son champ (``pan``, ``modules_poses``,
-``releve_le``, ``creer_version``) — la forme ``refus_*`` du contrat. La
+métier NOMME son champ (``pan``, ``modules_poses``, ``releve_le``,
+``creer_version``) — la forme ``refus_*`` du contrat. ERR-ENF11-FUZZ-CALEPINAGE :
+400 pour une saisie illisible, 404 pour un pan inconnu du document
+(sous-ressource absente), 409 pour une version demandée sans aucun relevé. La
 société et l'auteur viennent du serveur ; ``get_object()`` est borné par le
 queryset du viewset (404 pour une autre société). Aucun statut de chantier ni
 de devis ne bouge.
@@ -22,18 +24,16 @@ de devis ne bouge.
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
-)
-from rest_framework import serializers, status
+from drf_spectacular.utils import OpenApiParameter, extend_schema
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutLireOuEcrireCalepinage
-from ..serializers import forme_du_contrat
+from ..serializers import corps_obligatoire, forme_du_contrat
 from ..services.asbuilt import (
-    PoseRefusee, enregistrer_pose, etat_pose_reelle, supprimer_pose,
-    version_depuis_ecarts,
+    PanInconnu, PoseRefusee, enregistrer_pose, etat_pose_reelle,
+    supprimer_pose, version_depuis_ecarts,
 )
 from .calepinages import CalepinageViewSet
 
@@ -52,17 +52,34 @@ _FORME_POSE_REELLE = forme_du_contrat(
     'CalepinagePoseReelle', 'calepinage_asbuilt_ecarts.json')
 
 
+#: ERR-ENF11-FUZZ-CALEPINAGE — le corps RÉEL (contrat ``corps_saisie`` /
+#: ``corps_creer_version``) : soit la demande de version, soit la saisie d'UN
+#: pan — pan désigné, entier posé >= 0, date AAAA-MM-JJ (exigée à la
+#: première saisie ; le schéma l'exige toujours, la correction l'omet).
+_CORPS_POSE_REELLE = {
+    'type': 'object',
+    'properties': {
+        'creer_version': {'type': 'boolean'},
+        'pan': {'type': 'string', 'pattern': r'\S'},
+        'modules_poses': {'type': 'integer', 'minimum': 0,
+                          'maximum': 2147483647},
+        'ecarts_position': {'type': 'string'},
+        'releve_le': {'type': 'string', 'format': 'date'},
+    },
+    'anyOf': [
+        {'properties': {'creer_version': {'enum': [True]}},
+         'required': ['creer_version']},
+        {'required': ['pan', 'modules_poses', 'releve_le']},
+    ],
+}
+
+
 @extend_schema(methods=['GET'], responses=_FORME_POSE_REELLE)
 @extend_schema(
     methods=['POST'],
-    request=inline_serializer('CalepinagePoseReelleCorps', {
-        'creer_version': serializers.BooleanField(required=False),
-        'pan': serializers.CharField(required=False),
-        'modules_poses': serializers.IntegerField(required=False),
-        'ecarts_position': serializers.CharField(required=False,
-                                                 allow_blank=True),
-        'releve_le': serializers.CharField(required=False)}),
+    request={'application/json': _CORPS_POSE_REELLE},
     responses={200: _FORME_POSE_REELLE, 201: _FORME_POSE_REELLE})
+@corps_obligatoire
 @action(detail=True, methods=['get', 'post'], url_path='pose-reelle',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def pose_reelle(self, request, pk=None):
@@ -81,8 +98,12 @@ def pose_reelle(self, request, pk=None):
                 code = status.HTTP_201_CREATED
         else:
             enregistrer_pose(calepinage, corps, user=request.user)
+    except PanInconnu as refus:
+        return Response(refus.corps(), status=status.HTTP_404_NOT_FOUND)
     except PoseRefusee as refus:
-        return Response(refus.corps(), status=status.HTTP_400_BAD_REQUEST)
+        return Response(refus.corps(), status=(
+            status.HTTP_409_CONFLICT if refus.champ == 'creer_version'
+            else status.HTTP_400_BAD_REQUEST))
     return Response(etat_pose_reelle(calepinage), status=code)
 
 

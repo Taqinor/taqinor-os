@@ -69,7 +69,7 @@ __all__ = [
     'MENTION_SANS_SAISIE', 'MENTION_CONCEPTION_MODIFIEE',
     'conception_du_chantier', 'ecarts_du_calepinage',
     # CALX366 — la porte HTTP ``pose-reelle/``.
-    'PREFIXE_VERSION_POSE', 'PoseRefusee', 'etat_pose_reelle',
+    'PREFIXE_VERSION_POSE', 'PoseRefusee', 'PanInconnu', 'etat_pose_reelle',
     'enregistrer_pose', 'version_depuis_ecarts',
     # ACAL267 — retirer le relevé d'un pan (ligne orpheline comprise).
     'MENTION_ORPHELIN', 'MESSAGE_AUCUNE_POSE', 'supprimer_pose',
@@ -334,6 +334,11 @@ class PoseRefusee(ValueError):
         return {self.champ or 'detail': str(self)}
 
 
+class PanInconnu(PoseRefusee):
+    """``pan`` ne désigne aucun pan prévu du document (sous-ressource
+    absente : la vue répond 404, même corps ``refus_pan_inconnu``)."""
+
+
 def _ligne_du_contrat(ligne):
     """Une ligne de ``_comparer`` → la ligne publiée (contrat CALX337)."""
     return {
@@ -444,7 +449,7 @@ def _zone_de_la_saisie(pan, pans):
             f"Plusieurs pans portent le libellé « {pan} » : désignez le pan "
             f"par son identifiant ({', '.join(p['zone_id'] for p in memes)}).",
             'pan')
-    raise PoseRefusee(
+    raise PanInconnu(
         f"Pan inconnu du document : « {pan} ». Pans prévus : "
         f"{', '.join(p['libelle'] for p in pans) or 'aucun'}.", 'pan')
 

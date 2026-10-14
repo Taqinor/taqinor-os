@@ -66,8 +66,8 @@ from ..permissions import (
 )
 from ..serializers import (
     CalepinageLectureSerializer, CalepinageSerializer,
-    CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, forme_du_contrat,
-    forme_reponse,
+    CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, corps_obligatoire,
+    forme_du_contrat, forme_reponse,
 )
 # CAL52 — la sous-ressource « photos de site » vit dans SON fichier
 # (``views/photos.py``) : une base de plus, zéro logique ajoutée ici.
@@ -194,6 +194,10 @@ _PARAM_IF_MATCH = OpenApiParameter(
                 "``layout``) ; l'ETag vide ``\"\"`` pour un document vide. "
                 "Exigé pour écrire : absent, 428 et rien n'est écrit (mais un "
                 "calepinage archivé ou un corps invalide est refusé avant).")
+#: ``?etiquette=`` : identifiants entiers POSITIFS séparés par des virgules
+#: (jetons vides ignorés) — la règle de ``services/etiquettes.py``, publiée.
+_MOTIF_ETIQUETTES = (r'^\s*(?:0*[1-9][0-9]*)?\s*'
+                     r'(?:,\s*(?:0*[1-9][0-9]*)?\s*)*$')
 _CREATION_COMMUNE = {
     'titre': drf_serializers.CharField(required=False, allow_blank=True),
     'responsable': drf_serializers.IntegerField(required=False,
@@ -267,8 +271,8 @@ class _OrdreStatutDerive(filters.OrderingFilter):
         OpenApiParameter('responsable', OpenApiTypes.INT, OpenApiParameter.QUERY,
                          required=False,
                          description="Identifiant du responsable."),
-        OpenApiParameter('etiquette', OpenApiTypes.STR, OpenApiParameter.QUERY,
-                         required=False,
+        OpenApiParameter('etiquette', {'type': 'string', 'pattern': _MOTIF_ETIQUETTES},
+                         OpenApiParameter.QUERY, required=False,
                          description="Identifiant(s) d'étiquette, séparés par des virgules (ET logique)."),
     ]),
 )
@@ -418,6 +422,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                                       'detail': drf_serializers.CharField(
                                           required=False),
                                   })})
+    @corps_obligatoire
     def create(self, request, *args, **kwargs):
         """ACAL182 — la porte de l'écran Nouveau passe par ``creation.py``.
 

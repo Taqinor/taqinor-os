@@ -26,7 +26,6 @@ API accepted schema-violating request|GET /api/django/automation/incoming-webhoo
 API accepted schema-violating request|GET /api/django/automation/rule-versions/
 API accepted schema-violating request|GET /api/django/automation/rules/
 API accepted schema-violating request|GET /api/django/automation/runs/
-API accepted schema-violating request|GET /api/django/calepinage/calepinages/{id}/bom-fixation/
 API accepted schema-violating request|GET /api/django/companies/
 API accepted schema-violating request|GET /api/django/core/consent-records/
 API accepted schema-violating request|GET /api/django/core/dashboards-partages-internes/
@@ -432,7 +431,6 @@ API accepted schema-violating request|PATCH /api/django/sav/remedes-defaillance/
 API accepted schema-violating request|PATCH /api/django/uxviews/parametres/
 API accepted schema-violating request|PATCH /api/django/ventes/listes-prix/{id}/
 API accepted schema-violating request|POST /api/django/adminops/config-packages/exporter/
-API accepted schema-violating request|POST /api/django/calepinage/calepinages/{id}/dupliquer/
 API accepted schema-violating request|POST /api/django/core/branded-templates/
 API accepted schema-violating request|POST /api/django/core/export-reversibilite/
 API accepted schema-violating request|POST /api/django/core/formule/valider/
@@ -565,8 +563,6 @@ API accepted schema-violating request|PUT /api/django/sav/causes-defaillance/{id
 API accepted schema-violating request|PUT /api/django/sav/checklist-templates/{id}/
 API accepted schema-violating request|PUT /api/django/sav/remedes-defaillance/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/listes-prix/{id}/
-API rejected schema-compliant request|DELETE /api/django/calepinage/calepinages/{id}/
-API rejected schema-compliant request|DELETE /api/django/calepinage/calepinages/{id}/etiquettes/
 API rejected schema-compliant request|DELETE /api/django/facturation/factures-lignes/{id}/
 API rejected schema-compliant request|DELETE /api/django/stock/categories/{id}/
 API rejected schema-compliant request|DELETE /api/django/stock/emplacements/{id}/
@@ -575,24 +571,6 @@ API rejected schema-compliant request|DELETE /api/django/stock/produits/{id}/for
 API rejected schema-compliant request|DELETE /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|DELETE /api/django/ventes/devis/{id}/overrides/
 API rejected schema-compliant request|DELETE /api/django/ventes/factures-lignes/{id}/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/apercu-document/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/diagramme-pertes.svg/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/export-csv/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/export.csv/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/export.dxf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/export.xlsx/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/manuel-proprietaire.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/note-calcul.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/plan-cablage.dxf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/plan-cablage.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/plan-masse.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/plan-pose.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/plan-toiture.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/planche.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/planche.svg/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/rapport-ombrage.pdf/
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/schema-unifilaire.dxf/
 API rejected schema-compliant request|GET /api/django/core/dashboards/{id}/donnees/
 API rejected schema-compliant request|GET /api/django/core/registre-fiabilite/export-pdf/
 API rejected schema-compliant request|GET /api/django/core/sla/{periode}/export-pdf/
@@ -695,39 +673,15 @@ API rejected schema-compliant request|POST /api/django/agent/actions/automation-
 API rejected schema-compliant request|POST /api/django/automation/approval-requests/
 API rejected schema-compliant request|POST /api/django/automation/incoming-webhooks/
 API rejected schema-compliant request|POST /api/django/automation/rules/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/comparer-projets/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/depuis-modele/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/import-projet/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/approbation/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/champs-dossier/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/chatter/noter/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/consommation/proposer/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/enregistrer-pertes/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/etiquettes/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/fixation/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/fond-plan/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/garder-repere/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/generer-devis/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/generer-dossier/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/image-document/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/importer-plan/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/layout/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/layout/section/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/meteo-fichier/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/pack-technique/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/photos/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/pose-reelle/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/recentrer-sur-lead/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/releve-visite/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/releve/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/remettre-document/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/roof-image/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/simuler/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/suggestions-pente/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/sync-devis/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/variantes/
-API rejected schema-compliant request|POST /api/django/calepinage/gabarits-dossiers/
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/calculer/
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/pose/
 API rejected schema-compliant request|POST /api/django/calepinage/parametres/suggestion-pente/
@@ -1067,8 +1021,6 @@ API rejected schema-compliant request|POST /api/django/visites/visites/{id}/renv
 API rejected schema-compliant request|POST /api/django/visites/visites/{id}/terminer/
 API rejected schema-compliant request|POST /api/django/visites/visites/{id}/valider/
 API rejected schema-compliant request|PUT /api/django/achats/bons-commande-fournisseur/{id}/
-API rejected schema-compliant request|PUT /api/django/calepinage/calepinages/{id}/
-API rejected schema-compliant request|PUT /api/django/calepinage/parametres/
 API rejected schema-compliant request|PUT /api/django/core/vues/{id}/
 API rejected schema-compliant request|PUT /api/django/crm/clients/{id}/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
@@ -1119,32 +1071,6 @@ Missing Content-Type header|POST /api/django/core/sla/credits/{id}/statut/
 Missing Content-Type header|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Response violates schema|GET /api/django/adminops/settings/
 Response violates schema|GET /api/django/automation/approval-delegations/
-Response violates schema|GET /api/django/calepinage/calepinages/
-Response violates schema|GET /api/django/calepinage/calepinages/modeles/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/approbation/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/bom-fixation/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/comparer/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/design-context/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/entree-electrique/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/equipements/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/etiquettes/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/export-layout/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/layout/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/masse-lestage/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/modules-disponibles/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/photos/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/pose-reelle/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/raccordement/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/releve-visite/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/releve/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/resultat/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/schema-unifilaire/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/sorties/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/troncons/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/variantes/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/versions/
-Response violates schema|GET /api/django/calepinage/gabarits-dossiers/
 Response violates schema|GET /api/django/core/bulk-edit/targets/
 Response violates schema|GET /api/django/core/dossiers/{id}/checklist/
 Response violates schema|GET /api/django/core/dossiers/{id}/historique/
@@ -1268,7 +1194,6 @@ Response violates schema|GET /api/django/ventes/paiements/attestations-ras-en-at
 Response violates schema|GET /api/django/ventes/paiements/avances-non-affectees/
 Response violates schema|GET /api/django/visites/visites/
 Response violates schema|PATCH /api/django/automation/approval-delegations/{id}/
-Response violates schema|PATCH /api/django/calepinage/calepinages/{id}/
 Response violates schema|PATCH /api/django/core/dossiers/{id}/
 Response violates schema|PATCH /api/django/crm/apporteurs/{id}/
 Response violates schema|PATCH /api/django/crm/equipes/{id}/
@@ -1309,17 +1234,6 @@ Response violates schema|PATCH /api/django/stock/produits/{id}/
 Response violates schema|PATCH /api/django/ventes/devis/{id}/
 Response violates schema|PATCH /api/django/ventes/factures/{id}/
 Response violates schema|POST /api/django/automation/approval-delegations/
-Response violates schema|POST /api/django/calepinage/calepinages/depuis-lead/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/archiver/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/demarquer-modele/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/entree-electrique/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/evaluer-electrique/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/import-layout/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/marquer-modele/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/pompage/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/raccordement/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/restaurer-corbeille/
-Response violates schema|POST /api/django/calepinage/calepinages/{id}/schema-unifilaire/
 Response violates schema|POST /api/django/crm/apporteurs/
 Response violates schema|POST /api/django/crm/forecast-entries/
 Response violates schema|POST /api/django/crm/leads/
@@ -1472,10 +1386,6 @@ Server error|POST /api/django/stock/vagues-picking/
 Server error|POST /api/django/ventes/devis/{id}/layout/
 Server error|POST /api/django/ventes/devis/{id}/sync-layout/
 Server error|POST /api/django/ventes/paiements/enregistrer-avance/
-Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/comparatif.xlsx/
-Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/document-asbuilt.pdf/
-Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/presentation-compacte.pdf/
-Undocumented Content-Type|GET /api/django/calepinage/calepinages/{id}/rapport-etude.pdf/
 Undocumented Content-Type|GET /api/django/core/workflows/rapport-conformite/
 Undocumented Content-Type|GET /api/django/facturation/avoirs/{id}/telecharger-pdf/
 Undocumented Content-Type|GET /api/django/facturation/factures/{id}/telecharger-pdf/
@@ -1494,20 +1404,16 @@ Undocumented Content-Type|GET /api/public/v1/calepinages/{id}/resultat/
 Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
 Undocumented Content-Type|POST /api/public/v1/jobs/{id}/relancer/
 Undocumented Content-Type|POST /api/public/v1/leads-write/{id}/activites/
-Undocumented HTTP status code|DELETE /api/django/calepinage/calepinages/{id}/
 Undocumented HTTP status code|DELETE /api/django/crm/leads/{id}/
 Undocumented HTTP status code|DELETE /api/django/parametres/delete-logo/
 Undocumented HTTP status code|DELETE /api/django/parametres/delete-signature/
 Undocumented HTTP status code|DELETE /api/django/stock/fournisseurs/{id}/
 Undocumented HTTP status code|DELETE /api/django/stock/produits/{id}/
-Undocumented HTTP status code|GET /api/django/calepinage/calepinages/{id}/meteo-fichier/
 Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/attestation/
 Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/bon-livraison/
 Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/dossier-remise/
 Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/pv-reception/
 Undocumented HTTP status code|GET /api/django/ventes/factures/{facture_id}/lettre-relance-premium/
-Undocumented HTTP status code|POST /api/django/calepinage/calepinages/depuis-lead/
-Undocumented HTTP status code|POST /api/django/calepinage/calepinages/{id}/dupliquer/
 Undocumented HTTP status code|POST /api/django/crm/appareils-equipe/
 Undocumented HTTP status code|POST /api/django/crm/leads/{id}/visites/planifier/
 Undocumented HTTP status code|POST /api/django/facturation/factures/{id}/creer-avoir/
@@ -1519,7 +1425,6 @@ Undocumented HTTP status code|POST /api/django/ventes/devis/{id}/reviser/
 Undocumented HTTP status code|POST /api/django/ventes/factures/{id}/creer-avoir/
 Undocumented HTTP status code|POST /api/django/ventes/factures/{id}/envoyer-email/
 Undocumented HTTP status code|POST /api/public/v1/oauth/token/
-Undocumented HTTP status code|PUT /api/django/calepinage/calepinages/{id}/
 Unsupported methods|POST /api/django/core/module-toggles/
 Unsupported methods|TRACE /api/django/core/usage/couts/
 API accepted schema-violating request|GET /api/django/roles/revue-acces/
@@ -1721,11 +1626,7 @@ API rejected schema-compliant request|PATCH /api/django/ventes/factures/{id}/
 
 # PR #984 (12/10/2026) — 7 constats PRÉ-EXISTANTS relevés par le tirage du job PR (périmètre calepinage/crm/ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (les deux 500 crm = vrais bugs à corriger à la cause).
-API rejected schema-compliant request|GET /api/django/calepinage/calepinages/{id}/comparatif.xlsx/
-API rejected schema-compliant request|PATCH /api/django/calepinage/calepinages/{id}/
 API rejected schema-compliant request|PATCH /api/django/crm/canaux/{id}/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/dupliquer/
-Response violates schema|GET /api/django/calepinage/calepinages/{id}/meteo-fichier/
 Server error|POST /api/django/crm/leads/export-xlsx/
 Server error|POST /api/django/crm/leads/{id}/locataire/
 # PR #984, 2e tirage (12/10/2026) — 2 constats PRÉ-EXISTANTS supplémentaires (variance de couverture du job PR),

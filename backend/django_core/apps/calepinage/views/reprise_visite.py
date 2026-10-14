@@ -59,7 +59,9 @@ def releve_visite(self, request, pk=None):
         reponse, cree = reprendre_visite(calepinage, user=request.user,
                                          remplacer=remplacer)
     except RepriseRefusee as refus:
-        return Response(refus.corps(), status=status.HTTP_400_BAD_REQUEST)
+        # ERR-ENF11-FUZZ-CALEPINAGE — aucune visite validée à reprendre (ou un
+        # relevé de visite que le modèle refuse) : conflit d'ÉTAT, 409.
+        return Response(refus.corps(), status=status.HTTP_409_CONFLICT)
     return Response(reponse, status=(status.HTTP_201_CREATED if cree
                                      else status.HTTP_200_OK))
 

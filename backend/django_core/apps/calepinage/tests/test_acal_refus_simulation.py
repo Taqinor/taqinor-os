@@ -7,7 +7,7 @@ illisible ou PVGIS indisponible pour un pan levaient une exception brute ; et
 le job en échec n'avait AUCUNE charge en cache — l'écran ne savait pas quel
 champ pointer.
 
-Désormais : pré-vérification 400 dans la vue par LA fonction de la
+Désormais : pré-vérification 409 (refus d'état) dans la vue par LA fonction de la
 simulation (``verifier_simulable``), exceptions d'entrée converties en
 ``SimulationRefusee``, échec de job structuré ``elements[0] = {statut,
 champ, motif}`` servi par ``GET moteur/resultat/<job>/``.
@@ -123,23 +123,23 @@ class _BaseApi(TestCase):
 
 class PreVerificationApiTest(_BaseApi):
 
-    def test_sans_mode_meteo_400_nomme(self):
+    def test_sans_mode_meteo_409_nomme(self):
         # La société n'a RIEN réglé : aucun mode météo.
         reponse, soumettre = self._poster()
 
-        self.assertEqual(reponse.status_code, 400, reponse.content[:300])
+        self.assertEqual(reponse.status_code, 409, reponse.content[:300])
         self.assertIn('parametres.simulation.mode_meteo', reponse.data)
         self.assertTrue(reponse.data['parametres.simulation.mode_meteo'][0])
         soumettre.assert_not_called()
 
-    def test_temperature_partielle_400_pas_500(self):
+    def test_temperature_partielle_409_pas_500(self):
         self.calepinage.resultat = {
             'entree_electrique': {'temperature_min_c': -5.0}}
         self.calepinage.save(update_fields=['resultat'])
 
         reponse, soumettre = self._poster()
 
-        self.assertEqual(reponse.status_code, 400, reponse.content[:300])
+        self.assertEqual(reponse.status_code, 409, reponse.content[:300])
         self.assertIn('temperature_max_c', reponse.data)
         soumettre.assert_not_called()
 
