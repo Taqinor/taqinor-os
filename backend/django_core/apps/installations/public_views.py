@@ -1,7 +1,7 @@
 """Vues publiques tokenisées de l'app Installations (SANS LOGIN)."""
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
@@ -35,6 +35,38 @@ class PublicPhotoThrottle(PublicTokenThrottle):
         return '300/min'
 
 
+#: ENF11 — formes des deux pages publiques tokenisées (reflets EXACTS de
+#: ``selectors.intervention_public_payload`` / ``intervention_rapport_public_payload``).
+_SuiviInterventionPublic = inline_serializer('InterventionSuiviPublic', {
+    'statut': serializers.CharField(),
+    'statut_display': serializers.CharField(),
+    'technicien_nom': serializers.CharField(allow_null=True),
+    'technicien_avatar_url': serializers.CharField(allow_null=True),
+    'fenetre_debut': serializers.CharField(allow_null=True),
+    'fenetre_fin': serializers.CharField(allow_null=True),
+    'date_prevue': serializers.CharField(allow_null=True),
+    'distance_km': serializers.FloatField(allow_null=True),
+    'eta_minutes': serializers.IntegerField(allow_null=True),
+    'site_ville': serializers.CharField(allow_null=True),
+})
+_RapportInterventionPublic = inline_serializer('InterventionRapportPublic', {
+    'statut': serializers.CharField(),
+    'statut_display': serializers.CharField(),
+    'type_intervention_display': serializers.CharField(),
+    'chantier_reference': serializers.CharField(allow_null=True),
+    'site_ville': serializers.CharField(allow_null=True),
+    'date_realisee': serializers.CharField(allow_null=True),
+    'equipe': serializers.JSONField(),
+    'photos': serializers.JSONField(),
+    'serials': serializers.JSONField(),
+    'consommation': serializers.JSONField(),
+    'reserves': serializers.JSONField(),
+    'signataire_nom': serializers.CharField(allow_null=True),
+    'signe_le': serializers.CharField(allow_null=True),
+    'pdf_url': serializers.CharField(),
+})
+
+
 class InterventionLienClientPublicView(APIView):
     """XFSM7 — page publique tokenisée « technicien en route » : statut
     courant, technicien (nom + avatar), fenêtre promise (XFSM5) et ETA
@@ -45,7 +77,7 @@ class InterventionLienClientPublicView(APIView):
     authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
-    @extend_schema(responses=OpenApiTypes.OBJECT)  # selectors.intervention_public_payload
+    @extend_schema(responses=_SuiviInterventionPublic)  # selectors.intervention_public_payload
     def get(self, request, token):
         interv = (
             Intervention.objects
@@ -76,7 +108,7 @@ class InterventionRapportPublicView(APIView):
     authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
-    @extend_schema(responses=OpenApiTypes.OBJECT)  # selectors.intervention_rapport_public_payload
+    @extend_schema(responses=_RapportInterventionPublic)  # selectors.intervention_rapport_public_payload
     def get(self, request, token):
         interv = (
             Intervention.objects

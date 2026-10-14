@@ -42,7 +42,9 @@ from . import services
 from .serializers import (
     AccepterDevisPortailReponseSerializer,
     AccepterDevisPortailRequeteSerializer,
+    MesDevisPortailLigneSerializer,
     MesDevisPortailListeSerializer,
+    MesFacturesPortailLigneSerializer,
     MesFacturesPortailListeSerializer,
     PayerFacturePortailReponseSerializer,
 )
@@ -554,7 +556,7 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
             {'results': devis_du_client_portail(company, client_id)})
 
     @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL],
-                   responses=OpenApiTypes.OBJECT)
+                   responses=MesDevisPortailLigneSerializer)
     def retrieve(self, request, pk=None):
         from apps.ventes.selectors import devis_du_client_portail
         company, client_id = _scope(request)
@@ -718,7 +720,7 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         })
 
     @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL],
-                   responses=OpenApiTypes.OBJECT)
+                   responses=MesFacturesPortailLigneSerializer)
     def retrieve(self, request, pk=None):
         from apps.ventes.selectors import factures_du_client_portail
         company, client_id = _scope(request)

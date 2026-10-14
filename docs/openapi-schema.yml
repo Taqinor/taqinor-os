@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3483}
+counts: {paths: 4814, operations: 7566, components: 3503}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -716,8 +716,8 @@ operations:
 - patch /api/django/core/dashboards/{id}/ -> django_core_dashboards_partial_update
 - put /api/django/core/dashboards/{id}/ -> django_core_dashboards_update
 - get /api/django/core/dashboards/{id}/donnees/ -> django_core_dashboards_donnees_retrieve
-- get /api/django/core/data-explorer/datasets/ -> django_core_data_explorer_datasets_retrieve
-- get /api/django/core/data-explorer/datasets/{name}/ -> django_core_data_explorer_datasets_retrieve_2
+- get /api/django/core/data-explorer/datasets/ -> django_core_data_explorer_datasets_list
+- get /api/django/core/data-explorer/datasets/{name}/ -> django_core_data_explorer_datasets_retrieve
 - get /api/django/core/data-explorer/drill/ -> django_core_data_explorer_drill_retrieve
 - post /api/django/core/data-explorer/drill/ -> django_core_data_explorer_drill_create
 - post /api/django/core/data-explorer/run/ -> django_core_data_explorer_run_create
@@ -812,12 +812,12 @@ operations:
 - get /api/django/core/saved-queries/ -> django_core_saved_queries_list
 - post /api/django/core/saved-queries/ -> django_core_saved_queries_create
 - get /api/django/core/saved-queries/datasets/ -> django_core_saved_queries_datasets_retrieve
-- post /api/django/core/saved-queries/run/ -> django_core_saved_queries_run_create
+- post /api/django/core/saved-queries/run/ -> django_core_saved_queries_run_adhoc_create
 - delete /api/django/core/saved-queries/{id}/ -> django_core_saved_queries_destroy
 - get /api/django/core/saved-queries/{id}/ -> django_core_saved_queries_retrieve
 - patch /api/django/core/saved-queries/{id}/ -> django_core_saved_queries_partial_update
 - put /api/django/core/saved-queries/{id}/ -> django_core_saved_queries_update
-- post /api/django/core/saved-queries/{id}/run/ -> django_core_saved_queries_run_create_2
+- post /api/django/core/saved-queries/{id}/run/ -> django_core_saved_queries_run_create
 - get /api/django/core/scheduled-exports/ -> django_core_scheduled_exports_list
 - post /api/django/core/scheduled-exports/ -> django_core_scheduled_exports_create
 - delete /api/django/core/scheduled-exports/{id}/ -> django_core_scheduled_exports_destroy
@@ -1013,7 +1013,7 @@ operations:
 - post /api/django/crm/leads/{id}/whatsapp-devis-apercu/ -> django_crm_leads_whatsapp_devis_apercu_create
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
 - get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
-- get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_retrieve
+- get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_list
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
 - get /api/django/crm/leads/{lead_id}/roof-footprint/ -> django_crm_leads_roof_footprint_retrieve
 - get /api/django/crm/message-templates/ -> django_crm_message_templates_list
@@ -1586,15 +1586,15 @@ operations:
 - get /api/django/identity/providers/{id}/ -> django_identity_providers_retrieve
 - patch /api/django/identity/providers/{id}/ -> django_identity_providers_partial_update
 - put /api/django/identity/providers/{id}/ -> django_identity_providers_update
-- get /api/django/identity/scim/v2/{company_slug}/Groups -> django_identity_scim_v2_Groups_retrieve
+- get /api/django/identity/scim/v2/{company_slug}/Groups -> django_identity_scim_v2_Groups_list
 - post /api/django/identity/scim/v2/{company_slug}/Groups -> django_identity_scim_v2_Groups_create
 - delete /api/django/identity/scim/v2/{company_slug}/Groups/{id} -> django_identity_scim_v2_Groups_destroy
-- get /api/django/identity/scim/v2/{company_slug}/Groups/{id} -> django_identity_scim_v2_Groups_retrieve_2
+- get /api/django/identity/scim/v2/{company_slug}/Groups/{id} -> django_identity_scim_v2_Groups_retrieve
 - patch /api/django/identity/scim/v2/{company_slug}/Groups/{id} -> django_identity_scim_v2_Groups_partial_update
-- get /api/django/identity/scim/v2/{company_slug}/Users -> django_identity_scim_v2_Users_retrieve
+- get /api/django/identity/scim/v2/{company_slug}/Users -> django_identity_scim_v2_Users_list
 - post /api/django/identity/scim/v2/{company_slug}/Users -> django_identity_scim_v2_Users_create
 - delete /api/django/identity/scim/v2/{company_slug}/Users/{id} -> django_identity_scim_v2_Users_destroy
-- get /api/django/identity/scim/v2/{company_slug}/Users/{id} -> django_identity_scim_v2_Users_retrieve_2
+- get /api/django/identity/scim/v2/{company_slug}/Users/{id} -> django_identity_scim_v2_Users_retrieve
 - patch /api/django/identity/scim/v2/{company_slug}/Users/{id} -> django_identity_scim_v2_Users_partial_update
 - put /api/django/identity/scim/v2/{company_slug}/Users/{id} -> django_identity_scim_v2_Users_update
 - get /api/django/identity/service-accounts/ -> django_identity_service_accounts_list
@@ -2501,15 +2501,15 @@ operations:
 - post /api/django/portail/mes-demandes-sav/ -> django_portail_mes_demandes_sav_create
 - get /api/django/portail/mes-demandes-sav/{id}/ -> django_portail_mes_demandes_sav_retrieve
 - get /api/django/portail/mes-demandes-sav/{id}/fil/ -> django_portail_mes_demandes_sav_fil_retrieve
-- get /api/django/portail/mes-devis/ -> django_portail_mes_devis_retrieve
-- get /api/django/portail/mes-devis/{id}/ -> django_portail_mes_devis_retrieve_2
+- get /api/django/portail/mes-devis/ -> django_portail_mes_devis_list
+- get /api/django/portail/mes-devis/{id}/ -> django_portail_mes_devis_retrieve
 - post /api/django/portail/mes-devis/{id}/accepter/ -> django_portail_mes_devis_accepter_create
 - get /api/django/portail/mes-documents/ -> django_portail_mes_documents_list
 - post /api/django/portail/mes-documents/ -> django_portail_mes_documents_create
 - get /api/django/portail/mes-documents/{id}/ -> django_portail_mes_documents_retrieve
 - get /api/django/portail/mes-documents/{id}/telecharger/ -> django_portail_mes_documents_telecharger_retrieve
-- get /api/django/portail/mes-factures/ -> django_portail_mes_factures_retrieve
-- get /api/django/portail/mes-factures/{id}/ -> django_portail_mes_factures_retrieve_2
+- get /api/django/portail/mes-factures/ -> django_portail_mes_factures_list
+- get /api/django/portail/mes-factures/{id}/ -> django_portail_mes_factures_retrieve
 - post /api/django/portail/mes-factures/{id}/payer/ -> django_portail_mes_factures_payer_create
 - get /api/django/portail/mes-livraisons/ -> django_portail_mes_livraisons_list
 - get /api/django/portail/mes-livraisons/{id}/preuve-photo/ -> django_portail_mes_livraisons_preuve_photo_retrieve
@@ -2766,14 +2766,14 @@ operations:
 - post /api/django/sav/contrats-maintenance/ -> django_sav_contrats_maintenance_create
 - post /api/django/sav/contrats-maintenance/generer-dus/ -> django_sav_contrats_maintenance_generer_dus_create
 - post /api/django/sav/contrats-maintenance/planifier-tournee/ -> django_sav_contrats_maintenance_planifier_tournee_create
-- get /api/django/sav/contrats-maintenance/rentabilite/ -> django_sav_contrats_maintenance_rentabilite_retrieve
+- get /api/django/sav/contrats-maintenance/rentabilite/ -> django_sav_contrats_maintenance_rentabilite_list
 - get /api/django/sav/contrats-maintenance/tournee/ -> django_sav_contrats_maintenance_tournee_retrieve
 - delete /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_destroy
 - get /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_retrieve
 - patch /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_partial_update
 - put /api/django/sav/contrats-maintenance/{id}/ -> django_sav_contrats_maintenance_update
 - get /api/django/sav/contrats-maintenance/{id}/rapport-pdf/ -> django_sav_contrats_maintenance_rapport_pdf_retrieve
-- get /api/django/sav/contrats-maintenance/{id}/rentabilite/ -> django_sav_contrats_maintenance_rentabilite_retrieve_2
+- get /api/django/sav/contrats-maintenance/{id}/rentabilite/ -> django_sav_contrats_maintenance_rentabilite_retrieve
 - get /api/django/sav/equipements/ -> django_sav_equipements_list
 - post /api/django/sav/equipements/ -> django_sav_equipements_create
 - get /api/django/sav/equipements/etiquettes/ -> django_sav_equipements_etiquettes_retrieve
@@ -4538,8 +4538,8 @@ operations:
 - patch /api/v1/core/dashboards/{id}/ -> v1_core_dashboards_partial_update
 - put /api/v1/core/dashboards/{id}/ -> v1_core_dashboards_update
 - get /api/v1/core/dashboards/{id}/donnees/ -> v1_core_dashboards_donnees_retrieve
-- get /api/v1/core/data-explorer/datasets/ -> v1_core_data_explorer_datasets_retrieve
-- get /api/v1/core/data-explorer/datasets/{name}/ -> v1_core_data_explorer_datasets_retrieve_2
+- get /api/v1/core/data-explorer/datasets/ -> v1_core_data_explorer_datasets_list
+- get /api/v1/core/data-explorer/datasets/{name}/ -> v1_core_data_explorer_datasets_retrieve
 - get /api/v1/core/data-explorer/drill/ -> v1_core_data_explorer_drill_retrieve
 - post /api/v1/core/data-explorer/drill/ -> v1_core_data_explorer_drill_create
 - post /api/v1/core/data-explorer/run/ -> v1_core_data_explorer_run_create
@@ -4634,12 +4634,12 @@ operations:
 - get /api/v1/core/saved-queries/ -> v1_core_saved_queries_list
 - post /api/v1/core/saved-queries/ -> v1_core_saved_queries_create
 - get /api/v1/core/saved-queries/datasets/ -> v1_core_saved_queries_datasets_retrieve
-- post /api/v1/core/saved-queries/run/ -> v1_core_saved_queries_run_create
+- post /api/v1/core/saved-queries/run/ -> v1_core_saved_queries_run_adhoc_create
 - delete /api/v1/core/saved-queries/{id}/ -> v1_core_saved_queries_destroy
 - get /api/v1/core/saved-queries/{id}/ -> v1_core_saved_queries_retrieve
 - patch /api/v1/core/saved-queries/{id}/ -> v1_core_saved_queries_partial_update
 - put /api/v1/core/saved-queries/{id}/ -> v1_core_saved_queries_update
-- post /api/v1/core/saved-queries/{id}/run/ -> v1_core_saved_queries_run_create_2
+- post /api/v1/core/saved-queries/{id}/run/ -> v1_core_saved_queries_run_create
 - get /api/v1/core/scheduled-exports/ -> v1_core_scheduled_exports_list
 - post /api/v1/core/scheduled-exports/ -> v1_core_scheduled_exports_create
 - delete /api/v1/core/scheduled-exports/{id}/ -> v1_core_scheduled_exports_destroy
@@ -4835,7 +4835,7 @@ operations:
 - post /api/v1/crm/leads/{id}/whatsapp-devis-apercu/ -> v1_crm_leads_whatsapp_devis_apercu_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
 - get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
-- get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_retrieve
+- get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_list
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
 - get /api/v1/crm/leads/{lead_id}/roof-footprint/ -> v1_crm_leads_roof_footprint_retrieve
 - get /api/v1/crm/message-templates/ -> v1_crm_message_templates_list
@@ -5408,15 +5408,15 @@ operations:
 - get /api/v1/identity/providers/{id}/ -> v1_identity_providers_retrieve
 - patch /api/v1/identity/providers/{id}/ -> v1_identity_providers_partial_update
 - put /api/v1/identity/providers/{id}/ -> v1_identity_providers_update
-- get /api/v1/identity/scim/v2/{company_slug}/Groups -> v1_identity_scim_v2_Groups_retrieve
+- get /api/v1/identity/scim/v2/{company_slug}/Groups -> v1_identity_scim_v2_Groups_list
 - post /api/v1/identity/scim/v2/{company_slug}/Groups -> v1_identity_scim_v2_Groups_create
 - delete /api/v1/identity/scim/v2/{company_slug}/Groups/{id} -> v1_identity_scim_v2_Groups_destroy
-- get /api/v1/identity/scim/v2/{company_slug}/Groups/{id} -> v1_identity_scim_v2_Groups_retrieve_2
+- get /api/v1/identity/scim/v2/{company_slug}/Groups/{id} -> v1_identity_scim_v2_Groups_retrieve
 - patch /api/v1/identity/scim/v2/{company_slug}/Groups/{id} -> v1_identity_scim_v2_Groups_partial_update
-- get /api/v1/identity/scim/v2/{company_slug}/Users -> v1_identity_scim_v2_Users_retrieve
+- get /api/v1/identity/scim/v2/{company_slug}/Users -> v1_identity_scim_v2_Users_list
 - post /api/v1/identity/scim/v2/{company_slug}/Users -> v1_identity_scim_v2_Users_create
 - delete /api/v1/identity/scim/v2/{company_slug}/Users/{id} -> v1_identity_scim_v2_Users_destroy
-- get /api/v1/identity/scim/v2/{company_slug}/Users/{id} -> v1_identity_scim_v2_Users_retrieve_2
+- get /api/v1/identity/scim/v2/{company_slug}/Users/{id} -> v1_identity_scim_v2_Users_retrieve
 - patch /api/v1/identity/scim/v2/{company_slug}/Users/{id} -> v1_identity_scim_v2_Users_partial_update
 - put /api/v1/identity/scim/v2/{company_slug}/Users/{id} -> v1_identity_scim_v2_Users_update
 - get /api/v1/identity/service-accounts/ -> v1_identity_service_accounts_list
@@ -6323,15 +6323,15 @@ operations:
 - post /api/v1/portail/mes-demandes-sav/ -> v1_portail_mes_demandes_sav_create
 - get /api/v1/portail/mes-demandes-sav/{id}/ -> v1_portail_mes_demandes_sav_retrieve
 - get /api/v1/portail/mes-demandes-sav/{id}/fil/ -> v1_portail_mes_demandes_sav_fil_retrieve
-- get /api/v1/portail/mes-devis/ -> v1_portail_mes_devis_retrieve
-- get /api/v1/portail/mes-devis/{id}/ -> v1_portail_mes_devis_retrieve_2
+- get /api/v1/portail/mes-devis/ -> v1_portail_mes_devis_list
+- get /api/v1/portail/mes-devis/{id}/ -> v1_portail_mes_devis_retrieve
 - post /api/v1/portail/mes-devis/{id}/accepter/ -> v1_portail_mes_devis_accepter_create
 - get /api/v1/portail/mes-documents/ -> v1_portail_mes_documents_list
 - post /api/v1/portail/mes-documents/ -> v1_portail_mes_documents_create
 - get /api/v1/portail/mes-documents/{id}/ -> v1_portail_mes_documents_retrieve
 - get /api/v1/portail/mes-documents/{id}/telecharger/ -> v1_portail_mes_documents_telecharger_retrieve
-- get /api/v1/portail/mes-factures/ -> v1_portail_mes_factures_retrieve
-- get /api/v1/portail/mes-factures/{id}/ -> v1_portail_mes_factures_retrieve_2
+- get /api/v1/portail/mes-factures/ -> v1_portail_mes_factures_list
+- get /api/v1/portail/mes-factures/{id}/ -> v1_portail_mes_factures_retrieve
 - post /api/v1/portail/mes-factures/{id}/payer/ -> v1_portail_mes_factures_payer_create
 - get /api/v1/portail/mes-livraisons/ -> v1_portail_mes_livraisons_list
 - get /api/v1/portail/mes-livraisons/{id}/preuve-photo/ -> v1_portail_mes_livraisons_preuve_photo_retrieve
@@ -6555,14 +6555,14 @@ operations:
 - post /api/v1/sav/contrats-maintenance/ -> v1_sav_contrats_maintenance_create
 - post /api/v1/sav/contrats-maintenance/generer-dus/ -> v1_sav_contrats_maintenance_generer_dus_create
 - post /api/v1/sav/contrats-maintenance/planifier-tournee/ -> v1_sav_contrats_maintenance_planifier_tournee_create
-- get /api/v1/sav/contrats-maintenance/rentabilite/ -> v1_sav_contrats_maintenance_rentabilite_retrieve
+- get /api/v1/sav/contrats-maintenance/rentabilite/ -> v1_sav_contrats_maintenance_rentabilite_list
 - get /api/v1/sav/contrats-maintenance/tournee/ -> v1_sav_contrats_maintenance_tournee_retrieve
 - delete /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_destroy
 - get /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_retrieve
 - patch /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_partial_update
 - put /api/v1/sav/contrats-maintenance/{id}/ -> v1_sav_contrats_maintenance_update
 - get /api/v1/sav/contrats-maintenance/{id}/rapport-pdf/ -> v1_sav_contrats_maintenance_rapport_pdf_retrieve
-- get /api/v1/sav/contrats-maintenance/{id}/rentabilite/ -> v1_sav_contrats_maintenance_rentabilite_retrieve_2
+- get /api/v1/sav/contrats-maintenance/{id}/rentabilite/ -> v1_sav_contrats_maintenance_rentabilite_retrieve
 - get /api/v1/sav/equipements/ -> v1_sav_equipements_list
 - post /api/v1/sav/equipements/ -> v1_sav_equipements_create
 - get /api/v1/sav/equipements/etiquettes/ -> v1_sav_equipements_etiquettes_retrieve
@@ -9139,6 +9139,8 @@ components:
 - AbonnementMonitoringRequest
 - AbonnementMonitoringStatutEnum
 - AcceptationDevisPortail
+- AccepterDevisPortailReponse
+- AccepterDevisPortailRequeteRequest
 - AccepterInvitationPortailRequestRequest
 - AccepterInvitationPortailResponse
 - AccessReviewCampaign
@@ -9662,12 +9664,14 @@ components:
 - CalepinageVersionRestauree
 - CalepinageVersionsDiff
 - Canal
-- Canal419Enum
-- CanalA95Enum
-- CanalCf4Enum
+- CanalAcquisitionEnum
+- CanalEnvoiRapportEnum
 - CanalOuvertureEnum
+- CanalRelanceEnum
 - CanalRequest
 - CanalResolutionEnum
+- CandidatureFournisseurReponse
+- CandidatureFournisseurRequest
 - CapaciteEtatEnum
 - CardsEnum
 - CashFlowBucketAuDela
@@ -9818,6 +9822,8 @@ components:
 - ContactFournisseur
 - ContactFournisseurRequest
 - ContactPreferenceEnum
+- ContactReponse
+- ContactRequeteRequest
 - ContenuConfigRequest
 - ContratElectriciteEnum
 - ContratMaintenance
@@ -9983,6 +9989,7 @@ components:
 - DemandeAchatLigne
 - DemandeAchatLigneRequest
 - DemandeAchatRequest
+- DemandeAchatStatutEnum
 - DemandeApprobation
 - DemandeDisposition
 - DemandeDispositionActionEnum
@@ -10093,6 +10100,7 @@ components:
 - DevisShareLinkSectionsRequest
 - DevisSimulerRequestRequest
 - DevisSimulerResponse
+- DevisStatutEnum
 - DevisSuperiorContactStatus
 - DevisSyncLayoutResponse
 - DevisVarianteConfigRequestRequest
@@ -10316,6 +10324,7 @@ components:
 - FactureResoudreExceptionCorpsRequest
 - FactureRetourClientRequestRequest
 - FactureRevoquerLienPaiementResponse
+- FactureStatutEnum
 - FactureWhatsappRequestModeleEnum
 - FactureWhatsappRequestRequest
 - FactureWhatsappResponse
@@ -10479,8 +10488,8 @@ components:
 - GpsConsentRecord
 - GpsConsentRecordRequest
 - GrantTypeEnum
-- Gravite25bEnum
-- GraviteDe9Enum
+- GraviteInfoWarningCritiqueEnum
+- GraviteMineureMajeureCritiqueEnum
 - GuardrailConfig
 - GuardrailConfigRequest
 - HandoverPack
@@ -10532,14 +10541,17 @@ components:
 - InstallationDossierStatutEnum
 - InstallationRegime8221Enum
 - InstallationRequest
+- InstallationStatutEnum
 - InstallerModeleReponse
 - IntegrityViewsIntegriteInsightReponse
 - Intervention
 - InterventionActivity
 - InterventionPreparation
 - InterventionPrioriteEnum
+- InterventionRapportPublic
 - InterventionRequest
 - InterventionStatutEnum
+- InterventionSuiviPublic
 - InventaireAnnuel
 - InventaireAnnuelFigerCorpsRequest
 - InventaireSession
@@ -10555,8 +10567,8 @@ components:
 - JournalAuditSections
 - KbArticle
 - KbArticleRequest
-- KindC26Enum
-- KindDb0Enum
+- KindActiviteEnum
+- KindDemandePersonneEnum
 - Kit
 - KitComposant
 - KitComposantRequest
@@ -10588,9 +10600,13 @@ components:
 - LeadActivityOutcomeEnum
 - LeadAffinerProResponse
 - LeadApercu
+- LeadEmpreinteToit
 - LeadPhotoToit
+- LeadPlaybookCocherRequeteRequest
+- LeadPlaybookProgress
 - LeadRefLookupResponse
 - LeadRequest
+- LeadSourceEnum
 - LeadTag
 - LeadTagRequest
 - LeadgenAbonnement
@@ -10636,6 +10652,8 @@ components:
 - LoginBannerAck
 - LoginBannerAckRequest
 - LoginBannerTexte
+- LogoutReponse
+- LogoutRequeteRequest
 - LotEntrepot
 - LotEnvoi
 - LotHorsLigneRequest
@@ -10652,6 +10670,7 @@ components:
 - MaintenanceWindow
 - MaintenanceWindowRequest
 - Marque
+- MarquePortail
 - MarqueRequest
 - MaterielConsigne
 - MaterielConsigneRequest
@@ -10685,9 +10704,13 @@ components:
 - MesDemandesSavPortailFilEntree
 - MesDemandesSavPortailLigne
 - MesDemandesSavPortailLigneRequest
+- MesDevisPortailLigne
+- MesDevisPortailListe
 - MesDocumentsPortail
 - MesDocumentsPortailLigne
 - MesDocumentsPortailLigneRequest
+- MesFacturesPortailLigne
+- MesFacturesPortailListe
 - MesLivraisonsPortail
 - MesLivraisonsPortailArticle
 - MesLivraisonsPortailLigne
@@ -10717,22 +10740,21 @@ components:
 - MethodeEnum
 - MethodeReservationStockEnum
 - MetierEnum
-- MetricEnum
-- MetriqueEnum
+- MetriqueCommercialeEnum
 - MetriqueLignageReponse
 - MetriqueVersionsReponse
 - MiseEnServiceRequeteRequest
 - MobileHomeRouteReponse
 - MobileHomeRouteRequeteRequest
-- Mode983Enum
 - ModeAcheminementEnum
-- ModeB24Enum
 - ModeDetectionEnum
 - ModeEnchainementEnum
-- ModeF25Enum
 - ModeGardeHabilitationEnum
+- ModeImportEnum
 - ModeInstallationEnum
 - ModeLiberationEnum
+- ModePaiementClientEnum
+- ModePaiementFournisseurEnum
 - ModeSaisieEnum
 - ModelEnum
 - ModeleBcfGenererCorpsRequest
@@ -10784,8 +10806,8 @@ components:
 - NetworkPolicy
 - NetworkPolicyModeEnum
 - NetworkPolicyRequest
+- NiveauAclEnum
 - NiveauApprobationEnum
-- NiveauB3eEnum
 - NiveauCertificationEnum
 - NiveauStatiqueSourceEnum
 - NiveauTensionEnum
@@ -11592,6 +11614,7 @@ components:
 - PatchedWorkflowStepDefinitionRequest
 - PatchedWorkingHoursConfigRequest
 - PatchedWorksheetMaintenanceModeleRequest
+- PayerFacturePortailReponse
 - PaymentTransaction
 - PaymentTransactionRequest
 - PaymentTransactionStatutEnum
@@ -11697,8 +11720,8 @@ components:
 - PretEquipementStatutEnum
 - PreuveLivraison
 - PreuveLivraisonRequest
-- Priorite568Enum
-- Priorite945Enum
+- PrioriteQuatreNiveauxEnum
+- PrioriteTroisNiveauxEnum
 - PrixApplicableResponse
 - PrixFournisseur
 - PrixFournisseurEffectifReponse
@@ -11790,11 +11813,15 @@ components:
 - PublicApporteurMesDeals
 - PublicBookingReserveReponse
 - PublicBookingReserveRequestRequest
+- PublicBookingStatut
 - PublicCalepinage
 - PublicCalepinageResultat
 - PublicChangelog
 - PublicChangelogEntree
 - PublicChantier
+- PublicChatMessageReponse
+- PublicChatMessageRequeteRequest
+- PublicChatSession
 - PublicChatSessionOuverte
 - PublicConfirmerAbonnementReponse
 - PublicContactRequestRequest
@@ -11865,8 +11892,8 @@ components:
 - QuotaStockageRequest
 - RFQFournisseurConsulte
 - RFQOffreRetenue
-- Raccordement046Enum
-- RaccordementE97Enum
+- RaccordementInstallationEnum
+- RaccordementLeadEnum
 - RaccordementReseauEnum
 - RangerPutAwayRequeteRequest
 - RapportConformiteResponse
@@ -11912,7 +11939,7 @@ components:
 - RecordsTagAssocCreationRequest
 - RefusDemandeAchatRequeteRequest
 - RefusTransfertRequeteRequest
-- Regime82219baEnum
+- Regime8221Enum
 - RegimeEquipesEnum
 - RegionAgricoleEnum
 - Register
@@ -11963,6 +11990,7 @@ components:
 - ReleveClientLigne
 - ReleveClientPaiement
 - ReleveClientTotaux
+- ReleveComptePortail
 - ReleveCompteurEquipement
 - ReleveCompteurEquipementTypeEnum
 - ReleveImportCommitResponse
@@ -12191,8 +12219,6 @@ components:
 - SeuilApprobationBCFRequest
 - SeuilReapproCasier
 - SeuilReapproCasierRequest
-- Severite25bEnum
-- SeveriteDe9Enum
 - SeverityEnum
 - ShotListSlot
 - ShotListSlotPhaseEnum
@@ -12221,8 +12247,7 @@ components:
 - SodViolation
 - SodViolationsListe
 - SoumettreDemandeRequest
-- Source4efEnum
-- Source72bEnum
+- SourceApprobationEnum
 - SourceEauEnum
 - SourceIrradianceEnum
 - SousGarantieEnum
@@ -12232,29 +12257,24 @@ components:
 - StageEnum
 - StageModele
 - StageModeleRequest
-- Statut006Enum
-- Statut16cEnum
-- Statut4b1Enum
-- Statut582Enum
-- Statut6d5Enum
-- Statut6e9Enum
-- Statut8e3Enum
+- StatutActifClosEnum
 - StatutAffectationEnum
-- StatutB33Enum
+- StatutApprobationEnum
+- StatutBrouillonEmiseAnnuleeEnum
+- StatutBrouillonValideAnnuleEnum
+- StatutBrouillonValideEnum
 - StatutComposantPublicEnum
 - StatutConfig
 - StatutConfigDomaineEnum
 - StatutConfigRequest
 - StatutConformiteDgiEnum
 - StatutControleEnum
-- StatutDe9Enum
 - StatutDouaneEnum
 - StatutEffectif
-- StatutF5eEnum
-- StatutF9bEnum
-- StatutFd9Enum
-- StatutLegacyEnum
+- StatutIncidentPublicEnum
 - StatutOnboardingEnum
+- StatutPlanifieEnCoursTermineAnnuleEnum
+- StatutPlanifieEnCoursTermineEnum
 - StatutTeledeclarationEnum
 - StatutValidationEnum
 - StatutsBulkLigneRequest
@@ -12452,8 +12472,8 @@ components:
 - TypeFicheEnum
 - TypeFranchissementEnum
 - TypeIncidentEnum
-- TypeInstallation170Enum
-- TypeInstallation347Enum
+- TypeInstallationChantierEnum
+- TypeInstallationLeadEnum
 - TypeIntervention
 - TypeInterventionEnum
 - TypeInterventionRequest

@@ -206,7 +206,9 @@ class DepotReelTests(unittest.TestCase):
         compte STRICTEMENT POSITIF : zero face a un plafond de 406 n'est pas un
         progres, c'est une mesure qui ne mesure plus."""
         sortie = io.StringIO()
-        with mock.patch.object(cos, "analyser", return_value=([], [])):
+        # ENF11 (14/10/2026) : le plafond du depot est desormais 0 — le cas
+        # « zero face a un plafond eleve » est rejoue sur un plafond fige ici.
+        with mock.patch.object(cos, "PLAFOND_NON_DEVINABLES", 406),                 mock.patch.object(cos, "analyser", return_value=([], [])):
             with mock.patch.object(cos, "compter_non_devinables",
                                    return_value=0):
                 with contextlib.redirect_stdout(sortie):
@@ -220,9 +222,9 @@ class DepotReelTests(unittest.TestCase):
     def test_un_vrai_progres_invite_toujours_a_abaisser_le_plafond(self):
         # Non-regression : le message utile reste imprime sur un compte > 0.
         sortie = io.StringIO()
-        with mock.patch.object(cos, "analyser", return_value=([], [])):
+        with mock.patch.object(cos, "PLAFOND_NON_DEVINABLES", 14),                 mock.patch.object(cos, "analyser", return_value=([], [])):
             with mock.patch.object(cos, "compter_non_devinables",
-                                   return_value=cos.PLAFOND_NON_DEVINABLES - 1):
+                                   return_value=13):
                 with contextlib.redirect_stdout(sortie):
                     cos.main([])
         self.assertIn("Abaissez PLAFOND_NON_DEVINABLES", sortie.getvalue())
