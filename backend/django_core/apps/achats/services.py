@@ -13,7 +13,7 @@ JAMAIS les modèles stock directement. L'intégration comptable (écritures
 fournisseurs) continue via son propre service.
 """
 
-from apps.stock.services import (  # noqa: F401
+from apps.stock.services import (
     annuler_reception_confirmee,
     apply_retour_fournisseur,
     cheapest_prix_fournisseur,
@@ -27,3 +27,18 @@ from apps.stock.services import (  # noqa: F401
     record_purchase_price,
     recompute_facture_fournisseur_statut,
 )
+
+__all__ = [
+    'annuler_reception_confirmee',
+    'apply_retour_fournisseur',
+    'cheapest_prix_fournisseur',
+    'confirm_reception_fournisseur',
+    'creer_bcf_depuis_lignes',
+    'dupliquer_bcf',
+    'facturer_bcf_sur_commande',
+    'facturer_reception',
+    'fusionner_bcf',
+    'generer_bcf_reappro',
+    'record_purchase_price',
+    'recompute_facture_fournisseur_statut',
+]

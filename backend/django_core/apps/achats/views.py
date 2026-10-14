@@ -13,7 +13,7 @@ Les MOUVEMENTS DE STOCK à la réception/au retour passent par
 — jamais par un import direct des modèles stock (frontière services CLAUDE.md).
 """
 
-from apps.stock.views import (  # noqa: F401
+from apps.stock.views import (
     BonCommandeFournisseurViewSet,
     FactureFournisseurViewSet,
     PaiementFournisseurViewSet,
@@ -21,3 +21,12 @@ from apps.stock.views import (  # noqa: F401
     ReceptionFournisseurViewSet,
     RetourFournisseurViewSet,
 )
+
+__all__ = [
+    'BonCommandeFournisseurViewSet',
+    'FactureFournisseurViewSet',
+    'PaiementFournisseurViewSet',
+    'PrixFournisseurViewSet',
+    'ReceptionFournisseurViewSet',
+    'RetourFournisseurViewSet',
+]
