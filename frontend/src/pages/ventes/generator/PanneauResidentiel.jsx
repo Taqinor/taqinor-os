@@ -38,7 +38,7 @@ export default function PanneauResidentiel({
   // ── Facture réelle du client (QF4) ──
   distributeur, setDistributeur, realBillMode, setRealBillMode,
   realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
-  onRealBillPaste, consoAnnuelleReelle, moisNonSaisis, avisFactures,
+  onRealBillPaste, consoAnnuelleReelle, moisNonSaisis, avisFactures, provenanceMois,
 }) {
   if (marche !== CLE) return null
   return (
@@ -48,7 +48,7 @@ export default function PanneauResidentiel({
       onHiverPaste={onHiverPaste} onEtePaste={onEtePaste}
       handleEstimerMois={handleEstimerMois} errors={errors}
       monthly={monthly} setMonth={setMonth} moisNonSaisis={moisNonSaisis}
-      avisFactures={avisFactures}
+      avisFactures={avisFactures} provenanceMois={provenanceMois}
       distributeur={distributeur} setDistributeur={setDistributeur}
       realBillMode={realBillMode} setRealBillMode={setRealBillMode}
       realBillMad={realBillMad} setRealBillMad={setRealBillMad}

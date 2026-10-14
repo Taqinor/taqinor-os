@@ -9,11 +9,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { resolveCss } from '../../test/readCss.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SRC = path.join(__dirname, '..', '..')
 const read = (rel) => readFileSync(path.join(SRC, rel), 'utf8')
-const css = read('index.css')
+const css = resolveCss(path.join(SRC, 'index.css'))
 
 // Bloc CSS `pageheader-*` (I35) isolé pour l'assertion.
 function block(selector) {

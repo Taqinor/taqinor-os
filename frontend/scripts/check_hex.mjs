@@ -20,9 +20,11 @@
 // Usage :
 //   node scripts/check_hex.mjs             # scanne src/index.css
 //   node scripts/check_hex.mjs --file=src/foo.css
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// SPL280 — index.css lu par résolution de ses @import './styles/<dossier>/…' :
+// les numéros de ligne désignent le texte RÉSOLU.
+import { resolveCss } from '../src/test/readCss.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FRONTEND_ROOT = path.resolve(__dirname, '..')
@@ -119,7 +121,7 @@ function main() {
 
   let css
   try {
-    css = readFileSync(target, 'utf8')
+    css = resolveCss(target)
   } catch (err) {
     console.error(`[check_hex] ERREUR lecture ${target}: ${err.message}`)
     process.exit(1)

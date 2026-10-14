@@ -162,6 +162,18 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(saisies['mois_irrigation']['provenance']['origine'],
                          'lead')
 
+    def test_agnr39_cible_kwc_refusee_400_nommant_target_kwc(self):
+        """AGNR39 — une puissance cible envoyée pour un lead agricole est
+        refusée en la nommant, jamais ignorée en silence ; aucun devis."""
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self.api.post(AUTO_URL, {'lead': lead.id, 'target_kwc': 99},
+                            format='json')
+        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertIn('target_kwc', rep.data)
+        self.assertIn('ne s\'applique pas au pompage', str(rep.data['target_kwc']))
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
     def test_seules_des_osp_a_prix_zero_422_nommant_la_cause(self):
         self._pompe('0')
         lead = self._lead()

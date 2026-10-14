@@ -13,10 +13,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'LeadCard.jsx'), 'utf8')
-const CSS = readFileSync(join(HERE, '../../../../index.css'), 'utf8')
+const CSS = resolveCss(join(HERE, '../../../../index.css'))
 
 const reveal = () => {
   const start = SRC.indexOf('<div className="kb-card-reveal">')

@@ -15,11 +15,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const lf = (s) => s.replace(/\r\n/g, '\n')
 const SRC = lf(readFileSync(join(HERE, 'ListView.jsx'), 'utf8'))
-const CSS = lf(readFileSync(join(HERE, '../../../../index.css'), 'utf8'))
+const CSS = lf(resolveCss(join(HERE, '../../../../index.css')))
 const TOKENS = lf(readFileSync(join(HERE, '../../../../design/tokens.css'), 'utf8'))
 const SWITCHER = lf(readFileSync(join(HERE, '../ViewSwitcher.jsx'), 'utf8'))
 

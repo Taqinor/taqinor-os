@@ -8,10 +8,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 const lire = (rel) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8')
   .replace(/\r\n/g, '\n')
-const cssBrut = lire('../../../index.css')
+const cssBrut = resolveCss(fileURLToPath(new URL('../../../index.css', import.meta.url)))
+  .replace(/\r\n/g, '\n')
 // SPL40-55 : le générateur est découpé — DevisGenerator.jsx + ses cartes et
 // panneaux de generator/ forment UN source pour les gardes EDC (LigneTable.jsx
 // a sa propre garde ci-dessous, il n'entre pas dans l'agrégat).

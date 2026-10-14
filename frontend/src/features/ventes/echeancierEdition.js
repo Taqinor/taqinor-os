@@ -120,6 +120,27 @@ export function sommePourcentages(saisie) {
   return arrondi2(saisie.reduce((s, t) => s + nombre(t.valeur), 0))
 }
 
+const pctFr = (n) => String(Math.round(n * 10) / 10).replace('.', ',')
+
+/** AGNR37 — la raison (phrase) qui interdit d'enregistrer cette saisie, ou
+ *  `null` : tranche vide ; tout en % dont Σ ≠ 100 (tolérance 0,01, comme
+ *  `valider_echeancier`) ; une tranche en MAD : Σ convertie en % du TTC ≠ 100
+ *  (sans TTC connu, aucune conversion n'est inventée). */
+export function erreurEcheancier(saisie, totalTtc) {
+  if (!Array.isArray(saisie) || !saisie.length) return null
+  const vide = saisie.findIndex(t => String(t.valeur ?? '').trim() === '')
+  if (vide >= 0) return `Tranche ${vide + 1} vide — saisissez un pourcentage ou un montant.`
+  const total = nombre(totalTtc)
+  const enMontant = saisie.some(t => t.unite === UNITE_MONTANT)
+  if (enMontant && total <= 0) return null
+  const somme = enMontant
+    ? saisie.reduce((s, t) => s + (t.unite === UNITE_MONTANT
+      ? (nombre(t.valeur) / total) * 100 : nombre(t.valeur)), 0)
+    : sommePourcentages(saisie)
+  if (Math.abs(somme - 100) <= 0.01) return null
+  return `Total des tranches : ${pctFr(somme)} %${enMontant ? ' du TTC' : ''} — il doit faire 100 %.`
+}
+
 /** L'« acompte personnalisé » du dialogue PDF écrit dans l'échéancier : la
  *  première tranche devient `montant` MAD ; sur un échéancier à trois
  *  tranches en %, le matériel absorbe l'écart (le solde garde son %), comme

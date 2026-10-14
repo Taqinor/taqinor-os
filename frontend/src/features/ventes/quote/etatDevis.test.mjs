@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { devisVersEtat, etatVersEcritures } from './etatDevis.js'
+import { devisVersEtat, etatVersEcritures, facturesHiverEte, entreesDeEtat } from './etatDevis.js'
 import { consoAnnuelleDepuisFactures } from '../solar.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
@@ -339,4 +339,24 @@ test('AGR130 — pompe existante : plaque, HMT saisie, taille ; enregistrer → 
   const second = etatVersEcritures(devisVersEtat(relu))
   assert.deepEqual(second.etude, premier.etude)
   assert.deepEqual(second.lignes, premier.lignes)
+})
+
+// AGNR34 (D-AGNR-1 option (a)) — deux factures relues : hiver / été reposés,
+// grille en marches « estimé », et la même clé `factures_hiver_ete` repart
+// (jamais une série dérivée sous `factures_mensuelles_reelles`).
+test('AGNR34 — factures_hiver_ete : aller-retour sans série fabriquée', () => {
+  const corps = documentContrat('ventes', 'factures_client')
+  const deux = corps.corps_deux_factures.factures_hiver_ete
+  assert.deepEqual(facturesHiverEte('500', '1200'), deux)
+  assert.deepEqual(facturesHiverEte('500', ''), corps.corps_deux_factures_identiques.factures_hiver_ete)
+  assert.equal(facturesHiverEte('', '1200'), null)
+  const etat = devisVersEtat({ id: 1, mode_installation: 'residentiel', lignes: [],
+    etude_params: { factures_hiver_ete: deux } })
+  assert.equal(etat.fHiver, '500')
+  assert.equal(etat.fEte, '1200')
+  assert.deepEqual(etat.moisEstimes, [500, 500, 500, 500, 1200, 1200, 1200, 1200, 1200, 1200, 500, 500])
+  const entrees = entreesDeEtat(etat)
+  assert.deepEqual(entrees.factures_hiver_ete, deux)
+  assert.equal('factures_mensuelles_reelles' in entrees, false)
+  assert.equal('conso_annuelle' in entrees, false)
 })

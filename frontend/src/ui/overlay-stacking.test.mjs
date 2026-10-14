@@ -13,6 +13,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join, relative } from 'node:path'
+import { resolveCss } from '../test/readCss.mjs'
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -54,7 +55,7 @@ test('les overlays legacy d\'index.css (.modal-overlay) utilisent le barème --z
   // deux consommateurs (LeadDevisPanel, InstallationDetail) sont migrés sur
   // `Sheet`/`SheetContent`, dont l'overlay Radix (`z-[var(--z-overlay)]`,
   // Sheet.jsx) est déjà couvert par le test `fixed inset-0` ci-dessus.
-  const css = readFileSync(join(SRC, 'index.css'), 'utf8')
+  const css = resolveCss(join(SRC, 'index.css'))
   const block = (name) => {
     const m = css.match(new RegExp(`\\${name}\\s*\\{([^}]*)\\}`))
     return m ? m[1] : ''

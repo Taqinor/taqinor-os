@@ -11,6 +11,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { devisBoardColumns, effectiveStatut, DEVIS_BOARD_COLUMNS } from './devisBoard.js'
+import { resolveCss } from '../../test/readCss.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PAGES = path.join(__dirname, '..', '..', 'pages', 'ventes')
@@ -61,7 +62,7 @@ test('(b) AUCUNE action d’état par glisser-déposer sur les boards d’argent
     assert.doesNotMatch(src, /dnd-kit|useDraggable|useDroppable|onDragEnd|draggable=/, f)
     assert.match(src, /kb-board-static/, f)
   }
-  const css = readFileSync(path.join(__dirname, '..', '..', 'index.css'), 'utf8')
+  const css = resolveCss(path.join(__dirname, '..', '..', 'index.css'))
   assert.match(css, /\.kb-board-static \.kb-card \{[\s\S]{0,120}?cursor: pointer;/)
 })
 

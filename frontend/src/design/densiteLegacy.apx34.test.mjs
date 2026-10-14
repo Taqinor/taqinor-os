@@ -10,9 +10,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { resolveCss } from '../test/readCss.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const css = readFileSync(path.join(__dirname, '..', 'index.css'), 'utf8')
+const css = resolveCss(path.join(__dirname, '..', 'index.css'))
 const tokens = readFileSync(path.join(__dirname, 'tokens.css'), 'utf8')
 
 function rule(selector, from = 0) {

@@ -926,7 +926,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {
@@ -3110,7 +3110,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {
@@ -3399,7 +3399,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {
@@ -4918,7 +4918,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {
@@ -5393,7 +5393,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {
@@ -6558,7 +6558,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {
@@ -8431,7 +8431,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {
@@ -11523,7 +11523,7 @@
           "is_hybrid_inverter": false,
           "is_reseau_inverter": false,
           "is_offgrid_inverter": true,
-          "is_any_inverter": false,
+          "is_any_inverter": true,
           "is_panel": false
         },
         {

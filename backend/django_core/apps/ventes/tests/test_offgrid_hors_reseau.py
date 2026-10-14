@@ -259,6 +259,39 @@ class TestBuilderOptionHorsReseau(TestCase):
         self.assertIn('Onduleur hybride Deye 5kW Monophasé', avec)
         self.assertNotIn('Onduleur hybride Deye 5kW Monophasé', sans)
 
+    def test_amot57_hors_reseau_avec_trait_d_union(self):
+        """AMOT57 (sonde VA S2) — « hors-réseau » écrit avec un trait d'union
+        était classé RÉSEAU : scénario « Sans batterie », batterie absente du
+        total. Il sert désormais l'option « Avec batterie », batterie comprise."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Jinko 550W', '10', '1100'),
+            ('Onduleur hors-réseau Deye 6kW', '1', '15000'),
+            ('Batterie Dyness 5 kWh', '1', '16000'),
+        ], reference='DEV-OFFG-0057')
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertEqual(data['scenario'], 'Avec batterie')
+        self.assertEqual(data['variantes_servables'], ['avec'])
+        avec = [it['designation'] for it in data['avec_items']]
+        self.assertIn('Batterie Dyness 5 kWh', avec)
+        self.assertIn('Onduleur hors-réseau Deye 6kW', avec)
+        self.assertNotIn('Onduleur hors-réseau Deye 6kW',
+                         [it['designation'] for it in data['sans_items']])
+
+    def test_amot57_onduleur_sans_le_mot_onduleur_est_provisionne(self):
+        """AMOT57 (sonde VA S3) — « Deye off-Grid 6kw » chiffré : la provision
+        de remplacement est imprimée, jamais « aucun onduleur chiffré »."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Jinko 550W', '10', '1100'),
+            ('Deye off-Grid 6kw', '1', '15000'),
+            ('Batterie Dyness 5 kWh', '1', '16000'),
+        ], reference='DEV-OFFG-0058')
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        items = ' '.join(data['hypotheses']['items'])
+        self.assertIn('Provision de remplacement', items)
+        self.assertNotIn('aucun onduleur chiffré', items)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. LA COMPOSITION HORS RÉSEAU

@@ -184,16 +184,17 @@ export function formatMoney(val) {
 }
 
 // ── Estimation des factures mensuelles depuis hiver/été ──────────────────────
-export function interpolerFactures(hiver, ete) {
-  if (!ete || ete <= 0) return Array(12).fill(hiver)
-  const premiere = Array.from({ length: 7 }, (_, i) => hiver + (ete - hiver) / 6 * i)
-  const seconde = Array.from({ length: 5 }, (_, i) => ete - (ete - hiver) / 4 * i)
-  return [...premiere, ...seconde]
-}
+// AGNR34 (D-AGNR-1 option (a)) — les MARCHES du moteur, plus de rampe : la
+// facture d'été sur mai → octobre (indices 4 à 9), celle d'hiver ailleurs —
+// même série que `horaire/conso.py::serie_mad_mensuelle`. Ces mois sont
+// « estimés » : ils ne partent jamais en `factures_mensuelles_reelles`.
+const MOIS_ETE_FACTURE = [4, 5, 6, 7, 8, 9]
 
 // Les mois affichés sont toujours arrondis à l'entier (renderMonthlyInputs)
 export function estimerMois(hiver, ete) {
-  return interpolerFactures(hiver, ete).map(v => Math.round(v))
+  const h = hiver > 0 ? hiver : (ete || 0)
+  const e = ete > 0 ? ete : h
+  return Array.from({ length: 12 }, (_, m) => Math.round(MOIS_ETE_FACTURE.includes(m) ? e : h))
 }
 
 // CIQ128 — la doctrine de paliers ÉCRAN (pas de 5 kWc, tranche de 900 MAD,
@@ -1205,7 +1206,11 @@ export const isHybridInverter = (d) => _norm(d).includes('onduleur') && _norm(d)
 // (à tort) comme onduleur RÉSEAU — la ligne partait au panier « sans »,
 // jamais composée, jamais reconnue en auto-remplissage.
 const OFFGRID_KEYWORDS = ['off-grid', 'off grid', 'offgrid', 'hors reseau', 'autonome']
-const _isOffgridDesignation = (n) => OFFGRID_KEYWORDS.some(k => n.includes(k))
+// AMOT57 — « hors-réseau », « off_grid » : trait d'union et souligné valent une
+// espace AVANT tout test de mot-clé (même règle que `solar_classification.py`
+// et le seeder, contrat `classification_lignes.json`).
+const _sansSeparateurs = (s) => _norm(s).replace(/[-_]+/g, ' ')
+const _isOffgridDesignation = (n) => OFFGRID_KEYWORDS.some(k => _sansSeparateurs(n).includes(_sansSeparateurs(k)))
 // Incident fondateur 01/09 (round 2) — les VRAIS produits catalogue s'appellent
 // « Deye off-Grid 6kw », SANS le mot « onduleur » : le prédicat strict
 // ci-dessus (exigeant « onduleur ») les rendait invisibles (0 onduleur
@@ -1220,13 +1225,13 @@ const OTHER_FAMILY_KEYWORDS = [
   'parafoudre', 'compteur', 'smart meter', 'wifi', 'kit', 'chargeur',
 ]
 export const isOffgridInverter = (d) => {
-  const n = _norm(d)
+  const n = _sansSeparateurs(d)
   if (!_isOffgridDesignation(n) || n.includes('hybride')) return false
   if (n.includes('onduleur')) return true
   return !OTHER_FAMILY_KEYWORDS.some(k => n.includes(k))
 }
 export const isReseauInverter = (d) => {
-  const n = _norm(d)
+  const n = _sansSeparateurs(d)
   return n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))
     && !_isOffgridDesignation(n)
 }
@@ -1234,7 +1239,8 @@ export const isReseauInverter = (d) => {
 // micro-onduleur) : miroir exact de builder.py `_is_inverter` (« onduleur »
 // suffit). Sert à repérer la ligne dont le prix réel provisionne le
 // remplacement à l'année 12 — jamais un forfait sur l'investissement.
-export const isAnyInverter = (d) => _norm(d).includes('onduleur')
+// AMOT57 — union des familles : « Deye off-Grid 6kw » est un onduleur.
+export const isAnyInverter = (d) => _norm(d).includes('onduleur') || isOffgridInverter(d)
 
 // ── QJR92a (29/08/2026) — DÉTECTION PANNEAU ÉLARGIE CÔTÉ ÉCRAN ──────────────
 // Le seul mot « panneau » rejetait les désignations que les vendeurs écrivent

@@ -15,14 +15,12 @@
 //     barres étant en flux, il créerait un trou mort ~66 px (régression mesurée).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { resolveCss } from './test/readCss.mjs'
 
 // Commentaires retirés AVANT analyse : les commentaires U2/MB1 citent des
 // règles (`.layout-content { overflow-y:auto }`) qui piégeraient les regex.
-const css = readFileSync(
-  fileURLToPath(new URL('./index.css', import.meta.url)), 'utf8',
-).replace(/\/\*[\s\S]*?\*\//g, '')
+const css = resolveCss(fileURLToPath(new URL('./index.css', import.meta.url))).replace(/\/\*[\s\S]*?\*\//g, '')
 
 /** Bloc média mobile de la coquille (le premier `@media (max-width: 768px)`). */
 function mobileShellBlock() {
@@ -132,9 +130,7 @@ test('MB2: les largeurs fixes héritées ont leur garde mobile', () => {
 
 test('MB3: plus AUCUN z-index en dur dans index.css (hormis l\'exception locale documentée)', () => {
   // On repart du fichier BRUT (les commentaires citent parfois « z-index:1 »).
-  const raw = readFileSync(
-    fileURLToPath(new URL('./index.css', import.meta.url)), 'utf8',
-  ).replace(/\/\*[\s\S]*?\*\//g, '')
+  const raw = resolveCss(fileURLToPath(new URL('./index.css', import.meta.url))).replace(/\/\*[\s\S]*?\*\//g, '')
   const offenders = []
   const re = /z-index:\s*([^;]+);/g
   let m

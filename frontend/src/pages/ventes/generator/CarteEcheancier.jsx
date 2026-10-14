@@ -8,7 +8,7 @@ import { CalendarClock } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
 import { useState } from 'react'
 import {
-  JALONS_PROPOSES, UNITE_MONTANT, UNITE_PCT, saisieParDefaut, sommePourcentages,
+  JALONS_PROPOSES, UNITE_MONTANT, UNITE_PCT, saisieParDefaut, erreurEcheancier,
   trancheVierge, echeancierFinanceur,
 } from '../../../features/ventes/echeancierEdition'
 
@@ -99,6 +99,7 @@ const OPTIONS_JALON = [
 export default function CarteEcheancier({
   saisie, setSaisie, mode, effectifs,
   conditions = null, setCondition = null, erreursConditions = null, clients = [],
+  totalTtc = null, erreurServeur = null,
 }) {
   const modifier = (i, champ, valeur) => {
     setSaisie(prev => (prev || []).map((t, j) => (j === i ? { ...t, [champ]: valeur } : t)))
@@ -122,7 +123,9 @@ export default function CarteEcheancier({
   })
   const ajouter = () => setSaisie(prev => [
     ...(prev || []), trancheVierge('Mise en service', 'mise_en_service')])
-  const somme = sommePourcentages(saisie)
+  // AGNR37 — la raison qui BLOQUE l'enregistrement (même calcul que
+  // `validate`), sinon le refus 400 `echeancier` du serveur, sous la carte.
+  const erreur = (saisie != null && erreurEcheancier(saisie, totalTtc)) || erreurServeur
   return (
     <Card data-testid="carte-echeancier">
       <GenCardHeader icon={CalendarClock} title="Échéancier de paiement" />
@@ -196,10 +199,8 @@ export default function CarteEcheancier({
               et PDF lisent ces mêmes valeurs. La date prévue est facultative.
               Délai de règlement en jours et semaines (« indicatif ») facultatifs.
             </p>
-            {somme != null && somme !== 100 && (
-              <p role="alert" data-testid="echeancier-somme" className="text-xs text-warning">
-                Total des pourcentages : {somme} % — les jalons doivent totaliser 100 %.
-              </p>
+            {erreur && (
+              <p role="alert" data-testid="echeancier-somme" className="text-xs text-destructive">{erreur}</p>
             )}
             <div>
               <Button type="button" variant="ghost" size="sm" onClick={() => setSaisie(null)}>

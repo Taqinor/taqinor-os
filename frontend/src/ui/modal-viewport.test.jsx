@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './Dialog'
@@ -11,6 +10,7 @@ import {
   AlertDialogDescription,
 } from './AlertDialog'
 import { Sheet, SheetContent, SheetTitle } from './Sheet'
+import { resolveCss } from '../test/readCss.mjs'
 
 /* Régression iPhone. Un modal haut, centré par `-translate-y-1/2`, débordait HORS
    de l'écran sur iPhone (haut + bas rognés → boutons Annuler/Confirmer/Enregistrer
@@ -56,7 +56,7 @@ describe('Modals — sûreté viewport mobile (anti-débordement iPhone)', () =>
   // shell brut).
   it('.modal (CSS brut) porte la paire 100vh → 100dvh sur max-height', () => {
     const here = dirname(fileURLToPath(import.meta.url))
-    const css = readFileSync(join(here, '..', 'index.css'), 'utf8')
+    const css = resolveCss(join(here, '..', 'index.css'))
     const start = css.indexOf('.modal {')
     const rule = css.slice(start, css.indexOf('}', start))
     expect(rule).toContain('max-height: calc(100vh - 48px);')

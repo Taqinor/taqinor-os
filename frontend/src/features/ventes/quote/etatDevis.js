@@ -18,7 +18,7 @@
 // la porte pas, l'écran garde sa valeur » — jamais une valeur inventée.
 // Fonctions PURES : aucun React, aucun réseau (node --test).
 import {
-  consoAnnuelleDepuisFactures, consoDescendDesFactures, comptePanneauxOption,
+  consoAnnuelleDepuisFactures, consoDescendDesFactures, comptePanneauxOption, estimerMois,
 } from '../solar.js'
 import { SCENARIO_SANS, SCENARIO_AVEC } from './sizingReducer.js'
 import { lignesServeurVersEcran, lignesEcranVersPayload } from './lignesEcran.js'
@@ -244,6 +244,16 @@ export function devisVersEtat(d, { bareme = null, produits = [] } = {}) {
     && e.factures_mensuelles_reelles.length === 12
     ? e.factures_mensuelles_reelles : null
   if (factures) etat.monthly = factures.map(v => Number(v) || 0)
+  // AGNR34 — deux factures relues : hiver / été reposés, grille « estimé ».
+  const deux = !factures && e.factures_hiver_ete
+    ? facturesHiverEte(e.factures_hiver_ete.hiver_mad,
+      e.factures_hiver_ete.ete_differente ? e.factures_hiver_ete.ete_mad : null) : null
+  if (deux) {
+    etat.facturesHiverEte = deux
+    etat.fHiver = String(deux.hiver_mad)
+    etat.fEte = deux.ete_mad ? String(deux.ete_mad) : ''
+    etat.moisEstimes = estimerMois(deux.hiver_mad, deux.ete_mad || 0)
+  }
   etat.consoStockee = e.conso_annuelle > 0 ? {
     valeur: Number(e.conso_annuelle),
     factures,
@@ -302,11 +312,23 @@ export function baremePourDerivation(bareme, stockee, factures) {
   return bareme
 }
 
+/** AGNR34 (D-AGNR-1 (a)) — hiver / été de l'écran → clé d'entrée
+ *  `factures_hiver_ete` (contrat `factures_client.json`), ou `null` sans
+ *  facture d'hiver > 0. Été égal à l'hiver ou absent ⇒ `ete_differente` faux. */
+export function facturesHiverEte(fHiver, fEte) {
+  const hiver = parseFloat(fHiver) || 0
+  if (!(hiver > 0)) return null
+  const ete = parseFloat(fEte) || 0
+  const differente = ete > 0 && ete !== hiver
+  return { hiver_mad: hiver, ete_mad: differente ? ete : null, ete_differente: differente }
+}
+
 export function entreesDeEtat(etat) {
   const entrees = {}
   const stockee = etat.consoStockee
   const factures = Array.isArray(etat.monthly) ? etat.monthly : (stockee?.factures || null)
   if (factures) entrees.factures_mensuelles_reelles = factures.map(v => parseFloat(v) || 0)
+  else if (etat.facturesHiverEte) entrees.factures_hiver_ete = etat.facturesHiverEte
   let conso = null
   let auBareme = false
   if (stockee && !stockee.descendDesFactures) conso = stockee.valeur

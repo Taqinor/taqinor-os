@@ -13,11 +13,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const lf = (s) => s.replace(/\r\n/g, '\n')
 const SRC = lf(readFileSync(join(HERE, 'LeadCard.jsx'), 'utf8'))
-const CSS = lf(readFileSync(join(HERE, '../../../../index.css'), 'utf8'))
+const CSS = lf(resolveCss(join(HERE, '../../../../index.css')))
 
 const bloc = () => {
   const i = CSS.indexOf('APX7 — TELEPHONE ET TABLETTE')

@@ -26,7 +26,8 @@ export default function CarteCreation({
           <CarteEcheancier saisie={echeancierSaisie} setSaisie={setEcheancierSaisie}
                            mode={modeInstallation} effectifs={termesEffectifs}
                            conditions={conditions} setCondition={setCondition}
-                           erreursConditions={erreursConditions(conditions)} clients={clients} />
+                           erreursConditions={erreursConditions(conditions)} clients={clients}
+                           totalTtc={kpiTotal} erreurServeur={errors.echeancier} />
         </div>
       )}
       {errors.conditions && (
