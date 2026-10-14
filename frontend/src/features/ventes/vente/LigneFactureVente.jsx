@@ -12,13 +12,19 @@
 // brouillon (`montant-tranche`) : visibles selon `peut` (palier serveur), donc
 // jamais un 403 évitable — un Commercial n'en voit aucun.
 import { useState } from 'react'
-import { Button, Input, StatusPill } from '../../../ui'
+import { MoreHorizontal } from 'lucide-react'
+import {
+  Button, Input, StatusPill,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../../ui'
+import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { formatMAD, formatDate } from '../../../lib/format'
 import PaiementDialog from '../../../pages/ventes/PaiementDialog'
 import {
   AnnulationFactureDialog, SuppressionBrouillonDialog,
 } from '../../../pages/ventes/factureList/AnnulationFactureDialog'
 import { useActionsVente } from './useActionsVente'
+import { CIBLE_TACTILE } from './venteEtat'
 
 const NATURES = {
   acompte: 'Acompte',
@@ -43,6 +49,7 @@ export default function LigneFactureVente({
   facture: f, facturesVente = [], onRafraichir, lectureSeule = false,
 }) {
   const actions = useActionsVente({ onSucces: onRafraichir })
+  const mobile = useIsMobile()
   const [encaisser, setEncaisser] = useState(false)
   const [lienWa, setLienWa] = useState('')
   const [info, setInfo] = useState('')
@@ -85,6 +92,28 @@ export default function LigneFactureVente({
     setInfo(r.ok ? (r.data?.detail || 'Email envoyé.') : '')
   }
 
+  // VNT81 — les gestes ouverts par le serveur, dans l'ordre d'importance ; au
+  // téléphone, 2 boutons visibles au plus, le reste dans « Autres actions ».
+  const gestes = [
+    peut.emettre === true && { cle: 'emettre', label: 'Émettre', loading: occupe('emettre'), onClick: () => actions.emettre(f) },
+    peut.encaisser === true && { cle: 'encaisser', label: 'Encaisser', onClick: () => setEncaisser(true) },
+    peut.pdf === true && { cle: 'pdf', label: 'PDF', loading: occupe('pdf'), onClick: () => actions.pdf(f) },
+    peut.envoyer === true && { cle: 'whatsapp', label: 'WhatsApp', loading: occupe('envoyer'), onClick: whatsapp },
+    peut.envoyer === true && { cle: 'email', label: 'E-mail', disabled: occupe('envoyer'), onClick: email },
+    peut.modifier_montant === true && montant === null && {
+      cle: 'montant', label: 'Modifier le montant', onClick: () => setMontant(String(f.total_ttc ?? '')),
+    },
+    peut.annuler === true && {
+      cle: 'annuler', label: 'Annuler',
+      onClick: () => { actions.effacerErreur(); setAnnulMsg(null); setDirectiveRequise(false); setAnnulOuvert(true) },
+    },
+    peut.supprimer === true && estProvisoire(f.reference) && {
+      cle: 'supprimer', label: 'Supprimer', variant: 'ghost', onClick: () => setSuppOuvert(true),
+    },
+  ].filter(Boolean)
+  const visibles = mobile ? gestes.slice(0, 2) : gestes
+  const autres = mobile ? gestes.slice(2) : []
+
   return (
     <li className="grid gap-1 rounded-md border p-2 text-sm" data-testid={`facture-vente-${f.id}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -98,51 +127,38 @@ export default function LigneFactureVente({
       {Number.parseFloat(f.montant_paye ?? '0') > 0 && (
         <p className="text-muted-foreground">Payé : <span className="num">{formatMAD(f.montant_paye)}</span></p>
       )}
-      <div className="flex flex-wrap gap-2">
-        {peut.emettre === true && (
-          <Button type="button" size="sm" loading={occupe('emettre')} onClick={() => actions.emettre(f)}>
-            Émettre
-          </Button>
-        )}
-        {peut.pdf === true && (
-          <Button type="button" size="sm" variant="outline" loading={occupe('pdf')} onClick={() => actions.pdf(f)}>
-            PDF
-          </Button>
-        )}
-        {peut.envoyer === true && (
-          <>
-            <Button type="button" size="sm" variant="outline" loading={occupe('envoyer')} onClick={whatsapp}>
-              WhatsApp
+      {(visibles.length > 0 || autres.length > 0) && (
+        <div className="flex flex-wrap gap-2">
+          {visibles.map((g, i) => (
+            <Button
+              key={g.cle} type="button" size="sm" className={CIBLE_TACTILE}
+              variant={g.variant ?? (i === 0 && g.cle === 'emettre' ? 'default' : 'outline')}
+              loading={g.loading} disabled={g.disabled} onClick={g.onClick}
+            >
+              {g.label}
             </Button>
-            <Button type="button" size="sm" variant="outline" disabled={occupe('envoyer')} onClick={email}>
-              E-mail
-            </Button>
-          </>
-        )}
-        {peut.encaisser === true && (
-          <Button type="button" size="sm" variant="outline" onClick={() => setEncaisser(true)}>
-            Encaisser
-          </Button>
-        )}
-        {peut.modifier_montant === true && montant === null && (
-          <Button type="button" size="sm" variant="outline" onClick={() => setMontant(String(f.total_ttc ?? ''))}>
-            Modifier le montant
-          </Button>
-        )}
-        {peut.annuler === true && (
-          <Button
-            type="button" size="sm" variant="outline"
-            onClick={() => { actions.effacerErreur(); setAnnulMsg(null); setDirectiveRequise(false); setAnnulOuvert(true) }}
-          >
-            Annuler
-          </Button>
-        )}
-        {peut.supprimer === true && estProvisoire(f.reference) && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => setSuppOuvert(true)}>
-            Supprimer
-          </Button>
-        )}
-      </div>
+          ))}
+          {autres.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button" size="sm" variant="ghost" className={CIBLE_TACTILE}
+                  aria-label={`Autres actions — ${f.reference}`}
+                >
+                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {autres.map((g) => (
+                  <DropdownMenuItem key={g.cle} disabled={g.disabled || g.loading} onSelect={g.onClick}>
+                    {g.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      )}
       {montant !== null && (
         <form className="flex flex-wrap items-end gap-2" onSubmit={enregistrerMontant} noValidate>
           <label className="grid gap-1">
@@ -164,7 +180,7 @@ export default function LigneFactureVente({
                 {formatDate(pa.date_paiement)} — <span className="num">{formatMAD(pa.montant)}</span>
               </span>
               <Button
-                type="button" size="sm" variant="ghost" loading={occupe('recu', pa.id)}
+                type="button" size="sm" variant="ghost" className={CIBLE_TACTILE} loading={occupe('recu', pa.id)}
                 aria-label={`Reçu du paiement du ${formatDate(pa.date_paiement)}`}
                 onClick={() => actions.recu(f, pa)}
               >

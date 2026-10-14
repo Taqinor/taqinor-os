@@ -13,7 +13,7 @@ import BilanVente from './BilanVente'
 import LigneFactureVente from './LigneFactureVente'
 import FacturerVenteDialog from './FacturerVenteDialog'
 import PrixNegocieDialog from '../PrixNegocieDialog'
-import { peutFacturerAcompte, peutFacturerSolde, peutVente } from './venteEtat'
+import { peutFacturerAcompte, peutFacturerSolde, peutVente, CIBLE_TACTILE } from './venteEtat'
 
 /**
  * La `vente` du DERNIER GET détail : une réponse qui ne porte pas la clé
@@ -46,7 +46,8 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
   const prix = !remplacee && peutVente(d, 'prix_negocie')
   return (
     <section
-      className="grid gap-2 rounded-md border p-2"
+      // VNT81 — une colonne, aucun débordement horizontal au téléphone.
+      className="grid min-w-0 max-w-full gap-2 rounded-md border p-2"
       aria-label={`Vente du devis ${devis.reference}`}
       data-testid="panneau-vente"
     >
@@ -69,17 +70,17 @@ export default function PanneauVente({ devis, onRafraichir, avecFacturer = true 
       {(acompte || solde || prix) && (
         <div className="flex flex-wrap gap-2">
           {acompte && (
-            <Button type="button" size="sm" onClick={() => setFacturer(true)}>
+            <Button type="button" size="sm" className={CIBLE_TACTILE} onClick={() => setFacturer(true)}>
               Facturer l&apos;acompte
             </Button>
           )}
           {solde && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setFacturer(true)}>
+            <Button type="button" size="sm" variant="outline" className={CIBLE_TACTILE} onClick={() => setFacturer(true)}>
               {vente.prochaine_action === 'intermediaire' ? 'Facturer la tranche suivante' : 'Facturer le solde'}
             </Button>
           )}
           {prix && (
-            <Button type="button" size="sm" variant="outline" onClick={() => setPrixOuvert(true)}>
+            <Button type="button" size="sm" variant="outline" className={CIBLE_TACTILE} onClick={() => setPrixOuvert(true)}>
               Prix négocié
             </Button>
           )}

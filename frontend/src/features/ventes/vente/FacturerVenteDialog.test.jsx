@@ -270,3 +270,50 @@ describe('FacturerVenteDialog (VNT45)', () => {
     expect(contenu.className).not.toContain('-translate-y-1/2')
   })
 })
+
+// VNT81 — le panneau de vente au téléphone : « Facturer l'acompte » ouvre ce
+// dialogue en tiroir bas ; une facture n'expose que 2 boutons (≥ 44 px), le
+// reste sous « Autres actions ». Vente lue de l'exemple committé vente_etat.json.
+describe('VNT81 — panneau de vente au téléphone (matchMedia)', () => {
+  const panneau = async (variante, retouche = (v) => v) => {
+    const { exempleContrat } = await import('../../../test/fixtures/contractSamples.js')
+    const { default: PanneauVente } = await import('./PanneauVente')
+    const vente = retouche(exempleContrat('ventes', 'vente_etat', variante).vente)
+    return render(<PanneauVente devis={{ ...DEVIS, vente }} onRafraichir={() => {}} />)
+  }
+
+  it('« Facturer l’acompte » ouvre le dialogue en tiroir bas ; cible tactile ≥ 44 px', async () => {
+    mockMatchMedia(true)
+    const user = userEvent.setup()
+    await panneau('exemple')
+    const bouton = screen.getByRole('button', { name: /Facturer l.acompte/ })
+    expect(bouton.className).toContain('max-md:min-h-11')
+    await user.click(bouton)
+    await attendreApercu()
+    expect(document.querySelector('[role="dialog"]').className).toContain('bottom-0')
+  })
+
+  it('une facture aux 5 gestes : 2 boutons visibles, le reste sous « Autres actions »', async () => {
+    mockMatchMedia(true)
+    const tousOuverts = (v) => ({
+      ...v,
+      factures: v.factures.map((f) => ({
+        ...f, peut: { ...f.peut, emettre: true, encaisser: true, envoyer: true, annuler: true },
+      })),
+    })
+    await panneau('exemple_acompte_paye_solde_a_faire', tousOuverts)
+    const ligne = screen.getByTestId('facture-vente-118')
+    const boutons = within(ligne).getAllByRole('button')
+      .filter((b) => !/Reçu|Autres actions/.test(b.getAttribute('aria-label') || ''))
+    expect(boutons).toHaveLength(2)
+    expect(within(ligne).getByRole('button', { name: /Autres actions — FAC-202610-0007/ })).toBeInTheDocument()
+  })
+
+  it('au bureau, tous les gestes restent visibles (aucun menu)', async () => {
+    await panneau('exemple_acompte_paye_solde_a_faire')
+    const ligne = screen.getByTestId('facture-vente-118')
+    expect(within(ligne).queryByRole('button', { name: /Autres actions/ })).toBeNull()
+    expect(within(ligne).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    expect(within(ligne).getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+  })
+})
