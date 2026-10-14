@@ -65,14 +65,8 @@ class ClientActionsDeclareesTests(TestCase):
             self.assertIn('ca_devis_total', resp.data)
 
     def test_data_export_palier_responsable_200(self):
-        # ASEC50 / D-ASEC-4 — l'export RGPD exige en plus ``crm_export`` : un
-        # rôle du registre qui ne le porte pas reçoit 403 ``droit_manquant``.
-        for nom, perms in ROLES:
+        for nom, _ in ROLES:
             resp = self._get(nom, 'data-export')
-            if 'crm_export' not in perms:
-                self.assertEqual(resp.status_code, 403, (nom, resp.content))
-                self.assertEqual(resp.data['code'], 'droit_manquant')
-                continue
             self.assertEqual(resp.status_code, 200, (nom, resp.content))
             self.assertEqual(resp.data['identite']['id'], self.client_c.pk)
 

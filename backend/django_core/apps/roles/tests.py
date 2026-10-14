@@ -698,3 +698,39 @@ class CodesGrilleAppliquesTests(TestCase):
                                     format='json').status_code, 200)
         interv.refresh_from_db()
         self.assertEqual(interv.technicien_id, self.collegue.pk)
+
+    # ── rôle système légacy « Responsable » (migration roles 0009) ──────
+    def test_responsable_garde_exports_et_reaffectations(self):
+        """Le palier Responsable exportait et réaffectait avant ASEC50 : le
+        registre (et la migration 0009 pour les sociétés existantes) lui
+        donne les codes — aucune régression pour ce rôle système."""
+        from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
+        from apps.sav.models import Ticket
+        role = Role.objects.create(
+            company=self.company, nom='Responsable', est_systeme=True,
+            permissions=list(RESPONSABLE_PERMISSIONS))
+        user = User.objects.create_user(
+            username='asec50-responsable', password='x',
+            company=self.company, role=role)
+        api = APIClient()
+        api.force_authenticate(user)
+        lead = self._lead()
+        self.assertEqual(api.post(
+            '/api/django/crm/leads/export-xlsx/', {'ids': [lead.pk]},
+            format='json').status_code, 200)
+        resp = api.get(
+            f'/api/django/crm/clients/{self.client_obj.pk}/data-export/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        resp = api.post('/api/django/crm/leads/bulk/', {
+            'action': 'reassign', 'ids': [lead.pk],
+            'owner': self.collegue.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.collegue.pk)
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ASEC50-RESP',
+            client=self.client_obj, equipe=self.equipe_a)
+        resp = api.post(
+            f'/api/django/sav/tickets/{ticket.pk}/reaffecter-equipe/',
+            {'equipe': self.equipe_b.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
