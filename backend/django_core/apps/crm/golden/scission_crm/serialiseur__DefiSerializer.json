@@ -43,7 +43,7 @@
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "cible_equipe",
    "read_only": false,
    "required": false

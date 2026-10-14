@@ -49,7 +49,7 @@
    "required": false
   },
   {
-   "classe": "IntegerField",
+   "classe": "EntierStrict",
    "nom": "ordre",
    "read_only": false,
    "required": false
@@ -61,7 +61,7 @@
    "required": false
   },
   {
-   "classe": "DecimalStricte",
+   "classe": "DecimalBornee",
    "nom": "cout",
    "read_only": false,
    "required": false

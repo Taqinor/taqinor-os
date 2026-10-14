@@ -31,7 +31,7 @@
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "taux_commission",
    "read_only": false,
    "required": false
@@ -97,7 +97,7 @@
    "required": false
   },
   {
-   "classe": "IntegerField",
+   "classe": "EntierStrict",
    "nom": "nb_deploiements_reussis",
    "read_only": true,
    "required": false
