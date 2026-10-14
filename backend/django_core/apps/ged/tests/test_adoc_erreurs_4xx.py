@@ -900,6 +900,9 @@ class Ci997FuzzGedTour4Tests(TestCase):
         self.admin = User.objects.create_user(
             username='ci997-ged-t4-admin', password='x', company=self.co,
             role_legacy='admin')
+        self.admin2 = User.objects.create_user(
+            username='ci997-ged-t4-admin2', password='x', company=self.co,
+            role_legacy='admin')
         self.cab = Cabinet.objects.create(company=self.co, nom='C')
         self.folder = Folder.objects.create(
             company=self.co, cabinet=self.cab, nom='R')
