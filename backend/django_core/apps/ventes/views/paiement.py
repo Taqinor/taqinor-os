@@ -154,7 +154,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(PaiementSerializer(paiement).data)
 
     @extend_schema(request=D.AnnulerSaisieRequest,
-                   responses=PaiementSerializer)
+                   responses={200: PaiementSerializer, 409: D.ErreurCode})
     @action(detail=True, methods=['post'], url_path='annuler-saisie')
     def annuler_saisie(self, request, pk=None):
         """AFAC17 — annule une saisie de paiement ERRONÉE (motif obligatoire,
@@ -180,7 +180,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(PaiementSerializer(paiement).data)
 
     @extend_schema(request=D.ReaffecterRequest,
-                   responses=D.ReaffecterResponse)
+                   responses={200: D.ReaffecterResponse, 409: D.ErreurCode})
     @action(detail=True, methods=['post'], url_path='reaffecter')
     def reaffecter(self, request, pk=None):
         """AFAC17 — réaffecte le paiement à une autre facture du MÊME client
