@@ -137,8 +137,13 @@ class DispatchN1Tests(TestCase):
         ids = {row['id'] for row in rows}
         self.assertEqual(len(ids), 2)
         self.assertNotIn(autre.id, ids)
-        # Valeur invalide : ignorée, jamais un 500.
+        # Valeur invalide : 400 nommant le paramètre (validé à l'entrée de la
+        # liste par oa.listing, ERR-ENF11-FUZZ-INSTALLATIONS), jamais un 500.
         r = self.api.get(f'{BASE}/?date_prevue=2026-13-45')
+        self.assertEqual(r.status_code, 400)
+        self.assertIn('date_prevue', str(r.data))
+        # Valeur vide : filtre non posé.
+        r = self.api.get(f'{BASE}/?date_prevue=')
         self.assertEqual(r.status_code, 200)
 
     def test_pas_de_carte_photos_sans_creneau_obligatoire(self):
