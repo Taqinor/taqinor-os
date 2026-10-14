@@ -201,6 +201,21 @@ class ChampsStrictsMixin:
     }
 
 
+class ChampsStrictsEntiersMixin:
+    """``ChampsStrictsMixin`` + ENTIERS stricts (api-fuzz « accepted
+    schema-violating request » sur ``PATCH installations/chantiers/{id}/``) :
+    texte, booléen, décimal-chaîne et entier de modèle n'acceptent que leur
+    type JSON déclaré (``0`` pour un texte, ``"5"`` pour un entier → 400)."""
+
+    serializer_field_mapping = {
+        **ChampsStrictsMixin.serializer_field_mapping,
+        models.IntegerField: EntierStrict,
+        models.PositiveIntegerField: EntierStrict,
+        models.SmallIntegerField: EntierStrict,
+        models.PositiveSmallIntegerField: EntierStrict,
+    }
+
+
 class ChampsStrictsSansDecimalMixin:
     """Variante de ``ChampsStrictsMixin`` SANS les décimaux (lane GED/records/
     notifications : leurs clients envoient encore des nombres JSON pour

@@ -1,10 +1,7 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import (  # ENF11
-    BooleenStrict, ChaineStricte, ChampsStrictsMixin,
-    ChampsStrictsSansDecimalMixin, TexteLie,
-)
+from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, TexteLie  # ENF11
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .serializers_stage import valider_unicite_societe
@@ -84,10 +81,7 @@ from .models import (
 )
 
 
-class ChecklistEtapeModeleSerializer(
-    ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
-    serializers.ModelSerializer
-):
+class ChecklistEtapeModeleSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('template',)
 
@@ -518,21 +512,28 @@ class InterventionActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InstallationSerializer(SameCompanyFKSerializerMixin,
+class InstallationSerializer(ChampsStrictsEntiersMixin,
+                             SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC32 — technicien responsable d'une autre société = id absent (400).
     # ENF17 — + client, lead (FK cross-app bornées).
+    # CI #993 api-fuzz — texte/booléen/décimal/entier stricts (``0`` pour un
+    # texte → 400) ; libellés de choix vides et ``devis_reference`` publiés
+    # null-ables et TOUJOURS servis, y compris sur un PATCH.
     same_company_fields = ('technicien_responsable', 'etape', 'client', 'lead')
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     raccordement_display = serializers.CharField(
-        source='get_raccordement_display', read_only=True, default=None)
+        source='get_raccordement_display', read_only=True, default=None,
+        allow_null=True)
     type_installation_display = serializers.CharField(
-        source='get_type_installation_display', read_only=True, default=None)
+        source='get_type_installation_display', read_only=True, default=None,
+        allow_null=True)
     # CIQ610 — niveau de tension recopié du lead (éditable via `niveau_tension`
     # du `__all__`) ; libellé en lecture seule.
     niveau_tension_display = serializers.CharField(
-        source='get_niveau_tension_display', read_only=True, default=None)
+        source='get_niveau_tension_display', read_only=True, default=None,
+        allow_null=True)
     # Position dans l'entonnoir — pour un tri non-alphabétique côté UI.
     statut_ordre = serializers.SerializerMethodField()
     # Statut rabattu sur sa colonne canonique (kanban/parc) — les valeurs
@@ -544,8 +545,8 @@ class InstallationSerializer(SameCompanyFKSerializerMixin,
     checklist_completion = serializers.SerializerMethodField()
     client_nom = serializers.SerializerMethodField()
     technicien_nom = serializers.SerializerMethodField()
-    devis_reference = serializers.CharField(
-        source='devis.reference', read_only=True, default=None)
+    devis_reference = TexteLie(
+        source='devis.reference', read_only=True, default=None, allow_null=True)
     lead_nom = serializers.SerializerMethodField()
     interventions = InterventionSerializer(many=True, read_only=True)
     nb_interventions = serializers.SerializerMethodField()
