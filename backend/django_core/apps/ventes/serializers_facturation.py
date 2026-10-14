@@ -400,6 +400,42 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
     # la règle « encaissable » vit au serveur (LA porte unique), l'écran la lit.
     encaissable = serializers.SerializerMethodField()
     motif_non_encaissable = serializers.SerializerMethodField()
+    # VNT91 — les blocs de la vente du PDF facture, lus par LA fonction du PDF
+    # (``utils/pdf.contexte_vente_facture``), servis au DÉTAIL seulement
+    # (``retrieve``) — jamais sur la liste paginée (un calcul par ligne = N+1).
+    # Au détail, ``objet_vente`` / ``garanties`` (instantanés du modèle)
+    # prennent la valeur imprimée (instantané d'une émise, vivante sinon).
+    situation_vente = serializers.SerializerMethodField()
+    prochaines_echeances = serializers.SerializerMethodField()
+
+    def _vente_pdf(self, obj):
+        if self.parent is not None or getattr(
+                self.context.get('view'), 'action', None) != 'retrieve':
+            return None
+        cache = self.context.setdefault('_vente_pdf', {})
+        if obj.pk not in cache:
+            from .utils.pdf import contexte_vente_facture
+            cache[obj.pk] = contexte_vente_facture(obj)
+        return cache[obj.pk]
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_situation_vente(self, obj):
+        return (self._vente_pdf(obj) or {}).get('situation_vente')
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_prochaines_echeances(self, obj):
+        return (self._vente_pdf(obj) or {}).get('prochaines_echeances', [])
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        vente = self._vente_pdf(instance)
+        if vente is None:  # liste, ou toute action autre que le détail
+            data.pop('situation_vente', None)
+            data.pop('prochaines_echeances', None)
+        elif vente:  # facture rattachée à un devis : les blocs du PDF
+            data['objet_vente'] = vente['objet_vente']
+            data['garanties'] = vente['garanties_vente']
+        return data
 
     def _motif_encaissement(self, obj):
         # Même fonction que la porte serveur ; aucune requête hors le
