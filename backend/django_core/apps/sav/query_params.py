@@ -115,3 +115,14 @@ CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
      'required': ['statut']},
     {'properties': {'operation': {'enum': ['technicien', 'annuler']}}},
 ]}}
+
+
+def archives_incluses(request):
+    """``?archived=`` publié ``enum: ['1']`` : ``True`` pour ``1``, ``False``
+    absent ; toute autre valeur, vide comprise, → 400 nommant le paramètre
+    (CI #993, api-fuzz « accepted schema-violating » : ``?archived=AAA``
+    filtrait en silence)."""
+    brut = request.query_params.get('archived')
+    if brut is not None and brut != '1':
+        raise ValidationError({'archived': 'Valeur attendue : 1.'})
+    return brut == '1'

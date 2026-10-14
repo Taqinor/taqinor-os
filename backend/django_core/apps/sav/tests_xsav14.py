@@ -18,7 +18,9 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.stock.models import Produit
-from apps.sav.models import CauseDefaillance, Equipement, RemedeDefaillance, Ticket
+from apps.sav.models import (
+    CauseDefaillance, Equipement, RemedeDefaillance, ReponseType, Ticket,
+)
 
 User = get_user_model()
 
@@ -93,6 +95,41 @@ class XSAV14TaxonomieTest(TestCase):
         self.assertEqual(resp.status_code, 201, resp.content)
         created = RemedeDefaillance.objects.get(pk=resp.data['id'])
         self.assertEqual(created.company_id, self.company.id)
+
+    def test_referentiels_archived_hors_enum_refuse_400(self):
+        # CI #993 (api-fuzz « accepted schema-violating ») : ``?archived=``
+        # est publié ``enum: ['1']`` sur les trois référentiels — toute autre
+        # valeur est nommée en 400 (``query_params.archives_incluses``).
+        CauseDefaillance.objects.create(
+            company=self.company, nom='Ancienne cause', archived=True)
+        RemedeDefaillance.objects.create(
+            company=self.company, nom='Ancien remède', archived=True)
+        ReponseType.objects.create(
+            company=self.company, titre='Ancienne macro', corps='x',
+            archived=True)
+        for url, champ, archive in (
+                ('/api/django/sav/causes-defaillance/', 'nom', 'Ancienne cause'),
+                ('/api/django/sav/remedes-defaillance/', 'nom', 'Ancien remède'),
+                ('/api/django/sav/reponses-type/', 'titre', 'Ancienne macro')):
+            with self.subTest(url=url):
+                for valeur in ('AAA', '0', ''):
+                    resp = self.api.get(url, {'archived': valeur})
+                    self.assertEqual(resp.status_code, 400,
+                                     (valeur, resp.content))
+                    self.assertIn('archived', resp.content.decode())
+
+                def libelles(resp):
+                    donnees = resp.data
+                    if isinstance(donnees, dict):
+                        donnees = donnees.get('results', [])
+                    return {r[champ] for r in donnees}
+
+                resp = self.api.get(url)
+                self.assertEqual(resp.status_code, 200, resp.content)
+                self.assertNotIn(archive, libelles(resp))
+                resp = self.api.get(url, {'archived': '1'})
+                self.assertEqual(resp.status_code, 200, resp.content)
+                self.assertIn(archive, libelles(resp))
 
     # ── Codification à la résolution ────────────────────────────────────────
 

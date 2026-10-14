@@ -262,3 +262,26 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
         composant = self.schema['components']['schemas'][
             schema['$ref'].rsplit('/', 1)[-1]]
         self.assertEqual(list(composant['properties']), ['detail'])
+
+    def test_layout_ecrit_exige_son_jeton_et_un_corps_non_vide(self):
+        """ACAL316 — la précondition fait partie du contrat : l'en-tête
+        ``If-Match`` est OBLIGATOIRE et non blanc, le corps obligatoire et
+        non vide (api-fuzz du 14/10/2026 : un ``If-Match`` vide, « conforme »,
+        recevait le 428 — requête conforme rejetée)."""
+        operation = self._operation('post', '{id}/layout/')
+        jeton = [p for p in operation['parameters']
+                 if p['in'] == 'header' and p['name'] == 'If-Match']
+        self.assertEqual(len(jeton), 1)
+        self.assertIs(jeton[0]['required'], True)
+        self.assertEqual(jeton[0]['schema'],
+                         {'type': 'string', 'pattern': r'\S'})
+        corps = operation['requestBody']
+        self.assertIs(corps.get('required'), True)
+        regle = corps['content']['application/json']['schema']['allOf'][1]
+        self.assertEqual(regle['minProperties'], 1)
+        for cle in ('roof_layout', 'layout'):
+            self.assertEqual(regle['properties'][cle],
+                             {'type': 'object', 'minProperties': 1})
+        lecture = self._operation('get', '{id}/layout/')
+        self.assertNotIn('If-Match', [p['name'] for p in
+                                      lecture.get('parameters', [])])
