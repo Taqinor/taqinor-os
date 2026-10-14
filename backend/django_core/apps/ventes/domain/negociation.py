@@ -343,3 +343,60 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
                   'version': v2.version},
         factures_annulees=[{'reference': f.reference} for f in retires])
     return resultat
+
+
+# ── VNT61 — le client signe un avenant déjà accepté en interne ──────────────
+
+def avenant_a_signer(devis):
+    """VNT61 (D-ADEV-6) — vrai pour un AVENANT : un devis ACCEPTÉ qui remplace
+    (révision) une vente déjà acceptée, et que le client n'a pas encore signé
+    (aucune ``DevisSignature``). Lecture pure."""
+    from apps.ventes.models import Devis, DevisSignature
+    from apps.ventes.selectors import predecesseur_accepte
+    if getattr(devis, 'pk', None) is None \
+            or devis.statut != Devis.Statut.ACCEPTE:
+        return False
+    if DevisSignature.objects.filter(devis_id=devis.pk).exists():
+        return False
+    return predecesseur_accepte(devis) is not None
+
+
+def signer_avenant(devis, *, nom, ip=None, user_agent='', consentement=True,
+                   signature_image='', signed_at_client=None,
+                   on_behalf_of='', entreprise=None):
+    """VNT61 — la signature CLIENT d'un avenant déjà accepté en interne : la
+    ``DevisSignature`` (empreinte du contenu, preuve loi 53-05) puis, après
+    le commit, le PDF signé scellé. AUCUN statut n'est écrit (règle #4) et
+    AUCUN événement n'est émis (la vente a déjà été acceptée : pas de
+    ``devis_accepted``, de CAPI ni de webhook).
+
+    Idempotent, sous verrou : un avenant déjà signé rend ``None`` et rien
+    n'est écrit (deuxième soumission). Rend la ``DevisSignature`` créée."""
+    from django.db import transaction
+
+    from apps.ventes import activity
+    from apps.ventes.domain.cycle_vie import (
+        _create_esign_record, _store_signed_pdf)
+    from apps.ventes.models import Devis, DevisSignature
+
+    with transaction.atomic():
+        verrouille = (Devis.objects.select_for_update(of=('self',))
+                      .select_related('company').get(pk=devis.pk))
+        if not avenant_a_signer(verrouille):
+            return None
+        _create_esign_record(
+            devis=verrouille, nom=nom, ip=ip, user_agent=user_agent,
+            consentement=consentement, signature_image=signature_image,
+            signed_at_client=signed_at_client, on_behalf_of=on_behalf_of,
+            entreprise=entreprise)
+        signature = DevisSignature.objects.filter(devis=verrouille).first()
+        if signature is None:
+            return None
+        activity.log_devis_note(
+            verrouille, None,
+            f'Avenant signé en ligne par {(nom or "").strip() or "le client"}'
+            + (f' — IP {ip}' if ip else '') + '.')
+    _store_signed_pdf(devis=verrouille)
+    logger.info('VNT61: avenant %s signé par le client (statut inchangé).',
+                verrouille.reference)
+    return signature
