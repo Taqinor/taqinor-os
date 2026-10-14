@@ -16,7 +16,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 
