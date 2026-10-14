@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3483}
+counts: {paths: 4814, operations: 7566, components: 3484}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9597,6 +9597,7 @@ components:
 - CalepinageImportProjet
 - CalepinageImportProjetCorpsRequest
 - CalepinageImporterPlanCorpsRequest
+- CalepinageJetonManquant
 - CalepinageJoindrePiece
 - CalepinageJoindrePieceCorpsParDossierRequest
 - CalepinageJoindrePieceCorpsParGabaritRequest
