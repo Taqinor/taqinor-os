@@ -1112,10 +1112,8 @@ API rejected schema-compliant request|PUT /api/django/ventes/recettes-mes/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/tests-pr-reception/{id}/
 API rejected schema-compliant request|PUT /api/django/visites/visites/{id}/
 JSON deserialization error|GET /api/django/crm/leads/{id}/salle-vente-analytics/
-JSON deserialization error|POST /api/django/core/sla/credits/{id}/statut/
 JSON deserialization error|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Missing Content-Type header|GET /api/django/crm/leads/{id}/salle-vente-analytics/
-Missing Content-Type header|POST /api/django/core/sla/credits/{id}/statut/
 Missing Content-Type header|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Response violates schema|GET /api/django/adminops/settings/
 Response violates schema|GET /api/django/automation/approval-delegations/
@@ -1402,7 +1400,6 @@ Response violates schema|PUT /api/django/stock/factures-fournisseur/{id}/
 Response violates schema|PUT /api/django/stock/modeles-bcf/{id}/
 Response violates schema|PUT /api/django/ventes/devis/{id}/
 Response violates schema|PUT /api/django/ventes/factures/{id}/
-Server error|GET /api/django/core/sla/
 Server error|GET /api/django/crm/clients/segments/
 Server error|GET /api/django/crm/defis/{id}/export-xlsx/
 Server error|GET /api/django/crm/relance-etapes/cadences-echues/
@@ -1420,15 +1417,6 @@ Server error|GET /api/django/stock/produits/expirant-bientot/
 Server error|GET /api/django/stock/produits/previsions-reappro/
 Server error|GET /api/django/ventes/clients/{client_id}/credit-warning/
 Server error|GET /api/django/ventes/devis/{id}/proposal/
-Server error|POST /api/django/core/branded-templates/{id}/preview/
-Server error|POST /api/django/core/bulk-edit/appliquer/
-Server error|POST /api/django/core/data-explorer/drill/
-Server error|POST /api/django/core/formule/tester/
-Server error|POST /api/django/core/jobs/run/
-Server error|POST /api/django/core/saved-queries/run/
-Server error|POST /api/django/core/scheduled-exports/{id}/executer/
-Server error|POST /api/django/core/workflow-templates/installer/
-Server error|POST /api/django/core/workflows/approuver-en-masse/
 Server error|POST /api/django/crm/appareils-equipe/ce-navigateur/
 Server error|POST /api/django/crm/clients/export-xlsx/
 Server error|POST /api/django/crm/relance-etapes/{id}/fait/
@@ -1712,7 +1700,6 @@ API accepted schema-violating request|PUT /api/django/reporting/kpi-alertes/{id}
 API rejected schema-compliant request|POST /api/django/reporting/rapport-definitions/
 API rejected schema-compliant request|POST /api/django/reporting/saved-reports/
 Response violates schema|PATCH /api/django/reporting/kpi-alertes/{id}/
-Server error|POST /api/django/reporting/approbations-en-attente/decider/
 Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
 # VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
 API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
