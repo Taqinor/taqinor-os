@@ -1,10 +1,10 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, TexteLie  # ENF11
+from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, ListesStrictesMixin, TexteLie  # ENF11
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .serializers_stage import ListesStrictesMixin, refus_protege, valider_unicite_societe
+from .serializers_stage import refus_protege, valider_unicite_societe
 
 from .models import (
     Equipe,

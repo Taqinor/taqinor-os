@@ -325,6 +325,24 @@ class TypageStrictMixin:
     }
 
 
+class ListesStrictesMixin:
+    """CI #997 api-fuzz — un champ M2M (``ManyRelatedField``) accepte tout
+    itérable : ``{}`` passait pour une liste vide alors que le schéma déclare
+    un tableau. Toute valeur non nulle qui n'est pas une liste → 400 nommé.
+    À placer en TÊTE des bases du sérialiseur."""
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'get') and not hasattr(data, 'getlist'):
+            for nom, champ in self.fields.items():
+                valeur = data.get(nom)
+                if (isinstance(champ, serializers.ManyRelatedField)
+                        and not champ.read_only and valeur is not None
+                        and not isinstance(valeur, list)):
+                    raise serializers.ValidationError(
+                        {nom: ["Une liste d'identifiants est attendue."]})
+        return super().to_internal_value(data)
+
+
 def _ids_inconnus_seulement(erreurs, champs):
     """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
     sur des champs de relation par clé primaire."""
