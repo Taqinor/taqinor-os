@@ -40,46 +40,6 @@ API accepted schema-violating request|GET /api/django/core/sla/export-csv/
 API accepted schema-violating request|GET /api/django/core/ui-boutons/
 API accepted schema-violating request|GET /api/django/core/vues/
 API accepted schema-violating request|GET /api/django/core/workflows/rapport-conformite/
-API accepted schema-violating request|GET /api/django/crm/appareils-equipe/
-API accepted schema-violating request|GET /api/django/crm/appointments/
-API accepted schema-violating request|GET /api/django/crm/apporteurs/
-API accepted schema-violating request|GET /api/django/crm/canaux/
-API accepted schema-violating request|GET /api/django/crm/clients/
-API accepted schema-violating request|GET /api/django/crm/clients/dormants/
-API accepted schema-violating request|GET /api/django/crm/clients/engagement-bulk/
-API accepted schema-violating request|GET /api/django/crm/clients/segments/
-API accepted schema-violating request|GET /api/django/crm/concurrents-perte/
-API accepted schema-violating request|GET /api/django/crm/deals-enregistres/
-API accepted schema-violating request|GET /api/django/crm/defis/
-API accepted schema-violating request|GET /api/django/crm/equipes/
-API accepted schema-violating request|GET /api/django/crm/forecast-entries/
-API accepted schema-violating request|GET /api/django/crm/forecast/historique/
-API accepted schema-violating request|GET /api/django/crm/forecast/rollup/
-API accepted schema-violating request|GET /api/django/crm/leads/check-duplicates/
-API accepted schema-violating request|GET /api/django/crm/leads/doublons/
-API accepted schema-violating request|GET /api/django/crm/leads/kpi-cadences/
-API accepted schema-violating request|GET /api/django/crm/leads/kpi-premier-contact/
-API accepted schema-violating request|GET /api/django/crm/leads/mesure-cadence/
-API accepted schema-violating request|GET /api/django/crm/leads/roi-sources/
-API accepted schema-violating request|GET /api/django/crm/message-templates/
-API accepted schema-violating request|GET /api/django/crm/motifs-perte/
-API accepted schema-violating request|GET /api/django/crm/parrainages/
-API accepted schema-violating request|GET /api/django/crm/partenaires/
-API accepted schema-violating request|GET /api/django/crm/plans-activite/
-API accepted schema-violating request|GET /api/django/crm/plans-compte/
-API accepted schema-violating request|GET /api/django/crm/playbook-etapes/
-API accepted schema-violating request|GET /api/django/crm/playbook-taches/
-API accepted schema-violating request|GET /api/django/crm/playbooks/
-API accepted schema-violating request|GET /api/django/crm/points-contact/
-API accepted schema-violating request|GET /api/django/crm/rapports/attribution/
-API accepted schema-violating request|GET /api/django/crm/relance-etapes/kpi-adherence/
-API accepted schema-violating request|GET /api/django/crm/revues-compte/
-API accepted schema-violating request|GET /api/django/crm/salles-vente/
-API accepted schema-violating request|GET /api/django/crm/site-profiles/
-API accepted schema-violating request|GET /api/django/crm/tags/
-API accepted schema-violating request|GET /api/django/crm/visites-externes/
-API accepted schema-violating request|GET /api/django/crm/visites-externes/appareils/
-API accepted schema-violating request|GET /api/django/crm/website-lead-payloads/
 API accepted schema-violating request|GET /api/django/custom-fields/definitions/
 API accepted schema-violating request|GET /api/django/custom-fields/objects/
 API accepted schema-violating request|GET /api/django/custom-fields/permissions-role/
@@ -387,12 +347,6 @@ API accepted schema-violating request|PATCH /api/django/core/api-usage/plan/
 API accepted schema-violating request|PATCH /api/django/core/branded-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/core/ui-boutons/{id}/
 API accepted schema-violating request|PATCH /api/django/core/ui-onglets/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/canaux/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/equipes/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/message-templates/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/plans-activite/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/playbooks/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/tags/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/exigences-dossier/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/roles-signataire/{id}/
 API accepted schema-violating request|PATCH /api/django/ged/tags/{id}/
@@ -441,19 +395,7 @@ API accepted schema-violating request|POST /api/django/core/registre-traitements
 API accepted schema-violating request|POST /api/django/core/regles/valider/
 API accepted schema-violating request|POST /api/django/core/ui-boutons/
 API accepted schema-violating request|POST /api/django/core/ui-onglets/
-API accepted schema-violating request|POST /api/django/crm/appareils-equipe/
-API accepted schema-violating request|POST /api/django/crm/appareils-equipe/ce-navigateur/
-API accepted schema-violating request|POST /api/django/crm/canaux/
-API accepted schema-violating request|POST /api/django/crm/equipes/
-API accepted schema-violating request|POST /api/django/crm/leads/export-xlsx/
 API accepted schema-violating request|POST /api/django/crm/leads/ville-statut/
-API accepted schema-violating request|POST /api/django/crm/leads/{id}/log-interaction/
-API accepted schema-violating request|POST /api/django/crm/message-templates/
-API accepted schema-violating request|POST /api/django/crm/motifs-perte/
-API accepted schema-violating request|POST /api/django/crm/plans-activite/
-API accepted schema-violating request|POST /api/django/crm/playbooks/
-API accepted schema-violating request|POST /api/django/crm/tags/
-API accepted schema-violating request|POST /api/django/crm/vues-enregistrees/reorder/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/annuler/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/envoyer-email/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/exclure-relance/
@@ -519,13 +461,6 @@ API accepted schema-violating request|PUT /api/django/core/api-usage/plan/
 API accepted schema-violating request|PUT /api/django/core/branded-templates/{id}/
 API accepted schema-violating request|PUT /api/django/core/ui-boutons/{id}/
 API accepted schema-violating request|PUT /api/django/core/ui-onglets/{id}/
-API accepted schema-violating request|PUT /api/django/crm/canaux/{id}/
-API accepted schema-violating request|PUT /api/django/crm/equipes/{id}/
-API accepted schema-violating request|PUT /api/django/crm/message-templates/{id}/
-API accepted schema-violating request|PUT /api/django/crm/motifs-perte/{id}/
-API accepted schema-violating request|PUT /api/django/crm/plans-activite/{id}/
-API accepted schema-violating request|PUT /api/django/crm/playbooks/{id}/
-API accepted schema-violating request|PUT /api/django/crm/tags/{id}/
 API accepted schema-violating request|PUT /api/django/ged/cabinets/{id}/
 API accepted schema-violating request|PUT /api/django/ged/exigences-dossier/{id}/
 API accepted schema-violating request|PUT /api/django/ged/roles-signataire/{id}/
@@ -597,11 +532,8 @@ API rejected schema-compliant request|GET /api/django/core/dashboards/{id}/donne
 API rejected schema-compliant request|GET /api/django/core/registre-fiabilite/export-pdf/
 API rejected schema-compliant request|GET /api/django/core/sla/{periode}/export-pdf/
 API rejected schema-compliant request|GET /api/django/core/workflows/charge-approbateurs/
-API rejected schema-compliant request|GET /api/django/crm/leads/{id}/message-visite/
 API rejected schema-compliant request|GET /api/django/crm/leads/{lead_id}/roof-footprint/
-API rejected schema-compliant request|GET /api/django/crm/objectifs/
 API rejected schema-compliant request|GET /api/django/crm/relance-etapes/controle/
-API rejected schema-compliant request|GET /api/django/crm/relance-etapes/journal/
 API rejected schema-compliant request|GET /api/django/crm/relance-etapes/suivi/
 API rejected schema-compliant request|GET /api/django/facturation/factures/{facture_id}/lettre-relance-pdf/
 API rejected schema-compliant request|GET /api/django/ged/demandes-signature/tableau-bord/
@@ -749,37 +681,25 @@ API rejected schema-compliant request|POST /api/django/core/workflow-definitions
 API rejected schema-compliant request|POST /api/django/core/workflow-step-definitions/
 API rejected schema-compliant request|POST /api/django/core/workflow-templates/installer/
 API rejected schema-compliant request|POST /api/django/core/workflows/approuver-en-masse/
-API rejected schema-compliant request|POST /api/django/crm/clients/
-API rejected schema-compliant request|POST /api/django/crm/clients/{id}/anonymize/
 API rejected schema-compliant request|POST /api/django/crm/deals-enregistres/
 API rejected schema-compliant request|POST /api/django/crm/leads/
-API rejected schema-compliant request|POST /api/django/crm/leads/bulk/
 API rejected schema-compliant request|POST /api/django/crm/leads/resoudre-gps/
 API rejected schema-compliant request|POST /api/django/crm/leads/scan-carte/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/appliquer-plan/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/convertir-client/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/devis-auto/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/locataire/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/merge/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/message-visite/ouvert/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/noter/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/relance/initialiser/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/resume-associe/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/synchroniser-client/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/whatsapp-devis-apercu/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/whatsapp-devis/
 API rejected schema-compliant request|POST /api/django/crm/objectifs/
 API rejected schema-compliant request|POST /api/django/crm/partenaires/{id}/provisionner-acces/
-API rejected schema-compliant request|POST /api/django/crm/plans-compte/
 API rejected schema-compliant request|POST /api/django/crm/playbook-etapes/
 API rejected schema-compliant request|POST /api/django/crm/playbook-taches/
 API rejected schema-compliant request|POST /api/django/crm/public/chat/sessions/{token}/messages/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/fait/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/piece-recue/
-API rejected schema-compliant request|POST /api/django/crm/revues-compte/
 API rejected schema-compliant request|POST /api/django/crm/salles-vente/
-API rejected schema-compliant request|POST /api/django/crm/site-profiles/
-API rejected schema-compliant request|POST /api/django/crm/vues-enregistrees/
 API rejected schema-compliant request|POST /api/django/custom-fields/definitions/
 API rejected schema-compliant request|POST /api/django/custom-fields/permissions-role/
 API rejected schema-compliant request|POST /api/django/entites/entites/
@@ -1070,9 +990,7 @@ API rejected schema-compliant request|PUT /api/django/achats/bons-commande-fourn
 API rejected schema-compliant request|PUT /api/django/calepinage/calepinages/{id}/
 API rejected schema-compliant request|PUT /api/django/calepinage/parametres/
 API rejected schema-compliant request|PUT /api/django/core/vues/{id}/
-API rejected schema-compliant request|PUT /api/django/crm/clients/{id}/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
-API rejected schema-compliant request|PUT /api/django/crm/revues-compte/{id}/
 API rejected schema-compliant request|PUT /api/django/facturation/factures-lignes/{id}/
 API rejected schema-compliant request|PUT /api/django/ged/exigences-dossier/{id}/
 API rejected schema-compliant request|PUT /api/django/ged/routages-documentaires/{id}/
@@ -1111,10 +1029,8 @@ API rejected schema-compliant request|PUT /api/django/ventes/packs-asbuilt/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/recettes-mes/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/tests-pr-reception/{id}/
 API rejected schema-compliant request|PUT /api/django/visites/visites/{id}/
-JSON deserialization error|GET /api/django/crm/leads/{id}/salle-vente-analytics/
 JSON deserialization error|POST /api/django/core/sla/credits/{id}/statut/
 JSON deserialization error|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
-Missing Content-Type header|GET /api/django/crm/leads/{id}/salle-vente-analytics/
 Missing Content-Type header|POST /api/django/core/sla/credits/{id}/statut/
 Missing Content-Type header|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Response violates schema|GET /api/django/adminops/settings/
@@ -1152,21 +1068,6 @@ Response violates schema|GET /api/django/core/modules/
 Response violates schema|GET /api/django/core/modules/journal/
 Response violates schema|GET /api/django/core/status/
 Response violates schema|GET /api/django/core/vues/
-Response violates schema|GET /api/django/crm/appointments/{id}/
-Response violates schema|GET /api/django/crm/apporteurs/
-Response violates schema|GET /api/django/crm/apporteurs/{id}/
-Response violates schema|GET /api/django/crm/deals-enregistres/a-payer/
-Response violates schema|GET /api/django/crm/defis/{id}/classement/
-Response violates schema|GET /api/django/crm/forecast-entries/
-Response violates schema|GET /api/django/crm/forecast-entries/{id}/
-Response violates schema|GET /api/django/crm/leads/
-Response violates schema|GET /api/django/crm/leads/{id}/
-Response violates schema|GET /api/django/crm/leads/{id}/client-match/
-Response violates schema|GET /api/django/crm/leads/{id}/historique/
-Response violates schema|GET /api/django/crm/objectifs/attainment/
-Response violates schema|GET /api/django/crm/partenaires/
-Response violates schema|GET /api/django/crm/partenaires/{id}/
-Response violates schema|GET /api/django/crm/plans-compte/{id}/historique/
 Response violates schema|GET /api/django/facturation/factures/{id}/arrondi-caisse/
 Response violates schema|GET /api/django/facturation/factures/{id}/emails/
 Response violates schema|GET /api/django/facturation/factures/{id}/historique/
@@ -1270,12 +1171,6 @@ Response violates schema|GET /api/django/visites/visites/
 Response violates schema|PATCH /api/django/automation/approval-delegations/{id}/
 Response violates schema|PATCH /api/django/calepinage/calepinages/{id}/
 Response violates schema|PATCH /api/django/core/dossiers/{id}/
-Response violates schema|PATCH /api/django/crm/apporteurs/{id}/
-Response violates schema|PATCH /api/django/crm/equipes/{id}/
-Response violates schema|PATCH /api/django/crm/forecast-entries/{id}/
-Response violates schema|PATCH /api/django/crm/leads/{id}/
-Response violates schema|PATCH /api/django/crm/partenaires/{id}/
-Response violates schema|PATCH /api/django/crm/points-contact/{id}/
 Response violates schema|PATCH /api/django/facturation/factures/{id}/
 Response violates schema|PATCH /api/django/ged/documents/{id}/
 Response violates schema|PATCH /api/django/ged/dossiers/{id}/
@@ -1320,13 +1215,6 @@ Response violates schema|POST /api/django/calepinage/calepinages/{id}/pompage/
 Response violates schema|POST /api/django/calepinage/calepinages/{id}/raccordement/
 Response violates schema|POST /api/django/calepinage/calepinages/{id}/restaurer-corbeille/
 Response violates schema|POST /api/django/calepinage/calepinages/{id}/schema-unifilaire/
-Response violates schema|POST /api/django/crm/apporteurs/
-Response violates schema|POST /api/django/crm/forecast-entries/
-Response violates schema|POST /api/django/crm/leads/
-Response violates schema|POST /api/django/crm/leads/{id}/archiver/
-Response violates schema|POST /api/django/crm/leads/{id}/relance/initialiser/
-Response violates schema|POST /api/django/crm/leads/{id}/restaurer/
-Response violates schema|POST /api/django/crm/partenaires/
 Response violates schema|POST /api/django/facturation/factures/
 Response violates schema|POST /api/django/ged/documents/classer-apres-vente/
 Response violates schema|POST /api/django/ged/documents/{id}/assigner/
@@ -1379,11 +1267,6 @@ Response violates schema|POST /api/django/stock/modeles-bcf/
 Response violates schema|POST /api/django/ventes/devis/{id}/acquitter-derive/
 Response violates schema|POST /api/django/ventes/devis/{id}/dupliquer-variante/
 Response violates schema|POST /api/django/ventes/factures/
-Response violates schema|PUT /api/django/crm/appointments/{id}/
-Response violates schema|PUT /api/django/crm/apporteurs/{id}/
-Response violates schema|PUT /api/django/crm/forecast-entries/{id}/
-Response violates schema|PUT /api/django/crm/leads/{id}/
-Response violates schema|PUT /api/django/crm/partenaires/{id}/
 Response violates schema|PUT /api/django/facturation/factures/{id}/
 Response violates schema|PUT /api/django/ged/documents/{id}/
 Response violates schema|PUT /api/django/installations/chantiers/{id}/
@@ -1403,9 +1286,6 @@ Response violates schema|PUT /api/django/stock/modeles-bcf/{id}/
 Response violates schema|PUT /api/django/ventes/devis/{id}/
 Response violates schema|PUT /api/django/ventes/factures/{id}/
 Server error|GET /api/django/core/sla/
-Server error|GET /api/django/crm/clients/segments/
-Server error|GET /api/django/crm/defis/{id}/export-xlsx/
-Server error|GET /api/django/crm/relance-etapes/cadences-echues/
 Server error|GET /api/django/notifications/holidays/
 Server error|GET /api/django/parametres/fetes-mobiles/
 Server error|GET /api/django/parametres/traductions/glossaire-export/
@@ -1429,9 +1309,6 @@ Server error|POST /api/django/core/saved-queries/run/
 Server error|POST /api/django/core/scheduled-exports/{id}/executer/
 Server error|POST /api/django/core/workflow-templates/installer/
 Server error|POST /api/django/core/workflows/approuver-en-masse/
-Server error|POST /api/django/crm/appareils-equipe/ce-navigateur/
-Server error|POST /api/django/crm/clients/export-xlsx/
-Server error|POST /api/django/crm/relance-etapes/{id}/fait/
 Server error|POST /api/django/facturation/paiements/enregistrer-avance/
 Server error|POST /api/django/ged/demandes-disposition/
 Server error|POST /api/django/ged/demandes-signature/
@@ -1495,7 +1372,6 @@ Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
 Undocumented Content-Type|POST /api/public/v1/jobs/{id}/relancer/
 Undocumented Content-Type|POST /api/public/v1/leads-write/{id}/activites/
 Undocumented HTTP status code|DELETE /api/django/calepinage/calepinages/{id}/
-Undocumented HTTP status code|DELETE /api/django/crm/leads/{id}/
 Undocumented HTTP status code|DELETE /api/django/parametres/delete-logo/
 Undocumented HTTP status code|DELETE /api/django/parametres/delete-signature/
 Undocumented HTTP status code|DELETE /api/django/stock/fournisseurs/{id}/
@@ -1508,8 +1384,6 @@ Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/pv-recept
 Undocumented HTTP status code|GET /api/django/ventes/factures/{facture_id}/lettre-relance-premium/
 Undocumented HTTP status code|POST /api/django/calepinage/calepinages/depuis-lead/
 Undocumented HTTP status code|POST /api/django/calepinage/calepinages/{id}/dupliquer/
-Undocumented HTTP status code|POST /api/django/crm/appareils-equipe/
-Undocumented HTTP status code|POST /api/django/crm/leads/{id}/visites/planifier/
 Undocumented HTTP status code|POST /api/django/facturation/factures/{id}/creer-avoir/
 Undocumented HTTP status code|POST /api/django/facturation/factures/{id}/envoyer-email/
 Undocumented HTTP status code|POST /api/django/ventes/devis/auto/
@@ -1631,16 +1505,6 @@ Server error|POST /api/django/facturation/factures/{id}/lien-paiement/
 Server error|POST /api/django/records/comments/
 Server error|POST /api/django/ventes/factures/bulk/
 API accepted schema-violating request|PATCH /api/django/roles/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/motifs-perte/{id}/
-API accepted schema-violating request|POST /api/django/crm/leads/placement-cadences/
-API accepted schema-violating request|GET /api/django/crm/leads/{id}/duplicates/
-API accepted schema-violating request|PATCH /api/django/crm/apporteurs/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/defis/{id}/
-API accepted schema-violating request|POST /api/django/crm/apporteurs/
-API accepted schema-violating request|POST /api/django/crm/defis/
-API accepted schema-violating request|PUT /api/django/crm/apporteurs/{id}/
-API accepted schema-violating request|PUT /api/django/crm/defis/{id}/
-Response violates schema|POST /api/django/crm/points-contact/
 API accepted schema-violating request|GET /api/django/ventes/devis/
 API accepted schema-violating request|PATCH /api/django/entites/entites/{id}/
 API accepted schema-violating request|PATCH /api/django/stock/achats-parametres/{id}/
@@ -1669,16 +1533,7 @@ Response violates schema|PATCH /api/django/ventes/bons-commande/{id}/
 Response violates schema|PATCH /api/django/ventes/plans-commission/{id}/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
-API accepted schema-violating request|GET /api/django/crm/objectifs/
-API accepted schema-violating request|GET /api/django/crm/relance-etapes/
-API accepted schema-violating request|PATCH /api/django/crm/clients/{id}/
-API accepted schema-violating request|PATCH /api/django/crm/vues-enregistrees/{id}/
-API accepted schema-violating request|POST /api/django/crm/leads/{id}/questionnaire-lien/
-API accepted schema-violating request|POST /api/django/crm/vues-enregistrees/
 API accepted schema-violating request|POST /api/django/ventes/economie-ci/preview/
-API accepted schema-violating request|PUT /api/django/crm/vues-enregistrees/{id}/
-Server error|POST /api/django/crm/leads/bulk/
-Server error|POST /api/django/crm/public/booking/{token}/reserve/
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
 API accepted schema-violating request|POST /api/django/core/paiements-en-ligne/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/lots/
@@ -1691,7 +1546,6 @@ Response violates schema|GET /api/django/core/paiements-en-ligne/
 Response violates schema|GET /api/django/core/paiements-en-ligne/{id}/
 Response violates schema|PATCH /api/django/ventes/parametrages-relance-client/{id}/
 Response violates schema|POST /api/django/core/paiements-en-ligne/
-Server error|POST /api/django/crm/relance-etapes/{id}/reporter/
 Server error|POST /api/django/ventes/devis/auto/
 # VNT lot M0, 3e tour (12/10/2026, PR #979) : tirage aleatoire, ventes/core pre-existants.
 API accepted schema-violating request|PUT /api/django/core/dossiers/{id}/
@@ -1726,26 +1580,12 @@ API rejected schema-compliant request|PATCH /api/django/calepinage/calepinages/{
 API rejected schema-compliant request|PATCH /api/django/crm/canaux/{id}/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/dupliquer/
 Response violates schema|GET /api/django/calepinage/calepinages/{id}/meteo-fichier/
-Server error|POST /api/django/crm/leads/export-xlsx/
-Server error|POST /api/django/crm/leads/{id}/locataire/
 # PR #984, 2e tirage (12/10/2026) — 2 constats PRÉ-EXISTANTS supplémentaires (variance de couverture du job PR),
 # gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (leads/{id}/merge = vrai 500 crm à corriger à la cause).
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/schema-unifilaire/
-Server error|POST /api/django/crm/leads/{id}/merge/
 # PR #984, 3e tirage (12/10/2026) — 17 constats PRÉ-EXISTANTS (variance de couverture du job PR : 198 opérations revues au 3e tirage contre 154 au 1er),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
-API accepted schema-violating request|PATCH /api/django/crm/partenaires/{id}/
-API accepted schema-violating request|POST /api/django/crm/clients/
-API accepted schema-violating request|POST /api/django/crm/partenaires/
-API accepted schema-violating request|PUT /api/django/crm/partenaires/{id}/
-API rejected schema-compliant request|POST /api/django/crm/forecast-entries/
 API rejected schema-compliant request|PUT /api/django/calepinage/parametres/profils-types/
-Server error|POST /api/django/crm/leads/{id}/convertir-client/
-Server error|POST /api/django/crm/leads/{id}/message-visite/ouvert/
-Server error|POST /api/django/crm/leads/{id}/relance/arreter/
-Server error|POST /api/django/crm/leads/{id}/resume-associe/
-Server error|POST /api/django/crm/leads/{id}/whatsapp-devis/
-Server error|POST /api/django/crm/leads/{id}/whatsapp-devis-apercu/
 Server error|POST /api/django/facturation/factures/{id}/retour-client/
 Server error|POST /api/django/ventes/devis/{id}/generer-facture/
 Server error|POST /api/django/ventes/factures/{id}/creer-avoir/
@@ -1785,7 +1625,6 @@ API rejected schema-compliant request|PATCH /api/django/stock/blocages-qualite/{
 API rejected schema-compliant request|PUT /api/django/stock/blocages-qualite/{id}/
 API rejected schema-compliant request|POST /api/django/achats/factures-fournisseur/depuis-ocr/
 # Vague 7 (13/10/2026) — lignes gelées sur dev-all-laptop absentes de main après fusion (union).
-API accepted schema-violating request|GET /api/django/crm/leads/
 API rejected schema-compliant request|PATCH /api/django/core/dashboards-partages-internes/{id}/
 API rejected schema-compliant request|PUT /api/django/core/dashboards-partages-internes/{id}/
 API rejected schema-compliant request|PUT /api/django/core/workflow-definitions/{id}/

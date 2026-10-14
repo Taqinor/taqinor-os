@@ -18,6 +18,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.parseurs import corps_valide
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset, scope_client_queryset
@@ -43,7 +44,9 @@ from .serializers_clients import (
 )
 from apps.records.serializers import ChatterActivitySerializer
 from .fiche_bulk import coerce_id_list
-from .params_requete import CorpsTexteMixin, entier_param
+from .params_requete import (
+    CorpsTexteMixin, UniciteConflitMixin, entier_param, texte_param,
+    valider_pagination)
 from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
 from . import activity
 from . import schema_docs as sd
@@ -356,9 +359,10 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
 
         from .visites import appareils_equipe_ids
 
+        valider_pagination(request)
         base = VisiteExterne.objects.filter(
             company=request.user.company).exclude(appareil_id='')
-        appareil_id = request.query_params.get('appareil_id')
+        appareil_id = texte_param(request, 'appareil_id')
         if appareil_id:
             base = base.filter(appareil_id=appareil_id)
 
@@ -423,6 +427,13 @@ _COOKIES_EQUIPE_MAX_AGE = 730 * 24 * 3600
 #: pour reconnaître l'appareil dans la liste, jamais un user-agent entier.
 _MAX_NAVIGATEUR = 80
 
+#: Corps publié (et validé) de ``appareils-equipe/ce-navigateur/``.
+_CE_NAVIGATEUR_REQUETE = inline_serializer(
+    'AppareilEquipeCeNavigateurRequest', {
+        'appareil_id': serializers.CharField(required=False, allow_blank=True),
+        'navigateur': serializers.CharField(required=False, allow_blank=True),
+    })
+
 
 class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
                             mixins.CreateModelMixin,
@@ -479,12 +490,7 @@ class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
                         headers=self.get_success_headers(donnees))
 
     @extend_schema(
-        request=inline_serializer('AppareilEquipeCeNavigateurRequest', {
-            'appareil_id': serializers.CharField(required=False,
-                                                 allow_blank=True),
-            'navigateur': serializers.CharField(required=False,
-                                                allow_blank=True),
-        }),
+        request=_CE_NAVIGATEUR_REQUETE,
         responses={200: AppareilEquipeSerializer},
     )
     @action(detail=False, methods=['post'], url_path='ce-navigateur',
@@ -518,6 +524,9 @@ class AppareilEquipeViewSet(CorpsTexteMixin, mixins.ListModelMixin,
         Le libellé automatique n'est posé qu'à la CRÉATION et porte le nom de
         l'utilisateur connecté (jamais un prénom en dur) : un libellé déjà
         saisi à la main dans l'écran Visiteurs n'est jamais écrasé."""
+        # ERR-ENF11-FUZZ-CRM : le corps est validé par le schéma publié (un
+        # ``navigateur: null`` passait, alors que le champ n'est pas nullable).
+        corps_valide(request, _CE_NAVIGATEUR_REQUETE)
         appareil_id = str(request.data.get('appareil_id') or '').strip()
         cookie = str(request.COOKIES.get(COOKIE_APPAREIL) or '').strip()
         # ACRM24 (C-ACRM-017) — l'identifiant du CORPS n'est retenu que s'il
@@ -597,7 +606,7 @@ def _voit_le_crm(user):
     return bool(getattr(user, 'is_responsable', False))
 
 
-class ClientViewSet(CompanyScopedModelViewSet):
+class ClientViewSet(UniciteConflitMixin, CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     # ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
     # get_queryset (portée de visibilité) et perform_create (company +
@@ -912,9 +921,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from django.utils import timezone
         client = self.get_object()
         if client.is_anonymized:
+            # ERR-ENF11-FUZZ-CRM : refus d'ÉTAT (fiche déjà effacée) = 409.
             return Response(
                 {'detail': 'Ce client est déjà anonymisé.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         client.nom = f'Client anonymisé #{client.id}'
         client.prenom = None
         client.email = None
@@ -1299,7 +1309,7 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.param('metric'), sd.param('year', OpenApiTypes.INT), sd.param('period_type'), sd.P_OWNER_OU_NULL]))
+@extend_schema_view(list=extend_schema(parameters=[sd.param('metric', enum=ObjectifCommercial.Metric.values), sd.param('year', OpenApiTypes.INT), sd.param('period_type', enum=ObjectifCommercial.PeriodType.values), sd.P_OWNER_OU_NULL]))
 class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
@@ -1316,14 +1326,18 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset().select_related('owner')
-        # Filtres optionnels.
-        metric = self.request.query_params.get('metric')
+        # Filtres optionnels. ERR-ENF11-FUZZ-CRM : ``metric`` et
+        # ``period_type`` sont des énumérations publiées — une valeur hors
+        # liste (dont un octet NUL, qui faisait lever Postgres : 500) est un
+        # 400 nommant le paramètre.
+        metric = self._choix_param('metric', ObjectifCommercial.Metric)
         if metric:
             qs = qs.filter(metric=metric)
         year = entier_param(self.request, 'year')
         if year is not None:
             qs = qs.filter(period_year=year)
-        period_type = self.request.query_params.get('period_type')
+        period_type = self._choix_param(
+            'period_type', ObjectifCommercial.PeriodType)
         if period_type:
             qs = qs.filter(period_type=period_type)
         owner = self.request.query_params.get('owner')
@@ -1332,6 +1346,13 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
         elif owner:
             qs = qs.filter(owner_id=entier_param(self.request, 'owner'))
         return qs
+
+    def _choix_param(self, nom, choix):
+        valeur = self.request.query_params.get(nom)
+        if valeur and valeur not in choix.values:
+            raise DRFValidationError(
+                {nom: f'Valeur inconnue (attendu : {", ".join(choix.values)}).'})
+        return valeur
 
     def perform_create(self, serializer):
         serializer.save(
@@ -1373,8 +1394,10 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     # le serializer). Annotation de schéma uniquement : aucun effet runtime.
     @extend_schema(
         parameters=[
-            sd.param('metric'), sd.param('year', OpenApiTypes.INT),
-            sd.param('period_type'),
+            sd.param('metric', enum=ObjectifCommercial.Metric.values),
+            sd.param('year', OpenApiTypes.INT),
+            sd.param('period_type',
+                     enum=ObjectifCommercial.PeriodType.values),
             sd.param('owner', description='Identifiant ou « null ».'),
         ],
         responses=ObjectifAttainmentSerializer(many=True),
@@ -1472,7 +1495,8 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'), sd.param('periode', description='AAAA-MM')]))
-class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class ForecastEntryViewSet(UniciteConflitMixin, _PorteeEnfantsMixin,
+                           CompanyScopedModelViewSet):
 
     """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
 
@@ -1601,7 +1625,8 @@ def forecast_historique_view(request):
 
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
-class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
+class PlanCompteViewSet(UniciteConflitMixin, _PorteeEnfantsMixin,
+                        ChatterViewSetMixin, CompanyScopedModelViewSet):
 
     """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
     ``records.Activity`` — création + changements de champ suivis journalisés

@@ -5,7 +5,7 @@ modifiée à la main.
 
 Contrat partagé : ``apps/crm/contract_samples/lead_client_ecart.json``
 (QJR506) — GET lead {client, client_nom, client_ecart} ; POST
-…/synchroniser-client/ -> 200 {client_ecart, champs_mis_a_jour} | 400 {detail}.
+…/synchroniser-client/ -> 200 {client_ecart, champs_mis_a_jour} | 409 {detail}.
 
 Run:
     powershell -File scripts/test-backend.ps1 -RestoreDb \
@@ -126,12 +126,13 @@ class TestIdentiteClientSuitLead(TestCase):
         self.assertEqual(r.json()['client_ecart'], [])
         self.assertEqual(r.json()['champs_mis_a_jour'], ['telephone'])
 
-    def test_action_sans_client_400(self):
+    def test_action_sans_client_409(self):
         seul = Lead.objects.create(company=self.company, nom='Seul')
         r = self.api.post(
             f'/api/django/crm/leads/{seul.id}/synchroniser-client/', {},
             format='json')
-        self.assertEqual(r.status_code, 400)
+        # ERR-ENF11-FUZZ-CRM : refus d'état = 409 (corps inchangé).
+        self.assertEqual(r.status_code, 409)
         self.assertEqual(set(r.json()), set(CONTRAT['exemple_400']))
 
 

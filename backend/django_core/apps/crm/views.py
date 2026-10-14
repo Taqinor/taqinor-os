@@ -16,7 +16,7 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
-from .params_requete import booleen_param, liste_ids
+from .params_requete import UniciteConflitMixin, booleen_param, liste_ids
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -998,19 +998,20 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         """QJR590 (contrat ``lead_client_ecart.json``) — « Mettre à jour la
         fiche client » : recopie TOUT l'écart d'identité du lead vers SA fiche
         Client (``lead.client`` seulement, jamais un id du corps). 200
-        ``{client_ecart, champs_mis_a_jour}`` | 400 ``{detail}``."""
+        ``{client_ecart, champs_mis_a_jour}`` | 409 ``{detail}`` (refus
+        d'ÉTAT : aucune fiche liée, ou fiche anonymisée — ERR-ENF11-FUZZ-CRM)."""
         from .clients_identite import client_ecart, synchroniser_identite_client
 
         lead = self.get_object()
         if not lead.client_id:
             return Response(
                 {'detail': "Ce lead n'est lié à aucune fiche client."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         if getattr(lead.client, 'is_anonymized', False):
             return Response(
                 {'detail': 'La fiche client est anonymisée : elle ne se '
                            'met plus à jour.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         champs, _message = synchroniser_identite_client(
             lead, None, request.user, force=True)
         lead.client.refresh_from_db()
@@ -1217,7 +1218,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         gps_hors_zone = False
         # ``proches: true`` = l'écran-carte (dialogue) ; le simple contrôle
         # de statut (débouncé à la frappe) reste PUR — aucun géocodage réseau.
-        if booleen_param(request.data, 'proches'):
+        if booleen_param(request.data, 'proches', nul_refuse=True):
             try:
                 lat = float(request.data.get('gps_lat'))
                 lng = float(request.data.get('gps_lng'))
@@ -1929,7 +1930,8 @@ class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadO
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
-class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class SiteProfileViewSet(UniciteConflitMixin, _PorteeEnfantsMixin,
+                         CompanyScopedModelViewSet):
 
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
@@ -1994,7 +1996,7 @@ class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('page')]))
-class SavedViewViewSet(CompanyScopedModelViewSet):
+class SavedViewViewSet(UniciteConflitMixin, CompanyScopedModelViewSet):
     """LB48 — vues enregistrées PERSONNELLES (filtres + disposition) pour une
     page donnée (ex. ``crm.leads``).
 

@@ -12,7 +12,7 @@ from core.serializers import (
     scope_related_field,
 )
 from .champs_api import (
-    MAPPING_BOOLEEN_STRICT, MAPPING_DATE_HEURE_RFC3339, DateHeureRfc3339,
+    MAPPING_DATE_HEURE_RFC3339, MAPPING_TEXTE_STRICT, DateHeureRfc3339,
 )
 from .models import (
     Appointment, Client, Lead, LeadActivity, PointContact, SavedView, SiteProfile,
@@ -1502,7 +1502,7 @@ def _motif_en_usage(company, nom):
 
 
 class LeadTagSerializer(serializers.ModelSerializer):
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     # Nombre de leads référençant cette étiquette — l'UI désactive la
     # suppression et propose l'archivage si > 0 (L780).
     en_usage = serializers.SerializerMethodField()
@@ -1518,7 +1518,7 @@ class LeadTagSerializer(serializers.ModelSerializer):
 
 
 class MotifPerteSerializer(serializers.ModelSerializer):
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     # Nombre de leads utilisant ce motif de perte (L779).
     en_usage = serializers.SerializerMethodField()
 
@@ -1535,7 +1535,7 @@ class MotifPerteSerializer(serializers.ModelSerializer):
 
 
 class CanalSerializer(serializers.ModelSerializer):
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     # Nombre de leads utilisant ce canal — l'UI désactive la suppression si > 0.
     en_usage = serializers.SerializerMethodField()
 

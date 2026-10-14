@@ -18,7 +18,8 @@ from .serializers import LeadSerializer, PointContactSerializer, masquer_pii_dic
 from .actions_crud import READ_ACTIONS, _PorteeEnfantsMixin
 from . import activity
 from . import schema_docs as sd
-from .params_requete import date_param, entier_param
+from .params_requete import (
+    date_param, entier_param, texte_param, valider_pagination)
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
 
 
@@ -38,6 +39,10 @@ def rapport_attribution(request):
     fin = date_param(request, 'fin')
     from .selectors import attribution_leads
     return Response(attribution_leads(user.company, debut=debut, fin=fin))
+
+
+#: Plafond d'une colonne ``PositiveIntegerField`` (int4 Postgres).
+_ORDRE_MAX = 2147483647
 
 
 @extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD]))
@@ -109,7 +114,9 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
                     company=self.request.user.company, lead=lead)
                 .aggregate(m=Max('ordre'))['m'] or 0
             )
-            save_kwargs['ordre'] = current_max + 1
+            # ERR-ENF11-FUZZ-CRM : un ordre déjà au plafond de la colonne
+            # (PositiveIntegerField, 2 147 483 647) ne déborde plus en 500.
+            save_kwargs['ordre'] = min(current_max + 1, _ORDRE_MAX)
         obj = serializer.save(**save_kwargs)
         # Trace dans le chatter du lead (best-effort, ne casse jamais la création).
         try:
@@ -167,6 +174,7 @@ class LeadIntakeActionsMixin:
         lead (plus aucune fusion silencieuse), c'est ce bandeau qui porte le
         rapprochement, et la fusion reste manuelle."""
         from .leads_doublons import find_duplicate_leads, is_strong_identity_match
+        valider_pagination(request)
         lead = self.get_object()
         dups = find_duplicate_leads(lead, queryset=self._leads_en_portee())
         # ACRM4 — PII vidée pour un rôle sans ``client_pii_voir``
@@ -279,6 +287,7 @@ class LeadIntakeActionsMixin:
             _est_vide,
         )
         from .models import LeadActivity
+        valider_pagination(request)
         include_archived = request.query_params.get('archived') in ('1', 'true')
         clusters, _ = find_duplicate_clusters(
             request.user.company, include_archived=include_archived,
@@ -360,8 +369,10 @@ class LeadIntakeActionsMixin:
                 {'others': ["Liste d'identifiants de leads (entiers) attendue."]})
         others = list(self.get_queryset().filter(pk__in=ids).exclude(pk=survivor.pk))
         if not others:
+            # ERR-ENF11-FUZZ-CRM : identifiants bien formés mais inconnus (ou
+            # hors portée) = ressource introuvable, 404 — jamais un 400.
             return Response({'detail': 'Leads à fusionner introuvables.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND)
         merge_leads(survivor, others, request.user)
         survivor.refresh_from_db()
         data = dict(
@@ -451,7 +462,7 @@ class LeadIntakeActionsMixin:
         })
 
     # ── FG34 — ROI par source / campagne ────────────────────────────────────
-    @extend_schema(parameters=[sd.param('from', OpenApiTypes.DATE), sd.param('to', OpenApiTypes.DATE), sd.param('canal')], responses=sd.liste('CrmRoiSource'))
+    @extend_schema(parameters=[sd.param_date('from'), sd.param_date('to'), sd.param('canal')], responses=sd.liste('CrmRoiSource'))
     @action(detail=False, methods=['get'], url_path='roi-sources',
             permission_classes=[IsAnyRole])
     def roi_sources(self, request):
@@ -471,7 +482,7 @@ class LeadIntakeActionsMixin:
             qs = qs.filter(date_creation__date__gte=from_)
         if to_:
             qs = qs.filter(date_creation__date__lte=to_)
-        canal_filter = request.query_params.get('canal')
+        canal_filter = texte_param(request, 'canal')
         if canal_filter:
             qs = qs.filter(canal=canal_filter)
 

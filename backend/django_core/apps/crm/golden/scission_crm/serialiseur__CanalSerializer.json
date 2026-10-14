@@ -7,13 +7,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "cle",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "libelle",
    "read_only": false,
    "required": true
