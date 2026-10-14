@@ -3221,8 +3221,7 @@ class CauseDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'list' and self.request.query_params.get(
-                'archived') != '1':
+        if self.action == 'list' and not archives_incluses(self.request):
             qs = qs.filter(archived=False)
         return qs
 
@@ -3375,8 +3374,7 @@ class ReponseTypeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'list' and self.request.query_params.get(
-                'archived') != '1':
+        if self.action == 'list' and not archives_incluses(self.request):
             qs = qs.filter(archived=False)
         if self.action == 'list':
             qs = self._filtrer_par_canal(qs)
