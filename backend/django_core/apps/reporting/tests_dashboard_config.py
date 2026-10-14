@@ -276,3 +276,53 @@ class DashboardConfigListScopeTests(TestCase):
             cards=['kpis'])
         res = self.api.get(f'{BASE_URL}{other_cfg.pk}/')
         self.assertEqual(res.status_code, 404)
+
+
+class DashboardConfigRegleUserOuPalierTests(TestCase):
+    """CI #997 fuzz — la règle « per-user XOR palier » est PUBLIÉE au schéma
+    (création et remplacement) : un corps qui porte les deux n'est plus
+    « conforme au schéma » ; un utilisateur inconnu répond 404."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='RegleCo')
+        self.admin = _admin(self.company)
+        self.api = _auth(self.admin)
+
+    def _operation(self, methode):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/reporting/', include('apps.reporting.urls'))],
+        ).get_schema(request=None, public=True)
+        suffixe = ('dashboard-config/' if methode == 'post'
+                   else 'dashboard-config/{id}/')
+        chemin = next(p for p in schema['paths'] if p.endswith(suffixe))
+        return schema['paths'][chemin][methode]
+
+    def test_regle_publiee_a_la_creation_et_au_remplacement(self):
+        for methode in ('post', 'put'):
+            with self.subTest(methode=methode):
+                corps = next(iter(self._operation(methode)[
+                    'requestBody']['content'].values()))['schema']
+                branches = corps['allOf'][1]['anyOf']
+                self.assertEqual(len(branches), 2)
+                self.assertEqual(branches[0]['required'], ['user'])
+                self.assertEqual(branches[1]['required'], ['menu_tier'])
+        # Une mise à jour PARTIELLE n'exige rien : pas de règle au PATCH.
+        corps = next(iter(self._operation('patch')[
+            'requestBody']['content'].values()))['schema']
+        self.assertNotIn('allOf', corps)
+
+    def test_utilisateur_inconnu_404(self):
+        res = self.api.post(BASE_URL, {
+            'user': 987654, 'menu_tier': '', 'cards': ['kpis'],
+        }, format='json')
+        self.assertEqual(res.status_code, 404, res.data)
+        self.assertFalse(DashboardConfig.objects.exists())
+
+    def test_menu_tier_non_texte_400(self):
+        res = self.api.post(BASE_URL, {
+            'user': None, 'menu_tier': 0, 'cards': ['kpis'],
+        }, format='json')
+        self.assertEqual(res.status_code, 400, res.data)

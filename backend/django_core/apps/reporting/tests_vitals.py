@@ -145,3 +145,26 @@ class VitalsRetentionTests(TestCase):
     def test_policy_registered_in_shared_registry(self):
         from core.retention import list_retention_policies
         self.assertIn('reporting_web_vitals', list_retention_policies())
+
+
+class VitalsTypesStrictsTests(TestCase):
+    """CI #997 fuzz — ``navigation_id`` / ``route`` sont des textes : un
+    nombre JSON n'est plus converti en chaîne."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='vx61-strict', defaults={'nom': 'VX61 Strict'})[0]
+        self.user = User.objects.create_user(
+            username='vx61_strict', password='x', company=self.company)
+        self.api = _auth(self.user)
+
+    def test_navigation_id_et_route_non_texte_refuses(self):
+        for champ in ('navigation_id', 'route'):
+            with self.subTest(champ=champ):
+                resp = self.api.post(VITALS_URL, {
+                    'route': '/x', 'metric': 'LCP', 'value': 1,
+                    'rating': 'good', 'navigation_id': 'n', champ: 0,
+                }, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn(champ, resp.data)
+        self.assertFalse(WebVitalMetric.objects.exists())

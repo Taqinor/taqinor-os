@@ -12,6 +12,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from core.champs_stricts import ChampsStrictsSansDecimalMixin
+
 from .models import WebVitalMetric
 from .schema_fields import champ_choix
 from drf_spectacular.types import OpenApiTypes
@@ -20,7 +22,8 @@ from rest_framework import serializers as drf_serializers
 from drf_spectacular.utils import inline_serializer
 
 
-class WebVitalMetricSerializer(serializers.ModelSerializer):
+class WebVitalMetricSerializer(ChampsStrictsSansDecimalMixin,
+                               serializers.ModelSerializer):
     class Meta:
         model = WebVitalMetric
         # company/utilisateur : posés côté serveur dans la vue, jamais lus du

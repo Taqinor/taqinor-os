@@ -214,3 +214,24 @@ class TestClasseurApi(ClasseurBase):
         resp = viewer_api.get('/api/django/reporting/classeurs/')
         titres = [c['titre'] for c in resp.data.get('results', resp.data)]
         self.assertIn('Partagé fin', titres)
+
+
+class TestClasseurTypesStricts(ClasseurBase):
+    """CI #997 fuzz — ``titre`` est un texte : un nombre JSON n'est plus
+    converti en silence (« accepted schema-violating request »)."""
+
+    def test_titre_non_texte_refuse_400(self):
+        for valeur in (0, 12.5, True, [], {}):
+            with self.subTest(titre=valeur):
+                resp = self.api.post('/api/django/reporting/classeurs/', {
+                    'titre': valeur, 'cellules': {}, 'liens': {},
+                }, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn('titre', resp.data)
+        self.assertFalse(Classeur.objects.exists())
+
+    def test_titre_texte_accepte(self):
+        resp = self.api.post('/api/django/reporting/classeurs/', {
+            'titre': '0', 'cellules': {}, 'liens': {}, 'partage': False,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
