@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { lireSourcesDevisList } from '../../pages/ventes/devisList/lireSources.mjs'
+import { lireSourcesFactureList } from '../../pages/ventes/factureList/lireSources.mjs'
 import { resolveCss } from '../../test/readCss.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -54,7 +55,8 @@ test('le devis garde le moteur /proposal, la facture son PDF legacy', () => {
   // Et il n'ouvre plus d'onglet dans le handler d'aperçu.
   assert.match(devis, /const handlePreview = \(d\) => \{ setPreviewDevis\(d\) \}/)
 
-  const facture = page('FactureList.jsx')
+  // VNT102 — l'aperçu de la facture vit dans factureList/useFactureDocuments.js.
+  const facture = lireSourcesFactureList()
   assert.match(facture, /fetchFacturePreviewBlob[\s\S]{0,900}?ventesApi\.telechargerPdfFacture/)
   // Le PDF de facture ne passe JAMAIS par le moteur de proposition.
   assert.doesNotMatch(facture, /getProposalPdf/)

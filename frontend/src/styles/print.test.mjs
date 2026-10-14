@@ -12,6 +12,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { lireSourcesDevisList } from '../pages/ventes/devisList/lireSources.mjs'
+import { lireSourcesFactureList } from '../pages/ventes/factureList/lireSources.mjs'
 import { resolveCss } from '../test/readCss.mjs'
 import { memeCss } from '../../scripts/css_golden.mjs'
 
@@ -22,7 +23,7 @@ const PRINT_CSS = read('print.css')
 const INDEX_CSS = resolveCss(join(HERE, '../index.css'))
 // SPL206 — le bouton Imprimer vit dans devisList/DevisListChrome.jsx.
 const DEVIS = lireSourcesDevisList()
-const FACTURE = read('../pages/ventes/FactureList.jsx')
+const FACTURE = lireSourcesFactureList()
 const INSTALL = read('../pages/installations/InstallationDetail.jsx')
 
 test('print.css : tout est sous @media print (inerte à l’écran)', () => {
