@@ -829,9 +829,13 @@ def _audit_notify(user, company, event_type, *, channel, ok, instance=None,
 
     Ne bloque JAMAIS l'envoi : toute erreur d'écriture d'audit est absorbée
     par `audit.recorder.record` lui-même (best-effort), et on l'entoure ici
-    d'une couche supplémentaire par prudence."""
+    d'une couche supplémentaire par prudence.
+
+    ENF20 — passe par `core.audit_registry` (rempli par apps.audit ready()) :
+    notifications n'importe plus apps.audit (contrat
+    ventes-does-not-import-audit, chemin transitif ventes→notifications)."""
     try:
-        from apps.audit import recorder
+        from core import audit_registry as recorder
         action = _AUDIT_CHANNEL_ACTION.get(channel, 'notify')
         if statut is None:
             statut = 'envoyé' if ok else 'échec'
