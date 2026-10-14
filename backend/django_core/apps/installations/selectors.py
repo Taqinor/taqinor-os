@@ -2493,8 +2493,9 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
         bloc = _bloc(jour)
         for tech in eligibles:
             # FG302 — indisponibilité sur TOUT le bloc.
-            if any(ressource_indisponible(company, tech.id, j, j)
-                   for j in bloc):
+            if ressource_indisponible(company, tech.id, bloc[0], bloc[-1]) \
+                    and any(ressource_indisponible(company, tech.id, j, j)
+                            for j in bloc):
                 continue
             # FG300 — conflit : le technicien (principal OU membre d'équipe)
             # porte déjà une intervention active sur un jour du bloc →
