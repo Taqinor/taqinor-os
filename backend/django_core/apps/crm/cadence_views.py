@@ -1165,7 +1165,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         definir_langue_preferee(etape.lead, request.user, langue)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest', type_piece=ChoixDocumente(choices=list(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False)), 'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest', type_piece=ChoixDocumente(choices=list(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False), fichier=serializers.FileField(required=False))}, responses=sd.OBJ)
+    @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest', type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False)), 'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest', type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False), fichier=serializers.FileField(required=False))}, responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='piece-recue',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     @_geste_atomique

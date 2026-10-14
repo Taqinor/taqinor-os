@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4804, operations: 7556, components: 3480}
+counts: {paths: 4804, operations: 7556, components: 3478}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9599,7 +9599,6 @@ components:
 - CalepinageMasseLestage
 - CalepinageMeteoFichier
 - CalepinageMeteoFichierCorpsRequest
-- CalepinageMeteoFichierRetenu
 - CalepinageModeleBascule
 - CalepinageModulesDisponibles
 - CalepinageMoteurAccuseTravailLong
@@ -9621,7 +9620,6 @@ components:
 - CalepinagePompageCorpsRequest
 - CalepinagePompageReponse
 - CalepinagePoseReelle
-- CalepinagePoseReelleCorpsRequest
 - CalepinagePublicationDevis
 - CalepinageRaccordement
 - CalepinageRaccordementCorpsRequest
@@ -9645,8 +9643,6 @@ components:
 - CalepinageSuggestionPenteDemandeRequest
 - CalepinageSuggestionPenteDocumentRequest
 - CalepinageSuggestionPenteReponse
-- CalepinageSuggestionsPenteRequeteOperationEnum
-- CalepinageSuggestionsPenteRequeteRequest
 - CalepinageSyncDevis
 - CalepinageSyncDevisCorpsRequest
 - CalepinageTroncons
@@ -9663,6 +9659,7 @@ components:
 - CanalRequest
 - CanalResolutionEnum
 - CapaciteEtatEnum
+- CardsEnum
 - CashFlowBucketAuDela
 - CashFlowBucketCeMois
 - CashFlowBucketCetteSemaine
@@ -12548,6 +12545,7 @@ components:
 - VisiteRenvoiRequest
 - VisiteTerrain
 - VisiteTerrainContexte
+- VisiteTerrainLigne
 - VisiteTerrainRequest
 - VisiteTerrainStatutEnum
 - VisitesLeadsRecherche
