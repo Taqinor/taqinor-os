@@ -561,6 +561,17 @@ class TestFuzzCrmTour2(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('period_month', resp.data)
 
+    def test_ci997_client_fk_inconnue_404(self):
+        """CI #997 fuzz — ``liste_prix``/``parent``/``tiers`` bien formés mais
+        inexistants : 404 (ressource absente), plus 400 sur requête valide."""
+        for champ in ('liste_prix', 'parent', 'tiers'):
+            with self.subTest(champ=champ):
+                resp = self.api.post(
+                    '/api/django/crm/clients/',
+                    {'nom': 'Client FK', champ: 987654321}, format='json')
+                self.assertEqual(resp.status_code, 404, resp.content)
+                self.assertIn(champ, resp.data)
+
     def test_tour3_corps_types_jamais_500(self):
         """ERR-ENF11-FUZZ-CRM — textes non chaîne : 400 nommé, plus de 500
         (``.strip()`` sur un nombre) ; adresse sans résultat → 404."""
