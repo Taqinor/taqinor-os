@@ -50,6 +50,19 @@ def _texte(valeur):
     return valeur.strip() if isinstance(valeur, str) else ''
 
 
+def _motif_perte_exige(params):
+    """Motif de la mise en perte en masse, exigé AVANT la boucle — même pour
+    une sélection vide (CI #997 (2) : la vérification ne vivait que dans la
+    boucle, un schéma qui le déclare obligatoire était donc « violé » en
+    silence). MRY22 — même exigence qu'à l'unité : perdre 40 leads d'un coup
+    SANS raison est pire, pas plus acceptable."""
+    motif = _texte(params.get('motif'))
+    if not motif:
+        raise ValueError(
+            'Motif de perte obligatoire pour une mise en perte en masse.')
+    return motif
+
+
 _DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}\Z')
 
 
@@ -136,7 +149,6 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
 
     # Pré-validation des paramètres dépendant de l'action.
     target_stage = None
-    target_motif = None
     owner_obj = None
     tag = _texte(params.get('tag')) if op in ('add_tag', 'remove_tag') else None
     relance = None
@@ -169,14 +181,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
     elif op in ('add_tag', 'remove_tag') and not tag:
         raise ValueError("Étiquette vide.")
     elif op == 'set_perdu':
-        # CI #997 (2) — le motif est exigé même pour une sélection VIDE (la
-        # vérification ne vivait que dans la boucle : « schéma violé » accepté).
-        target_motif = _texte(params.get('motif'))
-        if not target_motif:
-            # MRY22 — même exigence qu'à l'unité : perdre 40 leads d'un coup
-            # SANS raison est pire, pas plus acceptable.
-            raise ValueError(
-                'Motif de perte obligatoire pour une mise en perte en masse.')
+        target_motif = _motif_perte_exige(params)
     elif op == 'set_relance':
         relance = _parse_date(params.get('relance_date'))
         if relance is None:
