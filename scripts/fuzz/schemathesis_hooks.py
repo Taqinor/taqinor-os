@@ -302,11 +302,49 @@ def _ids_fk_connus(case):
     # aussi : un GET filtré sur un id inexistant répondait 400.
     query = getattr(case, 'query', None)
     if isinstance(query, dict):
+        avant = dict(query)
         _cible_reelle(query)
         for nom, valeur in list(query.items()):
             entree = _entree(nom, table)
             if entree is not None:
                 query[nom] = _remplacer_valeur(valeur, entree, texte=True)
+        _retyper_query(query, avant, _query_typee(meta))
+
+
+def _query_typee(meta):
+    """Cliché TYPÉ de la query (``CaseMetadata.raw_containers``) : la phase
+    coverage envoie des chaînes (forme fil) mais valide le type du schéma."""
+    brutes = getattr(meta, 'raw_containers', None) or {}
+    for location, valeur in brutes.items():
+        if getattr(location, 'value', location) == 'query' and isinstance(
+                valeur, dict):
+            return valeur
+    return {}
+
+
+def _au_type(valeur, typee):
+    """``'12'`` -> ``12`` quand la valeur générée était un entier (listes
+    comprises) ; tout le reste inchangé."""
+    if isinstance(typee, bool) or isinstance(valeur, bool):
+        return valeur
+    if isinstance(typee, int) and isinstance(valeur, str) and valeur.isdigit():
+        return int(valeur)
+    if isinstance(typee, list) and typee and isinstance(valeur, list):
+        return [_au_type(v, typee[0]) for v in valeur]
+    return valeur
+
+
+def _retyper_query(query, avant, typee):
+    """CI #993 — une FK de query SUBSTITUÉE garde le type de la valeur
+    générée. Schemathesis revalide une clé réécrite par un crochet sur sa
+    valeur VIVANTE : ``'1'`` (chaîne) contre ``type: integer`` -> invalide ->
+    le cas positif basculait NÉGATIF, et la réponse 200 (légitime : id réel)
+    devenait « API accepted schema-violating request » sans aucune donnée
+    invalide envoyée (17 constats du job PR, run 38505583284 :
+    ``?fournisseur=1``, ``?produit=1``, ``?lead=1``…)."""
+    for nom, valeur in list(query.items()):
+        if nom in typee and valeur != avant.get(nom):
+            query[nom] = _au_type(valeur, typee[nom])
 
 
 # ── 4. Ids RÉELS pour les paramètres de chemin (ENF11) ─────────────────
