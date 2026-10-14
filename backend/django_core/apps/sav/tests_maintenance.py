@@ -112,3 +112,62 @@ class TestMaintenance(TestCase):
             format='json')
         self.assertEqual(r.status_code, 400, r.data)
         self.assertIn('installation', r.data)
+
+    def _contrat_post(self, **corps):
+        return self.api.post('/api/django/sav/contrats-maintenance/', {
+            'client': self.client_obj.id, 'periodicite': 'mensuel',
+            'date_debut': '2000-01-01', **corps}, format='json')
+
+    def test_duree_mois_hors_borne_400_et_rien_cree(self):
+        # CI #997 api-fuzz (3e passe) : duree_mois à 2147483646 faisait déborder
+        # l'échéance (an > 9999) -> 500 APRÈS écriture, la ligne restait et
+        # cassait ensuite la liste. Le schéma publie maximum 600.
+        for brut in (601, 2147483646, -1):
+            r = self._contrat_post(duree_mois=brut)
+            self.assertEqual(r.status_code, 400, (brut, r.content))
+            self.assertIn('duree_mois', r.data)
+        self.assertFalse(ContratMaintenance.objects.filter(
+            company=self.company).exists())
+        r = self._contrat_post(duree_mois=600)
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['date_expiration'], '2050-01-01')
+
+    def test_dates_en_fin_de_calendrier_ne_font_pas_de_500(self):
+        # Même avec une durée bornée, une date_debut proche de l'an 9999
+        # déborde : les échéances sont recadrées sur date.max, jamais un 500.
+        r = self._contrat_post(
+            date_debut='9999-12-31', duree_mois=600, periodicite='annuel',
+            facturation_active=True)
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['date_expiration'], '9999-12-31')
+        self.assertEqual(r.data['prochaine_visite'], '9999-12-31')
+        liste = self.api.get('/api/django/sav/contrats-maintenance/')
+        self.assertEqual(liste.status_code, 200, liste.content)
+        contrat = ContratMaintenance.objects.get(pk=r.data['id'])
+        self.assertEqual(contrat.prochaine_facturation(), date.max)
+        from apps.sav.dateutils import add_months
+        self.assertEqual(add_months(date(9999, 6, 15), 2147483646), date.max)
+
+    def test_entiers_du_contrat_bornes_400(self):
+        for cle, brut in (('pieces_couvertes_pct', 101),
+                          ('sla_response_days', 3651),
+                          ('sla_resolution_days', 2147483646),
+                          ('visites_incluses_an', 1001),
+                          ('deplacements_inclus_an', 1001),
+                          ('delai_intervention_heures', 8761)):
+            r = self._contrat_post(**{cle: brut})
+            self.assertEqual(r.status_code, 400, (cle, r.content))
+            self.assertIn(cle, r.data)
+
+    def test_filtres_due_et_a_renouveler_enumeres_400(self):
+        # CI #997 : due et a_renouveler sont publiés enum ['1', 'true'] ;
+        # toute autre valeur (vide comprise) -> 400 nommant le paramètre.
+        for nom in ('due', 'a_renouveler'):
+            for brut in ('', '0', 'AAA'):
+                resp = self.api.get(
+                    f'/api/django/sav/contrats-maintenance/?{nom}={brut}')
+                self.assertEqual(resp.status_code, 400, (nom, brut))
+                self.assertIn(nom, resp.data)
+            ok = self.api.get(
+                f'/api/django/sav/contrats-maintenance/?{nom}=true')
+            self.assertEqual(ok.status_code, 200, ok.content)
