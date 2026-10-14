@@ -976,10 +976,10 @@ def _acceptance_deposit_block(devis, lignes=None):
     configurable (pas de tranche, pas de RIB) → email inchangé. Best-effort."""
     from decimal import Decimal
     try:
-        from ..utils.echeancier import next_tranche
+        from ..public.payload_conditions import acompte_prevu  # VNT63 — l'acompte PRÉVU du plan
         # NPLUS1 — ``lignes`` déjà chargées par l'acceptation (elles ne bougent
         # pas pendant l'acceptation) ; absent ⇒ requête d'hier.
-        tr = next_tranche(devis, lignes=lignes)
+        tr = acompte_prevu(devis, lignes=lignes)
         if tr is None:
             return ''
         acompte = Decimal(str(tr['ttc']))

@@ -21,6 +21,30 @@ logger = logging.getLogger(__name__)
 PAIEMENT_MOYENS_PUBLICS = ('virement', 'cheque')
 
 
+def acompte_prevu(devis, lignes=None, option=None):
+    """VNT63 — l'acompte PRÉVU : la PREMIÈRE tranche du plan de facturation
+    (``vente_facturation.plan_facturation``, VNT17), qu'elle soit à faire, en
+    brouillon (le brouillon d'acompte automatique de VNT62) ou émise — donc
+    exactement le montant de la facture d'acompte. Jamais « la prochaine
+    tranche à faire » (après l'acceptation, ce serait le matériel).
+
+    ``lignes`` / ``option`` vont tels quels au plan (l'option cochée par le
+    client). Rend ``{'ttc', 'pourcentage'}`` (Decimal) ou ``None`` quand il
+    n'y a aucune tranche ou un montant nul. LA lecture partagée par la page
+    publique (:func:`_acompte_publique`) et le mail d'acceptation."""
+    from decimal import Decimal
+
+    from ..vente_facturation import plan_facturation
+    tranches = plan_facturation(devis, option=option, lignes=lignes)['tranches']
+    if not tranches:
+        return None
+    premiere = tranches[0]
+    ttc = Decimal(str(premiere['montant_ttc']))
+    if ttc <= 0:
+        return None
+    return {'ttc': ttc, 'pourcentage': Decimal(str(premiere['pourcentage']))}
+
+
 def _acompte_publique(devis, lignes=None):
     """PREVIEW-V3 — la PREMIÈRE tranche de l'échéancier, telle qu'elle sera
     facturée, ou ``None`` si elle n'est pas calculable.
@@ -57,10 +81,10 @@ def _acompte_publique(devis, lignes=None):
     """
     from decimal import Decimal
     try:
-        from ..utils.echeancier import next_tranche
         from ..utils.options import (AVEC_BATTERIE, SANS_BATTERIE,
                                      deux_options_declarees, option_effective)
-        tr = next_tranche(devis, lignes=lignes)
+        # VNT63 — l'acompte PRÉVU (1re tranche du plan), plus ``next_tranche``.
+        tr = acompte_prevu(devis, lignes=lignes)
         if tr is None:
             return None
         # PREVIEW-V3-FIX (audit C7) — UN ACOMPTE DE 0,00 N'EST PAS UN ACOMPTE.
@@ -77,7 +101,7 @@ def _acompte_publique(devis, lignes=None):
             cles = (effective or SANS_BATTERIE,)
         montants = {}
         for cle in cles:
-            tr_opt = next_tranche(devis, lignes=lignes, option=cle)
+            tr_opt = acompte_prevu(devis, lignes=lignes, option=cle)
             if tr_opt is None:
                 continue
             montant = Decimal(str(tr_opt['ttc']))
