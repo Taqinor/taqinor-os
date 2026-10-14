@@ -47,12 +47,19 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte
+from core.parseurs import PARSEURS_JSON
+
 from ..permissions import PeutGererCalepinage
 from ..services.variantes import DuplicationEnConflit, VarianteRefusee
 from ..services.variantes import dupliquer as service_dupliquer
 from .calepinages import CalepinageViewSet
 
 __all__ = ['dupliquer']
+
+#: Longueur de la colonne ``Calepinage.titre`` : au-delà, l'INSERT échouait
+#: (500) — fuzz CI #997 (2).
+TITRE_MAX = 200
 
 
 def _identifiant(brut):
@@ -84,7 +91,8 @@ def _drapeau(brut, defaut=True):
 @extend_schema(request=inline_serializer(
     'CalepinageDupliquerRequete', {
         'avec_variantes': drf_serializers.BooleanField(required=False),
-        'titre': drf_serializers.CharField(required=False, allow_blank=True),
+        'titre': ChaineStricte(required=False, allow_blank=True,
+                               max_length=TITRE_MAX),
     }),
     responses={201: inline_serializer('CalepinageDupliquerReponse', {
         'calepinage': drf_serializers.IntegerField(),
@@ -97,7 +105,8 @@ def _drapeau(brut, defaut=True):
         'layout_hash': drf_serializers.CharField(allow_blank=True),
     })})
 @action(detail=True, methods=['post'], url_path='dupliquer',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage],
+        parser_classes=PARSEURS_JSON)  # fuzz CI #997 (2) : un booléen JSON — un multipart n'en porte que des chaînes (« True »)
 def dupliquer(self, request, pk=None):
     """CALX35 — duplique ce calepinage et rend la COPIE.
 
@@ -116,6 +125,12 @@ def dupliquer(self, request, pk=None):
         if cle in corps and not isinstance(corps[cle], attendu):
             return Response({cle: f'{cle} doit être {libelle}.'},
                             status=status.HTTP_400_BAD_REQUEST)
+    titre_saisi = corps.get('titre') or ''
+    if len(titre_saisi) > TITRE_MAX or '\x00' in titre_saisi:
+        return Response(
+            {'titre': f'titre : {TITRE_MAX} caractères au plus, sans '
+                      'caractère nul.'},
+            status=status.HTTP_400_BAD_REQUEST)
     avec_variantes = _drapeau(corps.get('avec_variantes'))
     # ACAL187 (D-ACAL-12) — la CIBLE optionnelle {lead, client} : absente,
     # la copie garde le rattachement de la source (refusé 409 quand la source

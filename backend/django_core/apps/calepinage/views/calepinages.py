@@ -50,6 +50,7 @@ from apps.records.openapi import ParsersParActionMixin
 from apps.records.serializers import ChatterActivitySerializer
 from apps.records.views import ChatterViewSetMixin
 from authentication.permissions import IsResponsableOrAdmin
+from core.champs_stricts import ChaineStricte
 from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
@@ -66,7 +67,8 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import (
-    CalepinageLectureSerializer, CalepinageSerializer,
+    CalepinageLectureSerializer, CalepinageSerializer, ChampsPersonnalisesField,
+    ContraintesSiteCreationField,
     CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, corps_obligatoire,
     forme_du_contrat, forme_reponse,
 )
@@ -239,12 +241,12 @@ _SECTION_RESSERRE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
 _MOTIF_ETIQUETTES = (r'^\s*(?:0*[1-9][0-9]*)?\s*'
                      r'(?:,\s*(?:0*[1-9][0-9]*)?\s*)*$')
 _CREATION_COMMUNE = {
-    'titre': drf_serializers.CharField(required=False, allow_blank=True),
+    'titre': ChaineStricte(required=False, allow_blank=True, max_length=200),
     'responsable': drf_serializers.IntegerField(required=False,
                                                 allow_null=True),
-    'contraintes_site': drf_serializers.JSONField(required=False,
-                                                  allow_null=True),
-    'custom_data': drf_serializers.JSONField(required=False),
+    'contraintes_site': ContraintesSiteCreationField(required=False,
+                                                     allow_null=True),
+    'custom_data': ChampsPersonnalisesField(required=False, allow_null=True),
 }
 #: Un calepinage se crée par un LEAD ou par un CLIENT (jamais sans l'un des
 #: deux : 400 ``client``) — deux formes, ``oneOf``.

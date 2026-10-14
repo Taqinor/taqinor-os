@@ -208,8 +208,10 @@ class TestAsav102RegistreApi(TestCase):
         self.assertIn('detail', r.data)
         r = self._emettre(client_id=self.inst.client_id)
         self.assertEqual(r.status_code, 400)
+        # Système d'une autre société : id bien formé mais inconnu = 404
+        # (CI #997 fuzz (2)), même corps qu'un id absent.
         r = self._emettre(installation_id=self.inst_b.id)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
         self.assertIn('installation_id', r.data)
         self.assertEqual(CertificatCarbone.objects.count(), 0)
 
