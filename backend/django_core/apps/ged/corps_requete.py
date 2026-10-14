@@ -192,6 +192,11 @@ class GedMotifCorps(drf_serializers.Serializer):
     motif = ChaineStricte(required=False, allow_blank=True)
 
 
+class GedVerrouCorps(drf_serializers.Serializer):
+    # `Document.verrou_avertissement_motif` est un CharField(max_length=300).
+    motif = ChaineStricte(required=False, allow_blank=True, max_length=300)
+
+
 class GedArchiverLegalementCorps(drf_serializers.Serializer):
     motif = ChaineStricte(required=False, allow_blank=True)
     retain_until = _DateIsoStricte(required=False, allow_null=True)
