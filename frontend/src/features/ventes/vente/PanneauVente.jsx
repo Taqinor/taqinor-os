@@ -28,7 +28,7 @@ function useVenteMemorisee(devis) {
   return presente ? devis.vente : memo
 }
 
-export default function PanneauVente({ devis, onRafraichir }) {
+export default function PanneauVente({ devis, onRafraichir, avecFacturer = true }) {
   const vente = useVenteMemorisee(devis)
   const [facturer, setFacturer] = useState(false)
   const [prixOuvert, setPrixOuvert] = useState(false)
@@ -37,7 +37,9 @@ export default function PanneauVente({ devis, onRafraichir }) {
   const tete = remplacee ? (vente.versions || []).find((v) => v.id === vente.tete_id) : null
   const factures = vente.factures || []
   const d = { ...devis, vente }
-  const ouvert = !remplacee && vente.prochaine_action !== 'aucune'
+  // VNT79 — la liste des devis garde son bouton unique « Facturer… » sur la
+  // ligne : sa sous-ligne n'en ajoute pas un second (`avecFacturer={false}`).
+  const ouvert = avecFacturer && !remplacee && vente.prochaine_action !== 'aucune'
   const acompte = ouvert && peutFacturerAcompte(d)
   const solde = ouvert && peutFacturerSolde(d)
   // VNT78 (D-VNT-2) — tête acceptée active seulement (jamais une version remplacée).

@@ -5,6 +5,7 @@ import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
 import DevisRow from './DevisRow'
+import { exempleContrat } from '../../../test/fixtures/contractSamples'
 
 // ADEV8 — le VRAI DevisRow est rendu ; une version envoyée REMPLACÉE
 // (is_active=false) n'offre ni Relancer / Accepter / Refuser / Copier le lien
@@ -57,5 +58,27 @@ describe('ADEV8 — version remplacée en lecture seule', () => {
     expect(screen.queryByTestId('devis-remplacee-par')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: /plus d'actions/i }))
     expect(screen.getByText(/Copier le lien de la proposition/i)).toBeTruthy()
+  })
+})
+
+// VNT79 — sur un accepté, le bouton unique « Facturer… » suit `vente.peut` et
+// n'existe jamais sur une version remplacée (exemples committés vente_etat.json).
+describe('VNT79 — « Facturer… » jamais sur une version remplacée', () => {
+  const accepte = (variante) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    return {
+      ...BASE, id: ex.id, reference: ex.reference, statut: 'accepte',
+      is_active: ex.vente.est_tete, vente: ex.vente,
+    }
+  }
+
+  it('V1 remplacée acceptée : aucun « Facturer… »', () => {
+    rendre(accepte('exemple_version_remplacee'))
+    expect(screen.queryByRole('button', { name: 'Facturer…' })).toBeNull()
+  })
+
+  it('tête acceptée : un seul « Facturer… »', () => {
+    rendre(accepte('exemple'))
+    expect(screen.getAllByRole('button', { name: /^Facturer/ })).toHaveLength(1)
   })
 })
