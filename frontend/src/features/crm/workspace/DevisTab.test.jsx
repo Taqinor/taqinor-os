@@ -6,6 +6,8 @@ import { initState } from './draftCore'
 import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
 import DevisTab from './DevisTab'
+import ventesApi from '../../../api/ventesApi'
+import { openPdfBlob } from '../../../utils/pdfBlob'
 import {
   devisTrackCurrent, devisIntent, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
@@ -66,9 +68,13 @@ const {
     reviserDevis: vi.fn(() => Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })),
   }
 })
-vi.mock('../../../api/ventesApi', () => ({
-  default: { apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+vi.mock('../../../api/ventesApi', async () => ({
+  default: {
+    apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis,
+    ...(await import('../../../test/mocksVentesEcrans.js')).gestesFactureVente(),
+  },
 }))
+vi.mock('../../../utils/pdfBlob', async (orig) => (await import('../../../test/mocksVentesEcrans.js')).pdfBlobSansOuverture(await orig()))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
@@ -382,6 +388,57 @@ describe('VNT74 — panneau de vente (lecture seule)', () => {
       </MemoryRouter>,
     )
     expect(within(screen.getByTestId('panneau-vente')).getByText('BROUILLON-117')).toBeInTheDocument()
+  })
+})
+
+// VNT76 — les gestes PAR facture du panneau suivent `facture.peut` ; un refus
+// serveur s'affiche sous CETTE facture (role=alert), jamais en toast.
+describe('VNT76 — panneau : Émettre, PDF, Envoyer, Encaisser, Reçu par paiement', () => {
+  const carte = (variante) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    return {
+      id: ex.id, reference: ex.reference, statut: 'accepte', total_ttc: '49000.00',
+      date_creation: '2026-10-10', chantier: null, is_active: true, vente: ex.vente,
+    }
+  }
+
+  it('brouillon : Émettre + PDF seulement ; Émettre → POST emettre puis rafraîchit le lead', async () => {
+    ventesApi.emettreFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('facture-vente-117')
+    expect(within(ligne).queryByRole('button', { name: 'Encaisser' })).toBeNull()
+    expect(within(ligne).queryByRole('button', { name: 'WhatsApp' })).toBeNull()
+    expect(within(ligne).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
+    await waitFor(() => expect(ventesApi.emettreFacture).toHaveBeenCalledWith(117))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('refus serveur : message sous CETTE facture avec sa référence, aucun toast', async () => {
+    const refus = documentContrat('ventes', 'devis_facturer').erreurs_403.credit_hold
+    ventesApi.emettreFacture.mockRejectedValue({ response: { status: 403, data: refus } })
+    const toastErreur = vi.spyOn(toast, 'error')
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('facture-vente-117')
+    await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
+    expect(await within(ligne).findByRole('alert')).toHaveTextContent(`BROUILLON-117 : ${refus.detail}`)
+    expect(toastErreur).not.toHaveBeenCalled()
+  })
+
+  it('émise payée : Envoyer (WhatsApp / e-mail) et Reçu PAR paiement encaissé', async () => {
+    ventesApi.whatsappFacture.mockResolvedValue({ data: {} })
+    ventesApi.recuPdfPaiement.mockResolvedValue({ data: new Blob(['%PDF']), headers: {} })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('facture-vente-118')
+    expect(within(ligne).queryByRole('button', { name: 'Émettre' })).toBeNull()
+    await user.click(within(ligne).getByRole('button', { name: 'WhatsApp' }))
+    await waitFor(() => expect(ventesApi.whatsappFacture).toHaveBeenCalledWith(118, { modele: 'facture', langue: 'fr' }))
+    await user.click(within(ligne).getByRole('button', { name: /Reçu du paiement/ }))
+    await waitFor(() => expect(ventesApi.recuPdfPaiement).toHaveBeenCalledWith(301))
+    await waitFor(() => expect(openPdfBlob).toHaveBeenCalledWith(expect.any(Blob), 'Quittance_301.pdf'))
   })
 })
 

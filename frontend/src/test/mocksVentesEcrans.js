@@ -76,3 +76,16 @@ export const crmApiMotifsPerteVide = (actual) => ({
   ...actual,
   default: { ...actual.default, getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })) },
 })
+
+// VNT76-78 — gestes d'une facture de la vente (panneau de vente du lead) :
+// espions nus, chaque test fournit sa réponse depuis les contrats committés.
+export const gestesFactureVente = () => ({
+  emettreFacture: vi.fn(), whatsappFacture: vi.fn(), envoyerEmailFacture: vi.fn(),
+  recuPdfPaiement: vi.fn(), genererPdfFacture: vi.fn(), telechargerPdfFacture: vi.fn(),
+  getFacture: vi.fn(), enregistrerPaiement: vi.fn(), arrondiCaisseFacture: vi.fn(),
+  annulerFacture: vi.fn(), supprimerFacture: vi.fn(), montantTrancheFacture: vi.fn(),
+  prixNegocie: vi.fn(), demanderSignatureAvenant: vi.fn(),
+})
+
+// `utils/pdfBlob` réel dont l'ouverture du PDF ne fait rien (espion).
+export const pdfBlobSansOuverture = (actual) => ({ ...actual, openPdfBlob: vi.fn() })

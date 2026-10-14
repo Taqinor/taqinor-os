@@ -59,3 +59,29 @@ describe('PaiementDialog — AFAC65 : instantané relu', () => {
     await waitFor(() => expect(ventesApi.getFacture).toHaveBeenCalledTimes(2))
   })
 })
+
+// VNT76 — « Encaisser » depuis le panneau de vente du lead : le dialogue relit
+// la facture, et sa fermeture rafraîchit le panneau (GET détail du lead).
+describe('PaiementDialog — VNT76 : monté depuis le panneau de vente', () => {
+  it('Encaisser ouvre le dialogue (facture relue) ; fermer rafraîchit le panneau', async () => {
+    const { exempleContrat } = await import('../../test/fixtures/contractSamples')
+    const { default: PanneauVente } = await import('../../features/ventes/vente/PanneauVente')
+    const { default: userEvent } = await import('@testing-library/user-event')
+    // Facture émise à encaisser, dérivée de l'exemple committé (acompte payé).
+    const ex = exempleContrat('ventes', 'vente_etat', 'exemple_acompte_paye_solde_a_faire')
+    const f = ex.vente.factures[0]
+    const aEncaisser = {
+      ...f, statut: 'emise', montant_paye: '0.00', paiements: [],
+      peut: { ...f.peut, encaisser: true },
+    }
+    const devis = { id: ex.id, reference: ex.reference, vente: { ...ex.vente, factures: [aEncaisser] } }
+    ventesApi.getFacture.mockResolvedValue({ data: FACTURE_SERVEUR })
+    const onRafraichir = vi.fn()
+    const user = userEvent.setup()
+    render(<PanneauVente devis={devis} onRafraichir={onRafraichir} />)
+    await user.click(screen.getByRole('button', { name: 'Encaisser' }))
+    await waitFor(() => expect(ventesApi.getFacture).toHaveBeenCalledWith(aEncaisser.id))
+    await user.click(await screen.findByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(onRafraichir).toHaveBeenCalled())
+  })
+})
