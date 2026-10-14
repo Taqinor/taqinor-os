@@ -10,6 +10,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
 from ..erreurs_achats import IntrouvableMetier
+from core.champs_stricts import MOTIF_SANS_NUL
 from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -453,7 +454,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             f'inline; filename="{facture.reference}.pdf"')
         return response
 
-    @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True))
+    @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True),
+                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
     @extend_schema(methods=['POST'], request=PaiementFournisseurSerializer,
                    responses={201: FactureFournisseurSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='paiements',
@@ -555,12 +557,13 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         qs = factures_en_exception(request.user.company)
         return Response(self.get_serializer(qs, many=True).data)
 
-    @extend_schema(methods=['GET'], responses=LISTE)
+    @extend_schema(methods=['GET'], responses=LISTE,
+                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
     @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps',
                                                    tranches=serializers.ListField(
                                                        child=TrancheEcheancierSerializer(), min_length=1)),
                    responses={201: EcheanceFactureFournisseurSerializer(many=True)})
-    @action(detail=True, methods=['get', 'post'], url_path='echeancier')
+    @action(detail=True, methods=['get', 'post'], url_path='echeancier', pagination_class=None)
     def echeancier(self, request, pk=None):
         """XPUR6 — GET : liste les tranches d'échéancier de la facture.
         POST : crée l'échéancier multi-tranches (corps : ``{"tranches": [
