@@ -928,6 +928,13 @@
      null,
      false
     ],
+    "prochaines_echeances": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
     "reference": [
      "CharField",
      true,
@@ -968,6 +975,13 @@
      false,
      false,
      null,
+     false
+    ],
+    "situation_vente": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
      false
     ],
     "statut": [
