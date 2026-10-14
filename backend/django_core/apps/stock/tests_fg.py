@@ -746,7 +746,8 @@ class TestDC16FactureLieeAuBonCommande(TestCase):
              'date_facture': '2026-06-01', 'montant_ht': '999.00',
              'montant_tva': '0.00', 'montant_ttc': '999.00'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.json())
+        self.assertEqual(r.status_code, 409, r.json())
+        # État/route (corps conforme au schéma) : 409, pas 400.
         self.assertIn('bon_commande', r.json())
 
     def test_manual_facture_without_bon_commande_still_allowed(self):
