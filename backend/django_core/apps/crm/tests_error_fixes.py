@@ -682,6 +682,120 @@ class TestFuzzCrmCi997(TestCase):
             self.assertEqual(resp.status_code, 400, (route, resp.content))
             self.assertIn(champ, resp.data, route)
 
+    def test_decimaux_entiers_listes_stricts_2e_passage(self):
+        """2e passe du fuzz : le champ SUIVANT de chaque opération (décimal
+        envoyé en nombre, entier en texte, liste fermée) répond 400 nommé."""
+        cas = (
+            ('concurrents-perte', {'lead': self.lead.pk, 'concurrent_nom': 'C',
+                                   'concurrent_prix': 0}, 'concurrent_prix'),
+            ('concurrents-perte', {'lead': self.lead.pk, 'concurrent_nom': 'C',
+                                   'concurrent_prix': '-1'}, 'concurrent_prix'),
+            ('parrainages', {'parrain': self.client_obj.pk, 'recompense': 5},
+             'recompense'),
+            ('plans-compte', {'client': self.client_obj.pk,
+                              'potentiel_estime': 1.5}, 'potentiel_estime'),
+            ('forecast-entries', {'lead': self.lead.pk, 'categorie': 'commit',
+                                  'montant_prevu': 0}, 'montant_prevu'),
+            ('defis', {'nom': 'D', 'periode_debut': '2026-01-01',
+                       'periode_fin': '2026-02-01', 'metrique': 'nb_leads',
+                       'cible_equipe': 1}, 'cible_equipe'),
+            ('objectifs', {'metric': 'nb_leads', 'period_type': 'year',
+                           'period_year': 2026, 'cible': 0}, 'cible'),
+            ('objectifs', {'metric': 'nb_leads', 'period_type': 'year',
+                           'period_year': '2026', 'cible': '1'}, 'period_year'),
+            ('partenaires', {'nom': 'P', 'type_partenaire': 'apporteur',
+                             'taux_commission': 0}, 'taux_commission'),
+            ('partenaires', {'nom': 'P', 'type_partenaire': 'apporteur',
+                             'specialites': ['astrologie']}, 'specialites'),
+            ('partenaires', {'nom': 'P', 'type_partenaire': 'apporteur',
+                             'specialites': [0]}, 'specialites'),
+        )
+        for route, corps, champ in cas:
+            resp = self.api.post(f'/api/django/crm/{route}/', corps,
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (route, champ, resp.content))
+            self.assertIn(champ, resp.data, (route, champ))
+        resp = self.api.post('/api/django/crm/concurrents-perte/', {
+            'lead': self.lead.pk, 'concurrent_nom': 'C',
+            'concurrent_prix': ''}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertIsNone(resp.data['concurrent_prix'])
+        resp = self.api.post('/api/django/crm/partenaires/', {
+            'nom': 'P', 'type_partenaire': 'apporteur',
+            'taux_commission': '5.00', 'specialites': ['ventes']},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['specialites'], ['ventes'])
+
+    def test_motif_prix_concurrent_et_corps_bulk_publies(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.crm import stages
+        from apps.crm import urls as crm_urls
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)
+
+        def corps_de(route):
+            corps = schema['paths'][route]['post']['requestBody']['content'][
+                'application/json']['schema']
+            if '$ref' in corps:
+                corps = schema['components']['schemas'][
+                    corps['$ref'].split('/')[-1]]
+            return corps
+
+        motif = corps_de('/api/django/crm/concurrents-perte/')['properties'][
+            'concurrent_prix']['anyOf'][0]['pattern']
+        self.assertFalse(motif.startswith('^-'), motif)
+        bulk = schema['paths']['/api/django/crm/leads/bulk/']['post'][
+            'requestBody']['content']['application/json']['schema']
+        branches = bulk['allOf'][1]['anyOf']
+        self.assertEqual(len(branches), 8)
+        etape = [b for b in branches
+                 if b['properties']['action']['enum'] == ['set_stage']][0]
+        self.assertEqual(etape['required'], ['stage'])
+        self.assertEqual(etape['properties']['stage']['enum'], stages.STAGES)
+
+    def test_bulk_parametres_valides_avant_la_selection(self):
+        """Le paramètre de chaque action est validé MÊME pour une sélection
+        inconnue (le schéma le déclare obligatoire) ; un type inattendu
+        répond 400, jamais 500 ; un canal hors référentiel répond 404."""
+        from apps.crm.models import Canal
+        url = '/api/django/crm/leads/bulk/'
+        for corps in (
+                {'action': 'add_tag', 'ids': [0]},
+                {'action': 'add_tag', 'ids': [0], 'tag': 5},
+                {'action': 'set_perdu', 'ids': [0]},
+                {'action': 'set_perdu', 'ids': [0], 'motif': 7},
+                {'action': 'set_priorite', 'ids': [0], 'priorite': []},
+                {'action': 'set_relance', 'ids': [0],
+                 'relance_date': '2026-1-5'},
+                {'action': 'plan_activity', 'ids': [0],
+                 'due_date': '2026-01-05', 'summary': 3}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self.api.post(url, {'action': 'set_relance', 'ids': [0],
+                                   'relance_date': '2026-01-05'},
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        Canal.objects.create(company=self.company, cle='site_web',
+                             libelle='Site web')
+        resp = self.api.post(url, {'action': 'set_canal', 'ids': [0],
+                                   'canal': 'inconnu'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_champ_nomme_detail_en_erreur_reste_un_texte(self):
+        """Un caractère nul dans ``PointContact.detail`` : le 400 garde
+        ``detail`` en TEXTE à la racine (schéma ``ErreurApi``)."""
+        resp = self.api.post('/api/django/crm/points-contact/', {
+            'lead': self.lead.pk, 'canal': 'autre',
+            'detail': 'a\u0000b'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIsInstance(resp.data['detail'], str)
+        self.assertIsInstance(resp.data['error']['fields']['detail'], list)
+
     def test_requete_valide_toujours_acceptee(self):
         resp = self.api.post('/api/django/crm/appointments/', {
             'lead': self.lead.pk, 'scheduled_at': '2030-01-01T10:00:00Z',
@@ -729,8 +843,11 @@ class TestFuzzCrmCi997(TestCase):
                 ('/api/django/crm/defis/', {'actif': 'null'})):
             resp = self.api.get(url, params)
             self.assertEqual(resp.status_code, 400, (url, resp.content))
-        # ``entite`` reste tolérant (NTADM2) : déclaré entier OU texte.
+        # ``entite`` : entier ou VIDE (``core.entite_scoping.entite_id_demandee``)
+        # — non numérique → 400, vide → pas de filtre.
         resp = self.api.get('/api/django/crm/leads/', {'entite': 'null'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.get('/api/django/crm/leads/', {'entite': ''})
         self.assertEqual(resp.status_code, 200, resp.content)
 
     def test_filtres_client_et_actif_appliques(self):

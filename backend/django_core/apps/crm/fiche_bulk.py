@@ -3,6 +3,8 @@
 Module RACINE de la scission : il importe ``.services`` au niveau module ;
 aucun module de type (a) ne l'importe et ``services`` ne le réexporte pas.
 """
+import re
+
 from django.utils import timezone
 
 from . import activity, stages
@@ -36,14 +38,33 @@ _PRIORITES = {'basse', 'normale', 'haute'}
 BULK_ADMIN_ONLY = {'delete'}
 
 
+class ReferenceInconnue(ValueError):
+    """CI #997 (2) — une référence bien formée qui ne désigne rien (canal hors
+    référentiel) : la vue la sert en 404, plus en 400 (la requête est conforme
+    au schéma, c'est la ressource qui manque)."""
+
+
+def _texte(valeur):
+    """Texte rogné d'un paramètre ; tout autre type vaut « vide » (un nombre
+    levait ``AttributeError`` sur ``.strip()`` — 500)."""
+    return valeur.strip() if isinstance(valeur, str) else ''
+
+
+_DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}\Z')
+
+
 def _parse_date(value):
+    """Date ``AAAA-MM-JJ`` STRICTE (comme le schéma ``format: date``) ; vide ou
+    illisible -> ``None``. Un objet ``date`` passe tel quel (appelants internes)."""
     from datetime import date
     if isinstance(value, date):
         return value
-    if not value:
+    if not isinstance(value, str) or not _DATE_ISO.match(value.strip()):
         return None
-    from django.utils.dateparse import parse_date
-    return parse_date(str(value))
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
 
 
 def _resolve_activity_type(company, type_id, type_nom):
@@ -115,8 +136,9 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
 
     # Pré-validation des paramètres dépendant de l'action.
     target_stage = None
+    target_motif = None
     owner_obj = None
-    tag = (params.get('tag') or '').strip() if op in ('add_tag', 'remove_tag') else None
+    tag = _texte(params.get('tag')) if op in ('add_tag', 'remove_tag') else None
     relance = None
     target_canal = None
     target_priorite = None
@@ -128,17 +150,17 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
         if target_stage not in stages.STAGES:
             raise ValueError("Étape cible invalide.")
     elif op == 'set_canal':
-        target_canal = (params.get('canal') or '').strip()
+        target_canal = _texte(params.get('canal'))
         if not target_canal:
             raise ValueError("Canal cible vide.")
         # Le canal doit appartenir au référentiel géré (s'il existe).
         if (Canal.objects.filter(company=company).exists()
                 and not Canal.objects.filter(
                     company=company, cle=target_canal, archived=False).exists()):
-            raise ValueError("Canal inconnu.")
+            raise ReferenceInconnue("Canal inconnu.")
     elif op == 'set_priorite':
         target_priorite = params.get('priorite')
-        if target_priorite not in _PRIORITES:
+        if not isinstance(target_priorite, str) or target_priorite not in _PRIORITES:
             raise ValueError("Priorité invalide.")
     elif op == 'reassign':
         owner_obj = _resolve_owner(company, params.get('owner'))
@@ -146,6 +168,15 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
             raise ValueError("Responsable introuvable dans cette société.")
     elif op in ('add_tag', 'remove_tag') and not tag:
         raise ValueError("Étiquette vide.")
+    elif op == 'set_perdu':
+        # CI #997 (2) — le motif est exigé même pour une sélection VIDE (la
+        # vérification ne vivait que dans la boucle : « schéma violé » accepté).
+        target_motif = _texte(params.get('motif'))
+        if not target_motif:
+            # MRY22 — même exigence qu'à l'unité : perdre 40 leads d'un coup
+            # SANS raison est pire, pas plus acceptable.
+            raise ValueError(
+                'Motif de perte obligatoire pour une mise en perte en masse.')
     elif op == 'set_relance':
         relance = _parse_date(params.get('relance_date'))
         if relance is None:
@@ -154,7 +185,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
         activity_due = _parse_date(params.get('due_date'))
         if activity_due is None:
             raise ValueError("Date d'échéance invalide.")
-        activity_summary = (params.get('summary') or '').strip()
+        activity_summary = _texte(params.get('summary'))
         if not activity_summary:
             raise ValueError("Intitulé de l'activité vide.")
         activity_type = _resolve_activity_type(
@@ -289,13 +320,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 updated += 1
 
             elif op == 'set_perdu':
-                motif = (params.get('motif') or '').strip() or None
-                if not motif:
-                    # MRY22 — même exigence qu'à l'unité : perdre 40 leads
-                    # d'un coup SANS raison est pire, pas plus acceptable.
-                    raise ValueError(
-                        'Motif de perte obligatoire pour une mise en perte '
-                        'en masse.')
+                motif = target_motif
                 if lead.perdu and lead.motif_perte == motif:
                     unchanged += 1
                     continue

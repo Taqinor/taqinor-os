@@ -22,10 +22,15 @@ from django.db.models import BooleanField as ModelBooleanField
 from django.db.models import CharField as ModelCharField
 from django.db.models import TextField as ModelTextField
 from django.db.models import DateTimeField as ModelDateTimeField
+from django.db.models import DecimalField as ModelDecimalField
+from django.db.models import IntegerField as ModelIntegerField
+from django.db.models import PositiveIntegerField as ModelPositiveIntegerField
+from django.db.models import PositiveSmallIntegerField as ModelPositiveSmallIntegerField
+from django.db.models import SmallIntegerField as ModelSmallIntegerField
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, DecimalStricte, EntierStrict
 
 
 class BooleenStrict(serializers.BooleanField):
@@ -81,6 +86,21 @@ MAPPING_TEXTE_STRICT = {
     **MAPPING_BOOLEEN_STRICT,
     ModelCharField: ChaineStricte,
     ModelTextField: ChaineStricte,
+}
+
+#: CI #997 (2e passe) — TOUT type JSON exact : textes, booléens, décimaux
+#: transportés en CHAÎNE (``DecimalStricte`` : un nombre JSON → 400, ``""`` =
+#: « non renseigné » publié pour un champ nullable) et entiers JSON réels
+#: (``"5"`` → 400). Pour les sérialiseurs dont AUCUN écran n'envoie un
+#: décimal en nombre : la première passe n'avait rendu stricts que les textes
+#: et le fuzz remontait le champ suivant de la même opération.
+MAPPING_STRICT_COMPLET = {
+    **MAPPING_TEXTE_STRICT,
+    ModelDecimalField: DecimalStricte,
+    ModelIntegerField: EntierStrict,
+    ModelPositiveIntegerField: EntierStrict,
+    ModelSmallIntegerField: EntierStrict,
+    ModelPositiveSmallIntegerField: EntierStrict,
 }
 
 #: Idem, avec les dates-heures RFC 3339. CI #997 (fuzz) — textes ET booléens

@@ -19,7 +19,7 @@
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalStricte",
    "nom": "potentiel_estime",
    "read_only": false,
    "required": false

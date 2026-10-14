@@ -31,7 +31,7 @@
    "required": true
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalPositive",
    "nom": "concurrent_prix",
    "read_only": false,
    "required": false

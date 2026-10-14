@@ -170,6 +170,12 @@ class DecimalStricte(serializers.DecimalField):
         return super().validate_empty_values(data)
 
 
+class DecimalPositive(DecimalStricte):
+    """CI #997 (2) — ``DecimalStricte`` d'une valeur JAMAIS négative (prix,
+    coût) : le motif publié n'a plus de signe ``-`` (``"-1"`` était
+    « conforme » au schéma puis refusé en 400 par ``min_value=0``)."""
+
+
 class DecimalSouple(serializers.DecimalField):
     """CI #997 api-fuzz (``POST ventes/devis/ {"taux_tva": 0}``) — décimal
     accepté en CHAÎNE **ou** en NOMBRE JSON, et PUBLIÉ ainsi (``anyOf`` motif
@@ -246,6 +252,8 @@ class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
         schema['pattern'] = (
             fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
             fr'|\.\d{{1,{decimales}}})$')
+        if isinstance(champ, DecimalPositive):
+            schema['pattern'] = schema['pattern'].replace('^-?', '^', 1)
         if isinstance(champ, DecimalStricte) and champ.allow_null:
             motif = schema.pop('pattern')
             schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
