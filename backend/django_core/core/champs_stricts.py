@@ -24,6 +24,50 @@ class ChaineStricte(serializers.CharField):
         return super().to_internal_value(data)
 
 
+#: Motif publié d'une chaîne SANS caractère nul : DRF refuse ``\u0000`` dans
+#: tout ``CharField`` (``ProhibitNullCharactersValidator``) alors que le schéma
+#: l'autorisait — le fuzz envoyait une chaîne « conforme » et recevait 400.
+MOTIF_SANS_NUL = r'^[^\u0000]*$'
+
+
+class _ChaineSansNul(OpenApiSerializerFieldExtension):
+    """ENF11 (api-fuzz « rejected schema-compliant request ») — une chaîne
+    stricte publie ``pattern`` : aucun caractère nul (seule règle que DRF ajoute
+    sans la déclarer). Une chaîne qui porte déjà un motif, un format ou une
+    énumération est laissée telle quelle (son propre motif prime)."""
+    target_class = 'core.champs_stricts.ChaineStricte'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request' or schema.get('type') != 'string' or any(
+                cle in schema for cle in ('pattern', 'format', 'enum')):
+            return schema
+        schema = dict(schema)
+        schema['pattern'] = MOTIF_SANS_NUL
+        return schema
+
+
+class _ClePrimaireEntiere(OpenApiSerializerFieldExtension):
+    """ENF11 (api-fuzz « rejected schema-compliant request ») — une clé
+    primaire entière (série ``AutoField``) vaut au moins 1 : le schéma
+    publiait n'importe quel entier et ``0`` répondait 400 « objet inexistant ».
+    Le ``minimum`` n'est posé que côté requête, sur une clé de type entier."""
+    target_class = 'rest_framework.relations.PrimaryKeyRelatedField'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request' or schema.get('type') != 'integer' \
+                or 'minimum' in schema:
+            return schema
+        schema = dict(schema)
+        schema['minimum'] = 1
+        return schema
+
+
 def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
     """Entier de requête STRICT : absent/vide -> ``defaut`` ; illisible ou
     inférieur à ``mini`` -> 400 nommant le paramètre ; supérieur à ``maxi`` ->

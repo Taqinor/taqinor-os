@@ -112,3 +112,33 @@ class ParametresRequeteStrictsTests(SimpleTestCase):
                 nombre_ou_400(mauvais, 'h')
         with self.assertRaises(ValidationError):
             nombre_ou_400('-1', 'h', mini=0)
+
+
+class SchemaChampsStrictsTests(SimpleTestCase):
+    """ENF11 — ce que le schéma publie pour une chaîne stricte (aucun
+    caractère nul) et pour une clé primaire entière (au moins 1)."""
+
+    def _schema(self, champ, direction='request'):
+        from drf_spectacular.openapi import AutoSchema
+        from drf_spectacular.plumbing import ComponentRegistry
+        auto = AutoSchema()
+        auto.registry = ComponentRegistry()
+        return auto._map_serializer_field(champ, direction)
+
+    def test_chaine_stricte_publie_un_motif_sans_nul(self):
+        import re
+
+        from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte
+        schema = self._schema(ChaineStricte())
+        self.assertEqual(schema['pattern'], MOTIF_SANS_NUL)
+        self.assertTrue(re.search(MOTIF_SANS_NUL, 'texte é\n'))
+        self.assertIsNone(re.search(MOTIF_SANS_NUL, 'a\x00b'))
+        self.assertNotIn('pattern', self._schema(ChaineStricte(), 'response'))
+
+    def test_cle_primaire_entiere_vaut_au_moins_un_en_requete(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework import serializers
+        champ = serializers.PrimaryKeyRelatedField(
+            queryset=get_user_model().objects.all())
+        self.assertEqual(self._schema(champ)['minimum'], 1)
+        self.assertNotIn('minimum', self._schema(champ, 'response'))

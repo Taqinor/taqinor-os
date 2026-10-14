@@ -355,7 +355,6 @@ API accepted schema-violating request|POST /api/django/parametres/traductions/
 API accepted schema-violating request|POST /api/django/parametres/unites-mesure/
 API accepted schema-violating request|POST /api/django/portail/demandes-ticket-portail/
 API accepted schema-violating request|POST /api/django/publicapi/sandbox/try/
-API accepted schema-violating request|POST /api/django/records/activities/
 API accepted schema-violating request|POST /api/django/records/activities/{id}/snooze/
 API accepted schema-violating request|POST /api/django/records/tags/
 API accepted schema-violating request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
@@ -910,7 +909,6 @@ Response violates schema|GET /api/django/ventes/factures/{id}/relances/
 Response violates schema|GET /api/django/ventes/paiements/attestations-ras-en-attente/
 Response violates schema|GET /api/django/ventes/paiements/avances-non-affectees/
 Response violates schema|PATCH /api/django/automation/approval-delegations/{id}/
-Response violates schema|PATCH /api/django/core/dossiers/{id}/
 Response violates schema|PATCH /api/django/facturation/factures/{id}/
 Response violates schema|PATCH /api/django/installations/chantiers/{id}/
 Response violates schema|PATCH /api/django/installations/checklist-templates/{id}/
@@ -923,7 +921,6 @@ Response violates schema|PATCH /api/django/installations/recettes-commissioning/
 Response violates schema|PATCH /api/django/installations/series-entrepot/{id}/
 Response violates schema|PATCH /api/django/outillage/outils/{id}/
 Response violates schema|PATCH /api/django/parametres/update/
-Response violates schema|PATCH /api/django/records/activities/{id}/
 Response violates schema|PATCH /api/django/stock/alertes-rappel/{id}/
 Response violates schema|PATCH /api/django/stock/blocages-qualite/{id}/
 Response violates schema|PATCH /api/django/stock/factures-fournisseur/{id}/
@@ -1178,7 +1175,6 @@ API accepted schema-violating request|PATCH /api/django/ventes/plans-commission/
 API accepted schema-violating request|PUT /api/django/records/activity-types/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/plans-commission/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/theme/courant/
-API rejected schema-compliant request|POST /api/django/core/dsr-requests/
 API rejected schema-compliant request|POST /api/django/core/formulaires/
 Response violates schema|PATCH /api/django/ventes/bons-commande/{id}/
 Response violates schema|PATCH /api/django/ventes/plans-commission/{id}/
