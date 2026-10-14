@@ -35,6 +35,7 @@ uniquement.
 from __future__ import annotations
 
 import logging
+import math
 
 from django.http import QueryDict
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -81,6 +82,33 @@ def _drapeau(corps, nom):
             valeur.strip().lower() in ('true', 'false')):
         return valeur.strip().lower() == 'true'
     return None
+
+
+#: CI #997 api-fuzz — séries publiées « 12 nombres ou null » :
+#: ``conso_kwh_mensuelles: true`` (ou une chaîne) passait en silence (200) et
+#: une liste d'une autre longueur était ignorée sans un mot. En formulaire,
+#: chaque valeur répétée doit se lire comme un nombre.
+SERIES_12 = ('factures_mensuelles', 'conso_kwh_mensuelles')
+
+
+def _serie_12(corps, nom):
+    """``(True, liste | None)`` pour 12 nombres finis (absent/null → None),
+    ``(False, None)`` pour toute autre forme (→ 400 côté vue)."""
+    if nom not in corps:
+        return True, None
+    formulaire = isinstance(corps, QueryDict)
+    brutes = corps.getlist(nom) if formulaire else corps.get(nom)
+    if brutes is None:
+        return True, None
+    types = (str,) if formulaire else (int, float)
+    if not isinstance(brutes, list) or len(brutes) != 12 or any(
+            isinstance(v, bool) or not isinstance(v, types) for v in brutes):
+        return False, None
+    try:
+        valeurs = [float(v) for v in brutes]
+    except (ValueError, OverflowError):
+        return False, None
+    return all(map(math.isfinite, valeurs)), valeurs
 
 
 class _DevisDepuisLead:
@@ -266,10 +294,12 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
         'facture_ete': serializers.FloatField(required=False),
         'ete_differente': serializers.BooleanField(required=False),
         'factures_mensuelles': serializers.ListField(
-            child=serializers.FloatField(), required=False,
+            child=serializers.FloatField(), required=False, allow_null=True,
+            min_length=12, max_length=12,
             help_text='12 factures MAD réelles'),
         'conso_kwh_mensuelles': serializers.ListField(
-            child=serializers.FloatField(), required=False,
+            child=serializers.FloatField(), required=False, allow_null=True,
+            min_length=12, max_length=12,
             help_text='12 consommations kWh saisies'),
         'occupation': serializers.ChoiceField(
             choices=OCCUPATIONS, required=False),
@@ -357,7 +387,8 @@ def etude_horaire_preview(request):
 
     ``400`` seulement quand le corps est inexploitable (pas un objet JSON,
     ``equipements`` non-objet, drapeau ``dimensionner``/``ete_differente``
-    non booléen).
+    non booléen, ``factures_mensuelles``/``conso_kwh_mensuelles`` autre
+    chose que 12 nombres ou null).
     """
     corps = request.data if isinstance(request.data, dict) else None
     if corps is None:
@@ -382,6 +413,16 @@ def etude_horaire_preview(request):
                 {'detail': f'Corps de requête invalide : « {nom} » doit être '
                            'un booléen (true / false).'},
                 status=400)
+    for nom in SERIES_12:
+        valide, valeurs = _serie_12(corps, nom)
+        if not valide:
+            return Response(
+                {'detail': f'Corps de requête invalide : « {nom} » doit être '
+                           'une liste de 12 nombres (ou null).'},
+                status=400)
+        if valeurs is not None and isinstance(corps, QueryDict):
+            corps = corps.copy()
+            corps[nom] = valeurs  # la liste lue, plus la dernière chaîne
 
     company = getattr(request.user, 'company', None)
     avertissements = []
