@@ -7,6 +7,7 @@ Couvre :
   * le seed est rejouable sans doublon ;
   * isolation multi-tenant.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
@@ -28,7 +29,8 @@ class DsrCrmProviderTests(TestCase):
         cls.other = Company.objects.create(nom='Autre')
 
     def _lead(self, company, **kw):
-        from apps.crm.models import Lead
+        # ENF20 — modèles crm résolus par libellé : core n'importe aucune app.
+        Lead = django_apps.get_model('crm', 'Lead')
         defaults = dict(nom='Dupont', email='jean@example.com',
                         telephone='0612345678')
         defaults.update(kw)
@@ -47,7 +49,7 @@ class DsrCrmProviderTests(TestCase):
 
     def test_erasure_anonymises_lead_keeping_activities(self):
         lead = self._lead(self.company)
-        from apps.crm.models import LeadActivity
+        LeadActivity = django_apps.get_model('crm', 'LeadActivity')
         LeadActivity.objects.create(
             company=self.company, lead=lead,
             kind=LeadActivity.Kind.NOTE, body='Appel')
@@ -78,7 +80,7 @@ class RectificationTests(TestCase):
         cls.company = Company.objects.create(nom='ACME')
 
     def test_rectification_is_manual_no_erase(self):
-        from apps.crm.models import Lead
+        Lead = django_apps.get_model('crm', 'Lead')
         Lead.objects.create(
             company=self.company, nom='Dupont', email='j@example.com')
         req = DataSubjectRequest.objects.create(

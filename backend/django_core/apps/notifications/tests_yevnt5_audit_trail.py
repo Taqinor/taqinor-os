@@ -109,8 +109,9 @@ class NotifyAuditTrailTests(TestCase):
         """L'échec de l'écriture d'audit n'empêche pas l'envoi de la
         notification in-app elle-même."""
         from .services import notify
+        # ENF20 — notifications journalise via core.audit_registry.
         with mock.patch(
-                'apps.audit.recorder.record',
+                'core.audit_registry.record',
                 side_effect=RuntimeError('boom')):
             n = notify(self.user, EventType.LEAD_ASSIGNED, 'Titre', body='Corps')
         self.assertIsNotNone(n)

@@ -1051,7 +1051,7 @@ class Ticket(models.Model):
             contrat = self._contrat_couvrant(ref)
         if contrat is not None and contrat.couvre_equipement(
                 self.equipement, cache=registre_cache):
-            from .selectors import droits_restants
+            from .droits_contrat import droits_restants
             annee = ref.year
             droits = droits_restants(
                 contrat, annee, ticket=self, cache=droits_cache)
