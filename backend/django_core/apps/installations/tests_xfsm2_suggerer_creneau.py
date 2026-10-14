@@ -179,3 +179,54 @@ class TestSuggererCreneau(TestCase):
                                  corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
             self.assertIn(champ, resp.json())
+
+
+class TestSuggererCreneauDureeLongue(TestCase):
+    """CI #997 (api-fuzz, « Network Error » : lecture expirée après 10 s) —
+    ``duree_jours`` jusqu'à 365 : l'indisponibilité d'un bloc se lit en UNE
+    requête par (jour, technicien), pas une par jour du bloc."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.admin = make_user(self.company, role='admin')
+        self.api = auth(self.admin)
+        self.inst = make_chantier(self.company, self.admin)
+        self.tech = make_user(self.company, username='xfsm2-long-tech')
+        Intervention.objects.create(
+            company=self.company, installation=self.inst,
+            type_intervention='pose', created_by=self.admin,
+            technicien=self.tech, date_prevue=date.today() - timedelta(days=30))
+
+    def test_bloc_de_364_jours_sans_une_requete_par_jour(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as requetes:
+            resp = self.api.post(f'{BASE}/interventions/suggerer-creneau/', {
+                'chantier': self.inst.id, 'type_intervention': '',
+                'duree_jours': 364, 'date_cible': '2000-01-01',
+            }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertLess(len(requetes), 100)
+        self.assertGreater(len(resp.data['propositions']), 0)
+
+    def test_une_indisponibilite_au_milieu_du_bloc_l_exclut_toujours(self):
+        debut = date.today() + timedelta(days=1)
+        # Un jour OUVRÉ au milieu d'un bloc de 10 jours ouvrés.
+        milieu = debut + timedelta(days=5)
+        while milieu.weekday() >= 5:
+            milieu += timedelta(days=1)
+        IndisponibiliteRessource.objects.create(
+            company=self.company, technicien=self.tech, date_debut=milieu,
+            date_fin=milieu, type_indispo='conge')
+        resp = self.api.post(f'{BASE}/interventions/suggerer-creneau/', {
+            'chantier': self.inst.id, 'type_intervention': 'pose',
+            'duree_jours': 10, 'date_cible': debut.isoformat(),
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # Tout départ de moins de 5 jours avant le congé porte un bloc de 10
+        # jours ouvrés qui le recouvre : jamais proposé.
+        interdits = {(milieu - timedelta(days=k)).isoformat()
+                     for k in range(5)}
+        proposes = {prop['date'] for prop in resp.data['propositions']}
+        self.assertFalse(proposes & interdits, proposes & interdits)

@@ -86,7 +86,13 @@ def releve_commit(request):
         JetonReleveInconnu, ReleveDejaImporte, commit,
     )
     company = request.user.company
+    # CI #997 — corps non objet ou ``token`` non textuel : 400 nommé (le
+    # ``.strip()`` du service levait AttributeError → filet 500).
+    if not isinstance(request.data, dict):
+        return Response({'detail': 'Corps JSON objet attendu.'}, status=400)
     token = request.data.get('token')
+    if token is not None and not isinstance(token, str):
+        return Response({'token': ['Chaîne attendue.']}, status=400)
     lignes = request.data.get('lignes')
     # AFAC6 — `lignes` accepte des numéros de ligne ET des objets
     # `{ligne, facture_reference}` (ligne ambiguë résolue) ; le service

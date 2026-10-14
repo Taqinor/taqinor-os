@@ -471,9 +471,15 @@ class DevisViewSet(DevisEditionActionsMixin,
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # CI #997 — corps non objet ou id non entier (``[null, null]``) : 400
+        # nommé, plus le TypeError du filtre ``pk=`` (500).
+        from core.champs_stricts import entier_ou_400
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         lead_obj = None
-        lead_id = request.data.get('lead')
-        client_id = request.data.get('client')
+        lead_id = entier_ou_400(request.data.get('lead'), 'lead')
+        client_id = entier_ou_400(request.data.get('client'), 'client')
         if lead_id:
             lead_obj = get_company_lead(company, lead_id)
             if lead_obj is None:

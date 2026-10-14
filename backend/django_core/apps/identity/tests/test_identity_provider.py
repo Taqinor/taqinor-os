@@ -36,6 +36,26 @@ class IdentityProviderCrudTests(TenantAPITestCase):
         self.assertTrue(idp.actif)
         self.assertEqual(idp.protocol, 'saml')
 
+    def test_attribute_map_objet_non_nul(self):
+        # CI #997 fuzz : ``null`` n'était pas un objet mais le schéma ``{}``
+        # l'annonçait valide -> la requête « conforme » répondait 400.
+        for valeur in (None, [], 'x', 5):
+            with self.subTest(attribute_map=valeur):
+                r = self._admin().post(
+                    self.BASE, self._payload(attribute_map=valeur),
+                    format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn('attribute_map', r.json())
+        r = self._admin().post(
+            self.BASE, self._payload(attribute_map={}), format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        from apps.identity.serializers import IdentityProviderSerializer
+        from drf_spectacular.drainage import get_override
+        publie = get_override(
+            IdentityProviderSerializer().fields['attribute_map'], 'field')
+        self.assertEqual(publie['type'], 'object')
+        self.assertNotIn('nullable', publie)
+
     def test_company_forced_server_side(self):
         # Un corps qui tente d'injecter une autre société est ignoré : la
         # société de l'appelant prime toujours.

@@ -345,6 +345,13 @@ class ComparaisonProjetsApiEnBaseTest(BaseApiCalepinage):
         self.etranger = Calepinage.objects.create(
             company=self.autre, lead_id=999, titre='Chez la voisine')
 
+    def test_corps_multipart_refuse_415(self):
+        # CI #997 fuzz : un multipart ne porte que des chaînes (« [1] » n'y est
+        # pas une liste) — la liste d'ids est un corps JSON, publié comme tel.
+        reponse = self.api.post(URL_COMPARER, {'ids': '[1]'},
+                                format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.content)
+
     def test_six_ids_refuses_400_en_nommant_la_borne(self):
         reponse = self.api.post(URL_COMPARER,
                                 {'ids': [1, 2, 3, 4, 5, 6]},

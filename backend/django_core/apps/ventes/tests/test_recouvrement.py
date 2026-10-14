@@ -230,6 +230,15 @@ class TestSeedDefaultsNiveaux(TestCase):
         self.assertEqual(resp.data['frais_fixes'], '12.50')
         self.assertIsNone(resp.data['taux_interet_annuel'])
 
+    def test_niveau_texte_strictement_en_chaine(self):
+        # CI #997 — ``message: 0`` était converti en « 0 » (201) : 400.
+        resp = self.api.post(
+            '/api/django/ventes/niveaux-relance/',
+            {'nom': 'N', 'delai_jours': 7, 'ordre': 1, 'message': 0},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('message', resp.data)
+
     def test_seed_idempotent_when_levels_exist(self):
         FollowupLevel.objects.create(
             company=self.company, ordre=0, nom='Existant', delai_jours=10)

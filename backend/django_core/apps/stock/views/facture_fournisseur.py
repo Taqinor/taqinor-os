@@ -10,8 +10,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
 from ..erreurs_achats import IntrouvableMetier
-from core.champs_stricts import MOTIF_SANS_NUL
-from ..utils.params import date_ou_400
+from ..utils.params import corps_objet, date_ou_400, id_corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import FactureFournisseur
@@ -231,20 +230,24 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             detect_facture_fournisseur_doublon, log_doublon_override,
         )
         doublons = []
-        fournisseur_id = request.data.get('fournisseur')
+        # CI #997 fuzz — corps lu AVANT le sérialiseur : seules les formes
+        # typées atteignent le détecteur (``date_facture: {}`` faisait un 500).
+        donnees = corps_objet(request)
+        fournisseur_id = id_corps(donnees.get('fournisseur'))
         if fournisseur_id:
             from datetime import date as _date
-            date_facture = request.data.get('date_facture')
-            if isinstance(date_facture, str):
-                try:
-                    date_facture = _date.fromisoformat(date_facture)
-                except ValueError:
-                    date_facture = None
+            try:
+                date_facture = _date.fromisoformat(donnees.get('date_facture'))
+            except (TypeError, ValueError):
+                date_facture = None
+            if date_facture is not None and not 1 < date_facture.year < 9999:
+                date_facture = None  # ± 7 jours déborderait (OverflowError)
+            ref = donnees.get('ref_fournisseur')
             doublons = detect_facture_fournisseur_doublon(
                 request.user.company,
                 fournisseur_id=fournisseur_id,
-                ref_fournisseur=request.data.get('ref_fournisseur'),
-                montant_ttc=request.data.get('montant_ttc'),
+                ref_fournisseur=ref if isinstance(ref, str) else None,
+                montant_ttc=donnees.get('montant_ttc'),
                 date_facture=date_facture,
             )
         response = super().create(request, *args, **kwargs)
@@ -454,8 +457,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             f'inline; filename="{facture.reference}.pdf"')
         return response
 
-    @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True),
-                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
+    @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True))
     @extend_schema(methods=['POST'], request=PaiementFournisseurSerializer,
                    responses={201: FactureFournisseurSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='paiements',
@@ -557,13 +559,12 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         qs = factures_en_exception(request.user.company)
         return Response(self.get_serializer(qs, many=True).data)
 
-    @extend_schema(methods=['GET'], responses=LISTE,
-                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
+    @extend_schema(methods=['GET'], responses=LISTE)
     @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps',
                                                    tranches=serializers.ListField(
                                                        child=TrancheEcheancierSerializer(), min_length=1)),
                    responses={201: EcheanceFactureFournisseurSerializer(many=True)})
-    @action(detail=True, methods=['get', 'post'], url_path='echeancier', pagination_class=None)
+    @action(detail=True, methods=['get', 'post'], url_path='echeancier')
     def echeancier(self, request, pk=None):
         """XPUR6 — GET : liste les tranches d'échéancier de la facture.
         POST : crée l'échéancier multi-tranches (corps : ``{"tranches": [

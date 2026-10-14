@@ -12051,8 +12051,8 @@ components:
 - RevueStatutEnum
 - RiskLevelEnum
 - Role
+- RoleAutoCompositionEnum
 - RoleCiEnum
-- RoleDevisEnum
 - RoleLegacyEnum
 - RolePerimetreEnum
 - RolePompageEnum

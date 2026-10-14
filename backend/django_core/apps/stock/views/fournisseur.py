@@ -732,6 +732,9 @@ class CategorieFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['nom']
     # YAPIC2 — whitelist explicite (jamais '__all__').
     ordering_fields = ['nom', 'archived']
+    # CI #997 fuzz — JSON seul (l'écran envoie du JSON) : un formulaire
+    # multipart ne porte que des chaînes (« True ») que BooleenStrict refuse.
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

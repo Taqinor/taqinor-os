@@ -51,6 +51,11 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Le champ « produit » doit être un identifiant '
                            'entier.', 'champ': 'produit'},
                 status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(donnees.get('motif', ''), str):
+            # CI #997 fuzz — `motif: [null, null]` était enregistré « [None, None] ».
+            return Response(
+                {'detail': 'Le champ « motif » doit être un texte.', 'champ': 'motif'},
+                status=status.HTTP_400_BAD_REQUEST)
         produit = Produit.objects.filter(
             company=request.user.company, id=produit_id).first()
         if produit is None:

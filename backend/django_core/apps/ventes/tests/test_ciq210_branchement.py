@@ -361,6 +361,12 @@ class VuesEconomieCiTest(_BaseDevis):
             f'/api/django/ventes/devis/{etranger.pk}/economie-ci/')
         self.assertEqual(rep.status_code, 404)
 
+    def test_corps_tableau_400(self):
+        # CI #997 — un corps hors schéma (``[null, null]``) répondait 200
+        # (calcul « omis ») : 400.
+        rep = self.api.post('/api/django/ventes/economie-ci/preview/', [None, None], format='json')
+        self.assertEqual(rep.status_code, 400, rep.content)
+
     def test_preview_n_ecrit_rien(self):
         from apps.ventes.models import Devis
         devis = self._devis('DEV-CIQ210-0090')

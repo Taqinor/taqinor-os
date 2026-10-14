@@ -75,6 +75,14 @@ class ReferenceSurDevisTest(_Base):
         devis.refresh_from_db()
         self.assertEqual(devis.reference_commande_client, 'BC-2026-0457')
 
+    def test_reference_non_textuelle_refusee(self):
+        # CI #997 — ``reference_commande_client: 0`` était converti en « 0 ».
+        devis = self._devis('DEV-CIQ216-0015', statut='brouillon')
+        r = self.api.patch(f'/api/django/ventes/devis/{devis.id}/',
+                           {'reference_commande_client': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('reference_commande_client', r.data)
+
     def test_plus_de_60_caracteres_refuse(self):
         devis = self._devis('DEV-CIQ216-0020', statut='brouillon')
         r = self.api.patch(f'/api/django/ventes/devis/{devis.id}/',

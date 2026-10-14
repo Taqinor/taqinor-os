@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, XLSX, corps
+from ..erreurs_achats import EtatIncompatible
 from ..models import InventaireAnnuel
 from ..serializers import InventaireAnnuelSerializer
 from authentication.permissions import IsAdminRole
@@ -32,8 +33,8 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['post'], url_path='figer')
     def figer(self, request):
         """Fige l'inventaire de l'exercice donné (`{"exercice": 2026}`) —
-        un exercice déjà figé pour cette société renvoie 400 (jamais
-        ré-écrit)."""
+        un exercice déjà figé (ou non clos) pour cette société renvoie 409
+        (jamais ré-écrit)."""
         from ..services import figer_inventaire_annuel
         try:
             if not isinstance(request.data, dict):
@@ -48,6 +49,8 @@ class InventaireAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         try:
             inventaire = figer_inventaire_annuel(
                 request.user.company, exercice, request.user)
+        except EtatIncompatible as exc:  # déjà figé : état, pas saisie (409)
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

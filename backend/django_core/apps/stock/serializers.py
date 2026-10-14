@@ -9,14 +9,14 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
-from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin, TexteLie)
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin, DecimalStricte, TexteLie
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
 
-from .erreurs_achats import ConflitEtat, IdInconnu404LignesMixin
+from .erreurs_achats import ConflitEtat
+from .openapi_helpers import ChampsStrictsProduitMixin
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -115,7 +115,7 @@ class CategorieSerializer(ChampsTexteBooleenStricts, serializers.ModelSerializer
 
 
 class ContactFournisseurSerializer(CompanyScopedRelationsMixin,
-                                   serializers.ModelSerializer):
+                                   ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     class Meta:
@@ -334,7 +334,7 @@ def _company_du_contexte(serializer):
 
 
 class ProduitSerializer(CompanyScopedRelationsMixin,
-                        serializers.ModelSerializer):
+                        ChampsStrictsProduitMixin, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     categorie = CategorieSerializer(read_only=True)
@@ -659,7 +659,6 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         """ASTK32 — la quantité saisie à la création entre au registre par
         le service unique de mouvement (ENTREE « stock initial ») : Σ registre
         = stock dès la première ligne, comme l'import (ERR52)."""
-        from .models import MouvementStock
         from .services import record_stock_movement
         request = self.context.get('request')
         user = getattr(request, 'user', None)
@@ -1371,7 +1370,7 @@ class TransfertStockSerializer(CompanyScopedRelationsMixin,
 
 
 class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
-                                       serializers.ModelSerializer):
+                                       ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK2 — produit d'une autre société = id absent (400).
     same_company_fields = ('produit',)
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -1434,7 +1433,7 @@ class PalierPrixFournisseurSerializer(serializers.ModelSerializer):
         fields = ['id', 'qte_min', 'prix']
 
 
-class PrixFournisseurSerializer(IdInconnu404Mixin, ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class PrixFournisseurSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -1598,7 +1597,7 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
 
 class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
                                        CompanyScopedRelationsMixin,
-                                       serializers.ModelSerializer):
+                                       ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     # Champs cross-app déclarés pour la garde CI check_fk_scoping
@@ -1835,7 +1834,7 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
 
-class ReceptionFournisseurSerializer(IdInconnu404LignesMixin, CompanyScopedRelationsMixin,
+class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
                                      serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2041,7 +2040,7 @@ class EcheanceFactureFournisseurSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['date_creation']
 
 
-class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
                                    CompanyScopedRelationsMixin,
                                    serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
@@ -2541,7 +2540,7 @@ class RevisionKitSerializer(CompanyScopedRelationsMixin,
 # ── XPUR1 — conformité fournisseur & paramètres achats ──────────────────────
 
 class DocumentConformiteFournisseurSerializer(CompanyScopedRelationsMixin,
-                                              serializers.ModelSerializer):
+                                              ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     type_document_display = serializers.CharField(
@@ -2791,7 +2790,7 @@ class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
 
 
 class ConditionnementProduitSerializer(CompanyScopedRelationsMixin,
-                                       serializers.ModelSerializer):
+                                       ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     """XSTK15 — conditionnement d'achat d'un produit (Touret/Carton…),

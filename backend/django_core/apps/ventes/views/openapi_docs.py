@@ -308,17 +308,20 @@ ConceptionElectriqueResponse = _ser('DevisConceptionElectriqueResponse', {
     'source_entree': s.DictField(required=False),
 })
 
+#: CI #997 — VALIDÉ par ``generer-pdf`` (``corps_valide``) : drapeaux
+#: booléens JSON stricts, textes non blancs (``langue_sortie: ""`` passait).
 PdfOptionsRequest = _ser('DevisPdfOptionsRequest', {
     'pdf_mode': s.ChoiceField(choices=['full', 'onepage'], required=False),
-    'show_monthly': s.BooleanField(required=False),
-    'devis_final': s.BooleanField(required=False),
-    'include_etude': s.BooleanField(required=False),
-    'include_calepinage': s.BooleanField(required=False, allow_null=True),
-    'include_note_calcul': s.BooleanField(required=False),
-    'kit_agrege': s.BooleanField(required=False),
-    'variante_option': s.CharField(required=False),
-    'include_annexe_technique': s.JSONField(required=False),
-    'langue_sortie': s.CharField(required=False),
+    'show_monthly': BooleenStrict(required=False),
+    'devis_final': BooleenStrict(required=False),
+    'include_etude': BooleenStrict(required=False),
+    'include_calepinage': BooleenStrict(required=False, allow_null=True),
+    'include_note_calcul': BooleenStrict(required=False),
+    'kit_agrege': BooleenStrict(required=False),
+    'variante_option': ChaineStricte(required=False),
+    # Tri-état du moteur : ``null`` = auto (``clean_pdf_options``).
+    'include_annexe_technique': s.JSONField(required=False, allow_null=True),
+    'langue_sortie': ChaineStricte(required=False),
 })
 
 #: ENF11 (api-fuzz « rejected schema-compliant request ») — un montant

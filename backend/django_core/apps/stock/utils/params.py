@@ -72,6 +72,86 @@ def corps_objet(request):
     return donnees
 
 
+#: Borne d'une clé primaire entière PostgreSQL.
+ID_MAX = 2147483647
+
+
+def id_corps(valeur):
+    """Identifiant lu dans un corps libre (CI #997 fuzz) : ``int`` (jamais un
+    booléen) ou chaîne de chiffres, 1..ID_MAX -> ``int`` ; toute autre forme
+    (objet, liste, texte, hors plage) -> ``None``. Évite le ``TypeError`` ORM
+    (500) d'un ``filter(id={})``."""
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, str)):
+        return None
+    if isinstance(valeur, str) and not re.fullmatch(r'[0-9]{1,10}', valeur):
+        return None
+    n = int(valeur)
+    return n if 1 <= n <= ID_MAX else None
+
+
+def types_corps_ou_400(donnees, textes=(), entiers=(), ids=()):
+    """Corps libre lu À LA MAIN (sans sérialiseur) : chaque champ PRÉSENT et
+    non nul doit avoir son type JSON déclaré — texte, entier (jamais un
+    booléen ni un flottant), identifiant entier 1..ID_MAX — sinon 400 nommant les
+    champs (``note: {}`` était lu ``''``, ``produit: {}`` faisait un 500)."""
+    from rest_framework.exceptions import ValidationError
+    erreurs = {}
+    for nom in (*textes, *entiers, *ids):
+        valeur = donnees.get(nom)
+        if valeur is None:
+            continue
+        if nom in textes and not isinstance(valeur, str):
+            erreurs[nom] = ['Texte attendu.']
+        elif nom in entiers and (isinstance(valeur, bool) or not isinstance(valeur, int)):
+            erreurs[nom] = ['Entier attendu.']
+        elif nom in ids and (isinstance(valeur, bool) or not isinstance(valeur, int)
+                             or not 1 <= valeur <= ID_MAX):
+            erreurs[nom] = ['Identifiant entier attendu.']
+    if erreurs:
+        raise ValidationError(erreurs)
+
+
+#: Formes booléennes lues dans une query string (précédent ``kits``).
+BOOLEENS_REQUETE = ('1', '0', 'true', 'false', 'True', 'False')
+
+
+def valeur_unique_ou_400(request, nom):
+    """Valeur UNIQUE du paramètre ``nom`` (absent -> ``None``) : un paramètre
+    déclaré scalaire mais répété (``?x=1&x=1``) répond 400 (CI #997 fuzz)."""
+    from rest_framework.exceptions import ValidationError
+    valeurs = request.query_params.getlist(nom)
+    if len(valeurs) > 1:
+        raise ValidationError({nom: ['Une seule valeur attendue.']})
+    return valeurs[0] if valeurs else None
+
+
+def booleen_requete_ou_400(request, nom):
+    """Filtre booléen STRICT : absent -> ``None`` ; true/false (1/0) -> bool ;
+    toute autre forme (``null``, vide, répétée) -> 400 nommant le paramètre
+    (elle était ignorée en silence)."""
+    from rest_framework.exceptions import ValidationError
+    valeur = valeur_unique_ou_400(request, nom)
+    if valeur is None:
+        return None
+    if valeur not in BOOLEENS_REQUETE:
+        raise ValidationError({nom: ['Booléen attendu (true/false).']})
+    return valeur in ('1', 'true', 'True')
+
+
+def id_requete_ou_400(request, nom):
+    """Filtre d'identifiant STRICT : absent/vide -> ``None`` ; entier
+    1..ID_MAX -> ``int`` ; sinon 400 (``null`` était ignoré en silence).
+    Publié ``openapi_helpers.ID_OU_VIDE``."""
+    from rest_framework.exceptions import ValidationError
+    valeur = valeur_unique_ou_400(request, nom)
+    if valeur in (None, ''):
+        return None
+    n = id_corps(valeur)
+    if n is None:
+        raise ValidationError({nom: ['Identifiant entier attendu.']})
+    return n
+
+
 def choix_ou_400(valeur, nom, choix):
     """Paramètre de requête à VALEURS FERMÉES (ENF11) : absent/vide -> ``None`` ;
     toute valeur hors ``choix`` -> 400 nommant le paramètre, comme l'énumération

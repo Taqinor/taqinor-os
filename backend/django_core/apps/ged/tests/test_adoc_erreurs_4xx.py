@@ -762,8 +762,8 @@ class Ci997FuzzGedTour3Tests(TestCase):
                 ('validations-ocr/?en_attente=AAA', 'en_attente'),
                 ('liens/?model=', 'model')):
             resp = self.api.get(f'{BASE}{route}')
-            self.assertEqual(resp.status_code, 400, resp.content)
-            self.assertIn(nom, resp.json())
+            self.assertEqual(resp.status_code, 400, (route, resp.content))
+            self.assertIn(nom, resp.json(), route)
         tag = self._post('tags/', {'nom': 'T'}).json()['id']
         resp = self.api.get(f'{BASE}tags/{tag}/documents/?descendants=AAA')
         self.assertEqual(resp.status_code, 400, resp.content)
@@ -774,7 +774,7 @@ class Ci997FuzzGedTour3Tests(TestCase):
                       'validations-ocr/?en_attente=true',
                       f'tags/{tag}/documents/?descendants=1'):
             resp = self.api.get(f'{BASE}{route}')
-            self.assertEqual(resp.status_code, 200, resp.content)
+            self.assertEqual(resp.status_code, 200, (route, resp.content))
 
     def test_slug_tag_vide_derive_du_nom_et_motif_publie(self):
         resp = self._post('tags/', {'nom': 'Contrats', 'slug': ''})

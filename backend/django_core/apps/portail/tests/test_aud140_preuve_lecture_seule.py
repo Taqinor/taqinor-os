@@ -123,6 +123,14 @@ class PaiementPortailLectureSeuleTests(TestCase):
         self.assertFalse(
             PaiementFacturePortail.objects.filter(facture_id=140011).exists())
 
+    def test_allow_de_la_liste_n_annonce_pas_post(self):
+        """CI #997 fuzz (« Invalid Allow header ») : le POST de collection est
+        un 405 hors schéma — OPTIONS ne l'annonce pas."""
+        liste = self.api.options(self.RACINE)
+        self.assertEqual(liste.status_code, 200, liste.content)
+        self.assertNotIn('POST', liste.headers['Allow'])
+        self.assertIn('GET', liste.headers['Allow'])
+
     def test_patch_du_montant_refuse(self):
         res = self.api.patch(f'{self.RACINE}{self.paiement.id}/',
                              {'montant': '1.00'}, format='json')

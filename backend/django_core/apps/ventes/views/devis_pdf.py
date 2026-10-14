@@ -66,6 +66,10 @@ class DevisPdfActionsMixin:
         devis = self.get_object()
         from ..quote_engine import clean_pdf_options
         from ..tasks import task_generate_devis_pdf
+        # CI #997 — corps validé contre sa forme PUBLIÉE (400 nommé : drapeau
+        # non booléen, texte blanc, corps non objet) ; puis whitelist moteur.
+        from core.parseurs import corps_valide
+        corps_valide(request, D.PdfOptionsRequest)
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
         task = task_generate_devis_pdf.delay(devis.id, pdf_options)

@@ -845,6 +845,11 @@ SPECTACULAR_SETTINGS = {
         # ses codes de pièce ; le « code » des paliers API (core.ApiUsagePlan) garde
         # son nom historique « CodeEnum ». Nommage de schéma uniquement.
         'CodeEnum': 'core.models.ApiUsagePlan.Palier',
+        # CI #997 (14/10/2026) — `ordre_lignes` ET les rôles par gamme de
+        # `marques` (ParametresGammes) publient le MÊME jeu
+        # ROLES_AUTO_COMPOSITION : un seul nom de schéma, sinon drf-spectacular
+        # signale « multiple names for the same choice set ». Nommage seulement.
+        'RoleAutoCompositionEnum': 'apps.ventes.models.ROLES_AUTO_COMPOSITION',
         'CodeRemiseDocumentEnum': 'apps.calepinage.views.remise_document.CODES_REMISE',
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).

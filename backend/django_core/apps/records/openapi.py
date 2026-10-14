@@ -81,13 +81,17 @@ def cible_requete_ou_400(request):
     """``(model, id)`` du filtre de cible d'une liste, VALIDÉS selon le schéma
     (``model`` ∈ cibles autorisées, ``id`` entier) : 400 nommant le paramètre
     sinon. Chaque moitié est facultative (comme le schéma) ; sans les deux, le
-    filtre n'est pas appliqué. Un paramètre PRÉSENT mais vide (``?model=``)
-    viole le schéma (énumération / entier) : DRF le lisait comme absent."""
-    for nom in ('model', 'id'):
-        if request.query_params.get(nom) == '':
-            raise serializers.ValidationError(
-                {nom: ['Valeur obligatoire si le paramètre est fourni.']})
-    ser = CibleQuerySerializer(data=request.query_params)
+    filtre n'est pas appliqué."""
+    params = request.query_params
+    # CI #997 — un paramètre PRÉSENT mais vide (``?model=``, ``?id=``) n'est
+    # pas « absent » : 400 nommant le paramètre (le schéma ne publie pas le
+    # vide ; DRF lirait ``''`` comme non fourni et servirait la liste entière).
+    vides = [nom for nom in ('model', 'id')
+             if nom in params and str(params.get(nom, '')).strip() == '']
+    if vides:
+        raise serializers.ValidationError(
+            {nom: ['Ce paramètre ne peut être vide.'] for nom in vides})
+    ser = CibleQuerySerializer(data=params)
     ser.is_valid(raise_exception=True)
     return ser.validated_data.get('model'), ser.validated_data.get('id')
 

@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ObjetJSON
 
 from .models import IdentityProvider, IpAllowRule, NetworkPolicy, TrustedDevice
 
@@ -82,6 +83,9 @@ class IdentityProviderSerializer(ChampsStrictsMixin, serializers.ModelSerializer
     metadata_url = UrlFacultative(
         max_length=500, required=False, allow_blank=True)
     sso_url = UrlFacultative(max_length=500, required=False, allow_blank=True)
+    # CI #997 fuzz : OBJET JSON non nul publié comme tel (``null`` était conforme
+    # au schéma ``{}`` puis refusé par le champ de modèle : 400).
+    attribute_map = ObjetJSON(required=False)
 
     class Meta:
         model = IdentityProvider

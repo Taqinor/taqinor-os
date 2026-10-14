@@ -151,7 +151,7 @@ class UniteLogistiqueSerializer(ChampsTexteBooleenStricts, CompanyScopedRelation
 
 
 class QuaiSerializer(CompanyScopedRelationsMixin,
-                     serializers.ModelSerializer):
+                     ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS7 — quai de réception/expédition."""
 
     emplacement_nom = TexteLie(
@@ -285,7 +285,7 @@ class PlanComptageTournantSerializer(ChampsTexteBooleenStricts, CompanyScopedRel
 
 
 class AlerteRappelSerializer(CompanyScopedRelationsMixin,
-                             serializers.ModelSerializer):
+                             ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS17 — rappel produit/lot. Le statut et l'auteur sont posés côté
     serveur (jamais acceptés du corps de requête)."""
 
