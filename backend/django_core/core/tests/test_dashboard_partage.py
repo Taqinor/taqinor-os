@@ -295,15 +295,20 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
         inexistant (``0`` compris) répond 404, plus 400, avec le même message
         « objet inexistant » qu'un dashboard d'une autre société."""
         other_dash = self._other_company_dashboard()
-        for url in ('/api/django/core/dashboards-partages/',
-                    '/api/django/core/dashboards-partages-internes/'):
+        # Le corps est COMPLET par ailleurs (``utilisateur`` requis sur le
+        # partage interne) : le 404 ne vaut que si la FK inconnue est la
+        # seule erreur — un champ manquant en plus reste un 400.
+        for url, corps in (
+                ('/api/django/core/dashboards-partages/', {}),
+                ('/api/django/core/dashboards-partages-internes/',
+                 {'utilisateur': self.viewer.id})):
             for dash_id in (0, 987654321, other_dash.id):
-                with self.subTest(url=url, dashboard=dash_id):
-                    resp = self.api.post(
-                        url, {'dashboard': dash_id}, format='json')
-                    self.assertEqual(resp.status_code, 404, resp.content)
-                    self.assertIn('dashboard', resp.data)
-                    self.assertIn(str(dash_id), str(resp.data['dashboard']))
+                resp = self.api.post(
+                    url, {'dashboard': dash_id, **corps}, format='json')
+                self.assertEqual(
+                    resp.status_code, 404, (url, dash_id, resp.data))
+                self.assertIn('dashboard', resp.data)
+                self.assertIn(str(dash_id), str(resp.data['dashboard']))
 
     def test_role_texte_strict(self):
         """ERR-ENF11-FUZZ-CORE — ``role`` est un texte JSON : ``0`` était
