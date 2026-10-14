@@ -367,3 +367,37 @@ class TestDevisAcceptation(TestCase):
         self.assertEqual(lead.stage, stages.FOLLOW_UP)
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
         self.assertEqual(brouillon.statut, Facture.Statut.ANNULEE)
+
+
+class DateAcceptationFutureTests(TestCase):
+    """ADEV34 (C-ADEV-049) — une ``date_acceptation`` postérieure à aujourd'hui
+    (date LOCALE, Africa/Casablanca) est refusée par ``accept_devis`` : 400
+    nommant le champ, le devis reste « envoyé » ; aujourd'hui local passe et
+    se relit tel quel (CLAUSE PERSISTANCE)."""
+
+    setUp = TestDevisAcceptation.setUp
+    _devis = TestDevisAcceptation._devis
+
+    def test_future_400(self):
+        from datetime import timedelta
+        from apps.ventes.domain.cycle_vie import DATE_ACCEPTATION_FUTURE
+        devis = self._devis(num=341)
+        demain = timezone.localdate() + timedelta(days=1)
+        r = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/accepter/',
+            {'nom': 'Client', 'date': demain.isoformat()}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.data['date_acceptation'], [DATE_ACCEPTATION_FUTURE])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertIsNone(devis.date_acceptation)
+
+    def test_aujourdhui_local_accepte_et_relu(self):
+        devis = self._devis(num=342)
+        jour = timezone.localdate().isoformat()
+        r = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/accepter/',
+            {'nom': 'Client', 'date': jour}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        g = self.api.get(f'/api/django/ventes/devis/{devis.id}/')
+        self.assertEqual(g.data['date_acceptation'], jour)

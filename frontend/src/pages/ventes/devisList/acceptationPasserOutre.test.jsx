@@ -38,6 +38,7 @@ import ventesApi from '../../../api/ventesApi'
 import { renderListeVentes } from '../../../test/devisListRender.jsx'
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../../ui/dealSignedBus'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
+import { toast } from '../../../ui'
 
 const DEVIS = [{
   id: 515, reference: 'DEV-A15', client_nom: 'ACME', statut: 'envoye',
@@ -147,5 +148,36 @@ describe('VNT80 — acceptation refusée : vente active existante', () => {
     await user.click(within(alerte).getByRole('button', { name: `Ouvrir ${cible.reference}` }))
     await waitFor(() => expect(defile.mock.contexts.at(-1)).toBe(document.getElementById(`devis-row-${cible.id}`)))
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+// ADEV34 — la date proposée par la modale est la date LOCALE (Africa/Casablanca),
+// bornée à aujourd'hui : à 00:30 au Maroc (23:30 UTC la veille) elle vaut déjà
+// le lendemain UTC. Le refus serveur d'une date future (400 nommant
+// `date_acceptation`) est affiché depuis le CORPS de la réponse.
+describe("ADEV34 — date d'acceptation locale", () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it("à 23:30 UTC la veille : champ = date locale du jour, max = aujourd'hui", () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-07T23:30:00Z'))
+    ouvrir('admin')
+    const champ = screen.getByLabelText("Date d'acceptation")
+    expect(champ.value).toBe('2026-10-08')
+    expect(champ.getAttribute('max')).toBe('2026-10-08')
+  })
+
+  it('400 date_acceptation future : le message du corps est affiché', async () => {
+    const message = "La date d'acceptation ne peut pas être dans le futur."
+    const erreur = vi.spyOn(toast, 'error')
+    ventesApi.accepterDevis.mockRejectedValueOnce(Object.assign(new Error('400'), {
+      response: { status: 400, data: { date_acceptation: [message] } },
+    }))
+    const user = userEvent.setup()
+    ouvrir('admin')
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), 'Sami')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+    await waitFor(() => expect(erreur).toHaveBeenCalledWith(message))
+    erreur.mockRestore()
   })
 })

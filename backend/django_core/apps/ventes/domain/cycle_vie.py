@@ -62,6 +62,9 @@ class AcceptError(Exception):
         self.code = code
 
 
+#: ADEV34 — refus d'une ``date_acceptation`` postérieure à aujourd'hui (local).
+DATE_ACCEPTATION_FUTURE = "La date d'acceptation ne peut pas être dans le futur."
+
 #: ADEV13 — message NEUTRE du 409 ``validation_requise`` (contrat
 #: ``proposal_accept.json``, ``reponses_409.validation_requise`` — ADEV2) :
 #: aucun motif interne (crédit, avertissement) n'est exposé au client.
@@ -1101,6 +1104,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # (select_for_update) : deux acceptations concurrentes ne peuvent plus
     # toutes deux voir « envoyé » et double-basculer/double-émettre l'événement.
     date_acc = date_acceptation or timezone.now().date()
+    if date_acc > timezone.localdate():  # ADEV34 — jamais future (les 3 portes)
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({'date_acceptation': [DATE_ACCEPTATION_FUTURE]})
     with transaction.atomic():
         # ── QJR134 / ES14 — LE GROUPE DE VARIANTES EST VERROUILLÉ EN ENTIER ──
         #
