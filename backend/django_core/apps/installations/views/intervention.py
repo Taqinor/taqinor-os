@@ -224,7 +224,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             qs = qs.filter(date_prevue__gte=date_from)
         if date_to:
             qs = qs.filter(date_prevue__lte=date_to)
-        # Jour exact (« Ma journée » équipe) ; valeur invalide ignorée.
+        # Jour exact (« Ma journée » équipe) ; valeur invalide : 400 en amont (oa.listing).
         from django.utils.dateparse import parse_date
         try:
             jour_prevu = parse_date(params.get('date_prevue') or '')

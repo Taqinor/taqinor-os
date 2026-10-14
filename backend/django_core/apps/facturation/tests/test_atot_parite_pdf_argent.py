@@ -598,6 +598,11 @@ class DetailFactureVenteApiTests(TestCase):
             return len(lignes), len(ctx.captured_queries)
 
         _ajouter(2)
+        # Appel de chauffe écarté : les caches PAR PROCESSUS (ContentType,
+        # droits, paramètres) se remplissent à la 1re requête de la liste —
+        # un coût fixe, indépendant du nombre de lignes. Ce que la garde
+        # mesure : le coût d'une liste CHAUDE ne grandit pas avec les lignes.
+        _liste()
         n2, q2 = _liste()
         _ajouter(3)
         n5, q5 = _liste()

@@ -153,7 +153,7 @@
    "proprietaire": "facturation",
    "declencheur": {
     "type": "clic",
-    "source": "frontend/src/pages/ventes/DevisList.jsx::genererFacture"
+    "source": "frontend/src/pages/ventes/devisList/DevisRow.jsx::setFacturerTarget"
    },
    "ecran": {
     "route": "/ventes/devis",

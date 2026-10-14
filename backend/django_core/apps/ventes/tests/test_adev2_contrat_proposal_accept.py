@@ -114,8 +114,17 @@ class ContratProposalAcceptTests(SimpleTestCase):
                                  {'a_signer', 'remplace', 'signe_le'})
                 self.assertIs(avenant['a_signer'], a_signer)
                 self.assertIn('reference', avenant['remplace'])
-        # Additive : jamais `avenant` dans les exemples existants.
-        self.assertNotIn('avenant', self.data['exemple'])
+        # Additive : `avenant` n'est déclaré que dans `exemple` (VNT61, la
+        # page publique le lit) et dans les deux exemples dédiés — jamais
+        # dans les autres exemples existants.
+        self.assertEqual(set(self.data['exemple']['avenant']),
+                         {'a_signer', 'remplace', 'signe_le'})
+        for nom, exemple in self.data.items():
+            if (nom.startswith('exemple') and isinstance(exemple, dict)
+                    and nom not in ('exemple', 'exemple_avenant_a_signer',
+                                    'exemple_avenant_signe')):
+                with self.subTest(nom=nom):
+                    self.assertNotIn('avenant', exemple)
 
     def test_copies_web_json_egales(self):
         if not WEB.is_dir():  # pragma: no cover — image backend sans apps/web

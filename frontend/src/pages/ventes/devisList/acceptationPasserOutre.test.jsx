@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+/* global process */
+import { describe, it, expect, vi, afterEach, beforeEach, beforeAll, afterAll } from 'vitest'
 import { screen, within, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -156,6 +157,18 @@ describe('VNT80 — acceptation refusée : vente active existante', () => {
 // le lendemain UTC. Le refus serveur d'une date future (400 nommant
 // `date_acceptation`) est affiché depuis le CORPS de la réponse.
 describe("ADEV34 — date d'acceptation locale", () => {
+  // La date « locale » est celle du fuseau du processus : on le FIXE à
+  // Africa/Casablanca (UTC+1 en octobre) pour que le test soit le même sur un
+  // poste marocain et sur la CI en UTC.
+  let tzAvant
+  beforeAll(() => {
+    tzAvant = process.env.TZ
+    process.env.TZ = 'Africa/Casablanca'
+  })
+  afterAll(() => {
+    if (tzAvant === undefined) delete process.env.TZ
+    else process.env.TZ = tzAvant
+  })
   afterEach(() => { vi.useRealTimers() })
 
   it("à 23:30 UTC la veille : champ = date locale du jour, max = aujourd'hui", () => {
