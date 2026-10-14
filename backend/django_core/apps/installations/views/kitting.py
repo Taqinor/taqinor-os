@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -533,7 +533,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         activity.log_changes(old, serializer.instance, self.request.user)
 
     @oa.extend_schema(
-        request=oa.body('OrdresDepuisDevisRequete', devis=oa.i(True)),
+        request=oa.body('OrdresDepuisDevisRequete', devis=oa.idf(True)),
         responses={200: OrdreAssemblageSerializer(many=True), 201: OrdreAssemblageSerializer(many=True)},
     )
     @action(pagination_class=None, detail=False, methods=['post'], url_path='depuis-devis')
@@ -544,12 +544,12 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         quantités des lignes. Renvoie la liste des ordres (créés ou déjà
         existants)."""
         company = self.request.user.company
-        devis_id = request.data.get('devis')
-        if not devis_id:
-            raise ValidationError({'devis': 'Devis requis.'})
+        # CI #997 api-fuzz : corps et id lus STRICTEMENT (un tableau en `devis`
+        # levait un 500) ; devis absent ou d'une autre société = même 404.
+        devis_id = oa.id_entier(oa.corps_objet(request).get('devis'), 'devis')
         devis = get_devis_by_pk(devis_id)
         if devis is None or devis.company_id != getattr(company, 'id', None):
-            raise ValidationError({'devis': 'Devis inconnu pour cette société.'})
+            raise NotFound({'devis': 'Devis inconnu pour cette société.'})
 
         # ACHT23 (C-ACHT-021) — quantités VENDUES lues sur la nomenclature
         # gelée du devis (option retenue × N villas, options non activées

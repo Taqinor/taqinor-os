@@ -1,10 +1,10 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, TexteLie  # ENF11
+from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, TexteLie  # ENF11
 from core.mixins import SameCompanyFKSerializerMixin
 
-from .serializers_stage import refus_protege, valider_unicite_societe
+from .serializers_stage import ListesStrictesMixin, refus_protege, valider_unicite_societe
 
 from .models import (
     Equipe,
@@ -1071,7 +1071,7 @@ class ProjetTicketSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeri
         read_only_fields = ['date_creation']
 
 
-class ProjetSerializer(SameCompanyFKSerializerMixin,
+class ProjetSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
     """FG291 — programme/projet multi-chantiers regroupant chantiers + devis +
     tickets d'un même client/site. `reference`, company et `created_by` sont
@@ -1230,7 +1230,7 @@ class BudgetProjetSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeri
         return value
 
 
-class EquipeSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class EquipeSerializer(ListesStrictesMixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """DC40 — équipe terrain CANONIQUE. La société et `created_by` sont posés
     côté serveur (jamais lus du corps) ; les `membres` (M2M → utilisateurs) et
     le `chef` doivent appartenir à la société de l'utilisateur (validé côté
@@ -1613,7 +1613,7 @@ class CommandeCadreLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mod
         return attrs
 
 
-class CommandeCadreSerializer(SameCompanyFKSerializerMixin,
+class CommandeCadreSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                               serializers.ModelSerializer):
     """FG314 — contrat-cadre (prix négociés + volume engagé). La référence et la
     société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
@@ -1671,7 +1671,7 @@ class AppelCommandeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSer
         return value
 
 
-class DossierImportSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DossierImportSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG315 — dossier d'import / dédouanement d'un conteneur. La référence et la
     société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
     (`IMP-YYYYMM-NNNN`). Le `statut_douane` avance via l'action `avancer`."""
@@ -1819,7 +1819,7 @@ class ContratPrixLigneSerializer(SameCompanyFKSerializerMixin, serializers.Model
         return attrs
 
 
-class ContratPrixFournisseurSerializer(SameCompanyFKSerializerMixin,
+class ContratPrixFournisseurSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                        serializers.ModelSerializer):
     """FG318 — contrat de prix fournisseur daté/versionné. La référence et la
     société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
@@ -1900,7 +1900,7 @@ class BinLocationSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeria
         return value
 
 
-class PutAwaySerializer(SameCompanyFKSerializerMixin,
+class PutAwaySerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                         serializers.ModelSerializer):
     """FG320 - rangement guide. La societe, `created_by`, `bin_suggere`, le
     statut et les champs de tracage sont poses COTE SERVEUR. Le magasinier
@@ -1955,7 +1955,7 @@ class PickListLigneSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['pick_list', 'ordre']
 
 
-class PickListSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class PickListSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG321 - bon de prelevement d'un chantier. La reference, la societe et
     `created_by` sont poses COTE SERVEUR ; les lignes sont generees serveur
     depuis les reservations (action `generer`) et imbriquees en lecture."""
@@ -2002,7 +2002,7 @@ class ColisLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerial
         return attrs
 
 
-class ColisSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ColisSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG322 - colis de preparation d'un chantier. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `controler`/`expedier` (qui posent
     `controle_par`/date). Lignes imbriquees en lecture."""
@@ -2025,7 +2025,7 @@ class ColisSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer)
         ]
 
 
-class SerieEntrepotSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class SerieEntrepotSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG323 - n0 de serie suivi en entrepot. La societe et `created_by` sont
     poses COTE SERVEUR ; le statut avance via les actions `reserver`/`sortir`
     (ou par mise a jour du `bin`)."""
@@ -2153,7 +2153,7 @@ class DemandeTransfertSerializer(SameCompanyFKSerializerMixin,
         return attrs
 
 
-class RegleReapproSerializer(SameCompanyFKSerializerMixin,
+class RegleReapproSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     """FG326 - regle min/max de reapprovisionnement. La societe et `created_by`
     sont poses COTE SERVEUR. `seuil_max` doit etre >= `seuil_min`."""
@@ -2698,7 +2698,7 @@ class RetourMaterielLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         read_only_fields = ['stock_applique']
 
 
-class RetourMaterielSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourMaterielSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """YSTCK4 - retour de materiel non pose, d'un chantier vers le depot.
     Societe/`created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture."""
@@ -2866,7 +2866,7 @@ class LotPrelevementSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class GpsConsentRecordSerializer(SameCompanyFKSerializerMixin,
+class GpsConsentRecordSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """XFSM23 — trace de consentement GPS (déjà obtenu). company/technicien/
     recorded_by posés côté serveur ; jamais posée/révoquée par le corps client

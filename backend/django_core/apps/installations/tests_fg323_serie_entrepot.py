@@ -95,7 +95,13 @@ class TestSerieEntrepot(TestCase):
         resp = self.api.post(f'{BASE}/series-entrepot/', {
             'produit': p_other.id, 'numero_serie': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # CI #997 api-fuzz : id d'une autre société = id inconnu → 404 (même
+        # réponse), plus un 400 pour une requête conforme au schéma.
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = self.api.post(f'{BASE}/series-entrepot/', {
+            'produit': self.produit.id, 'numero_serie': 'X', 'bin': 99999999,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_unique_serial_per_product(self):
         SerieEntrepot.objects.create(
