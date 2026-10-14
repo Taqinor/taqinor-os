@@ -21,6 +21,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
@@ -45,6 +46,19 @@ def _float_fini(valeur):
     if not math.isfinite(nombre):
         raise ValueError('valeur non finie')
     return nombre
+
+
+def _coordonnee(request, nom):
+    """ERR-ENF11-FUZZ-INSTALLATIONS — coordonnée ABSENTE → ``None`` (position
+    inconnue, réponse de repli) ; PRÉSENTE mais illisible (``null``, vide,
+    ``nan``) → 400 nommant le paramètre, comme le schéma ``number`` le dit."""
+    brut = request.query_params.get(nom)
+    if brut is None:
+        return None
+    try:
+        return _float_fini(brut)
+    except ValueError:
+        raise ValidationError({nom: ['Nombre attendu.']})
 
 
 def _cle_cache(lat, lon, jour):
@@ -85,10 +99,8 @@ def meteo_terrain(request):
     Réponse : ``{disponible, message, precipitation_mm, windgusts_kmh}``.
     ``disponible: false`` (+ ``message`` de repli) si les coordonnées sont
     absentes/invalides ou si l'API externe ne répond pas."""
-    try:
-        lat = _float_fini(request.query_params.get('lat'))
-        lon = _float_fini(request.query_params.get('lon'))
-    except (TypeError, ValueError):
+    lat, lon = _coordonnee(request, 'lat'), _coordonnee(request, 'lon')
+    if lat is None or lon is None:
         return Response({
             'disponible': False,
             'message': 'Météo indisponible (position inconnue).',

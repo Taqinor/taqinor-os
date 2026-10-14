@@ -71,7 +71,7 @@ class LotPrelevementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=True, methods=['get'])
+    @action(pagination_class=None, detail=True, methods=['get'])
     def lignes(self, request, pk=None):
         """ZSTK10 — vue consolidée des lignes de TOUTES les pick-lists du
         lot, triées par casier (`BinLocation.ordre`)."""
@@ -82,7 +82,7 @@ class LotPrelevementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         request=oa.body('CocherLigneLotRequete', ligne_id=oa.i(True), quantite_prelevee=oa.dec()),
         responses=oa.LIST,
     )
-    @action(detail=True, methods=['post'], url_path='cocher-ligne')
+    @action(pagination_class=None, detail=True, methods=['post'], url_path='cocher-ligne')
     def cocher_ligne(self, request, pk=None):
         """ZSTK10 — coche une ligne du lot (`ligne_id` dans le corps),
         propage à la `PickListLigne` source."""

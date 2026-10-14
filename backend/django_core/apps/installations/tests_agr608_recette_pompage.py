@@ -115,7 +115,7 @@ class RecettePompageApiTests(TestCase):
     def test_chantier_residentiel_400(self):
         inst = make_installation(self.company, 'residentiel')
         r = self.api.post(self._url(inst), {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ERR-ENF11 : refus d'état = 409
         self.assertIn('agricole', r.data['detail'])
         self.assertFalse(RecettePompage.objects.exists())
 

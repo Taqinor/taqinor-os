@@ -249,6 +249,14 @@ class TestFG291Grouping(TestCase):
             f'{BASE}/programmes/{self.projet.id}/attacher_chantier/', {},
             format='json')
         self.assertEqual(r.status_code, 400, r.data)
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `0`, `abc`, liste : 400 nommant le
+        # champ (0 était lu « absent », `abc` faisait un 500 ORM).
+        for valeur in (0, 'abc', [1]):
+            r = self.api.post(
+                f'{BASE}/programmes/{self.projet.id}/attacher_chantier/',
+                {'installation': valeur}, format='json')
+            self.assertEqual(r.status_code, 400, (valeur, r.data))
+            self.assertIn('installation', r.data)
 
     def test_attacher_rejects_cross_company_chantier(self):
         """FG291 — on ne peut pas rattacher le chantier d'une autre société."""
@@ -260,7 +268,8 @@ class TestFG291Grouping(TestCase):
         r = self.api.post(
             f'{BASE}/programmes/{self.projet.id}/attacher_chantier/',
             {'installation': inst_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # ERR-ENF11-FUZZ-INSTALLATIONS : d'une autre société = inconnu = 404.
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_attacher_rejects_cross_company_ticket(self):
         """FG291 — on ne peut pas rattacher le ticket d'une autre société."""
@@ -270,7 +279,7 @@ class TestFG291Grouping(TestCase):
         r = self.api.post(
             f'{BASE}/programmes/{self.projet.id}/attacher_ticket/',
             {'ticket': ticket_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 # ── Vues de liaison (CRUD direct) ────────────────────────────────────────────

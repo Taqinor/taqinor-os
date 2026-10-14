@@ -12,6 +12,7 @@ toujours posée côté serveur (fournisseur ET profil), jamais lue du corps.
 Filtrable par ``metier`` et ``actif`` ; recherche sur la raison sociale (nom du
 fournisseur) et l'ICE.
 """
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
@@ -27,9 +28,11 @@ READ_ACTIONS = ['list', 'retrieve']
 
 
 _ID = oa.OpenApiParameter('id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)
-_ENVELOPPE = oa.body(
+# ERR-ENF11-FUZZ-INSTALLATIONS — enveloppe UNIQUE (``many=False``) : sur
+# l'action ``list`` drf-spectacular publiait un TABLEAU d'enveloppes.
+_ENVELOPPE = extend_schema_serializer(many=False)(type(oa.body(
     'SousTraitantListe', count=oa.i(), next=oa.s(null=True),
-    previous=oa.s(null=True), results=SousTraitantSerializer(many=True))
+    previous=oa.s(null=True), results=SousTraitantSerializer(many=True))))
 
 
 @oa.extend_schema_view(

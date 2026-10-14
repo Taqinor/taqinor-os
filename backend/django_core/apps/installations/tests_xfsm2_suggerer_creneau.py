@@ -164,3 +164,18 @@ class TestSuggererCreneau(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['propositions'], [])
+
+    def test_corps_mal_type_400_nomme(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `chantier: 0` était lu « absent »,
+        # `chantier: "abc"` et `duree_jours: 10**9` partaient au calcul : le
+        # corps est validé par sa déclaration (400 nommant le champ).
+        for corps, champ in (({'chantier': 0}, 'chantier'),
+                             ({'chantier': 'abc'}, 'chantier'),
+                             ({'chantier': self.inst.id, 'duree_jours': 0}, 'duree_jours'),
+                             ({'chantier': self.inst.id, 'duree_jours': 10 ** 9}, 'duree_jours'),
+                             ({'chantier': self.inst.id, 'type_intervention': 0},
+                              'type_intervention')):
+            resp = self.api.post(f'{BASE}/interventions/suggerer-creneau/',
+                                 corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn(champ, resp.json())

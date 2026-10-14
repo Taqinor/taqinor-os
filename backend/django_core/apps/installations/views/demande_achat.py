@@ -237,7 +237,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         return Response(self.get_serializer(da).data)
 
     @oa.extend_schema(responses=EtapeApprobationAchatSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='etapes-approbation')
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='etapes-approbation')
     def etapes_approbation(self, request, pk=None):
         """NTP2P2 — plan d'approbation de la demande (étapes séquentielles)."""
         da = self.get_object()

@@ -143,6 +143,27 @@ class TestApprobation(TestCase):
         self.assertEqual(
             ApprobationBCF.objects.filter(bcf_id=bcf.id).count(), 1)
 
+    def test_bcf_illisible_400_nomme_jamais_500(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `bcf: [null, null]` faisait un 500 ;
+        # `bcf: 0` était lu « absent » (`not 0`) : un id 1..ID_MAX est exigé.
+        api = auth(self.admin)
+        for bcf in ([None, None], {}, 0, -1, 'abc', None):
+            r = api.post(f'{BASE}/approbations-bcf/approuver/',
+                         {'bcf': bcf}, format='json')
+            self.assertEqual(r.status_code, 400, (bcf, r.data))
+            self.assertIn('bcf', r.data)
+
+    def test_filtre_liste_bcf_valide(self):
+        # Filtre `?bcf=` publié « id ou vide » et appliqué : `abc` → 400
+        # nommant le paramètre (500 ORM avant), vide → filtre non posé.
+        api = auth(self.admin)
+        self.assertEqual(
+            api.get(f'{BASE}/approbations-bcf/', {'bcf': ''}).status_code, 200)
+        for valeur in ('abc', '0', 'null'):
+            r = api.get(f'{BASE}/approbations-bcf/', {'bcf': valeur})
+            self.assertEqual(r.status_code, 400, valeur)
+            self.assertIn('bcf', r.json())
+
     def test_note_non_texte_refusee(self):
         # api-fuzz — `note` est une chaîne : `{}`, `[]`, `0`, `null` ne sont
         # plus avalés par un `or ''` (400 nommé, rien d'approuvé).

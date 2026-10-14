@@ -590,7 +590,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             interv.save(update_fields=['date_realisee'])
 
     @oa.extend_schema(responses=InterventionActivitySerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='historique',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
         interv = self.get_object()
@@ -1006,7 +1006,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             context={'request': self.request}).data)
 
     @oa.extend_schema(responses=ComponentSerialSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='serials',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='serials',
             permission_classes=[IsAnyRole])
     def serials(self, request, pk=None):
         """F9 — liste des n° de série relevés sur l'intervention."""
@@ -1401,7 +1401,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── XFSM22 — durée & pièces suggérées par l'historique ──────────────────
     @oa.extend_schema(
-        parameters=[oa.qs('type_intervention', required=True), oa.qi('technicien'), oa.qs('type_installation')],
+        parameters=[oa.qs('type_intervention', required=True, pattern=r'\S'), oa.qidv('technicien'), oa.qs('type_installation')],
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['get'], url_path='suggestions-creation',
@@ -1417,11 +1417,11 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         )
         company = request.user.company
         type_intervention = request.query_params.get('type_intervention')
-        if not type_intervention:
+        if not (type_intervention or '').strip():  # ERR-ENF11 : blanc = absent
             return Response(
                 {'detail': 'type_intervention est requis.'}, status=400)
         technicien = None
-        technicien_id = request.query_params.get('technicien')
+        technicien_id = oa.id_requete(request, 'technicien')  # ERR-ENF11 : `abc` → 400
         if technicien_id:
             from authentication.models import CustomUser
             technicien = CustomUser.objects.filter(
@@ -1458,7 +1458,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── F13/F14 — mémos vocaux (+ transcription swappable no-op) ─────────────
     @oa.extend_schema(responses=VoiceMemoSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='memos',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='memos',
             permission_classes=[IsAnyRole])
     def memos(self, request, pk=None):
         """F13 — mémos vocaux de l'intervention (audio + transcription F14)."""
@@ -1604,7 +1604,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── F16 — réserves (punch-list) ──────────────────────────────────────────
     @oa.extend_schema(responses=ReserveSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='reserves',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='reserves',
             permission_classes=[IsAnyRole])
     def reserves(self, request, pk=None):
         """F16 — réserves (punch-list) de l'intervention."""
@@ -1745,7 +1745,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED)
 
     @oa.extend_schema(responses=ReverificationMesureSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='reverifications',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='reverifications',
             permission_classes=[IsAnyRole])
     def reverifications(self, request, pk=None):
         """XFSM13 — historique des re-vérifications de l'intervention."""
@@ -2232,8 +2232,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             interv, context={'request': request}).data)
 
     # ── FG68 — calendrier dispatch techniciens ───────────────────────────────
-    @oa.extend_schema(parameters=[oa.qd('date_from'), oa.qd('date_to')], responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='calendrier',
+    @oa.extend_schema(parameters=[oa.qdv('date_from'), oa.qdv('date_to')], responses=oa.LIST)
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='calendrier',
             permission_classes=[IsAnyRole])
     def calendrier(self, request):
         """FG68 — vue calendrier des interventions groupées par technicien.
@@ -2243,8 +2243,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from django.contrib.auth import get_user_model
         User = get_user_model()
         params = request.query_params
-        date_from = params.get('date_from')
-        date_to = params.get('date_to')
+        date_from = date_ou_400(params.get('date_from'), 'date_from')
+        date_to = date_ou_400(params.get('date_to'), 'date_to')
         # ACHT50 — part du queryset du viewset (société + portée de
         # visibilité Feature F) : un Technicien de portée équipe ne voit ici
         # que ce que sa liste lui montre.
@@ -2346,7 +2346,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             interv, context={'request': request}).data)
 
     # ── FG73 — tournée journalière du technicien (ordre géographique) ─────────
-    @oa.extend_schema(parameters=[oa.qd('date')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('date')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='ma-tournee',
             permission_classes=[IsAnyRole])
     def ma_tournee(self, request):
@@ -2417,7 +2417,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response({'date': jour, 'stops': stops})
 
     # ── FG299 — plan de charge des équipes (capacité vs affecté) ─────────────
-    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qf('heures_par_jour')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='plan-de-charge',
             permission_classes=[IsAnyRole])
     def plan_de_charge(self, request):
@@ -2453,7 +2453,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG300 — détection de conflits d'affectation (double-booking) ─────────
-    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='conflits-affectation',
             permission_classes=[IsAnyRole])
     def conflits_affectation(self, request):
@@ -2487,7 +2487,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG301 — nivellement de charge (resource levelling) ───────────────────
-    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qf('heures_par_jour')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='nivellement-charge',
             permission_classes=[IsAnyRole])
     def nivellement_charge(self, request):
@@ -2525,7 +2525,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(data)
 
     # ── XFSM5 — KPI taux d'arrivée à l'heure (fenêtres de RDV promises) ──────
-    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qi('technicien')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qidv('technicien')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='taux-ponctualite',
             permission_classes=[IsAnyRole])
     def taux_ponctualite(self, request):
@@ -2542,18 +2542,12 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             request.user.company,
             debut=_parse(params.get('debut'), 'debut'),
             fin=_parse(params.get('fin'), 'fin'),
-            technicien_id=params.get('technicien'))
+            technicien_id=oa.id_requete(request, 'technicien'))
         return Response(data)
 
     # ── XFSM2 — Assistant de planification (meilleur créneau + technicien) ──
     @oa.extend_schema(
-        request=oa.body(
-            'SuggererCreneauRequete',
-            chantier=oa.i(True),
-            type_intervention=oa.s(),
-            duree_jours=oa.i(),
-            date_cible=oa.d(null=True),
-        ),
+        request=oa.SuggererCreneauRequete,  # ERR-ENF11 : déclaration = validation
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['post'], url_path='suggerer-creneau',
@@ -2562,40 +2556,19 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """XFSM2 — les 3 meilleures propositions (technicien, date) pour un
         chantier/type/durée cible. Lecture seule, NE MUTE RIEN. Corps :
         {chantier, type_intervention, [duree_jours], [date_cible]}."""
-        from datetime import datetime
-        from rest_framework.exceptions import ValidationError
         from .. import selectors
 
-        chantier_id = request.data.get('chantier')
-        if not chantier_id:
-            raise ValidationError({'chantier': 'Chantier requis.'})
-        type_intervention = request.data.get('type_intervention') or ''
-        duree_jours = request.data.get('duree_jours') or 1
-        date_cible_raw = request.data.get('date_cible')
-        date_cible = None
-        if date_cible_raw:
-            try:
-                date_cible = datetime.strptime(
-                    date_cible_raw, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                raise ValidationError({'date_cible': 'Date invalide.'})
+        corps = oa.corps_valide(oa.SuggererCreneauRequete, request)
         data = selectors.suggerer_creneau(
-            request.user.company, chantier_id=chantier_id,
-            type_intervention=type_intervention, duree_jours=duree_jours,
-            date_cible=date_cible)
+            request.user.company, chantier_id=corps['chantier'],
+            type_intervention=corps['type_intervention'],
+            duree_jours=corps['duree_jours'], date_cible=corps.get('date_cible'))
         return Response(data)
 
     # ── XFSM3 — Replanification en masse d'une journée ──────────────────────
     @oa.extend_schema(
         parameters=[oa.qb('simuler')],
-        request=oa.body(
-            'ReplanifierEnMasseRequete',
-            jour=oa.d(True),
-            technicien=oa.i(null=True),
-            intervention_ids=oa.ints(),
-            simuler=oa.b(),
-            motif=oa.s(),
-        ),
+        request=oa.ReplanifierEnMasseRequete,  # ERR-ENF11 : déclaration = validation
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['post'], url_path='replanifier-en-masse',
@@ -2607,24 +2580,13 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         `?simuler=1` (ou body `simuler`) ne mute rien — dry-run des
         propositions XFSM2. Sans dry-run, applique + trace FG78 + notifie.
         Corps : {jour, [technicien], [intervention_ids], [motif]}."""
-        from datetime import datetime
-        from rest_framework.exceptions import ValidationError
         from .. import services
 
-        jour_raw = request.data.get('jour')
-        if not jour_raw:
-            raise ValidationError({'jour': 'Jour requis.'})
-        try:
-            jour = datetime.strptime(jour_raw, '%Y-%m-%d').date()
-        except (TypeError, ValueError):
-            raise ValidationError({'jour': 'Date invalide.'})
-
-        technicien_id = request.data.get('technicien')
-        intervention_ids = request.data.get('intervention_ids')
-        simuler = str(
-            request.data.get('simuler')
-            or request.query_params.get('simuler') or '').lower() in (
-            '1', 'true', 'yes')
+        corps = oa.corps_valide(oa.ReplanifierEnMasseRequete, request)
+        jour = corps['jour']
+        technicien_id = corps.get('technicien')
+        intervention_ids = corps.get('intervention_ids')
+        simuler = corps['simuler'] or oa.drapeau_requete(request, 'simuler')
 
         if simuler:
             data = services.previsualiser_replanification_masse(
@@ -2632,14 +2594,14 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 intervention_ids=intervention_ids)
             return Response(data)
 
-        motif = request.data.get('motif')
+        motif = corps.get('motif')
         data = services.appliquer_replanification_masse(
             request.user.company, jour=jour, motif=motif, user=request.user,
             technicien_id=technicien_id, intervention_ids=intervention_ids)
         return Response(data)
 
     # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────
-    @oa.extend_schema(parameters=[oa.qd('debut'), oa.qd('fin'), oa.qi('capacite_jour')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qidv('capacite_jour')], responses=oa.OBJ)
     @action(detail=False, methods=['get'], url_path='planning-camionnettes',
             permission_classes=[IsAnyRole])
     def planning_camionnettes(self, request):
@@ -2671,11 +2633,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'La fin de fenêtre précède le début.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        cap = params.get('capacite_jour')
-        try:
-            cap = int(cap) if cap not in (None, '') else 1
-        except (TypeError, ValueError):
-            cap = 1
+        # ERR-ENF11 : entier >= 1 strict (illisible → 400, absent/vide → 1).
+        cap = oa.id_requete(request, 'capacite_jour') or 1
         data = selectors.planning_camionnettes(
             request.user.company, debut, fin, capacite_jour=cap)
         return Response(data)

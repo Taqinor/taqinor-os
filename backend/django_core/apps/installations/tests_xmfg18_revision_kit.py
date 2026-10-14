@@ -182,6 +182,18 @@ class TestDuplicationInstallations(KitRevisionBase):
             {'facteur_echelle': '-1'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_dupliquer_facteur_nul_ou_nan(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `null` = pas de facteur (publié
+        # null-able) ; `NaN` → 400 (la comparaison NaN <= 0 faisait un 500) ;
+        # un corps non objet → 400 (AttributeError avant).
+        api = self.client_as(role='responsable')
+        url = f'{BASE}/kits/{self.kit.id}/dupliquer/'
+        self.assertEqual(
+            api.post(url, {'facteur_echelle': None}, format='json').status_code, 201)
+        self.assertEqual(
+            api.post(url, {'facteur_echelle': 'NaN'}, format='json').status_code, 400)
+        self.assertEqual(api.post(url, [1], format='json').status_code, 400)
+
     def test_cross_tenant_cannot_dupliquer(self):
         resp = self.client_as(user=self.other_user).post(
             f'{BASE}/kits/{self.kit.id}/dupliquer/', {}, format='json')

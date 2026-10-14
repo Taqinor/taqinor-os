@@ -203,7 +203,7 @@ class GateApiTests(TestCase):
         r = self.api.post(
             f'{BASE}/chantiers/{inst.id}/avancer-etape/',
             {'etape': 'mise_en_service'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ERR-ENF11 : refus d'état = 409
         self.assertIn('raisons', r.data)
         inst.mes_production_test = Decimal('6.0')
         inst.save(update_fields=['mes_production_test'])
@@ -214,3 +214,18 @@ class GateApiTests(TestCase):
         inst.refresh_from_db()
         self.assertEqual(inst.etape.cle, 'mise_en_service')
         self.assertEqual(inst.statut, Installation.Statut.INSTALLE)
+
+    def test_etape_ou_cle_checklist_inconnue_404(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — une clé bien formée mais inconnue
+        # est une ressource introuvable (404), plus un 400 « données
+        # invalides » ; rien n'est écrit.
+        inst = make_installation(
+            self.company, statut=Installation.Statut.EN_COURS)
+        r = self.api.post(f'{BASE}/chantiers/{inst.id}/avancer-etape/',
+                          {'etape': 'etape_qui_n_existe_pas'}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = self.api.post(f'{BASE}/chantiers/{inst.id}/cocher-checklist/',
+                          {'cle': 'cle_qui_n_existe_pas'}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        inst.refresh_from_db()
+        self.assertEqual(inst.statut, Installation.Statut.EN_COURS)

@@ -59,78 +59,6 @@ API accepted schema-violating request|GET /api/django/identity/network-policies/
 API accepted schema-violating request|GET /api/django/identity/providers/
 API accepted schema-violating request|GET /api/django/identity/service-accounts/
 API accepted schema-violating request|GET /api/django/identity/trusted-devices/
-API accepted schema-violating request|GET /api/django/installations/appels-commande/
-API accepted schema-violating request|GET /api/django/installations/approbations-bcf/
-API accepted schema-violating request|GET /api/django/installations/bin-affectations/
-API accepted schema-violating request|GET /api/django/installations/bin-locations/
-API accepted schema-violating request|GET /api/django/installations/categories-stockage/
-API accepted schema-violating request|GET /api/django/installations/chantiers/a-facturer/
-API accepted schema-violating request|GET /api/django/installations/chantiers/gantt/
-API accepted schema-violating request|GET /api/django/installations/chantiers/regime-suggestion/
-API accepted schema-violating request|GET /api/django/installations/checklist-etapes/
-API accepted schema-violating request|GET /api/django/installations/colis-lignes/
-API accepted schema-violating request|GET /api/django/installations/colis/
-API accepted schema-violating request|GET /api/django/installations/commandes-cadre-lignes/
-API accepted schema-violating request|GET /api/django/installations/commandes-cadre/
-API accepted schema-violating request|GET /api/django/installations/comptage-lignes/
-API accepted schema-violating request|GET /api/django/installations/consignes-securite/
-API accepted schema-violating request|GET /api/django/installations/contrats-prix-fournisseur/
-API accepted schema-violating request|GET /api/django/installations/contrats-prix-fournisseur/prix-convenu/
-API accepted schema-violating request|GET /api/django/installations/contrats-prix-lignes/
-API accepted schema-violating request|GET /api/django/installations/controle-qualite-modeles/
-API accepted schema-violating request|GET /api/django/installations/demandes-achat-lignes/
-API accepted schema-violating request|GET /api/django/installations/demandes-achat/
-API accepted schema-violating request|GET /api/django/installations/demandes-transfert/
-API accepted schema-violating request|GET /api/django/installations/equipes/
-API accepted schema-violating request|GET /api/django/installations/etapes-assemblage/
-API accepted schema-violating request|GET /api/django/installations/fiche-intervention-champs/
-API accepted schema-violating request|GET /api/django/installations/fiche-intervention-templates/
-API accepted schema-violating request|GET /api/django/installations/frais-import/
-API accepted schema-violating request|GET /api/django/installations/geofence-alertes/
-API accepted schema-violating request|GET /api/django/installations/interventions/calendrier/
-API accepted schema-violating request|GET /api/django/installations/interventions/conflits-affectation/
-API accepted schema-violating request|GET /api/django/installations/interventions/ma-tournee/
-API accepted schema-violating request|GET /api/django/installations/interventions/nivellement-charge/
-API accepted schema-violating request|GET /api/django/installations/interventions/plan-de-charge/
-API accepted schema-violating request|GET /api/django/installations/interventions/planning-camionnettes/
-API accepted schema-violating request|GET /api/django/installations/interventions/taux-ponctualite/
-API accepted schema-violating request|GET /api/django/installations/kit-composants/
-API accepted schema-violating request|GET /api/django/installations/landed-cost-lignes/
-API accepted schema-violating request|GET /api/django/installations/livraison-lignes/
-API accepted schema-violating request|GET /api/django/installations/livraisons/
-API accepted schema-violating request|GET /api/django/installations/livraisons/portail/
-API accepted schema-violating request|GET /api/django/installations/lots-prelevement/
-API accepted schema-violating request|GET /api/django/installations/materiels-consignes/
-API accepted schema-violating request|GET /api/django/installations/meteo/
-API accepted schema-violating request|GET /api/django/installations/ordre-assemblage-lignes/
-API accepted schema-violating request|GET /api/django/installations/ordre-demontage-lignes/
-API accepted schema-violating request|GET /api/django/installations/ordres-assemblage/rapport-rebuts/
-API accepted schema-violating request|GET /api/django/installations/ordres-assemblage/rapport-soustraitants/
-API accepted schema-violating request|GET /api/django/installations/ordres-demontage/
-API accepted schema-violating request|GET /api/django/installations/pick-list-lignes/
-API accepted schema-violating request|GET /api/django/installations/pick-lists/
-API accepted schema-violating request|GET /api/django/installations/positions-techniciens/
-API accepted schema-violating request|GET /api/django/installations/preuves-livraison/
-API accepted schema-violating request|GET /api/django/installations/programme-budgets/
-API accepted schema-violating request|GET /api/django/installations/programme-chantiers/
-API accepted schema-violating request|GET /api/django/installations/programme-devis/
-API accepted schema-violating request|GET /api/django/installations/programme-engagements/
-API accepted schema-violating request|GET /api/django/installations/programme-tickets/
-API accepted schema-violating request|GET /api/django/installations/programmes/
-API accepted schema-violating request|GET /api/django/installations/receptions-non-facturees/
-API accepted schema-violating request|GET /api/django/installations/recettes-commissioning/
-API accepted schema-violating request|GET /api/django/installations/recettes-pompage/
-API accepted schema-violating request|GET /api/django/installations/regles-approbation-achat/
-API accepted schema-violating request|GET /api/django/installations/regles-rangement/
-API accepted schema-violating request|GET /api/django/installations/retour-livraison-lignes/
-API accepted schema-violating request|GET /api/django/installations/retours-livraison/
-API accepted schema-violating request|GET /api/django/installations/retours-materiel/
-API accepted schema-violating request|GET /api/django/installations/series-entrepot/
-API accepted schema-violating request|GET /api/django/installations/sessions-comptage/
-API accepted schema-violating request|GET /api/django/installations/seuils-approbation-bcf/
-API accepted schema-violating request|GET /api/django/installations/shotlist-slots/
-API accepted schema-violating request|GET /api/django/installations/transporteurs/
-API accepted schema-violating request|GET /api/django/installations/types-intervention/
 API accepted schema-violating request|GET /api/django/offlinesync/operations/
 API accepted schema-violating request|GET /api/django/outillage/kit-items/
 API accepted schema-violating request|GET /api/django/outillage/kits/
@@ -185,20 +113,6 @@ API accepted schema-violating request|PATCH /api/django/core/api-usage/plan/
 API accepted schema-violating request|PATCH /api/django/core/branded-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/core/ui-boutons/{id}/
 API accepted schema-violating request|PATCH /api/django/core/ui-onglets/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/categories-stockage/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/checklist-etapes/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/checklist-templates/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/consignes-securite/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/demandes-achat/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/dossiers-import/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/equipes/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/fiche-intervention-templates/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/kits/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/sessions-comptage/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/seuils-approbation-bcf/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/shotlist-slots/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/sous-traitants/{id}/
-API accepted schema-violating request|PATCH /api/django/installations/types-intervention/{id}/
 API accepted schema-violating request|PATCH /api/django/records/activities/{id}/
 API accepted schema-violating request|PATCH /api/django/records/tags/{id}/
 API accepted schema-violating request|PATCH /api/django/ventes/listes-prix/{id}/
@@ -218,24 +132,6 @@ API accepted schema-violating request|POST /api/django/facturation/factures/{id}
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/whatsapp/
 API accepted schema-violating request|POST /api/django/imports/export-object/
 API accepted schema-violating request|POST /api/django/imports/sauvegarde/
-API accepted schema-violating request|POST /api/django/installations/categories-stockage/
-API accepted schema-violating request|POST /api/django/installations/checklist-etapes/
-API accepted schema-violating request|POST /api/django/installations/checklist-templates/
-API accepted schema-violating request|POST /api/django/installations/consignes-securite/
-API accepted schema-violating request|POST /api/django/installations/demandes-achat/
-API accepted schema-violating request|POST /api/django/installations/dossiers-import/
-API accepted schema-violating request|POST /api/django/installations/equipes/
-API accepted schema-violating request|POST /api/django/installations/etapes-chantier/
-API accepted schema-violating request|POST /api/django/installations/fiche-intervention-templates/
-API accepted schema-violating request|POST /api/django/installations/interventions/replanifier-en-masse/
-API accepted schema-violating request|POST /api/django/installations/kits/
-API accepted schema-violating request|POST /api/django/installations/kits/{id}/dupliquer/
-API accepted schema-violating request|POST /api/django/installations/sessions-comptage/
-API accepted schema-violating request|POST /api/django/installations/seuils-approbation-bcf/
-API accepted schema-violating request|POST /api/django/installations/shotlist-slots/
-API accepted schema-violating request|POST /api/django/installations/sous-traitants/
-API accepted schema-violating request|POST /api/django/installations/sync/
-API accepted schema-violating request|POST /api/django/installations/types-intervention/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API accepted schema-violating request|POST /api/django/outillage/kits/
 API accepted schema-violating request|POST /api/django/publicapi/sandbox/try/
@@ -249,17 +145,6 @@ API accepted schema-violating request|PUT /api/django/core/api-usage/plan/
 API accepted schema-violating request|PUT /api/django/core/branded-templates/{id}/
 API accepted schema-violating request|PUT /api/django/core/ui-boutons/{id}/
 API accepted schema-violating request|PUT /api/django/core/ui-onglets/{id}/
-API accepted schema-violating request|PUT /api/django/installations/categories-stockage/{id}/
-API accepted schema-violating request|PUT /api/django/installations/checklist-etapes/{id}/
-API accepted schema-violating request|PUT /api/django/installations/checklist-templates/{id}/
-API accepted schema-violating request|PUT /api/django/installations/consignes-securite/{id}/
-API accepted schema-violating request|PUT /api/django/installations/equipes/{id}/
-API accepted schema-violating request|PUT /api/django/installations/fiche-intervention-templates/{id}/
-API accepted schema-violating request|PUT /api/django/installations/kits/{id}/
-API accepted schema-violating request|PUT /api/django/installations/sessions-comptage/{id}/
-API accepted schema-violating request|PUT /api/django/installations/shotlist-slots/{id}/
-API accepted schema-violating request|PUT /api/django/installations/sous-traitants/{id}/
-API accepted schema-violating request|PUT /api/django/installations/types-intervention/{id}/
 API accepted schema-violating request|PUT /api/django/outillage/kits/{id}/
 API accepted schema-violating request|PUT /api/django/records/activities/{id}/
 API accepted schema-violating request|PUT /api/django/records/tags/{id}/
@@ -276,14 +161,10 @@ API rejected schema-compliant request|GET /api/django/crm/leads/{lead_id}/roof-f
 API rejected schema-compliant request|GET /api/django/crm/relance-etapes/controle/
 API rejected schema-compliant request|GET /api/django/crm/relance-etapes/suivi/
 API rejected schema-compliant request|GET /api/django/facturation/factures/{facture_id}/lettre-relance-pdf/
-API rejected schema-compliant request|GET /api/django/installations/chantiers/{id}/rapport-energie/
-API rejected schema-compliant request|GET /api/django/installations/controle-budgetaire/
 API rejected schema-compliant request|GET /api/django/installations/interventions/conflits-affectation/
 API rejected schema-compliant request|GET /api/django/installations/interventions/nivellement-charge/
 API rejected schema-compliant request|GET /api/django/installations/interventions/plan-de-charge/
 API rejected schema-compliant request|GET /api/django/installations/interventions/planning-camionnettes/
-API rejected schema-compliant request|GET /api/django/installations/interventions/suggestions-creation/
-API rejected schema-compliant request|GET /api/django/installations/kits/{id}/composition-au/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|GET /api/django/publicapi/monitoring/
 API rejected schema-compliant request|GET /api/django/reporting/insights/cf-group-by/
@@ -303,7 +184,6 @@ API rejected schema-compliant request|PATCH /api/django/core/ui-boutons/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/vues/{id}/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PATCH /api/django/facturation/factures-lignes/{id}/
-API rejected schema-compliant request|PATCH /api/django/installations/checklist-etapes/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-tickets/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/sessions-comptage/{id}/
@@ -431,44 +311,26 @@ API rejected schema-compliant request|POST /api/django/imports/dry-run/
 API rejected schema-compliant request|POST /api/django/imports/export/{entity}/
 API rejected schema-compliant request|POST /api/django/imports/mapping/
 API rejected schema-compliant request|POST /api/django/installations/appels-commande/
-API rejected schema-compliant request|POST /api/django/installations/approbations-bcf/approuver/
 API rejected schema-compliant request|POST /api/django/installations/bin-affectations/
 API rejected schema-compliant request|POST /api/django/installations/bin-locations/
-API rejected schema-compliant request|POST /api/django/installations/categories-stockage/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/creer-depuis-devis/
 API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/ajouter-releve/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/avancer-etape/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/checklist-photo/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/cocher-checklist/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/commander-besoin/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/creer-interventions-standard/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/mise-en-service/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/reception-definitive/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/recette-pompage/
-API rejected schema-compliant request|POST /api/django/installations/chantiers/{id}/signer-client/
 API rejected schema-compliant request|POST /api/django/installations/checklist-etapes/
 API rejected schema-compliant request|POST /api/django/installations/colis-lignes/
 API rejected schema-compliant request|POST /api/django/installations/colis/
 API rejected schema-compliant request|POST /api/django/installations/commandes-cadre-lignes/
-API rejected schema-compliant request|POST /api/django/installations/consignes-securite/
 API rejected schema-compliant request|POST /api/django/installations/contrats-prix-lignes/
 API rejected schema-compliant request|POST /api/django/installations/controle-qualite-modeles/
 API rejected schema-compliant request|POST /api/django/installations/demandes-achat-lignes/
 API rejected schema-compliant request|POST /api/django/installations/demandes-achat/
 API rejected schema-compliant request|POST /api/django/installations/demandes-transfert/
-API rejected schema-compliant request|POST /api/django/installations/equipes/
 API rejected schema-compliant request|POST /api/django/installations/etapes-assemblage/
-API rejected schema-compliant request|POST /api/django/installations/etapes-chantier/
 API rejected schema-compliant request|POST /api/django/installations/fiche-intervention-champs/
-API rejected schema-compliant request|POST /api/django/installations/fiche-intervention-templates/
 API rejected schema-compliant request|POST /api/django/installations/frais-import/
 API rejected schema-compliant request|POST /api/django/installations/interventions/
-API rejected schema-compliant request|POST /api/django/installations/interventions/suggerer-creneau/
 API rejected schema-compliant request|POST /api/django/installations/kit-composants/
 API rejected schema-compliant request|POST /api/django/installations/landed-cost-lignes/
 API rejected schema-compliant request|POST /api/django/installations/livraison-lignes/
 API rejected schema-compliant request|POST /api/django/installations/livraisons/
-API rejected schema-compliant request|POST /api/django/installations/lots-prelevement/
 API rejected schema-compliant request|POST /api/django/installations/ordre-assemblage-lignes/
 API rejected schema-compliant request|POST /api/django/installations/ordre-demontage-lignes/
 API rejected schema-compliant request|POST /api/django/installations/ordres-assemblage/
@@ -481,7 +343,6 @@ API rejected schema-compliant request|POST /api/django/installations/programme-d
 API rejected schema-compliant request|POST /api/django/installations/programme-engagements/
 API rejected schema-compliant request|POST /api/django/installations/programme-taches/
 API rejected schema-compliant request|POST /api/django/installations/programme-tickets/
-API rejected schema-compliant request|POST /api/django/installations/programmes/{id}/attacher_chantier/
 API rejected schema-compliant request|POST /api/django/installations/receptions-non-facturees/
 API rejected schema-compliant request|POST /api/django/installations/recettes-commissioning/
 API rejected schema-compliant request|POST /api/django/installations/regles-approbation-achat/
@@ -492,7 +353,6 @@ API rejected schema-compliant request|POST /api/django/installations/retour-mate
 API rejected schema-compliant request|POST /api/django/installations/retours-livraison/
 API rejected schema-compliant request|POST /api/django/installations/retours-materiel/
 API rejected schema-compliant request|POST /api/django/installations/sessions-comptage/
-API rejected schema-compliant request|POST /api/django/installations/shotlist-slots/
 API rejected schema-compliant request|POST /api/django/monitoring/cleanings/
 API rejected schema-compliant request|POST /api/django/monitoring/configs/
 API rejected schema-compliant request|POST /api/django/monitoring/readings/
@@ -599,7 +459,6 @@ API rejected schema-compliant request|PUT /api/django/achats/bons-commande-fourn
 API rejected schema-compliant request|PUT /api/django/core/vues/{id}/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/facturation/factures-lignes/{id}/
-API rejected schema-compliant request|PUT /api/django/installations/checklist-etapes/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/programme-tickets/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/recettes-commissioning/{id}/
@@ -620,8 +479,6 @@ API rejected schema-compliant request|PUT /api/django/ventes/factures-lignes/{id
 API rejected schema-compliant request|PUT /api/django/ventes/packs-asbuilt/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/recettes-mes/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/tests-pr-reception/{id}/
-JSON deserialization error|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
-Missing Content-Type header|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Response violates schema|GET /api/django/adminops/settings/
 Response violates schema|GET /api/django/core/bulk-edit/targets/
 Response violates schema|GET /api/django/core/dossiers/{id}/checklist/
@@ -638,30 +495,6 @@ Response violates schema|GET /api/django/facturation/factures/{id}/relance-aperc
 Response violates schema|GET /api/django/facturation/factures/{id}/relances/
 Response violates schema|GET /api/django/facturation/paiements/attestations-ras-en-attente/
 Response violates schema|GET /api/django/facturation/paiements/avances-non-affectees/
-Response violates schema|GET /api/django/installations/chantiers/
-Response violates schema|GET /api/django/installations/chantiers/{id}/
-Response violates schema|GET /api/django/installations/chantiers/{id}/historique/
-Response violates schema|GET /api/django/installations/chantiers/{id}/releves/
-Response violates schema|GET /api/django/installations/checklist-templates/
-Response violates schema|GET /api/django/installations/checklist-templates/{id}/
-Response violates schema|GET /api/django/installations/dossiers-import/
-Response violates schema|GET /api/django/installations/dossiers-import/{id}/
-Response violates schema|GET /api/django/installations/etapes-chantier/
-Response violates schema|GET /api/django/installations/etapes-chantier/{id}/
-Response violates schema|GET /api/django/installations/kits/
-Response violates schema|GET /api/django/installations/kits/{id}/
-Response violates schema|GET /api/django/installations/kits/{id}/revisions/
-Response violates schema|GET /api/django/installations/materiels-consignes/
-Response violates schema|GET /api/django/installations/materiels-consignes/{id}/
-Response violates schema|GET /api/django/installations/meteo/
-Response violates schema|GET /api/django/installations/positions-techniciens/carte-live/
-Response violates schema|GET /api/django/installations/putaways/
-Response violates schema|GET /api/django/installations/putaways/{id}/
-Response violates schema|GET /api/django/installations/recettes-commissioning/
-Response violates schema|GET /api/django/installations/recettes-commissioning/{id}/
-Response violates schema|GET /api/django/installations/series-entrepot/
-Response violates schema|GET /api/django/installations/series-entrepot/{id}/
-Response violates schema|GET /api/django/installations/sous-traitants/
 Response violates schema|GET /api/django/onboarding/progress/
 Response violates schema|GET /api/django/records/activities/
 Response violates schema|GET /api/django/records/activities/{id}/
@@ -689,37 +522,10 @@ Response violates schema|GET /api/django/ventes/factures/{id}/relances/
 Response violates schema|GET /api/django/ventes/paiements/attestations-ras-en-attente/
 Response violates schema|GET /api/django/ventes/paiements/avances-non-affectees/
 Response violates schema|PATCH /api/django/facturation/factures/{id}/
-Response violates schema|PATCH /api/django/installations/chantiers/{id}/
-Response violates schema|PATCH /api/django/installations/checklist-templates/{id}/
-Response violates schema|PATCH /api/django/installations/dossiers-import/{id}/
-Response violates schema|PATCH /api/django/installations/etapes-chantier/{id}/
-Response violates schema|PATCH /api/django/installations/kits/{id}/
-Response violates schema|PATCH /api/django/installations/materiels-consignes/{id}/
-Response violates schema|PATCH /api/django/installations/putaways/{id}/
-Response violates schema|PATCH /api/django/installations/recettes-commissioning/{id}/
-Response violates schema|PATCH /api/django/installations/series-entrepot/{id}/
 Response violates schema|PATCH /api/django/outillage/outils/{id}/
 Response violates schema|PATCH /api/django/ventes/devis/{id}/
 Response violates schema|PATCH /api/django/ventes/factures/{id}/
 Response violates schema|POST /api/django/facturation/factures/
-Response violates schema|POST /api/django/installations/chantiers/
-Response violates schema|POST /api/django/installations/chantiers/{id}/annuler/
-Response violates schema|POST /api/django/installations/chantiers/{id}/reactiver/
-Response violates schema|POST /api/django/installations/chantiers/{id}/recette/
-Response violates schema|POST /api/django/installations/checklist-templates/
-Response violates schema|POST /api/django/installations/checklist-templates/{id}/dupliquer/
-Response violates schema|POST /api/django/installations/dossiers-import/
-Response violates schema|POST /api/django/installations/etapes-chantier/
-Response violates schema|POST /api/django/installations/kits/
-Response violates schema|POST /api/django/installations/kits/{id}/dupliquer/
-Response violates schema|POST /api/django/installations/materiels-consignes/
-Response violates schema|POST /api/django/installations/materiels-consignes/{id}/retourner/
-Response violates schema|POST /api/django/installations/ordres-assemblage/depuis-devis/
-Response violates schema|POST /api/django/installations/putaways/
-Response violates schema|POST /api/django/installations/putaways/{id}/ranger/
-Response violates schema|POST /api/django/installations/series-entrepot/
-Response violates schema|POST /api/django/installations/series-entrepot/{id}/reserver/
-Response violates schema|POST /api/django/installations/series-entrepot/{id}/sortir/
 Response violates schema|POST /api/django/records/activities/
 Response violates schema|POST /api/django/records/activities/{id}/done/
 Response violates schema|POST /api/django/records/activities/{id}/snooze/
@@ -727,14 +533,6 @@ Response violates schema|POST /api/django/ventes/devis/{id}/acquitter-derive/
 Response violates schema|POST /api/django/ventes/devis/{id}/dupliquer-variante/
 Response violates schema|POST /api/django/ventes/factures/
 Response violates schema|PUT /api/django/facturation/factures/{id}/
-Response violates schema|PUT /api/django/installations/chantiers/{id}/
-Response violates schema|PUT /api/django/installations/checklist-templates/{id}/
-Response violates schema|PUT /api/django/installations/dossiers-import/{id}/
-Response violates schema|PUT /api/django/installations/etapes-chantier/{id}/
-Response violates schema|PUT /api/django/installations/kits/{id}/
-Response violates schema|PUT /api/django/installations/materiels-consignes/{id}/
-Response violates schema|PUT /api/django/installations/putaways/{id}/
-Response violates schema|PUT /api/django/installations/series-entrepot/{id}/
 Response violates schema|PUT /api/django/records/activities/{id}/
 Response violates schema|PUT /api/django/ventes/devis/{id}/
 Response violates schema|PUT /api/django/ventes/factures/{id}/
@@ -742,9 +540,6 @@ Server error|GET /api/django/records/attachments/all/
 Server error|GET /api/django/ventes/clients/{client_id}/credit-warning/
 Server error|GET /api/django/ventes/devis/{id}/proposal/
 Server error|POST /api/django/facturation/paiements/enregistrer-avance/
-Server error|POST /api/django/installations/approbations-bcf/approuver/
-Server error|POST /api/django/installations/chantiers/creer-depuis-devis/
-Server error|POST /api/django/installations/lots-prelevement/
 Server error|POST /api/django/publicapi/sandbox/try/
 Server error|POST /api/django/records/activities/snooze-approbation/
 Server error|POST /api/django/records/activities/{id}/done/

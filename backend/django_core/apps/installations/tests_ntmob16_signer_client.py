@@ -98,6 +98,24 @@ class SignerClientEndpointTests(TestCase):
         resp = self.api.post(self._url(), {}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_corps_type_400_nomme_null_facultatif_tolere(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `signataire_nom: 5` faisait un 500
+        # (`.strip()` d'un entier) ; la data-URL acceptée est publiée au
+        # schéma et contrôlée par le sérialiseur qui la déclare.
+        for corps, champ in (
+                ({'signature_client': 'data:image/png;base64,AAAA',
+                  'signataire_nom': 5}, 'signataire_nom'),
+                ({'signature_client': '0'}, 'signature_client')):
+            resp = self.api.post(self._url(), corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+            self.assertIn(champ, resp.data)
+        resp = self.api.post(self._url(), {
+            'signature_client': ' data:image/png;base64,AAAA ',
+            'signataire_nom': None, 'cosignataire_nom': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.inst.refresh_from_db()
+        self.assertEqual(self.inst.signature_client, 'data:image/png;base64,AAAA')
+
     def test_normal_role_forbidden(self):
         api = auth(self.normal_user)
         resp = api.post(self._url(), {

@@ -290,8 +290,8 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             f'inline; filename="bon-livraison-{liv.id}.pdf"')
         return resp
 
-    @oa.extend_schema(parameters=[oa.qi('client', required=True)], responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='portail',
+    @oa.extend_schema(parameters=[oa.qid('client', required=True)], responses=oa.LIST)
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='portail',
             permission_classes=[IsResponsableOrAdmin])
     def portail(self, request):
         """XSTK22 — section « Livraisons » du portail client (FG228) : les
@@ -300,8 +300,9 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ``monitoring.client_portal``)."""
         from .. import selectors
         company = request.user.company
-        client_id = request.query_params.get('client')
-        if company is None or not client_id:
+        # ERR-ENF11 : `client` = id 1..ID_MAX publié (``abc`` faisait un 500).
+        client_id = oa.id_requete(request, 'client', requis=True)
+        if company is None:
             return Response(
                 {'detail': 'client requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
