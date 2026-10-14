@@ -48,6 +48,16 @@ endpoints:
   # de config du moteur d'affichage (profil, gabarits, tarification), ni les
   # préchargements de solde par facture (paiements, avoirs, affectations,
   # lignes, notes de débit, retenues — APRF4/APRF5).
+  # VNT68 (14/10/2026) — `vente` servie en liste : `solde` et `vente` d'UNE
+  # page sont calculés ensemble par `etat_vente_map` sous `ventes_prechargees`
+  # (palier résolu une fois ; chaînes de révision, factures de chaîne, de BC
+  # et consolidées chargées en LOT). Plan de requêtes : page sans vente
+  # acceptée ni révision = 0 requête de plus (la relation `factures`
+  # préchargée est relue) ⇒ 23 inchangé ; page avec chaîne + BC + consolidée
+  # = au plus ~21 requêtes FIXES de plus (2 niveaux de chaîne + préchargements
+  # lignes, 1 lot de factures de chaîne, 1 lot BC/consolidées + 1 de sources,
+  # leurs préchargements), identiques à 10 et 25 devis — plafond dérivé, à
+  # confirmer par la mesure CI de test_yopsb13 (test_ventes_en_lot_*).
   - path: /api/django/ventes/devis/
     budget: 23
     enforced: true

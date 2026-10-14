@@ -79,14 +79,19 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
         DocumentTemplates.get(company=self.company)
         TariffSettings.get(company=self.company)
 
-    def _seed_devis(self, count, start=0):
-        """Page MIXTE : 1 sur 2 à deux options, 1 sur 3 facturé."""
+    def _seed_devis(self, count, start=0, acceptes=False):
+        """Page MIXTE : 1 sur 2 à deux options, 1 sur 3 facturé ;
+        ``acceptes`` (VNT68) : 1 sur 4 ACCEPTÉ sans facture directe (la vente
+        qui cherche ses factures de BC / consolidées)."""
         for i in range(start, start + count):
             deux = bool(i % 2)
+            accepte = acceptes and i % 4 == 1
             devis = Devis.objects.create(
                 company=self.company, reference=f'DEV-{MONTH}-{i:04d}',
                 client=self.client_obj, created_by=self.user,
                 taux_tva=Decimal('20'),
+                statut=(Devis.Statut.ACCEPTE if accepte
+                        else Devis.Statut.BROUILLON),
                 etude_params=dict(DEUX_OPTIONS) if deux else None)
             for j, (desig, qte, pu) in enumerate(DEUX if deux else MONO):
                 produit = Produit.objects.create(
@@ -104,6 +109,53 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
                     statut=Facture.Statut.EMISE, montant_ht=Decimal('100'),
                     montant_tva=Decimal('20'), montant_ttc=Decimal('120'),
                     created_by=self.user)
+
+    def _devis_simple(self, reference, **champs):
+        devis = Devis.objects.create(
+            company=self.company, reference=reference,
+            client=self.client_obj, created_by=self.user,
+            taux_tva=Decimal('20'), statut=Devis.Statut.ACCEPTE, **champs)
+        produit = Produit.objects.create(
+            company=self.company, nom='Kit', sku=f'KIT-{reference}',
+            prix_vente=Decimal('10000'), prix_achat=Decimal('1'),
+            quantite_stock=100)
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='Kit PV',
+            quantite=Decimal('1'), prix_unitaire=Decimal('10000'),
+            remise=Decimal('0'))
+        return devis
+
+    def _facture(self, reference, **champs):
+        return Facture.objects.create(
+            company=self.company, reference=reference,
+            client=self.client_obj, statut=Facture.Statut.EMISE,
+            montant_ht=Decimal('1000'), montant_tva=Decimal('200'),
+            montant_ttc=Decimal('1200'), created_by=self.user, **champs)
+
+    def _seed_ventes(self):
+        """VNT68 — les quatre portes d'une vente, servies par la liste :
+        chaîne de révision V1 → V2 (facture émise sur la V1), vente facturée
+        par son BON DE COMMANDE, vente facturée par une CONSOLIDÉE."""
+        from apps.ventes.models import BonCommande
+        from apps.ventes.models_facturation import FactureSource
+        v1 = self._devis_simple(f'DEV-{MONTH}-V681')
+        v2 = self._devis_simple(f'DEV-{MONTH}-V682', version=2,
+                                version_parent=v1)
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        self._facture(f'FAC-{MONTH}-V681', devis=v1)
+        par_bc = self._devis_simple(f'DEV-{MONTH}-V683')
+        bc = BonCommande.objects.create(
+            company=self.company, reference=f'BC-{MONTH}-V683',
+            devis=par_bc, client=self.client_obj,
+            statut=BonCommande.Statut.CONFIRME)
+        self._facture(f'FAC-{MONTH}-V683', bon_commande=bc)
+        conso = self._devis_simple(f'DEV-{MONTH}-V684')
+        facture = self._facture(f'FAC-{MONTH}-V684')
+        FactureSource.objects.create(company=self.company, facture=facture,
+                                     devis=conso,
+                                     sous_total_ht=Decimal('1000'))
+        return v2, par_bc, conso
 
     def _get_liste(self):
         with CaptureQueriesContext(connection) as ctx:
@@ -132,6 +184,52 @@ class DevisListQueryBudgetTests(AssertQueryBudgetMixin, TestCase):
             'moteur UNIQUE de DevisSerializer._display.')
         # CLAUSE PERSISTANCE n/a — une lecture n'écrit rien (aucun ShareLink).
         self.assertEqual(_ecritures(ctx_25), [])
+
+    def test_ventes_en_lot_requetes_constantes(self):
+        """VNT68 — ``vente`` (et ``solde``) d'UNE page se lisent en lot :
+        chaîne de révision, BC et consolidée comprises, la page de 25 coûte
+        exactement ce que coûte la page de 10 (un accepté sur quatre)."""
+        self._seed_ventes()
+        self._seed_devis(10, acceptes=True)
+        resp_10, ctx_10 = self._get_liste()
+        self._seed_devis(15, start=10, acceptes=True)
+        resp_25, ctx_25 = self._get_liste()
+        self.assertEqual(len(self._lignes(resp_25)),
+                         len(self._lignes(resp_10)) + 15)
+        self.assertEqual(
+            len(ctx_10.captured_queries), len(ctx_25.captured_queries),
+            'VNT68 — le nombre de requêtes a grandi avec le nombre de devis '
+            '(vente / solde lus ligne par ligne au lieu du lot de la page).')
+        # Plafond DÉRIVÉ du plan de requêtes (23 mesurées par APRF5 + ~21
+        # requêtes fixes du lot, marge comprise — docs/query-budgets.yml).
+        self.assertLessEqual(len(ctx_25.captured_queries), 60)
+        self.assertEqual(_ecritures(ctx_25), [])
+
+    def test_vente_liste_egale_detail_et_lecture_unitaire(self):
+        """VNT68 — ``vente`` est servie en liste ET au détail, identique à
+        ``etat_vente`` lu devis par devis ; ``solde`` reste celui de
+        ``solde_devis`` (mêmes clés, toutes en texte)."""
+        from apps.ventes.utils.echeancier import solde_devis
+        from apps.ventes.vente_facturation import etat_vente
+        v2, par_bc, conso = self._seed_ventes()
+        self._seed_devis(4, acceptes=True)
+        resp, _ctx = self._get_liste()
+        lignes = {r['id']: r for r in self._lignes(resp)}
+        for devis in Devis.objects.filter(company=self.company):
+            ligne = lignes[devis.pk]
+            attendu = etat_vente(Devis.objects.get(pk=devis.pk), self.user)
+            self.assertEqual(ligne['vente'], attendu, devis.reference)
+            self.assertEqual(ligne['solde'], {
+                k: str(v) for k, v in solde_devis(
+                    Devis.objects.get(pk=devis.pk)).items()})
+            detail = self.api.get('%s%s/' % (DEVIS_URL, devis.pk))
+            self.assertEqual(detail.data['vente'], ligne['vente'])
+            self.assertEqual(detail.data['solde'], ligne['solde'])
+        self.assertEqual(lignes[par_bc.pk]['vente']['emis_ttc'], '1200.00')
+        self.assertEqual(lignes[conso.pk]['vente']['emis_ttc'], '1200.00')
+        self.assertEqual(
+            [v['id'] for v in lignes[v2.pk]['vente']['versions']],
+            [v2.version_parent_id, v2.pk])
 
     def test_query_count_stays_within_fixed_budget(self):
         # Plafond absolu calé sur le coût O(1) mesuré par SCA43 (~32 requêtes
