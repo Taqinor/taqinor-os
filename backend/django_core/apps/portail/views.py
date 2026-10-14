@@ -22,7 +22,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -363,10 +363,14 @@ class DocumentClientPortailViewSet(_PortailBaseViewSet):
     serializer_class = DocumentClientPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_depot']
-    parser_classes = [MultiPartParser, FormParser, JSONParser]  # dépôt d'un fichier (JSON sans fichier)
+    # CI #997 fuzz (2) : un document se DÉPOSE avec son fichier — formulaire
+    # seul. En JSON le champ ``fichier`` (publié ``uri``) ne peut pas porter de
+    # fichier : tout corps « conforme » y était refusé 400. ``marquer_traite``
+    # (sans corps) garde le JSON, seul appel de l'écran.
+    parser_classes = [MultiPartParser]
 
     @extend_schema(request=None, responses=DocumentClientPortailSerializer)
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], parser_classes=[JSONParser])
     def marquer_traite(self, request, pk=None):
         doc = self.get_object()
         if not doc.traite:

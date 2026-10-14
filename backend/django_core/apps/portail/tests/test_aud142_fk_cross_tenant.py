@@ -109,7 +109,7 @@ class FkCrossTenantPortailTests(TestCase):
         """ROUGE avant AUD142 : 201."""
         res = self.api.post('/api/django/portail/documents-client-portail/', {
             'client_id': self.client_b.id, 'type_document': 'facture_onee',
-        }, format='json')
+        }, format='multipart')  # CI #997 fuzz (2) : dépôt = formulaire seul
         self.assertEqual(res.status_code, 400, res.content)
         self.assertFalse(DocumentClientPortail.objects.filter(
             client_id=self.client_b.id).exists())
@@ -117,7 +117,7 @@ class FkCrossTenantPortailTests(TestCase):
     def test_document_lead_dun_autre_tenant_refuse(self):
         res = self.api.post('/api/django/portail/documents-client-portail/', {
             'client_id': self.client_a.id, 'lead_id': self.lead_b.id,
-        }, format='json')
+        }, format='multipart')
         self.assertEqual(res.status_code, 400, res.content)
 
     def test_jalon_chantier_dun_autre_tenant_refuse(self):
@@ -297,3 +297,19 @@ class ContratApiFuzzPortailTests(TestCase):
         self.assertIn(res.status_code, (200, 202), res.content)
         compte.refresh_from_db()
         self.assertFalse(compte.actif)
+
+    def test_document_client_depot_formulaire_seul_marquer_traite_json(self):
+        # CI #997 fuzz (2) : le dépôt est un formulaire (le champ ``fichier``
+        # ne se porte pas en JSON) ; ``marquer_traite`` reste un appel JSON.
+        from apps.portail.models import DocumentClientPortail
+        liste = '/api/django/portail/documents-client-portail/'
+        res = self.api.post(liste, {'client_id': self.client_a.id,
+                                    'fichier': ''}, format='json')
+        self.assertEqual(res.status_code, 415, res.content)
+        doc = DocumentClientPortail.objects.create(
+            company=self.a, client_id=self.client_a.id, type_document='autre')
+        res = self.api.post(f'{liste}{doc.id}/marquer_traite/', {},
+                            format='json')
+        self.assertEqual(res.status_code, 200, res.content)
+        doc.refresh_from_db()
+        self.assertTrue(doc.traite)
