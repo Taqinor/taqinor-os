@@ -11,7 +11,7 @@ serveur et ``lien_ged`` sert la relecture AUTHENTIFIÉE de la dernière version
 (jamais une URL de média statique). La GED reste dans le produit (décision
 fondateur du 21/09/2026, SOLMVP16b).
 """
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte
@@ -295,3 +295,48 @@ class DemandeTicketPortailSerializer(serializers.ModelSerializer):
         """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
         return _valider_id_cross_app(
             self, value, _resoudre_chantier, 'Chantier')
+
+
+# ── ENF11 — formes de SCHÉMA des ViewSets self-service « Mes devis » et
+# « Mes factures » (``views_client``) ─────────────────────────────────────────
+# Ces ``viewsets.ViewSet`` rendent des dicts de sélecteurs ``ventes`` : sans
+# forme déclarée, drf-spectacular journalisait « unable to guess serializer »
+# et baptisait la liste ``…_retrieve`` comme le détail (collision
+# d'operationId). Le contenu d'une ligne est le contrat ``contract_samples/``
+# (``mes_devis_liste.json``, ``mes_factures_liste.json``) : décrit ici comme un
+# objet libre, jamais une seconde définition des champs. ``many=False`` : la
+# liste est une ENVELOPPE ``{results: [...]}``, pas un tableau nu.
+@extend_schema_serializer(many=False)
+class MesDevisPortailListeSerializer(serializers.Serializer):
+    results = serializers.ListField(child=serializers.DictField())
+
+
+@extend_schema_serializer(many=False)
+class MesFacturesPortailListeSerializer(serializers.Serializer):
+    results = serializers.ListField(child=serializers.DictField())
+    paiement_en_ligne_actif = serializers.BooleanField()
+
+
+class AccepterDevisPortailRequeteSerializer(serializers.Serializer):
+    """Corps de ``POST mes-devis/{id}/accepter/`` (QX9, APDF35, CIQ321)."""
+    nom = serializers.CharField()
+    consent_esign = serializers.BooleanField()
+    accepte_conditions = serializers.BooleanField()
+    option = serializers.CharField(required=False, allow_blank=True)
+    entreprise = serializers.DictField(required=False, allow_null=True)
+
+
+class AccepterDevisPortailReponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    reference = serializers.CharField()
+    statut = serializers.CharField()
+
+
+class PayerFacturePortailReponseSerializer(serializers.Serializer):
+    """Réponse de ``POST mes-factures/{id}/payer/`` (NTPRT11, repli virement)."""
+    paiement_id = serializers.IntegerField()
+    reference = serializers.CharField(allow_null=True)
+    statut = serializers.CharField()
+    montant = serializers.CharField()
+    paiement_en_ligne_actif = serializers.BooleanField()
+    virement = serializers.DictField()

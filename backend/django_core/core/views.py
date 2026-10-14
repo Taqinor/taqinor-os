@@ -22,8 +22,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_serializer, extend_schema_view,
     inline_serializer,
 )
-from rest_framework import serializers as drf_serializers
-from rest_framework import status, viewsets
+from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -49,9 +48,7 @@ from authentication.permissions import (
 
 from django.db.models import Q
 
-from . import bulk_edit as bulk_edit_infra
-from . import dashboard_data
-from . import data_explorer
+from . import bulk_edit as bulk_edit_infra, dashboard_data, data_explorer
 from . import jobs as jobs_infra
 from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
@@ -61,6 +58,7 @@ from .champs_stricts import ChaineStricte, EntierStrict
 from .conflit_etat import ConflitEtat
 from .mixins import TenantMixin
 from .openapi_erreurs import EXTENSION_CONTENU_JSON, EXTENSION_CORPS_RESSERRE
+from .openapi_operations import mots_operation
 from .parametres_requete import choix_ou_400
 from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
@@ -886,6 +884,9 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = SavedQuery.objects.all()
     pagination_class = None
+    #: ENF11 — ``POST …/run/`` (ad-hoc) et ``POST …/{id}/run/`` ont les mêmes
+    #: jetons de chemin : l'ad-hoc devient ``…_run_adhoc_create``.
+    schema = mots_operation(run_adhoc='adhoc_create')
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -957,6 +958,9 @@ class DataExplorerDatasetsView(APIView):
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     permission_classes = [IsAuthenticated]
+    #: ENF11 — le catalogue (route SANS ``{name}``) est ``…_datasets_list`` ;
+    #: le détail (sous-classe ci-dessous) garde ``…_datasets_retrieve``.
+    schema = mots_operation(get='list')
 
     @extend_schema(
         responses=inline_serializer('DataExplorerCatalogue', {
@@ -976,8 +980,10 @@ class DataExplorerDatasetsView(APIView):
 class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
     """Meme vue, route detail — operation_id distinct pour que le schema
     OpenAPI ne fonde pas liste et detail dans un seul identifiant (collision
-    d'operationId relevee par la garde YAPIC6)."""
-    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
+    d'operationId relevee par la garde YAPIC6). ``parser_classes`` (ENF8, JSON
+    seul) est herite de la vue catalogue ; ``schema`` y revient au nommage par
+    defaut (``…_retrieve``)."""
+    schema = mots_operation()
 
     @extend_schema(
         responses=inline_serializer('DataExplorerDatasetSchema', {

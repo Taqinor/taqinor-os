@@ -26,6 +26,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.openapi_operations import mots_operation
 from core.parseurs import PARSEURS_JSON
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -254,6 +255,9 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         'client', 'installation').all()
     serializer_class = ContratMaintenanceSerializer
     parser_classes = PARSEURS_JSON  # aucun upload : JSON seul (api-fuzz #956)
+    #: ENF11 — ``…/rentabilite/`` (tous les contrats) et ``…/{id}/rentabilite/``
+    #: ont les mêmes jetons de chemin : la vue d'ensemble est ``…_list``.
+    schema = mots_operation(rentabilite_liste='list')
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'a_venir', 'tournee'):

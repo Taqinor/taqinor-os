@@ -8,8 +8,6 @@ Error|InterventionLienClientPublicView|unable to guess serializer. This is grace
 Error|InterventionRapportPdfPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|InterventionRapportPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|LogoutView|exception raised while getting serializer. Hint: Is get_serializer_class() returning None or is get_queryset() not worki
-Error|MesDevisPortailViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|MesFacturesPortailViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|candidature_fournisseur|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|contact|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|get_chat_session|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -35,20 +33,6 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "source". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "statut". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee
-Warning|<global>|operationId "django_core_data_explorer_datasets_retrieve" has collisions [('/api/django/core/data-explorer/datasets/', '
-Warning|<global>|operationId "django_core_saved_queries_run_create" has collisions [('/api/django/core/saved-queries/{id}/run/', 'post'),
-Warning|<global>|operationId "django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Grou
-Warning|<global>|operationId "django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Users
-Warning|<global>|operationId "django_portail_mes_devis_retrieve" has collisions [('/api/django/portail/mes-devis/', 'get'), ('/api/django
-Warning|<global>|operationId "django_portail_mes_factures_retrieve" has collisions [('/api/django/portail/mes-factures/', 'get'), ('/api/
-Warning|<global>|operationId "django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-maintenanc
-Warning|<global>|operationId "v#_core_data_explorer_datasets_retrieve" has collisions [('/api/v#/core/data-explorer/datasets/', 'get'), (
-Warning|<global>|operationId "v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/api/
-Warning|<global>|operationId "v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups', 'ge
-Warning|<global>|operationId "v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', 'get'
-Warning|<global>|operationId "v#_portail_mes_devis_retrieve" has collisions [('/api/v#/portail/mes-devis/', 'get'), ('/api/v#/portail/mes
-Warning|<global>|operationId "v#_portail_mes_factures_retrieve" has collisions [('/api/v#/portail/mes-factures/', 'get'), ('/api/v#/porta
-Warning|<global>|operationId "v#_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/v#/sav/contrats-maintenance/{id}/r
 Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_model". Consider using a type hint or @extend_schema_field. Defaulting to
 Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_module". Consider using a type hint or @extend_schema_field. Defaulting to
 Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_timestamp_local". Consider using a type hint or @extend_schema_field. Defa
@@ -58,10 +42,7 @@ Warning|BackgroundJobViewSet|could not derive type of path parameter "id" becaus
 Warning|ChangelogViewSet > ChangelogEntrySerializer|unable to resolve type hint for function "get_lu". Consider using a type hint or @extend_schema_field. Defaulting to str
 Warning|EquipementViewSet|could not derive type of path parameter "downtime_id" because model "apps.sav.models.Equipement" contained no such field
 Warning|LeadViewSet|could not derive type of path parameter "activite_id" because model "apps.crm.models.Lead" contained no such field. Cons
-Warning|MesDevisPortailViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|MesFacturesPortailViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|ModuleCatalogViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|MonitoringConfigViewSet > MonitoringConfigSerializer|unable to resolve type hint for function "get_has_credentials". Consider using a type hint or @extend_schema_field. Defa
 Warning|MonitoringConfigViewSet > MonitoringConfigSerializer|unable to resolve type hint for function "get_provider_label". Consider using a type hint or @extend_schema_field. Defau
 Warning|OnboardingProgressViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|ProductTourViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi

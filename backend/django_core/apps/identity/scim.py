@@ -23,6 +23,7 @@ from rest_framework.views import APIView
 
 from authentication.models import CustomUser
 from authentication.selectors import revoke_user_sessions
+from core.openapi_operations import mots_operation
 from core.throttling import ScimThrottle
 
 from .models import ScimGroupMapping, ScimToken
@@ -133,6 +134,9 @@ class ScimUsersView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [ScimThrottle]
+    #: ENF11 — la liste (``/Users``) est ``…_Users_list``, le détail
+    #: (``/Users/{id}``) garde ``…_Users_retrieve`` (jetons de chemin égaux).
+    schema = mots_operation(get='list')
 
     def get(self, request, company_slug):
         company, err = _authenticate(request, company_slug)
@@ -355,6 +359,8 @@ class ScimGroupsView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
     throttle_classes = [ScimThrottle]
+    #: ENF11 — même départage que ``ScimUsersView`` : ``…_Groups_list``.
+    schema = mots_operation(get='list')
 
     def get(self, request, company_slug):
         company, err = _authenticate(request, company_slug)
