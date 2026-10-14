@@ -15,6 +15,7 @@ import {
 } from '../../ui'
 import { SectionTitle, Field, ChargementErreur } from './peComponents'
 import installationsApi from '../../api/installationsApi'
+import toutesLesPages from './toutesLesPages'
 import { apiErrorMessage } from '../../lib/apiError'
 
 const TYPE_CHAMPS = [
@@ -33,8 +34,8 @@ export default function FicheInterventionModelesSection() {
 
   const load = () => {
     setLoading(true)
-    installationsApi.getFicheTemplates()
-      .then((r) => setTemplates(r.data.results ?? r.data))
+    toutesLesPages((params) => installationsApi.getFicheTemplates(params))
+      .then((rows) => setTemplates(rows))
       .catch(() => setError('Impossible de charger les modèles de fiche.'))
       .finally(() => setLoading(false))
   }

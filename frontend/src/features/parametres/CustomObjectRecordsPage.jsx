@@ -24,6 +24,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Boxes, Plus, Trash2, ArrowLeft } from 'lucide-react'
 import api from '../../api/axios'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
   Button, IconButton, Input, Spinner, EmptyState, Card, CardContent,
@@ -62,13 +63,17 @@ export default function CustomObjectRecordsPage() {
   const [draft, setDraft] = useState({})
   const [editionId, setEditionId] = useState(null)
 
+  // ENF15 — colonnes lues sur vue-liste, lignes lues sur TOUTES les pages de records/
+  // (vue-liste n'en renvoie que la page 1).
   const charger = useCallback(() => Promise.all([
     api.get(`/custom-fields/custom-objects/${code}/vue-liste/`),
     api.get(`/custom-fields/custom-objects/${code}/vue-formulaire/`),
+    fetchAllPages((page) => api.get(`/custom-fields/custom-objects/${code}/records/`,
+      { params: { page } }).then((r) => r?.data), { concurrency: 3 }),
   ])
-    .then(([liste, formulaire]) => {
+    .then(([liste, formulaire, lignes]) => {
       setColonnes(liste.data?.colonnes ?? [])
-      setLignes(liste.data?.results ?? [])
+      setLignes(Array.isArray(lignes) ? lignes : [])
       const schema = formulaire.data?.champs ?? []
       setChamps(schema)
       setDraft(formulaireVide(schema))

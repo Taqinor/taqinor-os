@@ -135,7 +135,7 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
             'domaine', OpenApiTypes.STR, OpenApiParameter.QUERY,
             required=True, enum=_DOMAINE_ENUM)],
         responses=_STATUTS_EFFECTIFS)
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], pagination_class=None)
     def effective(self, request):
         """Liste effective (défauts fusionnés avec les surcharges) d'un domaine.
 
@@ -155,7 +155,7 @@ class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
 
     @extend_schema(request=StatutsBulkRequestSerializer,
                    responses=_STATUTS_EFFECTIFS)
-    @action(detail=False, methods=['put'])
+    @action(detail=False, methods=['put'], pagination_class=None)
     def bulk(self, request):
         """Upsert en une fois des surcharges d'un domaine (libellé/ordre/actif).
 

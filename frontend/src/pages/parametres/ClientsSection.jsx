@@ -9,6 +9,8 @@ import { useEffect, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import customFieldsApi from '../../api/customFieldsApi'
+import toutesLesPages from './toutesLesPages'
+import api from '../../api/axios'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Switch, Checkbox,
   EmptyState, Spinner,
@@ -54,8 +56,8 @@ export default function ClientsSection() {
   // rechargements explicites, jamais en synchrone dans l'effet (évite les
   // rendus en cascade signalés par react-hooks/set-state-in-effect).
   const load = () => {
-    customFieldsApi.getDefs('client')
-      .then(r => setDefs(r.data.results ?? r.data ?? []))
+    toutesLesPages((params) => api.get('/custom-fields/definitions/', { params }), { module: 'client' })
+      .then(rows => setDefs(rows ?? []))
       .catch(() => setDefs([]))
       .finally(() => setLoading(false))
   }
