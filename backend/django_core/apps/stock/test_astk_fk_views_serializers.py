@@ -605,3 +605,24 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(MouvementStock.objects.count(), avant)
         self.assertEqual(BinAffectation.objects.get(bin=self.bin_a, produit_id=pa).quantite, 2147483647)
+
+    def test_fuzz_ci997_3_kit_composant_sous_kit_champs_produit_null_publies(self):
+        """CI #997 fuzz (3) — un composant SOUS-KIT n'a pas de produit : ses
+        `produit_nom`/`produit_sku`/`prix_vente` valent null (et
+        `composant_kit_nom` pour un composant produit) — publiés null-ables,
+        la réponse respecte le schéma."""
+        from apps.stock.serializers import KitComposantSerializer
+        champs = KitComposantSerializer().fields
+        for nom in ('produit_nom', 'produit_sku', 'prix_vente', 'composant_kit_nom'):
+            self.assertTrue(champs[nom].allow_null, nom)
+        api = self._api_admin()
+        r = api.post(f'{BASE}/kits/', {'nom': 'Kit parent', 'composants': [
+            {'composant_kit': self.kit.id, 'quantite': '1'},
+            {'produit': self.pa.id, 'quantite': '2'}]}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        sous_kit, produit = sorted(r.data['composants'], key=lambda c: c['produit'] is not None)
+        self.assertEqual(sous_kit['composant_kit_nom'], 'Kit F')
+        for nom in ('produit_nom', 'produit_sku', 'prix_vente'):
+            self.assertIsNone(sous_kit[nom], nom)
+        self.assertEqual(produit['produit_nom'], 'ProdF')
+        self.assertIsNone(produit['composant_kit_nom'])
