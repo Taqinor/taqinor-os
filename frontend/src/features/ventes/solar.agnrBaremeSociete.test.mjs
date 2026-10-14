@@ -11,7 +11,7 @@ import assert from 'node:assert/strict'
 
 import {
   baremeDepuisProfil, consoAnnuelleDepuisFactures, controlerFacturesSaisies, controlerKwhDeclare,
-  consoDescendDesFactures, computeROI, chargesFixesTtc,
+  consoDescendDesFactures, computeROI, chargesFixesTtc, ttcExactFromHt, htFromTtc,
 } from './solar.js'
 import { exempleContrat } from '../../test/fixtures/contractSamples.js'
 
@@ -76,4 +76,16 @@ test('AGNR35 — rouvrir puis ré-enregistrer sans toucher ne change jamais la c
   const retouche = { ...ancien, bareme: b, monthly: Array(12).fill(1600) }
   assert.equal(entreesDeEtat(retouche).conso_annuelle,
     consoAnnuelleDepuisFactures(Array(12).fill(1600), 'onee', b.tranches, b.chargesFixes))
+})
+
+// AGNR48 / D-AGNR-3 — les listes de prix sont saisies en HT : HT → TTC → HT est
+// exact au centime, et le TTC affiché = HT × (1 + taux) (jamais 20 % de plus).
+test('AGNR48 — roundtrip_ht_ttc_exact : htFromTtc(ttcExactFromHt(ht)) == ht au centime', () => {
+  for (const taux of [10, 20]) {
+    for (const ht of [0.01, 99.99, 375, 1054.55, 1234.56, 3333.33, 9000, 52000, 12500.5]) {
+      const ttc = ttcExactFromHt(ht, taux)
+      assert.equal(htFromTtc(ttc, taux), ht.toFixed(2), `${ht} HT @${taux} %`)
+      assert.ok(Math.abs(ttc - ht * (1 + taux / 100)) < 0.51, `${ht} HT @${taux} % : TTC ${ttc}`)
+    }
+  }
 })

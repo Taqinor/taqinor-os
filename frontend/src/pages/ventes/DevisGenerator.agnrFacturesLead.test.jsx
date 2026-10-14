@@ -8,8 +8,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { cycleEcran } from '../../test/cycleEcran'
 import { act, fireEvent, waitFor } from '@testing-library/react'
 
-import { DATE_FIGEE, LEAD, CLIENT, monter, attendreStable, DEVIS_ENVOYE_LES_DEUX } from './DevisGeneratorGoldenHarnais'
+import { DATE_FIGEE, LEAD, CLIENT, monter, attendreStable, autoRemplirAvecPanneaux, DEVIS_ENVOYE_LES_DEUX, DEVIS_REGISTRE } from './DevisGeneratorGoldenHarnais'
 import { DEFAULT_MONTHLY_BILLS } from '../../features/ventes/solar'
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
@@ -42,6 +43,28 @@ describe('AGNR17 — factures et pré-remplissages', () => {
     expect(mois()).toEqual(DEFAULT_MONTHLY_BILLS)
     // Provenance « exemple » (AGNR13) : aucun mois saisi n'est annoncé.
     expect(document.querySelector('[data-testid="mois-non-saisis"]')).toBeNull()
+  }, 60000)
+
+  it('A puis B enregistré ⇒ aucune facture héritée envoyée, ni à la réouverture', async () => {
+    const vue = await monter('/ventes/devis/nouveau', { leads: [LEAD_A, LEAD_B], avant: ({ ventesApi }) => {
+      ventesApi.composerDevis.mockResolvedValue({ data: exempleContrat('ventes', 'devis_composition', 'exemple') })
+    } })
+    await attendreStable(vue.container, act)
+    for (const l of [LEAD_A, LEAD_B]) { await choisirLead(l.id); await attendreStable(vue.container, act) }
+    await autoRemplirAvecPanneaux('8')
+    await waitFor(() => expect(vue.ventesApi.composerDevis).toHaveBeenCalled())
+    await attendreStable(vue.container, act)
+    const creer = [...document.querySelectorAll('button')].find((b) => /Créer le devis/.test(b.textContent || ''))
+    await act(async () => { fireEvent.click(creer) })
+    await waitFor(() => expect(vue.ventesApi.createDevisAtomic).toHaveBeenCalled(), { timeout: 5000 })
+    await attendreStable(vue.container, act)
+    const envoyees = [...vue.ventesApi.createDevisAtomic.mock.calls.map(([c]) => c.etude_params || {}),
+      ...vue.ventesApi.patchEtudeParams.mock.calls.map(([, c]) => c || {})]
+    for (const etude of envoyees) expect(etude).not.toHaveProperty('factures_mensuelles_reelles')
+    vue.unmount() // réouverture : le devis relu porte l'étude envoyée
+    const rouvert = { ...DEVIS_REGISTRE, etude_params: Object.assign({}, DEVIS_REGISTRE.etude_params, ...envoyees) }
+    await attendreStable((await monter(`/ventes/devis/nouveau?edit=${rouvert.id}`, { devis: rouvert })).container, act)
+    expect(mois()).toEqual(DEFAULT_MONTHLY_BILLS)
   }, 60000)
 
   it('hiver tapé 1 500 puis profil de site 900 ⇒ 1 500 gardé, avis non bloquant', async () => {
