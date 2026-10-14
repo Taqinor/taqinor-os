@@ -91,7 +91,7 @@ class TestFkSociete(TestCase):
         resp = self.api.post(f'{BASE}/dashboard-config/', {
             'user': self.etranger.pk, 'cards': [],
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('user', resp.data)
         self.assertFalse(DashboardConfig.objects.filter(
             user=self.etranger).exists())
