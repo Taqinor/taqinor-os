@@ -204,4 +204,4 @@ class InventaireAnnuelTests(Xstk13Base):
         resp = self.api.post(
             '/api/django/stock/inventaires-annuels/figer/',
             {'exercice': 2026}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)

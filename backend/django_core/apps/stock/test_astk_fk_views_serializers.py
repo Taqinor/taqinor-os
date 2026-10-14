@@ -490,3 +490,33 @@ class CorpsFuzzTests(TestCase):
             'tolerance_prix_pct': '2', 'tolerance_prix_absolu_mad': ''}, format='json')
         self.assertEqual(r.status_code, 201, r.content)
         self.assertIsNone(r.data['tolerance_prix_absolu_mad'])
+
+    def test_fuzz_ci997_refus_d_etat_409_et_reference_inconnue_404(self):
+        api = self._api_admin()
+        pa = self.pa.id
+        # Stock (50) insuffisant : l'état s'oppose, le corps est conforme.
+        r = api.post(f'{BASE}/mouvements/', {'produit': pa, 'type_mouvement': 'sortie', 'quantite': 51},
+                     format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = api.post(f'{BASE}/mouvements/', {'produit': pa, 'type_mouvement': 'ajustement', 'quantite': 50},
+                     format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = api.post(f'{BASE}/mouvements-rebut/', {'produit': pa, 'quantite': 51, 'motif': 'casse'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        for corps in ({'produit': pa, 'quantite': 1, 'motif': 'casse', 'note': 5},
+                      {'produit': pa, 'quantite': '1', 'motif': 'casse'}):
+            with self.subTest(corps=corps):
+                self.assertEqual(api.post(f'{BASE}/mouvements-rebut/', corps, format='json').status_code, 400)
+        r = api.post(f'{BASE}/blocages-qualite/', {'produit': pa, 'quantite': 1, 'motif': 5}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = api.post(f'{BASE}/produits/bulk/', {'action': 'set_category', 'ids': [pa], 'categorie_id': 999999},
+                     format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+        r = api.post(f'{BASE}/produits/bulk/', {'action': 'set_price', 'ids': [pa], 'mode': 'fixed',
+                                                'valeur': '99999999.50'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        # Corps multipart : JSON seul (les booléens d'un formulaire sont du texte).
+        r = api.post(f'{BASE}/categories-fournisseur/', {'nom': 'C', 'archived': 'True'}, format='multipart')
+        self.assertEqual(r.status_code, 415, r.content)
+        self.pa.refresh_from_db()
+        self.assertEqual(self.pa.quantite_stock, 50)

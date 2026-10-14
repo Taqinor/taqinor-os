@@ -471,6 +471,95 @@ def _semer_retour_fournisseur(company, user):
     return create_with_reference(modele, 'RF', company, _save)
 
 
+# ── CI #997 (stock/achats) — FK sans ligne en base de fuzz : un casier, un BCF
+# ENVOYÉ (réceptionnable) à une ligne, une réception brouillon, une facture
+# fournisseur à payer, une livraison, une vague, une palette ouverte et une
+# expédition (« Clé primaire 1 non valide », à raison, sinon).
+
+def _semer_casier(company, user):
+    existant = _premier('installations.BinLocation', company)
+    if existant is not None:
+        return existant
+    return _modele('installations.BinLocation').objects.create(
+        company=company, emplacement=_semer_emplacement_stock(company, user),
+        code='FUZZ-A-01')
+
+
+def _semer_bcf_envoye(company, user):
+    """BCF ENVOYÉ + une ligne, numéroté par le chemin de la vue (« BCF »)."""
+    modele = _modele('achats.BonCommandeFournisseur')
+    existant = modele.objects.filter(company=company, statut='envoye').order_by('pk').first()
+    if existant is not None:
+        return existant
+    from apps.ventes.utils.references import create_with_reference
+
+    fournisseur = _premier('stock.Fournisseur', company)
+    produit = _premier('stock.Produit', company)
+    if fournisseur is None or produit is None:
+        raise ValueError('aucun fournisseur ou produit dans la société de fuzz')
+
+    def _save(ref):
+        bcf = modele.objects.create(
+            company=company, reference=ref, fournisseur=fournisseur,
+            statut='envoye', created_by=user)
+        _modele('achats.LigneBonCommandeFournisseur').objects.create(
+            bon_commande=bcf, produit=produit, quantite=10,
+            prix_achat_unitaire=100)
+        return bcf
+    return create_with_reference(modele, 'BCF', company, _save)
+
+
+def _semer_reception(company, user):
+    modele = _modele('achats.ReceptionFournisseur')
+    existant = _premier('achats.ReceptionFournisseur', company)
+    if existant is not None:
+        return existant
+    from apps.ventes.utils.references import create_with_reference
+
+    bcf = _semer_bcf_envoye(company, user)
+    return create_with_reference(modele, 'REC', company, lambda ref: modele.objects.create(
+        company=company, reference=ref, bon_commande=bcf, created_by=user))
+
+
+def _semer_facture_fournisseur(company, user):
+    modele = _modele('achats.FactureFournisseur')
+    existant = _premier('achats.FactureFournisseur', company)
+    if existant is not None:
+        return existant
+    from apps.ventes.utils.references import create_with_reference
+
+    fournisseur = _premier('stock.Fournisseur', company)
+    if fournisseur is None:
+        raise ValueError('aucun fournisseur dans la société de fuzz')
+    return create_with_reference(modele, 'FF', company, lambda ref: modele.objects.create(
+        company=company, reference=ref, fournisseur=fournisseur,
+        montant_ht=1000, montant_tva=200, montant_ttc=1200, created_by=user))
+
+
+def _semer_logistique(company, user):
+    """Livraison (chantier), vague de picking, palette OUVERTE, expédition."""
+    from apps.stock.services import creer_unite_logistique
+
+    if _premier('installations.Livraison', company) is None:
+        _modele('installations.Livraison').objects.create(
+            company=company, reference='FUZZ-LIV-0001',
+            installation=_semer_installation(company, user))
+    if _premier('stock.VaguePicking', company) is None:
+        _modele('stock.VaguePicking').objects.create(
+            company=company, reference='FUZZ-VAG-0001')
+    if _premier('stock.UniteLogistique', company, type_unite='palette') is None:
+        creer_unite_logistique(company=company, type_unite='palette')
+    if _premier('stock.ExpeditionTransporteur', company) is None:
+        _modele('stock.ExpeditionTransporteur').objects.create(
+            company=company,
+            unite_logistique=creer_unite_logistique(company=company, type_unite='colis'))
+    return _premier('stock.UniteLogistique', company, type_unite='palette')
+
+
+def _palettes_ouvertes(qs, company):
+    return qs.filter(type_unite='palette', statut='en_preparation')
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
     ('records.ActivityType', _semer_type_activite),
@@ -494,6 +583,11 @@ SEMEURS = (
     ('stock.EmplacementStock', _semer_emplacement_stock),
     ('ged (coffre, dossier, étiquette)', _semer_ged),
     ('achats.RetourFournisseur', _semer_retour_fournisseur),
+    ('installations.BinLocation', _semer_casier),
+    ('achats.BonCommandeFournisseur (envoyé)', _semer_bcf_envoye),
+    ('achats.ReceptionFournisseur', _semer_reception),
+    ('achats.FactureFournisseur', _semer_facture_fournisseur),
+    ('stock logistique (livraison, vague, palette, expédition)', _semer_logistique),
 )
 
 
@@ -552,6 +646,16 @@ REGLES_PAR_CHEMIN = (
     (r'^/api/django/ged/', ('contact', 'contact_id'), 'crm.Client', None, None),
     (r'^/api/django/(stock|achats)/', ('retour', 'retour_id'),
      'achats.RetourFournisseur', None, None),
+    # CI #997 — ``bon_commande``/``facture``/``facture_origine`` visent aussi
+    # ventes.BonCommande / facturation.Facture : l'union donnait leurs ids.
+    (r'^/api/django/(stock|achats)/', ('bon_commande', 'bon_commande_id'),
+     'achats.BonCommandeFournisseur', None, None),
+    (r'^/api/django/(stock|achats)/', ('facture', 'facture_id', 'facture_origine'),
+     'achats.FactureFournisseur', None, None),
+    (r'^/api/django/stock/', ('livraison', 'livraison_id'),
+     'installations.Livraison', None, None),
+    (r'^/api/django/stock/unites-logistiques/', ('parent', 'parent_id'),
+     'stock.UniteLogistique', _palettes_ouvertes, None),
 )
 
 

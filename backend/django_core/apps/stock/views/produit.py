@@ -22,6 +22,7 @@ from ..utils.params import (
     id_corps, id_requete_ou_400, ids_requete_ou_400,
 )
 from core.viewsets import CompanyScopedModelViewSet
+from ..erreurs_achats import IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
 from authentication.permissions import (
@@ -523,10 +524,13 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  ids=serializers.ListField(child=serializers.IntegerField(), min_length=1),
                                  mode=serializers.CharField(required=False, help_text='percent ou fixed'),
                                  valeur=serializers.DecimalField(max_digits=12, decimal_places=2, required=False),
-                                 garantie_mois=serializers.IntegerField(required=False, allow_null=True),
-                                 garantie_production_mois=serializers.IntegerField(required=False, allow_null=True),
+                                 garantie_mois=serializers.IntegerField(required=False, allow_null=True, min_value=0,
+                                                                        max_value=2147483647),
+                                 garantie_production_mois=serializers.IntegerField(
+                                     required=False, allow_null=True, min_value=0, max_value=2147483647),
                                  categorie_id=serializers.IntegerField(required=False, allow_null=True),
-                                 marque=serializers.CharField(required=False, allow_blank=True)), responses=OBJET)
+                                 marque=serializers.CharField(required=False, allow_blank=True, max_length=100)),
+                   responses=OBJET)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def bulk(self, request):
@@ -557,6 +561,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             result = apply_product_bulk(
                 company=request.user.company, user=request.user,
                 ids=ids, op=op, params=_params_bulk(donnees))
+        except IntrouvableMetier as exc:  # catégorie inconnue : ressource absente (404)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

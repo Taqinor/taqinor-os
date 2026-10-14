@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, ID_OU_VIDE, LISTE, P, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
+from ..erreurs_achats import ConflitEtat
 from ..models import Produit, MouvementStock
 from ..utils.params import choix_ou_400, date_ou_400, id_requete_ou_400
 from ..serializers import MouvementStockSerializer
@@ -234,27 +235,26 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                 qte_apres = qte_avant - qte
                 quantite = qte
                 # ERR10 — une SORTIE ne peut jamais faire descendre le stock
-                # sous zéro (garde plancher) : refus explicite en 400.
+                # sous zéro (garde plancher). CI #997 fuzz : c'est l'ÉTAT du
+                # stock qui s'oppose, le corps était conforme -> 409.
                 if qte_apres < 0:
-                    raise ValidationError(
-                        {'quantite': (
-                            'Stock insuffisant : la sortie dépasse le stock '
-                            f'disponible ({qte_avant}).')})
+                    raise ConflitEtat(
+                        'Stock insuffisant : la sortie dépasse le stock '
+                        f'disponible ({qte_avant}).')
                 # ASTK248 — jamais la part en quarantaine (garde unique WMS).
                 from ..services_wms import exiger_hors_quarantaine
                 try:
                     exiger_hors_quarantaine(produit.company, produit, qte)
                 except ValueError as exc:
-                    raise ValidationError({'quantite': str(exc)})
+                    raise ConflitEtat(str(exc))
             else:
                 # AJUSTEMENT — niveau visé → écart signé.
                 qte_apres = qte
                 quantite = abs(qte_apres - qte_avant)
                 if quantite == 0:
-                    raise ValidationError(
-                        {'quantite': (
-                            'Le niveau saisi est déjà le stock actuel '
-                            f'({qte_avant}) : aucun ajustement à poser.')})
+                    raise ConflitEtat(
+                        'Le niveau saisi est déjà le stock actuel '
+                        f'({qte_avant}) : aucun ajustement à poser.')
             note = donnees.get('note')
             if type_mv == MouvementStock.TypeMouvement.SORTIE:
                 # ERR-ASTK205 — SORTIE manuelle sans lot sur un produit suivi

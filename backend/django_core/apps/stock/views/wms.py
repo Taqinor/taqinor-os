@@ -15,7 +15,9 @@ from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import (
     booleen_requete_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps, id_requete_ou_400,
+    types_corps_ou_400,
 )
+from ..erreurs_achats import EtatIncompatible
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -835,6 +837,9 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         'produit', 'bin', 'lot', 'reception', 'bloque_par', 'leve_par').all()
     serializer_class = BlocageQualiteSerializer
     ordering = ['-created_at']
+    # CI #997 fuzz — JSON seul (corps lu à la main) : un multipart portait
+    # ``reception=None`` en TEXTE, refusé alors que le schéma l'autorisait.
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:
@@ -869,7 +874,8 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         # ASTK6 — FK bornées société ; un id étranger répond 400.
         liens = _relations_scopees(
             self, request, ['produit', 'bin', 'lot', 'reception'])
-
+        # CI #997 fuzz — `motif: 5` faisait un 500 (.strip()), `quantite: "5"` passait.
+        types_corps_ou_400(request.data, textes=('motif',), entiers=('quantite',))
         try:
             blocage = mettre_en_quarantaine(
                 company=company, produit=liens['produit'],
@@ -1066,12 +1072,17 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
         company = request.user.company
         # ASTK6 — produit et casier bornés société ; un id étranger → 400.
         liens = _relations_scopees(self, request, ['produit', 'bin'])
+        # CI #997 fuzz — `note: 5` faisait un 500 (.strip()), `quantite: "5"` passait.
+        types_corps_ou_400(request.data, textes=('note', 'motif'), entiers=('quantite',))
         try:
             rebut = declarer_mouvement_rebut(
                 company=company, user=request.user, produit=liens['produit'],
                 quantite=request.data.get('quantite'),
                 motif=request.data.get('motif'), bin_source=liens['bin'],
                 note=request.data.get('note') or '')
+        except EtatIncompatible as exc:
+            # Stock insuffisant : l'état s'oppose, le corps était conforme (409).
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
