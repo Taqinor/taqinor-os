@@ -903,117 +903,59 @@ def tranches_a_venir(devis, lignes=None, option=None) -> list:
 
 
 def creer_facture_tranche(devis, user, company, create_with_reference):
-    """Crée et retourne la prochaine facture de tranche (postée/Émise).
+    """Émet et retourne la prochaine facture de tranche de la vente.
 
-    Lève ValueError si le devis n'est pas accepté ou si l'échéancier est complet.
-    ``create_with_reference`` reste dans la signature (appelants inchangés)
-    mais n'est plus appelé : ATOT27 (D-ATOT-5) — la tranche naît sous la
-    référence provisoire « BROUILLON-<id> » et ``emettre_facture`` lui
-    attribue le numéro légal de la série configurée, dans la même
-    transaction (même geste que les autres portes).
+    Lève ValueError (400 chez l'appelant) si le devis n'est pas accepté, si
+    l'échéancier est soldé ou si « Facturer la vente » refuse.
+    ``company`` / ``create_with_reference`` restent dans la signature
+    (appelants inchangés) mais ne sont plus lus.
 
-    AUD101 — la tranche naît BROUILLON puis passe par LE service d'émission
-    (``domain.facturation_ops.emettre_facture``). C'était le plus grave des
-    cinq chemins muets : la chaîne acompte → matériel → solde du parcours
-    solaire posait ``EMISE`` sans émettre ``facture_emise``, donc sans jamais
-    atteindre le grand livre, alors que ``core/events.py`` affirmait le
-    contraire. Elle hérite désormais du verrou de période, du blocage crédit
-    XFAC28 et de l'événement, exactement comme l'émission depuis l'écran.
-    """
+    VNT65 — ENVELOPPE MINCE de « Facturer la vente »
+    (``domain/facturation_vente``) : même verrou de chaîne
+    (``verrouiller_vente``), même garde de version (409 ``version_remplacee``
+    → ValueError nommée), le brouillon de tranche EN ATTENTE de la vente
+    (p. ex. l'acompte automatique VNT62) est émis tel quel, sinon la
+    prochaine tranche du plan naît par ``creer_brouillon_tranche`` (tiers
+    payeur CIQ213, délai CIQ212, ventilation CIQ215, clé ATOT5) ; l'émission
+    passe par ``_emettre`` (LE service d'émission AUD101 : numéro légal,
+    sortie de stock VNT21, blocage crédit XFAC28 → ``CreditHoldError``).
+    La garde « quatre portes » (ATOT2) refuse une tranche après une facture
+    complète, de BC ou consolidée émise."""
+    from django.db import transaction
+
+    from apps.ventes.domain.facturation_vente import (
+        FacturationVenteRefusee, _emettre, _exiger_vente_en_jeu,
+        creer_brouillon_tranche, verrouiller_vente)
+    from apps.ventes.selectors_facturation import exiger_devis_facturable
+    from apps.ventes.vente_facturation import plan_facturation
+
     if devis.statut != devis.Statut.ACCEPTE:
         raise ValueError("Le devis doit être au statut « Accepté ».")
-
-    # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. `factures_actives` compte les
-    # tranches via `devis.factures`, qui ne voit AUCUNE facture de la chaîne
-    # BON DE COMMANDE : un devis converti en BC puis facturé pouvait être
-    # facturé une SECONDE fois ici, et le client recevait deux fois la même
-    # vente. Le prédicat est partagé avec l'autre porte (`selectors`), donc il
-    # n'existe qu'UNE définition de « déjà facturé ».
-    # ATOT2 — LES QUATRE PORTES : la garde unique refuse aussi une tranche
-    # après la facture COMPLÈTE ou une CONSOLIDÉE (qui n'étaient vues par
-    # personne : complète puis tranche = 240 000 facturés pour 150 000).
-    # ``DevisDejaFacture`` est une ValueError → 400 chez l'appelant.
-    from apps.ventes.selectors_facturation import exiger_devis_facturable
     exiger_devis_facturable(devis, 'tranche')
-
-    tr = next_tranche(devis)
-    if tr is None:
-        raise ValueError(
-            "Échéancier soldé : toutes les tranches de l'échéancier sont déjà "
-            "facturées (avoirs compris).")
-
-    # CIQ213 — une tranche ``payeur: tiers`` est facturée à l'organisme
-    # financeur du devis (``Facture.client`` = financeur) ; ``Facture.devis``
-    # garde le lien au client final. Sans tiers posé : refus en français.
-    destinataire = devis.client
-    if tr.get('payeur') == 'tiers':
-        destinataire = getattr(devis, 'tiers_payeur', None)
-        if destinataire is None:
-            raise ValueError(
-                "Cette tranche est réglée par un organisme financeur : "
-                "renseignez le tiers payeur du devis avant de la facturer.")
-
-    libelle = tr['libelle_facture']
-
-    # CIQ212 — un délai de règlement DÉCLARÉ sur le jalon fixe l'échéance
-    # (émission + délai) AVANT l'émission, qui ne l'écrase pas ; sinon le
-    # repli XFAC23 d'hier (délai du client). Aucun délai légal codé.
-    echeance = None
-    if tr.get('delai_reglement_jours') is not None:
-        from datetime import timedelta
-        from django.utils import timezone
-        echeance = timezone.localdate() + timedelta(
-            days=int(tr['delai_reglement_jours']))
-
-    # CIQ214 — retenue de garantie DEMANDÉE par le client (D-CIQ-14) : taux ×
-    # TTC de la tranche, au centime, retenue sur le RÈGLEMENT — ni le HT ni
-    # la TVA ne baissent (phrase AUD180). Sans retenue : facture d'hier.
-    # ATOT4 — retenue et réf. client par LE geste partagé des quatre portes
-    # (`entete_facture_depuis_devis`, sur le TTC de la tranche) ; le taux de
-    # tête d'une tranche reste le taux mélangé de l'option (ci-dessous).
-    from apps.ventes.domain.facturation_ops import entete_facture_depuis_devis
-    entete = entete_facture_depuis_devis(devis, ttc=tr['ttc'])
-    entete.pop('taux_tva', None)
-    # CIQ215 — TVA ventilée par taux (devis à taux mixtes) ; None sinon.
-    ventilation = ventilation_tva_tranche(devis, tr)
-
-    def _create(ref):
-        extra = {} if echeance is None else {'date_echeance': echeance}
-        extra.update(entete)
-        return Facture.objects.create(
-            **extra,
-            reference=ref,
-            devis=devis,
-            client=destinataire,
-            statut=Facture.Statut.BROUILLON,
-            type_facture=tr['type'],
-            pourcentage=tr['pourcentage'],
-            libelle=libelle,
-            montant_ht=tr['ht'],
-            montant_tva=tr['tva'],
-            montant_ttc=tr['ttc'],
-            taux_tva=blended_tva_pct(devis),
-            ventilation_tva=ventilation,
-            # ATOT5 — la tranche est identifiée par sa CLÉ.
-            cle_tranche=tr['cle'],
-            created_by=user,
-            company=company,
-        )
-
-    from django.db import transaction
-    from apps.ventes.domain.facturation_ops import (
-        EmissionRefusee, emettre_facture,
-    )
-    from apps.ventes.utils.company_settings import create_provisoire
     try:
         with transaction.atomic():
-            facture = create_provisoire(_create)
-            emettre_facture(facture, user=user, source='echeancier_tranche')
-    except EmissionRefusee as exc:
-        # CIQ217 — un refus d'émission (p. ex. client entreprise sans ICE)
-        # annule la tranche entière : rien n'est écrit, et l'appelant le
-        # rend en 400 français comme ses autres refus (ValueError).
-        raise ValueError(exc.motif) from exc
+            devis = next(d for d in verrouiller_vente(devis)
+                         if d.pk == devis.pk)
+            _exiger_vente_en_jeu(devis)
+            plan = plan_facturation(devis)
+            brouillon = next((t for t in plan['tranches']
+                              if t['statut'] == 'brouillon'), None)
+            if brouillon is not None:
+                facture = Facture.objects.get(pk=brouillon['facture_id'])
+            elif plan['prochaine'] is None:
+                raise ValueError(
+                    "Échéancier soldé : toutes les tranches de l'échéancier "
+                    'sont déjà facturées (avoirs compris).')
+            else:
+                facture = creer_brouillon_tranche(devis, plan['prochaine'],
+                                                  user)
+            _emettre(facture, user)
+    except FacturationVenteRefusee as exc:
+        if exc.corps.get('code') == 'credit_hold':
+            from apps.ventes.domain.recouvrement import CreditHoldError
+            raise CreditHoldError(exc.corps['detail']) from exc
+        raise ValueError(exc.corps['detail']) from exc
+    facture.refresh_from_db()
     return facture
 
 

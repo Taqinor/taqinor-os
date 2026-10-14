@@ -7,7 +7,6 @@ reserver_stock_devis_facture…``, ``from ..utils.echeancier import
 creer_facture_tranche``, ``from ..utils.pdf import generate_proforma_pdf``,
 ``from .. import activity``) restent dans les corps.
 """
-from django.db import transaction
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
@@ -131,20 +130,18 @@ class DevisFacturationActionsMixin:
         permission_classes=[IsResponsableOrAdmin],
     )
     def generer_facture(self, request, pk=None):
-        """Génère la PROCHAINE facture de tranche de l'échéancier du devis.
-
-        1er appel → facture d'acompte (30 % ou 50 % selon le mode) ; appels
-        suivants → tranche matériel puis solde. Chaque facture est numérotée
-        sans collision et créée « Émise » (postée). L'échéancier vient de
-        l'unique mapping PAYMENT_TERMS_BY_MODE.
-        """
+        """Émet la PROCHAINE facture de tranche de la vente (acompte, puis
+        matériel, puis solde) — VNT65 : enveloppe de « Facturer la vente »
+        (``creer_facture_tranche`` → ``facturation_vente``), refus en 400 ;
+        la sortie de stock suit l'ÉMISSION (VNT21), jamais la création.
+        Retrait programmé dès que le panneau de vente (VNT75/VNT79) la
+        remplace."""
         devis = self.get_object()
         # ENF11 — corps validé par son sérialiseur déclaré : un corps non
         # objet (liste, scalaire) ou un drapeau mal typé → 400, jamais 500.
         corps = valider_corps(request, D.GenererFactureRequest)
         from ..utils.echeancier import creer_facture_tranche
         from ..services import (
-            reserver_stock_devis_facture, StockInsuffisantError,
             verifier_credit_hold, CreditHoldError,
             verifier_sale_warnings, SaleWarningError,
         )
@@ -178,23 +175,12 @@ class DevisFacturationActionsMixin:
                  'sale_warning': True},
                 status=status.HTTP_403_FORBIDDEN)
         try:
-            # U9 — la facturation directe par échéancier court-circuite le bon
-            # de commande : on réserve/consomme ici le stock matériel du devis,
-            # comme le ferait la livraison d'un BC, dans la MÊME transaction que
-            # la facture (rollback atomique si la réservation échoue). La garde
-            # anti-double-comptage du service évite de re-décompter quand un BC
-            # livré existe déjà ou qu'une tranche antérieure a déjà réservé.
-            with transaction.atomic():
-                reserver_stock_devis_facture(
-                    devis=devis, user=request.user, company=company)
-                facture = creer_facture_tranche(
-                    devis, request.user, company,
-                    create_with_reference,
-                )
-        except StockInsuffisantError as exc:
+            facture = creer_facture_tranche(
+                devis, request.user, company, create_with_reference)
+        except CreditHoldError as exc:
             return Response(
-                {'detail': exc.message}, status=status.HTTP_400_BAD_REQUEST,
-            )
+                {'detail': f'Client en blocage crédit : {exc.motif}.',
+                 'credit_hold': True}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST,

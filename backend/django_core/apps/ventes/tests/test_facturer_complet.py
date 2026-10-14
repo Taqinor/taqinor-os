@@ -181,6 +181,23 @@ class TestFacturerComplet(TestCase):
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn(tranche.data['reference'], resp.data['detail'])
 
+    def test_vnt65_version_remplacee_refusee_400_nommee_aux_deux_portes(self):
+        """VNT65 — les deux portes sont des enveloppes de « Facturer la
+        vente » : une version REMPLACÉE est refusée en 400 nommant la tête
+        de chaîne (elle rendait 201 sur ``generer-facture``), rien d'écrit."""
+        v2 = self._devis()
+        Devis.objects.filter(pk=self.devis.pk).update(
+            is_active=False, superseded_by=v2)
+        resp = self._post([])
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn(v2.reference, resp.data['detail'])
+        tranche = self.api.post(
+            f'/api/django/ventes/devis/{self.devis.id}/generer-facture/',
+            {}, format='json')
+        self.assertEqual(tranche.status_code, 400, tranche.data)
+        self.assertIn(v2.reference, tranche.data['detail'])
+        self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
+
     def test_generer_facture_corps_non_objet_400(self):
         """api-fuzz (ENF11) : ``[null, null]`` posté à ``generer-facture``
         levait une 500 (``list.get``) — le corps est validé par son
