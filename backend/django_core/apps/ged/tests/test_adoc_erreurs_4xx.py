@@ -571,7 +571,7 @@ class Enf11FuzzGedCorpsTests(TestCase):
             self.assertTrue(re.match(MOTIF_URL_HTTP, url), url)
             resp = self._post('documents/', {
                 'folder': self.folder.pk, 'nom': 'doc-lien', 'url_externe': url})
-            self.assertNotIn('url_externe', resp.json(), (url, resp.content))
+            self.assertEqual(resp.status_code, 201, (url, resp.content))
         self.assertFalse(re.match(MOTIF_URL_HTTP, '0' * 2000))
         resp = self._post('documents/', {
             'folder': self.folder.pk, 'nom': 'x', 'url_externe': '0' * 50})
