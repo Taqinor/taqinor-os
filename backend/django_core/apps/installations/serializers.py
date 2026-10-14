@@ -1707,7 +1707,7 @@ class DossierImportSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompany
         return value
 
 
-class FraisImportSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class FraisImportSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG316 — frais imputé à un dossier d'import (fret/douane/TVA import/
     transit…). La société et `created_by` sont posés CÔTÉ SERVEUR. Montant
     INTERNE."""
@@ -2002,7 +2002,7 @@ class ColisLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerial
         return attrs
 
 
-class ColisSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ColisSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG322 - colis de preparation d'un chantier. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `controler`/`expedier` (qui posent
     `controle_par`/date). Lignes imbriquees en lecture."""
@@ -2025,7 +2025,7 @@ class ColisSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixi
         ]
 
 
-class SerieEntrepotSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class SerieEntrepotSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG323 - n0 de serie suivi en entrepot. La societe et `created_by` sont
     poses COTE SERVEUR ; le statut avance via les actions `reserver`/`sortir`
     (ou par mise a jour du `bin`)."""
@@ -2579,7 +2579,7 @@ class EtapeOrdreSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerial
         read_only_fields = ['fait_par', 'fait_le']
 
 
-class LivraisonLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LivraisonLigneSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG329 - article d'une livraison (SKU + quantite)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('livraison', 'produit')
@@ -2639,7 +2639,7 @@ class LivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeriali
         ]
 
 
-class PreuveLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class PreuveLivraisonSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG330 - preuve de livraison (signature + photo + GPS horodate). La
     societe et `created_by` sont poses COTE SERVEUR. Une seule preuve par
     livraison (OneToOne)."""
@@ -2763,7 +2763,7 @@ class RetourLivraisonLigneSerializer(SameCompanyFKSerializerMixin, serializers.M
         return attrs
 
 
-class RetourLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourLivraisonSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK8 - retour client genere depuis une Livraison livree. Societe/
     `created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture, pre-remplies a la generation."""
@@ -2808,7 +2808,7 @@ class CategorieStockageSerializer(ChampsStrictsMixin, serializers.ModelSerialize
         return value
 
 
-class RegleRangementSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RegleRangementSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK9 - regle de rangement configurable (produit ou categorie produit
     -> casier cible, par priorite). Societe posee COTE SERVEUR."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
