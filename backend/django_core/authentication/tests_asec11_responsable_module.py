@@ -35,7 +35,12 @@ MATRICE_DOREE = {
     'Technicien responsable': '--WWWW-W',
     'Technicien':             '--WWWR-W',
     'Viewer':                 '--------',
-    'Responsable':            'WWWWWRWW',
+    # ASEC50 (roles 0009) : « Responsable » reçoit ``reporting_export`` pour
+    # garder l'export de rapport qu'il faisait déjà ; c'est l'unique code
+    # d'écriture du module reporting, d'où W (rapports sauvegardés, config du
+    # tableau de bord, alertes KPI : « restent administrateur/responsable »,
+    # décision fondateur ASEC11) — comme Commercial/Technicien responsable.
+    'Responsable':            'WWWWWWWW',
     'Utilisateur':            '--------',
     'Admin RH':               '-----R-W',
     'Admin Ventes':           'WWW--WWW',
