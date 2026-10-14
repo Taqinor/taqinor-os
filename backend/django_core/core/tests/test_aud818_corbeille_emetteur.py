@@ -36,8 +36,7 @@ SIGNAL = 'record_soft_deleted'
 class CorbeilleEmetteurTests(SimpleTestCase):
     def test_signal_non_reserve_tant_que_la_corbeille_est_installee(self):
         """`record_soft_deleted` ne peut pas rester « sans émetteur » réservé."""
-        if 'apps.trash' not in settings.INSTALLED_APPS:
-            self.skipTest("apps.trash n'est pas installée sur cette édition.")
+        self.assertIn('apps.trash', settings.INSTALLED_APPS)
         self.assertNotIn(
             SIGNAL, event_coverage.NO_STATIC_EMITTER,
             "AUD818 — `apps.trash` est installée (corbeille 30 jours exposée "
