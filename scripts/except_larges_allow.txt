@@ -10,7 +10,6 @@ backend/django_core/apps/calepinage/services/electrique.py::_journaliser_ecart_l
 backend/django_core/apps/calepinage/services/electrique.py::_nom_auteur
 backend/django_core/apps/calepinage/services/electrique.py::parametres_societe
 backend/django_core/apps/calepinage/services/electrique.py::rejouer_apres_layout
-backend/django_core/apps/contact/views.py::contact
 backend/django_core/apps/crm/attribution_selectors.py::attribution_comparaison_devis
 backend/django_core/apps/crm/attribution_selectors.py::attribution_leads._ca_signe_lead
 backend/django_core/apps/crm/attribution_selectors.py::revenu_attribue_campagne

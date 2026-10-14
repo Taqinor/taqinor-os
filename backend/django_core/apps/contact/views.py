@@ -1,3 +1,5 @@
+import logging
+
 from django.core.mail import send_mail
 from django.conf import settings
 from django.http import Http404
@@ -5,6 +7,8 @@ from rest_framework.decorators import api_view, permission_classes, throttle_cla
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
+
+logger = logging.getLogger(__name__)
 
 
 class ContactThrottle(AnonRateThrottle):
@@ -50,6 +54,7 @@ def contact(request):
             fail_silently=False,
         )
     except Exception:
+        logger.warning('contact : envoi du message échoué', exc_info=True)
         return Response(
             {'detail': 'Erreur lors de l\'envoi. Veuillez réessayer.'},
             status=500,
