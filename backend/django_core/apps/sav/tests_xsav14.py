@@ -94,6 +94,30 @@ class XSAV14TaxonomieTest(TestCase):
         created = RemedeDefaillance.objects.get(pk=resp.data['id'])
         self.assertEqual(created.company_id, self.company.id)
 
+    def test_remedes_defaillance_archived_hors_enum_refuse_400(self):
+        # CI #993 (api-fuzz « accepted schema-violating ») : ``?archived=``
+        # est publié ``enum: ['1']`` — toute autre valeur est nommée en 400.
+        RemedeDefaillance.objects.create(
+            company=self.company, nom='Ancien remède', archived=True)
+        url = '/api/django/sav/remedes-defaillance/'
+        for valeur in ('AAA', '0', ''):
+            resp = self.api.get(url, {'archived': valeur})
+            self.assertEqual(resp.status_code, 400, (valeur, resp.content))
+            self.assertIn('archived', resp.content.decode())
+
+        def noms(resp):
+            donnees = resp.data
+            if isinstance(donnees, dict):
+                donnees = donnees.get('results', [])
+            return {r['nom'] for r in donnees}
+
+        resp = self.api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertNotIn('Ancien remède', noms(resp))
+        resp = self.api.get(url, {'archived': '1'})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn('Ancien remède', noms(resp))
+
     # ── Codification à la résolution ────────────────────────────────────────
 
     def test_cause_remede_poses_sur_ticket_via_api(self):

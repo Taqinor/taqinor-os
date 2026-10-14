@@ -3247,8 +3247,15 @@ class RemedeDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'list' and self.request.query_params.get(
-                'archived') != '1':
+        if self.action != 'list':
+            return qs
+        # CI #993 (api-fuzz « accepted schema-violating », ?archived=AAA) —
+        # publié ``enum: ['1']`` : toute autre valeur, vide comprise, est
+        # refusée en nommant le paramètre au lieu de filtrer en silence.
+        archived = self.request.query_params.get('archived')
+        if archived is not None and archived != '1':
+            raise ValidationError({'archived': 'Valeur attendue : 1.'})
+        if archived != '1':
             qs = qs.filter(archived=False)
         return qs
 
