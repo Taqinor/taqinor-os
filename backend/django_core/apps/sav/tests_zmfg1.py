@@ -69,6 +69,14 @@ class ZMFG1EquipeMaintenanceTest(TestCase):
             'results', r2.data if isinstance(r2.data, list) else [])]
         self.assertIn(equipe_id, ids)
 
+    def test_actif_hors_enum_refuse_400(self):
+        # Fuzz CI #997 : ?actif=2 (enum publié ['0']) rendait 200.
+        r = self.api.get('/api/django/sav/equipes-maintenance/?actif=2')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('actif', r.data)
+        r = self.api.get('/api/django/sav/equipes-maintenance/?actif=0')
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_membre_autre_societe_refuse(self):
         r = self.api.post('/api/django/sav/equipes-maintenance/', {
             'nom': 'Équipe Sud', 'membres': [self.other_user.id],
