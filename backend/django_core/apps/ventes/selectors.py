@@ -1745,6 +1745,19 @@ from .vente_facturation import (  # noqa: E402,F401 — ré-export (VNT23)
 )
 
 
+def factures_de_la_vente(devis, *, inclure_annulees=False, emises=False):
+    """VNT109 — LES factures de la vente de ``devis`` pour les autres
+    domaines (``vente_facturation.factures_de_la_vente`` : toute la chaîne de
+    versions, les quatre portes ; définie UNE fois, jamais recopiée).
+    ``emises`` ne garde que les ÉMISES (``STATUTS_EMIS`` : un brouillon est
+    prévu, jamais facturé)."""
+    from .vente_facturation import STATUTS_EMIS
+    from .vente_facturation import factures_de_la_vente as lire
+    factures = lire(devis, inclure_annulees=inclure_annulees)
+    return [f for f in factures if f.statut in STATUTS_EMIS] if emises \
+        else factures
+
+
 def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
                           exclure_id=None):
     """Décision fondateur (08/10/2026) — les devis ACCEPTÉS et actifs d'un

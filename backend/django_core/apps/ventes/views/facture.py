@@ -23,6 +23,7 @@ from ..serializers_facturation import (
 from ..serializers import EmailLogSerializer
 from ..utils.corps import valider_corps, valider_corps_lignes
 from .facture_montant_tranche import FactureMontantTrancheMixin
+from .facture_portes import refuser_portes_fermees  # AFAC66 / VNT89
 from authentication.permissions import (
     IsAnyRole,
     IsResponsableOrAdmin,
@@ -73,12 +74,6 @@ FACTURE_CHAMPS_ARGENT = frozenset([
 MESSAGE_MONTANT_FIGE = (
     'Montant figé après émission : corrigez par un avoir '
     '(ou remettez la facture en brouillon).')
-
-
-#: AFAC66 — refus nommé de la cinquième porte de facturation d'un devis.
-BC_DE_DEVIS_REFUSE = (
-    "Cette commande vient d'un devis : créez la facture depuis le bon de "
-    "commande — remise, options et sections du devis signé y sont reprises.")
 
 
 # CAD177 — bornes des colonnes des lignes d'avoir / de note de débit
@@ -222,29 +217,21 @@ class FactureViewSet(FactureMontantTrancheMixin, EntiteScopeMixin,
     def perform_create(self, serializer):
         from rest_framework.exceptions import ValidationError
         company = self.request.user.company
-        # ERR14 — client/bon_commande/devis du corps doivent appartenir à la
+        # ERR14 — client/bon_commande du corps doivent appartenir à la
         # société (refuse de lier une facture aux enregistrements d'un autre
         # tenant).
         if company is not None:
             client = serializer.validated_data.get('client')
             bon_commande = serializer.validated_data.get('bon_commande')
-            devis = serializer.validated_data.get('devis')
             if client is not None and client.company_id != company.id:
                 raise ValidationError({'client': 'Client inconnu.'})
             if bon_commande is not None and \
                     bon_commande.company_id != company.id:
                 raise ValidationError(
                     {'bon_commande': 'Bon de commande inconnu.'})
-            if devis is not None and devis.company_id != company.id:
-                raise ValidationError({'devis': 'Devis inconnu.'})
-        # AFAC66 (C-AFAC-057) — la cinquième porte est FERMÉE : une facture
-        # liée au BC d'un devis ne naît QUE par `bons-commande/<id>/
-        # creer-facture/` (copie fidèle du devis signé, garde ATOT2).
-        bc_corps = serializer.validated_data.get('bon_commande')
-        if bc_corps is not None and bc_corps.devis_id:
-            raise ValidationError({
-                'bon_commande': BC_DE_DEVIS_REFUSE,
-                'code': 'bon_commande_de_devis'})
+        # AFAC66 — BC d'un devis ; VNT89 — devis dans le corps : portes FERMÉES
+        # (« Facturer la vente » / ``creer-facture`` du BC seulement).
+        refuser_portes_fermees(serializer.validated_data)
         # FG52 — devise : si le corps n'en fournit pas, appliquer la devise par
         # défaut de la société (CompanyProfile.devise_defaut), repli MAD.
         save_kwargs = dict(
@@ -343,14 +330,9 @@ class FactureViewSet(FactureMontantTrancheMixin, EntiteScopeMixin,
         # non financiers (conditions, notes, dates de livraison…) restent
         # modifiables.
         facture = self.get_object()
-        # AFAC66 (C-AFAC-057) — même porte fermée en modification : poser le
-        # BC d'un devis sur une facture existante est refusé.
-        bc_corps = serializer.validated_data.get('bon_commande')
-        if bc_corps is not None and bc_corps.devis_id \
-                and bc_corps.pk != facture.bon_commande_id:
-            raise ValidationError({
-                'bon_commande': BC_DE_DEVIS_REFUSE,
-                'code': 'bon_commande_de_devis'})
+        # AFAC66 / VNT89 — mêmes portes fermées en modification (BC d'un
+        # devis, devis posé ou changé par le corps).
+        refuser_portes_fermees(serializer.validated_data, facture)
         from ..domain.facturation_ops import argent_modifie  # ATOT35
         argent_touche = argent_modifie(
             facture, serializer.validated_data, FACTURE_CHAMPS_ARGENT)

@@ -75,8 +75,9 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 NB_CLES_BASE = 48
 # AGR308 : + `synthese_agricole` ; ACAL173 : + `fiche_batterie` ; CIQ306 : + `synthese_ci` ; CIQ319 : +
 # `signature_entreprise` ; ADEV50 : + `economies_cumul_25_ans` ; ADEV51 : + `empreinte_contenu` ; ADEV52 : +
-# `offre_expiree`, `date_expiration` ; ADEV49 : + `pdf_disponible` ; APDF19 : + `conditions_titre`
-NB_CLES_ADDITIVES = 30
+# `offre_expiree`, `date_expiration` ; ADEV49 : + `pdf_disponible` ; APDF19 : + `conditions_titre` ;
+# VNT61 : + `avenant`
+NB_CLES_ADDITIVES = 31
 
 #: Les clés que l'échantillon déclare pour les réponses d'ERREUR, jamais pour
 #: la charge utile 200 (contrat, bloc `notes.cle_detail`). QJR228 (31/08/2026)

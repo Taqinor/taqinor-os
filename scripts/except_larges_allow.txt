@@ -29,7 +29,6 @@ backend/django_core/apps/crm/devis_selectors.py::_srm_deduite
 backend/django_core/apps/crm/fiche_bulk.py::apply_bulk_action
 backend/django_core/apps/crm/fiche_ecritures.py::appliquer_champ_automatique
 backend/django_core/apps/crm/fiche_funnel.py::_playbook_correspond_au_lead
-backend/django_core/apps/crm/fiche_funnel.py::lead_signe_sans_devis_actif
 backend/django_core/apps/crm/fiche_selectors.py::_lead_provenance_valeurs
 backend/django_core/apps/crm/fiche_selectors.py::lead_card
 backend/django_core/apps/crm/leads_doublons.py::_est_vide

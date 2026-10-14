@@ -134,3 +134,58 @@ class TestMontantsFacturesParDevis(TestCase):
             autre, autre_client, autre_devis, montant_ht=100, montant_ttc=120)
         out = montants_factures_par_devis([autre_devis.id], self.company)
         self.assertEqual(out, {})
+
+    def test_vnt87_brouillon_jamais_facture(self):
+        """VNT87 — un brouillon est PRÉVU, jamais facturé : exclu de
+        l'agrégat, même avec ``exclure_annulee=False``."""
+        make_facture(
+            self.company, self.client_obj, self.devis,
+            montant_ht=300, montant_ttc=360)
+        make_facture(
+            self.company, self.client_obj, self.devis,
+            montant_ht=700, montant_ttc=840, statut=Facture.Statut.BROUILLON)
+        for exclure in (True, False):
+            out = montants_factures_par_devis(
+                [self.devis.id], self.company, exclure_annulee=exclure)
+            self.assertEqual(out[self.devis.id]['ht'], Decimal('300'))
+
+
+class TestLecteursSurLaVenteVNT87(TestCase):
+    """VNT87 — ``tranche_facturee`` et ``acompte_paye_pour_devis`` lisent la
+    CHAÎNE de versions (``installation.devis`` est souvent la V1) ; un
+    brouillon de tranche n'est pas facturé."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.client_obj = make_client(self.company)
+        self.v2 = make_devis(self.company, self.client_obj, montant_ht=1000,
+                             statut=Devis.Statut.ACCEPTE)
+        self.v1 = make_devis(self.company, self.client_obj, montant_ht=1000,
+                             statut=Devis.Statut.ACCEPTE)
+        Devis.objects.filter(pk=self.v1.pk).update(
+            is_active=False, superseded_by=self.v2)
+        Devis.objects.filter(pk=self.v2.pk).update(version_parent=self.v1)
+        self.v1.refresh_from_db()
+
+    def _acompte(self, statut):
+        facture = make_facture(self.company, self.client_obj, self.v2,
+                               montant_ht=100, montant_ttc=120, statut=statut)
+        Facture.objects.filter(pk=facture.pk).update(
+            type_facture=Facture.TypeFacture.ACOMPTE)
+        return facture
+
+    def test_tranche_facturee_chaine_et_emises_seulement(self):
+        from apps.ventes.selectors import tranche_facturee
+        self._acompte(Facture.Statut.BROUILLON)
+        self.assertFalse(tranche_facturee(self.v1, 'acompte'))
+        self._acompte(Facture.Statut.EMISE)
+        self.assertTrue(tranche_facturee(self.v1, 'acompte'))
+        self.assertFalse(tranche_facturee(self.v1, 'solde'))
+
+    def test_acompte_paye_lu_sur_la_chaine(self):
+        from apps.ventes.selectors import acompte_paye_pour_devis
+        self.assertFalse(acompte_paye_pour_devis(self.v1.id, self.company))
+        self._acompte(Facture.Statut.PAYEE)
+        self.assertTrue(acompte_paye_pour_devis(self.v1.id, self.company))
+        autre = make_company()
+        self.assertFalse(acompte_paye_pour_devis(self.v1.id, autre))

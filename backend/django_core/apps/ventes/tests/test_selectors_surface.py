@@ -222,6 +222,18 @@ class SurfaceSelectorsVentes(SimpleTestCase):
                 self.assertIs(getattr(selectors, nom),
                               getattr(vente_facturation, nom))
                 self.assertNotIn(nom, definis)
+        # VNT109 — ``factures_de_la_vente`` : la façade DÉLÈGUE (fonction de
+        # lecture des autres domaines), le corps reste dans vente_facturation.
+        from unittest import mock
+        f_brouillon = mock.Mock(statut='brouillon')
+        f_emise = mock.Mock(statut='emise')
+        with mock.patch.object(vente_facturation, 'factures_de_la_vente',
+                               return_value=[f_brouillon, f_emise]) as lire:
+            self.assertEqual(selectors.factures_de_la_vente('d'),
+                             [f_brouillon, f_emise])
+            self.assertEqual(
+                selectors.factures_de_la_vente('d', emises=True), [f_emise])
+        lire.assert_called_with('d', inclure_annulees=False)
         source = (VENTES / 'vente_facturation.py').read_text(
             encoding='utf-8')
         for nom in ('plan_facturation', 'etat_vente', 'factures_de_la_vente',

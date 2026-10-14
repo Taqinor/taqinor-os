@@ -591,9 +591,40 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
 
     @extend_schema_field(serializers.DictField(child=serializers.CharField()))
     def get_solde(self, obj):
-        from .utils.echeancier import solde_devis
-        s = solde_devis(obj)
-        return {k: str(v) for k, v in s.items()}
+        return self._lot_vente(obj, 'solde')
+
+    # VNT68 — l'état de la vente (contrat ``vente_etat.json``), liste ET
+    # détail : ``solde`` et ``vente`` d'UNE page sont calculés ensemble, en
+    # lot (``etat_vente_map`` sous ``ventes_prechargees``) — le nombre de
+    # requêtes ne grandit pas avec le nombre de devis.
+    vente = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DictField())
+    def get_vente(self, obj):
+        return self._lot_vente(obj, 'vente')
+
+    def _lot_vente(self, obj, cle):
+        """``solde`` / ``vente`` de ``obj``, calculés pour toute la page au
+        premier appel ; chaque valeur est lue UNE fois (un second rendu du
+        même devis recalcule : jamais un état d'avant une écriture)."""
+        lots = self.context.setdefault('_lot_vente', {})
+        if cle not in lots.get(obj.pk, {}):
+            from .vente_facturation import etat_vente_map
+            page = getattr(self.parent, 'instance', None)
+            rows = list(page) if isinstance(
+                self.parent, serializers.ListSerializer) and page is not None else []
+            rows = rows if obj.pk is not None and obj in rows else [obj]
+            request = self.context.get('request')
+            soldes = {}
+            ventes = etat_vente_map(rows, getattr(request, 'user', None),
+                                    soldes=soldes)
+            for d in rows:
+                lots[d.pk] = {'vente': ventes[d.pk], 'solde': soldes[d.pk]}
+        entree = lots[obj.pk]
+        valeur = entree.pop(cle)
+        if not entree:
+            del lots[obj.pk]
+        return valeur
 
     # Expiration calculée À LA VOLÉE (T7) — jamais persistée, ne touche pas le
     # lead. `is_expired` = en attente + date de validité dépassée.

@@ -93,3 +93,51 @@ class TestDevisAFacturer(TestCase):
             date_acceptation=TODAY - timedelta(days=10))
         candidats = devis_a_facturer(self.company, jours=7, today=TODAY)
         self.assertEqual(candidats, [])
+
+    def test_vnt88_version_remplacee_jamais_rappelee(self):
+        """VNT88 — V1 acceptée remplacée par une V2 acceptée (les factures
+        re-pointées sur la V2) : seule la V2, vente en vigueur, est lue."""
+        v2 = self._devis('DEV-ZFAC12-V2', TODAY - timedelta(days=10))
+        v1 = self._devis('DEV-ZFAC12-V1', TODAY - timedelta(days=20))
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        ids = {d.id for d in devis_a_facturer(
+            self.company, jours=7, today=TODAY)}
+        self.assertNotIn(v1.id, ids)
+        self.assertIn(v2.id, ids)
+        Facture.objects.create(
+            company=self.company, reference='FAC-ZFAC12-V2',
+            client=self.client_obj, devis=v2,
+            statut=Facture.Statut.EMISE, montant_ttc=Decimal('1000'))
+        self.assertEqual(
+            devis_a_facturer(self.company, jours=7, today=TODAY), [])
+
+    def test_vnt88_seule_facture_annulee_rappelle_le_devis(self):
+        devis = self._devis('DEV-ZFAC12-ANN', TODAY - timedelta(days=10))
+        Facture.objects.create(
+            company=self.company, reference='FAC-ZFAC12-ANN',
+            client=self.client_obj, devis=devis,
+            statut=Facture.Statut.ANNULEE, montant_ttc=Decimal('1000'))
+        self.assertIn(devis.id, {d.id for d in devis_a_facturer(
+            self.company, jours=7, today=TODAY)})
+
+    def test_vnt88_carnet_de_commandes_sur_la_vente_en_vigueur(self):
+        from apps.ventes.selectors_facturation import carnet_commande_par_mois
+        v2 = self._devis('DEV-ZFAC12-C2', TODAY)
+        v1 = self._devis('DEV-ZFAC12-C1', TODAY)
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        annulee = self._devis('DEV-ZFAC12-C3', TODAY)
+        Facture.objects.create(
+            company=self.company, reference='FAC-ZFAC12-C3',
+            client=self.client_obj, devis=annulee,
+            statut=Facture.Statut.ANNULEE, montant_ttc=Decimal('1000'))
+        carnet = carnet_commande_par_mois(self.company, TODAY, TODAY)
+        attendu = sum((Decimal(str(d.total_ttc)) for d in Devis.objects.filter(
+            pk__in=[v2.pk, annulee.pk])), Decimal('0'))
+        self.assertEqual(sum(carnet.values(), Decimal('0')), attendu)
+        from apps.ventes.selectors_facturation import (
+            _ventes_sans_facture_active)
+        self.assertEqual(
+            {d.id for d in _ventes_sans_facture_active(self.company)},
+            {v2.id, annulee.id})

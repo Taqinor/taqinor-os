@@ -80,7 +80,7 @@ LITERAL_EXEMPT = {
 # Per-file ceilings (number of literal uses) frozen on 2026-10-07 — DECREASE ONLY.
 LITERAL_ALLOW = {
     "backend/django_core/apps/crm/leads_selectors.py": 1,
-    "backend/django_core/apps/crm/fiche_funnel.py": 3,
+    "backend/django_core/apps/crm/fiche_funnel.py": 2,  # VNT86 : lead_signe_sans_devis_actif lit stages.SIGNED
     "backend/django_core/apps/crm/leads_views.py": 1,  # SPL77 : venu de crm/views.py (move only)
     "backend/django_core/core/win_probability.py": 6,
 }

@@ -88,9 +88,6 @@ ALLOWLIST = {
     "backend/django_core/apps/crm/fiche_selectors.py::leads_signes_sans_devis_accepte":
         "détecte un lead SIGNED dont AUCUN devis n'est accepté, toutes "
         "versions confondues (drapeau de cohérence, décidé par ACRM10)",
-    "backend/django_core/apps/crm/fiche_funnel.py::lead_signe_sans_devis_actif":
-        "drapeau dérivé « signé fantôme » décidé par ACRM10 : filtre statut "
-        "puis archivage ; la version remplacée n'y est pas une erreur",
     "backend/django_core/apps/ventes/scheduled.py::_email_parti":
         "À CORRIGER (09/10, arrivé de main pendant ce build) : lecture d'un "
         "statut de devis sans is_active dans ventes/scheduled.py — à passer "
