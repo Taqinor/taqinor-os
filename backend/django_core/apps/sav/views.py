@@ -24,6 +24,7 @@ from authentication.permissions import (
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
+from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
@@ -3289,8 +3290,8 @@ class CategorieTicketViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'list' and self.request.query_params.get(
-                'actif') == '0':
+        if self.action == 'list' and choix_ou_400(
+                self.request, 'actif', ('0',)) == '0':
             qs = qs.filter(actif=False)
         elif self.action == 'list':
             qs = qs.filter(actif=True)
@@ -3319,8 +3320,8 @@ class EquipeMaintenanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'list' and self.request.query_params.get(
-                'actif') == '0':
+        if self.action == 'list' and choix_ou_400(
+                self.request, 'actif', ('0',)) == '0':
             qs = qs.filter(actif=False)
         elif self.action == 'list':
             qs = qs.filter(actif=True)
