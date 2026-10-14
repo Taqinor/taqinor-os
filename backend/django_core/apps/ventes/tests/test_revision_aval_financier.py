@@ -28,6 +28,7 @@ from apps.ventes.tests._quote_engine_common import (
 from apps.ventes.utils.echeancier import creer_facture_tranche
 from apps.ventes.utils.options import option_totaux
 from apps.ventes.utils.references import create_with_reference
+from core.events import devis_accepted
 
 LIGNES = [('Panneau 550W', '10', '1000'), ('Installation', '1', '5000')]
 
@@ -153,3 +154,29 @@ class AvalFinancierRevision(TestCase):
         self.assertEqual(deal.montant_commission_du,
                          (ht_v2 * Decimal('5.00') / 100).quantize(
                              Decimal('0.01')))
+
+    # ── VNT51 — ``devis_accepted(avenant_de=…)`` ─────────────────────────
+    def _avenants_publies(self, devis):
+        recus = []
+
+        def _ecoute(sender, **kwargs):
+            recus.append(kwargs.get('avenant_de', 'absent'))
+
+        devis_accepted.connect(_ecoute, weak=False)
+        try:
+            self._accepter(devis)
+        finally:
+            devis_accepted.disconnect(_ecoute)
+        return recus
+
+    def test_vnt51_v2_d_un_accepte_publie_avenant_de_v1(self, *_):
+        self.assertEqual(self._avenants_publies(self.v1), [None])
+        v2 = self._reviser_prix('7000')
+        self.assertEqual(self._avenants_publies(v2), [self.v1.pk])
+
+    def test_vnt51_v2_d_un_refuse_n_est_pas_un_avenant(self, *_):
+        Devis.objects.filter(pk=self.v1.pk).update(
+            statut=Devis.Statut.REFUSE)
+        self.v1.refresh_from_db()
+        v2 = self._reviser_prix('7000')
+        self.assertEqual(self._avenants_publies(v2), [None])

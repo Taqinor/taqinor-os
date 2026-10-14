@@ -285,22 +285,17 @@ def rattacher_aval_financier_revision(devis, *, user=None):
     from apps.ventes import activity
     from apps.ventes.models import (
         Avoir, BonCommande, Devis, Facture, FactureSource)
-    from apps.ventes.selectors import devis_predecesseurs_revision_ids
+    from apps.ventes.selectors import predecesseurs_acceptes
     from apps.ventes.utils.company_settings import (
         create_numbered, create_provisoire)
     from apps.ventes.utils.echeancier import (
         blended_tva_pct, factures_actives, next_tranche)
     from apps.ventes.utils.options import option_totaux
 
-    preds = devis_predecesseurs_revision_ids(devis)
-    if not preds:
-        return None
-    acceptes = list(Devis.objects.filter(
-        pk__in=preds, company_id=devis.company_id,
-        statut=Devis.Statut.ACCEPTE))
+    # VNT51 — LA lecture partagée avec ``devis_accepted(avenant_de=…)``.
+    acceptes = predecesseurs_acceptes(devis)  # le plus proche d'abord
     if not acceptes:
         return None
-    acceptes.sort(key=lambda d: preds.index(d.pk))  # le plus proche d'abord
     precedent = acceptes[0]
     ids = [d.pk for d in acceptes]
 
