@@ -7,7 +7,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
-from core.champs_stricts import ChampsStrictsSansDecimalMixin, TexteLie
+from core.champs_stricts import (
+    ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, TexteLie)
 
 from .models import (
     Activity, ActivityType, Attachment, Comment, Follower, Tag, TaggedItem,
@@ -338,7 +339,7 @@ class TagSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at']
 
 
-class TaggedItemSerializer(ChampsStrictsSansDecimalMixin,
+class TaggedItemSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                            SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """FG9 — Association tag ↔ enregistrement."""

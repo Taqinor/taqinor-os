@@ -81,7 +81,12 @@ def cible_requete_ou_400(request):
     """``(model, id)`` du filtre de cible d'une liste, VALIDÉS selon le schéma
     (``model`` ∈ cibles autorisées, ``id`` entier) : 400 nommant le paramètre
     sinon. Chaque moitié est facultative (comme le schéma) ; sans les deux, le
-    filtre n'est pas appliqué."""
+    filtre n'est pas appliqué. Un paramètre PRÉSENT mais vide (``?model=``)
+    viole le schéma (énumération / entier) : DRF le lisait comme absent."""
+    for nom in ('model', 'id'):
+        if request.query_params.get(nom) == '':
+            raise serializers.ValidationError(
+                {nom: ['Valeur obligatoire si le paramètre est fourni.']})
     ser = CibleQuerySerializer(data=request.query_params)
     ser.is_valid(raise_exception=True)
     return ser.validated_data.get('model'), ser.validated_data.get('id')
