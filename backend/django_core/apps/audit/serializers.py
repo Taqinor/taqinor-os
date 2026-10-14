@@ -1,4 +1,5 @@
 """Sérialisation des entrées du Journal d'activité (lecture seule)."""
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from rest_framework import serializers
@@ -24,18 +25,19 @@ class AuditLogSerializer(serializers.ModelSerializer):
             'timestamp', 'timestamp_local', 'via_portail',
         )
 
-    def get_utilisateur(self, obj):
+    # ENF11 — annotations de retour = type publié au schéma OpenAPI.
+    def get_utilisateur(self, obj) -> str:
         if obj.user_id:
             return obj.user.username
         return obj.actor_username or 'Système'
 
-    def get_module(self, obj):
+    def get_module(self, obj) -> str:
         return obj.content_type.app_label if obj.content_type_id else ''
 
-    def get_model(self, obj):
+    def get_model(self, obj) -> str:
         return obj.content_type.model if obj.content_type_id else ''
 
-    def get_timestamp_local(self, obj):
+    def get_timestamp_local(self, obj) -> Optional[str]:
         # Affichage Casablanca (la base stocke en UTC).
         if obj.timestamp is None:
             return None

@@ -48,8 +48,7 @@ from authentication.permissions import (
 
 from django.db.models import Q
 
-from . import bulk_edit as bulk_edit_infra, dashboard_data, data_explorer
-from . import jobs as jobs_infra
+from . import bulk_edit as bulk_edit_infra, dashboard_data, data_explorer, jobs as jobs_infra
 from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
@@ -65,6 +64,7 @@ from .throttling import MetricsThrottle, PublicExportThrottle
 from .permissions import PeutExecuterEditionMasse, declared_action_permissions
 from .models import (
     ApiUsagePlan,
+    BackgroundJob,
     BackupRun,
     BrandedTemplate,
     ChangelogEntry,
@@ -1287,6 +1287,12 @@ class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
 
+#: ENF11 — ``{id}`` des actions du catalogue = la CLÉ texte du module (manifeste
+#: ODX3), pas une PK : un ``ViewSet`` sans modèle ne permet pas de la typer.
+_CLE_MODULE = OpenApiParameter('id', OpenApiTypes.STR, OpenApiParameter.PATH,
+                               description='Clé du module (manifeste ODX3).')
+
+
 class ModuleCatalogViewSet(viewsets.ViewSet):
     """ODX3 — catalogue de modules (manifests fusionnés avec l'état société).
 
@@ -1318,7 +1324,7 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
         company = request.user.company
         return Response(feature_flags.catalogue_modules(company))
 
-    @extend_schema(request=None, responses=inline_serializer(
+    @extend_schema(request=None, parameters=[_CLE_MODULE], responses=inline_serializer(
         'ModuleActives', {'actives': drf_serializers.JSONField()}))
     @action(detail=True, methods=['post'], url_path='activer')
     def activer(self, request, pk=None):
@@ -1339,7 +1345,8 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
 
     @extend_schema(
         request=None,
-        parameters=[_q('cascade', OpenApiTypes.STR,
+        parameters=[_CLE_MODULE,
+                    _q('cascade', OpenApiTypes.STR,
                        'Désactiver aussi les modules dépendants.',
                        enum=['1', 'true'])],
         responses=inline_serializer(
@@ -2142,9 +2149,11 @@ class BackgroundJobViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = BackgroundJobSerializer
     permission_classes = [IsAuthenticated]
+    #: ENF11 — modèle déclaré pour le schéma (type de ``{id}``) ; la lecture
+    #: réelle reste ``get_queryset`` (double portée société + utilisateur).
+    queryset = BackgroundJob.objects.none()
 
     def get_queryset(self):
-        from .models import BackgroundJob
         user = self.request.user
         return BackgroundJob.objects.filter(
             company=user.company, user=user)

@@ -18,7 +18,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .corps_requetes import (
     CalendrierHegirienRequete, LangueInterfaceRequete, MobileHomeRouteRequete,
-    REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
+    ID_COMPTE, REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
     TwoFactorDisableRequete, TwoFactorEnableRequete,
 )
 from .models import CustomUser, Company, UserSession
@@ -1084,7 +1084,9 @@ _ACTIONS_ECRITURE_COMPTES = frozenset({
 
 
 @extend_schema_view(create=extend_schema(
-    responses={201: UserSerializer, 400: REPONSE_400_COMPTE}))
+    responses={201: UserSerializer, 400: REPONSE_400_COMPTE}),
+    **{action_detail: extend_schema(parameters=ID_COMPTE) for action_detail in (
+        'retrieve', 'update', 'partial_update', 'destroy')})
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
@@ -1223,7 +1225,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @extend_schema(
         request={'multipart/form-data': inline_serializer(
             'AvatarUpload', {'file': drf_serializers.FileField()})},
-        responses=UserSerializer)
+        parameters=ID_COMPTE, responses=UserSerializer)
     @action(detail=True, methods=['post'], url_path='avatar',
             parser_classes=[MultiPartParser])
     def avatar(self, request, pk=None):
@@ -1254,7 +1256,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         request=inline_serializer('ReinitialiserMotDePasseRequete', {
-            'password': drf_serializers.CharField()}),
+            'password': drf_serializers.CharField()}), parameters=ID_COMPTE,
         responses=inline_serializer('ReinitialiserMotDePasseReponse', {
             'detail': drf_serializers.CharField()}))
     @action(detail=True, methods=['post'],

@@ -93,3 +93,11 @@ P_DEBUT = param_date('debut', description='Début (AAAA-MM-JJ).')
 P_FIN = param_date('fin', description='Fin (AAAA-MM-JJ).')
 P_ENTITE = param('entite', OpenApiTypes.INT,
                  description="Filtre par entité (société juridique).")
+
+
+#: ENF11 — ``{activite_id}`` des actions ``epingler``/``desepingler`` du lead :
+#: PK entière d'une entrée du chatter (``LeadActivity``), que drf-spectacular
+#: ne peut pas typer depuis le modèle ``Lead``.
+P_ACTIVITE_ID = OpenApiParameter(
+    'activite_id', OpenApiTypes.INT, OpenApiParameter.PATH,
+    description="Identifiant de l'entrée du chatter du lead.")

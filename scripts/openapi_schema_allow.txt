@@ -33,23 +33,4 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "source". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "statut". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee
-Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_model". Consider using a type hint or @extend_schema_field. Defaulting to
-Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_module". Consider using a type hint or @extend_schema_field. Defaulting to
-Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_timestamp_local". Consider using a type hint or @extend_schema_field. Defa
-Warning|AuditLogViewSet > AuditLogSerializer|unable to resolve type hint for function "get_utilisateur". Consider using a type hint or @extend_schema_field. Defaulti
-Warning|AuditLogViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|BackgroundJobViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|ChangelogViewSet > ChangelogEntrySerializer|unable to resolve type hint for function "get_lu". Consider using a type hint or @extend_schema_field. Defaulting to str
-Warning|EquipementViewSet|could not derive type of path parameter "downtime_id" because model "apps.sav.models.Equipement" contained no such field
-Warning|LeadViewSet|could not derive type of path parameter "activite_id" because model "apps.crm.models.Lead" contained no such field. Cons
-Warning|ModuleCatalogViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|MonitoringConfigViewSet > MonitoringConfigSerializer|unable to resolve type hint for function "get_provider_label". Consider using a type hint or @extend_schema_field. Defau
-Warning|OnboardingProgressViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|ProductTourViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|SodRuleViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
-Warning|TicketViewSet|could not derive type of path parameter "activite_id" because model "apps.sav.models.Ticket" contained no such field. Co
-Warning|TicketViewSet|could not derive type of path parameter "piece_id" because model "apps.sav.models.Ticket" contained no such field. Consi
-Warning|TicketViewSet|could not derive type of path parameter "pret_id" because model "apps.sav.models.Ticket" contained no such field. Consid
-Warning|TrashViewSet > DeletionRecordSerializer|unable to resolve type hint for function "get_model_label". Consider using a type hint or @extend_schema_field. Defaulti
-Warning|UserViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|public_uptime_90j|could not resolve "DictField(child=ListField(child=PublicUptimeJour():

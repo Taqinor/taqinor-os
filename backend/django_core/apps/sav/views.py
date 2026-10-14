@@ -672,6 +672,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     @extend_schema(
         request=_sch('SavCloturerDowntimeRequete', {
             'fin': drf_serializers.DateTimeField(required=False)}),
+        parameters=[OpenApiParameter('downtime_id', OpenApiTypes.INT, OpenApiParameter.PATH)],  # ENF11 — PK entière
         responses=EquipementDowntimeSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'downtime/(?P<downtime_id>[^/.]+)/cloturer',
@@ -1537,7 +1538,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             TicketActiviteAFaireSerializer(instance).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=None, responses=TicketActiviteAFaireSerializer)
+    @extend_schema(request=None, responses=TicketActiviteAFaireSerializer,
+                   parameters=[OpenApiParameter('activite_id', OpenApiTypes.INT, OpenApiParameter.PATH)])
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/cocher',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2004,7 +2006,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             PieceConsommeeSerializer(piece).data, status=201)
 
-    @extend_schema(request=None, responses={204: None})
+    @extend_schema(request=None, responses={204: None},
+                   parameters=[OpenApiParameter('piece_id', OpenApiTypes.INT, OpenApiParameter.PATH)])
     @action(detail=True, methods=['delete'],
             url_path=r'pieces/(?P<piece_id>[^/.]+)',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2380,6 +2383,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         request=_sch('SavRetournerPretRequete', {
             'date_retour_reelle': drf_serializers.DateField(required=False)}),
+        parameters=[OpenApiParameter('pret_id', OpenApiTypes.INT, OpenApiParameter.PATH)],  # ENF11 — PK entière
         responses=PretEquipementSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'prets-equipement/(?P<pret_id>[^/.]+)/retourner',
