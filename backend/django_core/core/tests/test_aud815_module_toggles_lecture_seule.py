@@ -14,17 +14,19 @@ Après correctif : le ViewSet est en lecture seule
 (``http_method_names=['get','head','options']``) — toute mutation → 405, et le
 chemin nommé continue de produire sa ligne de journal.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.records.models import Activity
 from authentication.models import Company
 from core import feature_flags
 from core.models import ModuleToggle
 from core.views import ModuleCatalogViewSet, ModuleToggleViewSet
+
+Activity = django_apps.get_model('records', 'Activity')
 
 User = get_user_model()
 

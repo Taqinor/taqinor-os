@@ -12,16 +12,18 @@ Couvre :
   * MULTI-TENANT STRICT : le journal de la société A est invisible de B, aussi
     bien par le service que par l'endpoint ``GET /core/modules/journal/``.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.records.models import Activity
 from authentication.models import Company
 from core import events, feature_flags
 from core.models import ModuleToggle
 from core.views import ModuleCatalogViewSet
+
+Activity = django_apps.get_model('records', 'Activity')
 
 User = get_user_model()
 

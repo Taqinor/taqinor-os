@@ -438,9 +438,11 @@ def journal_modules(company, *, limite_par_module=1):
     """
     if company is None:
         return []
+    from django.apps import apps as django_apps
     from django.contrib.contenttypes.models import ContentType
 
-    from apps.records.models import Activity
+    # ENF20 : Activity résolu par libellé, aucune arête statique core -> apps.
+    Activity = django_apps.get_model('records', 'Activity')
 
     from .models import ModuleToggle
 

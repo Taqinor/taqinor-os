@@ -463,8 +463,13 @@ forbidden_modules =
 # `preflight_edition`), le reste sont des tests noyau qui montent un rôle ou un
 # enregistrement réel. Un import `core -> apps.<domaine>` reste refusé.
 ignore_imports =
-    core.** -> apps.records.**
     core.** -> apps.parametres.**
+# ENF20 — l'arête fondation `core.** -> apps.records.**` est RETIRÉE :
+# `core.feature_flags.journal_modules` résout `Activity` par
+# `django_apps.get_model('records', 'Activity')`, les tests noyau résolvent
+# Activity/Tag/Follower par libellé et `ChatterViewSetMixin` par
+# `import_module('apps.records.views')`. Ne pas réintroduire `from apps.records`
+# dans core/.
 # ENF20 — l'arête fondation `core.** -> apps.roles.**` est RETIRÉE :
 # `core.scoping.record_scope_for` lit SCOPE_TEAM/SCOPE_SUBTREE par
 # `import_module('apps.roles.permissions_registre')` (leur emplacement unique,

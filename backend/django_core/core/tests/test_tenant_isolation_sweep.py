@@ -41,6 +41,7 @@ Et deux défauts de MESURE corrigés :
   plus capter aucune régression réaliste. Il est recalibré sur le réel mesuré
   (voir ``_PLANCHER_CONSTRUITS`` / ``_PLAFOND_SKIPS_PCT``).
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.test import TestCase
@@ -348,7 +349,7 @@ class BuildMinimalInstanceFactoryTests(TestCase):
 
     def test_simple_model_only_company_required(self):
         """``records.Tag`` : seule ``company`` est obligatoire."""
-        from apps.records.models import Tag
+        Tag = django_apps.get_model('records', 'Tag')
         tag = build_minimal_instance(Tag, self.company)
         self.assertEqual(tag.company_id, self.company.pk)
 
@@ -359,7 +360,7 @@ class BuildMinimalInstanceFactoryTests(TestCase):
         (``django.contrib.contenttypes.ContentType``, non géré) : preuve que
         la factory est tolérante ET honnête (elle ne construit QUE ce qu'elle
         sait faire, jamais une devinette risquée sur le reste)."""
-        from apps.records.models import Follower
+        Follower = django_apps.get_model('records', 'Follower')
         with self.assertRaises(SkipModel):
             build_minimal_instance(Follower, self.company)
 
@@ -403,7 +404,7 @@ class Crx17CouverturesTests(TestCase):
 
     def test_payload_pointe_la_relation_vers_la_societe_donnee(self):
         from rest_framework import serializers as drf
-        from apps.records.models import Tag
+        Tag = django_apps.get_model('records', 'Tag')
 
         class _Serializer(drf.Serializer):
             tag = drf.PrimaryKeyRelatedField(queryset=Tag.objects.all())
@@ -423,7 +424,7 @@ class Crx17CouverturesTests(TestCase):
 
     def test_relation_many_est_envoyee_en_liste(self):
         from rest_framework import serializers as drf
-        from apps.records.models import Tag
+        Tag = django_apps.get_model('records', 'Tag')
 
         class _Serializer(drf.Serializer):
             tags = drf.PrimaryKeyRelatedField(
@@ -447,7 +448,7 @@ class Crx17CouverturesTests(TestCase):
 
     def test_champ_obligatoire_non_synthetisable_est_de_la_dette(self):
         from rest_framework import serializers as drf
-        from apps.records.models import Tag
+        Tag = django_apps.get_model('records', 'Tag')
 
         class _Serializer(drf.Serializer):
             tag = drf.PrimaryKeyRelatedField(queryset=Tag.objects.all())
