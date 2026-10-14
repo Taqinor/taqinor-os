@@ -120,7 +120,8 @@ def economie_pompage_preview(request):
     # CI #997 — corps non objet (``[null, null]``) : 400, plus un calcul
     # « omis » rendu 200 sur un corps hors schéma.
     if not isinstance(request.data, dict):
-        return Response({'detail': 'Corps JSON objet attendu.'}, status=400)
+        from rest_framework.exceptions import ParseError
+        raise ParseError('Corps JSON objet attendu.')
     corps = request.data
     company = getattr(request.user, 'company', None)
     saisies = corps.get('saisies')
