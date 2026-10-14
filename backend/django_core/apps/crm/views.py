@@ -39,6 +39,7 @@ from . import schema_docs as sd
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 
 logger = logging.getLogger(__name__)
 
@@ -795,7 +796,12 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 new_lead.pk, exc_info=True)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx']:
+        if self.action in READ_ACTIONS + [
+                'export_xlsx', 'historique', 'jalons_devis',
+                # AGR516 — les réalisations proches sont une LECTURE de la
+                # fiche : même garde fine que l'@action (sinon le
+                # `[IsAdminRole()]` final).
+                'references_proches']:
             # VTA4 (12/09/2026, bug CI #25 en sens inverse) — la lecture des
             # leads exige le code fin ``crm_voir`` : ce get_permissions PRIME
             # sur tout, donc l'attribut ``read_permission`` posé sur la classe
@@ -804,12 +810,6 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             # comptes historiques sans Role fin ; tous les rôles métier seedés
             # (Responsable :509, Commercial resp :641, Commercial :682,
             # Viewer :807) portent déjà crm_voir.
-            return [HasPermissionOrLegacy('crm_voir')()]
-        elif self.action in ('historique', 'jalons_devis',
-                             # AGR516 — les réalisations proches sont une
-                             # LECTURE de la fiche : même garde fine que
-                             # l'@action (sinon `[IsAdminRole()]` final).
-                             'references_proches'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
             # ``crm_voir``. get_permissions() PRIME sur le permission_classes
@@ -817,7 +817,9 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             # — `historique` retombait sur IsAnyRole (ouvert à TOUT porteur de
             # rôle) et `jalons_devis`, absent de toutes les listes, sur le
             # `return [IsAdminRole()]` final (403 pour la Commerciale).
-            return [HasPermissionOrLegacy('crm_voir')()]
+            # ASEC50 / D-ASEC-4 — l'export exige EN PLUS ``crm_export``.
+            return [HasPermissionOrLegacy('crm_voir')()] + droits_de_la_grille(
+                self, export_xlsx=[DroitDeLaGrille('crm_export')])
         elif self.action == 'resume_associe':
             # AGR534 — la permission DÉCLARÉE sur l'@action (responsable ou
             # admin) ; get_permissions() PRIME sur elle (bug CI #25), d'où
@@ -852,10 +854,19 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             'ville_statut',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
-            return [IsResponsableOrAdmin()]
+            # ASEC50 / D-ASEC-4 — réaffecter (bulk ``reassign`` ou changement
+            # d'``owner`` au PATCH) exige ``crm_reassign`` ; la suppression en
+            # masse ``delete`` exige ``crm_supprimer``.
+            return [IsResponsableOrAdmin()] + droits_de_la_grille(
+                self,
+                bulk=[DroitDeLaGrille('crm_reassign', operation='reassign'),
+                      DroitDeLaGrille('crm_supprimer', operation='delete')],
+                update=[DroitDeLaGrille('crm_reassign', champ='owner')],
+                partial_update=[DroitDeLaGrille('crm_reassign', champ='owner')])
         elif self.action == 'destroy':
-            # La suppression DÉFINITIVE reste réservée à l'admin/propriétaire.
-            return [IsAdminRole()]
+            # La suppression DÉFINITIVE reste réservée à l'admin/propriétaire
+            # ET exige ``crm_supprimer`` (ASEC50).
+            return [IsAdminRole(), DroitDeLaGrille('crm_supprimer')()]
         # SPL75 — les actions des mixins (cadence…) se gardent elles-mêmes ;
         # la chaîne finit sur _RepliIsAdminMixin ([IsAdminRole()]).
         return super().get_permissions()

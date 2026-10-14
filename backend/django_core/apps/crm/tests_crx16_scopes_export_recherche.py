@@ -30,7 +30,8 @@ from .models import Client, Lead
 
 User = get_user_model()
 
-_PERMS = ['crm_voir', 'crm_creer', 'crm_modifier']
+# ASEC50 — ``crm_export`` : l'export exige le droit, la sonde éprouve la portée.
+_PERMS = ['crm_voir', 'crm_creer', 'crm_modifier', 'crm_export']
 
 
 def _lignes_xlsx(response):

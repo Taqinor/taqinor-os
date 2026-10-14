@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
@@ -954,9 +955,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 'actions_groupees',
                 # ZSAV6 — pièces unifiées (vue fusionnée) + fiche d'intervention.
                 'pieces_unifiees', 'worksheet']:
-            return [HasPermissionOrLegacy('sav_gerer')()]
-        elif self.action == 'destroy':
-            return [IsAdminRole()]
+            # ASEC50 / D-ASEC-4 — changer l'``equipe`` au PUT/PATCH est la
+            # même réaffectation que ``reaffecter-equipe`` : ``sav_reassign``.
+            return [HasPermissionOrLegacy('sav_gerer')()] + droits_de_la_grille(
+                self,
+                update=[DroitDeLaGrille('sav_reassign', champ='equipe')],
+                partial_update=[DroitDeLaGrille('sav_reassign', champ='equipe')])
+        # destroy, et toute action non listée : palier administrateur.
         return [IsAdminRole()]
 
     def _check_tenant(self, serializer):
@@ -1716,7 +1721,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=SavReaffecterEquipeRequete)
     @action(detail=True, methods=['post'], url_path='reaffecter-equipe',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            # ASEC50 / D-ASEC-4 — réaffecter l'équipe exige ``sav_reassign``.
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('sav_reassign')])
     def reaffecter_equipe(self, request, pk=None):
         """NTSRV8 — Réaffecte le ticket à une autre équipe de maintenance.
 

@@ -31,9 +31,11 @@ class PorteeActionsLeadTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor ALEA27', slug='taqinor-alea27')
+        # ASEC50 — la réaffectation en masse exige ``crm_reassign`` : le rôle
+        # le porte ici pour que la sonde éprouve la PORTÉE, pas le droit.
         role = Role.objects.create(
             company=self.company, nom='Commercial',
-            permissions=list(COMMERCIAL_PERMISSIONS))
+            permissions=list(COMMERCIAL_PERMISSIONS) + ['crm_reassign'])
         self.moi = User.objects.create_user(
             username='alea27-moi', password='x', company=self.company,
             role=role)

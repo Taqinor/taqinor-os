@@ -21,7 +21,7 @@ from authentication.permissions import (
 # NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
 # depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
 from apps.roles.permissions import (
-    is_portal_user, portal_scope_id,
+    DroitDeLaGrille, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
@@ -205,7 +205,11 @@ class DevisViewSet(DevisEditionActionsMixin,
             return [IsAnyRole()]
         if self.action in ('create', 'update', 'partial_update'):
             return [IsResponsableOrAdmin()]
-        # destroy, et toute future action non déclarée : fermé par défaut.
+        if self.action == 'destroy':
+            # ASEC50 / D-ASEC-4 — supprimer un devis exige ``ventes_supprimer``
+            # en plus du palier administrateur.
+            return [IsAdminRole(), DroitDeLaGrille('ventes_supprimer')()]
+        # toute future action non déclarée : fermé par défaut.
         return [IsAdminRole()]
 
     def destroy(self, request, *args, **kwargs):

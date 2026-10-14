@@ -53,6 +53,7 @@ from . import schema_docs as sd
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 
 
 class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
@@ -704,13 +705,14 @@ class ClientViewSet(CompanyScopedModelViewSet):
         elif self.action == 'relancer_dormance':
             return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action == 'export_xlsx':
-            # Export : garde propre (ASEC50, code ``crm_export``) — hors
-            # périmètre d'ACRM3.
-            return [IsAnyRole()]
+            # Export : garde propre (ASEC50 / D-ASEC-4, code ``crm_export``)
+            # — hors périmètre d'ACRM3.
+            return [IsAnyRole(), DroitDeLaGrille('crm_export')()]
         elif self.action in WRITE_ACTIONS + ['dupliquer']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            # ASEC50 — supprimer un client exige ``crm_supprimer``.
+            return [IsAdminRole(), DroitDeLaGrille('crm_supprimer')()]
         # ACRM21 (C-ACRM-014) — les autres @action (consolidation,
         # data-export, anonymize) sont gardées par CE QUE LEUR
         # DÉCORATEUR DÉCLARE (patron ``declared_action_permissions``) : le
@@ -737,7 +739,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=sd.corps('CrmClientsExportRequest', ids=serializers.ListField(child=serializers.IntegerField(), required=False)), responses=sd.EXPORT_XLSX)
     @action(detail=False, methods=['post'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole, DroitDeLaGrille('crm_export')])
     def export_xlsx(self, request):
         """Exporte une sélection de clients en .xlsx (société courante)."""
         from .exports import export_clients_xlsx
@@ -872,7 +874,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='data-export',
-            permission_classes=[IsResponsableOrAdmin])
+            # ASEC50 / D-ASEC-4 — l'export RGPD d'un client exige
+            # ``crm_export`` en plus du palier.
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('crm_export')])
     def data_export(self, request, pk=None):
         """FG26 — bundle d'accès du sujet (RGPD) : toutes les données
         personnelles détenues sur un client + la liste de ses documents liés.

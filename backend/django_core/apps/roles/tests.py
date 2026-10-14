@@ -504,3 +504,197 @@ class AdsEnginePermissionsTest(TestCase):
         for role in roles_without_approve:
             self.assertNotIn('adsengine_approve', role.permissions,
                              f'{role.nom} ne doit NOT avoir adsengine_approve')
+
+
+class CodesGrilleAppliquesTests(TestCase):
+    """ASEC50 / D-ASEC-4 (C-ASEC-015) — les codes d'export, de suppression et
+    de réaffectation de la grille sont appliqués côté serveur
+    (``apps.roles.permissions.DroitDeLaGrille``).
+
+    Pour chaque code × endpoint : deux rôles personnalisés IDENTIQUES sauf la
+    présence du code. Sans le code → 403 ``droit_manquant`` qui nomme le code,
+    sans effet (CLAUSE PERSISTANCE : l'objet relu est présent / inchangé) ;
+    avec → le comportement d'avant. Test-du-test : retirer la classe d'un
+    endpoint (p. ex. l'export clients) fait échouer son cas « sans »."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from apps.crm.models import Client, Lead
+        from apps.installations.models import Installation
+        from apps.sav.models import EquipeMaintenance
+        cls.company = Company.objects.create(
+            nom='ASEC50 Codes', slug='asec50-codes-grille')
+        cls.collegue = User.objects.create_user(
+            username='asec50-collegue', password='x', company=cls.company,
+            role_legacy='responsable')
+        cls.client_obj = Client.objects.create(
+            company=cls.company, nom='Client', prenom='ASEC50')
+        cls.Lead = Lead
+        cls.equipe_a = EquipeMaintenance.objects.create(
+            company=cls.company, nom='Équipe A')
+        cls.equipe_b = EquipeMaintenance.objects.create(
+            company=cls.company, nom='Équipe B')
+        cls.chantier = Installation.objects.create(
+            company=cls.company, reference='CH-ASEC50', client=cls.client_obj)
+
+    def setUp(self):
+        self._n = 0
+
+    def _api(self, base, code, avec):
+        self._n += 1
+        role = Role.objects.create(
+            company=self.company, nom=f'ASEC50 {code} {self._n}',
+            permissions=list(base) + ([code] if avec else []))
+        user = User.objects.create_user(
+            username=f'asec50-{code}-{self._n}', password='x',
+            company=self.company, role=role)
+        api = APIClient()
+        api.force_authenticate(user)
+        return api
+
+    def _paire(self, base, code):
+        return self._api(base, code, False), self._api(base, code, True)
+
+    def _refus(self, resp, code):
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertEqual(resp.data.get('code'), 'droit_manquant', resp.data)
+        self.assertIn(code, str(resp.data.get('detail')))
+
+    def _lead(self, owner=None):
+        return self.Lead.objects.create(
+            company=self.company, nom='Lead ASEC50', owner=owner)
+
+    # ── exports ─────────────────────────────────────────────────────────
+    def test_crm_export_leads_et_clients(self):
+        lead = self._lead()
+        for url, corps in (('/api/django/crm/leads/export-xlsx/',
+                            {'ids': [lead.pk]}),
+                           ('/api/django/crm/clients/export-xlsx/', {})):
+            with self.subTest(url=url):
+                sans, avec = self._paire(['crm_voir'], 'crm_export')
+                self._refus(sans.post(url, corps, format='json'), 'crm_export')
+                self.assertEqual(
+                    avec.post(url, corps, format='json').status_code, 200)
+
+    def test_crm_export_donnees_d_un_client(self):
+        url = f'/api/django/crm/clients/{self.client_obj.pk}/data-export/'
+        sans, avec = self._paire(['crm_voir', 'crm_modifier'], 'crm_export')
+        self._refus(sans.get(url), 'crm_export')
+        resp = avec.get(url)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['identite']['id'], self.client_obj.pk)
+
+    def test_ventes_export_dgi_et_reporting_export(self):
+        # Le droit est tranché AVANT la lecture de l'objet : sans le code →
+        # 403 ; avec → la vue s'exécute (objet absent → 404, comme avant).
+        for base, code, url in (
+                (['ventes_voir', 'ventes_modifier'], 'ventes_export',
+                 '/api/django/ventes/factures/999999/dgi-export/'),
+                (['reporting_voir'], 'reporting_export',
+                 '/api/django/reporting/rapport-definitions/999999/export/')):
+            with self.subTest(code=code):
+                sans, avec = self._paire(base, code)
+                self._refus(sans.get(url), code)
+                self.assertEqual(avec.get(url).status_code, 404)
+
+    # ── suppressions ────────────────────────────────────────────────────
+    def test_crm_supprimer_lead_client_et_masse(self):
+        from apps.crm.models import Client
+        base = ['crm_voir', 'crm_modifier', 'roles_gerer']
+        lead = self._lead()
+        sans, avec = self._paire(base, 'crm_supprimer')
+        self._refus(sans.delete(f'/api/django/crm/leads/{lead.pk}/'),
+                    'crm_supprimer')
+        self.assertTrue(self.Lead.objects.filter(pk=lead.pk).exists())
+        corps = {'action': 'delete', 'ids': [lead.pk]}
+        self._refus(sans.post('/api/django/crm/leads/bulk/', corps,
+                              format='json'), 'crm_supprimer')
+        self.assertTrue(self.Lead.objects.filter(pk=lead.pk).exists())
+        self.assertEqual(
+            avec.delete(f'/api/django/crm/leads/{lead.pk}/').status_code, 200)
+        self.assertFalse(self.Lead.objects.filter(pk=lead.pk).exists())
+
+        client = Client.objects.create(company=self.company, nom='À effacer')
+        url = f'/api/django/crm/clients/{client.pk}/'
+        self._refus(sans.delete(url), 'crm_supprimer')
+        self.assertTrue(Client.objects.filter(pk=client.pk).exists())
+        self.assertEqual(avec.delete(url).status_code, 204)
+
+    def test_ventes_supprimer_devis(self):
+        from decimal import Decimal
+        from apps.ventes.models import Devis
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-ASEC50-1',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20.00'), created_by=self.collegue)
+        url = f'/api/django/ventes/devis/{devis.pk}/'
+        sans, avec = self._paire(['ventes_voir', 'roles_gerer'],
+                                 'ventes_supprimer')
+        self._refus(sans.delete(url), 'ventes_supprimer')
+        self.assertTrue(Devis.objects.filter(pk=devis.pk).exists())
+        self.assertEqual(avec.delete(url).status_code, 204)
+
+    # ── réaffectations ──────────────────────────────────────────────────
+    def test_crm_reassign_masse_et_patch_owner(self):
+        lead = self._lead()
+        sans, avec = self._paire(['crm_voir', 'crm_modifier'], 'crm_reassign')
+        corps = {'action': 'reassign', 'ids': [lead.pk],
+                 'owner': self.collegue.pk}
+        self._refus(sans.post('/api/django/crm/leads/bulk/', corps,
+                              format='json'), 'crm_reassign')
+        url = f'/api/django/crm/leads/{lead.pk}/'
+        self._refus(sans.patch(url, {'owner': self.collegue.pk},
+                               format='json'), 'crm_reassign')
+        lead.refresh_from_db()
+        self.assertIsNone(lead.owner_id)
+        # Renvoyer la valeur COURANTE n'est pas une réaffectation.
+        self.assertEqual(sans.patch(url, {'owner': None, 'nom': 'Renommé'},
+                                    format='json').status_code, 200)
+        self.assertEqual(avec.patch(url, {'owner': self.collegue.pk},
+                                    format='json').status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.collegue.pk)
+
+    def test_sav_reassign_equipe(self):
+        from apps.sav.models import Ticket
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ASEC50-1',
+            client=self.client_obj, equipe=self.equipe_a,
+            statut=Ticket.Statut.NOUVEAU)
+        sans, avec = self._paire(['sav_voir', 'sav_gerer'], 'sav_reassign')
+        url = f'/api/django/sav/tickets/{ticket.pk}/'
+        self._refus(sans.post(f'{url}reaffecter-equipe/',
+                              {'equipe': self.equipe_b.pk}, format='json'),
+                    'sav_reassign')
+        self._refus(sans.patch(url, {'equipe': self.equipe_b.pk},
+                               format='json'), 'sav_reassign')
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.equipe_id, self.equipe_a.pk)
+        self.assertEqual(avec.post(f'{url}reaffecter-equipe/',
+                                   {'equipe': self.equipe_b.pk},
+                                   format='json').status_code, 200)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.equipe_id, self.equipe_b.pk)
+
+    def test_technicien_assign_intervention(self):
+        from apps.installations.models import Intervention
+        interv = Intervention.objects.create(
+            company=self.company, installation=self.chantier)
+        base = ['installation_voir', 'installation_gerer']
+        sans, avec = self._paire(base, 'technicien_assign')
+        url = f'/api/django/installations/interventions/{interv.pk}/'
+        self._refus(sans.patch(url, {'technicien': self.collegue.pk},
+                               format='json'), 'technicien_assign')
+        interv.refresh_from_db()
+        self.assertIsNone(interv.technicien_id)
+        masse = '/api/django/installations/interventions/replanifier-en-masse/'
+        corps = {'jour': '2026-10-15', 'technicien': self.collegue.pk,
+                 'simuler': True}
+        self._refus(sans.post(masse, corps, format='json'),
+                    'technicien_assign')
+        self.assertNotEqual(
+            avec.post(masse, corps, format='json').status_code, 403)
+        self.assertEqual(avec.patch(url, {'technicien': self.collegue.pk},
+                                    format='json').status_code, 200)
+        interv.refresh_from_db()
+        self.assertEqual(interv.technicien_id, self.collegue.pk)
