@@ -1,5 +1,7 @@
 import math
 
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 from django.db import IntegrityError, models, transaction
 from drf_spectacular.utils import (extend_schema_field, extend_schema_serializer,
                                    inline_serializer)
@@ -912,7 +914,6 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_marge_pct(self, obj):
         """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""
-        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
         # ``prix_vente``/``prix_achat`` peuvent arriver en int OU float selon le
         # chemin d'écriture (création directe sans refresh_from_db, auto-fill,
         # import) : on force un ``Decimal`` AVANT toute arithmétique, sinon un
@@ -1056,7 +1057,6 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
     def validate_paliers_prix_vente(self, value):
         """CIQ123 — ``[{seuil_min, seuil_max|null, prix_vente_ttc}]`` triés,
         sans recouvrement ; vide = prix catalogue unique."""
-        from decimal import Decimal, InvalidOperation
 
         if value in (None, ''):
             return []
@@ -2751,8 +2751,8 @@ class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
     document créé (par `services.creer_revalorisation`, qui a figé le
     snapshot ancien coût/quantité/delta), `produit` et `nouveau_cout` ne se
     modifient plus : seul le motif reste éditable sur un brouillon."""
-    same_company_fields, CHAMPS_FIGES_APRES_CREATION = (
-        ('produit',), ('produit', 'nouveau_cout'))
+    same_company_fields = ('produit',)
+    CHAMPS_FIGES_APRES_CREATION = ('produit', 'nouveau_cout')
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     # CI #997 fuzz — `motif` : texte JSON seulement (une liste était lue).
     motif = ChaineStricte(help_text='Motif obligatoire.')
