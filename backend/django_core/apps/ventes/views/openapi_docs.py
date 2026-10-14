@@ -971,6 +971,38 @@ CORPS_LIGNE_FACTURE_POSITIVE = corps_resserre({'properties': {
 _MontantLigne = _decimal_publie(_MOTIF_POSITIF)
 _PourcentLigne = _decimal_publie(_MOTIF_POURCENT)
 
+#: ENF11 — règles d'ÉCRITURE d'une ligne de devis
+#: (``LigneDevisSerializer.validate`` + garde ``domain/bornes``) publiées sur
+#: ``devis-lignes`` : quantité / prix >= 0, remise 0-100, et un taux de TVA à
+#: 0 % porte sa base légale (AGR217).
+_ZERO_DECIMAL = r'^0*(?:\.0*)?$'
+_REGLES_LIGNE_DEVIS = {
+    'properties': {
+        'quantite': {'type': 'string', 'pattern': _MOTIF_POSITIF},
+        'prix_unitaire': {'type': 'string', 'pattern': _MOTIF_POSITIF},
+        'remise': {'type': 'string', 'pattern': _MOTIF_POURCENT}},
+    'anyOf': [
+        {'properties': {'taux_tva': {'not': {'pattern': _ZERO_DECIMAL}}}},
+        {'required': ['tva_base_legale'],
+         'properties': {'tva_base_legale': {'type': 'string',
+                                            'pattern': r'\S'}}},
+    ],
+}
+CORPS_LIGNE_DEVIS_MODIF = corps_resserre(_REGLES_LIGNE_DEVIS)
+#: Création / PUT : une ligne PRODUIT (type par défaut) référence un produit ;
+#: une section ou une note porte un intitulé.
+CORPS_LIGNE_DEVIS_ECRITURE = corps_resserre({'allOf': [
+    _REGLES_LIGNE_DEVIS,
+    {'anyOf': [
+        {'required': ['type_ligne', 'designation'],
+         'properties': {'type_ligne': {'enum': ['section', 'note']},
+                        'designation': {'type': 'string', 'pattern': r'\S'}}},
+        {'required': ['produit'],
+         'properties': {'type_ligne': {'enum': ['produit']},
+                        'produit': {'type': 'integer'}}},
+    ]},
+]})
+
 
 def _ligne_corrective(nom):
     """Une ligne saisie d'avoir / de note de débit — instance NEUVE à chaque

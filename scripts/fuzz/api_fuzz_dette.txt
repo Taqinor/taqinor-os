@@ -356,7 +356,6 @@ API rejected schema-compliant request|DELETE /api/django/stock/categories/{id}/
 API rejected schema-compliant request|DELETE /api/django/stock/emplacements/{id}/
 API rejected schema-compliant request|DELETE /api/django/stock/fournisseurs/{id}/force-delete/
 API rejected schema-compliant request|DELETE /api/django/stock/produits/{id}/force-delete/
-API rejected schema-compliant request|DELETE /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|GET /api/django/core/dashboards/{id}/donnees/
 API rejected schema-compliant request|GET /api/django/core/registre-fiabilite/export-pdf/
 API rejected schema-compliant request|GET /api/django/core/sla/{periode}/export-pdf/
