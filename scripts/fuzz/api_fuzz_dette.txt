@@ -39,6 +39,13 @@ API accepted schema-violating request|GET /api/django/core/sla/export-csv/
 API accepted schema-violating request|GET /api/django/core/ui-boutons/
 API accepted schema-violating request|GET /api/django/core/vues/
 API accepted schema-violating request|GET /api/django/core/workflows/rapport-conformite/
+API accepted schema-violating request|GET /api/django/crm/appointments/
+API accepted schema-violating request|GET /api/django/crm/concurrents-perte/
+API accepted schema-violating request|GET /api/django/crm/forecast-entries/
+API accepted schema-violating request|GET /api/django/crm/plans-compte/
+API accepted schema-violating request|GET /api/django/crm/points-contact/
+API accepted schema-violating request|GET /api/django/crm/site-profiles/
+API accepted schema-violating request|GET /api/django/crm/visites-externes/
 API accepted schema-violating request|GET /api/django/custom-fields/definitions/
 API accepted schema-violating request|GET /api/django/custom-fields/objects/
 API accepted schema-violating request|GET /api/django/custom-fields/permissions-role/
@@ -49,6 +56,12 @@ API accepted schema-violating request|GET /api/django/facturation/factures/
 API accepted schema-violating request|GET /api/django/facturation/niveaux-relance/
 API accepted schema-violating request|GET /api/django/facturation/notes-debit/
 API accepted schema-violating request|GET /api/django/facturation/paiements/
+API accepted schema-violating request|GET /api/django/ged/acls/
+API accepted schema-violating request|GET /api/django/ged/demandes-document/
+API accepted schema-violating request|GET /api/django/ged/depots-publics/
+API accepted schema-violating request|GET /api/django/ged/dossiers/
+API accepted schema-violating request|GET /api/django/ged/liens/
+API accepted schema-violating request|GET /api/django/ged/regles-dossier/
 API accepted schema-violating request|GET /api/django/identity/ip-allow-rules/
 API accepted schema-violating request|GET /api/django/identity/network-policies/
 API accepted schema-violating request|GET /api/django/identity/providers/
@@ -1170,6 +1183,7 @@ Response violates schema|PATCH /api/django/ventes/bons-commande/{id}/
 Response violates schema|PATCH /api/django/ventes/plans-commission/{id}/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
+API accepted schema-violating request|GET /api/django/crm/relance-etapes/
 API accepted schema-violating request|POST /api/django/ventes/economie-ci/preview/
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
 API accepted schema-violating request|POST /api/django/core/paiements-en-ligne/

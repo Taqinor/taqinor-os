@@ -65,10 +65,11 @@ class TestSiteProfile(TestCase):
     def test_one_profile_per_client(self):
         SiteProfile.objects.create(
             company=self.company, client=self.client_obj)
-        # OneToOne : un 2e profil pour le même client est rejeté.
+        # OneToOne : un 2e profil pour le même client est rejeté — doublon =
+        # conflit, 409 unique_conflict (ERR-ENF11-FUZZ-CRM).
         r = self.api.post('/api/django/crm/site-profiles/', {
             'client': self.client_obj.id}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_selector_returns_profile_dict(self):
         SiteProfile.objects.create(
