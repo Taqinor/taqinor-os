@@ -35,7 +35,7 @@ class MonitoringConfigSerializer(ChampsStrictsBornesMixin,
         # `company` posée côté serveur ; identifiants jamais relus du serveur.
         read_only_fields = ['last_sync', 'date_modification']
 
-    def get_provider_label(self, obj):
+    def get_provider_label(self, obj) -> str:  # ENF11 — type au schéma
         return dict(available_providers()).get(obj.provider, obj.provider)
 
     # CI #993 — booléen publié (SerializerMethodField sans type = chaîne :

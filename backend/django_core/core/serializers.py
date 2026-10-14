@@ -713,7 +713,7 @@ class DeletionRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSer
         ]
         read_only_fields = fields
 
-    def get_model_label(self, obj):
+    def get_model_label(self, obj) -> str:  # ENF11 — type au schéma
         ct = obj.content_type
         return f'{ct.app_label}.{ct.model}' if ct else ''
 
@@ -928,7 +928,7 @@ class ChangelogEntrySerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelat
         ]
         read_only_fields = ['id', 'lu', 'created_at', 'updated_at']
 
-    def get_lu(self, obj):
+    def get_lu(self, obj) -> bool:  # ENF11 — booléen au schéma
         lus = (self.context or {}).get('entries_lues')
         if lus is None:
             return False

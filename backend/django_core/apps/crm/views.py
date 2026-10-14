@@ -1118,7 +1118,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         lead = self.get_object()
         return Response({'results': lead_jalons_devis(lead)})
 
-    @extend_schema(request=None, responses=LeadActivitySerializer)
+    @extend_schema(request=None, responses=LeadActivitySerializer,
+                   parameters=[sd.P_ACTIVITE_ID])
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/epingler',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -1139,7 +1140,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data)
 
-    @extend_schema(request=None, responses=LeadActivitySerializer)
+    @extend_schema(request=None, responses=LeadActivitySerializer,
+                   parameters=[sd.P_ACTIVITE_ID])
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/desepingler',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])

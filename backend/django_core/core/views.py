@@ -22,8 +22,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_serializer, extend_schema_view,
     inline_serializer,
 )
-from rest_framework import serializers as drf_serializers
-from rest_framework import status, viewsets
+from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -49,10 +48,7 @@ from authentication.permissions import (
 
 from django.db.models import Q
 
-from . import bulk_edit as bulk_edit_infra
-from . import dashboard_data
-from . import data_explorer
-from . import jobs as jobs_infra
+from . import bulk_edit as bulk_edit_infra, dashboard_data, data_explorer, jobs as jobs_infra
 from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
@@ -61,12 +57,14 @@ from .champs_stricts import ChaineStricte, EntierStrict
 from .conflit_etat import ConflitEtat
 from .mixins import TenantMixin
 from .openapi_erreurs import EXTENSION_CONTENU_JSON, EXTENSION_CORPS_RESSERRE
+from .openapi_operations import mots_operation
 from .parametres_requete import choix_ou_400
 from .parseurs import ChoixDocumente, ObjetJSON, corps_valide
 from .throttling import MetricsThrottle, PublicExportThrottle
 from .permissions import PeutExecuterEditionMasse, declared_action_permissions
 from .models import (
     ApiUsagePlan,
+    BackgroundJob,
     BackupRun,
     BrandedTemplate,
     ChangelogEntry,
@@ -886,6 +884,9 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = SavedQuery.objects.all()
     pagination_class = None
+    #: ENF11 — ``POST …/run/`` (ad-hoc) et ``POST …/{id}/run/`` ont les mêmes
+    #: jetons de chemin : l'ad-hoc devient ``…_run_adhoc_create``.
+    schema = mots_operation(run_adhoc='adhoc_create')
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -957,6 +958,9 @@ class DataExplorerDatasetsView(APIView):
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
 
     permission_classes = [IsAuthenticated]
+    #: ENF11 — le catalogue (route SANS ``{name}``) est ``…_datasets_list`` ;
+    #: le détail (sous-classe ci-dessous) garde ``…_datasets_retrieve``.
+    schema = mots_operation(get='list')
 
     @extend_schema(
         responses=inline_serializer('DataExplorerCatalogue', {
@@ -976,8 +980,10 @@ class DataExplorerDatasetsView(APIView):
 class DataExplorerDatasetDetailView(DataExplorerDatasetsView):
     """Meme vue, route detail — operation_id distinct pour que le schema
     OpenAPI ne fonde pas liste et detail dans un seul identifiant (collision
-    d'operationId relevee par la garde YAPIC6)."""
-    parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
+    d'operationId relevee par la garde YAPIC6). ``parser_classes`` (ENF8, JSON
+    seul) est herite de la vue catalogue ; ``schema`` y revient au nommage par
+    defaut (``…_retrieve``)."""
+    schema = mots_operation()
 
     @extend_schema(
         responses=inline_serializer('DataExplorerDatasetSchema', {
@@ -1281,6 +1287,12 @@ class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsAuthenticated()]
 
 
+#: ENF11 — ``{id}`` des actions du catalogue = la CLÉ texte du module (manifeste
+#: ODX3), pas une PK : un ``ViewSet`` sans modèle ne permet pas de la typer.
+_CLE_MODULE = OpenApiParameter('id', OpenApiTypes.STR, OpenApiParameter.PATH,
+                               description='Clé du module (manifeste ODX3).')
+
+
 class ModuleCatalogViewSet(viewsets.ViewSet):
     """ODX3 — catalogue de modules (manifests fusionnés avec l'état société).
 
@@ -1312,7 +1324,7 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
         company = request.user.company
         return Response(feature_flags.catalogue_modules(company))
 
-    @extend_schema(request=None, responses=inline_serializer(
+    @extend_schema(request=None, parameters=[_CLE_MODULE], responses=inline_serializer(
         'ModuleActives', {'actives': drf_serializers.JSONField()}))
     @action(detail=True, methods=['post'], url_path='activer')
     def activer(self, request, pk=None):
@@ -1333,7 +1345,8 @@ class ModuleCatalogViewSet(viewsets.ViewSet):
 
     @extend_schema(
         request=None,
-        parameters=[_q('cascade', OpenApiTypes.STR,
+        parameters=[_CLE_MODULE,
+                    _q('cascade', OpenApiTypes.STR,
                        'Désactiver aussi les modules dépendants.',
                        enum=['1', 'true'])],
         responses=inline_serializer(
@@ -2136,9 +2149,11 @@ class BackgroundJobViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = BackgroundJobSerializer
     permission_classes = [IsAuthenticated]
+    #: ENF11 — modèle déclaré pour le schéma (type de ``{id}``) ; la lecture
+    #: réelle reste ``get_queryset`` (double portée société + utilisateur).
+    queryset = BackgroundJob.objects.none()
 
     def get_queryset(self):
-        from .models import BackgroundJob
         user = self.request.user
         return BackgroundJob.objects.filter(
             company=user.company, user=user)

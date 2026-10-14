@@ -274,14 +274,22 @@ def prefill_incident_depuis_log(request, pk):
     })
 
 
-@extend_schema(responses=drf_serializers.DictField(
-    # Clé = nom de composant (dynamique) -> frise de {date, statut, pct}.
-    child=drf_serializers.ListField(child=inline_serializer(
-        'PublicUptimeJour', {
-            'date': drf_serializers.DateField(),
-            'statut': drf_serializers.CharField(),
-            'pct': drf_serializers.FloatField(allow_null=True),
-        }))))
+@extend_schema(responses={200: {
+    # ENF11 — un DictField de premier niveau n'est pas résoluble par
+    # drf-spectacular (repli « objet libre ») : schéma brut. Clé = nom de
+    # composant (dynamique) -> frise de {date, statut, pct}. ``pct`` est un
+    # DecimalField du modèle, servi en chaîne (COERCE_DECIMAL_TO_STRING).
+    'type': 'object',
+    'additionalProperties': {'type': 'array', 'items': {
+        'type': 'object',
+        'properties': {
+            'date': {'type': 'string', 'format': 'date'},
+            'statut': {'type': 'string'},
+            'pct': {'type': 'string', 'format': 'decimal', 'nullable': True},
+        },
+        'required': ['date', 'statut', 'pct'],
+    }},
+}})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

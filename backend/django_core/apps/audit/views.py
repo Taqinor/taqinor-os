@@ -281,6 +281,9 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['timestamp', 'action']
     ordering = ['-timestamp']
+    #: ENF11 — modèle déclaré pour le schéma (type de ``{id}``) ; la lecture
+    #: réelle reste ``get_queryset`` (scopée société + filtres).
+    queryset = AuditLog.objects.none()
 
     def get_queryset(self):
         return _apply_filters(_company_qs(self.request), self.request.query_params)
