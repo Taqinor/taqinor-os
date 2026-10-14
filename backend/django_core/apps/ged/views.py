@@ -464,7 +464,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         # XGED14 — le téléchargement ZIP est une lecture (lisible par tout rôle) ;
         # les autres opérations de lot restent réservées aux responsables/admins.
+        # CI #998 api-fuzz — un corps qui n'est pas un objet JSON (liste,
+        # texte) n'a pas de `.get` : la lecture de l'opération le tolère et
+        # laisse la validation du corps répondre 400, jamais une 500 ici.
         if (self.action == 'operations_lot'
+                and isinstance(self.request.data, dict)
                 and self.request.data.get('operation') == 'telecharger_zip'):
             return [IsAnyRole()]
         # WIR174 — GOUVERNANCE documentaire (legal hold, caviardage définitif) :

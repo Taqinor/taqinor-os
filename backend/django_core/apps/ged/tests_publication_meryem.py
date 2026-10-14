@@ -455,3 +455,103 @@ class SocieteAmbigueTests(TestCase):
 
         with self.assertRaises(CommandError):
             call_command('publier_documents_meryem')
+
+
+DOC_MESSAGERIE = {
+    'fichier': 'messagerie.pdf',
+    'titre': 'Guide — Ta messagerie TAQINOR sur Microsoft 365',
+    'version': '1.0',
+    'description': 'Activer le compte, Outlook web, téléphone, boîtes partagées.',
+    'cabinet': 'Documentation', 'dossier': 'Guides — Responsables',
+    'acces': 'responsable',
+}
+
+
+class AccesDeLEntreeTests(SimpleTestCase):
+    """``_acces`` : la règle pure qui lit le palier d'accès d'une entrée."""
+
+    def test_absent_ou_normal_donne_le_palier_normal(self):
+        self.assertEqual(cmd._acces({'fichier': 'a.pdf'}), 'normal')
+        self.assertEqual(cmd._acces({'acces': ''}), 'normal')
+        self.assertEqual(cmd._acces({'acces': ' Normal '}), 'normal')
+        self.assertEqual(cmd._acces(None), 'normal')
+
+    def test_responsable_est_accepte(self):
+        self.assertEqual(cmd._acces({'acces': 'responsable'}), 'responsable')
+        self.assertEqual(cmd._acces({'acces': ' RESPONSABLE '}), 'responsable')
+
+    def test_autre_valeur_est_refusee(self):
+        for valeur in ('admin', 'tous', 'commercial', 42):
+            with self.assertRaises(ValueError) as ctx:
+                cmd._acces({'acces': valeur})
+            self.assertIn('acces', str(ctx.exception))
+
+
+class AccesResponsableTests(PublicationMeryemTestsBase):
+    """Entrée ``acces: responsable`` : l'ACL de lecture du dossier ne vaut
+    que pour les rôles du palier responsable ; les rôles limités, les admins
+    (accès implicite) et le portail n'ont aucune entrée."""
+
+    def setUp(self):
+        super().setUp()
+        self.role_responsable = Role.objects.create(
+            company=self.company, nom='Commercial responsable',
+            est_systeme=True, permissions=[])
+
+    def _dossier_responsables(self):
+        return Folder.objects.get(
+            company=self.company, cabinet__nom='Documentation',
+            nom='Guides — Responsables', parent__isnull=True)
+
+    def test_acl_posee_pour_le_seul_palier_responsable(self):
+        self._ecrire_manifeste(
+            [DOC_MESSAGERIE], {'messagerie.pdf': b'%PDF-1.4 messagerie v1'})
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        dossier = self._dossier_responsables()
+        self.assertTrue(Document.objects.filter(
+            folder=dossier, nom=DOC_MESSAGERIE['titre']).exists())
+        self.assertTrue(AclGed.objects.filter(
+            folder=dossier, role=self.role_responsable, niveau='lecture',
+            herite=True).exists())
+        for role in (self.role_commercial, self.role_directeur,
+                     self.role_portail):
+            self.assertFalse(AclGed.objects.filter(
+                folder=dossier, role=role).exists(), role.nom)
+
+    def test_entree_normale_garde_l_acl_de_tous_les_roles_non_admin(self):
+        self._ecrire_manifeste(
+            [DOC_SUIVI, DOC_MESSAGERIE],
+            {'suivi.pdf': b'%PDF-1.4 suivi v1',
+             'messagerie.pdf': b'%PDF-1.4 messagerie v1'})
+
+        call_command('publier_documents_meryem', company=self.company.slug)
+
+        guides = Folder.objects.get(
+            company=self.company, cabinet__nom='Documentation', nom='Guides',
+            parent__isnull=True)
+        self.assertTrue(AclGed.objects.filter(
+            folder=guides, role=self.role_commercial).exists())
+        self.assertTrue(AclGed.objects.filter(
+            folder=guides, role=self.role_responsable).exists())
+        self.assertFalse(AclGed.objects.filter(
+            folder=self._dossier_responsables(),
+            role=self.role_commercial).exists())
+
+    def test_valeur_acces_inconnue_fait_echouer_cette_entree_seulement(self):
+        mauvaise = dict(DOC_MESSAGERIE, acces='tous')
+        self._ecrire_manifeste(
+            [DOC_SUIVI, mauvaise],
+            {'suivi.pdf': b'%PDF-1.4 suivi v1',
+             'messagerie.pdf': b'%PDF-1.4 messagerie v1'})
+
+        with self.assertRaises(SystemExit) as ctx:
+            call_command('publier_documents_meryem', company=self.company.slug)
+        self.assertEqual(ctx.exception.code, 1)
+        self.assertTrue(Document.objects.filter(
+            company=self.company, nom=DOC_SUIVI['titre']).exists())
+        self.assertFalse(Document.objects.filter(
+            company=self.company, nom=DOC_MESSAGERIE['titre']).exists())
+        self.assertFalse(Folder.objects.filter(
+            company=self.company, nom='Guides — Responsables').exists())

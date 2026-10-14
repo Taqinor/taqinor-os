@@ -13,6 +13,7 @@ Run :
     python manage.py test apps.stock.test_astk_prix_achat_catalogue_import -v 2
 """
 import io
+import json
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -101,7 +102,12 @@ class PrixAchatCatalogueImportTests(TestCase):
     def test_import_403(self):
         rep = self._import(self.tech_resp, apercu='true')
         self.assertEqual(rep.status_code, 403)
-        self.assertNotIn(b'820', rep.content)
+        # CI #998 — le corps 403 porte un ``request_id`` hexadécimal aléatoire
+        # qui peut contenir « 820 » : le prix ne doit pas figurer dans la
+        # réponse HORS cet identifiant (le test était intermittent).
+        corps = rep.json()
+        corps.get('error', {}).pop('request_id', None)
+        self.assertNotIn('820', json.dumps(corps))
         rep = self._import(self.tech_resp, ecraser='true')
         self.assertEqual(rep.status_code, 403)
         self.prix.refresh_from_db()

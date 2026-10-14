@@ -564,6 +564,7 @@ API rejected schema-compliant request|POST /api/django/facturation/paiements/fac
 API rejected schema-compliant request|POST /api/django/ged/annotations/
 API rejected schema-compliant request|POST /api/django/ged/coffres/
 API rejected schema-compliant request|POST /api/django/ged/demandes-document/
+API rejected schema-compliant request|PUT /api/django/ged/demandes-document/{id}/
 API rejected schema-compliant request|POST /api/django/ged/demandes-signature/
 API rejected schema-compliant request|POST /api/django/ged/demandes-signature/creer-multi/
 API rejected schema-compliant request|POST /api/django/ged/depots-publics/
@@ -1284,3 +1285,37 @@ API rejected schema-compliant request|PUT /api/django/parametres/document-templa
 API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/
 # Groupe de merge #991 (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH portail/documents-client-portail, route non modifiée), porté par ERR-ENF11-FUZZ-PORTAIL (suite).
 API rejected schema-compliant request|PATCH /api/django/portail/documents-client-portail/{id}/
+
+# CI #998 (14/10/2026) — ged : re-mesure du job api-fuzz-pr lui-même (phase coverage, deux runs
+# 38645709994 et 38651177009). Constats absents du nocturne du 11/10 (couverture différente), tous
+# portés par ERR-ENF11-FUZZ-GED (ouvert) ; ils sortent d'ici au fur et à mesure des correctifs.
+API accepted schema-violating request|GET /api/django/ged/demandes-approbation/
+API accepted schema-violating request|GET /api/django/ged/documents/
+API accepted schema-violating request|GET /api/django/ged/legal-holds/
+API accepted schema-violating request|GET /api/django/ged/modeles-document/
+API accepted schema-violating request|GET /api/django/ged/partages/
+API accepted schema-violating request|GET /api/django/ged/politiques-retention/
+API accepted schema-violating request|GET /api/django/ged/tags/{id}/documents/
+API accepted schema-violating request|GET /api/django/ged/validations-ocr/
+API accepted schema-violating request|PATCH /api/django/ged/dossiers/{id}/
+API accepted schema-violating request|PATCH /api/django/ged/types-champ-signature/{id}/
+API accepted schema-violating request|POST /api/django/ged/tags/
+API accepted schema-violating request|POST /api/django/ged/types-champ-signature/
+API accepted schema-violating request|PUT /api/django/ged/dossiers/{id}/
+API accepted schema-violating request|PUT /api/django/ged/tags/{id}/
+API accepted schema-violating request|PUT /api/django/ged/types-champ-signature/{id}/
+API rejected schema-compliant request|PATCH /api/django/ged/coffres/{id}/
+API rejected schema-compliant request|PATCH /api/django/ged/demandes-document/{id}/
+API rejected schema-compliant request|POST /api/django/ged/acls/
+API rejected schema-compliant request|POST /api/django/ged/champs-signature/
+API rejected schema-compliant request|POST /api/django/ged/documents/assembler-photos/
+API rejected schema-compliant request|POST /api/django/ged/documents/deposer-lot-scans-separe/
+API rejected schema-compliant request|POST /api/django/ged/documents/operations-lot/
+API rejected schema-compliant request|POST /api/django/ged/documents/scan-lot/
+API rejected schema-compliant request|POST /api/django/ged/dossiers/
+API rejected schema-compliant request|POST /api/django/ged/dossiers/{id}/deplacer/
+API rejected schema-compliant request|POST /api/django/ged/liens/
+API rejected schema-compliant request|POST /api/django/ged/vues/
+API rejected schema-compliant request|PUT /api/django/ged/coffres/{id}/
+Response violates schema|GET /api/django/ged/coffres/
+Response violates schema|GET /api/django/ged/coffres/{id}/

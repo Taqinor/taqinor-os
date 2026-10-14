@@ -26,6 +26,20 @@ Destination (30/09/2026) — deux cas, décidés PAR ENTRÉE :
 Les ACL de lecture et la notification valent pour chaque dossier de
 destination, avec le même code.
 
+Palier d'accès (14/10/2026, fondateur : « visible des responsables et
+au-dessus ») — champ OPTIONNEL ``acces`` par entrée :
+  * absent ou ``"normal"`` : comportement inchangé, l'ACL de lecture du
+    dossier de destination vaut pour TOUS les rôles non-admin ;
+  * ``"responsable"`` : l'ACL de lecture n'est posée que pour les rôles du
+    palier « responsable » (``authentication.role_tiers`` — Responsable,
+    Commercial/Technicien responsable, ou tout rôle portant ``users_voir``) ;
+    les rôles du palier limité n'ont AUCUNE entrée et, l'ACL gouvernant alors
+    le dossier (``selectors.documents_visible_to_user``), ne voient pas ses
+    documents. Les admins gardent l'accès implicite. Un dossier partagé par
+    des entrées de paliers différents cumule les ACL (l'accès le plus large
+    demandé gagne) : réserver un dossier dédié aux guides « responsable ».
+    Toute autre valeur = entrée mal formée (échec de cette entrée seule).
+
 Idempotent :
   * Cabinet « Documents internes » -> Dossier « Commercial » -> Dossier
     « Guides de Meryem », créés une seule fois (réutilise
@@ -99,7 +113,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management.base import BaseCommand, CommandError
 
 from authentication.models import Company, CustomUser
-from authentication.role_tiers import ROLE_ADMIN, tier_for_role_fields
+from authentication.role_tiers import (
+    ROLE_ADMIN, ROLE_NORMAL, ROLE_RESPONSABLE, tier_for_role_fields)
 
 from apps.ged import services
 from apps.ged.models import ACL_LECTURE, AclGed, Document, Folder
@@ -205,6 +220,22 @@ def _destination(entry):
     return cabinet, dossier
 
 
+ACCES_VALIDES = (ROLE_NORMAL, ROLE_RESPONSABLE)
+
+
+def _acces(entry):
+    """Palier d'accès minimal d'une entrée : ``ROLE_NORMAL`` (défaut — tous les
+    rôles non-admin lisent) ou ``ROLE_RESPONSABLE`` (seuls les rôles du palier
+    responsable lisent ; les admins ont l'accès implicite). Toute autre
+    valeur est une entrée mal formée (``ValueError``, traitée par entrée)."""
+    valeur = str((entry or {}).get('acces') or ROLE_NORMAL).strip().lower()
+    if valeur not in ACCES_VALIDES:
+        raise ValueError(
+            f'entrée de manifeste mal formée : « acces » vaut {valeur!r}, '
+            f'attendu {" ou ".join(repr(v) for v in ACCES_VALIDES)}.')
+    return valeur
+
+
 def _ensure_dossier_meryem(company):
     """Cabinet « Documents internes » -> Commercial -> Guides de Meryem.
 
@@ -225,8 +256,12 @@ def _ensure_dossier_meryem(company):
     return dossier
 
 
-def _non_admin_roles(company):
+def _non_admin_roles(company, palier_min=ROLE_NORMAL):
     """Rôles de la société dont le palier hérité N'EST PAS admin.
+
+    ``palier_min=ROLE_RESPONSABLE`` ne garde que les rôles du palier
+    « responsable » (les rôles limités sont exclus : aucune entrée ACL, donc
+    aucune lecture une fois le dossier gouverné par l'ACL).
 
     Les rôles admin (Directeur/Administrateur — ``roles_gerer``) n'ont besoin
     d'AUCUNE entrée ACL : ``selectors.acl_effective`` leur accorde déjà
@@ -249,18 +284,23 @@ def _non_admin_roles(company):
             continue
         tier = tier_for_role_fields(
             role.nom, role.est_systeme, role.permissions or [])
-        if tier != ROLE_ADMIN:
-            roles.append(role)
+        if tier == ROLE_ADMIN:
+            continue
+        if palier_min == ROLE_RESPONSABLE and tier != ROLE_RESPONSABLE:
+            continue
+        roles.append(role)
     return roles
 
 
-def _ensure_acl_lecture(dossier, company):
+def _ensure_acl_lecture(dossier, company, palier_min=ROLE_NORMAL):
     """Pose (idempotent) une ACL de lecture héritée sur ``dossier`` pour
-    chaque rôle non-admin de la société. Filter+create (jamais
-    ``get_or_create`` : ``AclGed`` ne porte aucune contrainte unique sur
-    (folder, role)). Renvoie le nombre d'entrées CRÉÉES par cet appel."""
+    chaque rôle non-admin de la société (ou, avec
+    ``palier_min=ROLE_RESPONSABLE``, pour les seuls rôles du palier
+    responsable). Filter+create (jamais ``get_or_create`` : ``AclGed`` ne
+    porte aucune contrainte unique sur (folder, role)). Renvoie le nombre
+    d'entrées CRÉÉES par cet appel."""
     created = 0
-    for role in _non_admin_roles(company):
+    for role in _non_admin_roles(company, palier_min):
         exists = AclGed.objects.filter(
             folder=dossier, document__isnull=True, role=role).exists()
         if not exists:
@@ -334,23 +374,24 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
     recipients = [] if dry_run else _notification_recipients(company)
     dossiers = {}  # destination -> dossier, résolu une seule fois chacune
 
-    def _dossier_de(destination):
+    def _dossier_de(destination, acces):
         """Le dossier de destination : créé au besoin, avec ses ACL de
-        lecture, hors dry-run ; simplement cherché (donc None s'il n'existe
-        pas encore) en dry-run."""
-        if destination in dossiers:
-            return dossiers[destination]
+        lecture (au palier ``acces``), hors dry-run ; simplement cherché
+        (donc None s'il n'existe pas encore) en dry-run."""
+        cle = (destination, acces)
+        if cle in dossiers:
+            return dossiers[cle]
         if dry_run:
             trouve = (_find_dossier_meryem(company) if destination is None
                       else _find_dossier_racine(company, *destination))
         else:
             trouve = (_ensure_dossier_meryem(company) if destination is None
                       else _ensure_dossier_racine(company, *destination))
-            acl_crees = _ensure_acl_lecture(trouve, company)
+            acl_crees = _ensure_acl_lecture(trouve, company, acces)
             if acl_crees:
                 _log(f'ACL de lecture posée sur {acl_crees} rôle(s) '
-                     f'({trouve.nom}).')
-        dossiers[destination] = trouve
+                     f'({trouve.nom}, palier {acces}).')
+        dossiers[cle] = trouve
         return trouve
 
     for entry in manifest:
@@ -363,13 +404,14 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
                 raise ValueError(
                     'entrée de manifeste incomplète (fichier/titre requis).')
             destination = _destination(entry)
+            acces = _acces(entry)
             chemin = MERYEM_DOCS_DIR / fichier
             if not chemin.is_file():
                 raise ValueError(f'fichier introuvable : {chemin}.')
             contenu = chemin.read_bytes()
             checksum = services.compute_checksum(contenu)
 
-            dossier = _dossier_de(destination)
+            dossier = _dossier_de(destination, acces)
             # ADOC61 — un document en corbeille n'est jamais la cible : un
             # nouveau document visible est créé.
             document = (Document.objects.filter(

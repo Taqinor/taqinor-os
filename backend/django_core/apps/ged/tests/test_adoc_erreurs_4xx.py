@@ -457,6 +457,12 @@ class Enf11FuzzGedCorpsTests(TestCase):
                  'params': {'signataire_nom': 'x' * 300}}):
             resp = self._post(route, corps)
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        # CI #998 api-fuzz — un corps qui n'est pas un objet JSON (liste,
+        # texte, nul) : 400 du sérialiseur, jamais la 500 d'un `.get` sur
+        # une liste dans `get_permissions`.
+        for corps in ([None, None], ['corbeille'], 'corbeille', None):
+            resp = self._post(route, corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
         resp = self._post(route, {
             'documents': [self.doc.pk], 'operation': 'corbeille'})
         self.assertEqual(resp.status_code, 200, resp.content)
