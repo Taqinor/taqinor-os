@@ -167,6 +167,22 @@ class TestClasseurApi(ClasseurBase):
             self.assertEqual(get_override(champs[nom], 'field')['type'],
                              'object')
 
+    def test_partage_booleen_strict(self):
+        """CI #993 (api-fuzz-pr) — ``partage: 0`` ou ``"true"`` = 400 (le
+        schéma publie un booléen) sur POST comme sur PATCH ; ``true`` passe."""
+        url = '/api/django/reporting/classeurs/'
+        for valeur in (0, 1, 'true'):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(self.api.post(
+                    url, {'titre': 'T', 'partage': valeur},
+                    format='json').status_code, 400)
+        ok = self.api.post(url, {'titre': 'T', 'partage': True}, format='json')
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertIs(ok.data['partage'], True)
+        patch = self.api.patch(url + str(ok.data['id']) + '/',
+                               {'partage': 0}, format='json')
+        self.assertEqual(patch.status_code, 400)
+
     def test_other_company_classeurs_not_visible(self):
         Classeur.objects.create(
             company=self.other_company, titre='Autre société', cellules={})
