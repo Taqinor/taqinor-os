@@ -828,6 +828,14 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         # jamais accepté du corps (évite tout choix d'unité d'une autre société).
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour',
                             'unite']
+        # Le schéma publie ces deux JSON comme nullables (« non publié ») :
+        # ``validate_courbe_source`` / ``validate_paliers_prix_vente``
+        # normalisent déjà ``null`` (dict vide / liste vide) — DRF le refusait
+        # avant d'y arriver.
+        extra_kwargs = {
+            'courbe_source': {'allow_null': True},
+            'paliers_prix_vente': {'allow_null': True},
+        }
         # APX18 — `photo` (la FK vers `records.Attachment`) n'est
         # DÉLIBÉRÉMENT pas exposée : elle se pose uniquement par l'action
         # `POST /stock/produits/<id>/photo/`, qui téléverse ET rattache dans

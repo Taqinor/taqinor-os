@@ -101,7 +101,10 @@ class PrixAchatCatalogueImportTests(TestCase):
     def test_import_403(self):
         rep = self._import(self.tech_resp, apercu='true')
         self.assertEqual(rep.status_code, 403)
-        self.assertNotIn(b'820', rep.content)
+        # request_id aléatoire : on ne cherche le prix que hors de lui.
+        corps = {k: v for k, v in rep.json().items() if k != 'request_id'}
+        self.assertNotIn('820', str(corps))
+        self.assertNotIn('prix_achat', corps)
         rep = self._import(self.tech_resp, ecraser='true')
         self.assertEqual(rep.status_code, 403)
         self.prix.refresh_from_db()
