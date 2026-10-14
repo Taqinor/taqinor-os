@@ -170,3 +170,18 @@ class DupliquerCible(BaseApiCalepinage):
         cible = Lead.objects.create(company=self.company, nom='Titre 200')
         reponse = self._dupliquer(self.source, {'titre': 'x' * 200, 'lead': cible.pk})
         self.assertEqual(reponse.status_code, 201, reponse.data)
+
+    def test_corps_non_objet_refuse_400_sans_copie(self):
+        # CI #997 api-fuzz (3) : le schéma publie un OBJET — un tableau, un
+        # texte, un nombre ou ``null`` était lu « corps vide » et la copie
+        # créée (201).
+        avant = Calepinage.objects.count()
+        url = _url(self.source.pk, 'dupliquer/')
+        reponses = [self.api.post(url, corps, format='json')
+                    for corps in ([None, None], 'texte', 5)]
+        reponses.append(self.api.generic('POST', url, 'null',
+                                         content_type='application/json'))
+        for reponse in reponses:
+            self.assertEqual(reponse.status_code, 400, reponse.content)
+            self.assertIn('detail', reponse.data)
+        self.assertEqual(Calepinage.objects.count(), avant)

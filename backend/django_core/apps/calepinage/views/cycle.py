@@ -117,7 +117,14 @@ def dupliquer(self, request, pk=None):
     from ..services.presentation import reference_calepinage as _reference
 
     calepinage = self.get_object()  # borné société par get_queryset
-    corps = request.data if isinstance(request.data, dict) else {}
+    # CI #997 api-fuzz (3) — le schéma publie un OBJET : un tableau, un texte
+    # ou ``null`` était lu « corps vide » et la copie créée (201).
+    if not isinstance(request.data, dict):
+        return Response(
+            {'detail': 'Le corps attendu est un objet JSON '
+                       '(avec_variantes, titre, lead, client).'},
+            status=status.HTTP_400_BAD_REQUEST)
+    corps = request.data
     # ENF11 — types publiés (booléen / texte) exigés : 400 nommé sinon, au lieu
     # d'interpréter « oui » / 5 comme une valeur valide.
     for cle, attendu, libelle in (('avec_variantes', bool, 'un booléen'),
