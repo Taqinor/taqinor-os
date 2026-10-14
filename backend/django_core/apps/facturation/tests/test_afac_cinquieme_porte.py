@@ -96,3 +96,20 @@ class CinquiemePorteTests(TestCase):
             'client': self.client_obj.id, 'bon_commande': self.bc_libre.id,
             'taux_tva': '20.00'}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_bc_deja_facture_409(self):
+        """CI #997 api-fuzz (cas U8zXbo) : un BC déjà facturé (unicité de
+        ``bon_commande``) répondait 400 à un corps conforme — refus d'ÉTAT,
+        409 ``unique_conflict`` nommant le champ ; rien n'est créé."""
+        from apps.ventes.models import Facture
+        corps = {'client': self.client_obj.id,
+                 'bon_commande': self.bc_libre.id, 'taux_tva': '20.00'}
+        for url in (FACTURES, '/api/django/facturation/factures/'):
+            with self.subTest(url=url):
+                self.api.post(FACTURES, corps, format='json')
+                r = self.api.post(url, corps, format='json')
+                self.assertEqual(r.status_code, 409, r.data)
+                self.assertEqual(r.data['error']['code'], 'unique_conflict')
+                self.assertIn('bon_commande', r.data['error']['fields'])
+                self.assertEqual(Facture.objects.filter(
+                    bon_commande=self.bc_libre).count(), 1)

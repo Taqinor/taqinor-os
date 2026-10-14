@@ -40,6 +40,7 @@ import re
 
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException
+from rest_framework.fields import empty
 
 import logging
 
@@ -235,3 +236,33 @@ def brancher_unicite_societe(serializer, request) -> None:
 
     serializer.validate = validate
     serializer._unicite_societe_branchee = True
+
+
+def _unicite_seule(exc) -> bool:
+    """Vrai si ``exc`` (``ValidationError``) ne porte QUE des refus d'unicité
+    (code ``unique`` des validateurs DRF)."""
+    codes = exc.get_codes()
+    return (isinstance(codes, dict) and bool(codes) and all(
+        isinstance(v, list) and v and all(c == 'unique' for c in v)
+        for v in codes.values()))
+
+
+class UniciteEn409Mixin:
+    """CI #997 api-fuzz (``POST facturation/factures/`` sur un BC déjà
+    facturé) — mixin de SÉRIALISEUR : un doublon refusé par les validateurs
+    d'unicité de DRF (``UniqueValidator`` / ``UniqueTogetherValidator``)
+    répond 409 ``unique_conflict`` (``ConflitUnicite``) : le corps était
+    conforme, c'est l'état des données qui s'y oppose. Une requête qui porte
+    AUSSI une autre erreur reste un 400. Même règle que les copies locales de
+    ``crm`` / ``stock`` ; à placer en tête des bases du sérialiseur."""
+
+    def run_validation(self, data=empty):
+        try:
+            return super().run_validation(data)
+        except serializers.ValidationError as exc:
+            if not _unicite_seule(exc):
+                raise
+            champs = [c for c in exc.detail if c != 'non_field_errors']
+            raise ConflitUnicite(
+                detail=str(next(iter(exc.detail.values()))[0]),
+                champs=champs) from exc

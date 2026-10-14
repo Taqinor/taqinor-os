@@ -16,6 +16,7 @@ from .models import (
 from .serializers import _fallback_taux_tva
 from core.champs_stricts import DecimalStricte
 from core.mixins import SameCompanyFKSerializerMixin
+from core.unicite import UniciteEn409Mixin
 from .domain.bornes import montant_saisi, pourcentage_saisi
 
 
@@ -517,7 +518,8 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
-class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
+class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
+                             SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -527,7 +529,8 @@ class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
     lecture seule : `statut` ne bouge que par les actions dédiées
     (validation, paiement, abandon — AUD124/XFAC18). Liste `fields`
     EXPLICITE (plus d'`exclude=`) : tout nouveau champ du modèle doit y être
-    ajouté consciemment."""
+    ajouté consciemment. CI #997 — un BC déjà facturé (unicité de
+    ``bon_commande``) répond 409 ``unique_conflict``, plus 400."""
     same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
                            'entite', 'condition_paiement_ref')
 
