@@ -54,10 +54,10 @@ class DossierPatchTests(TestCase):
         self.a.refresh_from_db()
         self.assertEqual(self.a.nom, 'A2')
 
-    def test_deplacer_vers_descendant_cycle_400(self):
+    def test_deplacer_vers_descendant_cycle_409(self):
         avant = self._etat()
         resp = auth(self.resp).post(f'{BASE}{self.a.pk}/deplacer/',
                                     {'parent': self.b.pk}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertEqual(self._etat(), avant)
         self.assertEqual(self.b.path, f'/{self.a.pk}/{self.b.pk}/')

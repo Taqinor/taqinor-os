@@ -313,15 +313,37 @@ def schema_groupe_conditions(profondeur=3):
     return {'anyOf': [et_ou, non, feuille]}
 
 
+def _feuille_sans_champ_lisible(noeud):
+    """Vrai si une feuille de l'arbre porte un ``field`` FAIT D'ESPACES : le
+    schéma publié (``minLength`` + motif non blanc) le déclare invalide,
+    ``validate_condition_group`` n'exige que « non vide » (CI #997 fuzz)."""
+    import re
+    if not isinstance(noeud, dict):
+        return False
+    if isinstance(noeud.get('conditions'), (list, tuple)):
+        return any(_feuille_sans_champ_lisible(c) for c in noeud['conditions'])
+    champ = noeud.get('field')
+    return isinstance(champ, str) and re.search(r'\S', champ) is None
+
+
+def erreurs_groupe_conditions(valeur):
+    """Erreurs d'un arbre de conditions : ``core.rules`` + feuille au ``field``
+    non blanc (règle publiée au schéma de requête)."""
+    from core.rules import validate_condition_group
+    erreurs = validate_condition_group(valeur)
+    if not erreurs and _feuille_sans_champ_lisible(valeur):
+        erreurs = ["feuille sans 'field' (chaîne non blanche) valide."]
+    return erreurs
+
+
 class GroupeConditionsField(drf_serializers.JSONField):
     """Arbre de conditions ``core.rules`` validé AU CHAMP (création ET mise à
     jour : un PATCH posait ``{}`` sans contrôle) ; erreurs de
     ``validate_condition_group`` rendues sous le nom du champ (400)."""
 
     def to_internal_value(self, data):
-        from core.rules import validate_condition_group
         valeur = super().to_internal_value(data)
-        erreurs = validate_condition_group(valeur)
+        erreurs = erreurs_groupe_conditions(valeur)
         if erreurs:
             raise drf_serializers.ValidationError(erreurs)
         return valeur
@@ -335,3 +357,25 @@ class _GroupeConditionsSchema(OpenApiSerializerFieldExtension):
             return schema_groupe_conditions()
         return auto_schema._map_serializer_field(
             self.target, direction, bypass_extensions=True)
+
+
+class SectionsModeleField(drf_serializers.JSONField):
+    """Sections conditionnelles d'un modèle de document (NTDOC21) : liste
+    d'objets, ``null`` lu comme « aucune section » ; la validation fine est
+    ``ModeleDocumentSerializer.validate_sections``."""
+
+
+class _SectionsModeleSchema(OpenApiSerializerFieldExtension):
+    """CI #997 fuzz — le champ était publié en JSON libre (``{}`` « conforme »
+    puis refusé « liste d'objets »). Côté REQUÊTE : liste (ou ``null``)
+    d'objets dont ``conditions`` est absente, ``{}`` ou un arbre valide."""
+    target_class = 'apps.ged.corps_requete.SectionsModeleField'
+
+    def map_serializer_field(self, auto_schema, direction):
+        if direction != 'request':
+            return auto_schema._map_serializer_field(
+                self.target, direction, bypass_extensions=True)
+        return {'type': 'array', 'nullable': True, 'items': {
+            'type': 'object', 'properties': {'conditions': {
+                'anyOf': [{'type': 'object', 'maxProperties': 0},
+                          schema_groupe_conditions()]}}}}
