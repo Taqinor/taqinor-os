@@ -97,3 +97,16 @@ class SaisieSouveraineLignesTests(q220._Base):
                        {'designation': 'Installation (pose)'}, format='json')
         pose.refresh_from_db()
         self.assertFalse(pose.prix_manuel)
+
+    def test_nombre_json_refuse_chaine_acceptee(self):
+        """CI #997 (api-fuzz) — quantité/prix/remise voyagent en CHAÎNE comme
+        le schéma le déclare : un nombre JSON donne 400 (plus 200)."""
+        panneau = self.devis.lignes.get(designation=q220.PANNEAU)
+        for champ in ('quantite', 'prix_unitaire', 'remise'):
+            resp = self.api.patch('%s%s/' % (URL, panneau.pk),
+                                  {champ: 0}, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.content))
+            self.assertIn(champ, resp.json())
+        ok = self.api.patch('%s%s/' % (URL, panneau.pk),
+                            {'quantite': '3', 'remise': '0'}, format='json')
+        self.assertEqual(ok.status_code, 200, ok.content)
