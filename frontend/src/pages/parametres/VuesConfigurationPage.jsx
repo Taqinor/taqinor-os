@@ -56,7 +56,7 @@ export default function VuesConfigurationPage() {
     return uxviewsApi.listAllSavedViews()
       .then((res) => {
         if (!active.current) return
-        setViews(Array.isArray(res.data?.results) ? res.data.results : (res.data || []))
+        setViews(Array.isArray(res.data) ? res.data : [])
       })
       .catch(() => { if (active.current) setViews([]) })
       .finally(() => { if (active.current) setLoading(false) })

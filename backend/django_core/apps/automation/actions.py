@@ -454,8 +454,9 @@ def _send_email(rule, instance, company, context, user):
     report = reporter_hors_fenetre(rule, instance, company, context)
     if report is not None:  # APAR26 — aucun e-mail client en pleine nuit
         return report
-    from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or \
-        getattr(settings, 'CONTACT_FROM_EMAIL', 'no-reply@taqinor.ma')
+    # ENF15/ADEP20 — DEFAULT_FROM_EMAIL est déclaré (settings/base.py) ; l'ancien
+    # repli CONTACT_FROM_EMAIL n'était déclaré nulle part (clé morte).
+    from_email = settings.DEFAULT_FROM_EMAIL or 'no-reply@taqinor.ma'
     try:
         from django.core.mail import send_mail
         # Honnête : on NE masque PAS l'échec (fail_silently=False) et on vérifie

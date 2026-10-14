@@ -9,8 +9,10 @@ import {
 } from '../../ui'
 import api from '../../api/axios'
 import importApi, { downloadBlob, filenameFromResponse } from '../../api/importApi'
+import { todayLocalIso } from '../../lib/dateLocale'
 
-const today = () => new Date().toISOString().slice(0, 10)
+// ADEV73 — date du jour à Casablanca (jamais la veille UTC entre minuit et 01 h).
+const today = () => todayLocalIso()
 
 // VX235(c) — les 6 catégories que `config-import/?mode=overwrite` peut
 // ÉCRASER (apps/parametres/views_config.py::config_export) — labels FR pour

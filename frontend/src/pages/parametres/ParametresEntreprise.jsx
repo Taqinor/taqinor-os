@@ -18,6 +18,7 @@ import parametresApi from '../../api/parametresApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import customFieldsApi from '../../api/customFieldsApi'
+import toutesLesPages from './toutesLesPages'
 import { CheckCircle2, AlertCircle, Save, Search, X, Info } from 'lucide-react'
 import {
   Button, Spinner, TooltipProvider, Input,
@@ -354,8 +355,8 @@ export default function ParametresEntreprise() {
   const loadTags = () => crmApi.getTags()
     .then(r => setTags(r.data.results ?? r.data)).catch(() => {})
     .finally(() => setRefDone('tags'))
-  const loadMotifs = () => crmApi.getMotifsPerte()
-    .then(r => setMotifs(r.data.results ?? r.data)).catch(() => {})
+  const loadMotifs = () => toutesLesPages((params) => crmApi.getMotifsPerte(params))
+    .then(setMotifs).catch(() => {})
     .finally(() => setRefDone('motifs'))
   const loadMessages = () => parametresApi.getMessages()
     .then(r => setMessages(r.data)).catch(() => {})
@@ -365,7 +366,7 @@ export default function ParametresEntreprise() {
     dispatch(fetchCategories())
     dispatch(fetchFournisseurs())
     crmApi.getAssignableUsers()
-      .then(r => setAssignables(r.data.results ?? r.data)).catch(() => {})
+      .then(r => setAssignables(r.data)).catch(() => {})
     loadNiveaux()
     loadTags()
     loadMotifs()

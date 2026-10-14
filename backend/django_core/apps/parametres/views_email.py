@@ -115,7 +115,7 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
             field=field, field_label=label, old=old, new=new)
 
     @extend_schema(responses=_EMAILS_EFFECTIFS)
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], pagination_class=None)
     def effective(self, request):
         """Liste effective (défauts fusionnés avec les versions société)."""
         company = request.user.company if request.user.company_id else None
@@ -123,7 +123,7 @@ class EmailTemplateViewSet(SettingsAuditedMixin, TenantMixin,
 
     @extend_schema(request=EmailTemplatesBulkRequestSerializer,
                    responses=_EMAILS_EFFECTIFS)
-    @action(detail=False, methods=['put'])
+    @action(detail=False, methods=['put'], pagination_class=None)
     def bulk(self, request):
         """Upsert en masse des modèles d'e-mail (sujet/corps), par clé.
 

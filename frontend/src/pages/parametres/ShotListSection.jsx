@@ -9,6 +9,8 @@
 import { useEffect, useState } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import toutesLesPages from './toutesLesPages'
+import api from '../../api/axios'
 import { apiErrorMessage } from '../../lib/apiError'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -37,8 +39,8 @@ export default function ShotListSection() {
   const [newLibelle, setNewLibelle] = useState('')
   const [newPhase, setNewPhase] = useState('avant')
 
-  const load = () => installationsApi.getShotlistSlots()
-    .then((r) => { setSlots(r.data.results ?? r.data); setLoadError(false) })
+  const load = () => toutesLesPages((params) => api.get('/installations/shotlist-slots/', { params }))
+    .then((rows) => { setSlots(rows); setLoadError(false) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
   useEffect(() => { load() }, [])

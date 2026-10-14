@@ -15,6 +15,5 @@ frontend/src/pages/installations/PlanificationPage.jsx = 2
 frontend/src/pages/interventions/MaJourneePage.jsx = 1
 frontend/src/pages/monitoring/CleaningsPage.jsx = 1
 frontend/src/pages/monitoring/ProductionPage.jsx = 1
-frontend/src/pages/parametres/ExportSauvegarde.jsx = 1
 frontend/src/pages/sav/TicketsPage.jsx = 1
 frontend/src/pages/ventes/DevisGenerator.jsx = 2
