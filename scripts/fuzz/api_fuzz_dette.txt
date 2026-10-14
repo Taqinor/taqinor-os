@@ -185,7 +185,6 @@ API rejected schema-compliant request|POST /api/django/monitoring/cleanings/
 API rejected schema-compliant request|POST /api/django/monitoring/configs/
 API rejected schema-compliant request|POST /api/django/monitoring/readings/
 API rejected schema-compliant request|POST /api/django/monitoring/warranties/
-API rejected schema-compliant request|POST /api/django/outillage/kit-items/
 API rejected schema-compliant request|POST /api/django/parametres/cadence-relance/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/
@@ -271,7 +270,6 @@ Response violates schema|GET /api/django/core/vues/
 Response violates schema|GET /api/django/onboarding/progress/
 Response violates schema|GET /api/django/records/activities/
 Response violates schema|GET /api/django/records/activities/{id}/
-Response violates schema|PATCH /api/django/outillage/outils/{id}/
 Response violates schema|POST /api/django/records/activities/
 Response violates schema|POST /api/django/records/activities/{id}/done/
 Response violates schema|POST /api/django/records/activities/{id}/snooze/

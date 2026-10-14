@@ -2,18 +2,25 @@ from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import (
+    BooleenStrict, ChampsStrictsMixin, IdInconnu404Mixin, TexteLie)
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Outillage, KitOutillage, KitOutillageItem
 
 
-class OutillageSerializer(serializers.ModelSerializer):
+class OutillageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                          SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # ENF11 (api-fuzz) : emplacement inconnu OU d'une autre société = 404
+    # (même réponse, aucun oracle) ; textes stricts.
+    same_company_fields = ('emplacement',)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
-    emplacement_nom = serializers.CharField(
-        source='emplacement.nom', read_only=True, allow_null=True, default=None,
-        required=False)  # ENF11 — absent d'une réponse PATCH (default + partial)
+    # ENF11 — TexteLie : la clé reste servie (null) dans une réponse PATCH, que
+    # DRF saute sinon sur un sérialiseur partiel alors que le schéma l'exige.
+    emplacement_nom = TexteLie(
+        source='emplacement.nom', read_only=True, allow_null=True, default=None)
 
     # FG80 — badge « à calibrer » : intervalle > 0 ET date dépassée.
     a_calibrer = serializers.SerializerMethodField()
@@ -45,16 +52,8 @@ class OutillageSerializer(serializers.ModelSerializer):
         import datetime
         return obj.date_prochaine_calibration <= datetime.date.today()
 
-    def validate_emplacement(self, value):
-        # Un emplacement ne peut appartenir qu'à la société de l'utilisateur.
-        request = self.context.get('request')
-        if value is not None and request is not None:
-            if value.company_id != request.user.company_id:
-                raise serializers.ValidationError("Emplacement inconnu.")
-        return value
 
-
-class KitOutillageItemSerializer(SameCompanyFKSerializerMixin,
+class KitOutillageItemSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     # ENF17 — le kit ET l'outil d'une AUTRE société = id absent (400 « objet
     # inexistant », plus de message propre qui trahissait leur existence).

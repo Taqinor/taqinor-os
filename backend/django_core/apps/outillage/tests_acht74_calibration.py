@@ -106,6 +106,9 @@ class CalibrationTests(TestCase):
         r = self.api.patch(f"{URL}{data['id']}/", {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNone(r.data.get('emplacement'))
+        # ERR-ENF11-FUZZ : la clé reste servie (null) — le schéma l'exige.
+        self.assertIn('emplacement_nom', r.data)
+        self.assertIsNone(r.data['emplacement_nom'])
         r = self.api.post(f"{URL}{data['id']}/calibrer/", [1, 2], format='json')
         self.assertEqual(r.status_code, 400, r.data)
         r = self.api.post(URL, {'nom': 'X'}, format='multipart')
