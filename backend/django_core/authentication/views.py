@@ -25,6 +25,7 @@ from .models import CustomUser, Company, UserSession
 from .serializers import (
     MeSerializer,
     RegisterSerializer,
+    UserModificationSerializer,
     UserSerializer,
     CompanySerializer,
     CustomTokenObtainPairSerializer,
@@ -1088,7 +1089,11 @@ _ACTIONS_ECRITURE_COMPTES = frozenset({
 @extend_schema_view(create=extend_schema(
     responses={201: UserSerializer, 400: REPONSE_400_COMPTE}),
     **{action_detail: extend_schema(parameters=ID_COMPTE) for action_detail in (
-        'retrieve', 'update', 'partial_update', 'destroy')})
+        'retrieve', 'destroy')},
+    # CI #997 : le corps d'une modification ne promet pas ``password`` (ASEC3).
+    **{action_detail: extend_schema(
+        parameters=ID_COMPTE, request=UserModificationSerializer)
+       for action_detail in ('update', 'partial_update')})
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
