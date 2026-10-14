@@ -71,6 +71,16 @@ class AvalFinancierRevision(TestCase):
             client=devis.client, statut=BonCommande.Statut.EN_ATTENTE)
 
     def _tranche(self, devis):
+        # VNT62 — l'acceptation pose le brouillon d'acompte : la « prochaine
+        # tranche » émet d'abord le brouillon en attente de la vente.
+        from apps.ventes.domain.facturation_ops import emettre_facture
+        brouillon = (Facture.objects.filter(
+            devis=devis, statut=Facture.Statut.BROUILLON).order_by('pk')
+            .first())
+        if brouillon is not None:
+            emettre_facture(brouillon, user=self.user)
+            brouillon.refresh_from_db()
+            return brouillon
         return creer_facture_tranche(devis, self.user, self.company,
                                      create_with_reference)
 
@@ -129,9 +139,49 @@ class AvalFinancierRevision(TestCase):
         v2 = self._reviser_prix('3000')
         v2 = self._accepter(v2)
         ecart = _ttc(self.v1) - _ttc(v2)
+        # VNT64 — jamais un avoir d'écart sans confirmation : l'acceptation
+        # le signale, le geste confirmé l'émet au centime.
+        self.assertFalse(Avoir.objects.filter(company=self.company).exists())
+        r = rattacher_aval_financier_revision(v2, user=self.user)
+        self.assertEqual(r['avoir_a_confirmer'], ecart)
+        self.assertIsNone(r['document'])
+        rattacher_aval_financier_revision(v2, user=self.user,
+                                          confirmer_avoir=True)
         avoir = Avoir.objects.get(company=self.company)
         self.assertEqual(Decimal(str(avoir.total_ttc)), ecart)
         self.assertEqual(avoir.facture.devis_id, v2.pk)
+
+    def test_vnt64_v1_v2_v3_meme_ecart_au_centime_a_chaque_etape(self, *_):
+        """VNT64 — V1 → V2 → V3 avec acompte payé : à chaque étape, le reste
+        à facturer lu sur la vente vaut le prix de la version moins
+        l'acompte, au centime ; l'écart est celui des deux versions."""
+        from apps.facturation.models import Paiement
+        from apps.ventes.vente_facturation import plan_facturation
+        self.v1 = self._accepter(self.v1)
+        acompte = self._tranche(self.v1)
+        Paiement.objects.create(
+            company=self.company, facture=acompte,
+            montant=acompte.total_ttc, date_paiement=date.today())
+        precedent = self.v1
+        for pu in ('7000', '6000'):
+            courant = reviser_devis(
+                Devis.objects.get(pk=precedent.pk), user=self.user)
+            ligne = courant.lignes.get(designation='Installation')
+            LigneDevis.objects.filter(pk=ligne.pk).update(
+                prix_unitaire=Decimal(pu))
+            Devis.objects.filter(pk=courant.pk).update(
+                statut=Devis.Statut.ENVOYE)
+            courant = self._accepter(Devis.objects.get(pk=courant.pk))
+            r = rattacher_aval_financier_revision(courant, user=self.user)
+            self.assertEqual(r['ecart_ttc'], _ttc(courant) - _ttc(precedent))
+            plan = plan_facturation(courant)
+            self.assertEqual(plan['emis_net'], acompte.total_ttc)
+            self.assertEqual(
+                plan['reste_a_facturer'],
+                _ttc(courant) - Decimal(str(acompte.total_ttc)))
+            acompte.refresh_from_db()
+            self.assertEqual(acompte.devis_id, courant.pk)
+            precedent = courant
 
     def test_sans_predecesseur_rien(self, *_):
         self.assertIsNone(

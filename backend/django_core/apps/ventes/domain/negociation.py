@@ -333,7 +333,8 @@ def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
                 f"l'aperçu annonçait {apercu['total_ttc']} — geste annulé.")
         retires = retirer_brouillons_de_la_vente(
             v2, user=user, motif=f'Prix négocié ({v2.reference})')
-        rattacher_aval_financier_revision(v2, user=user)
+        rattacher_aval_financier_revision(
+            v2, user=user, confirmer_avoir=confirmer_avoir)
     logger.info('VNT59: prix négocié %s → %s (%s MAD TTC, remise %s %%).',
                 devis.reference, v2.reference, apercu['total_ttc'],
                 apercu['remise_pct'])
