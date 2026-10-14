@@ -291,6 +291,7 @@ def _gammes_public(devis, est_standard=False):
             'comparatif': _gamme_comparatif(lignes_ici, lignes_soeur),
         }
     except Exception:  # noqa: BLE001 — jamais casser la proposition
+        logger.warning('%s : échec ignoré (dégradé)', '_gammes_public', exc_info=True)
         return None
 
 

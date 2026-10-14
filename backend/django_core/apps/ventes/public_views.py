@@ -2029,7 +2029,7 @@ def proposal_taille_detail(request, token, cle):
             from django.core.cache import cache
             cache.set(memo, detail, CACHE_SECONDES)
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'proposal_taille_detail', exc_info=True)
     return _noindex(Response(detail))
 
 
