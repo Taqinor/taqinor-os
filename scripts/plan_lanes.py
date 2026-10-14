@@ -1583,6 +1583,43 @@ def apply_external_after_gate(
     return ok, refusees
 
 
+def appliquer_portes_contrat_et_after(
+    tasks: list[dict], index: dict, force_wave: bool = False,
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """PACT11 puis @after externe (OWN), jusqu'au point fixe.
+
+    Nœud du 14/10/2026 (pool de tous les plans, 45 écrans refusés) : le
+    dry-run de la porte `@after` (AMET95) ne voit qu'UN niveau — APRF24
+    attendait APRF39, elle-même en attente d'APRF37, présente dans le run
+    mais refusée par PACT11 contre ACAL274. Au dry-run, APRF39 passait
+    (APRF37 encore « dans le run »), donc APRF24 restait PRODUCTRICE et
+    refusait VNT73-VNT102, SPL195-SPL207, ACAL251… ; puis la vraie porte
+    `@after` refusait APRF39, APRF41 et APRF24 — un producteur qui ne part
+    PAS dans ce run. Une tâche refusée par n'importe quelle porte ne produit
+    rien en parallèle : on itère donc jusqu'à ce que la porte `@after` ne
+    retire plus rien, en redonnant à PACT11 les écrans refusés au tour
+    précédent (leur producteur a pu disparaître). Les producteurs ne font
+    que décroître → terminaison garantie, jamais un refus en moins.
+
+    Renvoie ``(autorisées, refusées PACT11, refusées @after)``.
+    """
+    candidats = list(tasks)
+    after_blocked: list[dict] = []
+    while True:
+        _, refus_after = apply_external_after_gate(
+            candidats, index, force_wave=force_wave)
+        autorisees, pairing_blocked = apply_contract_pairing_gate(
+            candidats, force_wave=force_wave,
+            exclus={t["id"] for t in refus_after},
+        )
+        autorisees, nouveaux_refus = apply_external_after_gate(
+            autorisees, index, force_wave=force_wave)
+        after_blocked.extend(nouveaux_refus)
+        if not nouveaux_refus or not pairing_blocked:
+            return autorisees, pairing_blocked, after_blocked
+        candidats = autorisees + pairing_blocked
+
+
 def count_malformed(path: Path) -> int:
     """Count ``- [`` lines that fail to match either task regex.
 
@@ -2149,23 +2186,15 @@ def main(argv: list[str] | None = None) -> int:
     # part pas dans ce run, PACT11 ne le compte pas ; la vraie porte tourne
     # APRÈS PACT11 pour garder le refus transitif des dépendants d'un refus.
     index = index_taches_plans()
-    _, refus_after = apply_external_after_gate(
+    allowed_tasks, pairing_blocked, after_blocked = appliquer_portes_contrat_et_after(
         allowed_tasks, index, force_wave=args.force_wave)
-    allowed_tasks, pairing_blocked = apply_contract_pairing_gate(
-        allowed_tasks, force_wave=args.force_wave,
-        exclus={t["id"] for t in refus_after},
-    )
     for t in pairing_blocked:
         print(
             f"REFUSÉ (contrat front↔back, PACT11) : {t['id']} — "
             + " ; ".join(t["pairing_block_reasons"]),
             file=sys.stderr,
         )
-
     # OWN (F3) — @after vers une tâche ouverte d'un autre fichier plan.
-    allowed_tasks, after_blocked = apply_external_after_gate(
-        allowed_tasks, index, force_wave=args.force_wave,
-    )
     for t in after_blocked:
         print(f"REFUSÉ (@after externe, OWN) : {t['id']} — "
               + " ; ".join(t["after_block_reasons"]), file=sys.stderr)

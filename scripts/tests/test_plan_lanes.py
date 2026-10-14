@@ -645,6 +645,36 @@ class ContractPairingGateTests(unittest.TestCase):
         _, blocked = pl.apply_contract_pairing_gate(tasks)
         self.assertEqual(blocked, [])
 
+    def test_un_producteur_refuse_en_aval_par_after_ne_refuse_plus_l_ecran(self):
+        # Nœud du 14/10/2026 : P (backend ventes) attend Q ; Q (écran
+        # installations) est refusée par PACT11 contre B (backend
+        # installations). Au dry-run d'un seul niveau, P passait (Q « dans le
+        # run »), donc P refusait F (écran ventes) ; puis la vraie porte
+        # @after refusait P. Un producteur qui ne part pas ne produit rien :
+        # au point fixe, F part, P et Q sont refusées à bon droit.
+        F = ("- [ ] F1 — écran ventes. "
+             "Files: `frontend/src/features/ventes/Panneau.jsx`. (ROUTINE)")
+        P = ("- [ ] P1 — route ventes. "
+             "Files: `backend/django_core/apps/ventes/urls.py`. (ROUTINE) "
+             "(@after: Q1)")
+        Q = ("- [ ] Q1 — écran installations. "
+             "Files: `frontend/src/features/installations/Liste.jsx`. (ROUTINE)")
+        B = ("- [ ] B1 — agrégats installations. "
+             "Files: `backend/django_core/apps/installations/selectors.py`. (ARCH)")
+        tasks = self._tasks(F, P, Q, B)
+        index = {"Q1": (" ", "docs/plans/PLAN_X.md", 3)}
+        allowed, pairing, after = pl.appliquer_portes_contrat_et_after(
+            tasks, index)
+        self.assertEqual(sorted(t["id"] for t in allowed), ["B1", "F1"])
+        self.assertEqual([t["id"] for t in pairing], ["Q1"])
+        self.assertEqual([t["id"] for t in after], ["P1"])
+        # Témoin : sans le nœud (P n'attend rien), F reste refusée contre P.
+        tasks = self._tasks(F, P.replace(" (@after: Q1)", ""), Q, B)
+        allowed, pairing, after = pl.appliquer_portes_contrat_et_after(
+            tasks, {})
+        self.assertEqual(sorted(t["id"] for t in pairing), ["F1", "Q1"])
+        self.assertEqual(after, [])
+
     def test_une_autre_app_n_est_jamais_appariee(self):
         # Le backend `crm` ne produit rien pour l'écran `ao` : appariement par
         # APP, jamais par proximité dans le fichier de plan.
