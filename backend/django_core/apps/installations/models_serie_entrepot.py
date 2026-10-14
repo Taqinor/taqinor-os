@@ -33,11 +33,15 @@ class SerieEntrepot(models.Model):
         RETOURNE = 'retourne', 'Retourné (réception annulée)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_series_entrepot')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.PROTECT,  # on_delete: PROTECT — numéro de série d'une unité physique = fait de traçabilité non reconstructible (même classe que LotEntrepot)
+        'stock.Produit',
+        # PROTECT — numéro de série d'une unité physique = fait de traçabilité non reconstructible (même classe
+        # que LotEntrepot)
+        on_delete=models.PROTECT,  # on_delete: PROTECT — n° de série = traçabilité non reconstructible
         related_name='installations_series_entrepot')
     numero_serie = models.CharField(max_length=120)
     emplacement = models.ForeignKey(

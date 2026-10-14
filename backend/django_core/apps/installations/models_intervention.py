@@ -29,7 +29,8 @@ class TypeIntervention(models.Model):
     `protege` verrouille un type système contre le renommage/la suppression.
     Additif — aucune migration destructive."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='types_intervention')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=80)
@@ -96,11 +97,14 @@ class Intervention(models.Model):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='interventions',
     )
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='interventions',  # on_delete: intervention planifiée sur ce chantier — sans chantier elle n'a plus d'objet
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: intervention planifiée sur ce chantier — sans objet sans lui
+        related_name='interventions',
     )
     # Lien OPTIONNEL vers un ticket SAV : résoudre un ticket peut enregistrer
     # une ou plusieurs interventions (visites terrain) contre lui, sans créer
@@ -336,11 +340,14 @@ class InterventionActivity(models.Model):
         NOTE = 'note', 'Note'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='intervention_activities',
     )
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, related_name='activites')  # on_delete: historique/chatter de Intervention — suit son objet
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: historique/chatter de Intervention — suit son objet
+        related_name='activites')
     kind = models.CharField(max_length=15, choices=Kind.choices)
     field = models.CharField(max_length=100, blank=True, null=True)
     field_label = models.CharField(max_length=150, blank=True, null=True)
@@ -375,11 +382,14 @@ class InstallationActivity(models.Model):
         NOTE = 'note', 'Note'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installation_activities',
     )
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='activites')  # on_delete: historique/chatter de Installation — suit son objet
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: historique/chatter de Installation — suit son objet
+        related_name='activites')
     kind = models.CharField(max_length=15, choices=Kind.choices)
     field = models.CharField(max_length=100, blank=True, null=True)
     field_label = models.CharField(max_length=150, blank=True, null=True)
@@ -412,7 +422,8 @@ class TypeInterventionPlan(models.Model):
     pas les types déjà présents). Additif — company-scopé."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='type_intervention_plans')
     # Type d'installation auquel ce plan s'applique.
     type_installation = models.CharField(
@@ -458,10 +469,12 @@ class RecurrenceIntervention(models.Model):
         ANNUELLE = 'annuelle', 'Annuelle'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='recurrences_intervention')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE,  # on_delete: RecurrenceIntervention est le détail de Installation — n'existe pas sans lui
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: détail de Installation — n'existe pas sans lui
         related_name='recurrences_intervention')
     # Clé du type d'intervention (texte, pattern TypeInterventionPlan — pas de
     # FK rigide pour permettre la création avant que le type existe).
