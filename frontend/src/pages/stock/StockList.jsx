@@ -22,6 +22,7 @@ import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import api from '../../api/axios'
 import { formatNumber, formatMAD } from '../../lib/format'
 import { toggleId, pruneSelection, bulkResultMessage } from '../../features/crm/bulk'
@@ -432,8 +433,9 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const rows = (produits ?? []).filter((p) => !p.is_archived)
 
   // setState arrive dans les callbacks .then (jamais synchrone dans l'effet).
-  const loadEmplacements = () => stockApi.getEmplacements()
-    .then((r) => setEmplacements(r.data?.results ?? r.data ?? [])).catch(() => {})
+  const loadEmplacements = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    stockApi.getEmplacements({ page, page_size: pageSize }).then((r) => r.data))
+    .then((rows) => setEmplacements((Array.isArray(rows) ? rows : (rows?.results ?? [])))).catch(() => {})
   const loadTransferts = () => stockApi.getTransferts({ ordering: '-date' })
     .then((r) => setTransferts((r.data?.results ?? r.data ?? []).slice(0, 8)))
     .catch(() => {})

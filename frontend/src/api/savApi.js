@@ -152,7 +152,7 @@ const savApi = {
     api.post(`/sav/tickets/${id}/checklist/`, { template_id: templateId }),
   patchTicketChecklistItem: (id, payload) =>
     api.patch(`/sav/tickets/${id}/checklist/`, payload),
-  getChecklistTemplates: () => api.get('/sav/checklist-templates/'),
+  getChecklistTemplates: (params) => api.get('/sav/checklist-templates/', { params }),
 
   // T16 — contrats de maintenance.
   getContrats: (params) => api.get('/sav/contrats-maintenance/', { params }),

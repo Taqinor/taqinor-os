@@ -10,12 +10,8 @@
 frontend/src/features/audit/ObjectHistoryButton.jsx::charger
 frontend/src/features/core/ExplorateurDonneesPage.jsx::ExplorateurDonneesPage
 frontend/src/features/crm/ConcurrentsPerte.jsx::ConcurrentsPerte
-frontend/src/features/crm/ConcurrentsPerte.jsx::chargerConcurrents
 frontend/src/features/crm/companyLookup.js::searchCompanies
-frontend/src/features/crm/relances/RelanceEtapeRow.jsx::chargerMotifs
-frontend/src/features/crm/useCanaux.js::useCanaux
 frontend/src/features/crm/workspace/ContextRail.jsx::openWa
-frontend/src/features/crm/workspace/LeadWorkspace.jsx::relay
 frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab
 frontend/src/features/crm/workspace/VisiteTab.jsx::VisiteTab
 frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise
@@ -51,7 +47,6 @@ frontend/src/pages/crm/VisiteursPage.jsx::toggleDetail
 frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget
 frontend/src/pages/crm/defis/DefisPage.jsx::DefisPage
 frontend/src/pages/crm/leads/AppointmentBooker.jsx::AppointmentBooker
-frontend/src/pages/crm/leads/PerduPopover.jsx::setOpen
 frontend/src/pages/crm/leads/PlanActiviteDialog.jsx::PlanActiviteDialog
 frontend/src/pages/crm/leads/SigneDialog.jsx::SigneDialog
 frontend/src/pages/installations/AteliersPage.jsx::load
@@ -70,14 +65,12 @@ frontend/src/pages/interventions/InterventionsPage.jsx::fetchData
 frontend/src/pages/interventions/InterventionsPage.jsx::reload
 frontend/src/pages/monitoring/CleaningsPage.jsx::load
 frontend/src/pages/monitoring/CleaningsPage.jsx::reload
-frontend/src/pages/monitoring/ClientPortalPage.jsx::ClientPortalPage
 frontend/src/pages/monitoring/Co2Page.jsx::load
 frontend/src/pages/monitoring/ProductionPage.jsx::isStale
 frontend/src/pages/monitoring/ProductionPage.jsx::load
 frontend/src/pages/monitoring/WarrantiesPage.jsx::reload
 frontend/src/pages/monitoring/useSupervisedSystems.js::useSupervisedSystems
 frontend/src/pages/onboarding/DemarrageWizard.jsx::DemarrageWizard
-frontend/src/pages/outillage/OutillagePage.jsx::onOutilScanne
 frontend/src/pages/reporting/ClasseursListPage.jsx::reload
 frontend/src/pages/reporting/DashboardConfigPage.jsx::reload
 frontend/src/pages/reporting/DashboardSharePage.jsx::reload
@@ -91,16 +84,11 @@ frontend/src/pages/sav/SavSlaReportPage.jsx::charger
 frontend/src/pages/sav/SimpleRefListEditor.jsx::load
 frontend/src/pages/sav/TicketAdvancedPanel.jsx::creerPret
 frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi
-frontend/src/pages/sav/TicketChecklistPanel.jsx::load
-frontend/src/pages/sav/TicketWorksheetPanel.jsx::TicketWorksheetPanel
 frontend/src/pages/stock/BonsCommandeFournisseur.jsx::ligneInitiale
-frontend/src/pages/stock/CategoriesStock.jsx::loadMarques
 frontend/src/pages/stock/FournisseurFiche360.jsx::reload
 frontend/src/pages/stock/ProduitDetail.jsx::useFicheTechnique
 frontend/src/pages/stock/StockList.jsx::applyStockView
-frontend/src/pages/stock/StockList.jsx::loadEmplacements
 frontend/src/pages/stock/StockList.jsx::loadTransferts
 frontend/src/pages/visites/PlanifierVisitePage.jsx::PlanifierVisitePage
 frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage
-frontend/src/pages/visites/VisiteHistoriquePanel.jsx::VisiteHistoriquePanel
 # ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.

@@ -127,7 +127,9 @@ export default function CategoriesStock() {
     fetchAllPages((page) => stockApi.getCategories({ ordering: 'ordre', page }).then((r) => r.data), { concurrency: 3 })
       .then((rows) => setCategories(Array.isArray(rows) ? rows : (rows?.results ?? [])))
   const loadMarques = () =>
-    stockApi.getMarques().then((r) => setMarques(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getMarques({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setMarques((Array.isArray(rows) ? rows : (rows?.results ?? []))))
 
   useEffect(() => {
     Promise.all([loadCategories(), loadMarques()])

@@ -4,6 +4,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import savApi from '../../api/savApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /* ============================================================================
    WIR119 — Panneau de saisie de la feuille de maintenance (worksheet) sur le
@@ -68,8 +69,9 @@ export default function TicketWorksheetPanel({ ticketId }) {
     // savApi.getWorksheetModeles peut être absent (mocks partiels préexistants
     // dans d'autres tests) : dégrade silencieusement plutôt que de planter.
     if (!savApi.getWorksheetModeles) { setModeles([]); return }
-    savApi.getWorksheetModeles()
-      .then((r) => setModeles((r.data?.results ?? r.data ?? []).filter((m) => m.actif)))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      savApi.getWorksheetModeles({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setModeles((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => m.actif)))
       .catch(() => setModeles([]))
   }, [])
 
