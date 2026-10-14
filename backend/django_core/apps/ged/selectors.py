@@ -1381,3 +1381,22 @@ def tableau_bord_signatures(company, *, emetteur=None, date_debut=None,
         total += 1
 
     return {'colonnes': colonnes, 'total': total}
+
+
+def destinataires_depuis_clients(company, client_ids):
+    """XGED27 / CI #993 api-fuzz — destinataires d'un envoi en masse depuis des
+    identifiants clients (lus via `crm.selectors.client_base_qs`, jamais
+    `crm.models`). Rend ``(destinataires, inconnus)`` : ``inconnus`` = ids bien
+    formés ne désignant aucun client de la société (la vue répond 404 en les
+    nommant, au lieu d'un 400 « aucun destinataire » trompeur)."""
+    from apps.crm import selectors as crm_selectors
+    from .corps_requete import _pks
+    ids = _pks(client_ids)
+    clients = list(crm_selectors.client_base_qs(company).filter(pk__in=ids))
+    destinataires = [{
+        'nom': ' '.join(p for p in [c.nom, getattr(c, 'prenom', '')]
+                        if p).strip() or c.nom,
+        'email': c.email or '',
+    } for c in clients]
+    trouves = {c.pk for c in clients}
+    return destinataires, sorted({i for i in ids if i not in trouves})

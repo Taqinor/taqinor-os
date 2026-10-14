@@ -257,6 +257,16 @@ _VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE = inline_serializer(
     })
 
 
+class MonitoringEmailOmReportSerializer(serializers.Serializer):
+    """CI #993 api-fuzz-pr (cas JNK86P) — corps STRICT de `email-om-report`
+    (même composant OpenAPI `MonitoringEmailOmReport`). Avant : lu sans
+    validation, `period: null` atteignait `html.escape(None)` (500) et un
+    `recipient` non e-mail partait au serveur de messagerie → 400 nommé."""
+    period = serializers.ChoiceField(
+        choices=['monthly', 'quarterly'], required=False, default='monthly')
+    recipient = serializers.EmailField(required=False)
+
+
 @extend_schema_view(list=extend_schema(
     parameters=_FILTRE_INSTALLATION))
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -632,9 +642,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             build_om_report_data(config.installation, period=period))
 
     @extend_schema(
-        request=inline_serializer('MonitoringEmailOmReport', {
-            'period': serializers.CharField(required=False),
-            'recipient': serializers.CharField(required=False)}),
+        request=MonitoringEmailOmReportSerializer,
         responses=inline_serializer('MonitoringEmailOmReportReponse', {
             'sent': serializers.BooleanField()}))
     @action(detail=True, methods=['post'], url_path='email-om-report',
@@ -644,8 +652,10 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         Destinataire : body `recipient` sinon l'e-mail du client du système."""
         from .report import EnvoiRapportImpossible, email_om_report
         config = self.get_object()
-        period = request.data.get('period', 'monthly')
-        recipient = request.data.get('recipient') or None
+        corps = MonitoringEmailOmReportSerializer(data=request.data)
+        corps.is_valid(raise_exception=True)
+        period = corps.validated_data['period']
+        recipient = corps.validated_data.get('recipient')
         try:
             sent = email_om_report(
                 config.installation, period=period, recipient=recipient)
