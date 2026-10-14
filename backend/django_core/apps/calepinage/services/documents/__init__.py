@@ -80,14 +80,12 @@ def mise_en_page(code):
 # les chemins réels du résultat/de la conception avec la MÊME grammaire que
 # le contrat des sections (``services.rapport.valeur_au_chemin``) ; les
 # pièces qui dépendent d'une preuve terrain déposée (``document_asbuilt``,
-# ``dossier_fin_chantier``, ``diagramme_pertes``) restent TOUJOURS
-# indisponibles aujourd'hui — le dépôt d'image (``POST image-document/``,
-# CALX302) n'existe pas encore dans ce dépôt, et un calepinage ne peut
-# honnêtement avoir aucune preuve déposée tant que la porte n'existe pas.
+# ``dossier_fin_chantier``, ``diagramme_pertes``) restent indisponibles tant que
+# leur preuve n'est pas déposée — le dépôt d'image (``POST image-document/``,
+# CALX302) est posé, et chaque état se lit dans ``_etat_du_document`` ci-dessous.
 #
-# ``versions[]`` reste ``[]`` (CALX322 la branche, une ligne dans
-# ``_versions_pour`` ci-dessous — aucune autre ligne de cette section ne
-# bouge) ; ``images[]`` reste ``[]`` pour la même raison que ci-dessus.
+# ``versions[]`` est branchée par ``_versions_pour`` (CALX322) et
+# ``images[]`` par ``_images_pour`` (CALX302), ci-dessous.
 
 #: Le champ manquant quand AUCUNE conception n'est enregistrée — copié MOT
 #: POUR MOT de l'exemple committé (``calepinage_documents.json::exemple_vide``).

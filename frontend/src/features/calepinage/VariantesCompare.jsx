@@ -13,8 +13,8 @@ import {
 /* ============================================================================
    CAL42 — COMPARER LES VARIANTES d'un calepinage (CAL105 fondue ici).
    ----------------------------------------------------------------------------
-   Le serveur sert déjà la comparaison (CAL21) mais RIEN ne l'affiche ; l'AO a
-   son propre comparateur, hors du module neutre. Cet écran est celui du module.
+   Le serveur sert déjà la comparaison (CAL21) mais RIEN ne l'affichait ; cet écran
+   est celui du module.
 
    TOUT VIENT DU CONTRAT `variantes_comparer.json` (CAL3, PACT10) — et RIEN
    n'est recalculé ici :

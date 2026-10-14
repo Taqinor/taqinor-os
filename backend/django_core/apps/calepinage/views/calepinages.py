@@ -16,8 +16,7 @@ CE QUI EST GARANTI PAR LE SOCLE, ET PAS RECODÉ
   ``calepinage_gerer`` (codes lus de ``apps/calepinage/permissions.py``, jamais
   écrits en littéral ici) ;
 * chaque ``@action`` déclare EN PLUS sa propre garde (``PeutVoirCalepinage`` /
-  ``PeutGererCalepinage``). ``get_permissions`` CUMULE les deux (patron
-  ``apps/ao/viewsets.py``) : la garde déclarée par l'action est un plafond
+  ``PeutGererCalepinage``). ``get_permissions`` CUMULE les deux : la garde déclarée par l'action est un plafond
   supplémentaire, jamais une substitution qui jetterait la garde du domaine.
 
 LES FILTRES SONT RÉELLEMENT SERVIS (leçon PV22)
@@ -591,8 +590,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     def layout(self, request, pk=None):
         """CAL18 — lit (GET) ou enregistre (POST) la conception du calepinage.
 
-        Patron exact de ``apps/ao/views.py::AppelOffreViewSet.layout`` : le
-        corps POST EST le layout sérialisé, et les enveloppes
+        Le corps POST EST le layout sérialisé, et les enveloppes
         ``{"layout": …}`` / ``{"roof_layout": …}`` sont acceptées telles
         quelles. SEULS ``roof_layout`` / ``layout_hash`` sont touchés — aucun
         statut n'est écrit (règle #4).
@@ -940,8 +938,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     def design_context(self, request, pk=None):
         """CAL231 — TOUT ce que l'atelier doit savoir d'un calepinage.
 
-        Jumeau NEUTRE de ``ventes``/``devis/<id>/design-context/`` (PV17) et de
-        ``ao``/``appels-offres/<id>/design-context/`` : mêmes sept clés,
+        Jumeau NEUTRE de ``ventes``/``devis/<id>/design-context/`` (PV17) :
+        mêmes sept clés,
         TOUJOURS présentes (contrat
         ``contract_samples/calepinage_design_context.json``). LECTURE PURE,
         bornée société par ``get_queryset`` (404 pour une autre société).
@@ -983,11 +981,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         repère du lead) : plus de bannière tant que le lead ne bouge pas."""
         return self._geste_repere(request, service_repere.garder_repere)
 
-    # SOLMVP15 — l'action ``importer-contour-ao`` (CAL240) vivait ICI : elle
-    # reprenait dans ce calepinage le contour d'une toiture d'appel d'offres, en
-    # symétrie du sens inverse posé côté AO (CAL241). C'était un PONT, et rien
-    # d'autre : les deux bouts lisaient la toiture d'une autre app. Cette app
-    # sort du produit — il n'y a plus de toiture à reprendre, donc plus de pont.
+    # SOLMVP15 — l'action ``importer-contour-ao`` (CAL240) est retirée avec le
+    # module d'appels d'offres (il n'y a plus de toiture AO à reprendre).
     # Le contour de l'atelier, lui, n'a pas changé d'un champ : il vit dans
     # ``roof_layout['outline']`` (v2 canonique), et le tracé sur carte reste la
     # voie normale de le poser.
@@ -1072,8 +1067,8 @@ def _corps_de_layout(donnees):
     """Le document de conception d'un corps de requête, ou ``None``.
 
     Accepte le layout NU et les deux enveloppes historiques (``layout`` /
-    ``roof_layout``) — les mêmes que côté ventes et côté AO, pour qu'un même
-    client puisse parler aux trois portes sans se reformater.
+    ``roof_layout``) — les mêmes que côté ventes, pour qu'un même client
+    puisse parler aux deux portes sans se reformater.
     """
     if isinstance(donnees, dict):
         for enveloppe in ('layout', 'roof_layout'):
@@ -1454,10 +1449,9 @@ def _avertissements(geometrie, cible, contexte_devis):
 
 
 def _config_carte():
-    """Clés carte du builder 3D — MIROIR de ``ventes/views/roof_config.py``.
+    """Clés carte du builder 3D, lues comme ``ventes/views/roof_config.py``.
 
-    Mêmes variables d'environnement, même forme que les contextes devis et AO
-    (``apps/ao/selectors.py::_config_carte_builder`` fait exactement pareil) :
+    Mêmes variables d'environnement, même forme que le contexte devis :
     c'est de la CONFIGURATION, pas une donnée société — la lire ici évite de
     faire dépendre ce module de ventes pour une clé d'API.
     """

@@ -1,8 +1,8 @@
 """Les réglages société du module — CAL45 (endpoint posé par CAL16).
 
-``GET /api/django/calepinage/parametres/`` rend les SEPT sections, toujours
+``GET /api/django/calepinage/parametres/`` rend les ONZE sections de ``ParametresCalepinage.SECTIONS``, toujours
 toutes présentes (contrat ``contract_samples/parametres_calepinage.json``) :
-une société qui n'a jamais rien réglé reçoit sept objets vides, ce qui veut
+une société qui n'a jamais rien réglé reçoit onze objets vides, ce qui veut
 dire « comportement d'aujourd'hui, strictement inchangé » — jamais une clé
 absente que l'écran devrait deviner.
 

@@ -3,9 +3,11 @@
 Le constat
 ==========
 La fusion PDF est une primitive de PLATEFORME (``apps.ged.services.fusionner_pdf``,
-XGED10), déjà utilisée par le dossier d'appel d'offres. Le calepinage, lui,
+XGED10), utilisée par d'autres dossiers de l'ERP. Le calepinage, lui,
 n'avait aucun pack : le technicien envoyait trois pièces séparées, et le client
-les recevait dans le désordre — quand il les recevait toutes.
+les recevait dans le désordre — quand il les recevait toutes. Le pack compte
+aujourd'hui huit pièces, dans l'ordre de ``SPEC_PIECES`` (deux obligatoires,
+six facultatives).
 
 (Historique : ce module déposait chaque pièce puis appelait ``fusionner_pdf``
 — remplacé par ACAL236 ci-dessous, qui fusionne les octets DÉJÀ rendus et

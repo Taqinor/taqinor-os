@@ -1162,7 +1162,7 @@ def echantillons_de_contrat(shapes, racine: Path = None, lecteur_serveur=None):
             constats.append((
                 relatif, 1, fichier.stem, "?", "<fichier>",
                 "l'echantillon doit porter `endpoint` (« GET /api/... ») et "
-                "`exemple` (un objet). Voir apps/ao/contract_samples/README.md"))
+                "`exemple` (un objet). Voir apps/calepinage/contract_samples/README.md"))
             continue
         route = normalise_call(entete.group("chemin"), "api/django")
         chemin = "/" + "/".join(route) if route else entete.group("chemin")

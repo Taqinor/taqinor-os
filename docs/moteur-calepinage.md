@@ -7,11 +7,11 @@
 Le moteur est une **fondation pure** : stdlib + numpy, zéro Django, zéro I/O,
 zéro globale mutable. Ce n'est pas une coquetterie d'architecture — c'est ce
 qui lui permet d'avoir **deux consommateurs qui ne peuvent pas s'importer l'un
-l'autre** (`apps.ao` pour la réponse à appel d'offres, `apps.ventes` pour la
-villa) et d'être testé **sans base de données**, donc hors du gate de
+l'autre** (`apps.ventes` pour la villa, `apps.calepinage` pour l'atelier) et
+d'être testé **sans base de données**, donc hors du gate de
 migrations. Un contrat import-linter (`calepinage-est-un-noyau-pur`) et un test
 AST verrouillent cette pureté — sans aucune exemption depuis ACAL328 : le
-rendu matplotlib AO (`rendu/`, qui ne calculait rien) est parqué dans
+rendu matplotlib des planches A3 (`rendu/`, qui ne calculait rien) est parqué dans
 `backend/parked/core_calepinage/`.
 
 ---
@@ -331,7 +331,7 @@ pensé.
 | Garde-fous géométriques (chevauchements, marges) | `core/calepinage/garde_fous.py` |
 | Étude, variantes, recommandations, sensibilités | `core/calepinage/{etude,recommandations,sensibilites}.py` |
 | Adaptateur villa (`AreaRecord` → entrée canonique) | `core/calepinage/adaptateurs/villa.py` |
-| Point d'entrée partagé côté ERP (villa, sans projet AO) | `apps/ao/services.calepiner_surface` / `calepiner_villa` |
+| Point d'entrée partagé côté ERP (villa) | `apps/calepinage/villa_service.py` (`calepiner_surface`, `calepiner_villa`) |
 | Bascule A/B du devis résidentiel (flag `USE_MOTEUR_CALEPINAGE`) | `apps/ventes/services.arbitrer_compte_calepinage` |
 | Goldens FRDISI (148 / 120 / 314) | `core/calepinage/golden/frdisi_2026_07_27/` |
 | Planches A3, profils interne/dépôt (AO, parqués par ACAL328) | `backend/parked/core_calepinage/rendu/` — la planche servie est `apps/calepinage/services/planche.py` |

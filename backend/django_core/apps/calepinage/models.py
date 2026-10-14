@@ -13,8 +13,9 @@ LES DÉCISIONS D'ARCHITECTURE GRAVÉES ICI
 * **Multi-tenant par ``core.models.TenantModel``** (ARC1) — FK ``company``
   obligatoire + horodatage, jamais une FK société recodée à la main. La
   société est TOUJOURS posée côté serveur, jamais lue d'un corps de requête.
-* **``lead_id`` et ``appel_offre_id`` sont OPAQUES** (``PositiveIntegerField``,
-  patron ``AppelOffre.lead_id``) : jamais une FK dure vers ``crm`` ou ``ao``.
+* **``lead_id`` et ``appel_offre_id`` sont OPAQUES** (``PositiveIntegerField``) :
+  jamais une FK dure vers ``crm`` ou ``ao`` (``appel_offre_id`` est une colonne
+  héritée du temps où le module vivait chez AO, SOLMVP15).
   C'est ce que le contrat import-linter ``calepinage-models-decoupled`` (CAL5)
   verrouille, et c'est ce qui garde les chaînes de migrations séparées.
 * **``client`` et ``devis`` sont des FK-STRING** vers ``'crm.Client'``
@@ -41,8 +42,7 @@ from core.models import TenantModel
 class Calepinage(TenantModel):
     """Le PIVOT : une conception de toiture, rattachée à qui la demande.
 
-    Un calepinage naît d'un lead, d'un client, d'un devis ou d'une affaire
-    d'appel d'offres — et il SURVIT à l'absence de devis : on peut concevoir
+    Un calepinage naît d'un lead, d'un client ou d'un devis — et il SURVIT à l'absence de devis : on peut concevoir
     une toiture avant de chiffrer quoi que ce soit. Il porte un lead et/ou un
     client (OU INCLUSIF, contrainte ``calepinage_lead_ou_client``) ; quand il
     porte les deux, le client est celui du lead (ACAL179, règle du
@@ -72,7 +72,8 @@ class Calepinage(TenantModel):
         related_name='calepinages',
         verbose_name='Devis',
     )
-    #: Affaire d'appel d'offres — identifiant OPAQUE (jamais une FK ``ao``).
+    #: Colonne héritée (SOLMVP15, venu de AO) — identifiant OPAQUE, jamais une
+    #: FK ``ao`` ; plus aucun écran ni service ne l'alimente.
     appel_offre_id = models.PositiveIntegerField(
         "Appel d'offres (identifiant)", null=True, blank=True, db_index=True)
 
@@ -320,7 +321,7 @@ class CalepinageVariante(TenantModel):
     """CAL9 — une option comparée ; UNE SEULE peut être retenue.
 
     La garantie « une seule retenue » est en BASE (``UniqueConstraint``
-    conditionnelle, patron ``ao.VarianteCalepinage``). Le chemin d'écriture
+    conditionnelle). Le chemin d'écriture
     unique et atomique vit dans ``services/variantes.py`` : aucune vue, aucun
     sérialiseur n'écrit ``retenue`` directement.
     """
@@ -532,9 +533,9 @@ class ReleveTerrain(TenantModel):
     LE CONSTAT
     ----------
     Le relevé terrain existait côté visite technique mais n'alimentait que la
-    TEXTURE du toit (VT13) ; l'AO a bien un modèle de relevé et de chaînes de
-    cotes (``apps/ao/models.py``) que le calepinage ne peut pas lire (les deux
-    apps sont mutuellement découplées, contrat import-linter). Le module avait
+    TEXTURE du toit (VT13) ; le module d'appels d'offres (parqué) portait son
+    propre modèle de relevé et de chaînes de cotes, que le calepinage ne
+    pouvait pas lire (apps découplées, contrat import-linter). Le module avait
     donc besoin de SON entrée de relevé — sans dupliquer le SOLVEUR, qui vit
     dans le noyau pur (``core/calepinage/solveur_cotes.py``).
 
@@ -1044,8 +1045,8 @@ class GabaritDossierReglementaire(TenantModel):
 
     LE CONSTAT
     ----------
-    La fabrique documentaire AO ne connaît que les pièces d'un appel d'offres
-    (``apps/ao/fabrique/gabarits.py``) ; aucun rail réglementaire n'existe
+    La fabrique documentaire du module d'appels d'offres (parqué) ne connaissait
+    que les pièces d'un appel d'offres ; aucun rail réglementaire n'existait
     dans ce dépôt, alors que la mémoire fondateur du 20/08/2026 désigne les
     rails FR (DP mairie, Enedis, Consuel) comme un GAP produit prioritaire.
 
@@ -1408,17 +1409,16 @@ class SystemeFixation(TenantModel):
 
     LE CONSTAT
     ----------
-    Le seul objet de pose du dépôt était ``KitCalepinage``
-    (``apps/ao/models.py:1688``) : une GÉOMÉTRIE (pas de rangée, longueur de
-    pente, faîtage, emprise) et un produit prix, lue par
-    ``apps/ao/selectors.py:945`` et combinée par ``services/kits.py:51``.
-    Aucun rail, aucune pince, aucun crochet, aucun lest n'était modélisé.
+    Le seul objet de pose du dépôt était le kit de géométrie (pas de rangée,
+    longueur de pente, faîtage, emprise, produit prix), lu aujourd'hui dans les
+    réglages société (``services/kits_catalogue.kits_de_societe``) et combiné
+    par ``services/kits.py``. Aucun rail, aucune pince, aucun crochet, aucun lest n'était modélisé.
 
     PRÉPARER, SANS RIEN RETIRER
     ---------------------------
-    Ce catalogue PRÉPARE le remplacement de ``KitCalepinage`` (SOLMVP15) DANS
-    ``apps.calepinage`` : aucun import du module d'appels d'offres n'est
-    ajouté, ``services/kits.py`` n'est pas touché (D-CALX 2). Les lectures
+    Ce catalogue PRÉPARE le remplacement du kit de géométrie DANS
+    ``apps.calepinage`` : ``services/kits.py`` n'est pas touché (D-CALX 2).
+    Les lectures
     passent par ``services/catalogue_fixation.py`` (``selectors.py`` n'est
     pas rouvert).
 

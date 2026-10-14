@@ -24,18 +24,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-#: Garde-fou de taille (~5 Mo) — un DXF de toiture réel tient très large en
 __all__ = [
-    'TAILLE_MAX_OCTETS', 'DxfInvalide', 'analyser_dxf',
+    'TAILLE_MAX_OCTETS', 'TOL_FUSION_M', 'DxfInvalide', 'analyser_dxf',
     'analyser_plan_importe',
 ]
 
+#: Garde-fou de taille (~5 Mo) — un DXF de toiture réel tient très large en
 #: dessous ; au-delà, c'est soit un export non nettoyé, soit un fichier hostile.
 TAILLE_MAX_OCTETS = 5 * 1024 * 1024
 
-#: ``$INSUNITS`` (code de groupe 70, table DXF standard) → unité déjà connue
-#: de l'écran (``ImportDxf.jsx`` ``UNITES``). Seules les valeurs que l'écran
-#: sait déjà afficher sont mappées ; le reste retombe honnêtement sur
+#: ``$INSUNITS`` (code de groupe 70, table DXF standard) → nom d'unité affiché
+#: par l'écran de calage (``PlanImporteCalage.jsx``). Seules les cinq unités
+#: usuelles ci-dessous sont mappées ; le reste retombe honnêtement sur
 #: ``'inconnu'`` plutôt que d'être deviné.
 _UNITES_INSUNITS = {
     1: 'pouce',
@@ -49,9 +49,6 @@ _UNITES_INSUNITS = {
 #: Un calque de cotes, de texte ou de hachures n'en produit aucune — il
 #: n'apparaît donc simplement pas dans le résultat.
 _TYPES_RETENUS = {'LWPOLYLINE', 'POLYLINE', 'LINE'}
-
-__all__ = ['DxfInvalide', 'TAILLE_MAX_OCTETS', 'TOL_FUSION_M',
-           'analyser_dxf']
 
 #: ACAL212 — tolérance de rapprochement des extrémités de segments, en
 #: MÈTRES (convertie dans l'unité du fichier quand elle est déclarée).

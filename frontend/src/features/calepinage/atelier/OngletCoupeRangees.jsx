@@ -9,8 +9,8 @@ import { formatNumber } from '../../../lib/format'
    L'AUTRE.
    ----------------------------------------------------------------------------
    CONSTAT. Le pas inter-rangées est déjà calculé par la géométrie solaire
-   (`apps/web/src/lib/roofPro2.ts:320-346`) puis vérifié par lancer de rayons
-   (`apps/web/src/scripts/roofPro11/scene3d.ts:1959-2008`, `publishRowPitch`),
+   (`describeRowPitch`, `apps/web/src/lib/roofPro2.ts`) puis vérifié par lancer
+   de rayons (`publishRowPitch`, `apps/web/src/scripts/roofPro11/scene3d.ts`),
    mais le résultat n'est qu'un TEXTE : rien ne DESSINE la coupe, et le
    commercial ne peut pas montrer pourquoi le pas vaut ce qu'il vaut.
    Parité HelioScope — le pas de rangée se règle par une règle d'ombrage nulle

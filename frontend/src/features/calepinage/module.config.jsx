@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components --
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
-   fast-refresh ne s'y applique pas (même dérogation que `features/ao`). */
+   fast-refresh ne s'y applique pas (dérogation commune aux `module.config.jsx`). */
 import { lazy } from 'react'
 import {
   BadgeCheck, Columns3, FileStack, Grid3x3, Library, LayoutGrid, PlusCircle, SlidersHorizontal,
@@ -16,9 +16,8 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    more features. and of course we can access it from the standalone module, and
    pick whatever client or lead and make its calpinage. »
 
-   D3 — cette porte N'EXISTE PAS aujourd'hui : le seul accès au calepinage passe
-   par un devis (`router/index.jsx`) ou par une affaire d'appel d'offres (le
-   manifeste de ce module-là). Ce module est une porte SUPPLÉMENTAIRE, jamais un
+   D3 — cette porte n'existait pas à l'origine : le seul accès au calepinage
+   passait par un devis (`router/index.jsx`). Ce module est une porte SUPPLÉMENTAIRE, jamais un
    remplacement : aucune ligne de `LeadWorkspace.jsx` ni du mode `devis` de
    `ToitureDesign.jsx` n'est touchée par cette lane.
 
@@ -34,25 +33,23 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 
    `nav.icon` (ODY34) — `Grid3x3`, le quadrillage des modules posés sur un pan
    de toit. Glyphe UNIQUE sur tout le portail : `lib/apps/appGlyph.test.jsx`
-   interdit tout doublon, et `LayoutGrid` (déjà porté par un ITEM de nav d'AO)
-   reste réservé à l'item de liste ci-dessous, jamais au glyphe d'app.
+   interdit tout doublon, et `LayoutGrid` reste réservé à l'item de liste ci-dessous, jamais au glyphe d'app.
 
    ORDRE DES ROUTES — `/calepinage/nouveau` est déclarée AVANT `/calepinage/:id`.
    Inversées, « nouveau » serait capté comme un identifiant de calepinage et
-   l'écran de création deviendrait injoignable (exactement le piège documenté
-   sur `/ao/affaires/nouveau`).
+   l'écran de création deviendrait injoignable.
    ========================================================================== */
 
 const ROLES = ['normal', 'responsable', 'admin']
 
 /* ── L'ATELIER 3D DU CALEPINAGE — le MÊME builder, un quatrième mode ───────
    `pages/ventes/ToitureDesign` héberge déjà le builder 3D et sert les modes
-   `lead`, `devis` et `ao` sur le MÊME écran ; le mode `calepinage` (CAL37, lane
+   `lead`, `devis` et `calepinage` sur le MÊME écran ; le mode `calepinage` (CAL37, lane
    `frontend/atelier`) le réutilise tel quel sur un CALEPINAGE. Une seconde
    implémentation de la toiture 3D serait la garantie de deux calepinages qui
-   divergent — c'est le raisonnement déjà écrit dans `features/ao`.
+   divergent.
    `buildModuleRoutes` monte `<Comp />` SANS props : le mode est donc figé par
-   cette enveloppe lazy, exactement comme le fait AO pour `mode="ao"`. */
+   cette enveloppe lazy. */
 const AtelierCalepinage = lazy(async () => {
   const { default: ToitureDesign } = await import('../../pages/ventes/ToitureDesign')
   return { default: () => <ToitureDesign mode="calepinage" /> }
@@ -162,7 +159,7 @@ const config = {
   nav: {
     icon: appGlyph(Grid3x3),
     label: 'CALEPINAGE',
-    // Même famille visuelle que les modules métier solaires (ventes, AO).
+    // Même famille visuelle que les modules métier solaires (ventes).
     accent: 'brass',
     items: [
       {
@@ -238,12 +235,12 @@ const config = {
     { path: '/calepinage/sources', component: SourcesNormatives, roles: ROLES },
     // CALX69 — AVANT `/calepinage/:id` : « reglages » n'est pas un identifiant.
     { path: '/calepinage/reglages', component: ReglagesSimulation, roles: ROLES },
-    // ACAL242 — AVANT `/calepinage/:id` : « reglages » n'est pas un identifiant.
+    // ACAL242 — AVANT `/calepinage/:id` : « reglages/gabarits » n'est pas un identifiant.
     { path: '/calepinage/reglages/gabarits', component: ReglagesGabarits, roles: ROLES },
     // CALX342 — AVANT `/calepinage/:id` : « comparaison » n'est pas un identifiant.
     { path: '/calepinage/comparaison', component: ComparaisonProjets, roles: ROLES },
     /* Atelier d'UN calepinage — deep-link, jamais un item de nav : il est
-       contextuel à un objet, comme `/ao/affaires/:id/design`. C'est la cible de
+       contextuel à un objet. C'est la cible de
        la redirection après création (CAL36).
 
        CALX1 — C'EST AUSSI L'ADRESSE DE TOUS LES ONGLETS : `/calepinage/:id
