@@ -149,7 +149,8 @@
    "IsResponsableOrAdmin"
   ],
   "dgi_export": [
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_export"
   ],
   "dgi_transmettre": [
    "IsResponsableOrAdmin"

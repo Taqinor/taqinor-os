@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from core.champs_stricts import date_ou_400, nombre_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
@@ -347,10 +348,18 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'generer_devis',
             # ZFSM1 — renseigner la fiche d'intervention (relevé terrain).
             'renseigner_fiche',
+            # Suppression : même palier que les écritures.
+            'destroy',
         ]:
-            return [IsResponsableOrAdmin()]
-        elif self.action == 'destroy':
-            return [IsResponsableOrAdmin()]
+            # ASEC50 / D-ASEC-4 — affecter un technicien (changer le
+            # ``technicien`` au PUT/PATCH, ou re-slotter une journée sur
+            # d'autres techniciens) exige ``technicien_assign``.
+            return [IsResponsableOrAdmin()] + droits_de_la_grille(
+                self,
+                update=[DroitDeLaGrille('technicien_assign', champ='technicien')],
+                partial_update=[
+                    DroitDeLaGrille('technicien_assign', champ='technicien')],
+                replanifier_en_masse=[DroitDeLaGrille('technicien_assign')])
         return [IsAdminRole()]
 
     def _check_tenant(self, serializer):
@@ -2590,7 +2599,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['post'], url_path='replanifier-en-masse',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('technicien_assign')])
     def replanifier_en_masse(self, request):
         """XFSM3 — re-slotte en UN appel les interventions d'un jour (toutes
         celles d'un `technicien` absent, et/ou une liste `intervention_ids`).

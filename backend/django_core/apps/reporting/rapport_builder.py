@@ -17,7 +17,9 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.champs_stricts import ChampsStrictsMixin
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import RapportDefinition
@@ -182,7 +184,11 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
                                      enum=['csv', 'xlsx'])],
         responses={(200, 'text/csv'): OpenApiTypes.STR,
                    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
-    @action(detail=True, methods=['get'], url_path='export')
+    # ASEC50 / D-ASEC-4 — la garde du viewset (``ScopedPermission``) ET le
+    # code ``reporting_export`` : décocher « Exporter » ferme l'export.
+    @action(detail=True, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission,
+                                DroitDeLaGrille('reporting_export')])
     def export(self, request, pk=None):
         """NTEXT11 — export ``?format=csv|xlsx`` de la définition rejouée.
 

@@ -13,6 +13,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from . import openapi_docs as D
 from ..models import EmailLog, Facture
 from ..utils.corps import valider_corps
@@ -109,7 +110,9 @@ class FactureDocumentsActionsMixin:
 
     @extend_schema(responses=D.UblXml)
     @action(detail=True, methods=['get'], url_path='dgi-export',
-            permission_classes=[IsResponsableOrAdmin])
+            # ASEC50 / D-ASEC-4 — l'export DGI exige ``ventes_export``.
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('ventes_export')])
     def dgi_export(self, request, pk=None):
         """N105 — Export DGI local (UBL 2.1) de la facture, à la demande.
 

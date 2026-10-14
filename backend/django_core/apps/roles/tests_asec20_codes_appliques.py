@@ -45,22 +45,24 @@ _FICHIERS_EXCLUS = {
 _C015 = ('A CORRIGER (C-ASEC-015, D-ASEC-4) : code affiché dans la grille mais jamais '
          'vérifié côté serveur ; la garde est posée par ASEC29/ASEC31/ASEC50')
 
+#: ASEC50 — code appliqué par ``DroitDeLaGrille`` dès son PREMIER endpoint ;
+#: aucun endpoint de ce geste n'existe aujourd'hui (inventaire du 14/10/2026 :
+#: grep ``url_path=.*export``, ``destroy``, ``reaffect|reassign|assigner``).
+_ASEC50_SANS_ENDPOINT = (
+    "ASEC50 : aucun endpoint de ce geste aujourd'hui (inventaire du 14/10/2026) ; "
+    "la garde DroitDeLaGrille est posée sur son premier endpoint et la ligne part")
+
 #: code -> raison. Décroissant : retirer la ligne dès que le code est consommé.
 EXEMPTIONS = {
-    'crm_export': _C015,
-    'crm_reassign': _C015,
-    'crm_supprimer': _C015,
-    'installation_export': _C015,
+    'installation_export': _ASEC50_SANS_ENDPOINT,
     'intervention_gerer': _C015,
-    'reporting_export': _C015,
-    'sav_export': _C015,
-    'sav_reassign': _C015,
+    'sav_export': _ASEC50_SANS_ENDPOINT,
     'stock_export': _C015,
-    'technicien_assign': _C015,
-    'ventes_export': _C015,
     'ventes_modifier': _C015,
-    'ventes_reassign': _C015,
-    'ventes_supprimer': _C015,
+    # Un devis n'a pas de responsable propre (sa portée suit le lead) : aucun
+    # endpoint ne réaffecte un devis — la réaffectation passe par le lead
+    # (``crm_reassign``).
+    'ventes_reassign': _ASEC50_SANS_ENDPOINT,
     'adsengine_flightplan_manage': (
         "A CORRIGER (adsengine, session propriétaire) : plans de vol ADSENG47 "
         "gérés par un palier, aucun littéral du code côté serveur"),

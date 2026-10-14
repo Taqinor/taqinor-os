@@ -33,12 +33,16 @@ def _action_methods():
     return out
 
 
-def _tier_name(action):
+def _tiers(action):
     view = TicketViewSet()
     view.action = action
-    perms = view.get_permissions()
+    return [type(p).__name__ for p in view.get_permissions()]
+
+
+def _tier_name(action):
+    perms = _tiers(action)
     assert len(perms) == 1, f"{action}: {len(perms)} permission(s)"
-    return type(perms[0]).__name__
+    return perms[0]
 
 
 class TicketActionPermissionTierTests(TestCase):
@@ -49,8 +53,10 @@ class TicketActionPermissionTierTests(TestCase):
         self.assertTrue(decorated, "aucune @action détectée — test cassé ?")
         for name, declared in decorated.items():
             with self.subTest(action=name):
-                expected = declared[0].__name__  # ex. HasPermissionOrLegacy_sav_gerer
-                actual = _tier_name(name)
+                # ex. [HasPermissionOrLegacy_sav_gerer] ; ASEC50 : la garde
+                # de la grille s'ajoute (reaffecter-equipe → sav_reassign).
+                expected = [c.__name__ for c in declared]
+                actual = _tiers(name)
                 self.assertEqual(
                     actual, expected,
                     f"@action '{name}' déclare {expected} mais get_permissions() "
@@ -62,8 +68,8 @@ class TicketActionPermissionTierTests(TestCase):
         qui retombe sur IsAdminRole trahit un oubli dans get_permissions()."""
         for name in _action_methods():
             with self.subTest(action=name):
-                self.assertNotEqual(
-                    _tier_name(name), 'IsAdminRole',
+                self.assertNotIn(
+                    'IsAdminRole', _tiers(name),
                     f"@action '{name}' retombe sur IsAdminRole (oubli dans "
                     f"get_permissions()).")
 
