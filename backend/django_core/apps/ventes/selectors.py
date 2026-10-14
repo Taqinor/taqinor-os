@@ -1861,3 +1861,17 @@ def devis_signes_en_vigueur(company=None, *, lead_ids=None):
             vus.add(remplacant)
             remplacant = suivant.get(remplacant)
     return base.exclude(pk__in=exclus)
+
+
+def modules_vendus_du_devis(devis):
+    """ACAL274 / règle #4 — nombre de panneaux VENDUS d'un devis (lignes produit
+    non optionnelles, règle unique ``quote_engine.builder.panneaux_et_watt_lu``),
+    ou ``None`` quand les lignes n'en disent rien. Porte de lecture des autres
+    apps : le moteur de devis ne s'importe jamais hors d'``apps.ventes``."""
+    from .quote_engine.builder import panneaux_et_watt_lu
+
+    lignes = [li for li in devis.lignes.select_related('produit').all()
+              if getattr(li, 'type_ligne', 'produit') == 'produit'
+              and not getattr(li, 'optionnelle', False)]
+    nb, _watt = panneaux_et_watt_lu(lignes)
+    return int(nb) if nb else None
