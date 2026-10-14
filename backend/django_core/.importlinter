@@ -80,7 +80,10 @@ ignore_imports =
 # ENF20 — exception RETIRÉE : la façade lit désormais le noyau dans la feuille
 # pure `apps.ventes.domain.noyau_totaux` (aucun import d'app), plus
 # `apps.ventes.selectors` ; l'arête qu'elle élaguait n'existe plus.
-    apps.sav.models -> apps.sav.selectors
+# ENF20 — exception `apps.sav.models -> apps.sav.selectors` RETIRÉE :
+# `Ticket.couverture` lit `droits_restants` dans la feuille pure
+# `apps.sav.droits_contrat` (ne lit que sav.Ticket ; sav.selectors la
+# ré-exporte). Ce contrat n'a plus AUCUNE exception.
 # ODX17 — `apps.ventes.models` ends with a transitional RE-EXPORT shim
 # (`from apps.facturation.models import Facture, ...`, kept until ODX22 so all
 # existing callers of `apps.ventes.models.Facture` keep working). That single
