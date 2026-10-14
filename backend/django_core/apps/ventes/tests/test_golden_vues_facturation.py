@@ -12,30 +12,21 @@ Ce que le golden fige (``fixtures/golden_vues_facturation.json``) :
   ``POSES_PAR_AS_VIEW`` : un mixin oublié dans les bases rougit ;
 * ``permissions`` — ``type(p).__name__`` de ``get_permissions()`` pour chaque
   action (CRUD + routes) : une garde perdue au déplacement rougit ;
-* ``corps`` — section ÉPHÉMÈRE : sha256 de ``ast.dump(noeud,
-  include_attributes=False)`` (DÉCORATEURS COMPRIS, ``ImportFrom.level`` remis
-  à 0) de chaque membre de ``FactureViewSet`` et de toute classe
-  ``Facture…Mixin`` des fichiers ``views/facture*.py`` (le motif couvre
-  ``FactureMontantTrancheMixin`` de VNT67 comme les ``Facture…ActionsMixin`` de
-  la découpe), plus les symboles de niveau module de ``GROUPES``. Prouvée
-  identique à chaque déplacement VNT97-VNT100, retirée par VNT101.
-  ``ast.dump`` dépend de la version mineure de Python (3.13 omet les champs
-  vides) : capturé sous 3.11 (``"python"`` du fixture), échec BRUYANT ailleurs.
+* (``corps`` — sha256 de ``ast.dump`` de chaque membre déplacé, capturé sous
+  Python 3.11 : section ÉPHÉMÈRE, prouvée identique à chaque déplacement
+  VNT97-VNT100 puis retirée par VNT101, dernière tâche de la piste, pour ne
+  pas verrouiller les corrections futures de ces corps.)
 
-``PLACE`` est rempli par chaque déplacement : ``groupe → fichier de views/``.
-Tant qu'un groupe déclaré dans ``PLACE`` vit ailleurs, ou qu'un symbole vit
-deux fois (jumeau), le test d'emplacement est ROUGE. Le golden ne se régénère
-JAMAIS pour faire passer un déplacement : un golden rouge est un bug du
-déplacement. Capture (rare, volontaire, Python 3.11) : ``GOLDEN_CAPTURE=1``.
+``PLACE`` : ``groupe → fichier de views/`` (classes ``Facture…Mixin``). Un
+groupe qui vit ailleurs, ou un symbole présent deux fois (jumeau), rougit. Le
+golden ne se régénère JAMAIS pour faire passer un déplacement : un golden rouge
+est un bug du déplacement. Capture (rare, volontaire) : ``GOLDEN_CAPTURE=1``.
 """
 import ast
-import copy
-import hashlib
 import inspect
 import json
 import os
 import re
-import sys
 from pathlib import Path
 
 from django.test import SimpleTestCase
@@ -46,7 +37,6 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
 
 #: 34 ``@action`` de la classe + ``montant-tranche`` (VNT67).
 NB_ROUTES = 35
-PYTHON_CAPTURE = '3.11'
 MIXIN = re.compile(r'^Facture\w*Mixin$')
 ACTIONS_CRUD = ['list', 'retrieve', 'create', 'update', 'partial_update',
                 'destroy']
@@ -132,30 +122,6 @@ def _symboles():
     return trouves
 
 
-def _empreinte(noeud):
-    noeud = copy.deepcopy(noeud)
-    for sous in ast.walk(noeud):
-        if isinstance(sous, ast.ImportFrom):
-            sous.level = 0
-    texte = ast.dump(noeud, include_attributes=False)
-    return hashlib.sha256(texte.encode('utf-8')).hexdigest()
-
-
-def capturer_corps():
-    """{nom: sha256} des membres des classes de vue + symboles de GROUPES."""
-    module = {n for noms in GROUPES.values() for n in noms}
-    corps = {}
-    for nom, occurrences in _symboles().items():
-        membres = [o for o in occurrences if len(o) == 3]
-        if not membres and nom not in module:
-            continue
-        retenus = membres or occurrences
-        if len(retenus) != 1:
-            raise AssertionError('%s défini %d fois' % (nom, len(retenus)))
-        corps[nom] = _empreinte(retenus[0][1])
-    return dict(sorted(corps.items()))
-
-
 def capturer_routes():
     from apps.ventes.views.facture import FactureViewSet
     routes = [{
@@ -189,11 +155,9 @@ def capturer_permissions():
 
 def capturer():
     return {
-        'python': '%d.%d' % sys.version_info[:2],
         'routes': capturer_routes(),
         'noms_publics': capturer_noms_publics(),
         'permissions': capturer_permissions(),
-        'corps': capturer_corps(),
     }
 
 
@@ -213,9 +177,6 @@ class GoldenVuesFacturation(SimpleTestCase):
         super().setUpClass()
         cls.golden = _golden()
 
-    def test_capture_sous_python_3_11(self):
-        self.assertEqual(self.golden['python'], PYTHON_CAPTURE)
-
     def test_routes_identiques(self):
         routes = capturer_routes()
         self.assertEqual(len(routes), NB_ROUTES)
@@ -233,13 +194,11 @@ class GoldenVuesFacturation(SimpleTestCase):
     def test_permissions_identiques(self):
         self.assertEqual(capturer_permissions(), self.golden['permissions'])
 
-    def test_corps_identiques(self):
-        version = '%d.%d' % sys.version_info[:2]
-        if version != PYTHON_CAPTURE:
-            self.fail('corps capturés sous Python %s : ast.dump diffère sous '
-                      '%s — rejouer ce test sous %s (image CI).'
-                      % (PYTHON_CAPTURE, version, PYTHON_CAPTURE))
-        self.assertEqual(capturer_corps(), self.golden['corps'])
+    def test_le_golden_ne_fige_plus_les_corps(self):
+        """VNT101 — une retouche de corps ne rougit plus ; une permission,
+        une route ou un nom public changés rougissent encore."""
+        self.assertEqual(sorted(self.golden),
+                         ['noms_publics', 'permissions', 'routes'])
 
     def test_chaque_groupe_vit_a_sa_place(self):
         from apps.ventes.views.facture import FactureViewSet
