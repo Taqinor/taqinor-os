@@ -1126,10 +1126,9 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 "`courbe_source.document` doit être un texte.")
         date = value.get('date') or None
         if date is not None:
-            import datetime
             try:
-                datetime.date.fromisoformat(str(date))
-            except ValueError:
+                serializers.DateField().to_internal_value(str(date))
+            except serializers.ValidationError:
                 raise serializers.ValidationError(
                     "`courbe_source.date` doit être une date ISO "
                     "(AAAA-MM-JJ).")
