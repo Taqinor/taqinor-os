@@ -147,6 +147,28 @@ class LayoutSectionApiTest(BaseApiCalepinage):
         self.assertIn('champs', champ.data)
         self.assertEqual(self._lire()['roof_layout'], D0)
 
+    def test_zone_inconnue_404_et_liste_blanche_publiee(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE — une zone NOMMÉE absente du document
+        répond 404 (elle répondait 400) ; la clé et les champs de zone admis
+        sont publiés au schéma (``cle: "j1_pdf"`` y était « conforme »)."""
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.calepinage import urls as calepinage_urls
+
+        base = self._lire()['empreinte_document']
+        reponse = self.api.post(self.url_section, {
+            'cle': 'zones', 'zone_id': 'z-inconnue', 'base_empreinte': base,
+            'champs': {'pitchDeg': 20}}, format='json')
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        self.assertIn('zone_id', reponse.data)
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/calepinage/', include(calepinage_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+        corps = chemins['/api/django/calepinage/calepinages/{id}/layout/section/'][
+            'post']['requestBody']['content']['application/json']['schema']
+        self.assertIn('anyOf', corps['allOf'][1])
+
     def test_section_de_zone_ecrit_les_seuls_champs_du_pan(self):
         base = self._lire()['empreinte_document']
         corps = copy.deepcopy(CONTRAT['exemple_zone']['corps'])

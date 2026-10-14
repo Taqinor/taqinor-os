@@ -464,7 +464,6 @@ API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{i
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/fond-plan/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/image-document/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/importer-plan/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/layout/section/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/meteo-fichier/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/photos/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/roof-image/

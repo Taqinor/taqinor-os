@@ -42,7 +42,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
@@ -83,8 +83,9 @@ from ..services.devis import (
 )
 from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
-    DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
-    enregistrer_section, layout_decrit_une_geometrie,
+    CHAMPS_SECTION_ZONE, CLES_SECTION_RACINE, DocumentModifie, LayoutRefuse,
+    empreinte_document, enregistrer_layout, enregistrer_section,
+    layout_decrit_une_geometrie,
 )
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
@@ -220,6 +221,18 @@ _CORPS_LAYOUT_RESSERRE = {EXTENSION_CORPS_RESSERRE: {
     'properties': {
         cle: {'type': 'object', 'minProperties': 1}
         for cle in ('roof_layout', 'layout')}}}
+#: ERR-ENF11-FUZZ-CALEPINAGE — ``layout/section`` : une clé RACINE de la liste
+#: blanche (valeur libre), ou ``zones`` avec ``zone_id`` et des ``champs`` pris
+#: dans ``CHAMPS_SECTION_ZONE`` (``services.layout.enregistrer_section``).
+_SECTION_RESSERRE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'cle': {'enum': list(CLES_SECTION_RACINE)}}},
+    {'required': ['zone_id', 'champs'], 'properties': {
+        'cle': {'enum': ['zones']},
+        'zone_id': {'type': 'string', 'minLength': 1},
+        'champs': {'type': 'object', 'minProperties': 1,
+                   'additionalProperties': False,
+                   'properties': {c: {} for c in CHAMPS_SECTION_ZONE}}}},
+]}}
 #: ``?etiquette=`` : identifiants entiers POSITIFS séparés par des virgules
 #: (jetons vides ignorés) — la règle de ``services/etiquettes.py``, publiée.
 _MOTIF_ETIQUETTES = (r'^\s*(?:0*[1-9][0-9]*)?\s*'
@@ -669,14 +682,18 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
 
     @extend_schema(
         request=inline_serializer('CalepinageLayoutSectionCorps', {
-            'cle': drf_serializers.CharField(),
+            # ERR-ENF11-FUZZ-CALEPINAGE — liste blanche et jeton (vide admis :
+            # document encore vide) publiés tels que la vue les applique.
+            'cle': drf_serializers.ChoiceField(
+                choices=[*CLES_SECTION_RACINE, 'zones']),
             'valeur': drf_serializers.JSONField(required=False),
             'zone_id': drf_serializers.CharField(required=False),
             'champs': drf_serializers.JSONField(required=False),
-            'base_empreinte': drf_serializers.CharField(required=False)}),
-        responses=_FORME_ECRITURE_LAYOUT)
+            'base_empreinte': drf_serializers.CharField(allow_blank=True)}),
+        responses=_FORME_ECRITURE_LAYOUT, extensions=_SECTION_RESSERRE)
     @action(detail=True, methods=['post'], url_path='layout/section',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuEcrireCalepinage],
+            parser_classes=[JSONParser])  # valeur/champs : objets JSON
     def layout_section(self, request, pk=None):
         """ACAL22 (C-ACAL-044) — écrit UNE section du document.
 
@@ -702,8 +719,13 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         except DocumentModifie as conflit:
             return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
         except LayoutRefuse as refus:
+            # ERR-ENF11-FUZZ-CALEPINAGE — une zone NOMMÉE absente du document
+            # est une ressource introuvable (404) ; zone_id absent reste 400.
+            introuvable = (refus.champ == 'zone_id'
+                           and corps.get('zone_id') not in (None, ''))
             return Response({refus.champ or 'roof_layout': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND if introuvable
+                            else status.HTTP_400_BAD_REQUEST)
         return Response(_reponse_ecriture(calepinage, resultat))
 
     # ── Le pont vers le devis : appeler, jamais refaire ────────────────────
