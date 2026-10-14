@@ -52,7 +52,7 @@ GAP_DOC = ROOT / "docs" / "db-invariants-gap.md"
 # COUVERTURE du registre (axe statut/workflow), pas d'une contrainte de
 # montant — d'où une liste canonique vide, honnête plutôt qu'inventée.
 TARGET_MODELS = {
-    "Devis": ("ventes", ["remise_globale in [0,100]"]),
+    "Devis": ("ventes", ["remise_globale in [0,100]", "acompte_montant >= 0"]),
     "LigneDevis": ("ventes", ["remise in [0,100]", "quantite >= 0",
                               "prix_unitaire >= 0"]),
     "BonCommande": ("ventes", []),

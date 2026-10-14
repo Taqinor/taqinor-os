@@ -69,11 +69,15 @@ def renouveler_devis(devis, *, user=None):
             prix_cible_kwc=devis.prix_cible_kwc,
             # QJR146 (a) — l'échéancier était bien copié, mais par RÉFÉRENCE :
             # deux devis partageaient la même liste JSON, exactement le piège
-            # que QJR117 a fermé pour ``etude_params``. Et ``custom_data``
-            # manquait.
+            # que QJR117 a fermé pour ``etude_params``. Et ``acompte_pct``
+            # (une CONDITION) comme ``custom_data`` manquaient.
+            # ``acompte_montant`` reste EXCLU : ce renouvellement re-tarife les
+            # lignes au catalogue courant, donc le montant de l'acompte du
+            # devis source ne décrit plus ce total.
             echeancier=(list(devis.echeancier)
                         if isinstance(devis.echeancier, list)
                         else devis.echeancier),
+            acompte_pct=devis.acompte_pct,
             custom_data=(dict(devis.custom_data)
                          if isinstance(devis.custom_data, dict)
                          else devis.custom_data),

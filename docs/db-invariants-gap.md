@@ -10,7 +10,7 @@ backstop.
 
 | Model | App | Python invariant fields (clean/save) | CheckConstraint fields | Canonical invariants still un-constrained |
 | --- | --- | --- | --- | --- |
-| `Devis` | ventes | — | remise_globale | (all constrained) |
+| `Devis` | ventes | — | acompte_montant, remise_globale | (all constrained) |
 | `LigneDevis` | ventes | — | prix_unitaire, quantite, remise | (all constrained) |
 | `BonCommande` | ventes | — | — | (aucun champ monétaire — couverture du registre) |
 | `Facture` | facturation | — | montant_ht, montant_ttc, montant_tva, remise_globale | (all constrained) |

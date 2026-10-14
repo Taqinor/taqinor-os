@@ -379,6 +379,7 @@ _CHAMPS_LIGNE_VISIBLES = (
 #: L'en-tête CLIENT (ce que le PDF / la proposition impriment).
 _CHAMPS_ENTETE_VISIBLES = (
     'client_id', 'date_validite', 'taux_tva', 'remise_globale', 'echeancier',
+    'acompte_pct', 'acompte_montant',
 )
 #: ADEV18 — nom PUBLIC de la même liste : l'instantané restaurable
 #: (``historique_config.configuration_devis_contenu``) la lit pour porter

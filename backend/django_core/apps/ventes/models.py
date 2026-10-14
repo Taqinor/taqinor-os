@@ -156,6 +156,18 @@ class Devis(models.Model):
         help_text='Liste ordonnée de tranches [{libelle, type, pct_or_montant}].'
                   ' Vide = 3 tranches par défaut.',
     )
+    # Acompte persisté séparément pour accès rapide (PDF, dashboard, synthèse).
+    # La valeur mémorisée au moment de la sauvegarde — pas recalculée en live.
+    acompte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Acompte (%)',
+        help_text='Pourcentage de la première tranche. Persiste la valeur choisie.',
+    )
+    acompte_montant = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Acompte (MAD TTC)',
+        help_text='Montant TTC de la première tranche. Calculé ou saisi.',
+    )
     prix_cible_kwc = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     # ── SCA47 — prix au kWc DÉRIVÉ, gelé à la création (leçon ServiceTitan
@@ -440,6 +452,9 @@ class Devis(models.Model):
                 condition=models.Q(remise_globale__gte=0)
                 & models.Q(remise_globale__lte=100),
                 name='ck_devis_remise_globale_0_100'),
+            models.CheckConstraint(
+                condition=models.Q(acompte_montant__gte=0),
+                name='ck_devis_acompte_montant_positif'),
         ]
 
     def __str__(self):

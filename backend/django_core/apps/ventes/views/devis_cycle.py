@@ -279,9 +279,10 @@ class DevisCycleActionsMixin:
         from decimal import Decimal, ROUND_HALF_UP
         # ── QJR407 (S5-1 / S5-2 / S5-4) — LE CLONEUR DU DOMAINE ─────────────
         # Cette boucle réimplémentait ``Devis.objects.create(...)`` et OMETTAIT
-        # les champs que le cloneur porte depuis QJR146(a) : ``devise``,
-        # ``taux_change``, ``echeancier``, ``entite``, ``custom_data`` — une
-        # variante perdait l'échéancier NÉGOCIÉ de l'original. Elle créait en outre le devis
+        # les sept champs que le cloneur porte depuis QJR146(a) : ``devise``,
+        # ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
+        # ``entite``, ``custom_data`` — une variante perdait l'échéancier
+        # NÉGOCIÉ et l'acompte de l'original. Elle créait en outre le devis
         # HORS transaction avant de cloner ses lignes (S5-4). La
         # réimplémentation est SUPPRIMÉE (règle permanente 2).
         #
