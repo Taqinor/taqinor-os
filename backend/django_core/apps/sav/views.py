@@ -42,7 +42,7 @@ from .models import (
 from .dateutils import add_months
 from .query_params import (
     CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE, CORPS_TICKET_CLIENT_OU_EQUIPEMENT,
-    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, choix_param, date_param, entier_param,
+    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, archives_incluses, choix_param, date_param, entier_param,
 )
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
@@ -3247,15 +3247,8 @@ class RemedeDefaillanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action != 'list':
-            return qs
-        # CI #993 (api-fuzz « accepted schema-violating », ?archived=AAA) —
-        # publié ``enum: ['1']`` : toute autre valeur, vide comprise, est
-        # refusée en nommant le paramètre au lieu de filtrer en silence.
-        archived = self.request.query_params.get('archived')
-        if archived is not None and archived != '1':
-            raise ValidationError({'archived': 'Valeur attendue : 1.'})
-        if archived != '1':
+        # CI #993 — ``?archived=`` hors ``enum: ['1']`` : 400 (archives_incluses).
+        if self.action == 'list' and not archives_incluses(self.request):
             qs = qs.filter(archived=False)
         return qs
 
