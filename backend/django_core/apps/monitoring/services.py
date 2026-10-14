@@ -680,13 +680,17 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
 class CertificatCarboneError(ValueError):
     """Émission refusée ; ``champ`` nomme le champ fautif (``None`` = global)."""
 
-    def __init__(self, message, champ=None, etat=False):
+    def __init__(self, message, champ=None, etat=False, introuvable=False):
         super().__init__(message)
         self.message = message
         self.champ = champ
         # CI #997 fuzz — ``True`` : refus d'ÉTAT des données (aucune production
         # mesurée, certificat déjà émis) = 409, le corps était conforme.
         self.etat = etat
+        # CI #997 fuzz (2) — ``True`` : identifiant BIEN FORMÉ qui ne désigne
+        # aucun système de la société = 404 (même corps qu'il soit absent ou
+        # d'une autre société — aucun oracle).
+        self.introuvable = introuvable
 
 
 class CertificatCarboneDoublon(ValueError):
@@ -717,7 +721,8 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
             company, installation_id)
         if installation is None:
             raise CertificatCarboneError(
-                'Système inconnu.', champ='installation_id')
+                'Système inconnu.', champ='installation_id',
+                introuvable=True)
     tonnes, has_data = tco2_evitees_periode(
         company, installation=installation, client_id=client_id,
         since=periode_debut, until=periode_fin)
