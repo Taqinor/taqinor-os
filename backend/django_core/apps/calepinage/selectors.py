@@ -808,7 +808,8 @@ def contexte_geographique(calepinage):
 
     Le pin est LE repère toit du lead (``crm.selectors.repere_toit``, QJR598) :
     un GPS renseigné et différent de l'épingle (``Lead.roof_point``) vient
-    d'une correction et prime ; sinon l'épingle, sinon le GPS. Le client (fiche structurée) n'apporte qu'une adresse — il ne
+    d'une correction et prime ; sinon l'épingle, sinon le GPS. Le client (fiche structurée) n'apporte qu'une adresse —
+    il ne
     porte aucune géométrie.
 
     Les lectures crm passent par ``apps.crm.selectors`` uniquement (jamais un
