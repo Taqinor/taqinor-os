@@ -158,14 +158,14 @@ class VisiteCiTests(VisiteTerrainBase):
         visite_id = self.creer_visite()
         self._remplir(visite_id, avec_cheminement=False)
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('trajets',
                       {m['code'] for m in resp.data['manquants']})
         # Des trajets sans longueur AC : l'AC reste requise.
         self._mesures(visite_id, 'cheminement', {'trajets': [
             {'libelle': 'a', 'longueur_dc_m': 45}]})
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(
             {m['code'] for m in resp.data['manquants']},
             {'trajets.longueur_ac_m'})

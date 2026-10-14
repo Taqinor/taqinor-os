@@ -373,7 +373,6 @@ API accepted schema-violating request|GET /api/django/ventes/recettes-mes/
 API accepted schema-violating request|GET /api/django/ventes/regularisations-8221/
 API accepted schema-violating request|GET /api/django/ventes/remises-encaissement/
 API accepted schema-violating request|GET /api/django/ventes/tests-pr-reception/
-API accepted schema-violating request|GET /api/django/visites/leads-recherche/
 API accepted schema-violating request|PATCH /api/django/core/api-usage/plan/
 API accepted schema-violating request|PATCH /api/django/core/branded-templates/{id}/
 API accepted schema-violating request|PATCH /api/django/core/ui-boutons/{id}/
@@ -984,10 +983,6 @@ API rejected schema-compliant request|POST /api/django/ventes/plans-commission/
 API rejected schema-compliant request|POST /api/django/ventes/promesses-paiement/
 API rejected schema-compliant request|POST /api/django/ventes/remises-encaissement/
 API rejected schema-compliant request|POST /api/django/visites/visites/{id}/photos/
-API rejected schema-compliant request|POST /api/django/visites/visites/{id}/qualification/
-API rejected schema-compliant request|POST /api/django/visites/visites/{id}/renvoyer/
-API rejected schema-compliant request|POST /api/django/visites/visites/{id}/terminer/
-API rejected schema-compliant request|POST /api/django/visites/visites/{id}/valider/
 API rejected schema-compliant request|PUT /api/django/achats/bons-commande-fournisseur/{id}/
 API rejected schema-compliant request|PUT /api/django/core/vues/{id}/
 API rejected schema-compliant request|PUT /api/django/crm/clients/{id}/
@@ -1030,7 +1025,6 @@ API rejected schema-compliant request|PUT /api/django/ventes/factures-lignes/{id
 API rejected schema-compliant request|PUT /api/django/ventes/packs-asbuilt/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/recettes-mes/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/tests-pr-reception/{id}/
-API rejected schema-compliant request|PUT /api/django/visites/visites/{id}/
 JSON deserialization error|GET /api/django/crm/leads/{id}/salle-vente-analytics/
 JSON deserialization error|POST /api/django/core/sla/credits/{id}/statut/
 JSON deserialization error|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
@@ -1157,7 +1151,6 @@ Response violates schema|GET /api/django/ventes/factures/{id}/relance-apercu/
 Response violates schema|GET /api/django/ventes/factures/{id}/relances/
 Response violates schema|GET /api/django/ventes/paiements/attestations-ras-en-attente/
 Response violates schema|GET /api/django/ventes/paiements/avances-non-affectees/
-Response violates schema|GET /api/django/visites/visites/
 Response violates schema|PATCH /api/django/automation/approval-delegations/{id}/
 Response violates schema|PATCH /api/django/core/dossiers/{id}/
 Response violates schema|PATCH /api/django/crm/apporteurs/{id}/

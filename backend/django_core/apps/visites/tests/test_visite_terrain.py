@@ -22,7 +22,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -162,7 +162,7 @@ class CompletudeTests(VisiteTerrainBase):
         resp = self.api.post(
             f'/api/django/visites/visites/{visite_id}/terminer/', {},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         manquants = resp.data['manquants']
         self.assertTrue(manquants)
         codes = {item['code'] for item in manquants}
@@ -261,7 +261,7 @@ class BoucleDeRenvoiTests(VisiteTerrainBase):
         refus = self.api.post(
             f'/api/django/visites/visites/{visite_id}/terminer/', {},
             format='json')
-        self.assertEqual(refus.status_code, 400, refus.data)
+        self.assertEqual(refus.status_code, 409, refus.data)
 
         supprime = self.api.delete(
             f'/api/django/visites/visites/{visite_id}/photos/{media_id}/')
@@ -649,3 +649,46 @@ class ModificationSansLeadTests(VisiteTerrainBase):
         resp = self.api.put(f'/api/django/visites/visites/{visite_id}/',
                             {'lead': autre.id}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
+
+
+class SchemaVisitesPublieTests(SimpleTestCase):
+    """ERR-ENF11-FUZZ-VISITES — le schéma publié dit ce que la vue sert
+    (api-fuzz du 13/10/2026 : liste publiée en tableau DE tableaux, PUT publié
+    avec l'agrégat alors qu'il rend l'entête)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        generateur = SchemaGenerator(patterns=[path(
+            'api/django/visites/', include('apps.visites.urls'))])
+        cls.schema = generateur.get_schema(request=None, public=True)
+
+    def _reponse(self, methode, chemin):
+        operation = self.schema['paths'][
+            '/api/django/visites/' + chemin][methode]
+        return operation['responses']['200']['content'][
+            'application/json']['schema']
+
+    def _composant(self, noeud):
+        return self.schema['components']['schemas'][
+            noeud['$ref'].rsplit('/', 1)[-1]]
+
+    def test_la_liste_est_un_tableau_de_lignes(self):
+        schema = self._reponse('get', 'visites/')
+        self.assertEqual(schema['type'], 'array')
+        ligne = self._composant(schema['items'])
+        self.assertEqual(ligne['type'], 'object')
+        self.assertEqual(
+            set(ligne['properties']),
+            {'id', 'lead', 'lead_nom', 'ville', 'statut', 'date_prevue',
+             'complet', 'manquants_count'})
+
+    def test_le_put_publie_l_entete(self):
+        entete = self._composant(self._reponse('put', 'visites/{id}/'))
+        self.assertEqual(
+            set(entete['properties']),
+            {'id', 'lead', 'commercial', 'statut', 'date_prevue',
+             'date_realisee', 'notes'})

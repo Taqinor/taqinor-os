@@ -124,7 +124,7 @@ class VisiteSupplementMt(VisiteTerrainBase):
             self.assertEqual(sorted(detail['mesures'][cat]),
                              sorted(SUPPLEMENT[cat]['mesures']), cat)
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         manquants = {(m['categorie'], m['code'])
                      for m in resp.data['manquants']}
         self.assertEqual(manquants, {
@@ -236,6 +236,6 @@ class VisiteSupplementMt(VisiteTerrainBase):
             'charges': [{'puissance_kw': 30}]})
         self.assertEqual(resp.status_code, 200, resp.data)
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual([m['code'] for m in resp.data['manquants']],
                          ['charges[1].libelle'])

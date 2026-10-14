@@ -114,7 +114,7 @@ class VisiteZonesTests(VisiteTerrainBase):
                       'largeur_m': 10, 'couverture': 'bac_acier'}
         visite_id = self._visite_prete([ZONE_COMPLETE, incomplete])
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         manquants = resp.data['manquants']
         self.assertEqual(
             {m['code'] for m in manquants},
@@ -130,14 +130,14 @@ class VisiteZonesTests(VisiteTerrainBase):
         sans_surface = dict(ZONE_COMPLETE, longueur_m=None)
         visite_id = self._visite_prete([sans_surface])
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual({m['code'] for m in resp.data['manquants']},
                          {'zones_toiture[z1].surface_utile_m2'})
 
     def test_aucune_zone_bloque_terminer(self):
         visite_id = self._visite_prete([])
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('zones_toiture',
                       {m['code'] for m in resp.data['manquants']})
 
@@ -163,7 +163,7 @@ class VisiteZonesTests(VisiteTerrainBase):
         zone = dict(ZONE_COMPLETE, charge_admissible_declaree_kg_m2=25)
         visite_id = self._visite_prete([zone])
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(
             {m['code'] for m in resp.data['manquants']},
             {'zones_toiture[z1].charge_admissible_piece'})
