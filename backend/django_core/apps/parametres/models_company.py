@@ -915,7 +915,9 @@ class CompanyProfile(models.Model):
     # elle retombe simplement en accès complet (jamais restrictif par défaut).
     plan = models.ForeignKey(
         'adminops.PlanLicence',
-        on_delete=models.SET_NULL,  # on_delete: un palier supprimé du catalogue ne doit jamais emporter la société — repli sur l'accès complet (jamais restrictif par défaut)
+        # un palier supprimé du catalogue ne doit jamais emporter la société — repli sur l'accès complet (jamais
+        # restrictif par défaut)
+        on_delete=models.SET_NULL,  # on_delete: palier supprimé ≠ société supprimée — repli sur l'accès complet
         null=True, blank=True,
         related_name='+',
         verbose_name='Plan de licence',
