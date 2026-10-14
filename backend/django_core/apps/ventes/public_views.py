@@ -1801,10 +1801,9 @@ def proposal_data(request, token):
         # NOMMÉE, résumé des chaînes déjà publiques, ombrage seulement s'il a
         # été MESURÉ). Des angles et des noms, jamais des coordonnées machine ;
         # jamais un second arrondi du productible (il vit dans `hypotheses`).
-        _parametres_site = _parametres_site_publics(
-            devis, _roof_layout_public, payload.get('hypotheses'),
-            _conception_publique)
-        if _parametres_site is not None:
+        if (_parametres_site := _parametres_site_publics(
+                devis, _roof_layout_public, payload.get('hypotheses'),
+                _conception_publique)) is not None:
             payload['parametres_site'] = _parametres_site
         # PREVIEW-V3 (16/09/2026) — CE QUE LE CLIENT DOIT SAVOIR AVANT DE
         # SIGNER, et qui n'existait jusqu'ici que dans le PDF ou après la
@@ -1812,11 +1811,9 @@ def proposal_data(request, token):
         # conditions générales, les moyens de règlement, et s'il recevra
         # vraiment une confirmation. Trois clés ADDITIVES (absentes quand
         # incalculables, jamais `null`) + deux clés de base constantes.
-        _acompte = _acompte_publique(devis)
-        if _acompte is not None:
+        if (_acompte := _acompte_publique(devis)) is not None:
             payload['acompte'] = _acompte
-        _date_validite = _date_validite_publique(devis)
-        if _date_validite is not None:
+        if (_date_validite := _date_validite_publique(devis)) is not None:
             payload['date_validite'] = _date_validite
         # APDF19 — avec les puces, le titre que le PDF imprime au-dessus.
         if (_conditions := _conditions_publiques(data, devis)) is not None:
@@ -1835,10 +1832,15 @@ def proposal_data(request, token):
         # calcule plus rien (« 12:00 UTC du dernier jour » supprimé). Deux clés
         # additives, absentes quand aucune validité n'est déterminable.
         from .utils.expiry import date_expiration, is_expired
-        _expiration = date_expiration(devis)
-        if _expiration is not None:
+        if (_expiration := date_expiration(devis)) is not None:
             payload['date_expiration'] = _expiration.isoformat()
             payload['offre_expiree'] = bool(is_expired(devis))
+        # VNT61 — un AVENANT (V2 acceptée en interne qui remplace une vente
+        # acceptée) : à signer par le client, ou signé le … Additive, ABSENTE
+        # hors avenant (contrat ``proposal_data.json`` › ``notes_vnt2``).
+        from .domain.negociation import avenant_public
+        if (_avenant := avenant_public(devis)) is not None:
+            payload['avenant'] = _avenant
         payload['paiement_moyens'] = list(PAIEMENT_MOYENS_PUBLICS)
         payload['confirmation_email'] = _confirmation_email_publique(devis)
         # ADEV49 (C-ADEV-016) — case « PDF » décochée : ``/proposal`` répond

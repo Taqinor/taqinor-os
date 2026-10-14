@@ -418,6 +418,10 @@ const NON_LU: Readonly<Record<string, string>> = {
   'niveau_masque[]': 'Liste de ce que le niveau `standard` a retiré : servie au rendu serveur pour l’expliquer au client, hors périmètre du lecteur typé.',
   'resync_apres_envoi': 'Drapeau de resynchronisation après envoi : lu par le frontmatter pour son bandeau, pas par `lireProposal`.',
   // ── QJR536 (contrat QJR501) ──────────────────────────────────────────────
+  // ── VNT61 — l'avenant servi par le serveur, lu par la page avec VNT72 ──
+  'avenant.a_signer': 'VNT61 — vrai tant que le client n’a pas signé l’avenant (V2 acceptée en interne qui remplace une vente acceptée) : servi par le serveur, lu par le composant avenant de la page (VNT72, WEB_PLAN), jamais par le lecteur typé.',
+  'avenant.remplace.reference': 'VNT61 — référence de la version que l’avenant remplace : affichée « Avenant à <V1> » par le composant de VNT72, jamais par le lecteur typé.',
+  'avenant.signe_le': 'VNT61 — horodatage ISO de la signature de l’avenant (null tant que non signé) : lu par la confirmation de VNT72, jamais par le lecteur typé.',
   'remplace_par': 'Version qui remplace ce devis : lue par `resolveRemplacement` / `resolveOfferState` (état « retirée », plus de signature, lien vers la version en vigueur) dans le frontmatter — jamais par le lecteur typé du devis. Garde propre : `tests/propositionRemplacee.test.ts`.',
 
   // ── Les sept blocs à CONTRAT DÉDIÉ (voir `CONTRAT_DEDIE`) ────────────────
