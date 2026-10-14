@@ -14,6 +14,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import inline_serializer
 from rest_framework import serializers as s
 
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
 
 def _ser(name, fields, **kwargs):
     return inline_serializer(name, fields, **kwargs)
@@ -319,6 +321,28 @@ RoofLoadRequest = _ser('RoofLoadRequest', {
     'coefficient_source': s.CharField(
         required=False, allow_blank=True, allow_null=True),
 })
+
+
+def _valeur_avec_sa_source(champ, source):
+    """CI #997 — ``champ`` (nombre ≥ 0) ne s'applique qu'avec ``source``
+    non blanche (``roof_load.ChargeNonSourcee``) : absent, null ou négatif
+    (ignoré par le calcul), sinon la source est requise."""
+    return {'anyOf': [
+        {'not': {'required': [champ]}},
+        {'properties': {champ: {'type': 'number', 'nullable': True,
+                                'maximum': 0, 'exclusiveMaximum': True}}},
+        {'required': [source],
+         'properties': {source: {'type': 'string', 'pattern': r'\S'}}},
+    ]}
+
+
+#: Règle publiée en ``allOf`` au corps (``x-corps-resserre``) : une requête
+#: conforme n'est plus refusée « … exige sa source ».
+ROOF_LOAD_SOURCES = {EXTENSION_CORPS_RESSERRE: {'allOf': [
+    _valeur_avec_sa_source('charge_admissible_kg_m2',
+                           'charge_admissible_source'),
+    _valeur_avec_sa_source('coefficient_securite', 'coefficient_source'),
+]}}
 RoofLoadResponse = _ser('RoofLoadVerdict', {
     'capacite_kg_m2': s.FloatField(allow_null=True),
     'capacite_source': s.CharField(allow_null=True),
