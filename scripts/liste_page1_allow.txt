@@ -57,7 +57,6 @@ frontend/src/pages/installations/InstallationDetail.jsx::loadContrats
 frontend/src/pages/installations/InstallationDetail.jsx::loadDossierReglementaire
 frontend/src/pages/installations/InstallationDetail.jsx::loadEquipements
 frontend/src/pages/installations/InstallationDetail.jsx::loadTickets
-frontend/src/pages/installations/InstallationsPage.jsx::InstallationsPage
 frontend/src/pages/installations/PlanificationPage.jsx::OutilsChantierTab
 frontend/src/pages/installations/SuiviGpsPage.jsx::HistoriquePresenceTab
 frontend/src/pages/installations/SuiviGpsPage.jsx::SuiviGpsPage
@@ -68,8 +67,6 @@ frontend/src/pages/monitoring/CleaningsPage.jsx::reload
 frontend/src/pages/monitoring/Co2Page.jsx::load
 frontend/src/pages/monitoring/ProductionPage.jsx::isStale
 frontend/src/pages/monitoring/ProductionPage.jsx::load
-frontend/src/pages/monitoring/WarrantiesPage.jsx::reload
-frontend/src/pages/monitoring/useSupervisedSystems.js::useSupervisedSystems
 frontend/src/pages/onboarding/DemarrageWizard.jsx::DemarrageWizard
 frontend/src/pages/reporting/ClasseursListPage.jsx::reload
 frontend/src/pages/reporting/DashboardConfigPage.jsx::reload
