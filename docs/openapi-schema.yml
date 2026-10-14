@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3495}
+counts: {paths: 4814, operations: 7566, components: 3496}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10318,6 +10318,7 @@ components:
 - FactureLigneAvoirCorrectiveRequest
 - FactureLigneNoteDebitRequest
 - FactureLigneRetourRequest
+- FactureListe
 - FactureMarquerPayeeRequestRequest
 - FactureMontantTrancheRequest
 - FactureRelanceApercu
@@ -11033,7 +11034,7 @@ components:
 - PaginatedFactEntryList
 - PaginatedFactTableList
 - PaginatedFactureFournisseurList
-- PaginatedFactureList
+- PaginatedFactureListeList
 - PaginatedFavoriUtilisateurList
 - PaginatedFicheInterventionChampList
 - PaginatedFicheInterventionTemplateList
