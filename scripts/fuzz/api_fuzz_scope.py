@@ -32,8 +32,12 @@ de ``scripts/fuzz/``) :
 ``verdict``
     Lit le rapport JSON de Schemathesis et rend le verdict du job PR :
     ÉCHEC sur tout constat (check, opération) absent de la dette gelée
-    ``scripts/fuzz/api_fuzz_dette.txt``. Le NOCTURNE, lui, n'a pas de dette :
-    ``schemathesis run`` y échoue sur le moindre constat (release-verify.yml).
+    ``scripts/fuzz/api_fuzz_dette.txt``, sur toute ERREUR du moteur (opération
+    non testée — jamais gelable) et sur un run inexploitable (incomplet,
+    authentification perdue). Le NOCTURNE, lui, n'a pas de dette :
+    ``schemathesis run`` y échoue sur le moindre constat (release-verify.yml) ;
+    il rejoue ``verdict --resume`` pour ALERTER dès la première nuit sur une
+    RÉGRESSION (constat hors dette), noyée sinon dans le rouge de la dette.
 
 ``soldes``
     Résumé du nocturne : lignes de la dette qu'un run COMPLET ne revoit plus
@@ -43,7 +47,8 @@ Usage :
     git diff --name-only BASE HEAD | python scripts/fuzz/api_fuzz_scope.py proprietaires
     python ../../scripts/fuzz/api_fuzz_scope.py schema --in brut.json --out fuzz.json \\
         [--proprietaires apps.ventes core]
-    python scripts/fuzz/api_fuzz_scope.py verdict --rapport schemathesis-report/json-X.json
+    python scripts/fuzz/api_fuzz_scope.py verdict --rapport schemathesis-report/json-X.json \\
+        [--resume alerte.md]
 """
 from __future__ import annotations
 
@@ -311,10 +316,60 @@ def charger_dette(chemin: Path = DETTE_PATH) -> set:
     }
 
 
+def erreurs_du_rapport(rapport: dict) -> list:
+    """Erreurs du MOTEUR (crash de génération, schéma inutilisable) : une
+    opération en erreur n'a PAS été testée. Le rapport JSON ne les rattache à
+    aucune opération (``errors: [{title, count}]``) : elles ne sont donc jamais
+    gelables — « tous les checks » (ENF11) exclut un trou de couverture muet."""
+    lignes = sorted(f"Erreur du moteur|{e.get('title')}"
+                    for e in rapport.get("errors") or [])
+    en_erreur = (rapport.get("operations") or {}).get("errored") or 0
+    if en_erreur and not lignes:
+        lignes.append(f"Erreur du moteur|{en_erreur} opération(s) en erreur")
+    return lignes
+
+
+def anomalies_du_rapport(rapport: dict) -> list:
+    """Run INEXPLOITABLE : un verdict vert n'y prouverait rien.
+
+    * ``complete`` faux : le moteur ne s'est pas terminé (Schemathesis émet
+      ``EngineFinished`` sur fin normale ET sur ``--max-time``) ;
+    * ``stop_reason`` ``interrupted`` ;
+    * ``auth.reauth_broke`` : la session du fuzzeur a sauté, la suite du run
+      n'a vu que des 401."""
+    anomalies = []
+    if rapport.get("complete") is False or rapport.get("stop_reason") == "interrupted":
+        anomalies.append(f"Run incomplet|stop_reason={rapport.get('stop_reason')}")
+    if (rapport.get("auth") or {}).get("reauth_broke"):
+        anomalies.append("Authentification perdue|reauth_broke")
+    return anomalies
+
+
 def verdict(rapport: dict, dette: set) -> tuple[list, list]:
-    """(constats NOUVEAUX — rouges, constats de la dette re-vus)."""
+    """(constats NOUVEAUX — rouges, constats de la dette re-vus).
+
+    Les NOUVEAUX comprennent les erreurs du moteur et les anomalies du run,
+    jamais couvertes par la dette."""
     constats = constats_du_rapport(rapport)
-    return sorted(constats - dette), sorted(constats & dette)
+    rouges = sorted(constats - dette) + erreurs_du_rapport(rapport) + anomalies_du_rapport(rapport)
+    return rouges, sorted(constats & dette)
+
+
+_RESUME_MAX = 60
+
+
+def resume_markdown(nouveaux: list, revus: list) -> str:
+    """Corps d'alerte (issue du nocturne) : les régressions NOMMÉES."""
+    if not nouveaux:
+        return (f"Aucune régression api-fuzz hors dette gelée "
+                f"({len(revus)} constat(s) de la dette re-vu(s)).\n")
+    lignes = [f"{len(nouveaux)} constat(s) api-fuzz HORS de la dette gelée "
+              f"`scripts/fuzz/api_fuzz_dette.txt` ({len(revus)} constat(s) de la "
+              f"dette re-vu(s)) :", ""]
+    lignes += [f"- `{ligne}`" for ligne in nouveaux[:_RESUME_MAX]]
+    if len(nouveaux) > _RESUME_MAX:
+        lignes.append(f"- … et {len(nouveaux) - _RESUME_MAX} autre(s) (rapport du job).")
+    return "\n".join(lignes) + "\n"
 
 
 def soldes(rapport: dict, dette: set) -> list:
@@ -353,6 +408,8 @@ def _cmd_schema(args) -> int:
 def _cmd_verdict(args) -> int:
     rapport = json.loads(Path(args.rapport).read_text(encoding="utf-8"))
     nouveaux, revus = verdict(rapport, charger_dette(Path(args.dette)))
+    if args.resume:
+        Path(args.resume).write_text(resume_markdown(nouveaux, revus), encoding="utf-8")
     print(f"api-fuzz PR : {len(nouveaux)} constat(s) NOUVEAU(x), "
           f"{len(revus)} constat(s) de la dette gelée re-vu(s).")
     for ligne in nouveaux:
@@ -378,6 +435,8 @@ def main(argv=None) -> int:
     p_verdict = sous.add_parser("verdict")
     p_verdict.add_argument("--rapport", required=True)
     p_verdict.add_argument("--dette", default=str(DETTE_PATH))
+    p_verdict.add_argument("--resume", default="",
+                           help="écrit le corps d'alerte markdown (régressions nommées)")
     p_verdict.set_defaults(func=_cmd_verdict)
     p_soldes = sous.add_parser("soldes")
     p_soldes.add_argument("--rapport", required=True)
