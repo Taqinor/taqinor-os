@@ -1,0 +1,610 @@
+{
+ "corps": {
+  "PeutEncaisser": "036a65c64abc629497f6ffe6f41ed837992351fda99bf3b14e4aa7855262e168",
+  "_MAX_MONTANT_LIGNE": "14eee2458a9d4547d34e53a34a23247fe7f3e8db0fe3cc0145073040a11c1506",
+  "_montants_ligne_corrective": "acf573a7ddd4f1192ba620fbf5bfd55135942155be2d0b9ce69ca276315cd0b2",
+  "abandonner_solde": "7bb73ad556eb898ffc5c114116a7cac52883118d593408736bdcc0c2d72d7dd6",
+  "annuler": "544aaf3a7ec5229e3d7640bbb478a76ef825c2baaf7abb8a21a4812e903d5beb",
+  "arrondi_caisse": "68b4b54b6ad6f8e66d62e5bbb377716aa4d02edd77ff7eec2e5be7fb7950a549",
+  "bulk": "8dbbeede0fc3c5149681322f00300498c11e829ac8658abf10e4a3c696c54ac2",
+  "consolider": "02494750db98194f9a3c4c7ac9d660f596827c79b8aa05ba6b1bb4a0cf02e333",
+  "creer_avoir": "7a54e07da4cf6374fdaebb7111a3ab1002eb24f6c6b7d446051523d9f746597f",
+  "creer_note_debit": "489586a7120b0a56b41db15036fab81aa7217bd435509531ee299c2488b2c0c8",
+  "dgi_conformite": "6ce57ddaea9b7b673cc858f3ccc2bec533e1d998e43e10a38e23df7398ae2b3f",
+  "dgi_export": "f549ceb5f52256a3a24fcfb7fd48a21a6bde672d0a65ab7b32bc35393fac4720",
+  "dgi_transmettre": "207f2d91a0fecca5bd3d635e4209799cf59578ead45270d56ac0d69de6771751",
+  "emails": "553d0e96fda1f7ff700f1582450f913b94676462fbd0d4e2b981dd7846f7caea",
+  "emettre": "0cf0209b883128eb41297e1e489e03d7b53fb46bb25cb04100a5165218d40a76",
+  "encaissement_groupe": "9f45ff7001fe74650d1517ea742e6297b8eaebdad5746640193b37f7f033170a",
+  "enregistrer_paiement": "2382525ee264a904b5c1330c6161c34578131fdebde58f23dce46fafb9b69499",
+  "envoyer_email": "bc0b0dbd24a3191990b84fab6f827e2b5779e331fb6fa0609d0ff0ae930762ac",
+  "exclure_relance": "2f5fae263f55c9aa30c6415fcd614b5b9a0e5e190d4abdd044696dbcda82d7a9",
+  "facturer_penalites": "b878f9d0c17de6a69c9642c1388eeb97cf3730f285d34ec252ee279d6a062499",
+  "generer_pdf": "8bf0614ded3b24fc7da67b1b7933ca83c6e71e659f1d731bd535ac96076481c6",
+  "get_permissions": "fa4827112e6668c9e948a0dbbbbbff8db3df2285e71c31dcb46badf85dddcd19",
+  "get_queryset": "f758670c26f64879a031adddf7e6c1c8526b414cce8d110b414933c16cbab00c",
+  "get_serializer_class": "646510f1023ab81c950edf4d8f28ce7053a0d289a8050d1612418cad44d20487",
+  "historique": "cb2bf0df56aae661d4fd846946fd27e8e5660a8a5e280c19cf49d15517d541eb",
+  "kpis": "4096204d531c7fa1bc916bf1275f1da8bfd8feaac5a00bd1f643e452caa701d8",
+  "liberer_retenue": "bece7a09f98dc73a302bbdacdbcb05f734559fe857a1659fe64e2f5fd723812c",
+  "lien_paiement": "f02969c5771ea62be75d916cbb824b7fd9d1fa5e0c0aa6a6936bf5d5ae1003a3",
+  "marquer_payee": "fb24eac655ab3c6d37c3b3d5e6782c5ff9d55ba4a26d88c5006ee58cd27eb2f1",
+  "montant_tranche": "a3e7f871fcc42b2fdbe8e6ce9c852a04dceaae2d0aa7f3e3fb296fb9550d6a4a",
+  "paiements": "6ae4e2c1ca91b5557ce15e1da752de9aa7b07cb2580302baf003852101f625ca",
+  "perform_create": "ac32e748bf5546ce8d4a0e459d5cfcd09c2cd41468cb4e95b95f02292e4f88fd",
+  "perform_destroy": "453907467328476fdb983ccb82bfb71833f9394cb99724523ecc056de93c9c70",
+  "perform_update": "e441dd13fd5db2a33e954a57a27ae1ba530d80105b22f45396eb314aad28f872",
+  "relance_apercu": "78eaffc48bea3db24e99034ccfbadb420aac7d4d5aad85708e9fa4a476a868e6",
+  "relancer": "4a1d4c20eaaa5c8e3dc764716b45350bf4553d94e2b06f0cc14abb28a46781ed",
+  "relances": "18f28a92d6491bf0140a28e94b8871ec6441a021b8b2d100cf127aa8c9c3dac1",
+  "remettre_brouillon": "ef1b961129f1f446bfa89b0aee035a843ac2a8487dcef02faaa0dd91ffbbd38a",
+  "reprendre_abandon": "e7afd6a438d183cdf30e09bfbdd4ed218bd61a34a570ef19e221afe92ebe2f61",
+  "retour_client": "f5b86c63e390101d7eb775839837d5c98d8eed0097a8a2a5378638b700f49776",
+  "revoquer_lien_paiement": "0890e35c82ddfc081a00a756996bd78d1cf11d6c152e0548486fa294c4fea297",
+  "telecharger_pdf": "d73bd36197833f716223e0af4c73e7b7a7d6de8629f70d1b8170b778e87c78f7",
+  "ubl": "ff6af52e4901ef1c1a858bd8126067de656b7645601a853d35f7dabaf6efdb68",
+  "whatsapp": "174ac110e2774fd4448d86a2bc6bb30fbf8dbcf72e2ab0c7781f7ae57dc71264"
+ },
+ "noms_publics": [
+  "_allowed_methods",
+  "abandonner_solde",
+  "allowed_methods",
+  "annuler",
+  "arrondi_caisse",
+  "as_view",
+  "authentication_classes",
+  "bulk",
+  "check_object_permissions",
+  "check_permissions",
+  "check_throttles",
+  "consolider",
+  "content_negotiation_class",
+  "create",
+  "creer_avoir",
+  "creer_note_debit",
+  "default_response_headers",
+  "destroy",
+  "determine_version",
+  "dgi_conformite",
+  "dgi_export",
+  "dgi_transmettre",
+  "dispatch",
+  "emails",
+  "emettre",
+  "encaissement_groupe",
+  "enregistrer_paiement",
+  "entite_field",
+  "envoyer_email",
+  "exclure_relance",
+  "facturer_penalites",
+  "filter_backends",
+  "filter_queryset",
+  "finalize_response",
+  "generer_pdf",
+  "get_authenticate_header",
+  "get_authenticators",
+  "get_content_negotiator",
+  "get_exception_handler",
+  "get_exception_handler_context",
+  "get_extra_action_url_map",
+  "get_extra_actions",
+  "get_format_suffix",
+  "get_object",
+  "get_paginated_response",
+  "get_parser_context",
+  "get_parsers",
+  "get_permissions",
+  "get_queryset",
+  "get_renderer_context",
+  "get_renderers",
+  "get_serializer",
+  "get_serializer_class",
+  "get_serializer_context",
+  "get_success_headers",
+  "get_throttles",
+  "get_view_description",
+  "get_view_name",
+  "handle_exception",
+  "historique",
+  "http_method_names",
+  "http_method_not_allowed",
+  "initial",
+  "initialize_request",
+  "kpis",
+  "liberer_retenue",
+  "lien_paiement",
+  "list",
+  "lookup_field",
+  "lookup_url_kwarg",
+  "marquer_payee",
+  "metadata_class",
+  "montant_tranche",
+  "options",
+  "ordering",
+  "ordering_fields",
+  "paginate_queryset",
+  "pagination_class",
+  "paginator",
+  "paiements",
+  "parser_classes",
+  "partial_update",
+  "perform_authentication",
+  "perform_content_negotiation",
+  "perform_create",
+  "perform_destroy",
+  "perform_update",
+  "permission_classes",
+  "permission_denied",
+  "queryset",
+  "raise_uncaught_exception",
+  "relance_apercu",
+  "relancer",
+  "relances",
+  "remettre_brouillon",
+  "renderer_classes",
+  "reprendre_abandon",
+  "retour_client",
+  "retrieve",
+  "reverse_action",
+  "revoquer_lien_paiement",
+  "schema",
+  "search_fields",
+  "serializer_class",
+  "settings",
+  "setup",
+  "telecharger_pdf",
+  "throttle_classes",
+  "throttled",
+  "ubl",
+  "update",
+  "versioning_class",
+  "view_is_async",
+  "whatsapp"
+ ],
+ "permissions": {
+  "abandonner_solde": [
+   "HasPermissionOrLegacy_encaisser"
+  ],
+  "annuler": [
+   "IsAdminOrResponsableTier",
+   "IsResponsableOrAdmin"
+  ],
+  "arrondi_caisse": [
+   "IsAnyRole"
+  ],
+  "bulk": [
+   "IsResponsableOrAdmin"
+  ],
+  "consolider": [
+   "IsResponsableOrAdmin"
+  ],
+  "create": [
+   "IsResponsableOrAdmin"
+  ],
+  "creer_avoir": [
+   "HasPermissionOrLegacy_encaisser"
+  ],
+  "creer_note_debit": [
+   "IsAdminRole"
+  ],
+  "destroy": [
+   "IsAdminOrResponsableTier",
+   "IsResponsableOrAdmin"
+  ],
+  "dgi_conformite": [
+   "IsResponsableOrAdmin"
+  ],
+  "dgi_export": [
+   "IsResponsableOrAdmin"
+  ],
+  "dgi_transmettre": [
+   "IsResponsableOrAdmin"
+  ],
+  "emails": [
+   "IsAnyRole"
+  ],
+  "emettre": [
+   "IsResponsableOrAdmin"
+  ],
+  "encaissement_groupe": [
+   "HasPermissionOrLegacy_encaisser"
+  ],
+  "enregistrer_paiement": [
+   "HasPermissionOrLegacy_encaisser"
+  ],
+  "envoyer_email": [
+   "IsResponsableOrAdmin"
+  ],
+  "exclure_relance": [
+   "IsResponsableOrAdmin"
+  ],
+  "facturer_penalites": [
+   "IsResponsableOrAdmin"
+  ],
+  "generer_pdf": [
+   "IsResponsableOrAdmin"
+  ],
+  "historique": [
+   "IsAnyRole"
+  ],
+  "kpis": [
+   "IsAnyRole"
+  ],
+  "liberer_retenue": [
+   "IsResponsableOrAdmin"
+  ],
+  "lien_paiement": [
+   "IsResponsableOrAdmin"
+  ],
+  "list": [
+   "IsAnyRole"
+  ],
+  "marquer_payee": [
+   "IsAdminRole"
+  ],
+  "montant_tranche": [
+   "IsAdminOrResponsableTier",
+   "IsResponsableOrAdmin"
+  ],
+  "paiements": [
+   "IsAnyRole"
+  ],
+  "partial_update": [
+   "IsResponsableOrAdmin"
+  ],
+  "relance_apercu": [
+   "IsResponsableOrAdmin"
+  ],
+  "relancer": [
+   "IsResponsableOrAdmin"
+  ],
+  "relances": [
+   "IsAnyRole"
+  ],
+  "remettre_brouillon": [
+   "IsResponsableOrAdmin"
+  ],
+  "reprendre_abandon": [
+   "HasPermissionOrLegacy_encaisser"
+  ],
+  "retour_client": [
+   "IsResponsableOrAdmin"
+  ],
+  "retrieve": [
+   "IsAnyRole"
+  ],
+  "revoquer_lien_paiement": [
+   "IsResponsableOrAdmin"
+  ],
+  "telecharger_pdf": [
+   "IsResponsableOrAdmin"
+  ],
+  "ubl": [
+   "IsResponsableOrAdmin"
+  ],
+  "update": [
+   "IsResponsableOrAdmin"
+  ],
+  "whatsapp": [
+   "IsResponsableOrAdmin"
+  ]
+ },
+ "python": "3.11",
+ "routes": [
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "abandonner_solde",
+   "url_name": "abandonner-solde",
+   "url_path": "abandonner-solde"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "annuler",
+   "url_name": "annuler",
+   "url_path": "annuler"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "arrondi_caisse",
+   "url_name": "arrondi-caisse",
+   "url_path": "arrondi-caisse"
+  },
+  {
+   "detail": false,
+   "methodes": [
+    "post"
+   ],
+   "nom": "bulk",
+   "url_name": "bulk",
+   "url_path": "bulk"
+  },
+  {
+   "detail": false,
+   "methodes": [
+    "post"
+   ],
+   "nom": "consolider",
+   "url_name": "consolider",
+   "url_path": "consolider"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "creer_avoir",
+   "url_name": "creer-avoir",
+   "url_path": "creer-avoir"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "creer_note_debit",
+   "url_name": "creer-note-debit",
+   "url_path": "creer-note-debit"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "dgi_conformite",
+   "url_name": "dgi-conformite",
+   "url_path": "dgi-conformite"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "dgi_export",
+   "url_name": "dgi-export",
+   "url_path": "dgi-export"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "dgi_transmettre",
+   "url_name": "dgi-transmettre",
+   "url_path": "dgi-transmettre"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "emails",
+   "url_name": "emails",
+   "url_path": "emails"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "emettre",
+   "url_name": "emettre",
+   "url_path": "emettre"
+  },
+  {
+   "detail": false,
+   "methodes": [
+    "post"
+   ],
+   "nom": "encaissement_groupe",
+   "url_name": "encaissement-groupe",
+   "url_path": "encaissement-groupe"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "enregistrer_paiement",
+   "url_name": "enregistrer-paiement",
+   "url_path": "enregistrer-paiement"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "envoyer_email",
+   "url_name": "envoyer-email",
+   "url_path": "envoyer-email"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "exclure_relance",
+   "url_name": "exclure-relance",
+   "url_path": "exclure-relance"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "facturer_penalites",
+   "url_name": "facturer-penalites",
+   "url_path": "facturer-penalites"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "generer_pdf",
+   "url_name": "generer-pdf",
+   "url_path": "generer-pdf"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "historique",
+   "url_name": "historique",
+   "url_path": "historique"
+  },
+  {
+   "detail": false,
+   "methodes": [
+    "get"
+   ],
+   "nom": "kpis",
+   "url_name": "kpis",
+   "url_path": "kpis"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "liberer_retenue",
+   "url_name": "liberer-retenue",
+   "url_path": "liberer-retenue"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "lien_paiement",
+   "url_name": "lien-paiement",
+   "url_path": "lien-paiement"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "marquer_payee",
+   "url_name": "marquer-payee",
+   "url_path": "marquer-payee"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "montant_tranche",
+   "url_name": "montant-tranche",
+   "url_path": "montant-tranche"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "paiements",
+   "url_name": "paiements",
+   "url_path": "paiements"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "relance_apercu",
+   "url_name": "relance-apercu",
+   "url_path": "relance-apercu"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "relancer",
+   "url_name": "relancer",
+   "url_path": "relancer"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "relances",
+   "url_name": "relances",
+   "url_path": "relances"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "remettre_brouillon",
+   "url_name": "remettre-brouillon",
+   "url_path": "remettre-brouillon"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "reprendre_abandon",
+   "url_name": "reprendre-abandon",
+   "url_path": "reprendre-abandon"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "retour_client",
+   "url_name": "retour-client",
+   "url_path": "retour-client"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "revoquer_lien_paiement",
+   "url_name": "revoquer-lien-paiement",
+   "url_path": "revoquer-lien-paiement"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "telecharger_pdf",
+   "url_name": "telecharger-pdf",
+   "url_path": "telecharger-pdf"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "get"
+   ],
+   "nom": "ubl",
+   "url_name": "ubl",
+   "url_path": "ubl"
+  },
+  {
+   "detail": true,
+   "methodes": [
+    "post"
+   ],
+   "nom": "whatsapp",
+   "url_name": "whatsapp",
+   "url_path": "whatsapp"
+  }
+ ]
+}
