@@ -46,10 +46,6 @@ from typing import Optional
 from core.electrique.types import TEMP_CHAUD_DEFAUT_C, TEMP_FROID_DEFAUT_C
 from .valeurs import nombre as _nombre
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 __all__ = [
     'SOURCE_SAISIE', 'SOURCE_TMY', 'MENTION_NON_SOURCEE',
     'SOURCE_TMY_NOCT',  # ACAL164
@@ -232,7 +228,6 @@ def _depuis_fournisseur(pin, fournisseur):
     try:
         reponse = fournisseur(lat, lon)
     except Exception:  # cf. docstring
-        logger.warning("depuis fournisseur : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if not isinstance(reponse, dict):
         return None
@@ -550,7 +545,6 @@ def _nom_auteur(user):
         try:
             nom = (obtenir() or '').strip()
         except Exception:  # un utilisateur exotique ne casse
-            logger.warning("nom auteur : échec ignoré, comportement dégradé", exc_info=True)
             nom = ''        # pas un enregistrement ; le repli suit.
         if nom:
             return nom
@@ -2855,7 +2849,6 @@ def rejouer_apres_layout(calepinage, *, user=None):
     try:
         evaluation = evaluation_electrique(calepinage)
     except Exception:  # cf. docstring
-        logger.warning("rejouer apres layout : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).exception(
             'CAL128 : verdict électrique en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
@@ -2872,7 +2865,6 @@ def rejouer_apres_layout(calepinage, *, user=None):
         _journaliser_ecart_longueur(calepinage,
                                     _longueur_chaine_retenue(conception))
     except Exception:  # cf. docstring
-        logger.warning("rejouer apres layout : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).exception(
             'CAL170 : réconciliation de longueur en échec (calepinage %s)',
             getattr(calepinage, 'pk', None))
@@ -3065,7 +3057,6 @@ def _journaliser_ecart_longueur(calepinage, reconciliation):
         # RELU sous verrou, jamais sur l'instantané du début du geste.
         return modifier_resultat(calepinage, prolonger)
     except Exception:  # un journal ne casse jamais un geste
-        logger.warning("journaliser ecart longueur : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).exception(
             'CAL170 : journal d écart non enregistré (calepinage %s)',
             getattr(calepinage, 'pk', None))
@@ -3090,7 +3081,6 @@ def parametres_societe(calepinage):
         return parametres_de_societe(company) or {}
     except Exception:  # un réglage illisible ne casse pas un
         # calcul de tension ; il le laisse simplement sans borne société.
-        logger.warning("parametres societe : échec ignoré, comportement dégradé", exc_info=True)
         return {}
 
 

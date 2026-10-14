@@ -65,10 +65,6 @@ from .serializers import (
     WorksheetMaintenanceModeleSerializer, TicketWorksheetSerializer,
 )
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 def _qr_data_uri(target):
     """NTMOB23 — encode ``target`` en QR PNG (data-URI), ou ``None``.
@@ -95,7 +91,6 @@ def _qr_data_uri(target):
         return 'data:image/png;base64,' + base64.b64encode(
             buf.getvalue()).decode()
     except Exception:  # pragma: no cover - défensif
-        logger.warning("qr data uri : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -522,7 +517,6 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 profil = CompanyProfile.get(company=request.user.company)
                 telephone = (getattr(profil, 'telephone', '') or '').strip()
             except Exception:
-                logger.warning("etiquettes : échec ignoré, comportement dégradé", exc_info=True)
                 telephone = ''
 
         items = []
@@ -2823,7 +2817,6 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 client_id=client_id, lignes=lignes,
                 note=f'Devis de réparation SAV — ticket {ticket.reference}')
         except Exception:
-            logger.warning("creer devis : échec ignoré, comportement dégradé", exc_info=True)
             return Response(
                 {'detail': 'Client introuvable pour votre société.'},
                 status=status.HTTP_404_NOT_FOUND)
@@ -2984,7 +2977,7 @@ class WarrantyClaimViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 if f:
                     serializer.validated_data['fournisseur_nom_cache'] = f.nom
             except Exception:
-                logger.warning("resolve fournisseur : échec ignoré, comportement dégradé", exc_info=True)
+                pass
 
     @staticmethod
     def _poser_dates_statut(claim):

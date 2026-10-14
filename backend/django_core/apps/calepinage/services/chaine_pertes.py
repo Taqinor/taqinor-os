@@ -80,10 +80,6 @@ from apps.calepinage.services.site import (
 )
 from .valeurs import nombre as _flottant
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 #: L'ORDRE DE LA CHAÎNE — le seul endroit du dépôt qui le déclare (CALX148).
 #: ``services/pertes.py::CATALOGUE`` est un TUPLE de noms sans rang, et
 #: ``pertes_politique.py`` les somme : l'ordre n'existe QUE ci-dessous.
@@ -2004,7 +2000,6 @@ def _part_saisonniere_minutes(fuseau, moment):
 
         saison = moment.replace(tzinfo=ZoneInfo(fuseau)).dst()
     except Exception:       # pragma: no cover - dépend de la base installée
-        logger.warning("part saisonniere minutes : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if saison is None:
         return None

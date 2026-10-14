@@ -7,10 +7,6 @@ Comportement strictement identique aux requêtes inline d'origine.
 """
 from django.db.models import Sum
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 def installation_for_devis(devis, company=None):
     """Le chantier lié à un devis (ou None). Lecture seule.
@@ -486,7 +482,6 @@ def _devis_totaux_programme(projet):
             total_ht += _dec(devis.total_ht)
             total_ttc += _dec(devis.total_ttc)
         except Exception:  # pragma: no cover - défensif
-            logger.warning("devis totaux programme : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return total_ht, total_ttc
 
@@ -656,7 +651,6 @@ def _factures_revenu_programme(projet, company):
             revenu_ht += _dec(facture.total_ht)
             revenu_ttc += _dec(facture.total_ttc)
         except Exception:  # pragma: no cover - défensif
-            logger.warning("factures revenu programme : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return revenu_ht, revenu_ttc
 
@@ -1566,7 +1560,7 @@ def chantier_card(chantier_id, company):
     try:
         parts.append(chantier.get_statut_display())
     except Exception:  # pragma: no cover - défensif
-        logger.warning("chantier card : échec ignoré, comportement dégradé", exc_info=True)
+        pass
     client = getattr(chantier, 'client', None)
     if client is not None:
         parts.append(str(client))
@@ -1935,7 +1929,6 @@ def _bin_cible_regle(company, produit_id, emplacement_id=None):
         from apps.stock.selectors import get_produit_scoped
         produit = get_produit_scoped(company, produit_id)
     except Exception:  # pragma: no cover - defensif
-        logger.warning("bin cible regle : échec ignoré, comportement dégradé", exc_info=True)
         produit = None
     categorie_nom = (
         getattr(produit.categorie, 'nom', None)

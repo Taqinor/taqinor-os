@@ -9,10 +9,6 @@ from django.utils import timezone
 # utilisé par la GED/KB) : aucune dépendance nouvelle, aucun service externe.
 from pgvector.django import VectorField
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 class TimestampedModel(models.Model):
     """
@@ -1187,7 +1183,6 @@ class MatriceApprobation(TenantModel):
         try:
             montant = Decimal(str(montant))
         except Exception:
-            logger.warning("couvre : échec ignoré, comportement dégradé", exc_info=True)
             return False
         if self.montant_min is not None and montant < self.montant_min:
             return False
@@ -3175,17 +3170,15 @@ class MaintenanceMode(TimestampedModel):
             if cached is not None:
                 return bool(cached)
         except Exception:  # noqa: BLE001 — cache KO → lit la DB
-            logger.debug("is active : échec ignoré, comportement dégradé", exc_info=True)
             cached = None
         try:
             actif = cls.get_solo().actif
         except Exception:  # noqa: BLE001 — DB KO → service ouvert (fail-open)
-            logger.warning("is active : échec ignoré, comportement dégradé", exc_info=True)
             return False
         try:
             cache.set(cls.CACHE_KEY, actif, cls.CACHE_TTL)
         except Exception:  # noqa: BLE001 — cache KO → tant pis
-            logger.warning("is active : échec ignoré, comportement dégradé", exc_info=True)
+            pass
         return bool(actif)
 
     @classmethod
@@ -3200,7 +3193,7 @@ class MaintenanceMode(TimestampedModel):
         try:
             cache.set(cls.CACHE_KEY, obj.actif, cls.CACHE_TTL)
         except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB
-            logger.warning("set active : échec ignoré, comportement dégradé", exc_info=True)
+            pass
         return obj
 
 

@@ -39,10 +39,6 @@ from core.models import TenantModel
 
 from .dateutils import add_months
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 
 # ── FG81 — Réglages SLA par société ──────────────────────────────────────────
 
@@ -1733,7 +1729,6 @@ class ContratMaintenance(models.Model):
             from apps.notifications.calendar_utils import prochain_jour_ouvre
             return prochain_jour_ouvre(cible, self.company)
         except Exception:  # noqa: BLE001 — calendrier absent → date brute
-            logger.warning("prochaine visite : échec ignoré, comportement dégradé", exc_info=True)
             return cible
 
     # ── AUD502 / décision fondateur D13 (03/09/2026) — expiration réelle ────

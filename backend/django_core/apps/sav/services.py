@@ -94,7 +94,6 @@ def creer_equipement_import(company, champs, *, produit, installation,
         # continue — le savepoint annule cette ligne seule.
         return 'doublon', None
     except Exception as exc:  # pragma: no cover - défensif
-        logger.warning("creer equipement import : échec ignoré, comportement dégradé", exc_info=True)
         return 'erreur', str(exc)
 
     return 'cree', None
@@ -1129,7 +1128,7 @@ def creer_equipement_depuis_vente_pos(*, company, produit, client,
         marquer_serie_entrepot_sortie(
             company=company, produit_id=produit.id, numero_serie=serie)
     except Exception:  # pragma: no cover - défensif (best-effort)
-        logger.warning("creer equipement depuis vente pos : échec ignoré, comportement dégradé", exc_info=True)
+        pass
 
     return equip
 
@@ -1396,7 +1395,6 @@ def suggerer_triage_ticket(*, company, description):
         contenu = _appeler_groq(_TRIAGE_SYSTEM_PROMPT, user_prompt)
         suggestion = json.loads(contenu)
     except Exception as exc:  # pragma: no cover - dépend d'un service externe
-        logger.warning("suggerer triage ticket : échec ignoré, comportement dégradé", exc_info=True)
         return {'disponible': True, 'suggestion': None, 'erreur': str(exc)}
 
     return {'disponible': True, 'suggestion': suggestion,
@@ -1425,7 +1423,7 @@ def notify_followers(ticket, *, event_type, title, body='', link=None,
                 user=user, event_type=event_type, title=title, body=body,
                 link=link, company=ticket.company)
         except Exception:  # pragma: no cover - best-effort, jamais bloquant
-            logger.warning("notify followers : échec ignoré, comportement dégradé", exc_info=True)
+            pass
 
 
 # ── ARC37 — sav devient émetteur du bus (core.events) ───────────────────────
@@ -1448,7 +1446,7 @@ def emettre_ticket_resolu(ticket, *, company, user=None, ancien_statut):
             sender=None, ticket=ticket, company=company, user=user,
             ancien_statut=ancien_statut)
     except Exception:  # pragma: no cover - défensif (best-effort)
-        logger.warning("emettre ticket resolu : échec ignoré, comportement dégradé", exc_info=True)
+        pass
 
 
 def emettre_changement_statut_ticket(ticket, *, company, user=None,
@@ -1479,7 +1477,7 @@ def emettre_changement_statut_ticket(ticket, *, company, user=None,
             },
             user=user)
     except Exception:  # pragma: no cover - défensif (best-effort)
-        logger.warning("emettre changement statut ticket : échec ignoré, comportement dégradé", exc_info=True)
+        pass
 
 
 # ── ASAV12 — LE service unique de transition de statut d'un ticket ──────────
@@ -1804,7 +1802,6 @@ def _delai_intervention_societe(company):
     try:
         return CompanyProfile.get(company=company).delai_intervention_suivi_heures
     except Exception:  # noqa: BLE001 — profil absent : non engagé
-        logger.warning("delai intervention societe : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -2468,7 +2465,6 @@ def _notifier_demande_contrat_maintenance(contrat, titre):
     try:
         from apps.notifications.services import notify_many, resolve_recipients
     except Exception:  # pragma: no cover - app notifications absente
-        logger.warning("notifier demande contrat maintenance : échec ignoré, comportement dégradé", exc_info=True)
         return
     client_nom = str(contrat.client) if contrat.client_id else 'Un client'
     body = (f'{client_nom} a demandé « {titre.lower()} » sur son contrat de '
