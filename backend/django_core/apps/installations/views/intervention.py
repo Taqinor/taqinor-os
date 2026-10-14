@@ -2588,14 +2588,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     # ── XFSM3 — Replanification en masse d'une journée ──────────────────────
     @oa.extend_schema(
         parameters=[oa.qb('simuler')],
-        request=oa.body(
-            'ReplanifierEnMasseRequete',
-            jour=oa.d(True),
-            technicien=oa.i(null=True),
-            intervention_ids=oa.ints(),
-            simuler=oa.b(),
-            motif=oa.s(),
-        ),
+        request=oa.ReplanifierEnMasseRequete,  # ERR-ENF11 : déclaration = validation
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['post'], url_path='replanifier-en-masse',
@@ -2607,24 +2600,13 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         `?simuler=1` (ou body `simuler`) ne mute rien — dry-run des
         propositions XFSM2. Sans dry-run, applique + trace FG78 + notifie.
         Corps : {jour, [technicien], [intervention_ids], [motif]}."""
-        from datetime import datetime
-        from rest_framework.exceptions import ValidationError
         from .. import services
 
-        jour_raw = request.data.get('jour')
-        if not jour_raw:
-            raise ValidationError({'jour': 'Jour requis.'})
-        try:
-            jour = datetime.strptime(jour_raw, '%Y-%m-%d').date()
-        except (TypeError, ValueError):
-            raise ValidationError({'jour': 'Date invalide.'})
-
-        technicien_id = request.data.get('technicien')
-        intervention_ids = request.data.get('intervention_ids')
-        simuler = str(
-            request.data.get('simuler')
-            or request.query_params.get('simuler') or '').lower() in (
-            '1', 'true', 'yes')
+        corps = oa.corps_valide(oa.ReplanifierEnMasseRequete, request)
+        jour = corps['jour']
+        technicien_id = corps.get('technicien')
+        intervention_ids = corps.get('intervention_ids')
+        simuler = corps['simuler'] or oa.drapeau_requete(request, 'simuler')
 
         if simuler:
             data = services.previsualiser_replanification_masse(
@@ -2632,7 +2614,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 intervention_ids=intervention_ids)
             return Response(data)
 
-        motif = request.data.get('motif')
+        motif = corps.get('motif')
         data = services.appliquer_replanification_masse(
             request.user.company, jour=jour, motif=motif, user=request.user,
             technicien_id=technicien_id, intervention_ids=intervention_ids)

@@ -90,6 +90,20 @@ class ReservesChantierTests(TestCase):
         r = self.api.get(f'{BASE}/chantiers/{inst_autre.id}/reserves/')
         self.assertEqual(r.status_code, 404)
 
+    def test_lever_rid_hors_borne_404_et_resolution_typee(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — un `rid` au-delà de la clé entière
+        # PostgreSQL rendait une réponse vide sans Content-Type : 404 JSON ;
+        # `resolution: 0` n'est plus avalé par un `or ''` (400).
+        r = self.api.post(f'{self.url}37970605590221951622647947373513489266/lever/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r['Content-Type'], 'application/json')
+        r = self._ajouter()
+        r = self.api.post(f"{self.url}{r.data['id']}/lever/",
+                          {'resolution': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('resolution', r.data)
+
     def test_company_jamais_prise_du_corps(self):
         autre = make_company()
         r = self._ajouter(company=autre.id)

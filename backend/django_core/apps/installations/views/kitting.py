@@ -207,7 +207,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return Response(RevisionKitSerializer(revision).data)
 
-    @oa.extend_schema(request=oa.body('DupliquerKitRequete', facteur_echelle=oa.dec()), responses={201: KitSerializer})
+    @oa.extend_schema(request=oa.body('DupliquerKitRequete', facteur_echelle=oa.dec(null=True)), responses={201: KitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, pk=None):
         """XMFG18 — duplique ce kit (en-tête + composants), avec facteur
@@ -215,7 +215,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         reçoit sa révision n°1."""
         from ..services import dupliquer_kit
         kit = self.get_object()
-        facteur = request.data.get('facteur_echelle')
+        facteur = oa.corps_objet(request).get('facteur_echelle')
         try:
             copie = dupliquer_kit(
                 kit, user=request.user, facteur_echelle=facteur)

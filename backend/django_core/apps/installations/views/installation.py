@@ -1493,7 +1493,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                         status=status.HTTP_201_CREATED)
 
     @oa.extend_schema(
-        parameters=[oa.OpenApiParameter('rid', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)],
+        parameters=[oa.OpenApiParameter('rid', oa.ID_SCHEMA, oa.OpenApiParameter.PATH)],
         request=oa.body('LeverReserveRequete', resolution=oa.s()),
         responses=oa.OBJ,
     )
@@ -1506,13 +1506,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from django.db.models import Q
         from ..services import lever_reserve_chantier, reserve_contrat
         inst = self.get_object()
+        # ERR-ENF11 : un `rid` hors clé entière PostgreSQL est une réserve
+        # introuvable (404 JSON), jamais une erreur de base.
         reserve = Reserve.objects.filter(
             Q(installation=inst) | Q(intervention__installation=inst),
-            company=inst.company, pk=rid).first()
+            company=inst.company, pk=rid).first() if int(rid) <= oa.ID_MAX else None
         if reserve is None:
             return Response({'detail': 'Réserve introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
-        resolution = oa.corps_objet(request).get('resolution') or ''
+        resolution = oa.corps_objet(request).get('resolution', '')
         if not isinstance(resolution, str):
             return Response({'resolution': 'Texte attendu.'},
                             status=status.HTTP_400_BAD_REQUEST)

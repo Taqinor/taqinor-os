@@ -28,8 +28,10 @@ class FieldSyncView(APIView):
 
     @extend_schema(
         request=inline_serializer('FieldSyncRequete', fields={
+            # ERR-ENF11 : un élément non objet est une erreur PAR opération
+            # (200, lot appliqué), jamais un refus du lot ; plafond MAX_BATCH.
             'ops': serializers.ListField(
-                child=serializers.DictField(),
+                child=serializers.JSONField(), max_length=field_sync.MAX_BATCH,
                 help_text='Lot {client_op_id, op_type, payload}.'),
         }),
         responses={200: inline_serializer('FieldSyncResultat', fields={

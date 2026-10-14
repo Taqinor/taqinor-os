@@ -17,9 +17,12 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (  # noqa: F401  (ré-exportés)
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+
+from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict, date_ou_400
 
 UPLOAD_PARSERS = [MultiPartParser, FormParser]
 JSON_AND_UPLOAD_PARSERS = [JSONParser, MultiPartParser, FormParser]
@@ -87,9 +90,21 @@ def dt(required=False, null=False, **kw):
     return serializers.DateTimeField(required=required, allow_null=null, **kw)
 
 
+#: ERR-ENF11-FUZZ-INSTALLATIONS — décimal tel que les vues le LISENT
+#: (``Decimal(str(x))``) : un nombre JSON ou une chaîne décimale.
+DECIMAL_SOUPLE = {'oneOf': [
+    {'type': 'number'}, {'type': 'string', 'pattern': r'^-?\d+(\.\d+)?$'}]}
+
+
+@extend_schema_field(DECIMAL_SOUPLE)
+class DecimalSouple(serializers.CharField):
+    """Champ de DÉCLARATION (corps lus à la main) : nombre ou chaîne décimale."""
+
+
 def dec(required=False, null=False, **kw):
-    # Décimal accepté en nombre OU en chaîne par le code (Decimal(str(x))).
-    return serializers.CharField(
+    # Décimal accepté en nombre OU en chaîne par le code (Decimal(str(x))) :
+    # le schéma le dit (il annonçait une chaîne libre, nombre exclu).
+    return DecimalSouple(
         required=required, allow_null=null, allow_blank=False, **kw)
 
 
@@ -223,7 +238,6 @@ def id_requete(request, nom, requis=False):
 
 
 def _valider_filtres(request, entiers, dates):
-    from core.champs_stricts import date_ou_400
     for nom in entiers:
         id_requete(request, nom)
     for nom in dates:
@@ -260,3 +274,43 @@ def listing(*args, **kw):
             cls.initial = initial
         return cls
     return appliquer
+
+
+# ── ERR-ENF11-FUZZ-INSTALLATIONS : corps VALIDÉS des actions lues à la main ──
+# Le sérialiseur est À LA FOIS la déclaration OpenAPI (nom du composant
+# inchangé) et la validation : un champ mal typé → 400 le nommant.
+def corps_valide(classe, request):
+    """Valide ``request.data`` par ``classe`` (400 sinon) et rend ses données."""
+    serialiseur = classe(data=request.data)
+    serialiseur.is_valid(raise_exception=True)
+    return serialiseur.validated_data
+
+
+def _id_strict(**kw):
+    return EntierStrict(min_value=1, max_value=ID_MAX, **kw)
+
+
+class ReplanifierEnMasseRequete(serializers.Serializer):
+    """XFSM3 — {jour, [technicien], [intervention_ids], [simuler], [motif]}."""
+    jour = serializers.DateField()
+    technicien = _id_strict(required=False, allow_null=True)
+    intervention_ids = serializers.ListField(
+        child=_id_strict(), required=False, max_length=500)
+    simuler = BooleenStrict(required=False, default=False)
+    motif = ChaineStricte(required=False, allow_blank=True)
+
+
+#: Drapeau de requête publié booléen : ces valeurs, rien d'autre.
+_DRAPEAUX = {'true': True, '1': True, 'false': False, '0': False}
+
+
+def drapeau_requete(request, nom):
+    """Booléen du paramètre ``nom`` : absent → ``False`` ; ``true``/``1``/
+    ``false``/``0`` → sa valeur ; autre forme → 400 nommant le paramètre
+    (``null`` était lu « non » en silence)."""
+    brut = request.query_params.get(nom)
+    if brut is None:
+        return False
+    if brut.lower() not in _DRAPEAUX:
+        raise ValidationError({nom: 'Booléen attendu (true/false).'})
+    return _DRAPEAUX[brut.lower()]

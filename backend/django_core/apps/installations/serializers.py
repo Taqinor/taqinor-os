@@ -2788,7 +2788,7 @@ class RetourLivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         ]
 
 
-class CategorieStockageSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
+class CategorieStockageSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """ZSTK9 - categorie de stockage (capacite/compatibilite) posable sur un
     BinLocation. Societe posee COTE SERVEUR."""
 
