@@ -14,7 +14,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.parsers import JSONParser
 
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import BooleenStrict, ChampsStrictsSansDecimalMixin
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -69,7 +69,7 @@ def _instance_field_context(instance):
     return out
 
 
-class UiActionBoutonSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class UiActionBoutonSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
 
     class Meta:
@@ -165,7 +165,7 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
         return Response({'ok': ok, 'message': message})
 
 
-class UiOngletCustomSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class UiOngletCustomSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
 
     class Meta:

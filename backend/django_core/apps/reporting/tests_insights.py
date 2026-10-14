@@ -107,6 +107,17 @@ class TestAuditLog(InsightsBase):
         body = b''.join(x.streaming_content) if x.streaming else x.content
         self.assertTrue(body.startswith(b'PK'))
 
+    def test_limit_illisible_400_et_cf_group_by_vide_400(self):
+        """ERR-ENF11-FUZZ-REPORTING — ``limit=abc`` n'est plus avalé en 200 ;
+        ``cf-group-by`` sans module ni code = 400."""
+        resp = self.api.get(f'{BASE}/audit-log/?limit=abc')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('limit', resp.data)
+        self.assertEqual(
+            self.api.get(f'{BASE}/audit-log/?limit=5').status_code, 200)
+        vide = self.api.get(f'{BASE}/cf-group-by/?module=&code=')
+        self.assertEqual(vide.status_code, 400)
+
     def test_deep_link_object_ref(self):
         # N83 (L16) — chaque ligne porte object_type + object_id pour lier vers
         # la fiche concernée (lead/devis/chantier/ticket).

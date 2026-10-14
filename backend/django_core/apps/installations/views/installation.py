@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy,
 )
+from core.champs_stricts import nombre_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
 
@@ -408,13 +409,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from ..regime import suggest_for_company, regime_thresholds
         from ..models import Installation
         params = request.query_params
-        kwc = params.get('kwc')
+        kwc = nombre_ou_400(params.get('kwc'), 'kwc')  # ERR-ENF11 : 400 si illisible
         hors_reseau = str(params.get('hors_reseau', '')).strip(
         ).lower() in ('1', 'true', 'oui', 'yes')
         company = request.user.company
         code = suggest_for_company(
             kwc, company, hors_reseau=hors_reseau,
-            kw_ac=params.get('kw_ac'), niveau=params.get('niveau'),
+            kw_ac=nombre_ou_400(params.get('kw_ac'), 'kw_ac'),
+            niveau=params.get('niveau'),
             type_installation=params.get('type_installation'))
         label = dict(Installation.Regime8221.choices).get(code, code)
         seuil_decl, seuil_anre = regime_thresholds(company)

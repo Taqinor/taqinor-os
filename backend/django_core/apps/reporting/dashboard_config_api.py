@@ -19,6 +19,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.mixins import TenantMixin
 
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ListeJSON
 
 from .models import (
     DashboardConfig,
@@ -35,6 +36,10 @@ class DashboardConfigSerializer(SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
     # AANA17 — une config ne peut viser qu'un utilisateur de LA société.
     same_company_fields = ('user',)
+    # ERR-ENF11-FUZZ-REPORTING — liste de clés de cartes publiée comme telle
+    # (``{}`` ou ``null`` étaient conformes au schéma ``{}`` puis refusés).
+    cards = ListeJSON(element=str, required=False, items={
+        'type': 'string', 'enum': list(ALL_DASHBOARD_CARDS)})
 
     class Meta:
         model = DashboardConfig

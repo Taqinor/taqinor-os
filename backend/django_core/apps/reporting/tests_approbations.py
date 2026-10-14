@@ -149,6 +149,17 @@ class TestApprobationsDecision(ApprobationsBase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_corps_non_objet_ou_hors_schema_400(self):
+        """ERR-ENF11-FUZZ-REPORTING — un corps liste levait AttributeError
+        (500) ; une source ou une décision hors énumération = 400."""
+        for corps in ([None, None], {'source': 'x', 'id': 1,
+                                     'decision': 'approuver'},
+                      {'source': 'automation', 'id': 1, 'decision': 'oui'}):
+            with self.subTest(corps=corps):
+                resp = self.resp_api.post(
+                    self._decide_url(), corps, format='json')
+                self.assertEqual(resp.status_code, 400)
+
     def test_reject_with_motif_installations(self):
         # VX101 — décider une source `installations` exige le tier
         # Responsable/Admin : utilise `resp_api` (rôle normal → voir

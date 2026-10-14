@@ -46,7 +46,8 @@ from django.db import models
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
-from .champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsMixin
+from .champs_stricts import (
+    BooleenStrict, ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin)
 from .conflit_etat import ConflitEtat
 from .parseurs import ListeJSON, ObjetJSON
 
@@ -254,7 +255,7 @@ class WorkflowTemplateSerializer(serializers.Serializer):
     steps = WorkflowTemplateStepSerializer(many=True)
 
 
-class WorkflowStepDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class WorkflowStepDefinitionSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — étape (modèle) d'un ``WorkflowDefinition``.
 
     Utilisée à la fois IMBRIQUÉE dans ``WorkflowDefinitionSerializer``
@@ -326,7 +327,7 @@ ETAPES_PUBLIEES = {'properties': {'steps': {'minItems': 1, 'items': {'anyOf': [
 CREATION_PUBLIEE = {**ETAPES_PUBLIEES, 'required': ['steps']}
 
 
-class WorkflowDefinitionSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class WorkflowDefinitionSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
     ses étapes imbriquées.
 
@@ -436,7 +437,7 @@ def _champ_formulaire_valide(champ):
                 and ref >= 1))
 
 
-class MatriceApprobationSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class MatriceApprobationSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL1 — matrice d'approbation d'entreprise unifiée.
 
     ``company`` imposée côté serveur (``TenantMixin``). ``chaine_paliers`` est
@@ -556,7 +557,7 @@ class FormulaireDefinitionSerializer(ChampsStrictsMixin, CompanyScopedRelationsM
         return data
 
 
-class FormulaireChampReutilisableSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class FormulaireChampReutilisableSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """NTWFL13 — champ de bibliothèque réutilisable entre formulaires."""
     # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
     # schéma ``{}`` puis refusé par le champ de modèle).
@@ -717,7 +718,7 @@ class DeletionRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSer
         return f'{ct.app_label}.{ct.model}' if ct else ''
 
 
-class ModuleToggleSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class ModuleToggleSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG391 — état d'activation d'un module par société (LECTURE SEULE).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
@@ -760,7 +761,7 @@ class TenantThemeSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class BrandedTemplateSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG393 — modèle brandé éditable (PDF/email/WhatsApp).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur). ``variables``
@@ -789,7 +790,7 @@ class BrandedTemplateSerializer(CompanyScopedRelationsMixin, serializers.ModelSe
 # schéma publiait SES champs (client_nom…) pour ``core/consent-records/`` :
 # un corps conforme y était refusé (subject_identifier/purpose requis).
 @extend_schema_serializer(component_name='ConsentementTraitement')
-class ConsentRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class ConsentRecordSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG394 — entrée du registre de consentement.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
@@ -825,7 +826,7 @@ class ConsentRecordSerializer(CompanyScopedRelationsMixin, serializers.ModelSeri
         return fields
 
 
-class DataSubjectRequestSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class DataSubjectRequestSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG394 — demande de personne concernée (accès / effacement).
 
     ``company`` n'est JAMAIS lu du corps. Le statut et le résultat sont en
@@ -850,7 +851,7 @@ class DataSubjectRequestSerializer(CompanyScopedRelationsMixin, serializers.Mode
         ]
 
 
-class RegistreTraitementSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class RegistreTraitementSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """XPLT23 — registre des traitements CNDP (loi 09-08).
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
@@ -895,7 +896,7 @@ class BackupRunSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
         ]
 
 
-class ApiUsagePlanSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class ApiUsagePlanSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG398 — plan de tarif/quota API d'une société.
 
     ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
@@ -911,7 +912,7 @@ class ApiUsagePlanSerializer(CompanyScopedRelationsMixin, serializers.ModelSeria
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class ChangelogEntrySerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
+class ChangelogEntrySerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """FG399 — note de version (journal des nouveautés).
 
     Modèle GLOBAL au produit (pas de portée société). ``lu`` indique si

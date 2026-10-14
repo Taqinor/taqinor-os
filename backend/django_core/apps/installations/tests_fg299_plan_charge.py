@@ -290,3 +290,19 @@ class TestPlanChargeTenant(TestCase):
             f'{BASE}/interventions/plan-de-charge/',
             {'debut': '2026-06-07', 'fin': '2026-06-01'})
         self.assertEqual(r.status_code, 400, r.data)
+
+    def test_endpoint_parametres_illisibles_400_nommes(self):
+        """ERR-ENF11-FUZZ-INSTALLATIONS — ``debut``/``fin`` hors AAAA-MM-JJ et
+        ``heures_par_jour`` non numérique répondent 400 (ils retombaient en
+        silence sur la semaine en cours / 8 h)."""
+        url = f'{BASE}/interventions/plan-de-charge/'
+        for params, champ in (({'debut': 'abc'}, 'debut'),
+                              ({'fin': '2026-6-7'}, 'fin'),
+                              ({'heures_par_jour': 'abc'},
+                               'heures_par_jour'),
+                              ({'heures_par_jour': 'nan'},
+                               'heures_par_jour')):
+            with self.subTest(params=params):
+                r = self.api.get(url, params)
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertIn(champ, r.data)

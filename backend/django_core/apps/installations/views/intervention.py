@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from core.champs_stricts import date_ou_400, nombre_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
 
@@ -2225,7 +2226,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Param optionnel : date (YYYY-MM-DD, défaut=aujourd'hui)."""
         from django.utils.timezone import localdate
         company = request.user.company
-        jour = request.query_params.get('date') or str(localdate())
+        jour = str(date_ou_400(request.query_params.get('date'), 'date')
+                   or localdate())
         qs = (Intervention.objects.actives()  # ACHT51 — hors annulées
               .filter(company=company, technicien=request.user, date_prevue=jour)
               .select_related('installation', 'installation__client',
@@ -2296,18 +2298,15 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``heures_par_jour`` (défaut 8). Aucun ``?format=`` —
         sortie JSON simple (export via ``?export=`` non requis ici)."""
-        from datetime import date, datetime, timedelta
+        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value):
-            try:
-                return datetime.strptime(value, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                return None
+        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
+            return date_ou_400(value, nom)
 
         params = request.query_params
-        debut = _parse(params.get('debut'))
-        fin = _parse(params.get('fin'))
+        debut = _parse(params.get('debut'), 'debut')
+        fin = _parse(params.get('fin'), 'fin')
         if debut is None:
             today = date.today()
             debut = today - timedelta(days=today.weekday())  # lundi
@@ -2317,11 +2316,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'La fin de fenêtre précède le début.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        heures = params.get('heures_par_jour')
-        try:
-            heures = float(heures) if heures not in (None, '') else 8.0
-        except (TypeError, ValueError):
-            heures = 8.0
+        heures = nombre_ou_400(
+            params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
         data = selectors.plan_de_charge_equipes(
             request.user.company, debut, fin, heures_par_jour=heures)
         return Response(data)
@@ -2338,18 +2334,15 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Pure détection, scopée société, aucun nouveau modèle.
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche). Sortie JSON simple (aucun ``?format=``)."""
-        from datetime import date, datetime, timedelta
+        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value):
-            try:
-                return datetime.strptime(value, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                return None
+        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
+            return date_ou_400(value, nom)
 
         params = request.query_params
-        debut = _parse(params.get('debut'))
-        fin = _parse(params.get('fin'))
+        debut = _parse(params.get('debut'), 'debut')
+        fin = _parse(params.get('fin'), 'fin')
         if debut is None:
             today = date.today()
             debut = today - timedelta(days=today.weekday())  # lundi
@@ -2377,18 +2370,15 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``heures_par_jour`` (défaut 8). Sortie JSON simple
         (aucun ``?format=``)."""
-        from datetime import date, datetime, timedelta
+        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value):
-            try:
-                return datetime.strptime(value, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                return None
+        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
+            return date_ou_400(value, nom)
 
         params = request.query_params
-        debut = _parse(params.get('debut'))
-        fin = _parse(params.get('fin'))
+        debut = _parse(params.get('debut'), 'debut')
+        fin = _parse(params.get('fin'), 'fin')
         if debut is None:
             today = date.today()
             debut = today - timedelta(days=today.weekday())  # lundi
@@ -2398,11 +2388,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'La fin de fenêtre précède le début.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        heures = params.get('heures_par_jour')
-        try:
-            heures = float(heures) if heures not in (None, '') else 8.0
-        except (TypeError, ValueError):
-            heures = 8.0
+        heures = nombre_ou_400(
+            params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
         data = selectors.nivellement_charge(
             request.user.company, debut, fin, heures_par_jour=heures)
         return Response(data)
@@ -2415,20 +2402,16 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """XFSM5 — proportion des arrivées dans la fenêtre promise
         (`fenetre_debut`/`fenetre_fin`), calculée au check-in GPS F6. Filtrable
         par `debut`/`fin` (bornes de `arrivee_site_le`) et `technicien`."""
-        from datetime import datetime
         from .. import selectors
 
-        def _parse(value):
-            try:
-                return datetime.strptime(value, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                return None
+        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
+            return date_ou_400(value, nom)
 
         params = request.query_params
         data = selectors.taux_ponctualite(
             request.user.company,
-            debut=_parse(params.get('debut')),
-            fin=_parse(params.get('fin')),
+            debut=_parse(params.get('debut'), 'debut'),
+            fin=_parse(params.get('fin'), 'fin'),
             technicien_id=params.get('technicien'))
         return Response(data)
 
@@ -2519,18 +2502,15 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``capacite_jour`` (défaut 1). Sortie JSON simple
         (aucun ``?format=``)."""
-        from datetime import date, datetime, timedelta
+        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value):
-            try:
-                return datetime.strptime(value, '%Y-%m-%d').date()
-            except (TypeError, ValueError):
-                return None
+        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
+            return date_ou_400(value, nom)
 
         params = request.query_params
-        debut = _parse(params.get('debut'))
-        fin = _parse(params.get('fin'))
+        debut = _parse(params.get('debut'), 'debut')
+        fin = _parse(params.get('fin'), 'fin')
         if debut is None:
             today = date.today()
             debut = today - timedelta(days=today.weekday())  # lundi
