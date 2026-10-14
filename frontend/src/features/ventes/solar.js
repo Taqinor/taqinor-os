@@ -1210,10 +1210,7 @@ const OFFGRID_KEYWORDS = ['off-grid', 'off grid', 'offgrid', 'hors reseau', 'aut
 // espace AVANT tout test de mot-clé (même règle que `solar_classification.py`
 // et le seeder, contrat `classification_lignes.json`).
 const _sansSeparateurs = (s) => _norm(s).replace(/[-_]+/g, ' ')
-const _isOffgridDesignation = (n) => {
-  const t = _sansSeparateurs(n)
-  return OFFGRID_KEYWORDS.some(k => t.includes(_sansSeparateurs(k)))
-}
+const _isOffgridDesignation = (n) => OFFGRID_KEYWORDS.some(k => _sansSeparateurs(n).includes(_sansSeparateurs(k)))
 // Incident fondateur 01/09 (round 2) — les VRAIS produits catalogue s'appellent
 // « Deye off-Grid 6kw », SANS le mot « onduleur » : le prédicat strict
 // ci-dessus (exigeant « onduleur ») les rendait invisibles (0 onduleur

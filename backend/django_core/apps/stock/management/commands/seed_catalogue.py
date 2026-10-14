@@ -228,12 +228,9 @@ def is_offgrid(nom):
     « off_grid »), même normalisation que ``solar_classification`` et
     ``solar.js`` (cas du contrat ``classification_lignes.json``)."""
     d = re.sub(r'[-_]+', ' ', (nom or '').lower())
-    mots = {re.sub(r'[-_]+', ' ', k) for k in OFFGRID_KEYWORDS}
-    if not any(k in d for k in mots) or 'hybride' in d:
+    if not any(re.sub(r'[-_]+', ' ', k) in d for k in OFFGRID_KEYWORDS) or 'hybride' in d:
         return False
-    if 'onduleur' in d:
-        return True
-    return not any(k in d for k in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
+    return 'onduleur' in d or not any(k in d for k in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
 
 
 def taux_tva_for(nom):
