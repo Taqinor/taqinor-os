@@ -20,9 +20,9 @@ from authentication.permissions import (
 )
 from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
-from ..openapi_helpers import INT, P, STR, corps
+from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
-from ..utils.params import corps_objet
+from ..utils.params import corps_objet, entier_ou_400, id_requete_ou_400, valeur_unique_ou_400
 
 from ..models import (
     AccordRFAFournisseur, DeclarationConsommation, DepotConsignation,
@@ -497,8 +497,8 @@ class AtpProduitMixin:
         return Response(atp_produit(request.user.company, self.get_object()))
 
 
-@extend_schema(parameters=[P('client', INT), P('categorie', INT), P('marque', STR), P('q', STR), P('limite', INT),
-                           P('offset', INT)], responses={
+@extend_schema(parameters=[P('client', ID_OU_VIDE), P('categorie', ID_OU_VIDE), P('marque', STR), P('q', STR),
+                           P('limite', INT, maxi=2147483647), P('offset', INT, maxi=2147483647)], responses={
     200: inline_serializer('StockCatalogueB2b', {
         'client': serializers.IntegerField(allow_null=True),
         'total': serializers.IntegerField(),
@@ -525,7 +525,10 @@ def catalogue_b2b_view(request):
 
     company = request.user.company
     client = None
-    client_id = request.query_params.get('client')
+    # CI #997 fuzz — paramètres stricts (``?offset=null`` retombait sur 0).
+    client_id = id_requete_ou_400(request, 'client')
+    limite, offset = (entier_ou_400(valeur_unique_ou_400(request, nom), nom, defaut, maxi=2147483647)
+                      for nom, defaut in (('limite', 50), ('offset', 0)))
     if client_id:
         client = get_company_client(company, client_id)
         if client is None:
@@ -534,11 +537,10 @@ def catalogue_b2b_view(request):
                             status=status.HTTP_404_NOT_FOUND)
     return Response(catalogue_b2b(
         company, client,
-        categorie=request.query_params.get('categorie'),
+        categorie=id_requete_ou_400(request, 'categorie'),
         marque=request.query_params.get('marque'),
         recherche=request.query_params.get('q') or '',
-        limite=request.query_params.get('limite') or 50,
-        offset=request.query_params.get('offset') or 0))
+        limite=limite, offset=offset))
 
 
 # ═══════════════════════════════════════════════════════════════════════════

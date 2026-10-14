@@ -141,3 +141,8 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
 #: « date OU chaîne vide », ce que le serveur accepte.
 DATE_OU_VIDE = {'oneOf': [
     {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+#: CI #997 fuzz — filtre d'identifiant lu par ``utils.params.id_requete_ou_400`` :
+#: un id 1..2147483647, ou la chaîne vide (= filtre non posé).
+ID_OU_VIDE = {'oneOf': [
+    {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}, {'type': 'string', 'enum': ['']}]}

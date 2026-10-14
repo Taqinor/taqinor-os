@@ -429,3 +429,28 @@ class CorpsFuzzTests(TestCase):
             'fournisseur': self.fa.id, 'ref_fournisseur': '', 'date_facture': '0001-01-01',
             'montant_ttc': '0', 'lignes': []}, format='json')
         self.assertLess(r.status_code, 500, r.content)
+
+    def test_fuzz_ci997_filtres_requete_stricts(self):
+        api = self._api_admin()
+        refuses = (
+            'produits/?entite=null&entite=null', 'profils-saisonniers/?actif=null&actif=null',
+            'blocages-qualite/?produit=null&produit=null', 'budgets-departement/?actif=null&actif=null',
+            'budgets-departement/?annee=99999999999', 'retours-client/?client=null&client=null',
+            'catalogue-achat/?recent=null&recent=null', 'quais/?actif=null&actif=null',
+            'quais/planning/?date=2026-01-05&quai=null&quai=null', 'catalogue-b2b/?offset=null&offset=null',
+            'rendez-vous-transporteur/?quai=null&quai=null', 'mouvements/?date_min=abc',
+            'mouvements/agregation/?date_max=abc', 'mouvements/?produit=null',
+        )
+        for fin in refuses:
+            with self.subTest(url=fin):
+                self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 400)
+        acceptes = (
+            'produits/?entite=', 'profils-saisonniers/?actif=true', f'blocages-qualite/?produit={self.pa.id}',
+            'budgets-departement/?annee=2026&mois=0&actif=false', 'quais/?actif=1',
+            'catalogue-b2b/?offset=0&limite=10', 'mouvements/?date_min=', 'mouvements/agregation/?date_min=',
+        )
+        for fin in acceptes:
+            with self.subTest(url=fin):
+                self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 200)
+        r = api.post(f'{BASE}/mouvements/export-xlsx/?date_min=')
+        self.assertEqual(r.status_code, 200, r.content)

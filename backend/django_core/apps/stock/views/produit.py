@@ -16,10 +16,10 @@ from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from core.entite_scoping import EntiteScopeMixin
-from ..openapi_helpers import BINARY, DATE, DATE_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
+from ..openapi_helpers import BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
 from ..utils.params import (
     MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400,
-    id_corps, ids_requete_ou_400,
+    id_corps, id_requete_ou_400, ids_requete_ou_400,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
@@ -297,7 +297,7 @@ def _texte_references(comptes):
                                                      'Id(s) de catégorie, séparés par virgule'),
                                                    P('show_archived', STR, False,
                                                      'true pour inclure les produits archivés', ['true', 'false']),
-                                                   P('entite', INT, False,
+                                                   P('entite', ID_OU_VIDE, False,
                                                      'Filtre optionnel par entité juridique (NTADM2)')]))
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
@@ -419,6 +419,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return [IsAdminRole()]
 
     def get_queryset(self):
+        # CI #997 fuzz — ``?entite=null`` était ignoré en silence (filtre NTADM2) : 400.
+        id_requete_ou_400(self.request, 'entite')
         qs = super().get_queryset()
         # ── STKCAT6 — filtre MANUEL par CATÉGORIE (`?categorie=<id[,id]>`) ──
         # Posé JUSTE APRÈS le scoping société de ``super()`` (donc avant les

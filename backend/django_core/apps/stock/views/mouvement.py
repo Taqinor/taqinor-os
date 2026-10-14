@@ -5,10 +5,10 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
-from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, STR, XLSX, corps
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, ID_OU_VIDE, LISTE, P, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, MouvementStock
-from ..utils.params import choix_ou_400
+from ..utils.params import choix_ou_400, date_ou_400, id_requete_ou_400
 from ..serializers import MouvementStockSerializer
 from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
 import logging
@@ -24,8 +24,8 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('type_mouvement', STR, False, 'Type de mouvement'),
-                                                   P('produit', INT, False, 'Produit (id)'),
-                                                   P('date_min', DATE), P('date_max', DATE)]))
+                                                   P('produit', ID_OU_VIDE, False, 'Produit (id)'),
+                                                   P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE)]))
 class MouvementStockViewSet(CompanyScopedModelViewSet):
     # ARC4 — sweep : base transverse unique (TenantMixin + ModelViewSet, via
     # CompanyScopedModelViewSet). get_queryset AJOUTE le garde-fou
@@ -69,20 +69,22 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
         type_mv = params.get('type_mouvement')
         if type_mv:
             qs = qs.filter(type_mouvement=type_mv)
-        produit_id = params.get('produit')
-        if produit_id:
+        # CI #997 fuzz — bornes publiées « date OU vide » et lues strictement
+        # (``abc`` faisait un 500 ORM) ; produit : id entier ou vide.
+        produit_id = id_requete_ou_400(self.request, 'produit')
+        if produit_id is not None:
             qs = qs.filter(produit_id=produit_id)
-        date_min = params.get('date_min')
+        date_min = date_ou_400(params.get('date_min'), 'date_min')
         if date_min:
             qs = qs.filter(date__date__gte=date_min)
-        date_max = params.get('date_max')
+        date_max = date_ou_400(params.get('date_max'), 'date_max')
         if date_max:
             qs = qs.filter(date__date__lte=date_max)
         return qs
 
     @extend_schema(request=None, parameters=[P('type_mouvement', STR, False, 'Type de mouvement'),
-                                             P('produit', INT, False, 'Produit (id)'),
-                                             P('date_min', DATE), P('date_max', DATE)],
+                                             P('produit', ID_OU_VIDE, False, 'Produit (id)'),
+                                             P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE)],
                    responses={XLSX: BINARY,
                               202: corps('MouvementsExportAsyncReponse', detail=serializers.CharField(),
                                          job_id=serializers.IntegerField(), statut=serializers.CharField(),
@@ -136,8 +138,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_202_ACCEPTED)
 
     @extend_schema(parameters=[P('group_by', STR, False, 'Regroupement', ['produit', 'type', 'mois', 'emplacement']),
-                               P('date_min', DATE), P('date_max', DATE), P('export', STR, False,
-                                                                           'xlsx pour télécharger', ['xlsx'])],
+                               P('date_min', DATE_OU_VIDE), P('date_max', DATE_OU_VIDE),
+                               P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])],
                    responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='agregation',
             permission_classes=[IsAnyRole])
@@ -152,8 +154,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
         try:
             rows = mouvements_agreges(
                 request.user.company, group_by=group_by,
-                date_min=request.query_params.get('date_min'),
-                date_max=request.query_params.get('date_max'))
+                date_min=date_ou_400(request.query_params.get('date_min'), 'date_min'),
+                date_max=date_ou_400(request.query_params.get('date_max'), 'date_max'))
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

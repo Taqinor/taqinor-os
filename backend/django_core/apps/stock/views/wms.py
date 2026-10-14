@@ -10,10 +10,12 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from ..openapi_helpers import BINARY, BOOL, DATE, DATE_OU_VIDE, INT, OBJET, P, PDF, STR, corps
+from ..openapi_helpers import BINARY, BOOL, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, OBJET, P, PDF, STR, corps
 from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
-from ..utils.params import corps_objet, entier_ou_400, id_corps
+from ..utils.params import (
+    booleen_requete_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps, id_requete_ou_400,
+)
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -472,12 +474,13 @@ class QuaiViewSet(CompanyScopedModelViewSet):
         type_quai = params.get('type_quai')
         if type_quai:
             qs = qs.filter(type_quai=type_quai)
-        actif = params.get('actif')
-        if actif in ('true', 'false'):
-            qs = qs.filter(actif=(actif == 'true'))
+        actif = booleen_requete_ou_400(self.request, 'actif')  # CI #997 : `null` -> 400
+        if actif is not None:
+            qs = qs.filter(actif=actif)
         return qs
 
-    @extend_schema(parameters=[P('date', DATE, True), P('vue', STR, False, 'Vue', ['jour', 'semaine']), P('quai', INT)],
+    @extend_schema(parameters=[P('date', DATE, True), P('vue', STR, False, 'Vue', ['jour', 'semaine']),
+                               P('quai', ID_OU_VIDE)],
                    responses=OBJET)
     @action(detail=False, methods=['get'], url_path='planning')
     def planning(self, request):
@@ -489,14 +492,14 @@ class QuaiViewSet(CompanyScopedModelViewSet):
             donnees = planning_quais(
                 request.user.company, date_str=request.query_params.get('date'),
                 vue=request.query_params.get('vue') or 'jour',
-                quai_id=request.query_params.get('quai'))
+                quai_id=id_requete_ou_400(request, 'quai'))
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(donnees)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('quai', INT), P('date', DATE), P('statut', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[P('quai', ID_OU_VIDE), P('date', DATE_OU_VIDE), P('statut', STR)]))
 class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
     """NTWMS7 — créneaux transporteur sur un quai.
 
@@ -521,10 +524,11 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
-        quai = params.get('quai')
-        if quai and str(quai).isdigit():
-            qs = qs.filter(quai_id=int(quai))
-        date = params.get('date')
+        # CI #997 fuzz — filtres stricts (``?quai=null`` était ignoré en silence).
+        quai = id_requete_ou_400(self.request, 'quai')
+        if quai is not None:
+            qs = qs.filter(quai_id=quai)
+        date = date_ou_400(params.get('date'), 'date')
         if date:
             qs = qs.filter(date_heure_debut__date=date)
         statut = params.get('statut')
@@ -819,7 +823,7 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
         return Response(resultat, status=status.HTTP_201_CREATED)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('produit', INT), P('bin', INT)]))
+@extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('produit', ID_OU_VIDE), P('bin', ID_OU_VIDE)]))
 class BlocageQualiteViewSet(CompanyScopedModelViewSet):
     """NTWMS31 — quarantaine qualité : ce qui est physiquement là mais
     qualitativement bloqué.
@@ -847,12 +851,13 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
-        produit = params.get('produit')
-        if produit and str(produit).isdigit():
-            qs = qs.filter(produit_id=int(produit))
-        bin_id = params.get('bin')
-        if bin_id and str(bin_id).isdigit():
-            qs = qs.filter(bin_id=int(bin_id))
+        # CI #997 fuzz — filtres stricts (``?produit=null`` était ignoré).
+        produit = id_requete_ou_400(self.request, 'produit')
+        if produit is not None:
+            qs = qs.filter(produit_id=produit)
+        bin_id = id_requete_ou_400(self.request, 'bin')
+        if bin_id is not None:
+            qs = qs.filter(bin_id=bin_id)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -913,7 +918,7 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         leves = lever_quarantaine_bin(
             company=request.user.company, bin_id=bin_id,
             user=request.user)
-        return Response({'bin': bin_id, 'blocages_leves': leves})
+        return Response({'bin': int(bin_id), 'blocages_leves': leves})
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))
@@ -1074,7 +1079,7 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
                         status=status.HTTP_201_CREATED)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('client', INT)]))
+@extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('client', ID_OU_VIDE)]))
 class RetourClientViewSet(CompanyScopedModelViewSet):
     """NTWMS23 — retours client (RMA) côté entrepôt.
 
@@ -1103,9 +1108,9 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
-        client = params.get('client')
-        if client and str(client).isdigit():
-            qs = qs.filter(client_id=int(client))
+        client = id_requete_ou_400(self.request, 'client')  # CI #997 : `null` -> 400
+        if client is not None:
+            qs = qs.filter(client_id=client)
         return qs
 
     def create(self, request, *args, **kwargs):
