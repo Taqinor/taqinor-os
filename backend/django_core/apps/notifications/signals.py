@@ -100,6 +100,10 @@ def devis_post_save(sender, instance, created, **kwargs):
     old = getattr(instance, _OLD_STATUT_ATTR, None)
     if instance.statut != Devis.Statut.ACCEPTE or old == Devis.Statut.ACCEPTE:
         return
+    # VNT53 — un AVENANT n'est pas une nouvelle vente : aucune notification.
+    from apps.ventes.selectors import predecesseur_accepte
+    if predecesseur_accepte(instance) is not None:
+        return
     recipient = getattr(instance, 'created_by', None)
     if recipient is None:
         return

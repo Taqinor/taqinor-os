@@ -100,3 +100,12 @@ class DevisAcceptedSurLeBusTests(TestCase):
         run = self._runs().get()
         self.assertEqual(run.target_id, devis.pk)
         self.assertEqual(run.target_model, 'ventes.devis')
+
+    def test_vnt53_avenant_ne_rejoue_aucune_regle(self):
+        v2 = self._devis(reference='DEV-823-V2', statut='accepte')
+        Devis.objects.create(
+            company=self.co, reference='DEV-823-V1', statut='accepte',
+            client=self.client_crm, is_active=False, superseded_by=v2)
+        devis_accepted.send(
+            sender=Devis, devis=v2, user=None, ancien_statut='envoye')
+        self.assertEqual(self._runs().count(), 0)

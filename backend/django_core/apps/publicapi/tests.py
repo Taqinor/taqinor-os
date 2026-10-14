@@ -35,7 +35,7 @@ from .constants import (
     EVENT_LEAD_STAGE_CHANGED, EVENT_DEVIS_SENT, EVENT_FACTURE_CREATED,
     EVENT_PAIEMENT_RECORDED, EVENT_INTERVENTION_COMPLETED,
     EVENT_TICKET_CREATED, EVENT_TICKET_RESOLVED, EVENT_STOCK_SEUIL_ATTEINT,
-    EVENT_LIVRAISON_LIVREE,
+    EVENT_LIVRAISON_LIVREE, EVENT_DEVIS_ACCEPTED,
 )
 from .models import ApiKey, Webhook, WebhookDelivery, hash_key
 from . import delivery
@@ -475,6 +475,27 @@ class SignalTriggerTests(TestCase):
             facture.note = 'edit'
             facture.save()
         d.assert_not_called()
+
+    def _accepter(self, devis):
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            devis.statut = Devis.Statut.ACCEPTE
+            devis.save()
+        return [c.args[1] for c in d.call_args_list]
+
+    def test_vnt53_premiere_vente_livre_devis_accepted(self):
+        v1 = Devis.objects.create(
+            company=self.co, reference='DV-V1', client=self.client_obj,
+            statut=Devis.Statut.ENVOYE)
+        self.assertIn(EVENT_DEVIS_ACCEPTED, self._accepter(v1))
+
+    def test_vnt53_avenant_ne_livre_aucun_devis_accepted(self):
+        v2 = Devis.objects.create(
+            company=self.co, reference='DV-V2', client=self.client_obj,
+            statut=Devis.Statut.ENVOYE)
+        Devis.objects.create(
+            company=self.co, reference='DV-V1B', client=self.client_obj,
+            statut=Devis.Statut.ACCEPTE, is_active=False, superseded_by=v2)
+        self.assertNotIn(EVENT_DEVIS_ACCEPTED, self._accepter(v2))
 
 
 class ExtraEventTriggerTests(TestCase):
