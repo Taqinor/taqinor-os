@@ -206,6 +206,68 @@ class TestJobCosting(InsightsBase):
         self.assertEqual(Decimal(row['margin']), Decimal('4000'))
         self.assertEqual(row['margin_pct'], 40.0)
 
+    def _vente_revisee(self):
+        """VNT109 — chantier posé sur la V1 ; la vente vit sur la V2 (les
+        factures re-pointées par la révision portent ``devis`` = V2)."""
+        client = Client.objects.create(company=self.company, nom='C-VNT109')
+        v2 = Devis.objects.create(
+            company=self.company, reference='DEV-VNT109-2', client=client,
+            statut=Devis.Statut.ACCEPTE, version=2)
+        v1 = Devis.objects.create(
+            company=self.company, reference='DEV-VNT109-1', client=client,
+            statut=Devis.Statut.ACCEPTE, is_active=False, superseded_by=v2)
+        Devis.objects.filter(pk=v2.pk).update(version_parent=v1)
+        Installation.objects.create(
+            company=self.company, reference='CH-VNT109', client=client,
+            devis=v1, statut=Installation.Statut.RECEPTIONNE,
+            date_reception=date.today())
+        return client, v2
+
+    def _facture(self, client, devis, ref, statut, ht):
+        return Facture.objects.create(
+            company=self.company, reference=ref, client=client, devis=devis,
+            statut=statut, montant_ht=Decimal(ht),
+            montant_tva=Decimal(ht) / 5, montant_ttc=Decimal(ht) * 6 / 5)
+
+    def _facture_du_chantier(self):
+        resp = self.api.get(f'{BASE}/job-costing/')
+        self.assertEqual(resp.status_code, 200)
+        row = next(r for r in resp.data['chantiers']
+                   if r['ref'] == 'CH-VNT109')
+        return Decimal(row['invoiced_ht'])
+
+    def test_vnt109_facture_de_la_chaine_emises_seulement(self):
+        """Acompte ÉMIS re-pointé sur la V2 ⇒ compté au chantier de la V1 ;
+        brouillon de solde ⇒ inchangé ; facture annulée ⇒ exclue."""
+        client, v2 = self._vente_revisee()
+        self._facture(client, v2, 'FAC-VNT109-1', Facture.Statut.EMISE,
+                      '12500')
+        self.assertEqual(self._facture_du_chantier(), Decimal('12500'))
+        self._facture(client, v2, 'BROUILLON-VNT109-2',
+                      Facture.Statut.BROUILLON, '30000')
+        self._facture(client, v2, 'FAC-VNT109-3', Facture.Statut.ANNULEE,
+                      '7000')
+        self.assertEqual(self._facture_du_chantier(), Decimal('12500'))
+        resp = self.api.get(f'{BASE}/profitability/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(sum(Decimal(str(r['revenue_ht']))
+                             for r in resp.data['rows']), Decimal('12500'))
+
+    def test_vnt109_requetes_constantes_en_nombre_de_factures(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        client, v2 = self._vente_revisee()
+        self._facture(client, v2, 'FAC-VNT109-A', Facture.Statut.EMISE, '100')
+        with CaptureQueriesContext(connection) as une:
+            self._facture_du_chantier()
+        for n in ('B', 'C'):
+            self._facture(client, v2, f'FAC-VNT109-{n}',
+                          Facture.Statut.EMISE, '100')
+        with CaptureQueriesContext(connection) as trois:
+            self.assertEqual(self._facture_du_chantier(), Decimal('300'))
+        self.assertEqual(len(une.captured_queries),
+                         len(trois.captured_queries))
+
     def test_admin_gated(self):
         """Un responsable non-admin ne peut pas voir le coût de revient."""
         resp_user = User.objects.create_user(
