@@ -526,6 +526,19 @@ test('VNT81: onglet Devis → dialogue d’acompte à 375 px (tiroir bas, cibles
   await lireJson(await request.post(`${API_DJANGO}/ventes/devis/${devis.id}/accepter/`, {
     data: { nom: 'Client VNT81' },
   }), 'acceptation du devis')
+  // VNT62 — l'acceptation crée le BROUILLON d'acompte automatique ; tant qu'il
+  // existe, le serveur ferme « Facturer l'acompte » (`peut.facturer_acompte`
+  // faux, contrat `vente_etat.json` › `exemple_acompte_brouillon`). Le
+  // supprimer (geste « Supprimer » d'un BROUILLON-<id>, VNT13/VNT77) remet la
+  // vente dans l'état `exemple` : acompte à faire, bouton ouvert.
+  const venteAcceptee = (await lireJson(
+    await request.get(`${API_DJANGO}/ventes/devis/${devis.id}/`), 'devis accepté')).vente
+  for (const f of (venteAcceptee?.factures || [])) {
+    if (f.nature === 'acompte' && f.statut === 'brouillon') {
+      const res = await request.delete(`${API_DJANGO}/ventes/factures/${f.id}/`)
+      expect(res.status(), `suppression du brouillon d’acompte automatique ${f.reference}`).toBe(204)
+    }
+  }
 
   await page.goto(`/crm/leads/${lead.id}`)
   await page.getByRole('tab', { name: /devis/i }).click()

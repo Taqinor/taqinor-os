@@ -16,7 +16,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 from . import openapi_docs as D
 from .facture_gardes import PeutEncaisser
 from ..models import Facture, LigneNoteDebit, NoteDebit
@@ -222,7 +222,10 @@ class FactureRectificatifsActionsMixin:
     @extend_schema(request=D.CreerNoteDebitRequest,
                    responses={201: NoteDebitSerializer},
                    extensions=D.CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT)
-    @action(detail=True, methods=['post'], url_path='creer-note-debit')
+    # Garde explicite = celle où ``FactureViewSet.get_permissions`` la faisait
+    # tomber (hors listes → IsAdminRole), inchangée depuis le déplacement VNT99.
+    @action(detail=True, methods=['post'], url_path='creer-note-debit',
+            permission_classes=[IsAdminRole])
     def creer_note_debit(self, request, pk=None):
         """ZFAC4 — crée une NoteDebit (majoration d'une facture déjà émise) —
         pendant de l'avoir. Total (copie des lignes de la facture) ou

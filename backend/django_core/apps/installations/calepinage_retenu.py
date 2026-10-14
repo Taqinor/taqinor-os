@@ -61,13 +61,9 @@ def _vendu_du_devis(devis):
         return None, None
     modules = None
     try:
-        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+        from apps.ventes.selectors import modules_vendus_du_devis
 
-        lignes = [li for li in devis.lignes.select_related('produit').all()
-                  if getattr(li, 'type_ligne', 'produit') == 'produit'
-                  and not getattr(li, 'optionnelle', False)]
-        nb, _watt = panneaux_et_watt_lu(lignes)
-        modules = int(nb) if nb else None
+        modules = modules_vendus_du_devis(devis)
     except Exception:  # noqa: BLE001 — le compte de modules est facultatif
         logger.warning("calepinage_retenu : modules du devis illisibles", exc_info=True)
         modules = None
