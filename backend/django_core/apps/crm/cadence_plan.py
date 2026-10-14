@@ -1,4 +1,5 @@
-"""Moteur du plan de relance : échéances, plan, démarrage, arrêt, réveils (SPL11, extrait de crm/services.py : déplacement pur).
+"""Moteur du plan de relance : échéances, plan, démarrage, arrêt, réveils (SPL11, extrait de crm/services.py :
+déplacement pur).
 
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).

@@ -385,7 +385,8 @@ def incoherence_segment(type_lead, devis):
     l'inverse, le lead est agricole et TOUS ses devis sont résidentiels.
     CIQ409 (contrat ``lead_pro.json``) étend la règle au C&I : un devis
     commercial/industriel sur un lead qui n'est ni l'un ni l'autre, ou un
-    lead pro dont tous les devis sont résidentiels. Fonction PURE sur la lecture mince ``devis`` de ventes ; elle n'écrit
+    lead pro dont tous les devis sont résidentiels. Fonction PURE sur la lecture mince ``devis`` de ventes ; elle
+    n'écrit
     rien — le commercial change le type à la main."""
     type_lead = type_lead or ''
     par_mode = {}

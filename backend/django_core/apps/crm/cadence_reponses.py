@@ -1,4 +1,5 @@
-"""Réponses de touche : replis, passation, opposition, veille, perdu (SPL4, extrait de crm/services.py : déplacement pur).
+"""Réponses de touche : replis, passation, opposition, veille, perdu (SPL4, extrait de crm/services.py : déplacement
+pur).
 
 Module RACINE de la scission : il importe ``.services`` au niveau module ;
 aucun module de type (a) ne l'importe et ``services`` ne le réexporte pas.

@@ -1,4 +1,5 @@
-"""Rendu des messages de touche : gabarits, placeholders, validité, segments, identité (SPL9, extrait de crm/services.py : déplacement pur).
+"""Rendu des messages de touche : gabarits, placeholders, validité, segments, identité (SPL9, extrait de crm/services.py
+: déplacement pur).
 
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).

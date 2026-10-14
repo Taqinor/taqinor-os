@@ -313,7 +313,9 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 request.user.company, request.user, owner=owner)
         return Response(payload)
 
-    @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True), sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER, sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
+    @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True),
+                               sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER,
+                               sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='suivi',
             permission_classes=[IsAnyRole])
     def suivi(self, request):
@@ -431,11 +433,12 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_404_NOT_FOUND)
         return Response(journal)
 
-    @extend_schema(parameters=[sd.param('jours', {'type': 'integer', 'minimum': 0}, required=True)], responses=inline_serializer('CrmCadencesEchues', {
-        'count': serializers.IntegerField(),
-        'jours': serializers.IntegerField(),
-        'results': serializers.ListField(child=serializers.DictField()),
-    }))
+    @extend_schema(parameters=[sd.param('jours', {'type': 'integer', 'minimum': 0}, required=True)],
+                   responses=inline_serializer('CrmCadencesEchues', {
+                       'count': serializers.IntegerField(),
+                       'jours': serializers.IntegerField(),
+                       'results': serializers.ListField(child=serializers.DictField()),
+                   }))
     @action(detail=False, methods=['get'], url_path='cadences-echues',
             permission_classes=[IsAnyRole])
     def cadences_echues(self, request):
@@ -488,18 +491,20 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(
             chaine_commerciale(request.user, request.user.company))
 
-    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, enum=[7, 14, 30]), sd.P_OWNER, sd.param('segment', enum=[*SEGMENTS_ADMIS])], responses=inline_serializer('CrmControleSuivi', {
-        'periode_jours': serializers.IntegerField(),
-        'owner': serializers.IntegerField(allow_null=True),
-        'commerciaux': serializers.ListField(child=serializers.DictField()),
-        'seuils': serializers.DictField(),
-        'verdict': serializers.DictField(),
-        'jours': serializers.ListField(child=serializers.DictField()),
-        'exceptions': serializers.DictField(),
-        'par_type': serializers.ListField(child=serializers.DictField()),
-        'premier_contact': serializers.DictField(),
-        'resultats': serializers.DictField(),
-    }))
+    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, enum=[7, 14, 30]), sd.P_OWNER,
+                               sd.param('segment', enum=[*SEGMENTS_ADMIS])],
+                   responses=inline_serializer('CrmControleSuivi', {
+                       'periode_jours': serializers.IntegerField(),
+                       'owner': serializers.IntegerField(allow_null=True),
+                       'commerciaux': serializers.ListField(child=serializers.DictField()),
+                       'seuils': serializers.DictField(),
+                       'verdict': serializers.DictField(),
+                       'jours': serializers.ListField(child=serializers.DictField()),
+                       'exceptions': serializers.DictField(),
+                       'par_type': serializers.ListField(child=serializers.DictField()),
+                       'premier_contact': serializers.DictField(),
+                       'resultats': serializers.DictField(),
+                   }))
     @action(detail=False, methods=['get'], url_path='controle',
             permission_classes=[IsAnyRole])
     def controle(self, request):
@@ -936,7 +941,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 etape, request.user, note=note, body=body)
         return self._reponse_fait(etape)
 
-    @extend_schema(request=sd.corps('CrmRelanceFaitRequest', outcome=serializers.CharField(required=False), reponse=serializers.CharField(required=False), langue=serializers.CharField(required=False), note=serializers.CharField(required=False)), responses=RelanceEtapeSerializer)
+    @extend_schema(request=sd.corps('CrmRelanceFaitRequest', outcome=serializers.CharField(required=False),
+                                    reponse=serializers.CharField(required=False),
+                                    langue=serializers.CharField(required=False),
+                                    note=serializers.CharField(required=False)), responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
         """Marque cette étape FAITE.
@@ -1062,7 +1070,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             etape, request=request, user=request.user, cle=cle or None,
             langue=langue or None))
 
-    @extend_schema(request=sd.corps('CrmRelanceWhatsappRequest', langue=serializers.CharField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmRelanceWhatsappRequest', langue=serializers.CharField(required=False)),
+                   responses=sd.OBJ)
     @action(detail=True, methods=['post'])
     @_geste_atomique
     def whatsapp(self, request, pk=None):
@@ -1139,7 +1148,9 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             etape.company, 'appeler', request.META.get('HTTP_USER_AGENT', ''))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @extend_schema(request=sd.corps('CrmRelanceLangueRequest', langue=ChoixDocumente(choices=Lead.LanguePreferee.values)), responses=RelanceEtapeSerializer)
+    @extend_schema(request=sd.corps('CrmRelanceLangueRequest',
+                                    langue=ChoixDocumente(choices=Lead.LanguePreferee.values)),
+                   responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def langue(self, request, pk=None):
         """CAD63 — enregistre la langue du CLIENT de cette touche, en un geste.
@@ -1165,7 +1176,14 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         definir_langue_preferee(etape.lead, request.user, langue)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest', type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False)), 'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest', type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False), fichier=serializers.FileField(required=False))}, responses=sd.OBJ)
+    @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest',
+                                                         type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)),
+                                                         note=serializers.CharField(required=False)),
+                            'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest',
+                                                            type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)),
+                                                            note=serializers.CharField(required=False),
+                                                            fichier=serializers.FileField(required=False))},
+                   responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='piece-recue',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     @_geste_atomique
@@ -1219,7 +1237,12 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         # lead (d'ordinaire l'étape « préparer le devis » posée ici).
         return self._reponse_fait(etape)
 
-    @extend_schema(request=sd.corps('CrmReporterRequest', mode=serializers.ChoiceField(choices=['decaler', 'veille'], required=False), due_at=serializers.DateTimeField(required=False), rappel_le=serializers.CharField(required=False), rappel_heure=serializers.CharField(required=False)), responses=RelanceEtapeSerializer)
+    @extend_schema(request=sd.corps('CrmReporterRequest',
+                                    mode=serializers.ChoiceField(choices=['decaler', 'veille'], required=False),
+                                    due_at=serializers.DateTimeField(required=False),
+                                    rappel_le=serializers.CharField(required=False),
+                                    rappel_heure=serializers.CharField(required=False)),
+                   responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     @_geste_atomique
     def reporter(self, request, pk=None):
@@ -1331,7 +1354,10 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             created_by=self.request.user,
         )
 
-    @extend_schema(request=sd.corps('CrmMessageRenderRequest', lead_id=serializers.IntegerField(required=False), lien=serializers.CharField(required=False), prenom=serializers.CharField(required=False), ville=serializers.CharField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmMessageRenderRequest', lead_id=serializers.IntegerField(required=False),
+                                    lien=serializers.CharField(required=False),
+                                    prenom=serializers.CharField(required=False),
+                                    ville=serializers.CharField(required=False)), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='render',
             permission_classes=[IsAnyRole])
     def render_template(self, request, pk=None):
@@ -1434,7 +1460,8 @@ class LeadCadenceActionsMixin:
             return [IsResponsableOrAdmin()]
         return super().get_permissions()
 
-    @extend_schema(request=sd.corps('CrmAppliquerPlanRequest', plan_id=serializers.IntegerField()), responses=sd.liste('CrmPlanActivites'))
+    @extend_schema(request=sd.corps('CrmAppliquerPlanRequest', plan_id=serializers.IntegerField()),
+                   responses=sd.liste('CrmPlanActivites'))
     @action(detail=True, methods=['post'], url_path='appliquer-plan',
             permission_classes=[IsResponsableOrAdmin])
     def appliquer_plan(self, request, pk=None):
@@ -1464,7 +1491,13 @@ class LeadCadenceActionsMixin:
             status=status.HTTP_200_OK)
 
     # ── RELANCE FOUNDATION — plan de relance structuré (multi-touches) ──────
-    @extend_schema(request=sd.corps('CrmInitialiserRelanceRequest', cadence=serializers.ChoiceField(choices=sorted(CADENCES_LANCABLES), required=False), confirmer_remplacement=serializers.BooleanField(required=False), devis=serializers.IntegerField(required=False), motif=serializers.CharField(required=False), sans_devis_confirme=serializers.BooleanField(required=False)), responses=RelanceEtapeSerializer(many=True))
+    @extend_schema(request=sd.corps('CrmInitialiserRelanceRequest',
+                                    cadence=serializers.ChoiceField(choices=sorted(CADENCES_LANCABLES), required=False),
+                                    confirmer_remplacement=serializers.BooleanField(required=False),
+                                    devis=serializers.IntegerField(required=False),
+                                    motif=serializers.CharField(required=False),
+                                    sans_devis_confirme=serializers.BooleanField(required=False)),
+                   responses=RelanceEtapeSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='relance/initialiser',
             permission_classes=[IsResponsableOrAdmin], pagination_class=None)
     def initialiser_relance(self, request, pk=None):
@@ -1602,7 +1635,9 @@ class LeadCadenceActionsMixin:
                 etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
-    @extend_schema(request=sd.corps('CrmArreterRelanceRequest', cadences=serializers.ListField(child=serializers.CharField(), required=False), motif=serializers.CharField()), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmArreterRelanceRequest',
+                                    cadences=serializers.ListField(child=serializers.CharField(), required=False),
+                                    motif=serializers.CharField()), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='relance/arreter',
             permission_classes=[IsResponsableOrAdmin])
     def arreter_relance(self, request, pk=None):
@@ -1629,7 +1664,9 @@ class LeadCadenceActionsMixin:
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
 
-    @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False), limite=serializers.IntegerField(required=False, min_value=1, max_value=200)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False),
+                                    limite=serializers.IntegerField(required=False, min_value=1, max_value=200)),
+                   responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='placement-cadences',
             permission_classes=[IsResponsableOrAdmin])
     def placement_cadences(self, request):

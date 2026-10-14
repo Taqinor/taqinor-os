@@ -910,11 +910,14 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 activity.log_restore(lead, request.user)
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
-    @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.ChoiceField(choices=[True]), devis_id=serializers.IntegerField(required=False), langue=serializers.CharField(required=False)), responses=inline_serializer('CrmResumeAssocie', {
-        'wa_url': serializers.CharField(),
-        'phone': serializers.CharField(),
-        'message': serializers.CharField(),
-    }))
+    @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.ChoiceField(choices=[True]),
+                                    devis_id=serializers.IntegerField(required=False),
+                                    langue=serializers.CharField(required=False)),
+                   responses=inline_serializer('CrmResumeAssocie', {
+                       'wa_url': serializers.CharField(),
+                       'phone': serializers.CharField(),
+                       'message': serializers.CharField(),
+                   }))
     @action(detail=True, methods=['post'], url_path='resume-associe',
             permission_classes=[IsResponsableOrAdmin])
     def resume_associe(self, request, pk=None):
@@ -1033,7 +1036,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             'champs_mis_a_jour': champs,
         })
 
-    @extend_schema(responses={200: sd.corps('CrmLeadSupprime', corbeille_id=serializers.IntegerField(allow_null=True), id=serializers.IntegerField())})
+    @extend_schema(responses={200: sd.corps('CrmLeadSupprime', corbeille_id=serializers.IntegerField(allow_null=True),
+                                            id=serializers.IntegerField())})
     def destroy(self, request, *args, **kwargs):
         """Suppression RÉVERSIBLE (admin) — VX96 : soft-delete + undo 30 min.
 
@@ -1281,11 +1285,13 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # dossier. La lecture des visites passe par le SÉLECTEUR de ``apps.visites``
     # (frontière M3) : ce module n'importe jamais ses modèles.
 
-    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False), proprietaire_inconnu=serializers.BooleanField(required=False)), extensions=sd.LOCATAIRE_SUITE, responses=inline_serializer('CrmLeadLocataire', {
-        'locataire': serializers.BooleanField(),
-        'propose': serializers.ListField(child=serializers.CharField()),
-        'motif_perte': serializers.CharField(),
-    }))
+    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False),
+                                    proprietaire_inconnu=serializers.BooleanField(required=False)),
+                   extensions=sd.LOCATAIRE_SUITE, responses=inline_serializer('CrmLeadLocataire', {
+                       'locataire': serializers.BooleanField(),
+                       'propose': serializers.ListField(child=serializers.CharField()),
+                       'motif_perte': serializers.CharField(),
+                   }))
     @action(detail=True, methods=['get', 'post'], url_path='locataire')
     def locataire(self, request, pk=None):
         """CAD164 — [TRANCHÉ 21/09/2026] le client est LOCATAIRE.
@@ -1349,7 +1355,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                           'motif_perte': lead.motif_perte or ''},
         }, status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
-    @extend_schema(request={'application/json': sd.corps('CrmNoterRequest', body=serializers.CharField()), 'multipart/form-data': sd.corps('CrmNoterMultipartRequest', body=serializers.CharField(), file=serializers.FileField(required=False))}, responses={201: LeadActivitySerializer})
+    @extend_schema(request={'application/json': sd.corps('CrmNoterRequest', body=serializers.CharField()),
+                            'multipart/form-data': sd.corps('CrmNoterMultipartRequest', body=serializers.CharField(),
+                                                            file=serializers.FileField(required=False))},
+                   responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin],
             parser_classes=[MultiPartParser, FormParser, JSONParser])
@@ -1400,7 +1409,16 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                         status=status.HTTP_201_CREATED)
 
     # FG30 — Interaction typée (appel/e-mail) dans le chatter ─────────────────
-    @extend_schema(request=sd.corps('CrmLogInteractionRequest', kind=serializers.ChoiceField(choices=[LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL, LeadActivity.Kind.WHATSAPP]), body=serializers.CharField(required=False, allow_blank=True), outcome=serializers.ChoiceField(choices=[k for k, _ in LeadActivity.OUTCOMES if k], required=False), rappel_le=serializers.CharField(required=False, allow_blank=True), rappel_heure=serializers.CharField(required=False, allow_blank=True)), responses={201: LeadActivitySerializer})
+    @extend_schema(request=sd.corps('CrmLogInteractionRequest',
+                                    kind=serializers.ChoiceField(choices=[LeadActivity.Kind.APPEL,
+                                                                          LeadActivity.Kind.EMAIL,
+                                                                          LeadActivity.Kind.WHATSAPP]),
+                                    body=serializers.CharField(required=False, allow_blank=True),
+                                    outcome=serializers.ChoiceField(choices=[k for k, _ in LeadActivity.OUTCOMES if k],
+                                                                    required=False),
+                                    rappel_le=serializers.CharField(required=False, allow_blank=True),
+                                    rappel_heure=serializers.CharField(required=False, allow_blank=True)),
+                   responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='log-interaction',
             permission_classes=[IsResponsableOrAdmin])
     def log_interaction(self, request, pk=None):
@@ -1476,7 +1494,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)), ids=sd.ids_requis()), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)),
+                                    ids=sd.ids_requis()), responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
     def bulk(self, request):
@@ -1883,7 +1902,8 @@ class CanalViewSet(UsageGuardedDestroyMixin, CompanyScopedModelViewSet):
 
 # ── QX16 — Surface de rejeu des payloads leads site web ──────────────────────
 
-@extend_schema_view(list=extend_schema(parameters=[sd.param('all', description='Inclure aussi les payloads déjà rattachés.')]))
+@extend_schema_view(list=extend_schema(parameters=[sd.param('all',
+                                                            description='Inclure aussi les payloads déjà rattachés.')]))
 class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """QX16 — « Jamais perdre un lead » (webhooks.py) devient opérationnel :
     liste des payloads bruts, avec un filtre par défaut sur ceux qui méritent
@@ -2053,7 +2073,9 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             user=self.request.user,
         )
 
-    @extend_schema(request=sd.corps('CrmSavedViewReorderRequest', page=serializers.CharField(), ids=serializers.ListField(child=serializers.IntegerField())), responses=SavedViewSerializer(many=True))
+    @extend_schema(request=sd.corps('CrmSavedViewReorderRequest', page=serializers.CharField(),
+                                    ids=serializers.ListField(child=serializers.IntegerField())),
+                   responses=SavedViewSerializer(many=True))
     @action(detail=False, methods=['post'])
     def reorder(self, request):
         """Réordonne en bloc les vues de l'utilisateur pour une page :
