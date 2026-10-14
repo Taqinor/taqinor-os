@@ -678,8 +678,6 @@ API rejected schema-compliant request|POST /api/django/ventes/factures/encaissem
 API rejected schema-compliant request|POST /api/django/ventes/factures/{id}/relancer/
 API rejected schema-compliant request|POST /api/django/ventes/factures/{id}/retour-client/
 API rejected schema-compliant request|POST /api/django/ventes/paiements/factures/{facture_id}/paiement-avec-retenue/
-API rejected schema-compliant request|POST /api/django/ventes/paiements/import-releve/commit/
-API rejected schema-compliant request|POST /api/django/ventes/parametrages-relance-client/
 API rejected schema-compliant request|POST /api/django/ventes/plans-commission/
 API rejected schema-compliant request|POST /api/django/ventes/promesses-paiement/
 API rejected schema-compliant request|POST /api/django/visites/visites/{id}/photos/
@@ -708,7 +706,6 @@ API rejected schema-compliant request|PUT /api/django/stock/inventaire-sessions/
 API rejected schema-compliant request|PUT /api/django/stock/produits/{id}/
 API rejected schema-compliant request|PUT /api/django/stock/unites-logistiques/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
-API rejected schema-compliant request|PUT /api/django/ventes/devis/variante-config/
 JSON deserialization error|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Missing Content-Type header|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Response violates schema|GET /api/django/adminops/settings/

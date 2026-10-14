@@ -210,7 +210,8 @@ ReleveCommitRequest = {
         'type': 'object',
         'required': ['token'],
         'properties': {
-            'token': {'type': 'string'},
+            # ENF11 — un jeton vide est refusé « Jeton de dry-run requis ».
+            'token': {'type': 'string', 'minLength': 1, 'pattern': r'\S'},
             # Numéros de ligne validés, ou `{ligne, facture_reference}` pour
             # une ligne ambiguë résolue (AFAC6).
             'lignes': {
@@ -274,10 +275,11 @@ PrixApplicableResponse = _ser('PrixApplicableResponse', {
 })
 
 VarianteConfigRequest = _ser('DevisVarianteConfigRequest', {
-    # Strictement entre 0 et 100, deux décimales au plus.
-    'variante_pct': s.DecimalField(max_digits=5, decimal_places=2,
-                                   min_value=Decimal('0.01'),
-                                   max_value=Decimal('99.99')),
+    # Strictement entre 0 et 100, deux décimales au plus — ENF11 : publié
+    # DANS le motif (drf-spectacular n'émet aucune borne pour un
+    # décimal-chaîne : « 0 » était conforme puis refusé).
+    'variante_pct': s.RegexField(
+        r'^0*(?:[1-9]\d?(?:\.\d{0,2})?|\.(?:[1-9]\d?|0[1-9]))$'),
 })
 VarianteConfigResponse = _ser('DevisVarianteConfigResponse', {
     'variante_pct': s.CharField(),

@@ -488,6 +488,16 @@ def _appliquer_resolutions(session, company, lignes):
     return demandees
 
 
+class JetonReleveInconnu(ValueError):
+    """ENF11 — jeton de dry-run inconnu de la société (ou expiré) : une
+    ressource introuvable (404), pas une donnée invalide."""
+
+
+class ReleveDejaImporte(ValueError):
+    """ENF11 — dry-run déjà consommé / contenu déjà importé : l'ÉTAT des
+    imports s'oppose au commit (409)."""
+
+
 def commit(company, user, token, lignes=None):
     """Import effectif — rejoue les DÉCISIONS d'un dry-run jetonné.
 
@@ -528,13 +538,13 @@ def commit(company, user, token, lignes=None):
         session = ReleveImportSession.objects.select_for_update().filter(
             company=company, token=token).first()
         if session is None:
-            raise ValueError('Jeton de dry-run inconnu ou expiré.')
+            raise JetonReleveInconnu('Jeton de dry-run inconnu ou expiré.')
         if session.consomme_at is not None:
-            raise ValueError('Ce dry-run a déjà été importé.')
+            raise ReleveDejaImporte('Ce dry-run a déjà été importé.')
         if ReleveImportSession.objects.filter(
                 company=company, fichier_hash=session.fichier_hash,
                 consomme_at__isnull=False).exists():
-            raise ValueError(
+            raise ReleveDejaImporte(
                 'Ce relevé a déjà été importé (contenu identique).')
         # AFAC6 — les lignes ambiguës RÉSOLUES par l'opérateur sont
         # validées (refus 400 avant toute écriture, jeton non consommé) puis

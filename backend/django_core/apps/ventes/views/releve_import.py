@@ -77,11 +77,14 @@ def releve_commit(request):
     optionnellement, les numéros de ligne que l'opérateur a validés.
 
     AUD121 — le commit ne reçoit PLUS de fichier : il rejoue les décisions
-    du dry-run correspondant. Sans jeton → 400 ; jeton déjà consommé → 400 ;
-    contenu de fichier déjà importé pour cette société → 400 (c'est la
-    déduplication du double-import). Réutilise la garde sur-paiement.
+    du dry-run correspondant. Sans jeton → 400 ; jeton inconnu de la
+    société → 404 ; jeton déjà consommé ou contenu de fichier déjà importé
+    pour cette société → 409 (c'est la déduplication du double-import —
+    ENF11 : refus d'état). Réutilise la garde sur-paiement.
     """
-    from ..paiement_import import commit
+    from ..paiement_import import (
+        JetonReleveInconnu, ReleveDejaImporte, commit,
+    )
     company = request.user.company
     token = request.data.get('token')
     lignes = request.data.get('lignes')
@@ -96,6 +99,10 @@ def releve_commit(request):
     from rest_framework.exceptions import APIException
     try:
         result = commit(company, request.user, token, lignes=lignes)
+    except JetonReleveInconnu as exc:
+        return Response({'detail': str(exc)}, status=404)
+    except ReleveDejaImporte as exc:
+        return Response({'detail': str(exc)}, status=409)
     except (ValueError, TypeError) as exc:
         return Response({'detail': str(exc)}, status=400)
     except APIException:

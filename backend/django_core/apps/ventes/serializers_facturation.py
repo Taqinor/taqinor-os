@@ -818,6 +818,20 @@ class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
                   'mode', 'mode_display', 'prochaine_relance_manuelle']
         read_only_fields = ['company']
 
+    def run_validation(self, data=serializers.empty):
+        """ENF11 (api-fuzz « rejected schema-compliant ») — un client DÉJÀ
+        paramétré, refusé par le seul validateur d'unicité de DRF, est un
+        refus d'ÉTAT : 409 ``unique_conflict`` (le corps est conforme). Mêlé
+        à une autre erreur, le 400 reste."""
+        try:
+            return super().run_validation(data)
+        except serializers.ValidationError as exc:
+            if exc.get_codes() != {'client': ['unique']}:
+                raise
+            from core.unicite import ConflitUnicite
+            raise ConflitUnicite(detail=str(exc.detail['client'][0]),
+                                 champs=['client']) from exc
+
 
 class RelanceLogSerializer(SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
