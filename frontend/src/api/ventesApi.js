@@ -580,6 +580,13 @@ const ventesApi = {
   // Contrat partagé : `apps/ventes/contract_samples/ventes_economie.json`
   // (CALX280, servi par l'action CALX288).
   getEconomieDevis: (id) => api.get(`/ventes/devis/${id}/economie/`),
+
+  // VNT73 — « Prix négocié » (contrat `apps/ventes/contract_samples/devis_prix_negocie.json`).
+  // `data` = exactement UN de `prix_ttc` / `remise_pct`, plus `mode`
+  // ('apercu' = simulation sans effet, 'appliquer' = crée la V2).
+  prixNegocie: (id, data) => api.post(`/ventes/devis/${id}/prix-negocie/`, data),
+  // Pose le lien de signature de l'avenant ET la tâche unique (idempotent).
+  demanderSignatureAvenant: (id) => api.post(`/ventes/devis/${id}/avenant/demander-signature/`, {}),
 }
 
 // 409 « déjà accepté » sur un POST d'acceptation : le devis EST accepté (clic
