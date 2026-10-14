@@ -35,6 +35,7 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -1085,4 +1086,6 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
                 periode_debut=data['periode_debut'],
                 periode_fin=data['periode_fin'])
         except CertificatCarboneError as exc:
+            if exc.etat:
+                raise ConflitEtat(exc.message)
             raise serializers.ValidationError(_erreur_service(exc))
