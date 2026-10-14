@@ -723,7 +723,13 @@ class ClientViewSet(CompanyScopedModelViewSet):
             ClientSerializer(copie, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=sd.corps('CrmClientsExportRequest', ids=serializers.ListField(child=serializers.IntegerField(), required=False)), responses=sd.EXPORT_XLSX)
+    @extend_schema(
+        request=sd.corps(
+            'CrmClientsExportRequest',
+            ids=serializers.ListField(child=serializers.IntegerField(), required=False),
+        ),
+        responses=sd.EXPORT_XLSX,
+    )
     @action(detail=False, methods=['post'], url_path='export-xlsx',
             permission_classes=[IsAnyRole])
     def export_xlsx(self, request):
@@ -747,7 +753,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
         return export_clients_xlsx(
             qs.order_by('nom'), masquer_pii=pii_masquee_pour(request.user))
 
-    @extend_schema(parameters=[sd.P_Q], responses=sd.corps('CrmClientSearch', results=serializers.ListField(child=serializers.DictField())))
+    @extend_schema(
+        parameters=[sd.P_Q],
+        responses=sd.corps('CrmClientSearch', results=serializers.ListField(child=serializers.DictField())),
+    )
     @action(detail=False, methods=['get'], url_path='search',
             permission_classes=[IsAnyRole])
     def search(self, request):
@@ -1044,7 +1053,14 @@ class LeadClientsActionsMixin:
             return [HasPermissionOrLegacy('crm_modifier')()]
         return super().get_permissions()
 
-    @extend_schema(request=sd.corps('CrmConvertirClientRequest', mode=serializers.ChoiceField(choices=['nouveau', 'lier', 'aucun']), client_id=serializers.IntegerField(required=False)), responses=sd.OBJ)
+    @extend_schema(
+        request=sd.corps(
+            'CrmConvertirClientRequest',
+            mode=serializers.ChoiceField(choices=['nouveau', 'lier', 'aucun']),
+            client_id=serializers.IntegerField(required=False),
+        ),
+        responses=sd.OBJ,
+    )
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
@@ -1299,7 +1315,11 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.param('metric'), sd.param('year', OpenApiTypes.INT), sd.param('period_type'), sd.P_OWNER_OU_NULL]))
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[sd.param('metric'), sd.param('year', OpenApiTypes.INT), sd.param('period_type'), sd.P_OWNER_OU_NULL],
+    ),
+)
 class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
@@ -1471,7 +1491,9 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             pass
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'), sd.param('periode', description='AAAA-MM')]))
+@extend_schema_view(
+    list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'), sd.param('periode', description='AAAA-MM')]),
+)
 class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
@@ -1540,7 +1562,10 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         return response
 
 
-@extend_schema(parameters=[sd.param('periode', description='AAAA-MM'), sd.param('equipe', OpenApiTypes.INT)], responses=sd.OBJ)
+@extend_schema(
+    parameters=[sd.param('periode', description='AAAA-MM'), sd.param('equipe', OpenApiTypes.INT)],
+    responses=sd.OBJ,
+)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def forecast_rollup_view(request):

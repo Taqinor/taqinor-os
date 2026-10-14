@@ -184,7 +184,10 @@ class LeadIntakeActionsMixin:
             for d in dups
         ])
 
-    @extend_schema(parameters=[sd.param('telephone'), sd.param('phone'), sd.param('email'), sd.param('exclude', OpenApiTypes.INT)], responses=sd.liste('CrmLeadDoublonControle'))
+    @extend_schema(
+        parameters=[sd.param('telephone'), sd.param('phone'), sd.param('email'), sd.param('exclude', OpenApiTypes.INT)],
+        responses=sd.liste('CrmLeadDoublonControle'),
+    )
     @action(detail=False, methods=['get'], url_path='check-duplicates',
             permission_classes=[IsAnyRole])
     def check_duplicates(self, request):
@@ -217,7 +220,10 @@ class LeadIntakeActionsMixin:
             for d in dups
         ])
 
-    @extend_schema(request={'multipart/form-data': sd.corps('CrmScanCarteRequest', file=serializers.FileField())}, responses=sd.OBJ)
+    @extend_schema(
+        request={'multipart/form-data': sd.corps('CrmScanCarteRequest', file=serializers.FileField())},
+        responses=sd.OBJ,
+    )
     @action(detail=False, methods=['post'], url_path='scan-carte',
             permission_classes=[IsAnyRole],
             parser_classes=[MultiPartParser],
@@ -393,7 +399,13 @@ class LeadIntakeActionsMixin:
         })
 
     # ── L-QUEST — Questionnaire envoyable au client ──────────────────────────
-    @extend_schema(request=sd.corps('CrmQuestionnaireLienRequest', questions=serializers.DictField(child=serializers.BooleanField(), required=False)), responses=sd.OBJ)
+    @extend_schema(
+        request=sd.corps(
+            'CrmQuestionnaireLienRequest',
+            questions=serializers.DictField(child=serializers.BooleanField(), required=False),
+        ),
+        responses=sd.OBJ,
+    )
     @action(detail=True, methods=['post'], url_path='questionnaire-lien',
             permission_classes=[IsResponsableOrAdmin])
     def questionnaire_lien(self, request, pk=None):
@@ -451,7 +463,10 @@ class LeadIntakeActionsMixin:
         })
 
     # ── FG34 — ROI par source / campagne ────────────────────────────────────
-    @extend_schema(parameters=[sd.param('from', OpenApiTypes.DATE), sd.param('to', OpenApiTypes.DATE), sd.param('canal')], responses=sd.liste('CrmRoiSource'))
+    @extend_schema(
+        parameters=[sd.param('from', OpenApiTypes.DATE), sd.param('to', OpenApiTypes.DATE), sd.param('canal')],
+        responses=sd.liste('CrmRoiSource'),
+    )
     @action(detail=False, methods=['get'], url_path='roi-sources',
             permission_classes=[IsAnyRole])
     def roi_sources(self, request):
