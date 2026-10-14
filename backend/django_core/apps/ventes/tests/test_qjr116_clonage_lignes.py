@@ -304,7 +304,7 @@ class LesTroisCopiesGardentLesDeuxOptions(_DevisADeuxOptimumsDivergents):
         from apps.ventes.domain.revision import renouveler_devis
 
         avant = self._totaux_des_deux_options(self.devis)
-        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.statut = Devis.Statut.EXPIRE
         self.devis.save(update_fields=['statut'])
 
         nouveau = renouveler_devis(self.devis, user=self.user)
@@ -330,7 +330,7 @@ class LesTroisCopiesGardentLesDeuxOptions(_DevisADeuxOptimumsDivergents):
         self.assertEqual(
             _empreinte(creer_variante_gamme(self.devis, 'Premium',
                                             user=self.user)), attendue)
-        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.statut = Devis.Statut.EXPIRE
         self.devis.save(update_fields=['statut'])
         self.assertEqual(
             _empreinte(renouveler_devis(self.devis, user=self.user)), attendue)
