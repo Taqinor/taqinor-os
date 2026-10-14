@@ -51,6 +51,20 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
             getattr(devis, 'reference', '?'))
         return
 
+    # VNT52 — un AVENANT (version d'une vente DÉJÀ acceptée, ``avenant_de``
+    # de ``devis_accepted``) n'est pas une nouvelle vente : aucun POST (le
+    # dédoublonnage ``signedquote:<référence>`` ne couvre pas une nouvelle
+    # référence ⇒ ROAS gonflé à chaque version), une ligne de journal.
+    if isinstance(getattr(devis, 'pk', None), int):
+        from apps.ventes.selectors import predecesseur_accepte
+        avenant_de = predecesseur_accepte(devis)
+        if avenant_de is not None:
+            logger.info(
+                'VNT52: CAPI SignedQuote non émis pour devis %s — avenant de %s '
+                '(la vente a déjà été comptée).',
+                getattr(devis, 'reference', '?'), avenant_de.reference)
+            return
+
     pixel_id = (
         getattr(settings, 'META_CAPI_PIXEL_ID', None)
         or os.environ.get('META_CAPI_PIXEL_ID', '')

@@ -90,6 +90,30 @@ class Adseng2CapiEmitterTests(TestCase):
         self.assertIn('10800', body)
         self.assertNotIn('12000', body)
 
+    # ── VNT52 — un avenant n'est pas une nouvelle vente ─────────────────────
+
+    def _posts(self):
+        from apps.ventes.domain.cycle_vie import _fire_capi_signed_quote
+        with override_settings(META_CAPI_ACCESS_TOKEN='T',
+                               META_CAPI_PIXEL_ID='999'):
+            with mock.patch('urllib.request.urlopen',
+                            return_value=_mock_resp()) as m:
+                _fire_capi_signed_quote(devis=self.devis)
+        return m.call_count
+
+    def test_vnt52_premiere_vente_poste_comme_avant(self):
+        self.assertEqual(self._posts(), 1)
+
+    def test_vnt52_avenant_d_une_vente_acceptee_zero_post(self):
+        Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-AE2C00',
+            client=self.client_obj, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20.00'), is_active=False,
+            superseded_by=self.devis)
+        with self.assertLogs('apps.ventes.services', level='INFO') as logs:
+            self.assertEqual(self._posts(), 0)
+        self.assertTrue(any('avenant' in ligne for ligne in logs.output))
+
 
 class Adseng2SharedVersionTests(SimpleTestCase):
     def test_version_is_single_source(self):
