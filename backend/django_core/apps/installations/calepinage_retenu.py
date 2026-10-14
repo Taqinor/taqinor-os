@@ -5,6 +5,10 @@ Sorti de ``selectors.py`` (fichier-mur) ; ``selectors.calepinage_retenu_du_chant
 délègue ici. Lecture seule ; cross-app par les sélecteurs/façades uniquement.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def bloc_calepinage_retenu(installation):
     """Le bloc ``{calepinage_id, kwc, nb_modules, kwc_source, dessin_kwc,
@@ -51,6 +55,7 @@ def _vendu_du_devis(devis):
     try:
         kwc = puissance_kwc_du_devis(devis)
     except Exception:  # noqa: BLE001 — un bloc de fiche ne casse jamais le détail
+        logger.warning("calepinage_retenu : kWc vendu illisible, bloc dégradé", exc_info=True)
         return None, None
     if not kwc:
         return None, None
@@ -63,7 +68,8 @@ def _vendu_du_devis(devis):
                   and not getattr(li, 'optionnelle', False)]
         nb, _watt = panneaux_et_watt_lu(lignes)
         modules = int(nb) if nb else None
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — le compte de modules est facultatif
+        logger.warning("calepinage_retenu : modules du devis illisibles", exc_info=True)
         modules = None
     return round(float(kwc), 2), modules
 
