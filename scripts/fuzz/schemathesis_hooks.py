@@ -446,6 +446,11 @@ _FICHIERS_VALIDES = (
     (re.compile(_GED + r'deposer-lot-scans-separe/$'), {'POST'},
      {'files': _PNG_MINIMAL}),
     (re.compile(_GED + r'import-masse/$'), {'POST'}, {'csv': _CSV_MINIMAL}),
+    # CI #997 (2e passe) — pièce jointe polymorphe de records : un part sans
+    # nom ni octets est « Aucun fichier fourni » (400) ; le serveur valide
+    # les octets magiques, inexprimable dans le schéma.
+    (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
 )
 
 

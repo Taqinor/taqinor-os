@@ -321,6 +321,13 @@ class FichiersPdfTests(unittest.TestCase):
                 self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
                 self.assertEqual(corps['code'], '0')
 
+    def test_records_attachments_recoit_un_pdf(self):
+        # CI #997 (2e passe) — la pièce jointe records suit la même table.
+        corps = self._corps('POST', '/api/django/records/attachments/',
+                            {'file': b'', 'model': 'crm.lead', 'id': '1'})
+        self.assertTrue(corps['file'].startswith(b'%PDF-'))
+        self.assertEqual(corps['model'], 'crm.lead')
+
     def test_binaire_schemathesis_garde_son_type(self):
         # ``Binary`` (str + ``.data``) : des octets nus feraient basculer le cas
         # positif en négatif à la revalidation de Schemathesis.
