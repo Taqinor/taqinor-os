@@ -136,3 +136,8 @@ class TestDevisAFacturer(TestCase):
         attendu = sum((Decimal(str(d.total_ttc)) for d in Devis.objects.filter(
             pk__in=[v2.pk, annulee.pk])), Decimal('0'))
         self.assertEqual(sum(carnet.values(), Decimal('0')), attendu)
+        from apps.ventes.selectors_facturation import (
+            _ventes_sans_facture_active)
+        self.assertEqual(
+            {d.id for d in _ventes_sans_facture_active(self.company)},
+            {v2.id, annulee.id})
