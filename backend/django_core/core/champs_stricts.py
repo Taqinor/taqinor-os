@@ -24,6 +24,35 @@ class ChaineStricte(serializers.CharField):
         return super().to_internal_value(data)
 
 
+#: ENF11 (api-fuzz « rejected schema-compliant request ») — ``ProhibitNull
+#: CharactersValidator`` de DRF refuse le caractère NUL (400) alors que le
+#: schéma d'une chaîne l'admet : le corps publié d'une ``ChaineStricte`` le
+#: EXCLUT. Motif sans NUL ; variante « au moins un caractère non blanc » pour
+#: une chaîne obligatoire non vide (``minLength: 1``, motif ``\S`` ailleurs).
+MOTIF_SANS_NUL = r'^[^\u0000]*$'
+MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*\S[^\u0000]*$'
+
+
+class _ChaineSansNul(OpenApiSerializerFieldExtension):
+    """Publie, côté REQUÊTE, qu'une ``ChaineStricte`` n'accepte pas NUL.
+    Un champ qui porte déjà un ``pattern``, un ``format`` ou un ``enum`` (regex
+    de modèle, choix) garde son schéma : on ne le combine pas."""
+    target_class = 'core.champs_stricts.ChaineStricte'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if (direction != 'request' or schema.get('type') != 'string'
+                or any(cle in schema for cle in ('pattern', 'format', 'enum'))):
+            return schema
+        schema = dict(schema)
+        schema['pattern'] = (
+            MOTIF_NON_BLANC_SANS_NUL if schema.get('minLength', 0) >= 1
+            else MOTIF_SANS_NUL)
+        return schema
+
+
 def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
     """Entier de requête STRICT : absent/vide -> ``defaut`` ; illisible ou
     inférieur à ``mini`` -> 400 nommant le paramètre ; supérieur à ``maxi`` ->
