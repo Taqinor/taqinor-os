@@ -157,11 +157,14 @@ def signed_clients_cross_sell_segments(company):
         chronologiquement) ne portait PAS l'option ``avec_batterie``.
 
     Renvoie ``{'sans_contrat': [...], 'sans_batterie': [...]}`` (dicts
-    ``{'email', 'telephone'}``)."""
+    ``{'email', 'telephone'}``). VNT84 — devis d'origine = la plus ancienne
+    vente EN VIGUEUR (``devis_signes_en_vigueur``)."""
     from .models import Devis
+    from .selectors import devis_signes_en_vigueur
 
-    accepted = (Devis.objects
-                .filter(company=company, statut=Devis.Statut.ACCEPTE)
+    if company is None:  # VNT84 — None = toutes sociétés : jamais ici
+        return {'sans_contrat': [], 'sans_batterie': []}
+    accepted = (devis_signes_en_vigueur(company)
                 .select_related('client')
                 .order_by('client_id', 'date_creation'))
 
@@ -194,18 +197,17 @@ def devis_accepted_totals_by_lead(company, lead_ids):
     a plusieurs devis signés) — le « ticket moyen » de la carte chaleur
     ville. Lecture directe de la FK ``Devis.lead``. Renvoie
     ``{lead_id: Decimal}`` — un ``lead_id`` sans devis accepté est ABSENT
-    (jamais un 0 fabriqué)."""
+    (jamais un 0 fabriqué). VNT84 — ventes EN VIGUEUR seulement (une V1
+    remplacée ou un devis archivé ne s'ajoute plus)."""
     from decimal import Decimal
 
-    from .models import Devis
+    from .selectors import devis_signes_en_vigueur
 
     lead_ids = list(lead_ids or [])
-    if not lead_ids:
+    if not lead_ids or company is None:
         return {}
     totals = {}
-    for devis in (Devis.objects
-                  .filter(company=company, statut=Devis.Statut.ACCEPTE,
-                          lead_id__in=lead_ids)):
+    for devis in devis_signes_en_vigueur(company, lead_ids=lead_ids):
         try:
             amount = Decimal(str(devis.total_ttc or 0))
         except Exception:
@@ -227,15 +229,16 @@ def signature_velocity_by_month_and_mode(company):
     ``mois_couverts`` = nombre de MOIS-CALENDAIRES (année, mois) DISTINCTS
     couverts par au moins un devis accepté, tous modes confondus (le signal
     de fiabilité — l'appelant exige ≥12 pour parler d'un cycle annuel
-    complet, règle checked-facts)."""
+    complet, règle checked-facts). VNT84 — ventes EN VIGUEUR seulement."""
     from collections import defaultdict
 
-    from .models import Devis
+    from .selectors import devis_signes_en_vigueur
 
+    if company is None:  # VNT84 — None = toutes sociétés : jamais ici
+        return {'par_mode': {}, 'mois_couverts': 0}
     counts = defaultdict(lambda: defaultdict(int))
     covered_year_months = set()
-    qs = (Devis.objects
-          .filter(company=company, statut=Devis.Statut.ACCEPTE)
+    qs = (devis_signes_en_vigueur(company)
           .values_list('mode_installation', 'date_acceptation',
                        'date_creation'))
     for mode, date_acceptation, date_creation in qs:
