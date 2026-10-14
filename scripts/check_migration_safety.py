@@ -179,28 +179,6 @@ def _model_declared_names():
     return names
 
 
-def _noms_retires(paths=None):
-    """Noms d'index/contraintes RETIRÉS par une migration (``RemoveConstraint``
-    / ``RemoveIndex``, y compris dans ``SeparateDatabaseAndState``) : les
-    modèles ne les décrivent plus PAR CONSTRUCTION, l'``AddConstraint``
-    historique qui les a posés n'est donc pas une dérive (VNT103 —
-    ``ck_devis_acompte_montant_positif``, posée par ventes/0110, retirée par
-    ventes/0139 avec son champ)."""
-    noms = set()
-    for path in (paths if paths is not None else _iter_migration_files()):
-        try:
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-        except (OSError, SyntaxError):
-            continue
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call)
-                    and _call_name(node) in ("RemoveConstraint", "RemoveIndex")):
-                nm = _kwarg(node, "name")
-                if isinstance(nm, ast.Constant) and isinstance(nm.value, str):
-                    noms.add(nm.value)
-    return noms
-
-
 def _rel(path: Path) -> str:
     try:
         return str(path.relative_to(ROOT)).replace("\\", "/")
@@ -333,7 +311,7 @@ def check_file(path: Path, model_names=frozenset()):
 def main(argv):
     list_mode = "--list" in argv
     allow = _load_allowlist()
-    model_names = _model_declared_names() | _noms_retires()
+    model_names = _model_declared_names()
     offenders = []
     listed = []
     for path in _iter_migration_files():
