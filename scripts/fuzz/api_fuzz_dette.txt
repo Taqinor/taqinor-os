@@ -155,13 +155,6 @@ API accepted schema-violating request|GET /api/django/records/comments/
 API accepted schema-violating request|GET /api/django/records/followers/
 API accepted schema-violating request|GET /api/django/records/tagged-items/
 API accepted schema-violating request|GET /api/django/records/tags/
-API accepted schema-violating request|GET /api/django/reporting/classeurs/
-API accepted schema-violating request|GET /api/django/reporting/dashboard-config/
-API accepted schema-violating request|GET /api/django/reporting/envois-rapports/
-API accepted schema-violating request|GET /api/django/reporting/insights/audit-log/
-API accepted schema-violating request|GET /api/django/reporting/kpi-alertes/
-API accepted schema-violating request|GET /api/django/reporting/rapport-definitions/
-API accepted schema-violating request|GET /api/django/reporting/saved-reports/
 API accepted schema-violating request|GET /api/django/roles/
 API accepted schema-violating request|GET /api/django/statuspage/public/incidents/
 API accepted schema-violating request|GET /api/django/stock/accords-rfa-fournisseur/
@@ -344,7 +337,6 @@ API accepted schema-violating request|POST /api/django/publicapi/sandbox/try/
 API accepted schema-violating request|POST /api/django/records/activities/
 API accepted schema-violating request|POST /api/django/records/activities/{id}/snooze/
 API accepted schema-violating request|POST /api/django/records/tags/
-API accepted schema-violating request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/acquitter-derive/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/reviser/
 API accepted schema-violating request|POST /api/django/ventes/listes-prix/
@@ -404,13 +396,6 @@ API rejected schema-compliant request|GET /api/django/installations/intervention
 API rejected schema-compliant request|GET /api/django/installations/kits/{id}/composition-au/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|GET /api/django/publicapi/monitoring/
-API rejected schema-compliant request|GET /api/django/reporting/insights/cf-group-by/
-API rejected schema-compliant request|GET /api/django/reporting/insights/profitability/
-API rejected schema-compliant request|GET /api/django/reporting/insights/sav-sla/
-API rejected schema-compliant request|GET /api/django/reporting/insights/sav-taux-attache/
-API rejected schema-compliant request|GET /api/django/reporting/insights/sav-tickets-pivot/
-API rejected schema-compliant request|GET /api/django/reporting/rapport-definitions/{id}/export/
-API rejected schema-compliant request|GET /api/django/reporting/reports/field/
 API rejected schema-compliant request|GET /api/django/stock/achats-parametres/checklist-cloture/
 API rejected schema-compliant request|GET /api/django/stock/casiers/etiquettes-pdf/
 API rejected schema-compliant request|GET /api/django/stock/emplacements/{id}/etiquettes-kanban/
@@ -623,11 +608,7 @@ API rejected schema-compliant request|POST /api/django/public/stock/portail-four
 API rejected schema-compliant request|POST /api/django/publicapi/ocr-to-crm/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
 API rejected schema-compliant request|POST /api/django/register/
-API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider/
-API rejected schema-compliant request|POST /api/django/reporting/classeurs/
 API rejected schema-compliant request|POST /api/django/reporting/classeurs/{id}/evaluer/
-API rejected schema-compliant request|POST /api/django/reporting/dashboard-config/
-API rejected schema-compliant request|POST /api/django/reporting/kpi-alertes/
 API rejected schema-compliant request|POST /api/django/sav/portail/tickets/
 API rejected schema-compliant request|POST /api/django/sav/warranty-claims/
 API rejected schema-compliant request|POST /api/django/stock/accords-rfa-fournisseur/
@@ -758,7 +739,6 @@ API rejected schema-compliant request|PUT /api/django/parametres/unites-mesure/{
 API rejected schema-compliant request|PATCH /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/records/tagged-items/{id}/
-API rejected schema-compliant request|PUT /api/django/reporting/saved-reports/{id}/
 API rejected schema-compliant request|PUT /api/django/roles/{id}/
 API rejected schema-compliant request|PUT /api/django/stock/avoirs-fournisseur/{id}/
 API rejected schema-compliant request|PUT /api/django/stock/bons-commande-fournisseur/{id}/
@@ -955,7 +935,6 @@ Server error|POST /api/django/records/activities/snooze-approbation/
 Server error|POST /api/django/records/activities/{id}/done/
 Server error|POST /api/django/records/followers/
 Server error|POST /api/django/records/tagged-items/
-Server error|POST /api/django/reporting/calendar/reschedule/
 Server error|POST /api/django/stock/bons-commande-fournisseur/fusionner/
 Server error|POST /api/django/stock/emplacements/van-stock/creer-transfert/
 Server error|POST /api/django/stock/fiches-techniques/importer-datasheet/
@@ -1165,16 +1144,8 @@ Server error|POST /api/django/ventes/devis/{id}/replace-lines/
 Server error|POST /api/django/ventes/devis/from-layout/
 Server error|POST /api/django/ventes/factures/{id}/retour-client/
 # VNT lot M1 (12/10/2026, PR #982) : constats pre-existants hors du diff (reporting/*, dupliquer-variante), tirage aleatoire.
-API accepted schema-violating request|PATCH /api/django/reporting/kpi-alertes/{id}/
-API accepted schema-violating request|POST /api/django/reporting/kpi-alertes/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/dupliquer-variante/
-API accepted schema-violating request|PUT /api/django/reporting/kpi-alertes/{id}/
-API rejected schema-compliant request|POST /api/django/reporting/rapport-definitions/
-API rejected schema-compliant request|POST /api/django/reporting/saved-reports/
-Response violates schema|PATCH /api/django/reporting/kpi-alertes/{id}/
-Server error|POST /api/django/reporting/approbations-en-attente/decider-push/
 # VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
-API rejected schema-compliant request|POST /api/django/reporting/approbations-en-attente/decider-en-masse/
 # VNT lot M1, tour 3 (12/10/2026) : PATCH factures/{id} — le harnais fuzz envoie entite: 0 (aucune Entite pour la societe fuzz, prepare_fuzz_env.py) ; limite du harnais, pas de la vue.
 API rejected schema-compliant request|PATCH /api/django/ventes/factures/{id}/
 

@@ -148,6 +148,13 @@ class TestApprobationsDecision(ApprobationsBase):
             'source': 'automation', 'id': approval.id, 'decision': 'refuser',
         }, format='json')
         self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-REPORTING — refus nommé au champ ``motif`` ; le
+        # corps JSON est seul publié/accepté (multipart → 415).
+        self.assertIn('motif', resp.data)
+        resp = self.resp_api.post(self._decide_url(), {
+            'source': 'automation', 'id': approval.id,
+            'decision': 'refuser', 'motif': 'x'}, format='multipart')
+        self.assertEqual(resp.status_code, 415)
 
     def test_corps_non_objet_ou_hors_schema_400(self):
         """ERR-ENF11-FUZZ-REPORTING — un corps liste levait AttributeError

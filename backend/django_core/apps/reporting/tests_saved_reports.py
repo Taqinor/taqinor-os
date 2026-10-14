@@ -57,6 +57,20 @@ class SavedReportModelTests(TestCase):
             f'/api/django/reporting/saved-reports/{other_sr.id}/')
         self.assertEqual(res.status_code, 404)
 
+    def test_definition_nulle_400_et_cible_inconnue_404(self):
+        """ERR-ENF11-FUZZ-REPORTING — ``definition`` est un OBJET non nul
+        (publié tel quel) ; une cible bien formée inconnue de la société
+        répond 404 (elle répondait 400)."""
+        url = '/api/django/reporting/saved-reports/'
+        res = self.api.post(url, {'name': 'X', 'definition': None},
+                            format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn('definition', res.data)
+        res = self.api.post(url, {'name': 'X', 'target_kind': 'dashboard',
+                                  'cible_id': 987654}, format='json')
+        self.assertEqual(res.status_code, 404, res.data)
+        self.assertIn('cible_id', res.data)
+
     def test_recipient_list_parsing(self):
         sr = SavedReport.objects.create(
             company=self.company, name='R',

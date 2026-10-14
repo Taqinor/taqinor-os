@@ -172,3 +172,32 @@ class TestChampsStrictsFuzzR12(KpiAlerteBase):
             f'/api/django/reporting/kpi-alertes/{alerte.id}/', {'nom': 'x'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data.get('metric_cle', 'ABSENTE'), '')
+
+    def test_destinataires_objet_refuse_et_regle_publiee(self):
+        """ERR-ENF11-FUZZ-REPORTING — ``destinataires_utilisateurs: {}`` (un
+        OBJET) était lu comme une liste vide : 400 ; la création publie la
+        règle « KPI du catalogue OU métrique nommée »."""
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.reporting import urls as reporting_urls
+
+        corps = {'kpi': KpiAlerte.Kpi.VALEUR_STOCK_TOTALE, 'operateur': 'sup',
+                 'seuil': '1', 'destinataires_utilisateurs': {}}
+        url = '/api/django/reporting/kpi-alertes/'
+        resp = self.api.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('destinataires_utilisateurs', resp.data)
+        alerte = self._alerte()
+        resp = self.api.patch(f'{url}{alerte.id}/', {
+            'destinataires_utilisateurs': {}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(url, {**corps, 'destinataires_utilisateurs': []},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/reporting/', include(reporting_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+        schema = chemins['/api/django/reporting/kpi-alertes/']['post'][
+            'requestBody']['content']['application/json']['schema']
+        self.assertIn('anyOf', schema['allOf'][1])

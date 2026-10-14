@@ -9,6 +9,8 @@ from rest_framework import serializers, viewsets
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.parseurs import ObjetJSON
 
 from .models import EnvoiRapport, SavedReport
 from drf_spectacular.types import OpenApiTypes
@@ -21,6 +23,9 @@ class SavedReportSerializer(serializers.ModelSerializer):
         source='get_target_kind_display', read_only=True)
     schedule_label = serializers.CharField(
         source='get_schedule_display', read_only=True)
+    # ERR-ENF11-FUZZ-REPORTING — OBJET JSON non nul (``null`` était conforme
+    # au schéma ``{}`` publié puis refusé par le champ de modèle : 400).
+    definition = ObjetJSON(required=False)
 
     class Meta:
         model = SavedReport
@@ -62,12 +67,29 @@ class SavedReportSerializer(serializers.ModelSerializer):
                 sonde = SavedReport(company=company, target_kind=kind,
                                     cible_id=cible)
                 if sonde.resoudre_cible() is None:
-                    raise serializers.ValidationError({
-                        'cible_id': "Cette cible n'existe pas dans votre "
-                                    'société.'})
+                    # ERR-ENF11-FUZZ-REPORTING : id bien formé sans ligne de
+                    # la société = ressource introuvable, 404 (même corps).
+                    from rest_framework.exceptions import NotFound
+                    raise NotFound({
+                        'cible_id': ["Cette cible n'existe pas dans votre "
+                                     'société.']})
         return attrs
 
 
+#: ERR-ENF11-FUZZ-REPORTING — un abonnement « dashboard »/« query » désigne sa
+#: cible (``SavedReportSerializer.validate``) ; création et remplacement.
+CIBLE_SI_REQUISE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'target_kind': {'enum': [
+        k for k, _ in SavedReport.TargetKind.choices
+        if k not in SavedReport.KINDS_AVEC_CIBLE]}}},
+    {'required': ['target_kind', 'cible_id'], 'properties': {
+        'target_kind': {'enum': list(SavedReport.KINDS_AVEC_CIBLE)},
+        'cible_id': {'type': 'integer'}}},
+]}}
+
+
+@extend_schema_view(create=extend_schema(extensions=CIBLE_SI_REQUISE),
+                    update=extend_schema(extensions=CIBLE_SI_REQUISE))
 class SavedReportViewSet(TenantMixin, viewsets.ModelViewSet):
     """CRUD des rapports sauvegardés, bornés à la société de l'utilisateur.
 
