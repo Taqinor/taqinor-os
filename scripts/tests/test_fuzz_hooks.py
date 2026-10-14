@@ -252,6 +252,49 @@ class IdsFkImbriquesTests(unittest.TestCase):
         self.assertEqual(corps['lignes'][0]['produit'], 0)
 
 
+class FkCorpsSansReecritureTests(unittest.TestCase):
+    """CI #997 — une FK déjà connue (ou une valeur du fil sans changement) n'est
+    PAS réécrite : Schemathesis revalide toute clé réécrite sur sa valeur
+    vivante et basculerait le cas positif en négatif."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hooks = _charger_hooks({
+            'user_id': 4, 'company_id': 2, 'role_id': 7,
+            'fk_ids': {'client_id': [5, 6], 'lead_id': [9]}})
+
+    class _Journal(dict):
+        def __init__(self, *args, **kw):
+            super().__init__(*args, **kw)
+            self.ecritures = []
+
+        def __setitem__(self, cle, valeur):
+            self.ecritures.append(cle)
+            super().__setitem__(cle, valeur)
+
+    def _corps(self, **champs):
+        corps = self._Journal(champs)
+        cas = _cas(self.hooks, 'POST', '/api/django/portail/documents-client-portail/',
+                   corps)
+        self.hooks.before_call(None, cas, {})
+        return corps
+
+    def test_valeur_du_fil_en_chaine_non_reecrite(self):
+        corps = self._corps(client_id='0', lead_id='0', libelle='x')
+        self.assertEqual(corps.ecritures, [])
+        self.assertEqual(corps['client_id'], '0')
+
+    def test_id_deja_connu_non_reecrit(self):
+        corps = self._corps(client_id=5, lead_id=9)
+        self.assertEqual(corps.ecritures, [])
+
+    def test_id_inconnu_toujours_remplace(self):
+        corps = self._corps(client_id=0, lead_id=0)
+        self.assertEqual(sorted(corps.ecritures), ['client_id', 'lead_id'])
+        self.assertIn(corps['client_id'], (5, 6))
+        self.assertEqual(corps['lead_id'], 9)
+
+
 class FichiersPdfTests(unittest.TestCase):
     """CI #997 — le dépôt d'un gabarit réglementaire exige un PDF : un cas
     POSITIF en reçoit un ; négatifs, autres chemins et autres champs intacts."""

@@ -280,7 +280,15 @@ def _remplacer_ids_fk(objet, table=None):
     for nom, valeur in list(objet.items()):
         entree = _entree(nom, table)
         if entree is not None and not isinstance(valeur, dict):
-            objet[nom] = _remplacer_valeur(valeur, entree)
+            nouvelle = _remplacer_valeur(valeur, entree)
+            # CI #997 : une clé réécrite — MÊME à l'identique — est revalidée
+            # sur sa valeur VIVANTE (chaîne du fil d'un corps formulaire contre
+            # ``type: integer``) : le cas positif basculait NÉGATIF et la
+            # réponse 201 devenait « API accepted schema-violating request »
+            # (POST portail/documents-client-portail/, client_id=0&lead_id=0).
+            # On n'écrit donc que lorsque l'id change réellement.
+            if nouvelle != valeur:
+                objet[nom] = nouvelle
         elif isinstance(valeur, dict):
             _remplacer_ids_fk(valeur, table)
         elif isinstance(valeur, list):
