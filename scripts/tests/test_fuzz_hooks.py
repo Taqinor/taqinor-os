@@ -399,6 +399,22 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertIsInstance(corps['fichier'], str)
         self.assertTrue(corps['fichier'].startswith('%PDF-'))
 
+    def test_import_tarif_et_fiche_pvsyst_recoivent_un_fichier_lisible(self):
+        # CI #997 fuzz (2) — classeur xlsx (zip ouvrable) et fiche PVsyst.
+        import io
+        import zipfile
+        for chemin in ('/api/django/stock/prix-fournisseurs/import-xlsx/',
+                       '/api/django/achats/prix-fournisseurs/import-xlsx/'):
+            corps = self._corps(chemin=chemin, corps={'fournisseur': 1, 'file': b''})
+            self.assertTrue(zipfile.is_zipfile(io.BytesIO(corps['file'])), chemin)
+            self.assertIn('xl/worksheets/sheet1.xml', zipfile.ZipFile(io.BytesIO(corps['file'])).namelist())
+        corps = self._corps(chemin='/api/django/stock/fiches-techniques/importer-datasheet/',
+                            corps={'produit': 1, 'file': ''})
+        self.assertTrue(corps['file'].startswith('PVObject_=pvModule'))
+        negatif = self._corps(chemin='/api/django/stock/prix-fournisseurs/import-xlsx/',
+                              corps={'fournisseur': 1, 'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(

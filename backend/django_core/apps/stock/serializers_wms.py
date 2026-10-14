@@ -13,6 +13,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.fields import SkipField
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from .openapi_helpers import EntierBornePublie
 from .permissions import MasqueMontantsAchatMixin
@@ -108,7 +109,7 @@ class UniteLogistiqueLigneSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['unite', 'scanne_le', 'scanne_par']
 
 
-class UniteLogistiqueSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class UniteLogistiqueSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     """NTWMS6 — colis / palette adressable. Le SSCC est GÉNÉRÉ côté serveur
     (norme GS1) : jamais accepté du client."""
@@ -224,7 +225,7 @@ class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
 
 class ExpeditionTransporteurSerializer(MasqueMontantsAchatMixin,
                                        CompanyScopedRelationsMixin,
-                                       serializers.ModelSerializer):
+                                       ChampsStrictsMixin, serializers.ModelSerializer):
     """NTWMS9 — expédition d'une unité logistique par un transporteur.
 
     ASTK3 — ``unite_logistique`` et ``transporteur`` sont bornés à la société
@@ -353,7 +354,7 @@ class PortailTiersTokenSerializer(ChampsTexteBooleenStricts, CompanyScopedRelati
 
 
 class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
-                               serializers.ModelSerializer):
+                               ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS31 — blocage qualité (quarantaine). Le statut et l'auteur sont
     posés côté serveur ; la levée passe par l'action dédiée."""
 
@@ -373,7 +374,7 @@ class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class PlanChargementSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class PlanChargementSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTWMS26 — plan de chargement camion. La référence est posée côté
     serveur ; les unités s'ajoutent par l'action dédiée (qui renvoie
@@ -397,7 +398,7 @@ class PlanChargementSerializer(ChampsTexteBooleenStricts, CompanyScopedRelations
 
 
 class MouvementRebutSerializer(CompanyScopedRelationsMixin,
-                               serializers.ModelSerializer):
+                               ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS24 — déclaration de perte motivée. La valeur de perte et le
     mouvement de stock sont posés côté serveur (jamais acceptés du client) ;
     la valeur reste INTERNE."""

@@ -93,6 +93,55 @@ PRIX_EN_MASSE = {'anyOf': [
     {'properties': {'action': {'enum': ['set_warranty', 'set_category', 'set_brand']}}},
 ]}
 
+#: CI #997 fuzz (2) — l'écran d'édition en masse envoie garanties et catégorie
+#: en TEXTE (saisie brute, ``String(id)``, ``""``) : ``_params_bulk`` les lit
+#: (``entier_ou_400``) ; publiés entier OU chaîne de chiffres (vide = rien).
+GARANTIE_EN_MASSE = {'nullable': True, 'anyOf': [
+    {'type': 'integer', 'minimum': 0, 'maximum': 2147483647},
+    {'type': 'string', 'pattern': r'^(?:\d{1,9})?$'}]}
+CATEGORIE_EN_MASSE = {'nullable': True, 'anyOf': [
+    {'type': 'integer', 'maximum': 2147483647},
+    {'type': 'string', 'pattern': r'^(?:\d{1,9}|null)?$'}]}
+
+#: CI #997 fuzz (2) — champs JSON de la fiche produit : leur FORME, telle que
+#: ``ProduitSerializer.validate_courbe_pompe`` / ``validate_courbe_source`` /
+#: ``validate_paliers_prix_vente`` / ``validate_custom_data`` l'appliquent
+#: (publiés « valeur quelconque », toute forme passait pour conforme).
+#: ``seuil_min`` >= 0 et < ``seuil_max`` : la borne basse n'est PAS publiée en
+#: ``minimum`` (le générateur pousserait seuil_min à 1 = seuil_max « 1 »,
+#: couple que la règle croisée refuse) — elle est dite en description.
+_NOMBRE_OU_TEXTE = {'description': 'Nombre >= 0, strictement inférieur à seuil_max.',
+                    'anyOf': [{'type': 'number'}, {'type': 'string', 'pattern': r'^\d+(?:[.,]\d+)?$'}]}
+_STRICT_POSITIF = {'anyOf': [
+    {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True},
+    {'type': 'string', 'pattern': r'^(?:0*[1-9]\d*(?:[.,]\d+)?|0*[.,]\d*[1-9]\d*)$'}]}
+CHAMPS_JSON_PRODUIT = {
+    # Objet ; ses séries (débits STRICTEMENT croissants, HMT non croissante,
+    # mêmes longueurs, >= 2 points) ne s'expriment pas en JSON Schema : la
+    # règle est dite en description et par l'exemple (seule valeur générée).
+    'courbe_pompe': {
+        'type': 'object', 'nullable': True,
+        'description': ('{"debits_m3h": [...], "hmt_m": [...]} : >= 2 points, débits '
+                        'STRICTEMENT croissants, HMT non croissante, mêmes longueurs, valeurs >= 0.'),
+        'example': {'debits_m3h': [0, 12], 'hmt_m': [91, 85]}},
+    'courbe_source': {
+        'type': 'object', 'nullable': True, 'additionalProperties': False,
+        'properties': {'document': {'type': 'string', 'nullable': True},
+                       'date': {'type': 'string', 'format': 'date', 'nullable': True},
+                       'page': {'type': 'integer', 'nullable': True}},
+        'example': {'document': '', 'date': None, 'page': None}},
+    'paliers_prix_vente': {
+        'type': 'array', 'nullable': True,
+        'description': 'Paliers triés, sans recouvrement (seuil_max exclu ≤ seuil_min suivant).',
+        'items': {'type': 'object', 'additionalProperties': False, 'required': ['prix_vente_ttc'],
+                  'properties': {'seuil_min': _NOMBRE_OU_TEXTE,
+                                 'seuil_max': {'nullable': True, 'anyOf': [
+                                     *_STRICT_POSITIF['anyOf'], {'type': 'string', 'enum': ['']}]},
+                                 'prix_vente_ttc': _STRICT_POSITIF}},
+        'example': [{'seuil_min': 0, 'seuil_max': None, 'prix_vente_ttc': 1000}]},
+    'custom_data': {'type': 'object', 'nullable': True, 'additionalProperties': True},
+}
+
 #: composant de requête -> {'proprietes': {champ: fragment fusionné},
 #: 'racine': fragment fusionné à la racine du composant}.
 CONTRAINTES = {
@@ -133,10 +182,6 @@ CONTRAINTES = {
     # CI #997 fuzz — décimaux nullables : ``""`` est lu « non renseigné ».
     'AccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
     'PatchedAccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
-    'ToleranceRapprochementCategorieRequest': {
-        'vide_accepte': ['tolerance_prix_pct', 'tolerance_prix_absolu_mad']},
-    'PatchedToleranceRapprochementCategorieRequest': {
-        'vide_accepte': ['tolerance_prix_pct', 'tolerance_prix_absolu_mad']},
     'TrancheEcheancierRequest': {},
     # ERR-ENF11-FUZZ-STOCK — montants / facteurs strictement positifs et
     # quantités réellement lues (un corps sans ``quantite`` : « Quantité
@@ -162,11 +207,12 @@ CONTRAINTES = {
     'KitProduitComposantRequest': {'montants_positifs': ['quantite'],
                                    'motifs': {'taux_perte_pct': MOTIF_TAUX_0_100},
                                    'racine': PRODUIT_XOR_SOUS_KIT},
-    'ProduitBulkCorpsRequest': {'racine': PRIX_EN_MASSE},
+    'ProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT},
+    'PatchedProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT},
+    'ProduitBulkCorpsRequest': {'racine': PRIX_EN_MASSE, 'remplacer': {
+        'garantie_mois': GARANTIE_EN_MASSE, 'garantie_production_mois': GARANTIE_EN_MASSE,
+        'categorie_id': CATEGORIE_EN_MASSE}},
     'ScannerMouvementCorpsRequest': {'proprietes': QUANTITE_POSITIVE},
-    # ``poids_kg: ""`` est lu comme « non renseigné » (décimal nullable DRF).
-    'UniteLogistiqueRequest': {'vide_accepte': ['poids_kg']},
-    'PatchedUniteLogistiqueRequest': {'vide_accepte': ['poids_kg']},
     # Fusion de BCF : au moins deux identifiants, DISTINCTS (deux fois le même
     # est un seul BCF, donc « au moins deux » n'est pas atteint).
     'BcfFusionnerCorpsRequest': {
@@ -205,6 +251,12 @@ def _chaine_ou_nombre(propriete: dict) -> dict:
     return {**autres, 'anyOf': [chaine, nombre]}
 
 
+def _branche_chaine(propriete: dict) -> dict:
+    """La branche qui porte le motif d'un décimal : la propriété elle-même, ou
+    la branche chaîne d'un ``anyOf`` chaîne|nombre (``DecimalSouple``)."""
+    return next((b for b in propriete.get('anyOf', ()) if 'pattern' in b), propriete)
+
+
 def _reparer_decimaux(proprietes: dict) -> None:
     for propriete in proprietes.values():
         if not isinstance(propriete, dict):
@@ -234,7 +286,7 @@ def declarer_contraintes_achats(result, generator=None, request=None,
                     propriete['pattern'])
         for champ, motif in (regles.get('motifs') or {}).items():
             if isinstance(proprietes.get(champ), dict):
-                proprietes[champ]['pattern'] = motif
+                _branche_chaine(proprietes[champ])['pattern'] = motif
         for champ in regles.get('pourcentages_1_100') or ():
             propriete = proprietes.get(champ)
             if isinstance(propriete, dict) and propriete.get('pattern'):
@@ -275,3 +327,10 @@ def _gestes_scannables(schemas: dict) -> None:
         propriete.pop('minLength', None)
         propriete.pop('pattern', None)
         propriete['enum'] = list(TYPES_MOUVEMENT_SCANNABLES)
+        # CI #997 fuzz (2) — ASTK196 : un TRANSFERT scanné nomme au moins un
+        # casier (source ou destination) ; les autres gestes, sans condition.
+        libres = [t for t in TYPES_MOUVEMENT_SCANNABLES if t != 'transfert']
+        composant['anyOf'] = [{'properties': {'type_mouvement': {'enum': libres}}}] + [
+            {'required': [casier], 'properties': {
+                'type_mouvement': {'enum': ['transfert']}, casier: {'type': 'integer'}}}
+            for casier in ('bin_source', 'bin_destination')]

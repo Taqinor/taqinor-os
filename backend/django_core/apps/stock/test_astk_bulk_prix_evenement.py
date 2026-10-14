@@ -57,7 +57,7 @@ class BulkPrixEvenementTests(_BaseEvenements):
             format='json')
 
     def test_bulk_set_price_emet_produit_modifie(self):
-        reponse = self._bulk(mode='percent', valeur=10)
+        reponse = self._bulk(mode='percent', valeur='10')
 
         self.assertEqual(reponse.status_code, 200, reponse.content)
         self.produit.refresh_from_db()
@@ -71,7 +71,7 @@ class BulkPrixEvenementTests(_BaseEvenements):
         self.assertEqual(evt['produit'].pk, self.produit.pk)
 
     def test_bulk_sans_changement_n_emet_rien(self):
-        reponse = self._bulk(mode='percent', valeur=0)
+        reponse = self._bulk(mode='percent', valeur='0')
 
         self.assertEqual(reponse.status_code, 200, reponse.content)
         self.assertEqual(self.evenements, [])

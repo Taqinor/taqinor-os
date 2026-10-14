@@ -50,8 +50,10 @@ from __future__ import annotations
 import json
 import os
 import atexit
+import io
 import re
 import struct
+import zipfile
 import zlib
 
 import requests
@@ -417,6 +419,37 @@ atexit.register(_journal_couverture)
 # scans comme images et lit un CSV de métadonnées — des octets vides y étaient
 # refusés 400 « rejected schema-compliant request ».
 _PDF_MINIMAL = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+# CI #997 fuzz (2) — même règle pour l'import d'un tarif fournisseur (un
+# classeur xlsx, ``_classeur_lisible``) et d'une fiche constructeur PVsyst
+# (``PVObject_=`` module/onduleur, ``parse_pan_ond_bytes``) : un classeur VIDE
+# (aucune ligne -> rapport d'erreurs 200, rien d'écrit) et un module sans clé.
+_NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+_NS_PKG = 'http://schemas.openxmlformats.org/package/2006/relationships'
+_NS_XLSX = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+_TYPE_OOXML = 'application/vnd.openxmlformats-officedocument.spreadsheetml'
+_XLSX_PARTIES = {
+    '[Content_Types].xml': (
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        f'<Override PartName="/xl/workbook.xml" ContentType="{_TYPE_OOXML}.sheet.main+xml"/>'
+        f'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="{_TYPE_OOXML}.worksheet+xml"/></Types>'),
+    '_rels/.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="{_NS_REL}/'
+                    'officeDocument" Target="xl/workbook.xml"/></Relationships>'),
+    'xl/workbook.xml': (f'<workbook xmlns="{_NS_XLSX}" xmlns:r="{_NS_REL}"><sheets>'
+                        '<sheet name="Tarif" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+    'xl/_rels/workbook.xml.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="'
+                                   f'{_NS_REL}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'),
+    'xl/worksheets/sheet1.xml': f'<worksheet xmlns="{_NS_XLSX}"><sheetData/></worksheet>',
+}
+
+
+def _xlsx_minimal():
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for nom, xml in _XLSX_PARTIES.items():
+            archive.writestr(nom, '<?xml version="1.0" encoding="UTF-8"?>' + xml)
+    return tampon.getvalue()
 
 
 def _png_minimal():
@@ -451,6 +484,10 @@ _FICHIERS_VALIDES = (
     # les octets magiques, inexprimable dans le schéma.
     (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
      {'file': _PDF_MINIMAL}),
+    (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
+     {'file': _xlsx_minimal()}),
+    (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
+     {'file': b'PVObject_=pvModule\n'}),
 )
 
 

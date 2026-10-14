@@ -128,25 +128,27 @@ class HomonymeTests(TestCase):
         self.actif = Produit.objects.create(
             company=self.company, nom='Frais', prix_vente=Decimal('10'))
 
-    def test_unarchive_homonyme_400(self):
+    def test_unarchive_homonyme_409(self):
         reponse = self.api.patch(
             f'/api/django/stock/produits/{self.archive.pk}/unarchive/')
 
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+        # CI #997 fuzz (2) : un homonyme est un conflit d'état (409).
+        self.assertEqual(reponse.status_code, 409, reponse.content)
         self.assertEqual(
-            reponse.json()['nom'], ['Un produit actif de ce nom existe déjà.'])
+            reponse.json()['detail'], 'Un produit actif de ce nom existe déjà.')
+        self.assertIn('nom', reponse.json()['error']['fields'])
         self.archive.refresh_from_db()
         self.assertTrue(self.archive.is_archived)
 
-    def test_dupliquer_homonyme_400(self):
+    def test_dupliquer_homonyme_409(self):
         avant = Produit.objects.count()
 
         reponse = self.api.post(
             f'/api/django/stock/produits/{self.source.pk}/dupliquer/',
             {'nom': 'Frais'}, format='json')
 
-        self.assertEqual(reponse.status_code, 400, reponse.content)
-        self.assertIn('nom', reponse.json())
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertIn('nom', reponse.json()['error']['fields'])
         self.assertEqual(Produit.objects.count(), avant)
 
     def test_dupliquer_nom_non_texte_400_jamais_500(self):
