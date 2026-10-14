@@ -69,6 +69,32 @@ CONTRAINTES = {
     'PrixFournisseurRequest': {},
     'PatchedPrixFournisseurRequest': {},
     'TrancheEcheancierRequest': {},
+    # ERR-ENF11-FUZZ-STOCK — montants / facteurs strictement positifs et
+    # quantités réellement lues (un corps sans ``quantite`` : « Quantité
+    # invalide. »), règles que les services appliquent déjà.
+    'AcompteFournisseurRequest': {'montants_positifs': ['montant']},
+    'PatchedAcompteFournisseurRequest': {'montants_positifs': ['montant']},
+    'ConditionnementProduitRequest': {'montants_positifs': ['facteur']},
+    'PatchedConditionnementProduitRequest': {'montants_positifs': ['facteur']},
+    'BlocageQualiteRequest': {
+        'proprietes': QUANTITE_POSITIVE, 'requis': ['quantite']},
+    'DepotConsignationRequest': {
+        'proprietes': {'quantite_deposee': {'minimum': 1}},
+        'requis': ['quantite_deposee']},
+    'MouvementRebutRequest': {
+        'proprietes': QUANTITE_POSITIVE, 'requis': ['quantite']},
+    'TransfertStockRequest': {'proprietes': QUANTITE_POSITIVE},
+    'TransfertDemanderCorpsRequest': {'proprietes': QUANTITE_POSITIVE},
+    'ProduitRebutCorpsRequest': {'proprietes': QUANTITE_POSITIVE},
+    # Un mouvement libre ne déclare pas un rebut (motif obligatoire : la
+    # déclaration de rebut) ; le scanner ne rend que ses trois gestes.
+    'MouvementStockRequest': {'remplacer': {'type_mouvement': {
+        'type': 'string',
+        'enum': ['entree', 'sortie', 'transfert', 'ajustement']}}},
+    'ScannerMouvementCorpsRequest': {'proprietes': QUANTITE_POSITIVE},
+    # ``poids_kg: ""`` est lu comme « non renseigné » (décimal nullable DRF).
+    'UniteLogistiqueRequest': {'vide_accepte': ['poids_kg']},
+    'PatchedUniteLogistiqueRequest': {'vide_accepte': ['poids_kg']},
     # Fusion de BCF : au moins deux identifiants, DISTINCTS (deux fois le même
     # est un seul BCF, donc « au moins deux » n'est pas atteint).
     'BcfFusionnerCorpsRequest': {
@@ -119,9 +145,35 @@ def declarer_contraintes_achats(result, generator=None, request=None,
             if isinstance(propriete, dict) and propriete.get('pattern'):
                 propriete['pattern'] = _motif_decimal_positif(
                     propriete['pattern'])
+        for champ, remplacement in (regles.get('remplacer') or {}).items():
+            if champ in proprietes:
+                proprietes[champ] = dict(remplacement)
+        for champ in regles.get('vide_accepte') or ():
+            propriete = proprietes.get(champ)
+            if isinstance(propriete, dict) and 'oneOf' not in propriete:
+                nullable = propriete.pop('nullable', False)
+                proprietes[champ] = {'nullable': nullable, 'oneOf': [
+                    propriete, {'type': 'string', 'enum': ['']}]}
+        for champ in regles.get('requis') or ():
+            requis = composant.setdefault('required', [])
+            if champ not in requis:
+                requis.append(champ)
         for champ, fragment in (regles.get('elements') or {}).items():
             elements = (proprietes.get(champ) or {}).get('items')
             if isinstance(elements, dict):
                 elements.update(fragment)
         composant.update(regles.get('racine') or {})
+    _gestes_scannables(schemas)
     return result
+
+
+def _gestes_scannables(schemas: dict) -> None:
+    """``type_mouvement`` du scanner = ``TYPES_MOUVEMENT_SCANNABLES`` (la
+    source unique du service) : publié en énumération, jamais recopié."""
+    composant = schemas.get('ScannerMouvementCorpsRequest')
+    propriete = ((composant or {}).get('properties') or {}).get('type_mouvement')
+    if isinstance(propriete, dict):
+        from .services_wms import TYPES_MOUVEMENT_SCANNABLES
+        propriete.pop('minLength', None)
+        propriete.pop('pattern', None)
+        propriete['enum'] = list(TYPES_MOUVEMENT_SCANNABLES)

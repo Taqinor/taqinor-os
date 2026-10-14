@@ -25,6 +25,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from .. import selectors
 from ..models import DocumentFournisseur, DossierOnboardingFournisseur
 from ..permissions import PeutValiderDossierFournisseur
+from ..utils.params import UniciteEn409Mixin
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 
 class DocumentFournisseurSerializer(CompanyScopedRelationsMixin,
@@ -49,7 +51,8 @@ class DocumentFournisseurSerializer(CompanyScopedRelationsMixin,
         return obj.est_valide()
 
 
-class DossierOnboardingFournisseurSerializer(CompanyScopedRelationsMixin,
+class DossierOnboardingFournisseurSerializer(UniciteEn409Mixin,
+                                             CompanyScopedRelationsMixin,
                                              serializers.ModelSerializer):
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default=None)
@@ -118,7 +121,14 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=corps('DossierValiderCorps', valider=serializers.BooleanField(),
                                  motif_rejet=serializers.CharField(required=False, allow_blank=True)),
-                   responses=DossierOnboardingFournisseurSerializer)
+                   responses=DossierOnboardingFournisseurSerializer,
+                   # Un REJET (``valider: false``) exige un motif non blanc.
+                   extensions={EXTENSION_CORPS_RESSERRE: {'oneOf': [
+                       {'properties': {'valider': {'enum': [True]}}},
+                       {'required': ['motif_rejet'], 'properties': {
+                           'valider': {'enum': [False]},
+                           'motif_rejet': {'type': 'string', 'pattern': r'\S'}}},
+                   ]}})
     @action(detail=True, methods=['post'], url_path='valider-dossier')
     def valider_dossier(self, request, pk=None):
         """NTP2P7 — valide (ou rejette) le dossier.

@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
-from ..utils.params import corps_objet
+from ..utils.params import MOTIF_IDS, choix_ou_400, corps_objet, ids_requete_ou_400
 from ..models import Produit, EmplacementStock, TransfertStock
 from ..serializers import EmplacementStockSerializer, TransfertStockSerializer
 from authentication.permissions import IsAnyRole, IsAdminRole
@@ -54,7 +54,9 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         no-op silencieux)."""
         qs = super().get_queryset()
         params = self.request.query_params
-        type_proprietaire = params.get('type_proprietaire')
+        type_proprietaire = choix_ou_400(
+            params.get('type_proprietaire'), 'type_proprietaire',
+            ('interne', 'chez_tiers', 'de_tiers'))
         if type_proprietaire:
             qs = qs.filter(type_proprietaire=type_proprietaire)
         tiers_nom = params.get('tiers_nom')
@@ -73,12 +75,12 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
 
     def _refus_retrait(self, emp, geste):
         """ASTK202 (C-ASTK-050) — UNE règle pour supprimer ET archiver :
-        le principal ne se retire jamais (400), un emplacement qui détient
+        le principal ne se retire jamais (409), un emplacement qui détient
         du stock non plus (409). ``geste`` = « supprimé »/« archivé »."""
         if emp.is_principal:
             return Response(
                 {'detail': f'Le dépôt principal ne peut pas être {geste}.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         if self._holds_stock(emp):
             infinitif = {'supprimé': 'le supprimer',
                          'archivé': "l'archiver"}[geste]
@@ -187,7 +189,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Aucun écart sous seuil pour ce produit sur '
                            'cette camionnette.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
         try:
             transfert = creer_demande_transfert(
@@ -201,7 +203,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             TransfertStockSerializer(transfert).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule'),
+    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule', pattern=MOTIF_IDS),
                                P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
                                P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
@@ -217,13 +219,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         from apps.ventes.utils.pdf import _html_to_pdf
 
         emplacement = self.get_object()
-        ids = request.query_params.getlist('ids')
-        if len(ids) == 1 and ',' in ids[0]:
-            ids = ids[0].split(',')
-        ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
-        if not ids:
-            return Response({'detail': 'Sélectionnez au moins un produit.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        ids = ids_requete_ou_400(request)
 
         symbology = request.query_params.get('symbology', 'qr')
         if symbology not in ('qr', 'code128'):

@@ -325,7 +325,7 @@
     },
     "scanner_retour_fournisseur": {
       "endpoint": "GET /api/django/stock/scanner/retour-fournisseur/?code=<GTIN|SKU>&quantite=<n>",
-      "pourquoi": "NTWMS41 — pré-remplit une ligne de retour fournisseur depuis un scan (`scanner_retour_fournisseur_view`, views/scanner.py:135, IsAnyRole ; `services_retour_scanne.preparer_ligne_retour_scannee`). LECTURE SEULE : rien n'est écrit avant la validation du retour. `bin_source` = casier actuel le plus rempli du produit (null/'' si aucun), `bin_destination` = casier de départs fournisseur (null/'' si non configuré). 400 {detail} : « Code inconnu dans cette société. », « Ce code désigne un <type> : scannez le produit à retourner. », « Quantité invalide. », « La quantité doit être positive. ».",
+      "pourquoi": "NTWMS41 — pré-remplit une ligne de retour fournisseur depuis un scan (`scanner_retour_fournisseur_view`, views/scanner.py:135, IsAnyRole ; `services_retour_scanne.preparer_ligne_retour_scannee`). LECTURE SEULE : rien n'est écrit avant la validation du retour. `bin_source` = casier actuel le plus rempli du produit (null/'' si aucun), `bin_destination` = casier de départs fournisseur (null/'' si non configuré). 404 {detail} : « Code inconnu dans cette société. » ; 400 {detail} : « Ce code désigne un <type> : scannez le produit à retourner. », « Quantité invalide. », « La quantité doit être positive. ».",
       "exemple": {
         "produit": 88,
         "produit_nom": "Micro-onduleur",

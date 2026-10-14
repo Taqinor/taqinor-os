@@ -10,7 +10,7 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
-from ..openapi_helpers import BINARY, BOOL, DATE, INT, OBJET, P, PDF, STR, corps
+from ..openapi_helpers import BINARY, BOOL, DATE, DATE_OU_VIDE, INT, OBJET, P, PDF, STR, corps
 from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import corps_objet, entier_ou_400
@@ -225,10 +225,13 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         liens = _relations_scopees(self, request, ['parent', 'vague'])
         # Types / longueurs des champs simples validés par le sérialiseur
         # (une `dimensions` trop longue levait une 500 en base).
+        donnees = request.data
         simples = self.get_serializer(data={
-            'type_unite': request.data.get('type_unite') or 'colis',
-            'poids_kg': request.data.get('poids_kg') or None,
-            'dimensions': request.data.get('dimensions') or ''})
+            'type_unite': ('colis' if donnees.get('type_unite') is None
+                           else donnees.get('type_unite')),
+            'poids_kg': donnees.get('poids_kg'),
+            'dimensions': ('' if donnees.get('dimensions') is None
+                           else donnees.get('dimensions'))})
         simples.is_valid(raise_exception=True)
         try:
             unite = creer_unite_logistique(
@@ -474,7 +477,7 @@ class QuaiViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(actif=(actif == 'true'))
         return qs
 
-    @extend_schema(parameters=[P('date', DATE), P('vue', STR, False, 'Vue', ['jour', 'semaine']), P('quai', INT)],
+    @extend_schema(parameters=[P('date', DATE, True), P('vue', STR, False, 'Vue', ['jour', 'semaine']), P('quai', INT)],
                    responses=OBJET)
     @action(detail=False, methods=['get'], url_path='planning')
     def planning(self, request):
@@ -622,6 +625,11 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
             corps_objet(request).get('unite_logistique'), 'unite_logistique')
         unite = UniteLogistique.objects.filter(
             id=unite_id, company=company).first()
+        if unite is None and unite_id is not None:
+            # Identifiant bien formé mais inconnu de la société : 404.
+            return Response(
+                {'detail': 'Unité logistique introuvable dans cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
         try:
             expedition = creer_expedition_transporteur(
                 company=company, unite=unite,
@@ -666,7 +674,7 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
             'a_une_etiquette': bool(expedition.etiquette_pdf_key),
         })
 
-    @extend_schema(parameters=[P('unite_logistique', INT, True, 'Unité logistique (id)'), P('destination', STR)],
+    @extend_schema(parameters=[P('unite_logistique', INT, True, 'Unité logistique (id)', mini=1, maxi=2147483647), P('destination', STR)],
                    responses=corps('ExpeditionTarifsReponse', unite_logistique=serializers.IntegerField(),
                                    offres=serializers.ListField(child=serializers.DictField())))
     @action(detail=False, methods=['get'], url_path='tarifs')
@@ -676,13 +684,19 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
         transporteur. Sans connecteur configuré, renvoie le tarif de base du
         référentiel interne (repli gracieux). LECTURE SEULE."""
         from ..selectors import comparer_tarifs_transporteurs
+        unite_id = entier_ou_400(
+            request.query_params.get('unite_logistique'),
+            'unite_logistique', None, 1, 2147483647)
+        if unite_id is None:
+            return Response(
+                {'detail': 'Précisez l\'unité logistique.'},
+                status=status.HTTP_400_BAD_REQUEST)
         unite = UniteLogistique.objects.filter(
-            id=request.query_params.get('unite_logistique'),
-            company=request.user.company).first()
+            id=unite_id, company=request.user.company).first()
         if unite is None:
             return Response(
                 {'detail': 'Unité logistique introuvable dans cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         return Response({
             'unite_logistique': unite.id,
             'offres': comparer_tarifs_transporteurs(
@@ -719,9 +733,10 @@ class AlerteRappelViewSet(CompanyScopedModelViewSet):
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
-        produit = params.get('produit')
-        if produit and str(produit).isdigit():
-            qs = qs.filter(produit_id=int(produit))
+        produit = entier_ou_400(
+            params.get('produit'), 'produit', None, 1, 2147483647)
+        if produit is not None:
+            qs = qs.filter(produit_id=produit)
         return qs
 
     def perform_create(self, serializer):
@@ -954,10 +969,8 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         200: inline_serializer('StockPlanChargementCapacite', {
             'plan': serializers.IntegerField(),
             'nb_unites': serializers.IntegerField(),
-            'poids_kg': serializers.DecimalField(
-                max_digits=12, decimal_places=3),
-            'volume_m3': serializers.DecimalField(
-                max_digits=12, decimal_places=3),
+            'poids_kg': serializers.FloatField(),
+            'volume_m3': serializers.FloatField(),
             'capacite_kg': serializers.DecimalField(
                 max_digits=12, decimal_places=2, allow_null=True),
             'capacite_m3': serializers.DecimalField(
@@ -1035,9 +1048,10 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
         motif = params.get('motif')
         if motif:
             qs = qs.filter(motif=motif)
-        produit = params.get('produit')
-        if produit and str(produit).isdigit():
-            qs = qs.filter(produit_id=int(produit))
+        produit = entier_ou_400(
+            params.get('produit'), 'produit', None, 1, 2147483647)
+        if produit is not None:
+            qs = qs.filter(produit_id=produit)
         return qs
 
     def create(self, request, *args, **kwargs):
@@ -1200,11 +1214,9 @@ def _date_param(valeur, nom='date', *, ignorer_illisible=False):
         raise ValidationError({nom: ['Date AAAA-MM-JJ attendue.']})
 
 
-@extend_schema(parameters=[P('emplacement', INT, True, 'Emplacement (id)'), P('symbology', STR, False, 'Symbologie',
-                                                                              ['qr', 'code128']), P('sortie', STR,
-                                                                                                    False,
-                                                                                                    'html ou pdf',
-                                                                                                    ['html', 'pdf'])],
+@extend_schema(parameters=[P('emplacement', INT, True, 'Emplacement (id)', mini=1, maxi=2147483647),
+                           P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
+                           P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])],
                responses={
     (200, 'application/pdf'): bytes,
     400: inline_serializer('StockEtiquettesCasiersErreur', {
@@ -1226,8 +1238,10 @@ def casiers_etiquettes_pdf_view(request):
     from .. import labels
     from ..models_wms import LignePicking
 
-    emplacement_id = request.query_params.get('emplacement')
-    if not str(emplacement_id or '').isdigit():
+    emplacement_id = entier_ou_400(
+        request.query_params.get('emplacement'), 'emplacement', None, 1,
+        2147483647)
+    if emplacement_id is None:
         return Response(
             {'detail': 'Précisez l\'emplacement dont vous voulez les '
                        'étiquettes de casier.'},
@@ -1238,7 +1252,7 @@ def casiers_etiquettes_pdf_view(request):
     modele_bin = LignePicking._meta.get_field('bin').related_model
     casiers = (modele_bin.objects
                .filter(company=request.user.company,
-                       emplacement_id=int(emplacement_id), archived=False)
+                       emplacement_id=emplacement_id, archived=False)
                .select_related('emplacement')
                .order_by('ordre', 'code'))
     if not casiers:
@@ -1267,7 +1281,7 @@ def casiers_etiquettes_pdf_view(request):
     return reponse
 
 
-@extend_schema(parameters=[P('debut', DATE), P('fin', DATE)], responses={
+@extend_schema(parameters=[P('debut', DATE_OU_VIDE), P('fin', DATE_OU_VIDE)], responses={
     200: inline_serializer('StockReslottingSuggestions', {
         'suggestions': serializers.ListField(child=serializers.DictField()),
     }),
@@ -1296,7 +1310,7 @@ def reslotting_suggestions_view(request):
     })
 
 
-@extend_schema(parameters=[P('debut', DATE), P('fin', DATE)], responses={
+@extend_schema(parameters=[P('debut', DATE_OU_VIDE), P('fin', DATE_OU_VIDE)], responses={
     200: inline_serializer('StockEntrepotPertes', {
         'debut': serializers.CharField(allow_null=True),
         'fin': serializers.CharField(allow_null=True),

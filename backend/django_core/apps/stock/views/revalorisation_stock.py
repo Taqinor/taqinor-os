@@ -74,7 +74,7 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
         if instance.statut == RevalorisationStock.Statut.VALIDEE:
             return Response(
                 {'detail': 'Cette revalorisation est validée : verrouillée.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -82,7 +82,7 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
         if instance.statut == RevalorisationStock.Statut.VALIDEE:
             return Response(
                 {'detail': 'Cette revalorisation est validée : verrouillée.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(request=None, responses=RevalorisationStockSerializer)
@@ -96,5 +96,5 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
             valider_revalorisation(revalorisation)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(revalorisation).data)

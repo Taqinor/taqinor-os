@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
-from ..openapi_helpers import BINARY, DATE, INT, LISTE, NUM, P, PDF, STR, corps
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
 from ..erreurs_achats import IntrouvableMetier
 from ..utils.params import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
@@ -410,7 +410,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             self.get_serializer(facture).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('date_debut', DATE), P('date_fin', DATE)], responses=LISTE)
+    @extend_schema(parameters=[P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='releve-deductions-tva')
     def releve_deductions_tva(self, request):
         """XPUR17 — relevé de déductions TVA (achats) groupé PAR TAUX sur la

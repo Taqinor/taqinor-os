@@ -13,9 +13,11 @@ from core.serializers import CompanyScopedRelationsMixin
 # (type_fiche, bat_chimie) dans docs/api-contracts.md — son résolveur ne
 # suit pas les ré-exports de façade (deux classes ``FicheTechnique``).
 from .models_fiche_technique import FicheTechnique
+from .utils.params import UniciteEn409Mixin
 
 
-class FicheTechniqueSerializer(AttachmentSerializerMixin,
+class FicheTechniqueSerializer(UniciteEn409Mixin,
+                               AttachmentSerializerMixin,
                                CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """DC35 — datasheet rattachée à un produit. Expose en LECTURE quelques

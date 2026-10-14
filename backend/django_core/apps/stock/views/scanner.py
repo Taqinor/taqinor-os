@@ -154,13 +154,18 @@ def scanner_retour_fournisseur_view(request):
     que le retour n'est pas validé (``retours-fournisseur/{id}/
     valider-scanne/``).
     """
-    from ..services_retour_scanne import preparer_ligne_retour_scannee
+    from ..services_retour_scanne import (
+        CodeInconnu, preparer_ligne_retour_scannee,
+    )
 
     try:
         ligne = preparer_ligne_retour_scannee(
             request.user.company,
             request.query_params.get('code'),
             quantite=request.query_params.get('quantite') or 1)
+    except CodeInconnu as exc:
+        return Response({'detail': str(exc)},
+                        status=status.HTTP_404_NOT_FOUND)
     except ValueError as exc:
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)

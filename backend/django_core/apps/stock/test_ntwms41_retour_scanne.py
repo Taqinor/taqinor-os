@@ -186,9 +186,9 @@ class Ntwms41ApiTests(Ntwms41Base):
         self.assertEqual(res.data['produit'], self.produit.id)
         self.assertEqual(res.data['bin_source_code'], 'A-05-02')
 
-    def test_code_inconnu_renvoie_400_et_jamais_500(self):
+    def test_code_inconnu_renvoie_404_et_jamais_500(self):
         res = auth(self.magasinier).get(self.URL, {'code': 'INEXISTANT'})
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
 
     def test_endpoint_refuse_lanonyme(self):
         self.assertEqual(APIClient().get(self.URL).status_code, 401)
@@ -215,4 +215,4 @@ class Ntwms41ApiTests(Ntwms41Base):
             prix_achat=Decimal('1'), prix_vente=Decimal('2'),
             quantite_stock=1)
         res = auth(self.magasinier).get(self.URL, {'code': 'VOISIN-41'})
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)

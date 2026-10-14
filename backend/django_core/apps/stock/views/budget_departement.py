@@ -147,12 +147,11 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
         société ? LECTURE SEULE — AUCUN engagement n'est posé : le
         simulateur tourne AVANT la soumission, c'est tout l'intérêt (voir le
         mur avant de le heurter). ``?montant=<mad>`` suffit."""
-        from decimal import Decimal, InvalidOperation
+        from decimal import Decimal
 
-        try:
-            montant = Decimal(request.query_params.get('montant') or '0')
-        except (InvalidOperation, TypeError):
-            montant = Decimal('0')
+        from ..utils.params import decimal_ou_400
+        montant = decimal_ou_400(
+            request.query_params.get('montant'), 'montant', Decimal('0'))
         verdict = selectors.verifier_budget_disponible(
             request.user.company, None, montant)
         budget = verdict.pop('budget', None)

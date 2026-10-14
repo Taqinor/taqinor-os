@@ -196,7 +196,7 @@ class TestApiArchiveAuLieuDeDetruire(FournisseurPrixBase):
         reponse = self.api.delete(
             f'{FOURNISSEURS_URL}{self.fournisseur.pk}/force-delete/')
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assert_prix_intact()
 
     def test_force_delete_supprime_un_archive_sans_donnee_reelle(self):

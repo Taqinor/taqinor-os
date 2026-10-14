@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..erreurs_achats import EtatIncompatible, IntrouvableMetier
-from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, PDF, STR, corps
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import Fournisseur, BonCommandeFournisseur, ReceptionFournisseur
@@ -600,8 +600,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             request.user.company, produit_id, fournisseur_id=fournisseur_id)
         return Response(historique)
 
-    @extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('date_debut', DATE), P('date_fin',
-                                                                                                          DATE)],
+    @extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'),
+                               P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)],
                    responses=LISTE)
     @action(detail=False, methods=['get'], url_path='achats-hors-contrat')
     def achats_hors_contrat(self, request):

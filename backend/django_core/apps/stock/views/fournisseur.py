@@ -52,6 +52,7 @@ def parse_bool_strict(valeur):
 
 
 from .fournisseur_scm import ScmFournisseurActionsMixin  # noqa: E402
+from ..utils.params import choix_ou_400  # noqa: E402
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('categorie', INT, False, 'Catégorie fournisseur (id)'),
@@ -141,7 +142,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         # archivés sortent des listes par défaut, restent consultables avec
         # `?show_archived=true`, et sont toujours visibles pour les actions
         # qui n'ont de sens que sur un archivé.
-        if self.request.query_params.get('show_archived') == 'true':
+        if choix_ou_400(self.request.query_params.get('show_archived'),
+                        'show_archived', ('true', 'false')) == 'true':
             return qs
         if self.action in ('force_delete', 'unarchive'):
             return qs
@@ -195,7 +197,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         if not fournisseur.is_archived:
             return Response(
                 {'detail': "Ce fournisseur n'est pas archivé."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         fournisseur.is_archived = False
         fournisseur.save(update_fields=['is_archived'])
@@ -219,7 +221,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                         'supprimés définitivement.'
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         try:
             with transaction.atomic():
@@ -525,7 +527,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         if not voit_montants:
             for ligne in lignes:
                 ligne.pop('montant_achete', None)
-        if request.query_params.get('export') != 'xlsx':
+        if choix_ou_400(request.query_params.get('export'), 'export',
+                        ('xlsx',)) != 'xlsx':
             return Response(lignes)
 
         entetes = [

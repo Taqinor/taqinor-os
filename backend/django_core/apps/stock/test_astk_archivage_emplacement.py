@@ -1,5 +1,5 @@
 """ASTK202 (C-ASTK-050) — archiver un emplacement est gardé comme le
-supprimer : principal non archivable (400), emplacement détenant du stock
+supprimer : principal non archivable (409), emplacement détenant du stock
 non archivable (409), quel que soit le geste (PATCH ou PUT).
 
 Sonde MVT-12 d'origine : archiver la camionnette (10) faisait remonter le
@@ -107,7 +107,7 @@ class ArchivageTests(TestCase):
     def test_principal_400(self):
         rep = self.api.patch(f'{URL}{self.principal.id}/',
                              {'archived': True}, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.status_code, 409, rep.content)
         self.assertEqual(rep.json()['detail'],
                          'Le dépôt principal ne peut pas être archivé.')
         self.assertFalse(self._archived(self.principal))

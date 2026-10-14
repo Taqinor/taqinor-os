@@ -161,14 +161,14 @@ class TestEndpointTarifs(Ntwms10Base):
         self.assertEqual(len(resp.data['offres']), 2)
         self.assertEqual(resp.data['offres'][0]['cout'], Decimal('120.00'))
 
-    def test_unite_inconnue_400(self):
+    def test_unite_inconnue_404(self):
         resp = self.api.get(
             '/api/django/stock/expeditions/tarifs/?unite_logistique=999999')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
-    def test_unite_d_une_autre_societe_400(self):
+    def test_unite_d_une_autre_societe_404(self):
         etranger = creer_unite_logistique(company=self.autre)
         resp = self.api.get(
             '/api/django/stock/expeditions/tarifs/'
             f'?unite_logistique={etranger.id}')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)

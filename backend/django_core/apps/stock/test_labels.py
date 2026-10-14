@@ -281,3 +281,29 @@ class TestResolve(LabelsApiBase):
         res = self.api.get(
             '/api/django/stock/produits/resolve/?code=SYSTEME:999999')
         self.assertEqual(res.status_code, 404)
+
+
+class TestParametresStrictsEnf11(LabelsApiBase):
+    """ERR-ENF11-FUZZ-STOCK — paramètres de requête à valeurs fermées."""
+
+    def test_ids_vide_ou_illisible_400(self):
+        for ids in ('', 'abc', f'{self.p1.id},abc', ',', f'{self.p1.id},'):
+            res = self.api.get('/api/django/stock/produits/etiquettes/',
+                               {'ids': ids, 'sortie': 'html'})
+            self.assertEqual(res.status_code, 400, (ids, res.content))
+
+    def test_ids_valides_200(self):
+        res = self.api.get('/api/django/stock/produits/etiquettes/',
+                           {'ids': f'{self.p1.id},{self.p2.id}',
+                            'sortie': 'html'})
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def test_show_archived_hors_enumeration_400(self):
+        for url in ('produits', 'fournisseurs'):
+            res = self.api.get(f'/api/django/stock/{url}/',
+                               {'show_archived': 'AAA'})
+            self.assertEqual(res.status_code, 400, (url, res.content))
+            for valeur in ('true', 'false'):
+                res = self.api.get(f'/api/django/stock/{url}/',
+                                   {'show_archived': valeur})
+                self.assertEqual(res.status_code, 200, (url, res.content))

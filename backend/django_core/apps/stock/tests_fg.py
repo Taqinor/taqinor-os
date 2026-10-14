@@ -670,7 +670,7 @@ class TestFG63InventaireSession(TestCase):
             f'/api/django/stock/inventaire-sessions/{session_id}/valider/')
         r2 = self.client.post(
             f'/api/django/stock/inventaire-sessions/{session_id}/valider/')
-        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(r2.status_code, 409)
 
     def test_cross_company_isolation(self):
         company2 = make_company('fg63-other')
