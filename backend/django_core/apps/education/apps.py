@@ -25,7 +25,8 @@ class EducationConfig(AppConfig):
         'label': 'Éducation',
         'icone': 'graduation-cap',
         'depends': [],
-        'description': 'Structure année/niveau/classe, dossier famille/élève, inscriptions, scolarité (tarifs/remises/échéancier), présences et matières pour établissements scolaires.',
+        'description': 'Structure année/niveau/classe, dossier famille/élève, inscriptions, scolarité '
+                       '(tarifs/remises/échéancier), présences et matières pour établissements scolaires.',
         'categorie': 'Services',
         'parked': True,
     }
