@@ -103,7 +103,7 @@ def _messages_decimaux(fields, noms):
             champ.error_messages['max_decimal_places'] = MSG_DEUX_DECIMALES
 
 
-class LigneDevisSerializer(SameCompanyFKSerializerMixin,
+class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """La ligne d'un devis, telle que l'écran la lit et l'écrit.
 
