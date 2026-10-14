@@ -21,6 +21,10 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from .visites_rdv import BookingLinkUnavailable, resolve_booking_link, reserver_creneau_public
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class PublicBookingRateThrottle(SimpleRateThrottle):
     """Débit limité par IP + jeton — décourage l'abus sans jamais bloquer un
@@ -147,4 +151,4 @@ def _tracer_reservation(request, link):
             request=request,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
-        pass
+        logger.warning("tracer reservation : échec ignoré, comportement dégradé", exc_info=True)

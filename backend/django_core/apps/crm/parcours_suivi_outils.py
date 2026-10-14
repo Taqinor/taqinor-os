@@ -54,6 +54,10 @@ from apps.parametres.models_relance import (
     Cadence, CadenceRelanceEtape)
 from apps.visites.selectors import visites_pour_lead
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 User = get_user_model()
 
 # ── Les deux fichiers lus (chemins remontés depuis ce fichier, patron CAD17) ────────────────
@@ -490,6 +494,7 @@ class ParcoursBase(TestCase):
             else:
                 resp = getattr(self.api, methode)(url, corps or {}, format='json')
         except Exception:  # noqa: BLE001 — I1 : le client de test RELÈVE l'erreur serveur
+            logger.warning("appel : échec ignoré, comportement dégradé", exc_info=True)
             self.fail(self.msg(f'I1 — {methode.upper()} {url} {corps or ""} : erreur serveur\n'
                                f'{traceback.format_exc()}'))
         donnees = getattr(resp, 'data', None)

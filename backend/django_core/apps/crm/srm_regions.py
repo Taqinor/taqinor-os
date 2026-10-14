@@ -26,6 +26,10 @@ La normalisation des noms de ville réutilise celle du gazetier
 (``apps.parametres.villes_maroc._normaliser``) : accents, casse et tirets y
 sont déjà traités — on ne réécrit pas une seconde normalisation.
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 #: Code de choix ``crm.Lead.distributeur`` → libellé français de la SRM.
 #: Un code par région du découpage de 2015 ; le libellé porte le nom officiel
@@ -118,6 +122,7 @@ def _normaliser(texte):
         from apps.parametres.villes_maroc import _normaliser as _norm
         return _norm(texte)
     except Exception:  # noqa: BLE001 — la déduction n'arrête jamais un écran
+        logger.warning("normaliser : échec ignoré, comportement dégradé", exc_info=True)
         brut = (texte or '').strip().lower()
         for separateur in ('-', '_', "'", '’', '.'):
             brut = brut.replace(separateur, ' ')

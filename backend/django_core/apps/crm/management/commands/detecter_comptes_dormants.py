@@ -12,6 +12,10 @@ traitement des autres clients.
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class Command(BaseCommand):
     help = ('NTCRM14 — Détecte les comptes dormants (aucune activité depuis '
@@ -95,6 +99,7 @@ def _alerter(client, entry, now):
         try:
             owner = leads_attribution.default_responsable_for(client.company)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning("alerter : échec ignoré, comportement dégradé", exc_info=True)
             owner = None
 
     if owner is None:
@@ -119,4 +124,4 @@ def _alerter(client, entry, now):
             company=client.company,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("alerter : échec ignoré, comportement dégradé", exc_info=True)

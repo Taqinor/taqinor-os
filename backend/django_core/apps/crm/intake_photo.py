@@ -62,6 +62,7 @@ def _service_token_for(user) -> str:
         from rest_framework_simplejwt.tokens import AccessToken
         return str(AccessToken.for_user(user))
     except Exception:  # pragma: no cover — défensif
+        logger.warning("service token for : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 

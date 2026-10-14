@@ -104,6 +104,7 @@ def _texte(valeur, longueur) -> str:
     try:
         return str(valeur).strip()[:longueur]
     except Exception:  # noqa: BLE001 — défensif : une entrée publique
+        logger.warning("texte : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 
@@ -159,6 +160,7 @@ def user_agent_de_requete(request) -> str:
     try:
         return _texte(request.META.get('HTTP_USER_AGENT'), MAX_USER_AGENT)
     except Exception:  # noqa: BLE001 — défensif
+        logger.warning("user agent de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 
@@ -203,6 +205,7 @@ def appareil_de_requete(request) -> str:
         cookies = getattr(request, 'COOKIES', None) or {}
         return _texte(cookies.get(COOKIE_APPAREIL), MAX_APPAREIL)
     except Exception:  # noqa: BLE001 — défensif
+        logger.warning("appareil de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 
@@ -560,6 +563,7 @@ def _date_fr(moment) -> str:
     try:
         return timezone.localtime(moment).strftime('%d/%m/%Y à %H:%M')
     except Exception:  # noqa: BLE001 — défensif
+        logger.warning("date fr : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 

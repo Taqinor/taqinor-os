@@ -81,6 +81,7 @@ def _profil(company):
         from apps.parametres.models import CompanyProfile
         return CompanyProfile.objects.filter(company=company).first()
     except Exception:  # noqa: BLE001 — défauts assumés
+        logger.warning("profil : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 

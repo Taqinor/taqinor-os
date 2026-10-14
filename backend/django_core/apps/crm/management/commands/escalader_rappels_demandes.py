@@ -17,6 +17,10 @@ balayage des 30 minutes ne répète jamais la même alerte.
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Corps de note système marquant une escalade déjà traitée (idempotence).
 ESCALATION_MARKER = 'auto — escalade SLA rappel : rappel non actionné'
 
@@ -106,4 +110,4 @@ def _escalate(lead, seuil, now, recipients_fn):
                 company=lead.company,
             )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("escalate : échec ignoré, comportement dégradé", exc_info=True)

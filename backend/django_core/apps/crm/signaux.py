@@ -27,6 +27,10 @@ Lecture seule, sans effet de bord, et tolérante : un signal illisible vaut
 « absent », jamais une exception — un badge de score ne fait pas tomber une
 fiche lead.
 """
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 #: Les issues qui valent « on a eu le client au bout du fil ». Reprises à
 #: l'identique de ``mesure_cadence.ISSUES_JOINT``.
@@ -69,6 +73,7 @@ def _engagement_proposition(lead):
         return engagement_proposition_du_lead(
             getattr(lead, 'pk', None), getattr(lead, 'company', None))
     except Exception:  # noqa: BLE001 — un score ne fait jamais tomber un lead
+        logger.warning("engagement proposition : échec ignoré, comportement dégradé", exc_info=True)
         return vide
 
 
@@ -86,6 +91,7 @@ def _questionnaire_repondu_le(lead):
                 .aggregate(dernier=Max('derniere_reponse_at'))
                 .get('dernier'))
     except Exception:  # noqa: BLE001
+        logger.warning("questionnaire repondu le : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -105,6 +111,7 @@ def _derniere_activite_le(lead, *, issues=None):
             qs = qs.filter(outcome__in=issues)
         return qs.aggregate(dernier=Max('created_at')).get('dernier')
     except Exception:  # noqa: BLE001
+        logger.warning("derniere activite le : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -207,5 +214,5 @@ def annotations_signaux():
         from apps.ventes.selectors import annotations_engagement_proposition
         annotations.update(annotations_engagement_proposition())
     except Exception:  # noqa: BLE001 — un score ne fait jamais tomber une liste
-        pass
+        logger.warning("annotations signaux : échec ignoré, comportement dégradé", exc_info=True)
     return annotations
