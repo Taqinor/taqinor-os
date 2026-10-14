@@ -321,6 +321,72 @@ class FichiersPdfTests(unittest.TestCase):
                 self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
                 self.assertEqual(corps['code'], '0')
 
+    def test_binaire_schemathesis_garde_son_type(self):
+        # ``Binary`` (str + ``.data``) : des octets nus feraient basculer le cas
+        # positif en négatif à la revalidation de Schemathesis.
+        class Binary(str):
+            def __new__(cls, data):
+                return super().__new__(cls)
+
+            def __init__(self, data):
+                self.data = data
+
+        corps = self._corps(corps={'fichier': Binary(b'')})
+        self.assertIsInstance(corps['fichier'], Binary)
+        self.assertTrue(corps['fichier'].data.startswith(b'%PDF-'))
+
+    def test_lecture_de_meta_sans_revalidation(self):
+        # Après une substitution de FK, ``case.meta`` revaliderait le corps :
+        # le crochet PDF lit ``_meta`` directement quand il existe.
+        class Cas:
+            _meta = types.SimpleNamespace(generation=types.SimpleNamespace(
+                mode=None))
+
+            @property
+            def meta(self):
+                raise AssertionError('case.meta lu : revalidation déclenchée')
+
+        self.assertIs(self.hooks._meta_sans_revalidation(Cas()), Cas._meta)
+
+    def test_corps_a_fichier_non_marque_a_revalider(self):
+        # Schemathesis déclare invalide tout corps à octets REVALIDÉ : le
+        # drapeau « à revalider » du corps est retiré, celui de la query reste.
+        class Binary(str):
+            def __new__(cls, data):
+                return super().__new__(cls)
+
+            def __init__(self, data):
+                self.data = data
+
+        class Lieu:
+            def __init__(self, valeur):
+                self.value = valeur
+
+        corps_lieu, query_lieu = Lieu('body'), Lieu('query')
+        cas = _cas(self.hooks, 'POST', '/api/django/calepinage/gabarits-dossiers/',
+                   {'fichier': Binary(b''), 'code': '0'})
+        empreintes = {}
+        cas._meta = types.SimpleNamespace(
+            generation=cas.meta.generation,
+            _dirty={corps_lieu, query_lieu},
+            components={corps_lieu: 1, query_lieu: 1},
+            clear_dirty=lambda lieu: cas._meta._dirty.discard(lieu),
+            update_validated_hash=empreintes.__setitem__)
+        cas._hash_container = lambda valeur: 42
+        self.hooks.before_call(None, cas, {})
+        self.assertEqual(cas._meta._dirty, {query_lieu})
+        # L'empreinte validée du corps est réalignée, pas celle de la query.
+        self.assertEqual(empreintes, {corps_lieu: 42})
+        # Un corps sans octets garde son drapeau (revalidation normale).
+        cas = _cas(self.hooks, 'POST', '/api/django/calepinage/gabarits-dossiers/',
+                   {'code': '0'})
+        cas._meta = types.SimpleNamespace(
+            generation=cas.meta.generation,
+            _dirty={corps_lieu},
+            clear_dirty=lambda lieu: cas._meta._dirty.discard(lieu))
+        self.hooks.before_call(None, cas, {})
+        self.assertEqual(cas._meta._dirty, {corps_lieu})
+
     def test_valeur_texte_reste_du_texte(self):
         corps = self._corps(corps={'fichier': ''})
         self.assertIsInstance(corps['fichier'], str)
