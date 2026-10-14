@@ -4,7 +4,7 @@
 // composant ; seules exceptions au verbatim : les refs écrites passent sous
 // les noms `facturesEcartConfirmeRef` / `forcerSansJetonRef` (règle
 // react-hooks/immutability).
-import { erreursConditions } from '../../echeancierEdition'
+import { erreursConditions, erreurEcheancier } from '../../echeancierEdition'
 import {
   controlerFacturesSaisies,
   isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe, texteClassement,
@@ -32,6 +32,7 @@ const LIBELLES_CHAMPS_ENTETE = {
   prix_cible_kwc: 'Prix cible / kWc',
   statut: 'Statut',
   etude_params: 'Étude',
+  echeancier: 'Échéancier de paiement',
 }
 const champsEntete = (err) => {
   const { fieldErrors } = getApiError(err)
@@ -59,7 +60,7 @@ export function usePersistanceDevis(ctx) {
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
-    setEditDevis, setReserveEnregistrement, setErreursChamps, baremeSociete,
+    setEditDevis, setReserveEnregistrement, setErreursChamps, baremeSociete, kpiTotal = null,
     // EDC7 (contrat EDC) — rester dans l'éditeur après l'enregistrement.
     embedded = false, onEnregistre = null,
   } = ctx
@@ -78,6 +79,11 @@ export function usePersistanceDevis(ctx) {
     if (editId && Object.keys(erreursConditions(conditions)).length) {
       e.conditions = 'Conditions du client incomplètes : voir sous les champs.'
     }
+    // AGNR37 — un échéancier ENVOYÉ dont les tranches ne totalisent pas le
+    // devis bloque AVANT toute écriture : raison sous la carte, bandeau nommé.
+    const refusEcheancier = editId && echeancierAEnvoyer.current
+      && erreurEcheancier(echeancierSaisie, kpiTotal)
+    if (refusEcheancier) e.submit = `${LIBELLES_CHAMPS_ENTETE.echeancier} : ${refusEcheancier}`
     // CIQ125 — commercial ET industriel : sans consommation (saisie, ou
     // reprise de la fiche lead par le serveur) ni taille explicite,
     // l'enregistrement est refusé SOUS le champ.
@@ -601,6 +607,8 @@ export function usePersistanceDevis(ctx) {
         // champ et le bandeau le NOMME (jamais la phrase générique).
         const parChamp = champsEntete(err)
         setErreursChamps(parChamp)
+        // AGNR37 — le refus `echeancier` (AGNR12) s'affiche aussi sous la carte.
+        if (parChamp.echeancier) setErrors(prev => ({ ...prev, echeancier: parChamp.echeancier }))
         msg = Object.entries(parChamp)
           .map(([champ, texte]) => `${LIBELLES_CHAMPS_ENTETE[champ]} : ${texte}`).join(' · ')
       } else if (!editDevis && issueInconnue(err)) {

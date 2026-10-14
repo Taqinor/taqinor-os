@@ -1621,7 +1621,7 @@ export default function DevisGenerator({
     facturesSaisies, selectedLead, marcheCi, ctxProfilCi,
     consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
     setEditDevis, setReserveEnregistrement,
-    setErreursChamps, baremeSociete, embedded, onEnregistre,
+    setErreursChamps, baremeSociete, embedded, onEnregistre, kpiTotal,
   })
 
   // EDC5 (fondateur 09/10/2026 — « revient d'un coup au devis ») — clavier

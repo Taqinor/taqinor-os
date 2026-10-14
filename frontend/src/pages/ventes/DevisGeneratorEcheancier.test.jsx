@@ -13,6 +13,7 @@ import { documentContrat } from '../../test/fixtures/contractSamples'
 import {
   echeancierAvecAcompte, echeancierVersSaisie, saisieVersEcheancier, saisieParDefaut,
   CONDITIONS_VIDES, conditionsVersEntete, echeancierFinanceur, LIBELLE_TRANCHE_FINANCEUR,
+  erreurEcheancier,
 } from '../../features/ventes/echeancierEdition'
 import { useState } from 'react'
 import CarteEcheancier from './generator/CarteEcheancier'
@@ -210,6 +211,60 @@ describe('QJR624 — l\'échéancier s\'édite dans l\'Édition complète', () =
     const carte = await screen.findByTestId('carte-echeancier')
     fireEvent.change(carte.querySelector('#gen-echeance-0'), { target: { value: '10' } })
     expect(await screen.findByTestId('echeancier-somme')).toHaveTextContent('100 %')
+  })
+})
+
+// ══ AGNR37 — tranches qui ne totalisent pas le devis : enregistrement bloqué ══
+describe('AGNR37 — échéancier hors total : aucune écriture', () => {
+  it('tout en %, unités mixtes, tranche vide : la raison exacte', () => {
+    const t = (valeur, unite = 'pct') => ({ valeur, unite })
+    expect(erreurEcheancier([t('70'), t('60'), t('10')], 42600))
+      .toBe('Total des tranches : 140 % — il doit faire 100 %.')
+    expect(erreurEcheancier([t('10000', 'montant'), t('60'), t('10')], 42600))
+      .toBe('Total des tranches : 93,5 % du TTC — il doit faire 100 %.')
+    expect(erreurEcheancier([t('30'), t('60'), t('')], 42600)).toMatch(/^Tranche 3 vide/)
+    expect(erreurEcheancier([t('30'), t('60'), t('10')], 42600)).toBeNull()
+    expect(erreurEcheancier(null, 42600)).toBeNull()
+  })
+
+  const ouvrirEtSaisir = async (valeurs, unites = {}) => {
+    parametresApi.getProfile.mockResolvedValue({ data: { payment_terms_effectifs: EFFECTIFS } })
+    const rouvert = devisRouvert('exemple_envoye', ECHEANCIER_AGRICOLE)
+    ventesApi.getDevisById.mockResolvedValue(rouvert)
+    renderEdition(rouvert.data.id)
+    await waitFor(() => expect(crmApi.getLead).toHaveBeenCalledWith(77))
+    const carte = await screen.findByTestId('carte-echeancier')
+    valeurs.forEach((v, i) => {
+      fireEvent.change(carte.querySelector(`#gen-echeance-${i}`), { target: { value: v } })
+    })
+    for (const [i, unite] of Object.entries(unites)) {
+      fireEvent.change(screen.getAllByLabelText(/^Unité — /)[i], { target: { value: unite } })
+    }
+    ventesApi.replaceLignesDevis.mockClear()
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    return carte
+  }
+
+  it.each([
+    [['70', '60', '10'], {}, /Total des tranches : 140 % — il doit faire 100 %/],
+    [['10000', '60', '10'], { 0: 'montant' }, /Total des tranches : [\d,]+ % du TTC — il doit faire 100 %/],
+    [['30', '60', ''], {}, /Tranche 3 vide/],
+  ])('%j ⇒ bloqué, raison sous la carte, bandeau nommé', async (valeurs, unites, raison) => {
+    await ouvrirEtSaisir(valeurs, unites)
+    expect(await screen.findByTestId('erreur-enregistrement'))
+      .toHaveTextContent(/Échéancier de paiement : /)
+    expect(screen.getByTestId('echeancier-somme')).toHaveTextContent(raison)
+    expect(ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
+  })
+
+  it('refus 400 `echeancier` du serveur : affiché sous la carte', async () => {
+    ventesApi.replaceLignesDevis.mockRejectedValueOnce({
+      response: { status: 400, data: { echeancier: ['Les tranches doivent totaliser 100 %.'] } },
+    })
+    await ouvrirEtSaisir(['30', '60', '10'])
+    expect(await screen.findByTestId('echeancier-somme'))
+      .toHaveTextContent('Les tranches doivent totaliser 100 %.')
+    expect(screen.getByTestId('erreur-enregistrement')).toHaveTextContent(/Échéancier de paiement/)
   })
 })
 
