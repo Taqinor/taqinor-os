@@ -138,7 +138,7 @@ const stockApi = {
   deletePrixFournisseur: (id) => api.delete(`/stock/prix-fournisseurs/${id}/`),
 
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
-  getMarques: () => api.get('/stock/marques/'),
+  getMarques: (params) => api.get('/stock/marques/', { params }),
   saveMarque: (id, data) => id
     ? api.patch(`/stock/marques/${id}/`, data) : api.post('/stock/marques/', data),
   deleteMarque: (id) => api.delete(`/stock/marques/${id}/`),
@@ -459,7 +459,7 @@ const stockApi = {
       { params, responseType: 'blob' }),
 
   // ZSTK12 — nomenclatures de code-barres (Paramètres) + leurs règles.
-  getNomenclaturesCodeBarres: () => api.get('/stock/nomenclatures-code-barres/'),
+  getNomenclaturesCodeBarres: (params) => api.get('/stock/nomenclatures-code-barres/', { params }),
   createNomenclatureCodeBarres: (data) =>
     api.post('/stock/nomenclatures-code-barres/', data),
   updateNomenclatureCodeBarres: (id, data) =>

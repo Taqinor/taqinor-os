@@ -17,6 +17,7 @@ import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import toutesLesPages from './toutesLesPages'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 
 // Les exigences attachables à un gate (miroir des champs `exige_*` serveur).
@@ -48,8 +49,8 @@ export default function EtapesChantierSection() {
   const [loadError, setLoadError] = useState(false)
   const [newLibelle, setNewLibelle] = useState('')
 
-  const load = () => installationsApi.getStagesChantier()
-    .then(r => { setStages(r.data.results ?? r.data); setLoadError(false) })
+  const load = () => toutesLesPages((params) => installationsApi.getStagesChantier(params))
+    .then(rows => { setStages(rows); setLoadError(false) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
   useEffect(() => { load() }, [])

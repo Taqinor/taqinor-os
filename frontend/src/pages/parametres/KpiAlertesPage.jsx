@@ -10,6 +10,7 @@ import {
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
+import toutesLesPages from './toutesLesPages'
 
 /* ============================================================================
    XPLT6 — CRUD des alertes de seuil sur KPI AGRÉGÉS (`reporting/kpi-alertes/`).
@@ -70,16 +71,16 @@ export default function KpiAlertesPage() {
     [users],
   )
 
-  const reload = () => reportingApi.listKpiAlertes()
-    .then((r) => setAlertes(r.data?.results ?? r.data ?? []))
+  const reload = () => toutesLesPages((params) => reportingApi.listKpiAlertes(params))
+    .then(setAlertes)
     .catch(() => setAlertes([]))
 
   useEffect(() => {
     let active = true
-    Promise.all([reportingApi.listKpiAlertes(), api.get('/users/')])
+    Promise.all([toutesLesPages((params) => reportingApi.listKpiAlertes(params)), api.get('/users/')])
       .then(([a, u]) => {
         if (!active) return
-        setAlertes(a.data?.results ?? a.data ?? [])
+        setAlertes(a)
         setUsers(u.data?.results ?? u.data ?? [])
       })
       .catch(() => { if (active) setAlertes([]) })

@@ -503,8 +503,8 @@ export default function ApiWebhooksSection() {
 
   const loadAll = () => {
     Promise.all([
-      publicapiApi.getKeys().then(r => setKeys(r.data.results ?? r.data)).catch(() => {}),
-      publicapiApi.getWebhooks().then(r => setWebhooks(r.data.results ?? r.data)).catch(() => {}),
+      toutesLesPages((params) => publicapiApi.getKeys(params)).then(setKeys).catch(() => {}),
+      toutesLesPages((params) => publicapiApi.getWebhooks(params)).then(setWebhooks).catch(() => {}),
     ]).finally(() => setLoading(false))
   }
 
