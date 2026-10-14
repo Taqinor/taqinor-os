@@ -120,6 +120,13 @@ class XSAV19PublicSignalerTest(TestCase):
 
     # ── Étiquettes régénérées avec l'URL publique ───────────────────────────
 
+    def test_etiquettes_public_hors_enum_400(self):
+        # CI #997 api-fuzz : `?public=` est une énumération publiée.
+        resp = auth(self.admin).get(
+            '/api/django/sav/equipements/etiquettes/', {'public': 'AAA'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('public', resp.json())
+
     def test_etiquettes_public_encode_url(self):
         api = auth(self.admin)
         resp = api.get(

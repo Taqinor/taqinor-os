@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from . import cadence_temps
-from .champs_api import MAPPING_BOOLEEN_STRICT
+from .champs_api import MAPPING_TEXTE_STRICT
 from .models import Lead, LeadActivity, MessageTemplate, RelanceEtape
 from .serializers import (
     nom_affichable_lead, nom_affichable_responsable, pii_masquee_pour,
@@ -425,7 +425,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
 
 class MessageTemplateSerializer(serializers.ModelSerializer):
     """Modèle de message CRM (WhatsApp/SMS). Lecture tout rôle, écriture admin."""
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     langue_display = serializers.CharField(
         source='get_langue_display', read_only=True)
 

@@ -676,10 +676,9 @@ class Enf11FuzzGedTour2Tests(TestCase):
                 ('demandes-signature/creer-multi/', {
                     'document': 0, 'destinataires': [{'nom': 'A'}]},
                  'document')):
-            with self.subTest(route=route, corps=corps):
-                resp = self.api.post(f'{BASE}{route}', corps, format='json')
-                self.assertEqual(resp.status_code, 404, resp.content)
-                self.assertIn(champ, resp.data)
+            resp = self.api.post(f'{BASE}{route}', corps, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            self.assertIn(champ, resp.data)
         # Une erreur d'une autre nature, même mêlée, garde le 400.
         resp = self.api.post(f'{BASE}documents/', {'folder': 0},
                              format='json')
@@ -725,3 +724,160 @@ class Enf11FuzzGedTour2Tests(TestCase):
             MOTIF_NON_BLANC_SANS_NUL)
         self.assertIn('anyOf', composants['RegleApprobationGedRequest'][
             'properties']['condition_group'])
+
+
+class Ci997FuzzGedTour3Tests(TestCase):
+    """CI #997 (api-fuzz sur toute l'API) — GED : 500 sur corps non objet,
+    paramètres énumérés stricts, corps déclarés exacts, refus d'état en 409."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='ci997-ged-t3', defaults={'nom': 'CI997 GED T3'})[0]
+        self.admin = User.objects.create_user(
+            username='ci997-ged-t3-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='D')
+        self.api = auth(self.admin)
+
+    def _post(self, route, corps):
+        return self.api.post(f'{BASE}{route}', corps, format='json')
+
+    def test_operations_lot_corps_non_objet_400_pas_500(self):
+        for corps in ([None, None], [], 'x', None):
+            resp = self._post('documents/operations-lot/', corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_parametres_enumeres_hors_liste_400_nommant_le_parametre(self):
+        for route, nom in (
+                ('documents/?statut=AAA', 'statut'),
+                ('partages/?actif=AAA', 'actif'),
+                ('legal-holds/?actif=AAA', 'actif'),
+                ('politiques-retention/?actif=AAA', 'actif'),
+                ('modeles-document/?actif=AAA', 'actif'),
+                ('demandes-approbation/?en_attente=AAA', 'en_attente'),
+                ('validations-ocr/?en_attente=AAA', 'en_attente'),
+                ('liens/?model=', 'model')):
+            resp = self.api.get(f'{BASE}{route}')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn(nom, resp.json())
+        tag = self._post('tags/', {'nom': 'T'}).json()['id']
+        resp = self.api.get(f'{BASE}tags/{tag}/documents/?descendants=AAA')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        for route in ('documents/?statut=brouillon', 'partages/?actif=true',
+                      'legal-holds/?actif=0', 'politiques-retention/?actif=1',
+                      'modeles-document/?actif=false',
+                      'demandes-approbation/?en_attente=1',
+                      'validations-ocr/?en_attente=true',
+                      f'tags/{tag}/documents/?descendants=1'):
+            resp = self.api.get(f'{BASE}{route}')
+            self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_slug_tag_vide_derive_du_nom_et_motif_publie(self):
+        resp = self._post('tags/', {'nom': 'Contrats', 'slug': ''})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['slug'], 'contrats')
+        for slug in (' a', 'a b', 'é', 0):
+            resp = self._post('tags/', {'nom': 'X', 'slug': slug})
+            self.assertEqual(resp.status_code, 400, (slug, resp.content))
+
+    def test_feuille_de_condition_blanche_400(self):
+        blanche = {'field': '\f', 'operator': 'eq'}
+        for route, corps in (
+                ('regles-dossier/', {'folder': self.folder.pk, 'nom': 'r',
+                                     'condition_group': blanche}),
+                ('regles-approbation/', {'libelle': 'r',
+                                         'condition_group': blanche}),
+                ('regles-approbation/', {'libelle': 'r', 'condition_group': {
+                    'op': 'and', 'conditions': [blanche]}})):
+            resp = self._post(route, corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn('condition_group', resp.json())
+
+    def test_lien_document_zero_404_et_cible_illisible_400(self):
+        from apps.crm.models import Client
+        client = Client.objects.create(company=self.co, nom='Client')
+        resp = self._post('liens/', {
+            'document': 0, 'model': 'crm.client', 'id': client.pk})
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = self.api.get(f'{BASE}liens/?model=crm.client&id=abc')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_deplacer_dossier_sous_lui_meme_409(self):
+        resp = self._post(f'dossiers/{self.folder.pk}/deplacer/', {
+            'parent': self.folder.pk})
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('detail', resp.json())
+
+    def test_type_champ_signature_decimaux_en_chaine(self):
+        base = {'code': 'c997', 'libelle': 'L', 'mode_saisie': 'texte'}
+        for corps in ({**base, 'hauteur_defaut': 0},
+                      {**base, 'largeur_defaut': 2.5}):
+            resp = self._post('types-champ-signature/', corps)
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self._post('types-champ-signature/', {
+            **base, 'largeur_defaut': '0', 'hauteur_defaut': '5.5'})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['hauteur_defaut'], '5.50')
+
+    def test_champ_signature_fk_inconnues_404(self):
+        resp = self._post('champs-signature/', {
+            'demande': None, 'modele': 999999, 'type_champ': 'signature',
+            'type_champ_ref': 999999, 'page': 0})
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('modele', resp.json())
+
+    def test_vue_enregistree_criteres_null_lu_comme_vide(self):
+        resp = self._post('vues/', {'nom': 'V', 'criteres': None,
+                                    'partagee': True})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['criteres'], {})
+
+    def test_modele_document_sections_liste_d_objets(self):
+        base = {'nom': 'M', 'corps_html': ''}
+        for sections in ({}, '', [{'conditions': None}],
+                         [{'conditions': []}], [1]):
+            resp = self._post('modeles-document/', {**base, 'sections': sections})
+            self.assertEqual(resp.status_code, 400, (sections, resp.content))
+        for sections in (None, [], [{'titre': 'T'}], [{'conditions': {}}]):
+            resp = self._post('modeles-document/', {**base, 'sections': sections})
+            self.assertEqual(resp.status_code, 201, (sections, resp.content))
+
+    def test_document_custom_data_objet_seulement(self):
+        resp = self._post('documents/', {
+            'folder': self.folder.pk, 'nom': 'x', 'custom_data': [None, None]})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('custom_data', resp.json())
+        resp = self._post('documents/', {
+            'folder': self.folder.pk, 'nom': 'x', 'custom_data': {}})
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_politique_retention_cible_unique_refusee_et_publiee(self):
+        resp = self._post('politiques-retention/', {
+            'nom': 'P', 'cabinet': self.cab.pk, 'folder': self.folder.pk,
+            'duree_conservation_jours': 1, 'action_echeance': 'signaler'})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ged import urls as ged_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ged/', include(ged_urls)),
+        ]).get_schema(request=None, public=True)
+        chemins = schema['paths']
+        corps = chemins['/api/django/ged/politiques-retention/']['post'][
+            'requestBody']['content']['application/json']['schema']
+        self.assertIn('not', corps['allOf'][1])
+        for route in ('scan-lot', 'assembler-photos', 'deposer-lot-scans-separe'):
+            multipart = chemins[f'/api/django/ged/documents/{route}/']['post'][
+                'requestBody']['content']['multipart/form-data']['schema']
+            composant = schema['components']['schemas'][
+                multipart['$ref'].rsplit('/', 1)[1]]
+            liste = composant['properties'].get('files') or composant[
+                'properties']['photos']
+            self.assertEqual(liste['minItems'], 1, route)
+        ocr = schema['components']['schemas']['GedOcrPieceCorpsRequest']
+        self.assertTrue(ocr['properties']['type_piece']['nullable'])

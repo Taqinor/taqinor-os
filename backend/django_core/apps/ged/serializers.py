@@ -1,10 +1,11 @@
+from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
-    MotifUrlPublie)
+    ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalStricte,
+    IdInconnu404Mixin, MotifUrlPublie)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import ConflitUnicite
 
@@ -22,7 +23,8 @@ from .models import (
     TypeChampSignature, ValidationOcrDocument, VueGedEnregistree,
 )
 from . import services
-from .corps_requete import GroupeConditionsField
+from .corps_requete import (
+    GroupeConditionsField, SectionsModeleField, erreurs_groupe_conditions)
 
 
 class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
@@ -46,8 +48,14 @@ class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
     # ERR-QAH-GED-TAG-CREATION-SLUG — le formulaire « Nouveau tag » n'envoie
     # que le nom : le slug est FACULTATIF et, absent, dérivé du nom côté
     # serveur (unique par société, suffixe -2, -3… en cas de collision).
-    slug = serializers.SlugField(
-        max_length=110, required=False, allow_blank=True)
+    # CI #997 fuzz — le motif publié accepte désormais le slug VIDE (jusqu'ici
+    # ``SlugField`` publiait ``^[-a-zA-Z0-9_]+$`` : ``""`` était « invalide »
+    # au schéma mais accepté) ; pas de rognage, le motif vaut pour la valeur brute.
+    slug = ChaineStricte(
+        max_length=110, required=False, allow_blank=True,
+        trim_whitespace=False,
+        validators=[RegexValidator(
+            r'^[-a-zA-Z0-9_]*$', message='Identifiant (slug) invalide.')])
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('parent',)
@@ -364,6 +372,10 @@ class DocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     url_externe = ChaineStricte(
         max_length=2000, required=False, allow_blank=True,
         validators=[MotifUrlPublie()])
+
+    # CI #997 fuzz — métadonnées typées : un OBJET (le schéma le disait libre,
+    # ``[null, null]`` était « conforme » puis refusé « Format invalide »).
+    custom_data = serializers.DictField(required=False)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('folder', 'coffre')
@@ -937,7 +949,7 @@ class DemandeSignatureDocumentSerializer(ChampsStrictsSansDecimalMixin,
             obj.token, 'demande', request=self.context.get('request')) or None
 
 
-class ChampSignatureSerializer(ChampsStrictsSansDecimalMixin,
+class ChampSignatureSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED3 — Champ positionné sur le PDF à signer (demande OU modèle,
     exactement l'un des deux). `company` posée CÔTÉ SERVEUR (jamais lue du
@@ -1008,6 +1020,13 @@ class TypeChampSignatureSerializer(ChampsStrictsSansDecimalMixin,
 
     `company`/`created_by` posés côté serveur. `code` unique par société
     (garde base + validation applicative pour un message FR clair)."""
+    # CI #997 fuzz — décimaux transportés en CHAÎNE (comme le schéma le dit) :
+    # un nombre JSON était converti en silence. Aucun écran ne les écrit.
+    largeur_defaut = DecimalStricte(
+        max_digits=5, decimal_places=2, required=False)
+    hauteur_defaut = DecimalStricte(
+        max_digits=5, decimal_places=2, required=False)
+
     class Meta:
         model = TypeChampSignature
         fields = [
@@ -1144,6 +1163,12 @@ class VueGedEnregistreeSerializer(ChampsStrictsSansDecimalMixin,
             'created_at', 'updated_at',
         ]
         read_only_fields = ['utilisateur', 'created_at', 'updated_at']
+        # CI #997 fuzz — `criteres` est publié en JSON libre (null compris) :
+        # `validate_criteres` lit null comme « aucun critère ».
+        extra_kwargs = {'criteres': {'allow_null': True}}
+
+    def validate_criteres(self, valeur):
+        return {} if valeur is None else valeur
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_est_a_moi(self, obj):
@@ -1214,6 +1239,9 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
     document généré (le dossier peut être templaté par le contexte de fusion)."""
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
+    # CI #997 fuzz — `sections` est publié liste d'objets (ou null, lu comme
+    # « aucune section » par `validate_sections`), plus en JSON libre.
+    sections = SectionsModeleField(required=False, allow_null=True)
 
     class Meta:
         model = ModeleDocument
@@ -1223,9 +1251,6 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
-        # CI #997 fuzz — `sections` est publié nullable (JSONField) :
-        # `validate_sections` lit déjà null comme « aucune section ».
-        extra_kwargs = {'sections': {'allow_null': True}}
 
     def validate_sections(self, valeur):
         """NTDOC21 — Valide la STRUCTURE des sections conditionnelles.
@@ -1234,9 +1259,7 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
         arbre de conditions est validé par ``core.rules`` (FG367) AVANT
         persistance — un arbre malformé est refusé ici plutôt que d'être
         silencieusement évalué à False au rendu."""
-        from core.rules import validate_condition_group
-
-        if valeur in (None, ''):
+        if valeur is None:
             return []
         if not isinstance(valeur, list):
             raise serializers.ValidationError(
@@ -1245,10 +1268,10 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
             if not isinstance(section, dict):
                 raise serializers.ValidationError(
                     f"Section #{index + 1} : un objet est attendu.")
-            conditions = section.get('conditions')
-            if not conditions:
+            conditions = section.get('conditions', {})
+            if conditions == {}:
                 continue
-            erreurs = validate_condition_group(conditions)
+            erreurs = erreurs_groupe_conditions(conditions)
             if erreurs:
                 raise serializers.ValidationError(
                     f"Section #{index + 1} — conditions invalides : "

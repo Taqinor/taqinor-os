@@ -95,7 +95,8 @@ class ZMFG2CategorieEquipementTest(TestCase):
             'produit': self.produit.id, 'installation': self.inst.id,
             'categorie': cat_etrangere.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 api-fuzz : id d'une autre société = id inconnu → 404.
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_company_isolation(self):
         CategorieEquipement.objects.create(

@@ -25,7 +25,7 @@ from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializ
 from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
 from .controle_suivi import SEGMENTS_ADMIS
-from .params_requete import CorpsTexteMixin, entier_param
+from .params_requete import CorpsTexteMixin, corps_objet, entier_param
 from .cadence_reponses import TYPES_PIECE_RECUE
 from core.parseurs import ChoixDocumente
 from authentication.permissions import (
@@ -292,9 +292,11 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         ``maintenant`` / ``demain`` / ``semaine`` / ``traitees_aujourdhui``,
         ``selectors.file_du_cockpit``) — servi SEULEMENT quand ``scope`` est
         demandé, dans la même portée (et le même ``owner``) que la liste."""
-        lead_id = request.query_params.get('lead')
-        owner = request.query_params.get('owner')
-        if lead_id:
+        # CI #997 (fuzz) — ``lead`` / ``owner`` sont des entiers publiés : un
+        # « null » levait ValueError dans le filtre (500) ou était ignoré.
+        lead_id = entier_param(request, 'lead')
+        owner = entier_param(request, 'owner')
+        if lead_id is not None:
             # APRF21 — ``traite_par`` chargé (``traite_par_nom`` par touche).
             qs = (self.get_queryset().filter(lead_id=lead_id)
                   .select_related('lead', 'lead__owner', 'devis',
@@ -1691,9 +1693,9 @@ class LeadCadenceActionsMixin:
         au froid et pose des cadences ; ce n'est pas un geste de file
         quotidienne) — garde répétée dans ``get_permissions``, qui PRIME sur
         le ``permission_classes`` de l'@action (bug CI #25)."""
-        apply = request.data.get('apply')
-        if apply in (None, ''):
-            apply = False
+        # CI #997 (fuzz) — ``apply`` est un booléen publié : absent = aperçu,
+        # mais ``null`` / ``""`` étaient lus comme « absent » (200).
+        apply = corps_objet(request).get('apply', False)
         if not isinstance(apply, bool):
             return Response(
                 {'apply': 'Booléen attendu (true pour appliquer).'},

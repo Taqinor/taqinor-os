@@ -77,7 +77,8 @@ class TicketFkEtChampsServeurTests(TestCase):
 
     def _assert_refus(self, champ, valeur):
         r = self._patch({champ: valeur})
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 api-fuzz : id d'ailleurs = id inconnu → 404 (``IdInconnu404Mixin``).
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertIn(champ, r.data)
         self.assertNotIn('secrète', str(r.data))
         self.ticket.refresh_from_db()
@@ -87,7 +88,7 @@ class TicketFkEtChampsServeurTests(TestCase):
         r2 = self.api.post(URL, {
             'client': self.client_a.id, 'type': 'correctif',
             'description': 'x', champ: valeur}, format='json')
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.status_code, 404, r2.data)
         self.assertIn(champ, r2.data)
         self.assertEqual(Ticket.objects.count(), avant)
 
@@ -103,7 +104,7 @@ class TicketFkEtChampsServeurTests(TestCase):
     def test_id_inexistant_meme_reponse(self):
         r_etr = self._patch({'categorie': self.cat_b.id})
         r_abs = self._patch({'categorie': 999999})
-        self.assertEqual(r_abs.status_code, 400)
+        self.assertEqual(r_abs.status_code, 404)
         self.assertEqual(
             str(r_etr.data['categorie'][0]).replace(str(self.cat_b.id), '?'),
             str(r_abs.data['categorie'][0]).replace('999999', '?'))
@@ -264,7 +265,7 @@ class FkSavBorneesSocieteTests(TestCase):
         url = f'/api/django/sav/tickets/{self.a.ticket.pk}/'
         r = api.patch(url, {'equipement': self.b.equipement.pk},
                       format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertIn('equipement', r.data)
         self.a.ticket.refresh_from_db()
         self.assertIsNone(self.a.ticket.equipement_id)

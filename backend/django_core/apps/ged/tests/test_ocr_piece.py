@@ -142,6 +142,15 @@ class OcrPieceEndpointRouteParValidationTests(TestCase):
             company=self.co, folder=self.folder, nom='Facture scannée')
 
     @override_settings(GED_OCR_ENABLED=False)
+    def test_type_piece_null_lu_comme_absent(self):
+        """CI #997 fuzz — ``type_piece: null`` (publié nullable) : type deviné."""
+        services.set_ocr_text(self.doc, 'facture')
+        resp = auth(self.user).post(
+            f'/api/django/ged/documents/{self.doc.pk}/ocr-piece/',
+            {'type_piece': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    @override_settings(GED_OCR_ENABLED=False)
     def test_faible_confiance_met_en_file_de_validation(self):
         services.set_ocr_text(self.doc, 'facture')
         resp = auth(self.user).post(

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3496}
+counts: {paths: 4814, operations: 7566, components: 3497}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9671,6 +9671,7 @@ components:
 - CanalRelanceEnum
 - CanalRequest
 - CanalResolutionEnum
+- CanauxAutorisesEnum
 - CandidatureFournisseurReponse
 - CandidatureFournisseurRequest
 - CapaciteEtatEnum

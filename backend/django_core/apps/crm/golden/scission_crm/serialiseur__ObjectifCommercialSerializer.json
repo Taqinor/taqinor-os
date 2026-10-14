@@ -73,7 +73,7 @@
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "notes",
    "read_only": false,
    "required": false

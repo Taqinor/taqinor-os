@@ -37,7 +37,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "filleul_nom",
    "read_only": false,
    "required": false
@@ -67,7 +67,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "notes",
    "read_only": false,
    "required": false

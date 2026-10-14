@@ -72,7 +72,9 @@ export default function VilleCheckDialog({
   useEffect(() => {
     if (!open) return
     const seq = ++seqRef.current
-    crmApi.villeStatut({ ville, proches: true, gps_lat: gpsLat || undefined, gps_lng: gpsLng || undefined })
+    // CI #997 — le contrat dit « nombre JSON » : le formulaire du lead porte des chaînes.
+    const enNombre = (x) => (x !== '' && x != null && Number.isFinite(Number(x)) ? Number(x) : undefined)
+    crmApi.villeStatut({ ville, proches: true, gps_lat: enNombre(gpsLat), gps_lng: enNombre(gpsLng) })
       .then((r) => {
         if (seq !== seqRef.current) return
         setData(r.data)

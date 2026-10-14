@@ -86,6 +86,23 @@ class TestIceValidationEndpoint(Xpur5Base):
         self.assertEqual(resp.status_code, 201, resp.data)
 
 
+class TestIceSchemaPublie(TestCase):
+    def test_schema_publie_la_regle_ice(self):
+        import re
+        from apps.stock.schema_contraintes import declarer_contraintes_achats
+        schema = {'components': {'schemas': {'FournisseurRequest': {
+            'properties': {'ice': {'type': 'string', 'maxLength': 20}}}}}}
+        declarer_contraintes_achats(schema)
+        ice = schema['components']['schemas']['FournisseurRequest'][
+            'properties']['ice']
+        for ok in ('', '001234567000012'):
+            self.assertTrue(re.match(ice['pattern'], ok))
+            self.assertTrue(validate_ice_format(ok))
+        for ko in ('1234', '00123456700001A', '0012345670000123'):
+            self.assertFalse(re.match(ice['pattern'], ko))
+            self.assertFalse(validate_ice_format(ko))
+
+
 class TestDuplicateIce(Xpur5Base):
     def test_duplicate_ice_detected(self):
         Fournisseur.objects.create(

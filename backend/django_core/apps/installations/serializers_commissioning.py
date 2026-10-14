@@ -1,6 +1,7 @@
 """CH3/CH4 — Sérialiseurs recette IEC 62446-1 + pack de remise (installations)."""
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from core.mixins import SameCompanyFKSerializerMixin
 
@@ -49,6 +50,7 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
 
     class Meta:
         model = CommissioningRecord
+        extra_kwargs = {'instruments_par_essai': {'allow_null': True}}
         fields = [
             'id', 'installation', 'date_essai', 'technicien',
             'instrument_id', 'instrument_nom', 'instrument_numero_serie',
@@ -88,6 +90,11 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         from core.recette.resultat import RESERVES, ReservesRefusees
 
         from .services import resultat_recette_fiche
+        # Fuzz CI #997 : ``instruments_par_essai`` est publié nullable ; null
+        # se lit « aucun instrument » (la colonne, elle, n'accepte pas null).
+        if 'instruments_par_essai' in attrs and (
+                attrs['instruments_par_essai'] is None):
+            attrs['instruments_par_essai'] = {}
         demande = attrs.pop('resultat', None)
         fiche = (self.instance if self.instance is not None
                  else CommissioningRecord())
@@ -120,13 +127,17 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
                              None)
         if not Outillage.objects.filter(
                 pk=value, company_id=company_id).exists():
-            raise serializers.ValidationError('Instrument inconnu.')
+            # Identifiant bien formé sans ligne dans la société : 404, la
+            # requête est conforme au schéma (fuzz CI #997).
+            raise NotFound('Instrument inconnu.')
         return value
 
     def validate_instruments_par_essai(self, value):
         """CIQ626 — ``{essai: instrument_id}`` ; chaque instrument doit
         appartenir à l'outillage de la société (jamais une autre société)."""
         from apps.outillage.models import Outillage
+        if value is None:
+            return {}   # CI #997 : null publié = aucun instrument
         if not isinstance(value, dict):
             raise serializers.ValidationError(
                 "Format attendu : {essai: identifiant d'instrument}.")
@@ -144,7 +155,7 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
                     f"Instrument invalide pour l'essai « {essai} ».")
             if not Outillage.objects.filter(
                     pk=iid, company_id=company_id).exists():
-                raise serializers.ValidationError(
+                raise NotFound(
                     f"Instrument inconnu pour l'essai « {essai} ».")
             propre[str(essai)] = iid
         return propre

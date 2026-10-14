@@ -93,8 +93,14 @@ def param_date(nom, description=None):
 
 P_DEBUT = param_date('debut', description='Début (AAAA-MM-JJ).')
 P_FIN = param_date('fin', description='Fin (AAAA-MM-JJ).')
-P_ENTITE = param('entite', OpenApiTypes.INT,
-                 description="Filtre par entité (société juridique).")
+#: ``entite`` : contrat TOLÉRANT (NTADM2, ``core.entite_scoping``) — une
+#: valeur non numérique vaut « pas de filtre » (jamais un 400) : déclaré entier
+#: OU texte pour que le schéma dise ce que le serveur fait.
+P_ENTITE = OpenApiParameter(
+    'entite', {'anyOf': [{'type': 'integer'}, {'type': 'string'}]},
+    OpenApiParameter.QUERY, required=False,
+    description="Filtre par entité (société juridique) ; une valeur non "
+                "numérique est ignorée.")
 
 
 #: ENF11 — ``{activite_id}`` des actions ``epingler``/``desepingler`` du lead :

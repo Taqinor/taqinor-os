@@ -2147,7 +2147,7 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
 
     def create(self, validated_data):
         if validated_data.get('bon_commande'):
-            raise serializers.ValidationError({'bon_commande': self._MSG_DC16_CREATE})
+            raise ConflitEtat({'bon_commande': self._MSG_DC16_CREATE})
         from .services import apply_devise_facture
         lignes_data = validated_data.pop('lignes', [])
         # XPUR3 — si un montant TTC en devise est fourni, sa contre-valeur

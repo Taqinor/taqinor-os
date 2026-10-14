@@ -225,3 +225,33 @@ class EtudeHoraireEquipementsTests(TestCase):
             format='multipart')
         self.assertEqual(response.status_code, 200, response.content)
         self.assertIsNone(response.data['dimensionnement'])
+
+    def test_serie_12_nombres_sinon_400(self):
+        """CI #997 api-fuzz (cas CnCcjq) : ``conso_kwh_mensuelles=True`` en
+        formulaire répondait 200. Les deux séries publiées « 12 nombres ou
+        null » refusent toute autre forme en 400 nommant le champ."""
+        formulaire = {**CORPS_FUZZ, 'equipements': '',
+                      'conso_kwh_mensuelles': 'True'}
+        response = self.api.post(URL, formulaire, format='multipart')
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn('conso_kwh_mensuelles', response.json()['detail'])
+        for nom in ('conso_kwh_mensuelles', 'factures_mensuelles'):
+            for brut in (True, 'abc', [1] * 11, [True] * 12, ['1'] * 12, {}):
+                with self.subTest(nom=nom, brut=brut):
+                    response = self.api.post(
+                        URL, {'facture_hiver': 900, nom: brut}, format='json')
+                    self.assertEqual(response.status_code, 400,
+                                     response.content)
+                    self.assertIn(nom, response.json()['detail'])
+        response = self.api.post(
+            URL, {'conso_kwh_mensuelles': [400] * 12,
+                  'factures_mensuelles': None}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data['consommation']['source'],
+                         'kwh_mensuels_saisis')
+        # Formulaire : 12 valeurs répétées, lues comme la liste.
+        response = self.api.post(
+            URL, {'conso_kwh_mensuelles': ['400'] * 12}, format='multipart')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data['consommation']['source'],
+                         'kwh_mensuels_saisis')

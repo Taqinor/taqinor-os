@@ -208,6 +208,7 @@ class LeadIntakeActionsMixin:
         `match_fort` : même forme de ligne que l'action `duplicates` ci-dessus
         (les deux listes sont fusionnées par le même bandeau côté rail)."""
         from .leads_doublons import find_duplicates_by_contact, is_strong_identity_match
+        valider_pagination(request)
         phone = request.query_params.get('telephone') or \
             request.query_params.get('phone')
         email = request.query_params.get('email')

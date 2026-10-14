@@ -172,3 +172,27 @@ class UniciteReferentielsTests(TestCase):
             MOTIF_NON_BLANC_SANS_NUL)
         self.assertNotIn(
             'pattern', ext.map_serializer_field(_Schema, 'response'))
+
+    def test_corps_stricts_ci997(self):
+        # CI #997 api-fuzz installations : un nombre pour un texte = 400 sur
+        # les ressources achat/stock/programme ; `membres` non liste = 400.
+        from apps.installations import serializers as S
+        from core.champs_stricts import ChaineStricte
+        for classe, champ in (
+                (S.CommandeCadreSerializer, 'note'),
+                (S.ContratPrixFournisseurSerializer, 'note'),
+                (S.PutAwaySerializer, 'note'), (S.ColisSerializer, 'note'),
+                (S.RetourMaterielSerializer, 'note'),
+                (S.PickListSerializer, 'note'),
+                (S.RegleReapproSerializer, 'note'),
+                (S.ProjetSerializer, 'description'),
+                (S.GpsConsentRecordSerializer, 'consent_ref')):
+            with self.subTest(classe=classe.__name__):
+                self.assertIsInstance(classe().fields[champ], ChaineStricte)
+        r = self.api.post(f'{BASE}/equipes/', {
+            'nom': 'E membres', 'membres': {}}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('membres', r.data)
+        r = self.api.post(f'{BASE}/equipes/', {
+            'nom': 'E membres', 'membres': []}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
