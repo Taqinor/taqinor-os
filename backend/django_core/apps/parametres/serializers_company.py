@@ -237,6 +237,13 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
             # servi en lecture mais n'est plus inscriptible par ce PATCH.
             'timezone_affichage',
         ]
+        # ENF11 — ``validate_forfaits_ci`` / ``validate_reperes_energie_agricole``
+        # lisent ``null`` comme « vide » ({}) mais DRF le refusait AVANT eux
+        # (« Ce champ ne peut être nul ») : le schéma le dit désormais nullable.
+        extra_kwargs = {
+            'forfaits_ci': {'allow_null': True},
+            'reperes_energie_agricole': {'allow_null': True},
+        }
 
     def validate_responsable_defaut_leads(self, value):
         # Le responsable par défaut doit appartenir à la même société.

@@ -184,3 +184,18 @@ class StatutConfigEnf11Test(TestCase):
         r = self.api.put(BASE + 'bulk/', {'domaine': 'sav', 'statuts': [
             {'cle': 'nouveau', 'ordre': 10 ** 30}]}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
+
+    def test_corps_publie_apparie_chaque_domaine_a_ses_cles(self):
+        # ENF11 : le corps publié dit « la clé n'existe que dans SON domaine »
+        # (le sérialiseur refuse l'autre en 400) — même source que lui.
+        from apps.parametres.statuses_defaults import default_keys
+        from apps.parametres.views_statuses import CLE_DU_DOMAINE_CORPS
+        publie = {b['properties']['domaine']['enum'][0]:
+                  set(b['properties']['cle']['enum'])
+                  for b in CLE_DU_DOMAINE_CORPS['oneOf']}
+        self.assertEqual(set(publie), {'chantier', 'sav', 'bon_commande'})
+        for domaine, cles in publie.items():
+            self.assertEqual(cles, default_keys(domaine))
+        r = self.api.post(BASE, {'domaine': 'sav', 'cle': 'commercial',
+                                 'libelle': 'x'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
