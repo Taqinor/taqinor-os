@@ -133,7 +133,9 @@ def _champ_hors_forme(corps):
         return isinstance(v, (int, float)) and not isinstance(v, bool)
     regles = [(_ENTIERS, lambda v: _nombre(v) and isinstance(v, int)),
               (_NOMBRES, _nombre),
-              (_TEXTES, lambda v: isinstance(v, str) and non_blanc(v)),
+              # CI #997 (3) — motif publié : non blanc ET aucun nul.
+              (_TEXTES, lambda v: isinstance(v, str) and '\x00' not in v
+               and non_blanc(v)),
               (('occupation',), lambda v: isinstance(v, str)),
               (('equipements',), lambda v: isinstance(v, dict)),
               (('critere',), lambda v: v in CRITERES)]
