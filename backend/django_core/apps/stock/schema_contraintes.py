@@ -251,6 +251,12 @@ def _chaine_ou_nombre(propriete: dict) -> dict:
     return {**autres, 'anyOf': [chaine, nombre]}
 
 
+def _branche_chaine(propriete: dict) -> dict:
+    """La branche qui porte le motif d'un décimal : la propriété elle-même, ou
+    la branche chaîne d'un ``anyOf`` chaîne|nombre (``DecimalSouple``)."""
+    return next((b for b in propriete.get('anyOf', ()) if 'pattern' in b), propriete)
+
+
 def _reparer_decimaux(proprietes: dict) -> None:
     for propriete in proprietes.values():
         if not isinstance(propriete, dict):
@@ -280,7 +286,7 @@ def declarer_contraintes_achats(result, generator=None, request=None,
                     propriete['pattern'])
         for champ, motif in (regles.get('motifs') or {}).items():
             if isinstance(proprietes.get(champ), dict):
-                proprietes[champ]['pattern'] = motif
+                _branche_chaine(proprietes[champ])['pattern'] = motif
         for champ in regles.get('pourcentages_1_100') or ():
             propriete = proprietes.get(champ)
             if isinstance(propriete, dict) and propriete.get('pattern'):

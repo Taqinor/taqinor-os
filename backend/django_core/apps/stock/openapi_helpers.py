@@ -92,6 +92,7 @@ BORNES_PUBLIEES = {
         'seuil_alerte': (0, None)},
     'PaiementFournisseurSerializer': {'montant': ('0.01', None)},
     'AcompteFournisseurSerializer': {'montant': ('0.01', None)},
+    'KitComposantSerializer': {'quantite': ('0.01', None), 'taux_perte_pct': (0, '99.99')},
 }
 
 

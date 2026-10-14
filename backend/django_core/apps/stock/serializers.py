@@ -2349,7 +2349,7 @@ class InventaireSessionSerializer(ChampsTexteBooleenStricts, serializers.ModelSe
 # ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
 
 class KitComposantSerializer(CompanyScopedRelationsMixin,
-                             ChampsStrictsMixin, serializers.ModelSerializer):
+                             ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     produit_nom = serializers.CharField(
