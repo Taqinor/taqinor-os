@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: a253ea81f29262803e233fd0c0b7f9cc23ae17ace803562772a8e3e11afb1801
-Plan fingerprint: 1f4c9760a1a7bfcb7f122f585bc20b786ec21d4aceeb0f6dd11fcdd288654e43
+Plan fingerprint: 4c70ea0871a9f2a34f4142db497f95cd2722ed0416ff42545d3d904e86c18736
 
 
 
@@ -575,7 +575,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1227)**
+**Done (1228)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1180,6 +1180,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF13` — Gardes toujours vertes rendues bloquantes
 - `ENF14` — Exceptions permanentes signées
 - `ENF16` — Dette on_delete (573) à zéro
+- `ENF17` — (already present)
 - `ENF24` — Seuil de couverture
 - `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
 - `ENF26` — ENF17 + ENF18, tranche des apps tenues (claims 10/10)
@@ -1805,7 +1806,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT85` — Faire lire `devis_signes_en_vigueur` au contrôle d'intégrité « accepté sans chantier »
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (185)**
+**Open — to build (184)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1892,7 +1893,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `CIQM25` — Écrire les surcharges commerciales après les premières mesures
 - `ENF11` — api-fuzz bloquant
 - `ENF15` — Dettes moyennes à zéro
-- `ENF17` — Dette fk_scoping (332) à zéro
 - `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
 - `ENF19` — Duplicats (1 181) à zéro
 - `ENF20` — import-linter : `ignore_imports` (52) à zéro
