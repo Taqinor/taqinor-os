@@ -710,6 +710,18 @@ def prochaines_echeances_pdf(part, etat):
     return list(etat['prochaines_echeances'])
 
 
+def remise_negociee_pdf(facture):
+    """VNT71 — vrai quand la remise globale de ``facture`` est celle d'un
+    AVENANT négocié : son devis remplace une vente déjà acceptée
+    (``selectors.predecesseur_accepte``, VNT51). La chaîne des totaux imprime
+    alors « Remise négociée » (montant seul) ; faux sans devis, sans remise
+    globale (aucune requête) ou pour une première vente."""
+    if not facture.devis_id or not (facture.remise_globale or 0) > 0:
+        return False
+    from apps.ventes.selectors import predecesseur_accepte
+    return predecesseur_accepte(facture.devis) is not None
+
+
 def contexte_vente_facture(facture, langue='fr'):
     """Les blocs de la vente du PDF facture (dict à fusionner dans le
     contexte du gabarit) ; une facture sans devis n'en porte aucun. L'état
@@ -726,7 +738,11 @@ def contexte_vente_facture(facture, langue='fr'):
             'part_vente': part,
             'prochaines_echeances': prochaines_echeances_pdf(part, etat),
             'garanties_vente': garanties_pdf(facture, langue),
-            'situation_vente': situation_vente_pdf(tete, etat)}
+            'situation_vente': situation_vente_pdf(tete, etat),
+            # VNT71 — clé posée seulement si vraie : empreinte PVFRESH d'une
+            # facture qui n'est pas d'avenant inchangée.
+            **({'remise_negociee': True}
+               if remise_negociee_pdf(facture) else {})}
 
 
 def _facture_render_data(facture) -> dict:
@@ -1149,6 +1165,22 @@ def assurer_numero_recu(paiement):
     raise IntegrityError('Numéro de reçu : trop de collisions concurrentes.')
 
 
+def reste_vente_recu(paiement):
+    """VNT92 — ce que le reçu imprime de la VENTE quand la facture réglée est
+    rattachée à un devis : ``{devis_reference, reste_a_payer_ttc}`` lus d'
+    ``etat_vente`` sur la version qui fait foi (le même état que le bloc
+    « Situation de la vente » du PDF facture). ``None`` pour un paiement
+    sans facture, réparti (affectations) ou dont la facture n'a pas de
+    devis : reçu inchangé."""
+    if not paiement.facture_id or not paiement.facture.devis_id:
+        return None
+    from apps.ventes.domain.instantanes_facture import devis_de_la_vente
+    from apps.ventes.vente_facturation import etat_vente
+    tete = devis_de_la_vente(paiement.facture.devis)
+    return {'devis_reference': tete.reference,
+            'reste_a_payer_ttc': etat_vente(tete)['reste_a_payer_ttc']}
+
+
 def generate_recu_pdf(paiement):
     """XFAC9 — quittance (reçu de paiement) PDF. Layout maison (PAS le moteur
     devis) : identité société, montant en chiffres ET en lettres, mode,
@@ -1184,6 +1216,9 @@ def generate_recu_pdf(paiement):
     context['affectations'] = affectations
     context['solde_restant'] = solde_restant
     context['montant_lettres'] = montant_en_lettres(paiement.montant)
+    # VNT92 — « Reste dû sur la vente » à côté du solde de la facture ;
+    # None (paiement sans facture de devis) → reçu inchangé.
+    context['reste_vente'] = reste_vente_recu(paiement)
     _contexte_langue(context, client, company, traduit=True)
 
     html = _render_html('recu.html', context)

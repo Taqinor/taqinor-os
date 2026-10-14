@@ -149,3 +149,94 @@ class RecuPdfVueTests(TestCase):
         self.assertNotIn('/opt/secret', str(r.data))
         self.assertNotIn('RuntimeError', str(r.data))
         self.assertTrue(r.data.get('detail'))
+
+
+class ResteVenteRecuTests(TestCase):
+    """VNT92 — 388, échéancier [acompte 15 000, solde 34 000] : le reçu de
+    l'acompte payé imprime « Solde restant dû sur <réf> : 0.00 MAD » ET
+    « Reste dû sur la vente : 34000.00 MAD (devis <réf>) », ce reste ==
+    ``etat_vente`` ; en arabe via ``TEXTES_AR`` ; un paiement d'une facture
+    sans devis garde le reçu d'hier."""
+
+    LIBRE = [{'type': 'acompte', 'libelle': 'Acompte', 'unite': 'montant',
+              'pct_or_montant': 15000},
+             {'type': 'solde', 'libelle': 'Solde', 'unite': 'montant',
+              'pct_or_montant': 34000}]
+    _societe = NumeroRecuTests._societe
+    _paiement = NumeroRecuTests._paiement
+    _rendre = NumeroRecuTests._rendre
+
+    def _acompte_paye(self, langue=None):
+        from apps.crm.models import Client
+        from apps.ventes.domain.encaissements import (
+            recalculer_statut_paiement)
+        from apps.ventes.models import Paiement
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        company = make_company()
+        user = make_user(company)
+        client = make_client(company)
+        if langue:
+            Client.objects.filter(pk=client.pk).update(langue_document=langue)
+            client.refresh_from_db()
+        devis = creer_devis_388(company, user, client,
+                                f'DEV-VNT92-{_nxt()}', self.LIBRE)
+        acompte = creer_facture_tranche(devis, user, company, None)
+        paiement = Paiement.objects.create(
+            company=company, facture=acompte, montant=Decimal('15000'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        recalculer_statut_paiement(acompte)
+        return devis, acompte, paiement
+
+    def _html(self, paiement):
+        from unittest.mock import patch
+
+        from apps.ventes.models import Paiement
+        from apps.ventes.utils.pdf import generate_recu_pdf
+        boite = {}
+
+        def _capturer(html):
+            boite['html'] = html
+            return b''
+
+        frais = Paiement.objects.select_related(
+            'facture', 'facture__client', 'company').get(pk=paiement.pk)
+        with patch('apps.ventes.utils.pdf._html_to_pdf',
+                   side_effect=_capturer):
+            generate_recu_pdf(frais)
+        return boite['html']
+
+    def test_acompte_paye_reste_sur_la_vente(self):
+        from apps.ventes.vente_facturation import etat_vente
+        devis, acompte, paiement = self._acompte_paye()
+        texte = self._rendre(paiement)
+        self.assertIn(
+            f'Solde restant dû sur {acompte.reference} : 0.00 MAD', texte)
+        self.assertIn('Reste dû sur la vente : 34000.00 MAD', texte)
+        self.assertIn(f'(devis {devis.reference})', texte)
+        etat = etat_vente(devis)
+        self.assertEqual(Decimal(etat['reste_a_payer_ttc']),
+                         Decimal('34000.00'))
+        # Payé + reste dû sur la vente = prix convenu (49 000).
+        self.assertEqual(paiement.montant + Decimal(etat['reste_a_payer_ttc']),
+                         Decimal(etat['prix_convenu_ttc']))
+
+    def test_arabe_via_textes_ar(self):
+        from apps.ventes.utils.libelles_ar import TEXTES_AR
+        _devis, _acompte, paiement = self._acompte_paye(langue='ar')
+        html = self._html(paiement)
+        self.assertIn(TEXTES_AR['Reste dû sur la vente'], html)
+        self.assertNotIn('Reste dû sur la vente', html)
+        self.assertIn('34000.00 MAD', html)
+
+    def test_paiement_sans_devis_recu_inchange(self):
+        from apps.ventes.utils.pdf import reste_vente_recu
+        co, f = self._societe()
+        p = self._paiement(co, f)
+        self.assertIsNone(reste_vente_recu(p))
+        html = self._html(p)
+        self.assertNotIn('Reste dû sur la vente', html)
+        self.assertEqual(html.count('class="solde-block"'), 1)
