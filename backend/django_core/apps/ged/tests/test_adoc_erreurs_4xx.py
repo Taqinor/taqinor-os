@@ -602,4 +602,74 @@ class Enf11FuzzGedTour2Tests(TestCase):
         self.assertIn('409', pdf['get']['responses'])
         acl = chemins['/api/django/ged/acls/']['post']['requestBody']
         corps = acl['content']['application/json']['schema']
-        self.assertIn('oneOf', corps['allOf'][1])
+        self.assertIn('oneOf', corps['allOf'][1]['allOf'][0])
+        self.assertIn('anyOf', corps['allOf'][1]['allOf'][1])
+
+    def test_ids_inconnus_404_meme_corps(self):
+        """ERR-ENF11-FUZZ-GED (nocturnes 11-14/10) — un id bien formé qui ne
+        désigne rien (``0`` compris) répond 404 : FK des sérialiseurs
+        (``IdInconnu404Mixin``) et ids lus à la main (tagger, restaurer,
+        creer-multi), au lieu d'un 400 « requis » / « objet inexistant »."""
+        doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='D')
+        for route, corps, champ in (
+                ('documents/', {'folder': 0, 'nom': 'X'}, 'folder'),
+                ('documents/', {'folder': 999999, 'nom': 'X'}, 'folder'),
+                ('tag-assignments/', {'document': 0, 'tag': 0}, 'document'),
+                ('partages/', {'document': 0}, 'document'),
+                ('depots-publics/', {'folder': 0}, 'folder'),
+                ('annotations/', {'version': 0}, 'version'),
+                (f'documents/{doc.pk}/tagger/', {'tag': 0}, 'tag'),
+                (f'documents/{doc.pk}/restaurer/', {'version': 0}, 'version'),
+                ('demandes-signature/creer-multi/', {
+                    'document': 0, 'destinataires': [{'nom': 'A'}]},
+                 'document')):
+            with self.subTest(route=route, corps=corps):
+                resp = self.api.post(f'{BASE}{route}', corps, format='json')
+                self.assertEqual(resp.status_code, 404, resp.content)
+                self.assertIn(champ, resp.data)
+        # Une erreur d'une autre nature, même mêlée, garde le 400.
+        resp = self.api.post(f'{BASE}documents/', {'folder': 0},
+                             format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_groupe_conditions_publie_et_valide_au_champ(self):
+        """ERR-ENF11-FUZZ-GED — ``condition_group`` obligatoire à la création,
+        publié avec sa structure ``core.rules`` et validé aussi en PATCH."""
+        url = f'{BASE}regles-approbation/'
+        resp = self.api.post(url, {'libelle': 'R'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('condition_group', resp.data)
+        ok = self.api.post(url, {'libelle': 'R', 'condition_group': {
+            'field': 'nom', 'operator': 'eq', 'value': 'x'}}, format='json')
+        self.assertEqual(ok.status_code, 201, ok.content)
+        resp = self.api.patch(f"{url}{ok.data['id']}/",
+                              {'condition_group': {}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_regles_de_corps_et_motif_sans_nul_publies(self):
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.ged import urls as ged_urls
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ged/', include(ged_urls)),
+        ]).get_schema(request=None, public=True)
+
+        def corps(route):
+            return schema['paths'][route]['post']['requestBody']['content'][
+                'application/json']['schema']['allOf'][1]
+
+        self.assertIn('oneOf', corps('/api/django/ged/coffres/'))
+        multi = corps('/api/django/ged/demandes-signature/creer-multi/')
+        self.assertEqual(
+            multi['properties']['destinataires']['minItems'], 1)
+        self.assertIn('not', multi['properties']['destinataires'])
+        composants = schema['components']['schemas']
+        self.assertEqual(
+            composants['ModeleDocumentRequest']['properties']['nom']['pattern'],
+            MOTIF_NON_BLANC_SANS_NUL)
+        self.assertIn('anyOf', composants['RegleApprobationGedRequest'][
+            'properties']['condition_group'])

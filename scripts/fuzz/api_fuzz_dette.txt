@@ -56,12 +56,6 @@ API accepted schema-violating request|GET /api/django/facturation/factures/
 API accepted schema-violating request|GET /api/django/facturation/niveaux-relance/
 API accepted schema-violating request|GET /api/django/facturation/notes-debit/
 API accepted schema-violating request|GET /api/django/facturation/paiements/
-API accepted schema-violating request|GET /api/django/ged/acls/
-API accepted schema-violating request|GET /api/django/ged/demandes-document/
-API accepted schema-violating request|GET /api/django/ged/depots-publics/
-API accepted schema-violating request|GET /api/django/ged/dossiers/
-API accepted schema-violating request|GET /api/django/ged/liens/
-API accepted schema-violating request|GET /api/django/ged/regles-dossier/
 API accepted schema-violating request|GET /api/django/identity/ip-allow-rules/
 API accepted schema-violating request|GET /api/django/identity/network-policies/
 API accepted schema-violating request|GET /api/django/identity/providers/
@@ -561,24 +555,6 @@ API rejected schema-compliant request|POST /api/django/facturation/factures/{id}
 API rejected schema-compliant request|POST /api/django/facturation/niveaux-relance/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/enregistrer-avance/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/
-API rejected schema-compliant request|POST /api/django/ged/annotations/
-API rejected schema-compliant request|POST /api/django/ged/coffres/
-API rejected schema-compliant request|POST /api/django/ged/demandes-document/
-API rejected schema-compliant request|POST /api/django/ged/demandes-signature/
-API rejected schema-compliant request|POST /api/django/ged/demandes-signature/creer-multi/
-API rejected schema-compliant request|POST /api/django/ged/depots-publics/
-API rejected schema-compliant request|POST /api/django/ged/documents/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/caviarder/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/restaurer/
-API rejected schema-compliant request|POST /api/django/ged/documents/{id}/tagger/
-API rejected schema-compliant request|POST /api/django/ged/partages/
-API rejected schema-compliant request|POST /api/django/ged/planifications/
-API rejected schema-compliant request|POST /api/django/ged/politiques-retention/
-API rejected schema-compliant request|POST /api/django/ged/regles-acl-metadonnee/
-API rejected schema-compliant request|POST /api/django/ged/regles-approbation/
-API rejected schema-compliant request|POST /api/django/ged/regles-dossier/
-API rejected schema-compliant request|POST /api/django/ged/tag-assignments/
-API rejected schema-compliant request|POST /api/django/ged/versions/
 API rejected schema-compliant request|POST /api/django/identity/ip-allow-rules/
 API rejected schema-compliant request|POST /api/django/imports/commit/
 API rejected schema-compliant request|POST /api/django/imports/dry-run/
@@ -1278,7 +1254,6 @@ API accepted schema-violating request|GET /api/django/parametres/audit/
 # PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.
 API rejected schema-compliant request|PATCH /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
-API rejected schema-compliant request|POST /api/django/ged/modeles-document/
 API rejected schema-compliant request|POST /api/django/portail/demandes-ticket-portail/
 API rejected schema-compliant request|PUT /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/

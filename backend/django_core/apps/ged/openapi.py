@@ -401,7 +401,29 @@ def _cible_unique(a, b):
     ]}}
 
 
-#: Une entrée ACL cible exactement un dossier OU un document (création).
-ACL_CIBLE_UNIQUE = _cible_unique('folder', 'document')
+def _au_moins_un(*noms):
+    """Au moins UN des ``noms`` porte un entier (les autres absents ou nuls)."""
+    return {'anyOf': [{'required': [n], 'properties': {n: {'type': 'integer'}}}
+                      for n in noms]}
+
+
+#: Une entrée ACL cible exactement un dossier OU un document ET désigne au
+#: moins un principal (utilisateur, rôle ou client portail) — création.
+ACL_CIBLE_UNIQUE = {EXTENSION_CORPS_RESSERRE: {'allOf': [
+    _cible_unique('folder', 'document')[EXTENSION_CORPS_RESSERRE],
+    _au_moins_un('utilisateur', 'role', 'client')]}}
+
+#: Circuit multi-signataires (``CreerMultiSignatairesSerializer``) : au moins
+#: un destinataire, dont au moins un de rôle « signataire » (rôle absent =
+#: signataire) — « pas tous copie/approbateur ».
+CREER_MULTI_SIGNATAIRE = {EXTENSION_CORPS_RESSERRE: {
+    'required': ['document', 'destinataires'],
+    'properties': {'destinataires': {
+        'type': 'array', 'minItems': 1,
+        'not': {'items': {'required': ['role'], 'properties': {
+            'role': {'enum': ['copie', 'approbateur']}}}}}}}}
 #: Un champ de signature cible exactement une demande OU un modèle (création).
 CHAMP_CIBLE_UNIQUE = _cible_unique('demande', 'modele')
+#: Un coffre-fort a exactement un propriétaire : employé OU client (création,
+#: ``services.validate_coffre_owner``).
+COFFRE_PROPRIETAIRE_UNIQUE = _cible_unique('proprietaire', 'client')

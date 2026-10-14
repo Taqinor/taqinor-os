@@ -454,7 +454,8 @@ class DocumentVersionTests(GedBase):
         resp = api.post('/api/django/ged/documents/', {
             'folder': folder_b.id, 'nom': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-GED : id étranger = id absent → 404 (même corps).
+        self.assertEqual(resp.status_code, 404)
 
     def test_version_number_auto_increments(self):
         api = auth(self.admin_a)
@@ -482,7 +483,7 @@ class DocumentVersionTests(GedBase):
         resp = api.post('/api/django/ged/versions/', {
             'document': doc_b.id, 'file': _pdf('x.pdf', b'x'),
         }, format='multipart')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # ERR-ENF11-FUZZ-GED
 
     def test_checksum_compute_and_dedup(self):
         data = b'hello world'
@@ -2849,7 +2850,7 @@ class PartageGedTests(GedBase):
         resp = api.post('/api/django/ged/partages/', {
             'document': doc_b.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)  # ERR-ENF11-FUZZ-GED
 
     def test_list_partages_tenant_isolation(self):
         """A ne voit que ses propres partages, jamais ceux de B."""

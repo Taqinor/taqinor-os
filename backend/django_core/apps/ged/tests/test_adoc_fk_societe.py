@@ -2,8 +2,10 @@
 
 Rejoue les sondes #1 et #56 de l'audit documents (2026-10-05) : un responsable
 de la société A envoyait l'id d'un dossier / version / document / tag /
-utilisateur de la société B et obtenait 201 (ou 500). Désormais : 400 avec
-l'erreur DRF « objet inexistant », octet-identique à celle d'un id absent.
+utilisateur de la société B et obtenait 201 (ou 500). Désormais : l'erreur DRF
+« objet inexistant », octet-identique à celle d'un id absent — même statut
+(404 sur les sérialiseurs ``IdInconnu404Mixin``, ERR-ENF11-FUZZ-GED ; 400
+ailleurs).
 """
 from unittest import mock
 
@@ -74,10 +76,10 @@ class FkSocieteGedTests(TestCase):
                              methode='post'):
         envoyer = getattr(self.api, methode)
         resp = envoyer(url, corps_etranger, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn(resp.status_code, (400, 404), resp.data)
         self.assertIn(champ, resp.data)
         absent = envoyer(url, corps_absent, format='json')
-        self.assertEqual(absent.status_code, 400, absent.data)
+        self.assertEqual(absent.status_code, resp.status_code, absent.data)
         etranger_pk = corps_etranger[champ]
         if isinstance(etranger_pk, list):
             etranger_pk = etranger_pk[0]

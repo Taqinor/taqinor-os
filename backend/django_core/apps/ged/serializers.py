@@ -2,7 +2,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte, ChampsStrictsSansDecimalMixin
+from core.champs_stricts import (
+    ChaineStricte, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import ConflitUnicite
 
@@ -20,6 +21,7 @@ from .models import (
     TypeChampSignature, ValidationOcrDocument, VueGedEnregistree,
 )
 from . import services
+from .corps_requete import GroupeConditionsField
 
 
 class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
@@ -107,7 +109,7 @@ class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
         return slug
 
 
-class DocumentTagAssignmentSerializer(ChampsStrictsSansDecimalMixin,
+class DocumentTagAssignmentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                       SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """GED9 — Application d'un tag à un document. `document` et `tag` doivent
     appartenir à la société courante ; `company`/`created_by` posés serveur."""
@@ -140,7 +142,7 @@ class DocumentTagAssignmentSerializer(ChampsStrictsSansDecimalMixin,
         return attrs
 
 
-class CoffreSerializer(ChampsStrictsSansDecimalMixin,
+class CoffreSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """GED8 — Coffre-fort par employé/client (ACL propriétaire + admin).
 
@@ -266,7 +268,7 @@ class FolderSerializer(ChampsStrictsSansDecimalMixin,
         return attrs
 
 
-class DocumentVersionSerializer(ChampsStrictsSansDecimalMixin,
+class DocumentVersionSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                 SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
         source='uploaded_by.username', read_only=True, allow_null=True)
@@ -309,7 +311,7 @@ class DocumentVersionSerializer(ChampsStrictsSansDecimalMixin,
         return value
 
 
-class DocumentSerializer(ChampsStrictsSansDecimalMixin,
+class DocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                          SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     folder_nom = serializers.CharField(source='folder.nom', read_only=True, allow_null=True)
     created_by_nom = serializers.CharField(
@@ -599,7 +601,7 @@ class DemandeApprobationSerializer(ChampsStrictsSansDecimalMixin,
         ]
 
 
-class PartageGedSerializer(ChampsStrictsSansDecimalMixin,
+class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                            serializers.ModelSerializer):
     """GED20 — Partage public d'un document par lien tokenisé.
 
@@ -1282,7 +1284,7 @@ class QuotaStockageSerializer(ChampsStrictsSansDecimalMixin,
         return services.quota_depasse(obj.company)
 
 
-class DepotPublicSerializer(ChampsStrictsSansDecimalMixin,
+class DepotPublicSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                             SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED7 — Gestion (côté propriétaire) d'un lien de dépôt public.
 
@@ -1334,7 +1336,7 @@ class ExigenceDossierSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class DemandeDocumentSerializer(ChampsStrictsSansDecimalMixin,
+class DemandeDocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                 SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED8 — Demande d'une pièce nommée (interne ou contact externe)."""
     same_company_fields = ('folder', 'exigence', 'utilisateur')
@@ -1377,7 +1379,7 @@ class ValidationOcrDocumentSerializer(ChampsStrictsSansDecimalMixin,
         ]
 
 
-class AnnotationDocumentSerializer(ChampsStrictsSansDecimalMixin,
+class AnnotationDocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                    SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED16 — Annotation/tampon posé sur l'image d'une version (couche
     séparée — n'affecte jamais le fichier original)."""
@@ -1394,7 +1396,7 @@ class AnnotationDocumentSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['auteur', 'created_at']
 
 
-class RegleDossierSerializer(ChampsStrictsSansDecimalMixin,
+class RegleDossierSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                              SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED19 — Règle d'action automatique à l'upload dans un dossier.
 
@@ -1402,6 +1404,7 @@ class RegleDossierSerializer(ChampsStrictsSansDecimalMixin,
     vue via `core.rules.validate_condition_group` avant persistance."""
     same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True, allow_null=True)
+    condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
 
     class Meta:
         model = RegleDossier
@@ -1431,9 +1434,11 @@ class ExecutionRegleDossierSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = fields
 
 
-class RegleApprobationGedSerializer(ChampsStrictsSansDecimalMixin,
+class RegleApprobationGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                     serializers.ModelSerializer):
     """XGED20 — Routage conditionnel des approbations par métadonnées."""
+    condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
+
     class Meta:
         model = RegleApprobationGed
         fields = [
@@ -1443,7 +1448,7 @@ class RegleApprobationGedSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class AclGedSerializer(ChampsStrictsSansDecimalMixin,
+class AclGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """WIR163 — Droit d'accès GED19 par dossier/document (héritage + override).
 
@@ -1527,13 +1532,14 @@ class TamponSocieteSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_at']
 
 
-class RegleAclMetadonneeSerializer(ChampsStrictsSansDecimalMixin,
+class RegleAclMetadonneeSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                    SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique,
     évaluée à chaque lecture par `selectors.acl_effective` — jamais de ligne
     `AclGed` matérialisée)."""
     role_nom = serializers.CharField(
         source='role.nom', read_only=True, allow_null=True)
+    condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('role',)
@@ -1606,7 +1612,7 @@ class LotEnvoiSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = fields
 
 
-class PlanificationDocumentSerializer(ChampsStrictsSansDecimalMixin,
+class PlanificationDocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                       SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED15 — Activité planifiée sur un document (« relancer le J+7 »)."""
     same_company_fields = ('document', 'assigne_a')

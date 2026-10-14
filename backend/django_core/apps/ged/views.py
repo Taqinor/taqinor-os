@@ -366,6 +366,7 @@ class FolderViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response({'favori': True})
 
 
+@extend_schema_view(create=extend_schema(extensions=oa.COFFRE_PROPRIETAIRE_UNIQUE))
 class CoffreViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED8 — Coffres-forts par employé/client (ACL propriétaire + admin).
 
@@ -571,12 +572,12 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         Body : `{"tag": <id>}`. Le document est company-scopé (et ACL coffre)
         via `get_object()` ; le tag est résolu DANS la société courante."""
         document = self.get_object()
-        tag_id = request.data.get('tag')
-        if not tag_id:
+        # ERR-ENF11-FUZZ-GED — `0` est un id bien formé (inconnu → 404).
+        if (tag_id := _pk(request.data.get('tag'), 'tag')) is None:
             return Response({'tag': 'Tag requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         tag = DocumentTag.objects.filter(
-            company=request.user.company, pk=_pk(tag_id, 'tag')).first()
+            company=request.user.company, pk=tag_id).first()
         if tag is None:
             return Response({'tag': 'Tag inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -1365,16 +1366,15 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         bornée à ce document et à la société courante (jamais cross-société ni
         cross-document). Écriture : responsable/admin."""
         document = self.get_object()
-        version_id = request.data.get('version')
-        if not version_id:
+        # ERR-ENF11-FUZZ-GED — `0` est un id BIEN FORMÉ (inconnu → 404).
+        version_id = _pk(request.data.get('version'), 'version')
+        if version_id is None:
             return Response(
                 {'version': 'L\'identifiant de version est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        # La version source est bornée à ce document et à la société courante.
         source_version = (DocumentVersion.objects
                           .filter(company=request.user.company,
-                                  document=document,
-                                  pk=_pk(version_id, 'version'))
+                                  document=document, pk=version_id)
                           .first())
         if source_version is None:
             return Response(
@@ -3319,7 +3319,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
 
-    @extend_schema(request=CreerMultiSignatairesSerializer,
+    @extend_schema(request=CreerMultiSignatairesSerializer, extensions=oa.CREER_MULTI_SIGNATAIRE,
                    responses={201: DemandeSignatureDocumentSerializer})
     @action(detail=False, methods=['post'], url_path='creer-multi')
     def creer_multi(self, request):
@@ -3330,9 +3330,9 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         "parallele", "expires_at"?: <iso>, "relance_cadence_jours"?: <int>}`.
         Le document est borné à la société (404 cross-société).
         `company`/`created_by` posés côté serveur."""
-        document_id = request.data.get('document')
+        document_id = _pk(request.data.get('document'), 'document')
         destinataires = request.data.get('destinataires') or []
-        if not document_id:
+        if document_id is None:  # `0` : id bien formé (inconnu → 404)
             return Response(
                 {'document': 'Le document à signer est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -3348,7 +3348,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
             return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
         valide = entree.validated_data
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=_pk(document_id, 'document')).first())
+                    .filter(pk=document_id).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},

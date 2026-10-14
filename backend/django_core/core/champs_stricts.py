@@ -243,3 +243,75 @@ class TypageStrictMixin:
         models.SmallIntegerField: EntierStrict,
         models.PositiveSmallIntegerField: EntierStrict,
     }
+
+
+#: ERR-ENF11-FUZZ-CRM/GED — ``CharField`` de DRF refuse TOUJOURS le caractère
+#: NUL et les demi-paires UTF-16 (``ProhibitNullCharactersValidator`` /
+#: ``ProhibitSurrogateCharactersValidator``) : une chaîne qui en portait était
+#: conforme au schéma publié puis refusée en 400 (constat api-fuzz « API
+#: rejected schema-compliant request »). Le motif publié dit enfin cette règle ;
+#: la variante NON BLANCHE remplace le ``\S`` que ``core.openapi_erreurs``
+#: pose sur une chaîne obligatoire (``minLength`` >= 1).
+MOTIF_SANS_NUL = r'^[^\x00\ud800-\udfff]*$'
+MOTIF_NON_BLANC_SANS_NUL = (
+    r'^[^\x00\ud800-\udfff]*[^\s\x00\ud800-\udfff][^\x00\ud800-\udfff]*$')
+
+
+class _ChaineStricteSansNul(OpenApiSerializerFieldExtension):
+    """Publie ``MOTIF_SANS_NUL`` sur chaque ``ChaineStricte`` de REQUÊTE sans
+    motif/format/énumération propre (règle unique, réutilisée partout où les
+    mixins ``ChampsStricts*`` génèrent les champs texte)."""
+    target_class = 'core.champs_stricts.ChaineStricte'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        from django.core import validators as dj
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        # Un validateur qui publie son propre motif/format (slug, URL…) garde
+        # le sien : drf-spectacular ne le pose qu'en l'absence de ``pattern``.
+        propre = any(isinstance(v, (dj.RegexValidator, dj.EmailValidator,
+                                    dj.FileExtensionValidator))
+                     for v in self.target.validators)
+        if (direction != 'request' or schema.get('type') != 'string' or propre
+                or any(cle in schema for cle in ('pattern', 'format', 'enum'))):
+            return schema
+        schema = dict(schema)
+        schema['pattern'] = (MOTIF_NON_BLANC_SANS_NUL
+                             if schema.get('minLength', 0) >= 1
+                             else MOTIF_SANS_NUL)
+        return schema
+
+
+def _ids_inconnus_seulement(erreurs, champs):
+    """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
+    sur des champs de relation par clé primaire."""
+    if not isinstance(erreurs, dict) or not erreurs:
+        return False
+    for nom, details in erreurs.items():
+        champ = champs.get(nom)
+        relation = getattr(champ, 'child_relation', champ)
+        if not isinstance(relation, serializers.PrimaryKeyRelatedField):
+            return False
+        if not isinstance(details, list) or not details or any(
+                getattr(d, 'code', None) != 'does_not_exist' for d in details):
+            return False
+    return True
+
+
+class IdInconnu404Mixin:
+    """ERR-ENF11-FUZZ-CRM/GED — un identifiant BIEN FORMÉ (``0`` compris) qui
+    ne désigne aucune ligne de la société répond 404, plus 400 : la requête est
+    conforme au schéma, c'est la ressource qui manque. Le corps reste celui de
+    DRF (``{champ: ["Clé primaire « n » non valide…"]}``), IDENTIQUE pour un id
+    inexistant et un id d'une autre société (aucun oracle). Toute autre erreur,
+    seule ou mêlée, garde le 400. À placer en tête des bases du sérialiseur."""
+
+    def is_valid(self, *, raise_exception=False):
+        valide = super().is_valid(raise_exception=False)
+        if not valide and raise_exception:
+            from rest_framework.exceptions import NotFound
+            if _ids_inconnus_seulement(self.errors, self.fields):
+                raise NotFound(self.errors)
+            raise serializers.ValidationError(self.errors)
+        return valide
