@@ -271,6 +271,37 @@ class RouteParametresTest(TestCase):
         reponse = self.api.put(URL, {'imagerie': '{}'}, format='multipart')
         self.assertEqual(reponse.status_code, 415, reponse.data)
 
+    def test_caractere_nul_400_nomme_jamais_500(self):
+        # CI #997 api-fuzz (3) : une ``reference`` portant U+0000 passait la
+        # normalisation puis cassait l'INSERT JSONB (500) ; le schéma publie
+        # déjà « sans caractère nul » → 400 qui NOMME le chemin, rien d'écrit.
+        reponse = self.api.put(URL, {'electrique_societe': {
+            'seuil_bas_dc_ac': {'valeur': 1.1, 'source': 'societe',
+                                'reference': 'norme\x00'}}}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertIn('seuil_bas_dc_ac.reference',
+                      reponse.data['electrique_societe'])
+        # Une section à objet libre et une clé d'objet sont couvertes aussi.
+        autre = self.api.put(URL, {'presets': {'a\x00': 1}}, format='json')
+        self.assertEqual(autre.status_code, 400, autre.content)
+        self.assertIn('presets', autre.data)
+        self.assertFalse(
+            ParametresCalepinage.objects.filter(company=self.company).exists())
+
+
+class CaractereInterditTest(SimpleTestCase):
+    """CI #997 api-fuzz (3) — le chemin du premier texte que JSONB refuse."""
+
+    def test_nul_et_demi_substitut_isole_nommes_le_reste_passe(self):
+        from apps.calepinage.services.parametres import (
+            _chemin_caractere_interdit as chemin,
+        )
+
+        self.assertEqual(chemin({'a': ['ok', 'b\x00']}, 's'), 's.a[1]')
+        self.assertEqual(chemin({'a\x00': 1}, 's'), 's (clé)')
+        self.assertEqual(chemin({'a': chr(0xD800)}, 's'), 's.a')
+        self.assertIsNone(chemin({'a': 'é😀', 'b': [1, None, 2.5]}, 's'))
+
 
 class FormeRequetePartielleTest(SimpleTestCase):
     """CI #997 fuzz — le PUT est partiel : aucune section n'est obligatoire
