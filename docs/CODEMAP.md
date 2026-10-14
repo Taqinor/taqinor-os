@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 92f768ffc90353343b9a11489f69be1e21dc98befc3563946e813016d5906169
-Plan fingerprint: ae11ab88a7dbde5fc61424e21d7750e76803614b738451f1173c0d4d112734fa
+Structure fingerprint: 312d02801f2bd0be5a22ecedad8136ab4b4f60b12e1d69b1e31bb7b6e08e07e2
+Plan fingerprint: 7efbf81fee067c6fd68db53bcd64b8401887c1076c8496801e9f0831cb74ab93
 
 
 
@@ -576,7 +576,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1250)**
+**Done (1251)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1189,6 +1189,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF29` — ENF19 + ENF20 + ENF21 + ENF22 + ENF23, tranche laptop 2 (11/10)
 - `ENF30` — ENF11, tranche laptop (11/10) : api-fuzz bloquant en PR et au nocturne
 - `ENF31` — ENF10 + ENF15 + ENF22 + AFAC94, tranche laptop vague 5 (12/10)
+- `ENF32` — ENF15, tranche PC 2 « onglets calepinage testés » (14/10)
 - `QAH1` — Skill `qa-explorer` : flotte d'agents « testeur humain » qui explore l'ERP démo module…
 - `QAH2` — Invariants Hypothesis sur la chaîne d'argent et la chaîne d'états des documents ventes
 - `QAH3` — Test différentiel `solar.js` ↔ `quote_engine/builder.py` sur un corpus figé
