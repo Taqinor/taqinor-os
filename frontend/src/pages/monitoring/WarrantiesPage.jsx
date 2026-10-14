@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { BadgeCheck, LineChart, Pencil, Plus, Trash2 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import monitoringApi from '../../api/monitoringApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Badge, Button, Card, CardContent, DataTable, EmptyState, IconButton,
   Input, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -60,20 +61,23 @@ export default function WarrantiesPage() {
     }
   }, [installations])
 
-  const reload = () => monitoringApi.getWarranties()
-    .then((r) => setWarranties(r.data.results ?? r.data ?? []))
+  const reload = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    monitoringApi.getWarranties({ page, page_size: pageSize }).then((r) => r.data))
+    .then((rows) => setWarranties((Array.isArray(rows) ? rows : (rows?.results ?? []))))
     .catch(() => setWarranties([]))
 
   useEffect(() => {
     let active = true
     Promise.all([
-      monitoringApi.getWarranties(),
-      installationsApi.getInstallations({ parc: 1, page: 1 }),
+      fetchAllPages((page, { page_size: pageSize } = {}) =>
+        monitoringApi.getWarranties({ page, page_size: pageSize }).then((r) => r.data)),
+      fetchAllPages((page, { page_size: pageSize } = {}) =>
+        installationsApi.getInstallations({ parc: 1, page, page_size: pageSize }).then((r) => r.data)),
     ])
       .then(([w, i]) => {
         if (!active) return
-        setWarranties(w.data.results ?? w.data ?? [])
-        setInstallations(i.data.results ?? i.data ?? [])
+        setWarranties((Array.isArray(w) ? w : (w?.results ?? [])))
+        setInstallations((Array.isArray(i) ? i : (i?.results ?? [])))
       })
       .catch(() => {})
       .finally(() => { if (active) setLoading(false) })

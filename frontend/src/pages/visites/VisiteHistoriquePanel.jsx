@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Card, Badge, Spinner } from '../../ui'
 import visitesApi from '../../api/visitesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { STATUT_VISITE_LABEL } from './visiteHelpers'
 
 export default function VisiteHistoriquePanel({ leadId, visiteCouranteId }) {
@@ -23,9 +24,10 @@ export default function VisiteHistoriquePanel({ leadId, visiteCouranteId }) {
     // `Promise.resolve().then(...)` : même un échec SYNCHRONE de l'appel
     // tombe dans le `.catch` ci-dessous — l'historique est un confort, il ne
     // doit jamais faire tomber l'écran de visite.
-    Promise.resolve().then(() => visitesApi.getVisites({ lead: leadId }))
+    Promise.resolve().then(() => fetchAllPages((page, { page_size: pageSize } = {}) =>
+      visitesApi.getVisites({ lead: leadId, page, page_size: pageSize }).then((r) => r.data)))
       .then((res) => {
-        const liste = res.data?.results ?? res.data ?? []
+        const liste = (Array.isArray(res) ? res : (res?.results ?? []))
         setVisites(liste.filter((v) => String(v.id) !== String(visiteCouranteId)))
       })
       // Silencieux À DESSEIN : l'historique est un CONFORT. Son indisponibilité

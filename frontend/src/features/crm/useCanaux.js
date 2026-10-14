@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { CANAL_LABELS } from './stages'
 
 // L8 — référentiel Canal géré (Paramètres → CRM). Source unique pour les
@@ -17,10 +18,11 @@ export default function useCanaux() {
 
   useEffect(() => {
     let alive = true
-    crmApi.getCanaux()
-      .then((r) => {
+    // ENF15 : liste paginée (PAGE_SIZE 50) — lecture complète.
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getCanaux({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
         if (!alive) return
-        const rows = r.data?.results ?? r.data ?? []
         setManaged(Array.isArray(rows) ? rows : [])
       })
       .catch(() => { if (alive) setManaged([]) })
