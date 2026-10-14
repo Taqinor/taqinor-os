@@ -441,6 +441,16 @@ class Enf11FuzzGedCorpsTests(TestCase):
     def _post(self, route, corps):
         return self.api.post(f'{BASE}{route}', corps, format='json')
 
+    def test_modele_document_sections_null_accepte(self):
+        """CI #997 fuzz — ``sections: null`` (publié nullable) vaut « aucune
+        section » : 201, plus « Ce champ ne peut être nul »."""
+        resp = self._post('modeles-document/', {
+            'nom': 'Modèle vide', 'description': '', 'categorie': '',
+            'corps_html': '', 'sections': None, 'cabinet_cible': '',
+            'dossier_cible': '', 'actif': False})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['sections'], [])
+
     def test_operations_lot_corps_strict(self):
         route = 'documents/operations-lot/'
         for corps in (
