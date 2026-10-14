@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3497}
+counts: {paths: 4814, operations: 7566, components: 3500}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9704,7 +9704,9 @@ components:
 - CauseDefaillance
 - CauseDefaillanceRequest
 - CertificatCarbone
-- CertificatCarboneRequest
+- CertificatCarboneEmissionRequest
+- CertificatCarboneParClientRequest
+- CertificatCarboneParSystemeRequest
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -9872,6 +9874,7 @@ components:
 - CreerMultiSignatairesRequest
 - CreerMultiSignatairesRoutageEnum
 - CreneauEquipementEnum
+- CritereEnum
 - CrmAppliquerPlanRequestRequest
 - CrmArreterRelanceRequestRequest
 - CrmBulkLeadsRequestActionEnum
@@ -10286,6 +10289,7 @@ components:
 - FactureBulkRequestRequest
 - FactureComptesAPayer
 - FactureConsoliderRequestRequest
+- FactureCreationRequest
 - FactureCreeeDepuisBc
 - FactureCreerAvoirRequestModeEnum
 - FactureCreerAvoirRequestRequest
@@ -10840,7 +10844,6 @@ components:
 - ObjectifProjetEnum
 - ObjetsCatalogue
 - ObjetsCatalogueInstalle
-- OccupationEnum
 - OccupationJourEnum
 - OcrToCrmModeEnum
 - OcrToCrmReponse
