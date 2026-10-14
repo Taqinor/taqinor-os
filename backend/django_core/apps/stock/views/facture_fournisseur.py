@@ -267,7 +267,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         request={'multipart/form-data': corps('FactureDepuisOcrMultipart',
-                                              fields=serializers.RegexField(_REGEX_OBJET_JSON_PLAT, help_text='Objet JSON'),
+                                              fields=serializers.RegexField(
+                                                  _REGEX_OBJET_JSON_PLAT, help_text='Objet JSON'),
                                               file=serializers.FileField(required=False),
                                               confirmer_malgre_doublon=serializers.BooleanField(required=False)),
                  'application/json': corps('FactureDepuisOcrJson', fields=serializers.DictField(),
