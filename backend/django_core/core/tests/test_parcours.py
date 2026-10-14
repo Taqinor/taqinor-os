@@ -30,7 +30,9 @@ class ResolutionSymboleTests(unittest.TestCase):
         self.assertEqual(parcours.resoudre_symbole('backend/django_core/core/parcours.py::etapes'), (True, ''))
 
     def test_methode_de_classe_et_symbole_absent(self):
-        ok, motif = parcours.resoudre_symbole('core/tests/test_parcours.py::ResolutionSymboleTests.test_methode_de_classe_et_symbole_absent')
+        ok, motif = parcours.resoudre_symbole(
+            'core/tests/test_parcours.py::ResolutionSymboleTests.test_methode_de_classe_et_symbole_absent',
+        )
         self.assertTrue(ok, motif)
         ok, motif = parcours.resoudre_symbole('core/parcours.py::symbole_qui_n_existe_pas')
         self.assertFalse(ok)
@@ -86,4 +88,7 @@ class ProblemesTableTests(unittest.TestCase):
         erreurs = parcours.problemes_de_la_table(mutant)
         self.assertTrue(any('identifiant en double' in e for e in erreurs), erreurs)
         self.assertTrue(any('portes' in e for e in erreurs), erreurs)
-        self.assertEqual(parcours.problemes_de_la_table({}), ['table sans étape', '`portes[]` vide : lister les entrées de création du parcours'])
+        self.assertEqual(
+            parcours.problemes_de_la_table({}),
+            ['table sans étape', '`portes[]` vide : lister les entrées de création du parcours'],
+        )
