@@ -317,7 +317,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         PATCH écrits en base — le comportement d'avant, où les gates
         tournaient avant la sauvegarde."""
         from django.db import transaction
-        from rest_framework.exceptions import PermissionDenied, ValidationError
+        from core.conflit_etat import ConflitEtat
+        from rest_framework.exceptions import PermissionDenied
         from ..services import (
             TransitionRefusee, changer_statut_chantier, est_directeur,
             verifier_reouverture_cloture,
@@ -374,7 +375,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     # s'évaluer sur l'état d'avant (comportement historique).
                     etat_avant=old)
             except TransitionRefusee as exc:
-                raise ValidationError({'statut': exc.raisons})
+                # CI #997 api-fuzz : refus d'ÉTAT (machine d'états, gates,
+                # verrou) = 409, corps toujours rangé sous `statut`.
+                raise ConflitEtat({'statut': exc.raisons})
 
     @oa.extend_schema(
         request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.idf(True)),

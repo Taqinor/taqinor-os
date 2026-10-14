@@ -89,7 +89,7 @@ class ClotureGeleeTests(TestCase):
         r = auth(self.responsable).patch(
             f'{BASE}/{self.inst.id}/',
             {'statut': Installation.Statut.EN_COURS}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.inst.refresh_from_db()
         self.assertEqual(self.inst.statut, Installation.Statut.CLOTURE)
         self.assertTrue(self.inst.cloture_verrouillee)
@@ -107,7 +107,7 @@ class ClotureGeleeTests(TestCase):
         r = auth(self.directeur).patch(
             f'{BASE}/{self.inst.id}/',
             {'statut': Installation.Statut.EN_COURS}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.inst.refresh_from_db()
         self.assertEqual(self.inst.statut, Installation.Statut.CLOTURE)
 
