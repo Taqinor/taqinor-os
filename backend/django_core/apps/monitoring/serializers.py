@@ -38,6 +38,9 @@ class MonitoringConfigSerializer(ChampsStrictsBornesMixin,
     def get_provider_label(self, obj):
         return dict(available_providers()).get(obj.provider, obj.provider)
 
+    # CI #993 — booléen publié (SerializerMethodField sans type = chaîne :
+    # `false` servi était « hors schéma » sur configs/ et configs/{id}/).
+    @extend_schema_field(serializers.BooleanField())
     def get_has_credentials(self, obj):
         return bool(obj.credentials)
 
