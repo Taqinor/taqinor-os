@@ -180,8 +180,83 @@ NO_CONTENT = {204: None}
 LIST = type(inline_serializer('ObjetLibre', fields={}))(many=True)
 
 
+# ── ERR-ENF11-FUZZ-INSTALLATIONS : paramètres de requête publiés = lus ──────
+#: Identifiant de requête : ses bornes RÉELLES (``0`` n'est pas un id).
+ID_SCHEMA = {'type': 'integer', 'minimum': 1, 'maximum': ID_MAX}
+#: Filtre d'identifiant : un id, ou la chaîne vide (= filtre non posé).
+ID_OU_VIDE = {'oneOf': [ID_SCHEMA, {'type': 'string', 'enum': ['']}]}
+#: Date ISO, ou la chaîne vide (= borne non posée, défaut de la vue).
+DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+
+def qid(name, **kw):
+    return q(name, ID_SCHEMA, **kw)
+
+
+#: Nombre, ou la chaîne vide (= valeur par défaut de la vue).
+NOMBRE_OU_VIDE = {'oneOf': [{'type': 'number'}, {'type': 'string', 'enum': ['']}]}
+
+
+def qfv(name, **kw):
+    return q(name, NOMBRE_OU_VIDE, **kw)
+
+
+def qidv(name, **kw):
+    return q(name, ID_OU_VIDE, **kw)
+
+
+def qdv(name, **kw):
+    return q(name, DATE_OU_VIDE, **kw)
+
+
+def id_requete(request, nom, requis=False):
+    """Identifiant du paramètre ``nom`` : absent ou vide → ``None`` (400 si
+    ``requis``) ; toute autre forme qu'un entier 1..ID_MAX → 400 nommant le
+    paramètre (``abc`` faisait un 500 ORM, ``null`` était ignoré)."""
+    brut = request.query_params.get(nom)
+    if brut is None or brut == '':
+        if requis:
+            raise ValidationError({nom: 'Paramètre requis.'})
+        return None
+    return id_entier(brut, nom)
+
+
+def _valider_filtres(request, entiers, dates):
+    from core.champs_stricts import date_ou_400
+    for nom in entiers:
+        id_requete(request, nom)
+    for nom in dates:
+        date_ou_400(request.query_params.get(nom), nom)
+
+
 def listing(*args, **kw):
     """``extend_schema_view`` pour la liste : déclare les paramètres lus par
-    ``get_queryset``."""
-    return extend_schema_view(
-        list=extend_schema(parameters=list(args) + list(kw.values())))
+    ``get_queryset``.
+
+    ERR-ENF11-FUZZ-INSTALLATIONS — un filtre entier (``qi``) est publié
+    « id 1..ID_MAX ou vide » et une date (``qd``) « date ISO ou vide », puis
+    VALIDÉ à l'entrée de la liste (400 nommant le paramètre) : avant, ``abc``
+    finissait en 500 ORM et ``null`` était ignoré (200)."""
+    params = list(args) + list(kw.values())
+    entiers = [p.name for p in params if p.type == OpenApiTypes.INT]
+    dates = [p.name for p in params if p.type == OpenApiTypes.DATE]
+    for p in params:
+        if p.name in entiers:
+            p.type = ID_OU_VIDE
+        elif p.name in dates:
+            p.type = DATE_OU_VIDE
+    decorer = extend_schema_view(list=extend_schema(parameters=params))
+
+    def appliquer(cls):
+        cls = decorer(cls)
+        if entiers or dates:
+            initial_parent = cls.initial
+
+            def initial(self, request, *a, **k):
+                initial_parent(self, request, *a, **k)
+                if getattr(self, 'action', None) == 'list':
+                    _valider_filtres(request, entiers, dates)
+            cls.initial = initial
+        return cls
+    return appliquer

@@ -169,3 +169,11 @@ class TestPortailLivraisons(TestCase):
     def test_requires_client_param(self):
         r = self.api.get(f'{BASE}/livraisons/portail/')
         self.assertEqual(r.status_code, 400)
+
+    def test_client_illisible_400_nomme(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `client=abc` faisait un 500 ORM et
+        # `client=0` répondait 200 : id 1..ID_MAX publié et appliqué.
+        for valeur in ('abc', '0', '', '-3'):
+            r = self.api.get(f'{BASE}/livraisons/portail/', {'client': valeur})
+            self.assertEqual(r.status_code, 400, valeur)
+            self.assertIn('client', r.json())

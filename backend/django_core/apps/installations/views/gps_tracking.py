@@ -148,7 +148,7 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
         return Response(data, status=201)
 
     @oa.extend_schema(responses=PositionTechnicienSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='carte-live')
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='carte-live')
     def carte_live(self, request):
         """XFSM23 — dernière position connue par technicien (vue superviseur
         carte temps réel), scopée à l'équipe visible de l'appelant."""

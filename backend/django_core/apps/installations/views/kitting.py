@@ -18,6 +18,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -167,7 +168,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
     @oa.extend_schema(responses=RevisionKitSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='revisions')
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='revisions')
     def revisions(self, request, pk=None):
         """XMFG18 — historique des révisions de nomenclature de ce kit
         (numéro, date, utilisateur, snapshot JSON). Lecture seule."""
@@ -535,7 +536,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         request=oa.body('OrdresDepuisDevisRequete', devis=oa.i(True)),
         responses={200: OrdreAssemblageSerializer(many=True), 201: OrdreAssemblageSerializer(many=True)},
     )
-    @action(detail=False, methods=['post'], url_path='depuis-devis')
+    @action(pagination_class=None, detail=False, methods=['post'], url_path='depuis-devis')
     def depuis_devis(self, request):
         """XMFG3 — assembler-à-la-commande : pour un devis donné, détecte les
         lignes dont le produit est le `produit_compose` d'un kit actif et crée
@@ -699,7 +700,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(self.get_serializer(ordre).data)
 
     @oa.extend_schema(responses=OrdreAssemblageActivitySerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='historique',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsResponsableOrAdmin])
     def historique(self, request, pk=None):
         """XMFG4 — chatter complet de l'ordre."""
@@ -786,7 +787,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response({'ordre_id': ordre.id, 'cout_composite': float(cout)})
 
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='rapport-soustraitants',
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='rapport-soustraitants',
             permission_classes=[IsResponsableOrAdmin])
     def rapport_soustraitants(self, request):
         """XMFG16 — reliquat des composants restant chez chaque sous-traitant
@@ -795,19 +796,20 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         company = self.request.user.company
         return Response(rapport_composants_chez_soustraitants(company))
 
-    @oa.extend_schema(parameters=[oa.qd('date_debut'), oa.qd('date_fin')], responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='rapport-rebuts')
+    @oa.extend_schema(parameters=[oa.qdv('date_debut'), oa.qdv('date_fin')], responses=oa.LIST)
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='rapport-rebuts')
     def rapport_rebuts(self, request):
         """XMFG11 — mini-rapport rebuts agrégé par produit/période."""
         from apps.stock.services import rapport_rebuts as _rapport_rebuts
         company = self.request.user.company
         params = request.query_params
+        # ERR-ENF11 : date illisible = 400 (un vide = borne non posée).
         return Response(_rapport_rebuts(
-            company, date_debut=params.get('date_debut'),
-            date_fin=params.get('date_fin')))
+            company, date_debut=date_ou_400(params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(params.get('date_fin'), 'date_fin')))
 
     @oa.extend_schema(responses=ControleQualiteOrdreSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='controle-qualite')
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='controle-qualite')
     def controle_qualite(self, request, pk=None):
         """XMFG13 — checklist QC de l'ordre (instanciée à la volée depuis le
         modèle du kit ; liste vide si le kit n'a pas de modèle)."""
@@ -841,7 +843,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(ControleQualiteOrdreSerializer(controle).data)
 
     @oa.extend_schema(responses=EtapeOrdreSerializer(many=True))
-    @action(detail=True, methods=['get'])
+    @action(pagination_class=None, detail=True, methods=['get'])
     def etapes(self, request, pk=None):
         """XMFG14 — gamme d'exécution de l'ordre (instanciée à la volée
         depuis les étapes du kit ; liste vide si le kit n'a pas d'étape)."""
@@ -1042,7 +1044,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(self.get_serializer(ordre).data)
 
     @oa.extend_schema(responses=SerieAssemblageSerializer(many=True))
-    @action(detail=True, methods=['get'])
+    @action(pagination_class=None, detail=True, methods=['get'])
     def series(self, request, pk=None):
         """XMFG7 — séries enregistrées sur cet ordre (composite + composants)."""
         ordre = self.get_object()

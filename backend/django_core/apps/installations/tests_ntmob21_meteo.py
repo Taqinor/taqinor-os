@@ -70,3 +70,13 @@ class Ntmob21MeteoTests(TestCase):
     def test_anonyme_refuse(self):
         anon = APIClient()
         self.assertIn(anon.get(URL).status_code, (401, 403))
+
+    def test_coordonnee_presente_illisible_refusee_400(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `?lon=null` répondait 200 « position
+        # inconnue » : une coordonnée PRÉSENTE doit être un nombre fini.
+        for params in ({'lat': 33.57, 'lon': 'null'}, {'lat': 'nan', 'lon': 1},
+                       {'lat': '', 'lon': -7.59}):
+            resp = self.api.get(URL, params)
+            self.assertEqual(resp.status_code, 400, params)
+        resp = self.api.get(URL, {'lat': 33.57, 'lon': 'null'})
+        self.assertIn('lon', resp.json())

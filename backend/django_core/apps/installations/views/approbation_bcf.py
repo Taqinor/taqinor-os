@@ -79,7 +79,7 @@ class ApprobationBCFViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyMode
         seuil). Idempotent si déjà approuvé au bon palier."""
         company = request.user.company
         data = oa.corps_objet(request)
-        if not data.get('bcf'):
+        if data.get('bcf') is None:  # ERR-ENF11 : `0` est une valeur, pas « absent »
             return Response(
                 {'bcf': 'Paramètre `bcf` requis.'},
                 status=status.HTTP_400_BAD_REQUEST)

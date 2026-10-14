@@ -445,7 +445,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(responses=InstallationActivitySerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='historique',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
         inst = self.get_object()
@@ -1083,7 +1083,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── FG74 — Gantt multi-chantier (lecture seule) ──────────────────────────
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='gantt',
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='gantt',
             permission_classes=[IsAnyRole])
     def gantt(self, request):
         """FG74 — vue Gantt multi-chantier : une ligne par chantier avec les barres
@@ -1129,7 +1129,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     _RELEVE_PHASES = ('releve', 'drone')
 
     @oa.extend_schema(responses=AttachmentSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='releves',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='releves',
             permission_classes=[IsAnyRole])
     def releves(self, request, pk=None):
         """FG75 — liste les relevés de toiture / drone attachés au chantier."""
@@ -1322,7 +1322,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
 
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='a-facturer',
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='a-facturer',
             permission_classes=[IsResponsableOrAdmin])
     def a_facturer(self, request):
         """YSERV7 — chantiers à tranche d'échéancier due (jalon atteint ou
@@ -1451,7 +1451,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ),
         responses={200: oa.LIST, 201: oa.OBJ},
     )
-    @action(detail=True, methods=['get', 'post'], url_path='reserves',
+    @action(pagination_class=None, detail=True, methods=['get', 'post'], url_path='reserves',
             permission_classes=[IsAnyRole])
     def reserves(self, request, pk=None):
         """CIQ628 — GET : réserves du chantier (format du contrat
