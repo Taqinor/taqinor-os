@@ -147,13 +147,13 @@ class UniciteReferentielsTests(TestCase):
         from rest_framework.exceptions import ValidationError
 
         from core.champs_stricts import (
-            MOTIF_TEXTE_NON_BLANC, MOTIF_TEXTE_SANS_NUL, ChaineStricte,
-            _ChaineStricteRequetePubliee)
+            MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, ChaineStricte,
+            _ChaineSansNul)
         for valeur in ('ok', ' x ', ' ', '  ', '', 'a\x00b', '\x00',
                        ' z', '\t\n'):
-            for champ, motif in ((ChaineStricte(), MOTIF_TEXTE_NON_BLANC),
+            for champ, motif in ((ChaineStricte(), MOTIF_NON_BLANC_SANS_NUL),
                                  (ChaineStricte(allow_blank=True),
-                                  MOTIF_TEXTE_SANS_NUL)):
+                                  MOTIF_SANS_NUL)):
                 try:
                     champ.run_validation(valeur)
                     accepte = True
@@ -166,9 +166,9 @@ class UniciteReferentielsTests(TestCase):
             @staticmethod
             def _map_serializer_field(champ, direction, bypass_extensions):
                 return {'type': 'string'}
-        ext = _ChaineStricteRequetePubliee(ChaineStricte())
+        ext = _ChaineSansNul(ChaineStricte())
         self.assertEqual(
             ext.map_serializer_field(_Schema, 'request')['pattern'],
-            MOTIF_TEXTE_NON_BLANC)
+            MOTIF_NON_BLANC_SANS_NUL)
         self.assertNotIn(
             'pattern', ext.map_serializer_field(_Schema, 'response'))
