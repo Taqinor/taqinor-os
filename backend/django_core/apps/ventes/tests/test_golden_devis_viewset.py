@@ -49,8 +49,9 @@ FIXTURE = Path(__file__).resolve().parent / 'fixtures' / \
 #: vague 1 (fusion du 05/10) + ``revoquer-lien-public`` (ADOC131) +
 #: ``roof-image/fichier`` (ACAL314, l'affiche servie même origine) +
 #: ``facturer`` (VNT31, « Facturer la vente », GET aperçu + POST) +
-#: ``prix-negocie`` et ``avenant/demander-signature`` (VNT60).
-NB_ROUTES = 62
+#: ``prix-negocie`` et ``avenant/demander-signature`` (VNT60) +
+#: ``echeancier`` (VNT66, PUT).
+NB_ROUTES = 63
 MIXIN = re.compile(r'^Devis\w*ActionsMixin$')
 
 #: Les symboles que chaque tâche de la piste déplace (texte des tâches

@@ -690,3 +690,45 @@ def retirer_acompte_automatique(devis, *, user):
             facture, user=user, motif="Acceptation annulée — brouillon "
                                       "d'acompte automatique retiré."))
     return retirees
+
+
+# ── VNT66 — réécrire l'échéancier d'une vente (contrat devis_echeancier.json) ─
+
+def modifier_echeancier_vente(devis, tranches, *, user):
+    """VNT66 — ``PUT devis/<id>/echeancier/`` : REMPLACE le plan de tranches
+    du devis (brouillon, envoyé ou ACCEPTÉ) par LE geste ÉCHÉANCIER de VNT25
+    (``modifiabilite.controler_echeancier_vente`` : Σ des tranches non
+    dernières ≤ prix convenu, tout-% = 100, dernière = reste, tranches déjà
+    couvertes — émises ou brouillon — inchangées). Sous le verrou de la
+    chaîne ; sur un accepté, la correction est tracée « après acceptation ».
+
+    Refus : :class:`FacturationVenteRefusee` au corps du contrat (400
+    ``echeancier_invalide`` / ``somme_invalide``, 409 ``tranche_facturee``
+    + ``tranche``, 409 devis hors jeu ``{detail, statut,
+    revision_possible}``). Rend le devis relu. Aucun statut écrit (règle #4).
+    """
+    from apps.ventes.models import Devis
+    from .modifiabilite import (
+        DevisNonModifiable, EcheancierRefuse,
+        consigner_correction_apres_envoi, controler_echeancier_vente)
+    with transaction.atomic():
+        devis = next(d for d in verrouiller_vente(devis) if d.pk == devis.pk)
+        try:
+            entrees = controler_echeancier_vente(devis, tranches)
+        except DevisNonModifiable as exc:
+            raise FacturationVenteRefusee(
+                exc.detail, status=409, statut=exc.statut,
+                revision_possible=exc.revision_possible)
+        except EcheancierRefuse as exc:
+            corps = exc.corps()
+            raise FacturationVenteRefusee(corps.pop('detail'),
+                                          status=exc.status, **corps)
+        if entrees != devis.echeancier:
+            Devis.objects.filter(pk=devis.pk, company_id=devis.company_id
+                                 ).update(echeancier=entrees)
+            devis.echeancier = entrees
+            consigner_correction_apres_envoi(
+                devis, user=user, objet='echeancier',
+                resume='échéancier modifié',
+                apres_acceptation=devis.statut == 'accepte')
+    return devis

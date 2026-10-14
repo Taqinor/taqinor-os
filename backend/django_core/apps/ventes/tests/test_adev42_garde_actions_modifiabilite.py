@@ -97,6 +97,9 @@ EXEMPTEES = {
     # de signature d'avenant pose un lien et une tâche, rien d'autre.
     'prix_negocie': 'crée et accepte la V2 négociée (VNT59), V1 inchangée.',
     'avenant_demander_signature': 'lien client + tâche crm, contenu inchangé.',
+    # VNT66 — le geste ÉCHÉANCIER est PERMIS sur un accepté (VNT25) : sa garde
+    # est ``controler_echeancier_vente`` (tranches couvertes inchangées).
+    'echeancier_vente': 'geste ÉCHÉANCIER (VNT25), permis sur un accepté.',
     # detail=False — ne visent aucun devis existant.
     'atomic': 'création d’un NOUVEAU devis (detail=False).',
     'auto': 'création d’un NOUVEAU devis (detail=False).',

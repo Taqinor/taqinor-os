@@ -503,3 +503,61 @@ class GesteEcheancierVente(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')
         self.assertIn('resync_apres_envoi', devis.etude_params or {})
+
+
+class ApiEcheancierVente(TestCase):
+    """VNT66 — ``PUT devis/<id>/echeancier/`` : responsable 200 (devis avec
+    son échéancier), Commercial 403 (palier), tranche émise modifiée 409."""
+
+    # Même socle que le geste (panier réel du 388), sans en rejouer les tests.
+    setUp = GesteEcheancierVente.setUp
+    _388 = GesteEcheancierVente._388
+
+    def _api(self, user):
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return api
+
+    def _put(self, devis, tranches, user=None):
+        return self._api(user or self.user).put(
+            f'/api/django/ventes/devis/{devis.id}/echeancier/',
+            {'tranches': tranches}, format='json')
+
+    def test_vnt66_responsable_200_echeancier_reecrit(self):
+        devis = self._388('DEV-VNT66-10')
+        r = self._put(devis, ACOMPTE_LIBRE_15000)
+        self.assertEqual(r.status_code, 200, r.data)
+        devis.refresh_from_db()
+        self.assertEqual(
+            [(e['type'], e['unite']) for e in devis.echeancier],
+            [('acompte', 'montant'), ('materiel', 'pct'),
+             ('solde', 'montant')])
+        self.assertEqual(devis.statut, 'accepte')
+
+    def test_vnt66_commercial_403(self):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        role = Role.objects.create(company=self.company, nom='Commercial 66',
+                                   permissions=list(COMMERCIAL_PERMISSIONS))
+        commercial = User.objects.create_user(
+            username='vnt66_commercial', password='x', role=role,
+            role_legacy='normal', company=self.company)
+        devis = self._388('DEV-VNT66-20')
+        r = self._put(devis, ACOMPTE_LIBRE_15000, user=commercial)
+        self.assertEqual(r.status_code, 403, r.data)
+        devis.refresh_from_db()
+        self.assertEqual(devis.echeancier, ECHEANCIER_30_60_10)
+
+    def test_vnt66_tranche_emise_modifiee_409(self):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            facture_tranche)
+        devis = self._388('DEV-VNT66-30')
+        facture_tranche(devis, 'FAC-VNT66-1', 'acompte', '14700.00',
+                        '12466.00', '2234.00')
+        r = self._put(devis, ACOMPTE_LIBRE_15000)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'tranche_facturee')
+        self.assertEqual(r.data['tranche']['cle'], 'acompte')
+        devis.refresh_from_db()
+        self.assertEqual(devis.echeancier, ECHEANCIER_30_60_10)

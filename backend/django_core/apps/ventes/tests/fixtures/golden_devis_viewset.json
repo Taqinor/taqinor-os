@@ -147,6 +147,15 @@
       ]
     },
     {
+      "nom": "echeancier_vente",
+      "url_path": "echeancier",
+      "url_name": "echeancier-vente",
+      "detail": true,
+      "methodes": [
+        "put"
+      ]
+    },
+    {
       "nom": "economie",
       "url_path": "economie",
       "url_name": "economie",
@@ -607,6 +616,7 @@
     "dupliquer",
     "dupliquer_variante",
     "dupliquer_variante_gamme",
+    "echeancier_vente",
     "economie",
     "economie_ci",
     "economie_pompage",

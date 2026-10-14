@@ -91,6 +91,8 @@ FIGEE = {
     # palier écarte un Commercial qui porte ``ventes_valider``.
     'prix_negocie': PALIER_VENTE,
     'avenant_demander_signature': PALIER_VENTE,
+    # VNT66 — réécrire l'échéancier d'une vente : même palier.
+    'echeancier_vente': PALIER_VENTE,
 }
 
 #: Table de vérité des trois gardes « à palier » (inchangées par QJR649).

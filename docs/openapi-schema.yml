@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4808, operations: 7560, components: 3483}
+counts: {paths: 4810, operations: 7562, components: 3484}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3536,6 +3536,7 @@ operations:
 - post /api/django/ventes/devis/{id}/dupliquer-variante-gamme/ -> django_ventes_devis_dupliquer_variante_gamme_create
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
+- put /api/django/ventes/devis/{id}/echeancier/ -> django_ventes_devis_echeancier_update
 - get /api/django/ventes/devis/{id}/economie-ci/ -> django_ventes_devis_economie_ci_retrieve
 - get /api/django/ventes/devis/{id}/economie-pompage/ -> django_ventes_devis_economie_pompage_retrieve
 - get /api/django/ventes/devis/{id}/economie/ -> django_ventes_devis_economie_retrieve
@@ -7319,6 +7320,7 @@ operations:
 - post /api/v1/ventes/devis/{id}/dupliquer-variante-gamme/ -> v1_ventes_devis_dupliquer_variante_gamme_create
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
+- put /api/v1/ventes/devis/{id}/echeancier/ -> v1_ventes_devis_echeancier_update
 - get /api/v1/ventes/devis/{id}/economie-ci/ -> v1_ventes_devis_economie_ci_retrieve
 - get /api/v1/ventes/devis/{id}/economie-pompage/ -> v1_ventes_devis_economie_pompage_retrieve
 - get /api/v1/ventes/devis/{id}/economie/ -> v1_ventes_devis_economie_retrieve
@@ -10031,6 +10033,7 @@ components:
 - DevisDupliquerVarianteGammeRequestRequest
 - DevisDupliquerVarianteGammeResponse
 - DevisDupliquerVarianteRequestRequest
+- DevisEcheancierPutRequest
 - DevisEconomie
 - DevisEconomieCi
 - DevisEconomiePompage
