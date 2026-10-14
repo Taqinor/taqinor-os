@@ -223,6 +223,22 @@ class NotificationApiTests(TestCase):
             user=self.alice, event_type=EventType.SAV_TICKET_OPENED)
         self.assertFalse(pref.push)
 
+    def test_preferences_upsert_booleens_stricts(self):
+        # CI #997 fuzz : ``{"push": {}}`` était lu « vrai » (200) alors que le
+        # schéma déclare un booléen : seuls les vrais booléens JSON passent.
+        url = f'/api/django/notifications/preferences/{EventType.STOCK_LOW}/'
+        for verbe in ('patch', 'put'):
+            for valeur in ({}, [], 0, 'true', None):
+                with self.subTest(verbe=verbe, valeur=valeur):
+                    res = getattr(self.client, verbe)(
+                        url, {'push': valeur}, format='json')
+                    self.assertEqual(res.status_code, 400, res.data)
+        res = self.client.patch(url, ['push'], format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        # Rien n'est créé par un corps refusé.
+        self.assertFalse(
+            NotificationPreference.objects.filter(user=self.alice).exists())
+
     def test_preferences_upsert_rejects_unknown_event(self):
         res = self.client.patch(
             '/api/django/notifications/preferences/bogus/',
@@ -827,6 +843,22 @@ class RoutingRuleTests(TestCase):
         # Suppression.
         res = api.delete(f'/api/django/notifications/routing-rules/{rule_id}/')
         self.assertEqual(res.status_code, 204)
+
+    def test_routing_rule_sur_utilisateur_libelle_de_role_null(self):
+        """CI #997 fuzz : une règle qui vise une personne n'a pas de rôle —
+        ``target_role_label`` est ``null`` (et publié nullable)."""
+        from .serializers import NotificationRoutingRuleSerializer
+
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        res = api.post(
+            '/api/django/notifications/routing-rules/',
+            {'event_type': EventType.FACTURE_OVERDUE,
+             'target_user': self.resp.pk}, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertIsNone(res.data['target_role_label'])
+        champ = NotificationRoutingRuleSerializer().fields['target_role_label']
+        self.assertTrue(champ.allow_null)
 
     def test_routing_rule_api_normal_user_cannot_write(self):
         """Un utilisateur normal ne peut pas créer de règle de routage."""
