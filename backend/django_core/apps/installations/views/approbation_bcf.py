@@ -84,7 +84,9 @@ class ApprobationBCFViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyMode
                 {'bcf': 'Paramètre `bcf` requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         bcf_id = oa.id_entier(data.get('bcf'), 'bcf')
-        note = data.get('note') or ''
+        # api-fuzz : `note` est une CHAÎNE (schéma non nullable) ; absente ⇒
+        # vide. Un `{}`/`[]`/`0`/`null` est un 400 — jamais avalé par un `or ''`.
+        note = data.get('note', '')
         if not isinstance(note, str):
             return Response({'note': 'Texte attendu.'},
                             status=status.HTTP_400_BAD_REQUEST)
