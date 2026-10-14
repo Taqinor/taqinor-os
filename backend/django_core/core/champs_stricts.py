@@ -10,6 +10,7 @@ import re
 from datetime import date
 
 from django.db import models
+from django.core import validators as _validateurs
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 from rest_framework.fields import SkipField, empty
@@ -29,6 +30,10 @@ class ChaineStricte(serializers.CharField):
 #: l'autorisait — le fuzz envoyait une chaîne « conforme » et recevait 400.
 MOTIF_SANS_NUL = r'^[^\u0000]*$'
 MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*[^\s\u0000][^\u0000]*$'
+#: Validateurs dont drf-spectacular publie lui-même le motif/format.
+_VALIDATEURS_PUBLIES = (
+    _validateurs.RegexValidator, _validateurs.EmailValidator,
+    _validateurs.URLValidator, _validateurs.FileExtensionValidator)
 
 
 class _ChaineSansNul(OpenApiSerializerFieldExtension):
@@ -42,11 +47,17 @@ class _ChaineSansNul(OpenApiSerializerFieldExtension):
     def map_serializer_field(self, auto_schema, direction):
         schema = auto_schema._map_serializer_field(
             self.target, direction, bypass_extensions=True)
+        champ = self.target
         if direction != 'request' or schema.get('type') != 'string' or any(
                 cle in schema for cle in ('pattern', 'format', 'enum')):
             return schema
+        # Un validateur propre au champ (slug, e-mail, URL, extension de
+        # fichier) est publié par drf-spectacular APRÈS cette extension et
+        # seulement si aucun `pattern`/`format` n'est déjà posé : on lui
+        # laisse la place (son motif prime sur la règle générique).
+        if any(isinstance(v, _VALIDATEURS_PUBLIES) for v in champ.validators):
+            return schema
         schema = dict(schema)
-        champ = self.target
         # Non blanc = rogné ET (blanc interdit OU longueur minimale) : « " " »
         # est rogné en vide puis refusé ; sans rognage, « " " » passe.
         non_blanc = champ.trim_whitespace and (
