@@ -967,7 +967,7 @@ export default function DevisList() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="accept-date">Date d'acceptation</Label>
-              <Input id="accept-date" type="date" value={acceptDate}
+              <Input id="accept-date" type="date" value={acceptDate} max={todayLocalIso()}
                      onChange={e => setAcceptDate(e.target.value)} />
             </div>
             {acceptTarget?.nb_options === 2 && (
