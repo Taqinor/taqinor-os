@@ -251,3 +251,14 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']
         schema = reponse['200']['content']['application/json']['schema']
         self.assertIs(schema.get('nullable'), True)
+
+    def test_layout_ecrit_documente_son_428(self):
+        """ACAL316 — ``POST layout/`` sans jeton If-Match répond 428 : le code
+        est publié (api-fuzz du 14/10/2026 « code HTTP non documenté »)."""
+        reponses = self._operation('post', '{id}/layout/')['responses']
+        self.assertIn('200', reponses)
+        self.assertIn('428', reponses)
+        schema = reponses['428']['content']['application/json']['schema']
+        composant = self.schema['components']['schemas'][
+            schema['$ref'].rsplit('/', 1)[-1]]
+        self.assertEqual(list(composant['properties']), ['detail'])
