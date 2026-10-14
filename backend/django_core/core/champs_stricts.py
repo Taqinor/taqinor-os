@@ -28,6 +28,7 @@ class ChaineStricte(serializers.CharField):
 #: tout ``CharField`` (``ProhibitNullCharactersValidator``) alors que le schéma
 #: l'autorisait — le fuzz envoyait une chaîne « conforme » et recevait 400.
 MOTIF_SANS_NUL = r'^[^\u0000]*$'
+MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*\S[^\u0000]*$'
 
 
 class _ChaineSansNul(OpenApiSerializerFieldExtension):
