@@ -27,7 +27,11 @@ export default function CalepinageRetenuCard({ calepinage }) {
   if (!calepinage) return null
 
   const { kwc, nb_modules: nbModules, planche_url: plancheUrl,
-    plan_pose_url: planPoseUrl } = calepinage
+    plan_pose_url: planPoseUrl, kwc_source: kwcSource,
+    dessin_kwc: dessinKwc, ecart_kwc: ecartKwc } = calepinage
+  // ACAL274 — kWc/modules servis = le VENDU (lignes du devis) ; le dessin est
+  // affiché comme tel avec l'écart que le serveur a calculé (jamais redérivé).
+  const vendu = kwcSource === 'devis'
 
   return (
     <Card>
@@ -41,12 +45,19 @@ export default function CalepinageRetenuCard({ calepinage }) {
         <div className="flex flex-wrap gap-4 text-sm">
           <span>
             <strong>{kwc != null ? `${kwc} kWc` : '—'}</strong>
+            {vendu && kwc != null ? ' vendus' : ''}
           </span>
           <span>
             {nbModules != null
               ? `${nbModules} module${nbModules > 1 ? 's' : ''}`
               : '—'}
           </span>
+          {vendu && dessinKwc != null && (
+            <span className="text-muted-foreground">
+              {`dessin : ${dessinKwc} kWc`}
+              {ecartKwc ? ` (écart ${ecartKwc > 0 ? '+' : ''}${ecartKwc} kWc)` : ''}
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {plancheUrl && (

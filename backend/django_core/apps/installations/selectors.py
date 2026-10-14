@@ -54,13 +54,69 @@ def calepinage_retenu_du_chantier(installation):
     bloc = calepinage_retenu_pour_devis(installation.devis_id, installation.company)
     if bloc is None:
         return None
+    # ACAL274 (D-ACAL-2) — le chantier annonce ce qui est VENDU (lignes du
+    # devis) ; le dessin du calepinage est donné comme tel, avec l'écart. Le
+    # ``pose`` du calepinage ne fournit plus les chiffres quand le devis en a.
+    vendu_kwc, vendu_modules = _vendu_du_devis(installation.devis)
+    dessin_kwc = _dessin_kwc(installation)
+    kwc, nb_modules, source = bloc['kwc'], bloc['nb_modules'], 'calepinage'
+    if vendu_kwc is not None:
+        kwc, source = vendu_kwc, 'devis'
+        if vendu_modules is not None:
+            nb_modules = vendu_modules
+    ecart = (round(dessin_kwc - kwc, 2)
+             if source == 'devis' and dessin_kwc is not None else None)
     return {
         'calepinage_id': bloc['id'],
-        'kwc': bloc['kwc'],
-        'nb_modules': bloc['nb_modules'],
+        'kwc': kwc,
+        'nb_modules': nb_modules,
+        'kwc_source': source,
+        'dessin_kwc': dessin_kwc,
+        'ecart_kwc': ecart,
         'planche_url': bloc['planche_url'],
         'plan_pose_url': f'/ventes/devis/{installation.devis_id}/3d',
     }
+
+
+def _vendu_du_devis(devis):
+    """ACAL274 — ``(kwc, nb_modules)`` VENDUS, lus sur les lignes du devis par
+    la règle unique ``ventes`` (``puissance_kwc_du_devis``) ; ``(None, None)``
+    quand les lignes ne disent rien (jamais un chiffre supposé)."""
+    from apps.ventes.services import puissance_kwc_du_devis
+
+    if devis is None:
+        return None, None
+    try:
+        kwc = puissance_kwc_du_devis(devis)
+    except Exception:  # noqa: BLE001 — un bloc de fiche ne casse jamais le détail
+        return None, None
+    if not kwc:
+        return None, None
+    modules = None
+    try:
+        from apps.ventes.quote_engine.builder import panneaux_et_watt_lu
+
+        lignes = [li for li in devis.lignes.select_related('produit').all()
+                  if getattr(li, 'type_ligne', 'produit') == 'produit'
+                  and not getattr(li, 'optionnelle', False)]
+        nb, _watt = panneaux_et_watt_lu(lignes)
+        modules = int(nb) if nb else None
+    except Exception:  # noqa: BLE001
+        modules = None
+    return round(float(kwc), 2), modules
+
+
+def _dessin_kwc(installation):
+    """ACAL274 — kWc du DESSIN (``mesures_du_document`` sur le document du
+    calepinage du devis), ou ``None`` ; lu par ``apps.calepinage.selectors``."""
+    from apps.calepinage.selectors import (
+        calepinage_du_devis, mesures_du_calepinage)
+
+    calepinage = calepinage_du_devis(installation.devis_id, installation.company)
+    if calepinage is None:
+        return None
+    kwc = (mesures_du_calepinage(calepinage) or {}).get('kwc')
+    return round(float(kwc), 2) if kwc else None
 
 
 def devis_id_du_chantier(company, chantier_id):
