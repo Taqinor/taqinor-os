@@ -215,17 +215,33 @@ class BaseParametreeTests(BaseDepot):
 
 
 class BaseReelleTests(unittest.TestCase):
-    """Le depot REEL : la dette parametree du jour est GELEE, pas cachee."""
+    """Le depot REEL : la dette parametree du jour est GELEE ou BRANCHEE,
+    jamais cachee. (ENF15, 14/10/2026 : les 8 routes /calepinage/:id/<x>
+    sont branchees, la base peut legitimement ne plus porter AUCUN chemin
+    parametre — le temoin porte donc sur le DETECTEUR, pas sur la base.)"""
 
-    def test_la_base_committee_porte_la_dette_parametree(self):
-        base = cea.charger_base()
-        parametrees = [ligne for ligne in base
-                       if ligne.startswith("sans-nav|") and ":" in
-                       ligne.partition("::")[2]]
+    def test_les_chemins_parametres_du_depot_sont_vus_et_justifies(self):
+        vus, configs = cea.atteignables()
+        parametrees = [
+            chemin
+            for config in configs if not config.opaque
+            for chemin, _cible, _d, _f in config.routes_reelles
+            if chemin and ":" in chemin]
         self.assertTrue(
             parametrees,
-            "la base ne gele aucun chemin parametre : soit la reparation "
-            "CALX56 est defaite, soit la base n'a pas ete ecrite",
+            "le depot ne declare plus aucun chemin parametre : le temoin "
+            "CALX56 n'a plus d'objet, a reecrire",
+        )
+        base = cea.charger_base()
+        sans_nav = {
+            f"sans-nav|{sig}"
+            for sig, _app in cea.routes_sans_nav(configs, vus)
+            if ":" in sig.partition("::")[2]}
+        self.assertEqual(
+            sorted(sans_nav - base), [],
+            "chemin(s) parametre(s) sans lien entrant ni gel dans la base : "
+            "soit la reparation CALX56 est defaite, soit un ecran est livre "
+            "sans etre branche",
         )
 
 
