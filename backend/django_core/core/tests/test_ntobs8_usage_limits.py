@@ -7,10 +7,11 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from authentication.models import Company
-from apps.parametres.models import CompanyProfile
 
 from core import usage_limits
 from core.models import ApiUsageRecord
+
+CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
 
 User = get_user_model()
 # Résolus par nom (jamais un import statique d'apps.ged/apps.publicapi,

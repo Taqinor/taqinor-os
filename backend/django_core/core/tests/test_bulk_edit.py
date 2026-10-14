@@ -8,6 +8,7 @@ Couvre :
     champ non modifiable → 400 ;
   * découplage : cible enregistrée sur un modèle de FONDATION (CustomUser).
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -108,7 +109,7 @@ class NTUX31EditionMasseFinePermissionTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
-        from apps.roles.models import Role
+        Role = django_apps.get_model('roles', 'Role')
 
         cls.company = Company.objects.create(nom='ACME NTUX31')
         cls.role_sans_code = Role.objects.create(

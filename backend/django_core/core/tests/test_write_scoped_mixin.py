@@ -5,14 +5,16 @@ via un APIRequestFactory : un rôle `*_voir` seul lit (GET) mais est refusé en
 écriture (POST/PATCH/DELETE) ; un rôle `*_gerer` écrit ; un compte légacy sans
 rôle fin garde son accès historique.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import viewsets
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from authentication.models import Company
-from apps.roles.models import Role
 from core.permissions import WriteScopedPermissionMixin
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

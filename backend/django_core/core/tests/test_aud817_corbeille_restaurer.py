@@ -11,6 +11,7 @@ avait volontairement supprimé.
 Après correctif : l'action déclare ``IsResponsableOrAdmin`` et la vue honore
 cette déclaration ; la LISTE reste 200 pour tout utilisateur authentifié.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
@@ -18,9 +19,10 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from authentication.models import Company
-from apps.roles.models import Role
 from core.models import DeletionRecord
 from core.views import TrashViewSet
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

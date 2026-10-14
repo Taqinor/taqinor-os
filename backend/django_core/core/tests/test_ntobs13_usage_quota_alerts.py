@@ -2,14 +2,16 @@
 atteint (80%/100%). Réutilise entièrement notifications.notify()."""
 from unittest import mock
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
 
 from authentication.models import Company
-from apps.roles.models import Role
 
 from core import usage_limits
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

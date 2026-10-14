@@ -22,16 +22,18 @@ DÉFAUT : une spec SANS ``select`` projetait tous les champs.
 """
 from decimal import Decimal
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.roles.models import Role
 from authentication.models import Company
 from core import bi_cache, data_explorer
 from core.models import PaymentTransaction
 from core.views import SavedQueryViewSet
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 
