@@ -20,6 +20,9 @@ deviendrait un énumérateur de tenants (``?company=1,2,3…``). Et la charge ut
 ne porte QUE de la marque — jamais l'id société, jamais le domaine, jamais
 l'identité légale.
 """
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Marque vide — repli neutre, toujours sérialisable.
 MARQUE_VIDE = {
@@ -35,6 +38,7 @@ def _tenant_theme(company):
         from core.models import TenantTheme
         return TenantTheme.objects.filter(company=company).first()
     except Exception:  # noqa: BLE001 - le branding ne casse jamais un écran
+        logger.warning("_tenant_theme : erreur absorbée, repli dégradé", exc_info=True)
         return None
 
 
@@ -43,6 +47,7 @@ def _profil(company):
         from apps.parametres.selectors import company_identity
         return company_identity(company)
     except Exception:  # noqa: BLE001
+        logger.warning("_profil : erreur absorbée, repli dégradé", exc_info=True)
         return {}
 
 
@@ -91,5 +96,6 @@ def company_pour_hote(host):
                  .select_related('company')
                  .first())
     except Exception:  # noqa: BLE001
+        logger.warning("company_pour_hote : erreur absorbée, repli dégradé", exc_info=True)
         return None
     return getattr(theme, 'company', None) if theme is not None else None

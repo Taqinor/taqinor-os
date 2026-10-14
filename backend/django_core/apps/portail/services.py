@@ -15,6 +15,9 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────
@@ -280,6 +283,7 @@ def _envoyer_identifiants_portail(
         )
         return True
     except Exception:  # noqa: BLE001 - un email KO ne casse jamais l'accès
+        logger.warning("_envoyer_identifiants_portail : erreur absorbée, repli dégradé", exc_info=True)
         return False
 
 
@@ -677,6 +681,7 @@ def _envoyer_invitation_portail(invitation, company, base_url=None):
         )
         return True
     except Exception:  # noqa: BLE001 - un email KO ne casse jamais l'invitation
+        logger.warning("_envoyer_invitation_portail : erreur absorbée, repli dégradé", exc_info=True)
         return False
 
 

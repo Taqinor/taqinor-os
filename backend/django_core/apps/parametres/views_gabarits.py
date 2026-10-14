@@ -36,6 +36,9 @@ from core.viewsets import CompanyScopedModelViewSet
 from .gabarits import rendre_pdf, variables_du_gabarit
 from .gabarits_contexte import apercu_contexte, construire_contexte
 from .models import GabaritDocumentCustom
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GabaritDocumentCustomSerializer(serializers.ModelSerializer):
@@ -102,6 +105,7 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
         try:
             pdf = rendre_pdf(gabarit, contexte)
         except Exception:
+            logger.warning("rendre : erreur absorbée, repli dégradé", exc_info=True)
             return Response(
                 {'detail': 'Rendu PDF indisponible sur ce serveur.'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -136,6 +140,7 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
         try:
             pdf = rendre_pdf(gabarit, contexte, strict=False)
         except Exception:
+            logger.warning("apercu : erreur absorbée, repli dégradé", exc_info=True)
             return Response(
                 {'detail': 'Rendu PDF indisponible sur ce serveur.'},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)

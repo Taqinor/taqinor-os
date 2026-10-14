@@ -58,7 +58,9 @@ MESSAGE_TEMPLATE_DEFAULTS = {
 # la main, jamais un défaut inventé. Aucun chiffre n'est un placeholder.
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'identite':
-        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Vous venez de nous laisser une demande pour le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Vous venez de nous laisser une demande pour "
+        "le solaire, merci. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le "
+        "bon moment, dites-moi l'heure qui vous arrange.",
     # CAD109 (21/09/2026) — loi 31-08 art. 51 : un démarchage téléphonique
     # doit indiquer explicitement l'identité ET le caractère commercial de
     # l'intervention (sanctionné par l'art. 180) ; loi 09-08 art. 5 §3 +
@@ -68,19 +70,28 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # est déjà assurée par le devis envoyé — une phrase courte suffit ici,
     # pas un pavé dans le WhatsApp.
     'appel_ouverture':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Vous venez de remplir notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je vous dérange deux minutes ?",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Vous venez de remplir "
+        "notre formulaire pour le solaire ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je "
+        "vous dérange deux minutes ?",
     'repondeur':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle au sujet de votre demande solaire. Je vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle au sujet de votre demande solaire. Je "
+        "vous envoie un message WhatsApp, répondez-y quand vous voulez. Bonne journée.",
     'valeur_j1':
-        "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+        "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour que l'estimation soit juste, j'ai "
+        "besoin de votre facture (une photo suffit) et de votre adresse : je vous montre vos panneaux posés sur votre "
+        "toit, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
     'vocal_j3':
-        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Je vous ai laissé deux messages, je ne veux pas insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. Bonne journée.",
+        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Je vous ai laissé deux messages, je ne veux pas "
+        "insister : dites-moi juste si le projet est toujours d'actualité, et à quelle heure je peux vous appeler. "
+        "Bonne journée.",
     # CAD109 — même mention que `appel_ouverture` (loi 31-08 art. 51 +
     # loi 09-08 art. 5 §3), sur le second script d'appel EN DIRECT
     # (`repondeur`/`vocal_j3` restent des scripts de répondeur/vocal, pas des
     # ouvertures de conversation).
     'appel_dimanche':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Je me permets de vous appeler un dimanche parce que je ne vous trouve pas en semaine ; vous pouvez me demander à tout moment d'où viennent vos coordonnées. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque} — c'est un appel commercial. Je me permets de vous "
+        "appeler un dimanche parce que je ne vous trouve pas en semaine ; vous pouvez me demander à tout moment d'où "
+        "viennent vos coordonnées. Je ne vous retiens pas : votre demande solaire est-elle toujours d'actualité ?",
     # CAD66 (21/09/2026) — « dans trois jours » promettait une clôture à J10 ;
     # le moteur clôture réellement à J14 (`cloture_j14`), donc « dans une
     # semaine » depuis J7. Aucun barreau déplacé, seul le mot change.
@@ -93,15 +104,23 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # les réveils) — pas aux trois premiers messages (garde-fou : ne pas
     # alourdir le début, c'est le suivi long qui expose).
     'je_classe_j7':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Sans nouvelle de votre part, je mets votre demande de côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je n'insiste plus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Sans nouvelle de votre part, je mets votre demande de "
+        "côté dans une semaine. Un simple « plus tard » me suffit pour la garder ouverte. Répondez STOP et je "
+        "n'insiste plus.",
     'cloture_j14':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je classe votre demande pour ne pas vous déranger. Si vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h. Répondez STOP et je n'insiste plus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je classe votre demande pour ne pas vous déranger. Si "
+        "vous souhaitez reprendre plus tard, ce message suffit : je vous prépare l'étude en 24 h. Répondez STOP et je "
+        "n'insiste plus.",
     'reveil_a2':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. "
+        "Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de votre "
+        "dernière facture, et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
     'rappel_plus_tard':
-        "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo m'aide à préparer l'estimation.",
+        "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez votre facture sous la main, une photo "
+        "m'aide à préparer l'estimation.",
     'stop_contact':
-        "Compris, je ne vous rappellerai plus. Je vous laisse simplement ce numéro si un jour le projet revient. Bonne journée.",
+        "Compris, je ne vous rappellerai plus. Je vous laisse simplement ce numéro si un jour le projet revient. "
+        "Bonne journée.",
     # 09/09/2026 — réchauffé sur ordre fondateur (« ce message whatsapp est un
     # peu froid ») : c'était la SEULE touche du guide sans salutation ni
     # prénom. Même voix que le reste (vouvoiement, chaleur sobre, zéro
@@ -114,20 +133,28 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
         "dites-moi ce qui vous a le plus parlé. Je suis là pour la moindre "
         "question.",
     'j4_preuve':
-        "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous montrer. Petite vidéo du chantier : {lien_video_preuve}.",
+        "Voici une installation comparable à la vôtre, posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. "
+        "Puissance installée : {puissance_preuve} kWc. Le suivi de production est en temps réel, je peux vous "
+        "montrer. Petite vidéo du chantier : {lien_video_preuve}.",
     'j6_garanties':
-        "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement est dans votre proposition : {lien}.",
+        "Ces garanties sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par "
+        "équipement est dans votre proposition : {lien}.",
     'j9_validite':
-        "Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.",
+        "Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider les prix et la "
+        "disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux.",
     # CAD110 — porte de sortie (voir la note au-dessus de `je_classe_j7`) :
     # les deux DERNIÈRES touches après-devis, celles qui portent le plus
     # loin dans le suivi.
     'j13_dernier':
-        "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Répondez STOP et je n'insiste plus.",
+        "Je ne veux pas insister : dites-moi si le projet est toujours d'actualité, et si non, je vous laisse "
+        "tranquille. Répondez STOP et je n'insiste plus.",
     'j14_pause':
-        "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la réactiver. Répondez STOP et je n'insiste plus.",
+        "Je mets votre dossier en pause. Votre proposition reste dans notre système ; un message suffit pour la "
+        "réactiver. Répondez STOP et je n'insiste plus.",
     'dimanche_famille':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend en famille. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend en famille. Si vous "
+        "en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, "
+        "ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
     # CAD60 (21/09/2026) — ENVOI MANUEL, HORS CADENCE, APRÈS LA DÉCISION DU
     # FONDATEUR. Ces deux textes ne sont portés par AUCUN des barreaux
     # après-devis et ne le seront pas : `offre_reda` contient trois blancs
@@ -137,9 +164,14 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # câbler une touche conditionnelle serait de la sur-ingénierie. Ils se
     # copient depuis le catalogue des messages, au moment choisi.
     'annonce_appel_reda':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Le fondateur, qui valide chaque étude, aimerait vous appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous un autre moment ?",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Le fondateur, qui valide chaque étude, aimerait vous "
+        "appeler dimanche vers 18 h pour répondre à vos questions en cinq minutes. Ça vous convient, ou préférez-vous "
+        "un autre moment ?",
     'offre_reda':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Suite à votre échange avec le fondateur : [la raison réelle], il vous accorde [montant en dirhams] sur la proposition n° {reference}, soit [nouveau total TTC]. Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour toute question.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Suite à votre échange avec le fondateur : [la raison "
+        "réelle], il vous accorde [montant en dirhams] sur la proposition n° {reference}, soit [nouveau total TTC]. "
+        "Cette proposition est valable jusqu'à mardi 18 h ; ensuite le prix normal reprend. Je reste disponible pour "
+        "toute question.",
     # CAD73 (21/09/2026) — « il y a quelques mois » était un fait daté FAUX :
     # ce réveil part ~6 semaines après le devis (`cloturer_cadence` démarre
     # la cadence réveil à sa clôture, ~J14, donc reveil_a1 tombe vers J+44),
@@ -148,19 +180,31 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # les plus lointaines de toute la cadence (J30/J60), donc les plus
     # exposées au regard de l'art. 10 al. 5.
     'reveil_a1':
-        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis solaire chez nous. Du nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.",
+        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis solaire chez nous. Du "
+        "nouveau depuis : on peut maintenant vous montrer vos panneaux posés sur VOTRE toit, en 3D, avec l'estimation "
+        "à jour de vos économies. Je vous prépare la vue et je vous l'envoie ici — c'est gratuit, sans engagement. Je "
+        "me lance ? (Je dois juste confirmer votre adresse.) Répondez STOP et je n'insiste plus.",
     'reveil_a3':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus "
+        "d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : "
+        "je peux vous envoyer la vue 3D de vos panneaux sur votre toit, avec l'estimation à jour. Je vous la prépare, "
+        "ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
     'reveil_b':
-        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. C'est la saison des factures d'été — souvent le moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une estimation à jour de vos économies, sans engagement. On en parle ? Répondez STOP et je n'insiste plus.",
+        "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. C'est la saison des factures d'été — souvent le "
+        "moment où le solaire se décide. Votre projet est-il toujours d'actualité ? Si oui, je vous prépare une "
+        "estimation à jour de vos économies, sans engagement. On en parle ? Répondez STOP et je n'insiste plus.",
     # CAD71 (21/09/2026) — {lien} n'était alimenté que par le devis
     # (`url_proposition`) : ce texte envoyait donc le lien du DEVIS du client
     # à la place d'un lien vers la fiche Google. Placeholder dédié
     # {lien_google}, alimenté par `CompanyProfile.lien_avis_google`.
     'avis_google':
-        "Bonjour {civilite} {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien_google}. Merci beaucoup !",
+        "Bonjour {civilite} {prenom}, j'espère que l'installation vous donne satisfaction. Si vous avez deux minutes, "
+        "un avis sur Google nous aide énormément, c'est ce que regardent les futurs clients : {lien_google}. Merci "
+        "beaucoup !",
     'parrainage':
-        "Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour vous.",
+        "Si quelqu'un autour de vous, un voisin, un frère, un collègue, réfléchit au solaire, vous pouvez lui envoyer "
+        "votre lien de parrainage ; il aura la même étude gratuite, et on convient ensemble d'une récompense pour "
+        "vous.",
     # VISITE-CADENCE (textes validés par le fondateur, 15/09/2026) — LA VISITE
     # TECHNIQUE COMME OUTIL DE CLOSING. Doctrine : elle se PROPOSE après
     # l'envoi du devis, quand le client est chaud, et elle se CONFIRME la
@@ -169,13 +213,19 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # {date_visite} est OMISE (MRY13) quand aucune date n'est posée sur la
     # fiche — jamais un crochet vide envoyé au client.
     'visite_proposition':
-        "Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+        "Pour verrouiller votre proposition, on peut passer chez vous pour la vérification technique gratuite : le "
+        "technicien confirme l'orientation du toit, la charpente et le tableau électrique, et répond à toutes vos "
+        "questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque "
+        "le créneau. — {conseiller}",
     # Ordre fondateur du 15/09/2026 : la visite ne se fait qu'avec le VRAI
     # client présent — jamais le gardien ni la bonne. La phrase le demande sans
     # le dire de façon blessante : elle donne la RAISON (« répondre à toutes
     # vos questions »), qui est aussi la vraie valeur du passage.
     'visite_confirmation':
-        "Bonjour, on confirme la visite technique prévue {date_visite} chez vous. Le technicien vérifie le toit, la charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+        "Bonjour, on confirme la visite technique prévue {date_visite} chez vous. Le technicien vérifie le toit, la "
+        "charpente et le tableau électrique — prévoyez l'accès au compteur. Votre présence est importante : c'est "
+        "l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale "
+        "le passage. — {conseiller}",
     # CAD67 (21/09/2026) — deux appels de la cadence contact n'avaient aucune
     # phrase d'ouverture (`apps/parametres/models_relance.py` ordre 4 et 10).
     # `appel_relance` (Appel 3, J1 10:30) : troisième tentative, ton court
@@ -184,9 +234,11 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # CAD96 (21/09/2026, fold post-merge) — {marque} plutôt que « TAQINOR »
     # codé en dur (même règle que le reste du catalogue, garde SCA29).
     'appel_relance':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je reviens vers vous pour votre demande solaire d'hier — vous avez deux minutes maintenant ?",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je reviens vers vous pour votre demande solaire "
+        "d'hier — vous avez deux minutes maintenant ?",
     'appel_dernier':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Dernier essai avant de classer votre demande : votre projet solaire est-il toujours d'actualité ?",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Dernier essai avant de classer votre demande : votre "
+        "projet solaire est-il toujours d'actualité ?",
     # CAD98 (23/09/2026) — les trois « Appel de suivi » de la cadence après
     # devis (`apps/parametres/models_relance.py` ordres 2, 6 et 8 : J2, J7,
     # J11) n'avaient aucun script. Trois scripts courts, sur le patron de
@@ -195,11 +247,17 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # validité est dite par `j9_validite`, la clôture par `j13_dernier`), ni
     # « dernier appel » — le réveil J30 est encore un appel (CAD74).
     'appel_suivi_j2':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle au sujet de la proposition solaire que je vous ai envoyée : avez-vous pu la regarder ? Dites-moi ce qui vous paraît clair et ce qui mérite une explication.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle au sujet de la proposition solaire "
+        "que je vous ai envoyée : avez-vous pu la regarder ? Dites-moi ce qui vous paraît clair et ce qui mérite une "
+        "explication.",
     'appel_suivi_j7':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je reviens vers vous au sujet de votre proposition solaire : qu'est-ce qui reste à éclaircir avant de décider ? Si un point vous freine, le budget, la pose ou le calendrier, on le regarde ensemble.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je reviens vers vous au sujet de votre proposition "
+        "solaire : qu'est-ce qui reste à éclaircir avant de décider ? Si un point vous freine, le budget, la pose ou "
+        "le calendrier, on le regarde ensemble.",
     'appel_suivi_j11':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je fais le point avec vous sur votre proposition solaire : où en est votre réflexion ? S'il vous faut plus de temps ou d'autres informations, dites-le-moi simplement.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je fais le point avec vous sur votre proposition "
+        "solaire : où en est votre réflexion ? S'il vous faut plus de temps ou d'autres informations, dites-le-moi "
+        "simplement.",
     # CAD125 (21/09/2026) — LE DOSSIER INSTITUTIONNEL, ENFIN UNE PAROLE.
     # `Lead.regularisation_8221` est capté et LU par le scoring, mais par
     # aucune logique de message : aucune des clés de relance ne parlait d'une
@@ -217,9 +275,14 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # chiffre ni délai. Il n'est ouvert qu'à un site MT, une régularisation
     # ou un client qui veut revendre (playbook CAD125 conditionné).
     'dossier_8221':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en êtes-vous côté raccordement et autorisations du site ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de raccordement — et si rien n'est encore lancé, je vous explique les étapes.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet : où en êtes-vous côté "
+        "raccordement et autorisations du site ? Selon l'étape où vous en êtes, on adapte l'étude et le calendrier de "
+        "raccordement — et si rien n'est encore lancé, je vous explique les étapes.",
     'dossier_fda':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Si vous visez cette aide, l'accord doit être obtenu avant les travaux. Cela change le calendrier et les pièces à préparer — dites-moi où vous en êtes et je cale l'étude dessus.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Une question sur votre projet de pompage : avez-vous "
+        "déposé un dossier de subvention agricole (FDA), ou comptez-vous le faire ? Si vous visez cette aide, "
+        "l'accord doit être obtenu avant les travaux. Cela change le calendrier et les pièces à préparer — dites-moi "
+        "où vous en êtes et je cale l'étude dessus.",
     # AGR414 (Groupe AGR, 03/10/2026 ; D-AGR-4, D-AGR-11) — la visite de
     # RELEVÉ DU POINT D'EAU, proposée AVANT le devis (le devis agricole exige
     # niveau et débit, que l'exploitant connaît rarement). Liste de
@@ -229,7 +292,12 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
     # Texte à valider par le fondateur (✎) ; darija écrite maintenant,
     # relecture native Reda ensuite (sans bloquer l'envoi).
     'visite_releve_point_eau':
-        "Bonjour {civilite} {prenom}. Avant de vous préparer le devis de pompage, notre technicien peut passer gratuitement relever votre point d'eau : le niveau, le débit et l'emplacement des panneaux. Ça ne vous engage à rien. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Dites-moi le jour qui vous arrange et je bloque le créneau. — {conseiller}",
+        "Bonjour {civilite} {prenom}. Avant de vous préparer le devis de pompage, notre technicien peut passer "
+        "gratuitement relever votre point d'eau : le niveau, le débit et l'emplacement des panneaux. Ça ne vous "
+        "engage à rien. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque "
+        "de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; "
+        "l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Dites-moi le "
+        "jour qui vous arrange et je bloque le créneau. — {conseiller}",
 })
 
 # Variantes darija (écriture arabe, revue native le 04/09/2026). Une clé
@@ -237,60 +305,89 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 # automatique.
 MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     'identite':
-        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. وصلنا الطلب ديالكم على الطاقة الشمسية، شكرا. "
+        "غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'appel_ouverture':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. عمرتو دابا الفورم ديالنا على "
+        "الطاقة الشمسية؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. نقدر ناخد منكم جوج دقايق؟",
     'repondeur':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص الطلب ديالكم على الطاقة "
+        "الشمسية. غادي نصيفط ليكم رسالة على الواتساب، جاوبو فوقاش ما بغيتو. نهاركم مبروك.",
     'valeur_j1':
-        "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+        "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش يكون التقدير مضبوط، خاصني غير تصويرة "
+        "ديال فاتورة الضو والعنوان ديالكم، ونوريكم كيفاش غادي يجيو الألواح فوق السطح ديالكم مع شحال غادي توفرو ف "
+        "الفاتورة. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
     'vocal_j3':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. صيفطت ليكم جوج رسائل وما بغيتش نثقل عليكم. غير "
+        "قولوا ليا واش مشروع الطاقة الشمسية مازال كيهمكم، وفوقاش نقدر نعيط ليكم. نهاركم مبروك.",
     'appel_dimanche':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. سمحو ليا كنعيط ليكم نهار الحد، حيت ف الأسبوع ما كنلقاكمش؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. ما غاديش نطول عليكم: واش الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque} — هادا اتصال تجاري. سمحو ليا كنعيط ليكم نهار "
+        "الحد، حيت ف الأسبوع ما كنلقاكمش؛ تقدرو تسولوني فأي وقت منين جاو المعلومات ديالكم. ما غاديش نطول عليكم: واش "
+        "الطلب ديالكم على الطاقة الشمسية مازال كيهمكم؟",
     # CAD110 (21/09/2026) — même porte de sortie que côté FR (voir la note
     # au-dessus de `je_classe_j7` FR) : « جاوبو STOP وما نلحوش عليكم » =
     # « répondez STOP et je n'insiste plus ».
     'je_classe_j7':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. إلا ما جاوبتونيش، غادي نحط الطلب ديالكم على جنب "
+        "من هنا لأسبوع. كلمة «من بعد» كافية باش نخلي الطلب ديالكم محلول. جاوبو STOP وما نلحوش عليكم.",
     'cloture_j14':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. غادي نسد الطلب ديالكم باش ما نزعجكمش. إلا بغيتو "
+        "ترجعو للمشروع من بعد، صيفطو ليا غير هاد الرسالة ونوجد ليكم الدراسة ف 24 ساعة. جاوبو STOP وما نلحوش عليكم.",
     'reveil_a2':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير الجديد. جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع "
+        "المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال آخر فاتورة، وغادي نصيفط ليكم التقدير "
+        "الجديد. جاوبو STOP وما نلحوش عليكم.",
     'rappel_plus_tard':
-        "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانت الفاتورة عندكم، تصويرة ديالها غادي تعاونني نوجد التقدير.",
+        "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانت الفاتورة عندكم، تصويرة ديالها غادي "
+        "تعاونني نوجد التقدير.",
     'stop_contact':
         "واخا، فهمتكم، ما غاديش نعاود نعيط ليكم. غير كنخلي ليكم هاد الرقم إلا شي نهار رجع المشروع. نهاركم مبروك.",
     'dimanche_famille':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد مع العائلة. إلا غادي "
+        "تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط "
+        "ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
     'annonce_appel_reda':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. المؤسس ديال الشركة اللي كيراجع كل دراسة بغا يعيط ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت آخر؟",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. المؤسس ديال الشركة اللي كيراجع كل دراسة بغا يعيط "
+        "ليكم نهار الحد على 6 ديال العشية باش يجاوب على الأسئلة ديالكم ف خمس دقايق. واش مناسب ليكم، ولا كتفضلو وقت "
+        "آخر؟",
     'offre_reda':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. بعد الهضرة ديالكم مع المؤسس: [السبب الحقيقي]، نقص ليكم [المبلغ بالدرهم] من العرض رقم {reference}، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. بعد الهضرة ديالكم مع المؤسس: [السبب الحقيقي]، "
+        "نقص ليكم [المبلغ بالدرهم] من العرض رقم {reference}، يعني [المجموع الجديد TTC]. هاد العرض صالح حتى الثلاثاء "
+        "على 6 ديال العشية، ومن بعد كيرجع الثمن العادي. إلا كان عندكم شي سؤال أنا هنا.",
     # VISITE-CADENCE — darija à faire relire par un locuteur natif (fondateur) :
     # ces deux textes suivent le FR validé phrase par phrase (aucune promesse
     # ajoutée, aucun chiffre) mais n'ont PAS encore reçu la relecture native du
     # 04/09/2026 dont bénéficient les clés au-dessus.
     'visite_proposition':
-        "باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
+        "باش نثبتو ليكم العرض، نقدرو نجيو عندكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه ديال السطح، من الهيكل "
+        "ومن الطابلو ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار "
+        "يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
     'visite_confirmation':
-        "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} عندكم. التقني غادي يشوف السطح، الهيكل والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+        "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} عندكم. التقني غادي يشوف السطح، الهيكل "
+        "والطابلو ديال الضو — وجدو ليه الوصول للكونتور. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة "
+        "ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
     # CAD-F — CAD67 (21/09/2026) — darija des deux nouveaux scripts d'appel.
     # CAD96 (fold post-merge) — {marque} plutôt que « TAQINOR » codé en dur.
     'appel_relance':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — عندكم جوج دقايق دابا؟",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص الطلب ديالكم ديال البارح — "
+        "عندكم جوج دقايق دابا؟",
     'appel_dernier':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي آخر محاولة قبل ما نسد الطلب ديالكم: واش "
+        "مشروع الطاقة الشمسية ديالكم مازال كيهمكم؟",
     # CAD98 (23/09/2026) — darija des trois scripts d'appel de suivi après
     # devis. Traduction phrase par phrase du FR (aucune promesse ajoutée,
     # aucun chiffre, jamais une traduction automatique), PAS ENCORE relue par
     # un locuteur natif (CADM1, à faire avant tout usage réel).
     'appel_suivi_j2':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص العرض ديال الطاقة الشمسية اللي صيفطت ليكم: واش قدرتو تشوفوه؟ قولوا ليا شنو اللي واضح ليكم وشنو اللي خاصو شرح.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم بخصوص العرض ديال الطاقة الشمسية اللي "
+        "صيفطت ليكم: واش قدرتو تشوفوه؟ قولوا ليا شنو اللي واضح ليكم وشنو اللي خاصو شرح.",
     'appel_suivi_j7':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص العرض ديال الطاقة الشمسية ديالكم: شنو باقي خاصو يتوضح قبل ما تقررو؟ إلا كانت شي نقطة مخلياكم مترددين، الميزانية، التركيب ولا الوقت، نشوفوها مع بعضياتنا.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنرجع ليكم بخصوص العرض ديال الطاقة الشمسية "
+        "ديالكم: شنو باقي خاصو يتوضح قبل ما تقررو؟ إلا كانت شي نقطة مخلياكم مترددين، الميزانية، التركيب ولا الوقت، "
+        "نشوفوها مع بعضياتنا.",
     'appel_suivi_j11':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. بغيت نديرو النقطة معاكم على العرض ديال الطاقة الشمسية ديالكم: فين وصلتو ف التفكير؟ إلا خاصكم شي وقت زايد ولا شي معلومات أخرى، غير قولوها ليا بلا حرج.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. بغيت نديرو النقطة معاكم على العرض ديال الطاقة "
+        "الشمسية ديالكم: فين وصلتو ف التفكير؟ إلا خاصكم شي وقت زايد ولا شي معلومات أخرى، غير قولوها ليا بلا حرج.",
     # CAD-F — CAD62 (21/09/2026) — les 11 clés qui manquaient au repli darija de
     # la marche après-devis, du réveil et de l'après-signature. Même patron que
     # `visite_proposition`/`visite_confirmation` ci-dessus : traduction phrase
@@ -299,31 +396,45 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     # `docs/crm/messages_meryem.md` — mais PAS ENCORE relues par un locuteur
     # natif (CADM1, à faire avant tout envoi réel, comme les deux clés visite).
     'j1_pdf':
-        "السلام عليكم {civilite} {prenom}، كنتمنى تكونو بخير. صيفطت ليكم العرض ديال الطاقة الشمسية ديالكم — واش كيحل عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.",
+        "السلام عليكم {civilite} {prenom}، كنتمنى تكونو بخير. صيفطت ليكم العرض ديال الطاقة الشمسية ديالكم — واش كيحل "
+        "عندكم مزيان الـ PDF؟ خدو الوقت باش تشوفوه بشوية، وقولوا ليا شنو اللي عجبكم بزاف. أنا هنا لأي سؤال.",
     'j4_preuve':
-        "هادي تجهيزة شبيهة بديالكم، تركبات ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.",
+        "هادي تجهيزة شبيهة بديالكم، تركبات ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: "
+        "{puissance_preuve} kWc. متابعة الإنتاج كاينة ف الوقت الحقيقي، نقدر نوريكم.",
     'j6_garanties':
-        "هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض ديالكم: {lien}.",
+        "هاد الضمانات كتعطيهم الشركات المصنعة: كيبقاو صالحين ف كل الأحوال. التفاصيل ديال كل معدة كاينة ف العرض "
+        "ديالكم: {lien}.",
     'j9_validite':
-        "العرض ديالكم صالح حتى {date_validite}. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط عليكم، باش ما نعطيكمش ثمن غير صحيح.",
+        "العرض ديالكم صالح حتى {date_validite}. من بعد، خاصني نعاود نتأكد من الأثمنة وتوفر المعدات: ماشي باش نضغط "
+        "عليكم، باش ما نعطيكمش ثمن غير صحيح.",
     # CAD110 — porte de sortie sur les deux dernières touches après-devis.
     'j13_dernier':
         "ما بغيتش نلح عليكم: قولوا ليا واش المشروع مازال كيهمكم، وإلا لا، نخليكم ف حالكم. جاوبو STOP وما نلحوش عليكم.",
     'j14_pause':
-        "غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP وما نلحوش عليكم.",
+        "غادي نحط الملف ديالكم فالوقفة. العرض ديالكم كيبقى محفوظ عندنا؛ رسالة وحدة كافية باش نرجعو نفعلوه. جاوبو STOP "
+        "وما نلحوش عليكم.",
     # CAD110 — porte de sortie sur les QUATRE touches de réveil.
     # CAD96 (fold post-merge) — {marque} plutôt que « Taqinor Solutions »
     # codé en dur (même règle que le reste du catalogue, garde SCA29).
     'reveil_a1':
-        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بعرض للطاقة الشمسية عندنا. كاين "
+        "جديد: دابا نقدرو نوريوكم الألواح فوق السطح ديالكم بالضبط، ب 3D، مع تقدير محين ديال التوفير ديالكم. غادي نوجد "
+        "ليكم الصورة ونصيفطها ليكم هنا — بلاش، بلا ما تلتزمو بوالو. نبدا؟ (خاصني غير نتأكد من العنوان ديالكم.) جاوبو "
+        "STOP وما نلحوش عليكم.",
     'reveil_a3':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد "
+        "ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نقدر نصيفط ليكم الصورة ب 3D ديال الألواح فوق "
+        "السطح ديالكم، مع تقدير محين. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
     'reveil_b':
-        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. هادي موسم فواتير الصيف — غالبا هو الوقت اللي فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟ جاوبو STOP وما نلحوش عليكم.",
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. هادي موسم فواتير الصيف — غالبا هو الوقت اللي "
+        "فيه كيتقرر مشروع الطاقة الشمسية. واش المشروع ديالكم مازال كيهمكم؟ إلا واخا، نوجد ليكم تقدير محين ديال "
+        "التوفير، بلا ما تلتزمو بوالو. نهضرو عليه؟ جاوبو STOP وما نلحوش عليكم.",
     'avis_google':
-        "السلام عليكم {civilite} {prenom}، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: {lien_google}. شكرا بزاف!",
+        "السلام عليكم {civilite} {prenom}، كنتمنى تكونو راضيين على التجهيزة. إلا عندكم جوج دقايق، رأي على Google "
+        "كيعاوننا بزاف، هادشي اللي كيشوفوه الزبناء الجداد: {lien_google}. شكرا بزاف!",
     'parrainage':
-        "إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.",
+        "إلا كان شي واحد حداكم، جار، خو، ولا زميل، كيفكر ف الطاقة الشمسية، تقدرو تصيفطو ليه الرابط ديال الرعاية "
+        "ديالكم؛ غادي يكون عندو نفس الدراسة بلاش، ونتافقو مع بعضياتنا على مكافأة ليكم.",
     # CAD-F — CAD62 (21/09/2026, complément) — les 7 clés NÉES APRÈS CAD62
     # (CAD125 `dossier_8221`/`dossier_fda`, CAD127 les quatre identités par
     # origine, CAD128 `deuxieme_affaire`). La doctrine CAD62 est « darija
@@ -336,30 +447,48 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
     # PAS ENCORE relues par un locuteur natif (CADM1, à faire avant tout
     # envoi réel, comme les deux clés visite et les 11 de CAD62).
     'dossier_8221':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديالكم: فين وصلتو من جهة الربط والتراخيص ديال الموقع؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا مازال ما تلانسا والو، كنشرح ليكم المراحل.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديالكم: فين وصلتو من جهة "
+        "الربط والتراخيص ديال الموقع؟ حسب المرحلة اللي وصلتو ليها، كنلائمو الدراسة والروزنامة ديال الربط — وإلا مازال "
+        "ما تلانسا والو، كنشرح ليكم المراحل.",
     'dossier_fda':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ إلا كنتو باغيين هاد الدعم، خاص الموافقة تكون قبل الأشغال. هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عندي سؤال على المشروع ديال الضخ ديالكم: واش "
+        "دخّلتو ملف الدعم الفلاحي (FDA)، ولا ناويين تدخّلوه؟ إلا كنتو باغيين هاد الدعم، خاص الموافقة تكون قبل "
+        "الأشغال. هادشي كيبدل الروزنامة والوثائق اللي خاصكم توجدو — قولوا ليا فين وصلتو ونوجد الدراسة على هاد الأساس.",
     'identite_reference':
-        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. {prescripteur} هضر لينا عليكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. {prescripteur} هضر لينا عليكم بخصوص الطاقة "
+        "الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت "
+        "يناسبكم.",
     'identite_telephone':
-        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. بعد الهضرة ديالنا على الطاقة الشمسية، غادي نعاود نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. بعد الهضرة ديالنا على الطاقة الشمسية، غادي "
+        "نعاود نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
     'identite_whatsapp_entrant':
-        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. شكرا على الرسالة ديالكم بخصوص الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. شكرا على الرسالة ديالكم بخصوص الطاقة "
+        "الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير أولي. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت "
+        "يناسبكم.",
     'identite_ancien_dossier':
-        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو سولتونا ف {mois_dossier} على الطاقة الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير محين. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت يناسبكم.",
+        "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو سولتونا ف {mois_dossier} على الطاقة "
+        "الشمسية. غادي نعيط ليكم من دابا شي دقايق باش نعطيكم تقدير محين. إلا ماشي الوقت المناسب، قولوا ليا شمن وقت "
+        "يناسبكم.",
     'deuxieme_affaire':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم — شكرا على الثقة ديالكم من جديد. قولوا ليا شنو بغيتو تجهزو هاد المرة ونوجد ليكم الدراسة؛ غادي نعيط ليكم من دابا شي دقايق.",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. خدمنا مع بعضياتنا ف التجهيزة الأولى ديالكم — "
+        "شكرا على الثقة ديالكم من جديد. قولوا ليا شنو بغيتو تجهزو هاد المرة ونوجد ليكم الدراسة؛ غادي نعيط ليكم من "
+        "دابا شي دقايق.",
     # CAD151 (23/09/2026) — traduction phrase par phrase du FR validé (aucune
     # promesse ajoutée, aucun chiffre, jamais une traduction automatique),
     # PAS ENCORE relue par un locuteur natif (CADM1, à faire avant tout usage
     # réel — comme le reste des textes nés dans ce lot).
     'debrief_visite':
-        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا عندكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+        "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا عندكم: شنو "
+        "رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
     # AGR414 — darija de la visite de relevé du point d'eau, traduite
     # phrase par phrase du FR (aucune promesse, aucun chiffre ajouté) ;
     # relecture native Reda à faire (D-AGR-11), sans bloquer l'envoi.
     'visite_releve_point_eau':
-        "السلام عليكم {civilite} {prenom}. قبل ما نوجدو ليكم العرض ديال الضخ، التقني ديالنا يقدر يجي بلا فلوس يقيس نقطة الما ديالكم: المستوى ديال الما، الصبيب والبلاصة ديال الألواح. ما كتلزمكم بوالو. باش تكفي زيارة وحدة، وجدو عافاكم: الوصول للبير ولا للساندة؛ البلاكة ديال البومبة اللي عندكم دابا، باينة مزيان؛ آخر الوصولات ولا القراعي ديال البوطا ولا المازوط؛ الرخصة ديال وكالة الحوض المائي (ABH) والكونتور ديال الما، إلا كانو. قولوا ليا شمن نهار يناسبكم ونحجز ليكم الوقت. — {conseiller}",
+        "السلام عليكم {civilite} {prenom}. قبل ما نوجدو ليكم العرض ديال الضخ، التقني ديالنا يقدر يجي بلا فلوس يقيس "
+        "نقطة الما ديالكم: المستوى ديال الما، الصبيب والبلاصة ديال الألواح. ما كتلزمكم بوالو. باش تكفي زيارة وحدة، "
+        "وجدو عافاكم: الوصول للبير ولا للساندة؛ البلاكة ديال البومبة اللي عندكم دابا، باينة مزيان؛ آخر الوصولات ولا "
+        "القراعي ديال البوطا ولا المازوط؛ الرخصة ديال وكالة الحوض المائي (ABH) والكونتور ديال الما، إلا كانو. قولوا "
+        "ليا شمن نهار يناسبكم ونحجز ليكم الوقت. — {conseiller}",
 }
 
 # Placeholders AUTORISÉS dans un message de relance (MRY12). Aucun chiffre
@@ -399,7 +528,11 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA = {
 # CIQ500 (05/10/2026) — `{societe}` : la raison sociale du lead (`Lead.societe`,
 # nettoyée). Vide ⇒ sa phrase est OMISE (MRY13) ; à n'utiliser que dans une
 # phrase AUTONOME (la salutation reste civilité + prénom — CAD65).
-PLACEHOLDERS_RELANCE = ["{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}", "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}", "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}", "{societe}"]
+PLACEHOLDERS_RELANCE = [
+    "{civilite}", "{nom}", "{prenom}", "{ville}", "{reference}", "{lien}", "{lien_rdv}", "{date_validite}",
+    "{conseiller}", "{mois_preuve}", "{ville_preuve}", "{lien_preuve}", "{puissance_preuve}", "{date_visite}",
+    "{lien_video_preuve}", "{marque}", "{lien_google}", "{prescripteur}", "{mois_dossier}", "{societe}",
+]
 
 #: Les clés du moteur de relances (MRY12), dans l'ordre du fichier source.
 CLES_RELANCE = [
@@ -712,35 +845,64 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
         # localisation du point d'eau), aucune promesse d'économie : aucun
         # calcul d'économie agricole n'est encore servi sur le devis.
         'valeur_j1':
-            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour préparer votre étude, deux gestes suffisent : une photo de la plaque de votre pompe (ou de celle que vous visez) et la localisation WhatsApp du point d'eau. Je vous envoie ensuite l'installation adaptée et son chiffrage. Quel moment vous arrange pour un appel de cinq minutes ?",
+            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Pour préparer votre étude, deux gestes "
+            "suffisent : une photo de la plaque de votre pompe (ou de celle que vous visez) et la localisation "
+            "WhatsApp du point d'eau. Je vous envoie ensuite l'installation adaptée et son chiffrage. Quel moment "
+            "vous arrange pour un appel de cinq minutes ?",
         # AGR510 — « je vous refais le chiffrage à jour » : ni vue 3D d'un
         # champ (non vérifiée), ni économie promise.
         'reveil_a1':
-            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire chez nous. Si le projet revient d'actualité, je vous refais le chiffrage à jour — c'est gratuit, sans engagement. Je m'en occupe ? (Je dois juste confirmer l'emplacement du point d'eau.) Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu un devis de pompage solaire "
+            "chez nous. Si le projet revient d'actualité, je vous refais le chiffrage à jour — c'est gratuit, sans "
+            "engagement. Je m'en occupe ? (Je dois juste confirmer l'emplacement du point d'eau.) Répondez STOP et je "
+            "n'insiste plus.",
         'reveil_a3':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais le chiffrage à jour de votre installation de pompage. Je vous le prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus "
+            "d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à "
+            "décider : je vous refais le chiffrage à jour de votre installation de pompage. Je vous le prépare, ou je "
+            "classe le dossier ? Répondez STOP et je n'insiste plus.",
         # AGR510 — un exploitant au butane n'a pas de facture : on demande la
         # plaque de la pompe et ce qu'elle consomme aujourd'hui.
         'reveil_a2':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le pompage solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une photo de la plaque de votre pompe, et dites-moi ce qu'elle consomme aujourd'hui (butane, gasoil ou électricité). Je vous envoie ensuite le chiffrage à jour. Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le "
+            "pompage solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : une "
+            "photo de la plaque de votre pompe, et dites-moi ce qu'elle consomme aujourd'hui (butane, gasoil ou "
+            "électricité). Je vous envoie ensuite le chiffrage à jour. Répondez STOP et je n'insiste plus.",
         # AGR510 — crochets [jour]/[heure] conservés (CAD69).
         'rappel_plus_tard':
-            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous pouvez prendre en photo la plaque de votre pompe, cela m'aide à préparer le chiffrage.",
+            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous pouvez prendre en photo la plaque de "
+            "votre pompe, cela m'aide à préparer le chiffrage.",
         'debrief_visite':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien sur votre exploitation : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre "
+            "technicien sur votre exploitation : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant "
+            "qu'on avance ensemble ?",
         # AGR510 — une station de pompage, jamais un toit « comparable à la
         # vôtre » ; sans la phrase sur le suivi temps réel (non garantie).
         'j4_preuve':
-            "Voici une station de pompage solaire que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
+            "Voici une station de pompage solaire que nous avons posée en {mois_preuve} à {ville_preuve} : "
+            "{lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : "
+            "{lien_video_preuve}.",
         # Une exploitation se décide souvent à plusieurs — associés, frères,
         # coopérative — pas nécessairement « en famille » : formulation
         # neutre, même chaleur, aucune supposition sur qui décide.
         'dimanche_famille':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si "
+            "vous en parlez ce week-end, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la "
+            "partager, ou vous appeler à deux ou trois dimanche après 17 h, comme vous préférez.",
         'visite_proposition':
-            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : le technicien vient mesurer le niveau et le débit de l'eau, confirme l'emplacement des panneaux, les caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+            "Pour verrouiller votre proposition, on peut passer sur place pour la vérification technique gratuite : "
+            "le technicien vient mesurer le niveau et le débit de l'eau, confirme l'emplacement des panneaux, les "
+            "caractéristiques du forage et le coffret électrique, et répond à toutes vos questions sur place. Ça ne "
+            "vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — "
+            "{conseiller}",
         'visite_confirmation':
-            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien vérifie l'emplacement des panneaux, le forage et le coffret électrique. Pour qu'un seul passage suffise, merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique (ABH) et le compteur d'eau, s'ils existent. Votre présence est importante : c'est l'occasion de répondre à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre exploitation. Le technicien "
+            "vérifie l'emplacement des panneaux, le forage et le coffret électrique. Pour qu'un seul passage suffise, "
+            "merci de prévoir : l'accès au puits ou au forage ; la plaque de votre pompe actuelle, bien visible ; vos "
+            "derniers reçus ou bouteilles de butane ou de gasoil ; l'autorisation de l'Agence du bassin hydraulique "
+            "(ABH) et le compteur d'eau, s'ils existent. Votre présence est importante : c'est l'occasion de répondre "
+            "à toutes vos questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — "
+            "{conseiller}",
     },
     # Industriel / commercial : on parle à une ORGANISATION. « En famille »
     # ne décrit aucun processus d'achat B2B ; le site n'est pas « chez vous ».
@@ -752,36 +914,64 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
         # sans raison sociale, elle est omise (MRY13) et le message reste
         # complet. ✎ Textes à valider par Reda (manuel), sans bloquer.
         'valeur_j1':
-            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Je prépare l'étude solaire de {societe}. Pour que l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de vos relevés de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
+            "Bonjour {civilite} {prenom}, je n'ai pas réussi à vous joindre. Je prépare l'étude solaire de {societe}. "
+            "Pour que l'estimation soit juste, j'ai besoin de vos factures d'électricité des 12 derniers mois (ou de "
+            "vos relevés de consommation) et de l'adresse du site : je vous prépare ensuite l'étude, avec l'économie "
+            "estimée. Quel moment vous arrange pour un appel de cinq minutes ?",
         'reveil_a1':
-            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez nous. Si le projet revient d'actualité, je vous refais l'étude à jour — c'est gratuit, sans engagement. Je m'en occupe ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, c'est {conseiller} de {marque}. Vous aviez reçu une étude solaire chez "
+            "nous. Si le projet revient d'actualité, je vous refais l'étude à jour — c'est gratuit, sans engagement. "
+            "Je m'en occupe ? (Je dois juste confirmer l'adresse du site.) Répondez STOP et je n'insiste plus.",
         'reveil_a2':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : vos factures d'électricité des 12 derniers mois (ou vos relevés de consommation), et je vous envoie l'estimation à jour. Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le "
+            "solaire. Si le projet revient d'actualité, je reprends votre dossier là où on l'a laissé : vos factures "
+            "d'électricité des 12 derniers mois (ou vos relevés de consommation), et je vous envoie l'estimation à "
+            "jour. Répondez STOP et je n'insiste plus.",
         'reveil_a3':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à décider : je vous refais l'étude à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et je n'insiste plus.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus "
+            "d'actualité, je ferme votre dossier, aucun souci. Avant ça, une dernière chose qui aide souvent à "
+            "décider : je vous refais l'étude à jour. Je vous la prépare, ou je classe le dossier ? Répondez STOP et "
+            "je n'insiste plus.",
         # CIQ501 — crochets [jour]/[heure] conservés (CAD69).
         'rappel_plus_tard':
-            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez sous la main vos factures d'électricité des 12 derniers mois (ou vos relevés de consommation), elles m'aident à préparer l'estimation.",
+            "Très bien, je vous rappelle [jour] à [heure]. D'ici là, si vous avez sous la main vos factures "
+            "d'électricité des 12 derniers mois (ou vos relevés de consommation), elles m'aident à préparer "
+            "l'estimation.",
         # CIQ501 — une installation PROFESSIONNELLE, jamais « comparable à la
         # vôtre » ; sans la phrase sur le suivi en temps réel (non garantie).
         'j4_preuve':
-            "Voici une installation professionnelle que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : {lien_video_preuve}.",
+            "Voici une installation professionnelle que nous avons posée en {mois_preuve} à {ville_preuve} : "
+            "{lien_preuve}. Puissance installée : {puissance_preuve} kWc. Petite vidéo du chantier : "
+            "{lien_video_preuve}.",
         # CIQ501 — convention 9 : AUCUNE récompense, jamais « voisin, frère ».
         'parrainage':
-            "Si une autre entreprise de votre entourage, ou un autre site de votre groupe, réfléchit au solaire, vous pouvez lui envoyer votre lien de parrainage ; elle aura la même étude gratuite.",
+            "Si une autre entreprise de votre entourage, ou un autre site de votre groupe, réfléchit au solaire, vous "
+            "pouvez lui envoyer votre lien de parrainage ; elle aura la même étude gratuite.",
         'debrief_visite':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien sur votre site : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre "
+            "technicien sur votre site : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on "
+            "avance ensemble ?",
         'dimanche_famille':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je sais que la décision se prend à plusieurs. Si "
+            "vous en parlez avec votre équipe, je peux vous envoyer la page résumé (une page, les chiffres clés) pour "
+            "la partager, ou nous réunir à deux ou trois au moment qui vous arrange, comme vous préférez.",
         'visite_proposition':
-            "Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
+            "Pour verrouiller votre proposition, on peut passer sur votre site pour la vérification technique "
+            "gratuite : le technicien confirme l'orientation et la structure des bâtiments ainsi que le tableau "
+            "électrique, et répond à toutes les questions de votre équipe sur place. Ça ne vous engage à rien. "
+            "Dites-moi le jour qui vous arrange cette semaine et je bloque le créneau. — {conseiller}",
         'visite_confirmation':
-            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre site. Le technicien vérifie la structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
+            "Bonjour, on confirme la visite technique prévue {date_visite} sur votre site. Le technicien vérifie la "
+            "structure des bâtiments et le tableau électrique — prévoyez l'accès au local technique. La présence d'un "
+            "responsable est importante : c'est l'occasion de répondre à toutes les questions sur place. En cas "
+            "d'empêchement, répondez-moi ici et on recale le passage. — {conseiller}",
         # CIQ503 (05/10/2026) — le résumé est présenté « pour votre direction
         # ou votre comité » ; `{societe}` dans une phrase AUTONOME (omise sans
         # raison sociale, MRY13). Aucun chiffre, aucune liste de pièces.
         'resume_associe':
-            "Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par {marque}, pour votre direction ou votre comité : {lien}. Elle concerne le projet de {societe}. Vous pouvez la consulter et me poser vos questions ici. — {conseiller}",
+            "Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée "
+            "par {marque}, pour votre direction ou votre comité : {lien}. Elle concerne le projet de {societe}. Vous "
+            "pouvez la consulter et me poser vos questions ici. — {conseiller}",
     },
 }
 # AGR511 (Groupe AGR, 02/10/2026 ; D-AGR-11) — VARIANTES DARIJA du pompage.
@@ -797,25 +987,46 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT = {
 MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA = {
     'agricole': {
         'valeur_j1':
-            "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش نوجد الدراسة ديالكم، كافيين جوج حوايج: تصويرة ديال البلاكة ديال البومبة ديالكم (ولا ديال البومبة اللي باغيين) واللوكاليزاسيون ديال نقطة الما على الواتساب. من بعد نصيفط ليكم التجهيزة المناسبة والحساب ديال الثمن ديالها. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+            "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. باش نوجد الدراسة ديالكم، كافيين جوج "
+            "حوايج: تصويرة ديال البلاكة ديال البومبة ديالكم (ولا ديال البومبة اللي باغيين) واللوكاليزاسيون ديال نقطة "
+            "الما على الواتساب. من بعد نصيفط ليكم التجهيزة المناسبة والحساب ديال الثمن ديالها. شمن وقت يناسبكم باش "
+            "نعيط ليكم خمس دقايق؟",
         'reveil_a1':
-            "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بعرض ديال الضخ بالطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الحساب ديال الثمن محين — بلاش، بلا ما تلتزمو بوالو. نتكلف بيه؟ (خاصني غير نتأكد من البلاصة ديال نقطة الما.) جاوبو STOP وما نلحوش عليكم.",
+            "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بعرض ديال الضخ بالطاقة "
+            "الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الحساب ديال الثمن محين — بلاش، بلا ما تلتزمو بوالو. "
+            "نتكلف بيه؟ (خاصني غير نتأكد من البلاصة ديال نقطة الما.) جاوبو STOP وما نلحوش عليكم.",
         'reveil_a2':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الضخ بالطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال البلاكة ديال البومبة ديالكم، وقولوا ليا شنو كتستهلك دابا (البوطا، المازوط ولا الضو). من بعد نصيفط ليكم الحساب ديال الثمن محين. جاوبو STOP وما نلحوش عليكم.",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الضخ بالطاقة "
+            "الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: تصويرة ديال البلاكة ديال البومبة "
+            "ديالكم، وقولوا ليا شنو كتستهلك دابا (البوطا، المازوط ولا الضو). من بعد نصيفط ليكم الحساب ديال الثمن "
+            "محين. جاوبو STOP وما نلحوش عليكم.",
         'reveil_a3':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الحساب ديال الثمن محين ديال التجهيزة ديال الضخ ديالكم. نوجدو ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، "
+            "نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الحساب ديال الثمن محين "
+            "ديال التجهيزة ديال الضخ ديالكم. نوجدو ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
         'rappel_plus_tard':
-            "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا قدرتو تصورو البلاكة ديال البومبة ديالكم، غادي تعاونني نوجد الحساب ديال الثمن.",
+            "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا قدرتو تصورو البلاكة ديال البومبة "
+            "ديالكم، غادي تعاونني نوجد الحساب ديال الثمن.",
         'dimanche_famille':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد بين أكثر من واحد. إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد بين أكثر من واحد. "
+            "إلا غادي تهضرو عليه هاد الويكاند، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش "
+            "تشاركوها، ولا نعيط ليكم نهار الحد من بعد 5 ديال العشية وتكونو جوج ولا تلاتة، كيف ما بغيتو.",
         'visite_proposition':
-            "باش نثبتو ليكم العرض، نقدرو نجيو للبلاصة لزيارة تقنية بلا فلوس: التقني كيجي يقيس المستوى ديال الما والصبيب ديالو، كيتأكد من البلاصة ديال الألواح، من الخصائص ديال البير ومن الكوفري ديال الضو، وكيجاوب على كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
+            "باش نثبتو ليكم العرض، نقدرو نجيو للبلاصة لزيارة تقنية بلا فلوس: التقني كيجي يقيس المستوى ديال الما "
+            "والصبيب ديالو، كيتأكد من البلاصة ديال الألواح، من الخصائص ديال البير ومن الكوفري ديال الضو، وكيجاوب على "
+            "كل الأسئلة ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم "
+            "الوقت. — {conseiller}",
         'visite_confirmation':
-            "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} ف الفيرمة ديالكم. التقني غادي يشوف البلاصة ديال الألواح، البير والكوفري ديال الضو — وجدو ليه الوصول لنقطة الما. الحضور ديالكم مهم: هي الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+            "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} ف الفيرمة ديالكم. التقني غادي يشوف "
+            "البلاصة ديال الألواح، البير والكوفري ديال الضو — وجدو ليه الوصول لنقطة الما. الحضور ديالكم مهم: هي "
+            "الفرصة باش نجاوبو على جميع الأسئلة ديالكم فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو "
+            "الزيارة. — {conseiller}",
         'j4_preuve':
-            "هادي محطة ديال الضخ بالطاقة الشمسية ركبناها ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. فيديو صغير ديال الشانطي: {lien_video_preuve}.",
+            "هادي محطة ديال الضخ بالطاقة الشمسية ركبناها ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة "
+            "المركبة: {puissance_preuve} kWc. فيديو صغير ديال الشانطي: {lien_video_preuve}.",
         'debrief_visite':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا للفيرمة ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا "
+            "للفيرمة ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
     },
     # CIQ504 (05/10/2026) — darija B2B, base PARTAGÉE commercial + industriel
     # (même dict, lu aussi par le commercial — voir l'alias plus bas). Chaque
@@ -827,27 +1038,47 @@ MESSAGE_TEMPLATE_VARIANTES_SEGMENT_DARIJA = {
     # personnalisé par la société n'est jamais remplacé (règle d'AGR511).
     'industriel': {
         'valeur_j1':
-            "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. كنوجد الدراسة ديال الطاقة الشمسية ديال {societe}. باش يكون التقدير مضبوط، خاصني الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم) والعنوان ديال الموقع: من بعد نوجد ليكم الدراسة، مع الاقتصاد المقدر. شمن وقت يناسبكم باش نعيط ليكم خمس دقايق؟",
+            "السلام عليكم {civilite} {prenom}، حاولت نعيط ليكم ولكن ما لقيتكمش. كنوجد الدراسة ديال الطاقة الشمسية "
+            "ديال {societe}. باش يكون التقدير مضبوط، خاصني الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات "
+            "ديال الاستهلاك ديالكم) والعنوان ديال الموقع: من بعد نوجد ليكم الدراسة، مع الاقتصاد المقدر. شمن وقت "
+            "يناسبكم باش نعيط ليكم خمس دقايق؟",
         'reveil_a1':
-            "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بدراسة ديال الطاقة الشمسية عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الدراسة محينة — بلاش، بلا ما تلتزمو بوالو. نتكلف بيها؟ (خاصني غير نتأكد من العنوان ديال الموقع.) جاوبو STOP وما نلحوش عليكم.",
+            "السلام عليكم {civilite} {prenom}، أنا {conseiller} من {marque}. كنتو توصلتو بدراسة ديال الطاقة الشمسية "
+            "عندنا. إلا رجع المشروع كيهمكم، نعاود ليكم الدراسة محينة — بلاش، بلا ما تلتزمو بوالو. نتكلف بيها؟ (خاصني "
+            "غير نتأكد من العنوان ديال الموقع.) جاوبو STOP وما نلحوش عليكم.",
         'reveil_a2':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم)، ونصيفط ليكم التقدير محين. جاوبو STOP وما نلحوش عليكم.",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. هادي شهر كنتو كتسولو على الطاقة الشمسية. إلا "
+            "رجع المشروع كيهمكم، غادي نكمل الملف ديالكم من فين وقفنا: الفواتير ديال الكهرباء ديال 12 الشهر اللخرين "
+            "(ولا الكشوفات ديال الاستهلاك ديالكم)، ونصيفط ليكم التقدير محين. جاوبو STOP وما نلحوش عليكم.",
         'reveil_a3':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الدراسة محينة. نوجدها ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. ما بغيتش نلح: إلا ماشي مازال كيهمكم المشروع، "
+            "نسد ليكم الملف، بلا مشكل. قبل هادشي، شي حاجة كتعاون بزاف باش تقرر: نعاود ليكم الدراسة محينة. نوجدها "
+            "ليكم، ولا نسد الملف؟ جاوبو STOP وما نلحوش عليكم.",
         'rappel_plus_tard':
-            "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانو عندكم الفواتير ديال الكهرباء ديال 12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم)، غادي يعاونوني نوجد التقدير.",
+            "واخا، غادي نعيط ليكم [النهار] على [الساعة]. وحتى لذاك الوقت، إلا كانو عندكم الفواتير ديال الكهرباء ديال "
+            "12 الشهر اللخرين (ولا الكشوفات ديال الاستهلاك ديالكم)، غادي يعاونوني نوجد التقدير.",
         'dimanche_famille':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد بين أكثر من واحد. إلا غادي تهضرو عليه مع الفريق ديالكم، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش تشاركوها، ولا نتلاقاو جوج ولا تلاتة ف الوقت اللي يناسبكم، كيف ما بغيتو.",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. عارفة بلي القرار كيتاخد بين أكثر من واحد. "
+            "إلا غادي تهضرو عليه مع الفريق ديالكم، نقدر نصيفط ليكم ورقة الملخص (صفحة وحدة فيها الأرقام المهمة) باش "
+            "تشاركوها، ولا نتلاقاو جوج ولا تلاتة ف الوقت اللي يناسبكم، كيف ما بغيتو.",
         'visite_proposition':
-            "باش نثبتو ليكم العرض، نقدرو نجيو للموقع ديالكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه والهيكل ديال البنايات ومن التابلو ديال الضو، وكيجاوب على كل الأسئلة ديال الفريق ديالكم فعين المكان. ما كتلزمكم بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
+            "باش نثبتو ليكم العرض، نقدرو نجيو للموقع ديالكم لزيارة تقنية بلا فلوس: التقني كيتأكد من الاتجاه والهيكل "
+            "ديال البنايات ومن التابلو ديال الضو، وكيجاوب على كل الأسئلة ديال الفريق ديالكم فعين المكان. ما كتلزمكم "
+            "بوالو. قولوا ليا شمن نهار يناسبكم هاد السيمانة ونحجز ليكم الوقت. — {conseiller}",
         'visite_confirmation':
-            "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} ف الموقع ديالكم. التقني غادي يشوف الهيكل ديال البنايات والتابلو ديال الضو — وجدو ليه الوصول للمحل التقني. الحضور ديال شي مسؤول مهم: هي الفرصة باش نجاوبو على جميع الأسئلة فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو الزيارة. — {conseiller}",
+            "السلام عليكم، كنأكدو ليكم الزيارة التقنية المبرمجة {date_visite} ف الموقع ديالكم. التقني غادي يشوف "
+            "الهيكل ديال البنايات والتابلو ديال الضو — وجدو ليه الوصول للمحل التقني. الحضور ديال شي مسؤول مهم: هي "
+            "الفرصة باش نجاوبو على جميع الأسئلة فعين المكان. إلا طرا ليكم شي مانع، جاوبوني هنا ونعاودو نبرمجو "
+            "الزيارة. — {conseiller}",
         'j4_preuve':
-            "هادي تجهيزة مهنية ركبناها ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: {puissance_preuve} kWc. فيديو صغير ديال الشانطي: {lien_video_preuve}.",
+            "هادي تجهيزة مهنية ركبناها ف {mois_preuve} ف {ville_preuve} : {lien_preuve}. القوة المركبة: "
+            "{puissance_preuve} kWc. فيديو صغير ديال الشانطي: {lien_video_preuve}.",
         'debrief_visite':
-            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا للموقع ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
+            "السلام عليكم {civilite} {prenom}، {conseiller} من {marque}. كنعيط ليكم من بعد ما جا التقني ديالنا للموقع "
+            "ديالكم: شنو رايكم فالزيارة ديالو، وواش بقا عندكم شي سؤال قبل ما نكملو مع بعضياتنا؟",
         'parrainage':
-            "إلا كانت شي شركة أخرى قريبة منكم، ولا شي موقع آخر ديال المجموعة ديالكم، كتفكر ف الطاقة الشمسية، تقدرو تصيفطو ليها الرابط ديال الرعاية ديالكم؛ غادي تكون عندها نفس الدراسة بلاش.",
+            "إلا كانت شي شركة أخرى قريبة منكم، ولا شي موقع آخر ديال المجموعة ديالكم، كتفكر ف الطاقة الشمسية، تقدرو "
+            "تصيفطو ليها الرابط ديال الرعاية ديالكم؛ غادي تكون عندها نفس الدراسة بلاش.",
     },
 }
 # CIQ504 — le commercial lit EXACTEMENT la darija B2B de l'industriel (même
@@ -932,47 +1163,69 @@ MESSAGE_TEMPLATE_FORMES_EMAIL = {
     'j1_pdf': {
         'objet': 'Votre proposition {reference} — {marque}',
         'corps':
-            "Bonjour {civilite} {prenom}, j'espère que vous allez bien. Vous trouverez votre proposition solaire en pièce jointe. Sa référence : {reference}. Prenez le temps de la lire tranquillement, et dites-moi ce qui vous a le plus parlé. Je reste à votre disposition pour la moindre question. — {conseiller}, {marque}",
+            "Bonjour {civilite} {prenom}, j'espère que vous allez bien. Vous trouverez votre proposition solaire en "
+            "pièce jointe. Sa référence : {reference}. Prenez le temps de la lire tranquillement, et dites-moi ce qui "
+            "vous a le plus parlé. Je reste à votre disposition pour la moindre question. — {conseiller}, {marque}",
     },
     'dimanche_famille': {
         'objet': 'Votre proposition {reference} — la page résumé',
         'corps':
-            'Bonjour {civilite} {prenom}, je sais que la décision se prend souvent à plusieurs. Si vous en parlez autour de vous, je peux vous envoyer la page résumé de votre proposition (une page, les chiffres clés) pour la partager, ou organiser un appel avec les personnes concernées au moment qui vous arrange. — {conseiller}, {marque}',
+            'Bonjour {civilite} {prenom}, je sais que la décision se prend souvent à plusieurs. Si vous en parlez '
+            'autour de vous, je peux vous envoyer la page résumé de votre proposition (une page, les chiffres clés) '
+            'pour la partager, ou organiser un appel avec les personnes concernées au moment qui vous arrange. — '
+            '{conseiller}, {marque}',
     },
     'j4_preuve': {
         'objet': 'Une installation réalisée par {marque}',
         'corps':
-            'Bonjour {civilite} {prenom}, je vous présente une installation que nous avons posée en {mois_preuve} à {ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Une courte vidéo du chantier : {lien_video_preuve}. — {conseiller}, {marque}',
+            'Bonjour {civilite} {prenom}, je vous présente une installation que nous avons posée en {mois_preuve} à '
+            '{ville_preuve} : {lien_preuve}. Puissance installée : {puissance_preuve} kWc. Une courte vidéo du '
+            'chantier : {lien_video_preuve}. — {conseiller}, {marque}',
     },
     'j6_garanties': {
         'objet': 'Les garanties de votre proposition {reference}',
         'corps':
-            "Bonjour {civilite} {prenom}, les garanties de votre installation sont accordées par les fabricants : elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : {lien}. — {conseiller}, {marque}",
+            "Bonjour {civilite} {prenom}, les garanties de votre installation sont accordées par les fabricants : "
+            "elles restent valables quoi qu'il arrive. Le détail par équipement figure dans votre proposition : "
+            "{lien}. — {conseiller}, {marque}",
     },
     'j9_validite': {
         'objet': 'Validité de votre proposition {reference}',
         'corps':
-            "Bonjour {civilite} {prenom}, je vous joins de nouveau votre proposition. Elle est valable jusqu'au {date_validite}. Au-delà, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour vous presser, c'est pour ne pas vous annoncer un prix faux. — {conseiller}, {marque}",
+            "Bonjour {civilite} {prenom}, je vous joins de nouveau votre proposition. Elle est valable jusqu'au "
+            "{date_validite}. Au-delà, je dois revalider les prix et la disponibilité du matériel : ce n'est pas pour "
+            "vous presser, c'est pour ne pas vous annoncer un prix faux. — {conseiller}, {marque}",
     },
     'j13_dernier': {
         'objet': 'Votre projet solaire — {marque}',
         'corps':
-            "Bonjour {civilite} {prenom}, je ne veux pas insister : dites-moi simplement si le projet est toujours d'actualité, et si non, je vous laisse tranquille. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — {conseiller}, {marque}",
+            "Bonjour {civilite} {prenom}, je ne veux pas insister : dites-moi simplement si le projet est toujours "
+            "d'actualité, et si non, je vous laisse tranquille. Si vous préférez ne plus être recontacté, répondez-le "
+            "simplement à cet e-mail. — {conseiller}, {marque}",
     },
     'j14_pause': {
         'objet': 'Votre dossier mis en pause — {marque}',
         'corps':
-            'Bonjour {civilite} {prenom}, je mets votre dossier en pause. Votre proposition reste enregistrée chez nous ; un simple message suffit pour la réactiver. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail. — {conseiller}, {marque}',
+            'Bonjour {civilite} {prenom}, je mets votre dossier en pause. Votre proposition reste enregistrée chez '
+            'nous ; un simple message suffit pour la réactiver. Si vous préférez ne plus être recontacté, répondez-le '
+            'simplement à cet e-mail. — {conseiller}, {marque}',
     },
     'reveil_a2': {
         'objet': 'Votre projet solaire — {marque}',
         'corps':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le solaire. Si le projet revient d'actualité, je reprends votre dossier là où nous l'avions laissé : envoyez-moi vos dernières factures (ou vos relevés de consommation) en réponse à cet e-mail, et je vous envoie l'estimation à jour. Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Il y a un mois, vous vous renseigniez sur le "
+            "solaire. Si le projet revient d'actualité, je reprends votre dossier là où nous l'avions laissé : "
+            "envoyez-moi vos dernières factures (ou vos relevés de consommation) en réponse à cet e-mail, et je vous "
+            "envoie l'estimation à jour. Si vous préférez ne plus être recontacté, répondez-le simplement à cet "
+            "e-mail.",
     },
     'reveil_a3': {
         'objet': 'Votre dossier solaire — {marque}',
         'corps':
-            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus d'actualité, je ferme votre dossier, aucun souci. Avant cela, je peux vous refaire l'étude à jour. Je vous la prépare, ou je classe le dossier ? Si vous préférez ne plus être recontacté, répondez-le simplement à cet e-mail.",
+            "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je ne veux pas insister : si le projet n'est plus "
+            "d'actualité, je ferme votre dossier, aucun souci. Avant cela, je peux vous refaire l'étude à jour. Je "
+            "vous la prépare, ou je classe le dossier ? Si vous préférez ne plus être recontacté, répondez-le "
+            "simplement à cet e-mail.",
     },
 }
 
@@ -1004,13 +1257,21 @@ def forme_email(cle):
 # Vide ⇒ sa phrase est OMISE (MRY13), jamais un crochet envoyé au client.
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'identite_reference':
-        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. {prescripteur} nous a parlé de vous pour le solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. {prescripteur} nous a parlé de vous pour le "
+        "solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, "
+        "dites-moi l'heure qui vous arrange.",
     'identite_telephone':
-        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Suite à notre échange au sujet du solaire, je vous rappelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Suite à notre échange au sujet du solaire, je "
+        "vous rappelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi "
+        "l'heure qui vous arrange.",
     'identite_whatsapp_entrant':
-        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Merci pour votre message au sujet du solaire. Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Merci pour votre message au sujet du solaire. "
+        "Je vous appelle dans quelques minutes pour une première estimation ; si ce n'est pas le bon moment, "
+        "dites-moi l'heure qui vous arrange.",
     'identite_ancien_dossier':
-        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Vous nous aviez consultés en {mois_dossier} au sujet du solaire. Je vous appelle dans quelques minutes pour une estimation à jour ; si ce n'est pas le bon moment, dites-moi l'heure qui vous arrange.",
+        "Bonjour {civilite} {prenom}, je suis {conseiller} de {marque}. Vous nous aviez consultés en {mois_dossier} "
+        "au sujet du solaire. Je vous appelle dans quelques minutes pour une estimation à jour ; si ce n'est pas le "
+        "bon moment, dites-moi l'heure qui vous arrange.",
 })
 
 #: CAD127 — les quatre clés d'identité par ORIGINE, plus celle du formulaire.
@@ -1047,7 +1308,9 @@ CLE_IDENTITE_PAR_CANAL = {
 # le mois est OMIS. Il reviendra le jour où CADM7 tranchera la liaison.
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'deuxieme_affaire':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Nous avons déjà travaillé ensemble sur votre première installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et je vous prépare l'étude ; je vous appelle dans quelques minutes.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Nous avons déjà travaillé ensemble sur votre première "
+        "installation — merci de nous redonner votre confiance. Dites-moi ce que vous souhaitez équiper cette fois et "
+        "je vous prépare l'étude ; je vous appelle dans quelques minutes.",
 })
 
 # ── CAD151 (23/09/2026) — LE DÉBRIEF APRÈS LE RETOUR DU TECHNICIEN ─────────
@@ -1065,7 +1328,8 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 # locuteur natif (CADM1), comme le reste des textes nés dans ce lot.
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'debrief_visite':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien chez vous : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous appelle après le passage de notre technicien "
+        "chez vous : qu'avez-vous pensé de sa visite, et reste-t-il des questions avant qu'on avance ensemble ?",
 })
 
 # ── CAD176 (24/09/2026) — LE SEUL BARREAU E-MAIL DE LA CADENCE GÉNÉRIQUE ────
@@ -1084,7 +1348,9 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 # darija).
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'relance_email_j10':
-        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous ai contacté récemment au sujet de votre demande solaire, sans succès pour l'instant. Si le projet vous intéresse toujours, répondez simplement à cet e-mail ou appelez-moi : je reste à votre disposition.",
+        "Bonjour {civilite} {prenom}, {conseiller} de {marque}. Je vous ai contacté récemment au sujet de votre "
+        "demande solaire, sans succès pour l'instant. Si le projet vous intéresse toujours, répondez simplement à cet "
+        "e-mail ou appelez-moi : je reste à votre disposition.",
 })
 
 # ── AGR534 (05/10/2026) — LE RÉSUMÉ TRANSMIS À L'ASSOCIÉ ──────────────────────
@@ -1097,11 +1363,13 @@ MESSAGE_TEMPLATE_DEFAULTS.update({
 # ✎ Texte à valider par Reda ; darija à relire par un locuteur natif.
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'resume_associe':
-        "Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par {marque} : {lien}. Vous pouvez la consulter et me poser vos questions ici. — {conseiller}",
+        "Bonjour, je vous transmets, avec l'accord de notre client, le résumé de la proposition solaire préparée par "
+        "{marque} : {lien}. Vous pouvez la consulter et me poser vos questions ici. — {conseiller}",
 })
 MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
     'resume_associe':
-        'السلام عليكم، كنصيفط ليكم، بموافقة الزبون ديالنا، الملخص ديال العرض ديال الطاقة الشمسية اللي وجدات {marque}: {lien}. تقدرو تشوفوه وتسولوني على أي حاجة هنا. — {conseiller}',
+        'السلام عليكم، كنصيفط ليكم، بموافقة الزبون ديالنا، الملخص ديال العرض ديال الطاقة الشمسية اللي وجدات {marque}: '
+        '{lien}. تقدرو تشوفوه وتسولوني على أي حاجة هنا. — {conseiller}',
 })
 
 # ── CIQ503 (05/10/2026) — L'ACCUSÉ « EN ATTENTE D'UN ACCORD » ─────────────────
@@ -1114,9 +1382,12 @@ MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
 # darija garde la « darija complète » de CAD62 ; CIQ504 en fait la relecture).
 MESSAGE_TEMPLATE_DEFAULTS.update({
     'attente_accord_accuse':
-        "Très bien, c'est noté : la décision passe par [qui doit donner son accord]. Je vous rappelle le [jour] comme convenu. D'ici là, si [qui doit donner son accord] a besoin de la proposition ou de sa page résumé, dites-le-moi et je vous les envoie.",
+        "Très bien, c'est noté : la décision passe par [qui doit donner son accord]. Je vous rappelle le [jour] comme "
+        "convenu. D'ici là, si [qui doit donner son accord] a besoin de la proposition ou de sa page résumé, "
+        "dites-le-moi et je vous les envoie.",
 })
 MESSAGE_TEMPLATE_DEFAULTS_DARIJA.update({
     'attente_accord_accuse':
-        'واخا، تقيدات: القرار كيدوز عند [شكون خاصو يعطي الموافقة]. غادي نعيط ليكم [النهار] كيف ما اتفقنا. وحتى لذاك الوقت، إلا [شكون خاصو يعطي الموافقة] احتاج العرض ولا ورقة الملخص ديالو، قولوها ليا ونصيفطهم ليكم.',
+        'واخا، تقيدات: القرار كيدوز عند [شكون خاصو يعطي الموافقة]. غادي نعيط ليكم [النهار] كيف ما اتفقنا. وحتى لذاك '
+        'الوقت، إلا [شكون خاصو يعطي الموافقة] احتاج العرض ولا ورقة الملخص ديالو، قولوها ليا ونصيفطهم ليكم.',
 })

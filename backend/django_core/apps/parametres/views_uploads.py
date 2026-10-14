@@ -23,6 +23,9 @@ from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_clie
 from .models import SettingsAuditLog
 from .serializers import CompanyProfileSerializer
 from .views_common import _audit_company, _profile
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 _UPLOAD_IMAGE = inline_serializer('UploadImageRequest', {
@@ -124,7 +127,7 @@ def _upload_image(request, field, prefix):
                 Bucket=settings.MINIO_BUCKET_UPLOADS, Key=old_key
             )
         except Exception:
-            pass
+            logger.warning("_upload_image : erreur absorbée, repli dégradé", exc_info=True)
 
     setattr(profile, field, key)
     profile.save(update_fields=[field])
@@ -173,7 +176,7 @@ def _delete_image(request, field):
                 Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key
             )
         except Exception:
-            pass
+            logger.warning("_delete_image : erreur absorbée, repli dégradé", exc_info=True)
         setattr(profile, field, '')
         profile.save(update_fields=[field])
         SettingsAuditLog.log_change(

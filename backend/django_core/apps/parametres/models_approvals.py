@@ -11,6 +11,9 @@ Purement déclaratif et ADDITIF : sans politique activée, rien ne change. Garde
 dans un fichier dédié (indépendance de lane) ; enregistré via ``apps.ready()``.
 """
 from django.db import models
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class ApprovalPolicy(models.Model):
@@ -90,7 +93,7 @@ class ApprovalPolicy(models.Model):
                     departement=departement) is not None:
                 return True
         except Exception:  # pragma: no cover - défensif, jamais bloquant
-            pass
+            logger.warning("requires_approval : erreur absorbée, repli dégradé", exc_info=True)
         policy = cls.objects.filter(
             company=company, action_type=action_type, enabled=True).first()
         if policy is None:
@@ -101,4 +104,5 @@ class ApprovalPolicy(models.Model):
             from decimal import Decimal
             return Decimal(str(amount)) >= policy.seuil
         except Exception:
+            logger.warning("requires_approval : erreur absorbée, repli dégradé", exc_info=True)
             return True

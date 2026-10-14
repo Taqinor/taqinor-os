@@ -34,6 +34,9 @@ court-circuitait ``save()``.
 """
 from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Attribut transitoire porté par l'instance entre ``pre_save`` et
 #: ``post_save`` (les octets ne sont plus lisibles après le commit du
@@ -66,6 +69,7 @@ def capturer_upload_pour_ged(sender, instance, raw=False, **kwargs):
         fichier.seek(0)
         mime = getattr(fichier, 'content_type', '') or ''
     except Exception:  # pragma: no cover - défensif (lecture best-effort)
+        logger.warning("capturer_upload_pour_ged : erreur absorbée, repli dégradé", exc_info=True)
         return
     if contenu:
         setattr(instance, _CONTENU_ATTR, (contenu, mime))
@@ -89,6 +93,7 @@ def _capture_depuis_minio(instance):
 
         contenu, erreur = fetch_attachment(cle)
     except Exception:  # pragma: no cover - défensif (dépôt best-effort)
+        logger.warning("_capture_depuis_minio : erreur absorbée, repli dégradé", exc_info=True)
         return None
     if not contenu or erreur:
         return None
@@ -134,6 +139,7 @@ def deposer_upload_dans_ged(sender, instance, raw=False, **kwargs):
             created_by=None,
         )
     except Exception:  # pragma: no cover - défensif (dépôt best-effort)
+        logger.warning("deposer_upload_dans_ged : erreur absorbée, repli dégradé", exc_info=True)
         return
     type(instance).objects.filter(pk=instance.pk).update(
         document_ged_id=document.pk)
