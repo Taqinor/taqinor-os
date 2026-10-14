@@ -39,6 +39,9 @@ from rest_framework.response import Response
 from apps.roles.permissions import IsPortalClientUser, portal_scope_id
 
 from . import services
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Valeurs acceptées comme « oui » pour le consentement e-signature (QX9).
 _VRAI = (True, 'true', 'True', '1', 1, 'on')
@@ -70,7 +73,7 @@ def _noter_connexion(company, client_id):
         if etat is not None:
             services.enregistrer_connexion_portail(etat[0], etat[2])
     except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
-        pass
+        logger.warning("_noter_connexion : erreur absorbée, repli dégradé", exc_info=True)
 
 
 def _ip(request):
@@ -289,7 +292,7 @@ def contenu_diffusable(doc, company):
             label = ged_services.watermark_label(company=company)
             data, _marque = ged_services.apply_watermark(data, mime, label)
         except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
-            pass
+            logger.warning("contenu_diffusable : erreur absorbée, repli dégradé", exc_info=True)
     return version, data, mime, None
 
 

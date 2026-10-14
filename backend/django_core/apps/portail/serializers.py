@@ -28,6 +28,9 @@ from .models import (
     JalonChantierPortail,
     PaiementFacturePortail,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── AUD142 — Résolution cross-app des id envoyés par le portail ────────────
 #
@@ -234,6 +237,7 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
             from apps.ged.selectors import latest_version
             version = latest_version(obj.document_ged)
         except Exception:  # noqa: BLE001 - une GED indisponible = pas de lien
+            logger.warning("get_lien_ged : erreur absorbée, repli dégradé", exc_info=True)
             return None
         if version is None:
             return None

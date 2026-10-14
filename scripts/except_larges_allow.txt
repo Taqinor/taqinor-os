@@ -250,17 +250,6 @@ backend/django_core/apps/notifications/sweeps.py::_sweep_reveiller_snoozes_appro
 backend/django_core/apps/notifications/tasks.py::_admins_rh
 backend/django_core/apps/notifications/views.py::attention_summary
 backend/django_core/apps/notifications/views_whatsapp_bsp.py::WhatsAppBspWebhookView._capture_and_route
-backend/django_core/apps/portail/branding.py::_profil
-backend/django_core/apps/portail/branding.py::_tenant_theme
-backend/django_core/apps/portail/branding.py::company_pour_hote
-backend/django_core/apps/portail/receivers.py::_capture_depuis_minio
-backend/django_core/apps/portail/receivers.py::capturer_upload_pour_ged
-backend/django_core/apps/portail/receivers.py::deposer_upload_dans_ged
-backend/django_core/apps/portail/serializers.py::DocumentClientPortailSerializer.get_lien_ged
-backend/django_core/apps/portail/services.py::_envoyer_identifiants_portail
-backend/django_core/apps/portail/services.py::_envoyer_invitation_portail
-backend/django_core/apps/portail/views_client.py::_noter_connexion
-backend/django_core/apps/portail/views_client.py::contenu_diffusable
 backend/django_core/apps/reporting/approbations.py::_decider_approbation_core
 backend/django_core/apps/reporting/calepinage_kpis.py::_compteurs_par_statut
 backend/django_core/apps/reporting/classeur.py::ClasseurViewSet.evaluer
