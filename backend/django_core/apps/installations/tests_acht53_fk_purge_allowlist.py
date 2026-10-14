@@ -130,9 +130,8 @@ class FkPurgeAllowlistTests(SimpleTestCase):
         serializer = serializers_commissioning.CommissioningRecordSerializer(
             partial=True, context={'request': request})
         with mock.patch.object(Outillage, 'objects', faux):
-            with self.assertRaises(ValidationError) as ctx:
+            with self.assertRaises(NotFound):
                 serializer.to_internal_value({'instrument_id': 7})
-            self.assertIn('instrument_id', ctx.exception.detail)
             request.user.company_id = 2
             self.assertEqual(
                 serializer.to_internal_value({'instrument_id': 7}),

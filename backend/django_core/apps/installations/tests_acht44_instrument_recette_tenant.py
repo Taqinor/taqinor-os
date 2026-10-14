@@ -44,18 +44,25 @@ class InstrumentRecetteTenantTests(TestCase):
         self.fiche = CommissioningRecord.objects.create(
             company=self.co_a, installation=inst)
 
-    def test_patch_instrument_etranger_400(self):
+    def test_patch_instrument_etranger_404(self):
         for valeur in (self.outil_b.id, 999999):
             r = self.api.patch(f'{URL}/{self.fiche.id}/',
                                {'instrument_id': valeur}, format='json')
-            self.assertEqual(r.status_code, 400, r.data)
-            self.assertIn('instrument_id', r.data)
+            self.assertEqual(r.status_code, 404, r.data)
         self.fiche.refresh_from_db()
         self.assertIsNone(self.fiche.instrument_id)
         r = self.api.patch(f'{URL}/{self.fiche.id}/',
                            {'instrument_id': self.outil_a.id}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['instrument_nom'], 'Multimètre A')
+
+    def test_patch_instruments_par_essai_null_accepte(self):
+        # Fuzz CI #997 : champ publié nullable ; null = aucun instrument.
+        r = self.api.patch(f'{URL}/{self.fiche.id}/',
+                           {'instruments_par_essai': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.fiche.refresh_from_db()
+        self.assertEqual(self.fiche.instruments_par_essai, {})
 
     def test_lecture_instrument_heritee_bornee(self):
         CommissioningRecord.objects.filter(pk=self.fiche.pk).update(
