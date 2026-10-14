@@ -1594,14 +1594,13 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         lecture, affiche un bandeau à tous. Body optionnel :
         `{"motif": "..."}`. 409 si déjà posé par un autre utilisateur."""
         document = self.get_object()
-        # CI #997 (3) fuzz ged — motif validé par le corps publié : un caractère
-        # nul ou plus de 300 caractères (colonne `verrou_avertissement_motif`)
-        # étaient une `DataError` (500) ; un non-texte une 500 plus loin.
-        corps = corps_valide(GedVerrouCorps, request)
         try:
             services.assert_not_archive_legalement(document)  # ADOC22
+            # CI #997 (3) fuzz ged — motif validé par le corps publié (NUL ou
+            # > 300 caractères = `DataError` 500 ; non-texte = 500 plus loin).
             doc = services.verrouiller_avertissement(
-                document, request.user, motif=corps.get('motif', ''))
+                document, request.user, motif=corps_valide(
+                    GedVerrouCorps, request).get('motif', ''))
         except ArchivageLegalError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1677,14 +1676,10 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         """
         document = self.get_object()
         target = request.data.get('statut')
-        if not target:
+        # Liste/objet : non hachable -> 500 dans la machine à états.
+        if not target or not isinstance(target, str):
             return Response(
-                {'statut': 'Le statut cible est requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        if not isinstance(target, str):
-            # Liste/objet : non hachable -> 500 dans la machine à états.
-            return Response(
-                {'statut': 'Chaîne attendue.'},
+                {'statut': 'Le statut cible est requis (chaîne).'},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             doc = services.change_lifecycle_status(
