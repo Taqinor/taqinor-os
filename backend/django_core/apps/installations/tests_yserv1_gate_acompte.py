@@ -112,7 +112,7 @@ class ToggleOnSansAcompteTests(TestCase):
         r = self.api.patch(
             f'{BASE}/chantiers/{self.inst.id}/',
             {'statut': Installation.Statut.PLANIFIE}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.inst.refresh_from_db()
         self.assertNotEqual(self.inst.statut, Installation.Statut.PLANIFIE)
 
@@ -122,7 +122,7 @@ class ToggleOnSansAcompteTests(TestCase):
         r = self.api.patch(
             f'{BASE}/chantiers/{self.inst.id}/',
             {'statut': Installation.Statut.PLANIFIE}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_planification_autorisee_avec_acompte_paye(self):
         make_facture_acompte(self.company, self.devis, self.client_)
@@ -153,7 +153,7 @@ class ToggleOnSansAcompteTests(TestCase):
             f'{BASE}/chantiers/{self.inst.id}/',
             {'statut': Installation.Statut.PLANIFIE,
              'motif_override_acompte': '   '}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
 
 class SansDevisLieTests(TestCase):

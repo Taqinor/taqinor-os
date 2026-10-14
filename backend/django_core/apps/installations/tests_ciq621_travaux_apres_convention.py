@@ -78,7 +78,7 @@ class TravauxApresConventionTest(TestCase):
             company=self.company, devis=chantier.devis, chantier=chantier,
             regime_8221='accord_raccordement', statut='approuve')
         r = self._patch(self.responsable, chantier, statut='en_cours')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
         self.assertIn(RAISON_CI_SANS_CONVENTION, r.data['statut'])
         chantier.refresh_from_db()
         self.assertEqual(chantier.statut, 'planifie')
@@ -106,7 +106,7 @@ class TravauxApresConventionTest(TestCase):
         chantier = self._chantier()
         r = self._patch(self.responsable, chantier, statut='en_cours',
                         motif_derogation_8221='Pressé')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_residentiel_et_agricole_inchanges(self):
         for type_installation, regime in (
