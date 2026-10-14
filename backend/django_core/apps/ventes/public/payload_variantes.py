@@ -8,7 +8,6 @@ prouvé par ``tests/golden/split_pv_variantes.json``.
 """
 import logging
 
-from django.db import models
 from django.utils import timezone
 
 from ..models import ShareLink
@@ -78,18 +77,15 @@ def _variant_summaries(devis) -> list:
     supprime plus la bande entière (constat V1 : l'``except`` de sortie
     renvoyait ``[]``).
     """
-    root = devis.version_parent_id or devis.pk
     try:
         from ..models import Devis as DevisModel
+        from ..selectors import groupe_proposition
         # Include root + all siblings with the same version_parent.
         siblings = list(
-            DevisModel.objects
+            groupe_proposition(devis)
             .filter(
                 company=devis.company,
                 is_active=True,
-            )
-            .filter(
-                models.Q(pk=root) | models.Q(version_parent_id=root)
             )
             .exclude(pk=devis.pk)   # exclude self — self is the main payload
             # QJR537 — un BROUILLON n'est JAMAIS montré au client (même règle

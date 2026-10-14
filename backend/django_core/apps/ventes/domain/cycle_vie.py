@@ -1009,17 +1009,15 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
     N'ATTRAPE RIEN : une exception remonte, donc la transaction de l'appelant
     est annulée en bloc. C'est le point de QJR134.
     """
-    from django.db.models import Q
     from apps.ventes.models import Devis
     from apps.ventes import activity
+    from apps.ventes.selectors import groupe_proposition
     from core.events import devis_accepted
 
-    racine = devis.version_parent_id or devis.pk
     if groupe is None:
         groupe = list(
-            Devis.objects
+            groupe_proposition(devis)
             .select_for_update(of=('self',))
-            .filter(Q(pk=racine) | Q(version_parent_id=racine))
             .order_by('pk'))
     for soeur in groupe:
         # Le filtre est celui d'hier, mot pour mot — mais appliqué aux lignes
@@ -1080,7 +1078,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
     from django.db import transaction
-    from django.db.models import Q
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
@@ -1124,12 +1121,11 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # ``of=('self',)`` reste OBLIGATOIRE : ``company`` et ``lead`` sont
         # nullables, donc joints en LEFT OUTER JOIN — et PostgreSQL refuse
         # « FOR UPDATE » sur le côté nullable d'une jointure externe.
-        racine = devis.version_parent_id or devis.pk
+        from apps.ventes.selectors import groupe_proposition
         groupe = list(
-            Devis.objects
+            groupe_proposition(devis)
             .select_related('client', 'company', 'lead')
             .select_for_update(of=('self',))
-            .filter(Q(pk=racine) | Q(version_parent_id=racine))
             .order_by('pk'))
         courant = next((d for d in groupe if d.pk == devis.pk), None)
         if courant is None:
@@ -1578,19 +1574,17 @@ def annuler_acceptation(*, devis, user, motif=''):
     e-signature (``DevisSignature``, PDF scellé) n'est jamais touchée.
     """
     from django.db import transaction
-    from django.db.models import Q
     from django.utils import timezone
     from apps.ventes.models import Devis
     from apps.ventes import activity
+    from apps.ventes.selectors import groupe_proposition
     from core.events import devis_acceptation_annulee
 
     with transaction.atomic():
-        racine = devis.version_parent_id or devis.pk
         groupe = list(
-            Devis.objects
+            groupe_proposition(devis)
             .select_related('company')
             .select_for_update(of=('self',))
-            .filter(Q(pk=racine) | Q(version_parent_id=racine))
             .order_by('pk'))
         courant = next((d for d in groupe if d.pk == devis.pk), None)
         if courant is None or courant.statut != Devis.Statut.ACCEPTE:

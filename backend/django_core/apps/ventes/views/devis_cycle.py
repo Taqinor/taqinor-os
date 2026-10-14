@@ -235,7 +235,8 @@ class DevisCycleActionsMixin:
         # Tour 3 M1 — corps hors schéma (``variante_pct: {}``…) = 400.
         valider_corps(request, D.DupliquerVarianteRequest)
         company = source.company
-        root = source.version_parent or source
+        from ..selectors import racine_groupe
+        root = racine_groupe(source)
 
         # QG9 — échelles depuis un pourcentage : override requête ``scales``
         # (rétro-compat) > override requête ``variante_pct`` > config société
@@ -378,7 +379,8 @@ class DevisCycleActionsMixin:
         """QJ15 — Liste les variantes liées à ce devis (même version_parent,
         toutes actives). Utilisé par la proposal côte-à-côte."""
         devis = self.get_object()
-        root = devis.version_parent or devis
+        from ..selectors import racine_groupe
+        root = racine_groupe(devis)
         siblings = (
             Devis.objects
             .filter(company=devis.company, version_parent=root, is_active=True)

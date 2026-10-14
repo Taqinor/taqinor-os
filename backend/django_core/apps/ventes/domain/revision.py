@@ -175,6 +175,7 @@ def reviser_devis(devis, *, user=None):
     from apps.ventes.models import Devis
     from apps.ventes import activity
     from apps.ventes.domain.creation_clone import cloner_devis
+    from apps.ventes.selectors import racine_groupe
 
     with transaction.atomic():
         old = (Devis.objects.select_for_update(of=('self',))
@@ -196,7 +197,7 @@ def reviser_devis(devis, *, user=None):
         nd = cloner_devis(
             old, user=user, note=old.note,
             version=old.version + 1,
-            version_parent=old.version_parent or old, revision=True)
+            version_parent=racine_groupe(old), revision=True)
         old.is_active = False
         old.superseded_by = nd
         old.save(update_fields=['is_active', 'superseded_by'])

@@ -262,6 +262,38 @@ class TestGetVariantes(TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
+class TestGroupeDeProposition(TestCase):
+    """VNT104 — ``racine_groupe`` (objet) et ``groupe_proposition``
+    (queryset) : LE calcul de la racine du groupe ``version_parent``."""
+
+    def setUp(self):
+        company = make_company('vnt104-co')
+        user = make_user(company)
+        client = make_client(company)
+        self.racine = make_devis(company, user, client, 'DEV-VNT104-10')
+        self.soeur = Devis.objects.create(
+            company=company, reference='DEV-VNT104-20', client=client,
+            created_by=user, version_parent=self.racine)
+        self.isole = make_devis(company, user, client, 'DEV-VNT104-30')
+
+    def test_racine_et_groupe_depuis_la_racine_et_la_soeur(self):
+        from apps.ventes.selectors import groupe_proposition, racine_groupe
+        attendu = {self.racine.pk, self.soeur.pk}
+        for devis in (self.racine, self.soeur):
+            with self.subTest(devis=devis.reference):
+                self.assertEqual(racine_groupe(devis), self.racine)
+                self.assertEqual(
+                    set(groupe_proposition(devis).values_list('pk', flat=True)),
+                    attendu)
+
+    def test_devis_isole_est_sa_propre_racine(self):
+        from apps.ventes.selectors import groupe_proposition, racine_groupe
+        self.assertEqual(racine_groupe(self.isole), self.isole)
+        self.assertEqual(
+            list(groupe_proposition(self.isole).values_list('pk', flat=True)),
+            [self.isole.pk])
+
+
 class TestVariantSummaries(TestCase):
     """_variant_summaries helper — used by proposal_data for QJ15 side-by-side."""
 
