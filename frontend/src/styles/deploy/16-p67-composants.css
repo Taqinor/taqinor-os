@@ -1,0 +1,415 @@
+/* ████████████████████████████████████████████████████████████████████
+   P67 — CSS de composants ad hoc RELOCALISÉ ICI (verbatim). Les fichiers
+   .css par composant ont été supprimés et leurs imports retirés ; les
+   sélecteurs (préfixes uniques) sont déplacés tels quels, donc la cascade
+   est préservée. records-panels avant kanban : .kb-act-clock (rendu
+   uniquement dans LeadCard, vue kanban) garde la valeur de kanban.css.
+   ████████████████████████████████████████████████████████████████████ */
+
+/* ===== migrated from src/components/inlineedit.css (P67) ===== */
+/* Édition en place (InlineEdit) — discret, devient visible au survol. */
+.ie-cell {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font: inherit;
+  color: inherit;
+  cursor: text;
+  text-align: inherit;
+  max-width: 100%;
+}
+@media (hover: hover) {
+  .ie-cell:hover { border-color: #cbd5e1; background: #f8fafc; }
+}
+.ie-saving { opacity: 0.6; }
+/* LB31 — tokenized (destructive tint idiom used elsewhere in this file). */
+.ie-err {
+  border-color: color-mix(in oklch, var(--destructive) 45%, transparent);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+.ie-placeholder { color: var(--muted-foreground); }
+.ie-display { padding: 2px 6px; }
+.ie-right { text-align: right; }
+.ie-left { text-align: left; }
+.ie-input {
+  min-width: 80px;
+  max-width: 180px;
+  padding: 2px 6px;
+  height: auto;
+  font-size: 0.85rem;
+}
+
+/* ===== migrated from src/components/layout/globalsearch.css (P67) ===== */
+/* Recherche globale (barre du haut). */
+/* MB3 — la recherche globale vit dans l'en-tête collant (--z-sticky 1100) :
+   on lui donne le même palier pour que son unité (input + panneau déroulant)
+   forme un contexte d'empilement au niveau de l'en-tête, jamais sous lui. Le
+   panneau (.gs-panel) reste un DROPDOWN (--z-dropdown) DANS ce contexte. */
+.gs-wrap { position: relative; z-index: var(--z-sticky, 1100); flex: 1; max-width: 460px; }
+.gs-input {
+  width: 100%;
+  padding: 7px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  background: #f8fafc;
+  /* a11y / BUG RÉEL EN THÈME SOMBRE — ce champ (comme `.gs-panel` juste en
+     dessous) garde volontairement une surface CLAIRE codée en dur dans les deux
+     thèmes, mais il n'avait AUCUNE couleur de texte : il héritait donc de
+     `--foreground`, qui vaut #e7ecf6 en sombre → texte quasi invisible
+     (#e7ecf6 sur #f8fafc = 1,13:1). On fixe la couleur du texte sur la MÊME
+     encre que la surface impose, dans les deux thèmes : 17,3:1. */
+  color: var(--color-encre);
+}
+/* VX123 — halo de focus réel en plus du changement de bordure (plancher
+   d'accessibilité : un simple #e2e8f0 → #94a3b8 était trop faible seul). */
+.gs-input:focus { outline: none; border-color: #94a3b8; background: #fff; box-shadow: var(--focus-ring); }
+.gs-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0; right: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  max-height: 70vh;
+  overflow-y: auto;
+  /* MB3 — panneau de résultats = DROPDOWN. */
+  z-index: var(--z-dropdown, 1000);
+  padding: 6px;
+}
+.gs-empty { padding: 12px; color: #64748b; font-size: 0.85rem; }
+.gs-group { padding: 4px 0; }
+.gs-group-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: var(--text-eyebrow-tracking);
+  color: #94a3b8;
+  padding: 4px 10px;
+}
+.gs-result {
+  display: flex; flex-direction: column; align-items: flex-start;
+  width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 7px 10px 7px 18px; border-radius: 6px;
+  position: relative;
+}
+@media (hover: hover) {
+  .gs-result:hover,
+  .gs-result.gs-result-active { background: #f1f5f9; }
+}
+.gs-result-label { font-size: 0.875rem; color: #0f172a; }
+.gs-result-sub { font-size: 0.75rem; color: #64748b; }
+/* VX13 — pastille d'accent du module d'origine (VX8), petit point discret
+   aligné sur le libellé. */
+.gs-result-accent {
+  position: absolute;
+  left: 6px;
+  top: 13px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--module-accent);
+}
+/* L17 — état d'échec réseau distinct d'un « aucun résultat ». */
+.gs-empty.gs-error { color: #dc2626; }
+/* L9 — lien « voir tout / +N autres » par groupe. */
+.gs-more {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 5px 10px; border-radius: 6px;
+  font-size: 0.78rem; font-weight: 600; color: #1d4ed8;
+}
+@media (hover: hover) {
+  .gs-more:hover,
+  .gs-more.gs-result-active { background: #eff6ff; }
+}
+/* L12 — déclencheur mobile (icône loupe) ; masqué sur le bureau. */
+.gs-mobile-toggle {
+  display: none;
+  align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  padding: 7px; border-radius: var(--radius-md); color: #475569;
+}
+@media (hover: hover) {
+  .gs-mobile-toggle:hover { background: #f1f5f9; color: #1e293b; }
+}
+
+/* ===== migrated from src/components/layout/notificationbell.css (P67) ===== */
+/* Cloche de notifications in-app. */
+/* MB3 — même logique que .gs-wrap : la cloche vit dans l'en-tête collant, on
+   ancre son contexte d'empilement au palier --z-sticky, le panneau reste un
+   dropdown DANS ce contexte. */
+.nb-wrap { position: relative; z-index: var(--z-sticky, 1100); }
+.nb-btn {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  line-height: 1; padding: 7px;
+  border-radius: var(--radius-md);
+  /* a11y — l'en-tête est `background: var(--card)`, donc SOMBRE en thème
+     sombre ; ce #475569 codé en dur (ardoise de thème clair) y tombait à
+     2,42:1. Visible sur `.header-lang-code` (le seul enfant TEXTE de la
+     grappe — les autres `.nb-btn` ne portent qu'une icône, qu'axe ne mesure
+     pas). Le token sémantique suit les deux thèmes : 5,81:1 en clair,
+     9,07:1 en sombre. */
+  color: var(--muted-foreground);
+}
+@media (hover: hover) {
+  .nb-btn:hover { background: #f1f5f9; color: #1e293b; }
+}
+.nb-badge {
+  position: absolute; top: -2px; right: -2px;
+  background: #dc2626; color: #fff;
+  font-size: 0.62rem; font-weight: 700;
+  min-width: 16px; height: 16px;
+  border-radius: 999px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+/* VX134(d) — pulse UNIQUEMENT quand le total AUGMENTE (ChatBell), jamais à
+   chaque poll de 30 s qui ne change rien. */
+.nb-badge-pulse { animation: var(--animate-badge-pulse); }
+.nb-panel {
+  position: absolute; top: calc(100% + 6px); right: 0;
+  width: 320px; max-height: 70vh; overflow-y: auto;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  z-index: var(--z-dropdown, 1000); padding: 6px;
+}
+.nb-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 0.8rem; font-weight: 700; color: #0f172a;
+  padding: 6px 10px 8px;
+}
+.nb-header-actions { display: flex; align-items: center; gap: 6px; }
+/* VX204 — indicateur discret « panne prolongée » (≥3 échecs consécutifs du
+   sondage léger), cliquable pour reprendre manuellement. */
+.nb-stalled {
+  display: block; width: 100%; text-align: center;
+  background: #fef2f2; border: none; border-bottom: 1px solid #fecaca;
+  border-radius: var(--radius-md) var(--radius-md) 0 0; color: #dc2626;
+  font-size: 0.72rem; font-weight: 600; padding: 6px 8px; cursor: pointer;
+}
+@media (hover: hover) {
+  .nb-stalled:hover { background: #fee2e2; }
+}
+.nb-link-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer;
+  font-size: 0.72rem; font-weight: 600; color: #1d4ed8;
+  padding: 2px 4px; border-radius: 6px;
+}
+@media (hover: hover) {
+  .nb-link-btn:hover { background: #eff6ff; }
+}
+.nb-empty { padding: 16px; text-align: center; color: #64748b; font-size: 0.85rem; }
+/* L11 — échec de chargement des notifications, distinct de « rien à signaler ». */
+.nb-empty.nb-error { color: #dc2626; }
+/* VX14 — onglets internes du panneau (déclaratif, NOTIF_TABS). */
+.nb-tabs {
+  display: flex; gap: 2px;
+  padding: 2px 6px 8px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+.nb-tab {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  background: none; border: none; cursor: pointer;
+  font-size: 0.74rem; font-weight: 600; color: #64748b;
+  padding: 6px 4px; border-radius: 6px;
+}
+@media (hover: hover) {
+  .nb-tab:hover { background: #f1f5f9; color: #1e293b; }
+}
+.nb-tab-active { background: #eff6ff; color: #1d4ed8; }
+@media (hover: hover) {
+  .nb-tab-active:hover { background: #eff6ff; color: #1d4ed8; }
+}
+.nb-tab-count {
+  background: #dc2626; color: #fff;
+  font-size: 0.62rem; font-weight: 700;
+  min-width: 15px; height: 15px;
+  border-radius: 999px; padding: 0 4px;
+  display: flex; align-items: center; justify-content: center;
+}
+.nb-tab-active .nb-tab-count { background: #1d4ed8; }
+/* NTADM19 — onglet « Annonces » : nouveautés produit de l'éditeur, rendues
+   en markdown simple. Une annonce non lue porte un liseré d'accent. */
+.nb-annonce {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.nb-annonce:last-child { border-bottom: none; }
+.nb-annonce-non-lue { border-left: 3px solid #1d4ed8; }
+.nb-annonce-entete {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; font-size: 0.78rem;
+}
+.nb-annonce-corps { font-size: 0.74rem; color: #475569; }
+.nb-annonce-titre {
+  font-size: 0.74rem; font-weight: 600; color: #334155;
+  margin: 6px 0 2px;
+}
+.nb-annonce-para { margin: 2px 0; }
+.nb-annonce-liste { margin: 2px 0; padding-left: 16px; list-style: disc; }
+.nb-group { padding: 4px 0; }
+.nb-group-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.72rem; font-weight: 600; color: #475569;
+  padding: 4px 10px;
+}
+.nb-group-title svg { color: #94a3b8; flex-shrink: 0; }
+
+/* I38 — Invite d'activation des notifications push (in-context, justifiée). */
+.nb-push-prompt {
+  position: relative;
+  margin: 0 6px 8px;
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  border-radius: var(--radius-md);
+}
+.nb-push-close {
+  position: absolute; top: 6px; right: 6px;
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px;
+  border: none; background: none; cursor: pointer;
+  color: #94a3b8; border-radius: 6px;
+}
+@media (hover: hover) {
+  .nb-push-close:hover { background: #dbeafe; color: #475569; }
+}
+.nb-push-title { font-size: 0.82rem; font-weight: 700; color: #1e3a8a; padding-right: 20px; }
+.nb-push-text { font-size: 0.75rem; color: #475569; margin: 4px 0 8px; line-height: 1.35; }
+.nb-push-btn {
+  font-size: 0.78rem; font-weight: 600;
+  background: #1d4ed8; color: #fff;
+  border: none; border-radius: 7px;
+  padding: 6px 12px; cursor: pointer;
+}
+@media (hover: hover) {
+  .nb-push-btn:hover { background: #1e40af; }
+}
+.nb-item {
+  display: flex; justify-content: space-between; gap: 8px; align-items: center;
+  width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer;
+  padding: 6px 10px; border-radius: 6px; font-size: 0.82rem; color: #0f172a;
+}
+@media (hover: hover) {
+  .nb-item:hover { background: #f1f5f9; }
+}
+.nb-item-date { font-size: 0.72rem; color: #94a3b8; white-space: nowrap; }
+.nb-overdue { color: #dc2626; font-weight: 600; }
+/* N75 — notifications in-app persistées : item non lu + marquage lu. */
+.nb-item-unread { font-weight: 600; }
+@media (hover: hover) {
+  .nb-item-unread:hover { background: #eef2ff; }
+}
+.nb-dot {
+  display: inline-block; width: 7px; height: 7px; margin-right: 6px;
+  border-radius: 50%; background: #1d4ed8; vertical-align: middle;
+}
+.nb-item-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 6px;
+  color: #94a3b8; cursor: pointer; flex-shrink: 0;
+}
+@media (hover: hover) {
+  .nb-item-mark:hover { background: #e0e7ff; color: #1d4ed8; }
+}
+
+/* VX217(c) — la cloche s'ouvre en BOTTOM-SHEET sous 768px (le panneau
+   `.nb-panel` desktop, absolu ancré au bouton, déborde sur mobile sans
+   respecter l'encoche). Placé APRÈS la règle desktop `.nb-panel` ci-dessus
+   pour gagner la cascade à spécificité égale (la précédente tentative sous
+   768px à la ligne ~2666 était neutralisée par cette règle desktop qui la
+   suit dans le fichier — jamais un `!important`, l'ORDRE suffit).
+   Desktop INCHANGÉ (aucune règle hors de ce media query). */
+@media (max-width: 768px) {
+  .nb-panel {
+    position: fixed;
+    top: auto; left: 0; right: 0; bottom: 0;
+    width: 100%; max-width: 100%;
+    max-height: 75vh;
+    border-radius: 14px 14px 0 0;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    padding-left: max(6px, env(safe-area-inset-left));
+    padding-right: max(6px, env(safe-area-inset-right));
+  }
+}
+
+/* VX217(a) — <AttentionPeek> : popover d'aperçu (survol desktop / appui long
+   mobile) rendu depuis les données déjà dans la notif — jamais un nouvel
+   appel réseau, jamais `prix_achat`. */
+/* `display: block` (pas `contents`) : `mouseenter`/`mouseleave` restent
+   fiables sur l'ancre (le rendu `contents` d'un `<span>` a un comportement
+   d'événements souris incohérent entre navigateurs). `.nb-group` empile ses
+   enfants en flux bloc normal : cette ancre ne change rien à la mise en page. */
+.attention-peek-anchor { position: relative; display: block; width: 100%; }
+.attention-peek {
+  position: absolute; z-index: var(--z-tooltip, 1200);
+  top: 0; left: calc(100% + 8px);
+  width: 240px; max-width: min(240px, calc(100vw - 24px));
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  padding: 10px 12px; font-size: 0.78rem; color: #0f172a;
+}
+.attention-peek-title { font-weight: 700; margin-bottom: 4px; }
+.attention-peek-row {
+  display: flex; justify-content: space-between; gap: 8px;
+  color: #475569; margin-top: 2px;
+}
+.attention-peek-actions { margin-top: 8px; display: flex; justify-content: flex-end; }
+/* Sous 768px (mobile), pas assez de place à droite : le peek s'ouvre
+   au-dessus/en-dessous plutôt qu'à côté (déclenché par appui long, pas de
+   survol souris). */
+@media (max-width: 768px) {
+  .attention-peek {
+    left: 0; right: 0; top: calc(100% + 4px);
+    width: auto; max-width: 100%;
+  }
+}
+/* VX217(b) — actions de GROUPE sur un item plié (VX208 dédoublonnage). */
+.nb-group-actions {
+  display: flex; justify-content: flex-end; gap: 6px;
+  padding: 2px 10px 6px;
+}
+
+/* N75 — page Préférences de notifications (événement × canaux). */
+.np-loading { display: flex; align-items: center; gap: 8px; padding: 16px; color: #64748b; }
+.np-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.np-table th, .np-table td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+.np-channel-head { text-align: center; font-weight: 600; color: #475569; }
+.np-channel-cell { text-align: center; }
+.np-note { margin-top: 12px; font-size: 0.78rem; color: #64748b; line-height: 1.4; }
+
+/* ===== migrated from src/components/records-panels.css (P67) ===== */
+/* Panneaux Activités + Pièces jointes (style Odoo, sobres). */
+.act-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.act-count { font-size: 0.85rem; font-weight: 600; color: #475569; }
+
+.act-form { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+.act-form-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+
+.act-list, .att-list { display: flex; flex-direction: column; gap: 6px; }
+
+.act-item, .att-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border: 1px solid #eef2f7; border-radius: var(--radius-md); background: #fff;
+  font-size: 0.85rem;
+}
+.act-item-done { opacity: 0.65; }
+.act-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.act-body { flex: 1; display: flex; flex-direction: column; line-height: 1.3; }
+.act-meta, .att-meta { font-size: 0.72rem; color: #94a3b8; }
+.act-actions { display: flex; align-items: center; gap: 6px; }
+.act-done-sep { font-size: 0.72rem; text-transform: uppercase; color: #94a3b8; margin: 8px 0 2px; letter-spacing: 0.5px; }
+
+.att-name { flex: 1; color: #1d4ed8; text-decoration: none; font-weight: 600; }
+@media (hover: hover) {
+  .att-name:hover { text-decoration: underline; }
+}
+

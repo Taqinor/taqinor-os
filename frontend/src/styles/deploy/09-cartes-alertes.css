@@ -1,0 +1,45 @@
+/* ── Card ─────────────────────────────────────────────── */
+.card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+}
+
+/* ── Alert banners ────────────────────────────────────── */
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+}
+.alert-error {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+.alert-success {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+/* ── Count badge (page header) ────────────────────────── */
+/* LB31 — re-based on the blue tag-8 pair (--tag-8-bg/--tag-8-fg) instead of
+   raw hex: byte-identical light look, dark mode gets the real dark-tag pair
+   instead of a light-blue chip stuck on a dark surface. */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--tag-8-bg);
+  color: var(--tag-8-fg);
+  border-radius: 50px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+

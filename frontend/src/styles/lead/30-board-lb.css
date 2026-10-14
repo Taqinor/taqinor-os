@@ -1,0 +1,1342 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   LB2 — Leads : shell borné view-aware (docs/design/leads-board-blueprint.md
+   D1, contrat CSS exact). Bloc APPEND-ONLY `.lp-*`/`.kb-*`/`.lv-*` — miroir du
+   pattern `.lw-page` (LW13/LW25 ci-dessus) : `.route-fade` (hauteur auto)
+   cassait la chaîne height:100% entre `.layout-content` (scrolleur borné du
+   shell) et `.lp-page` → la page grandissait au contenu (8 649px mesurés en
+   vue kanban, recon2-03 §P0) et la scrollbar horizontale du board gisait sous
+   le fold. On ne borne QUE la route leads via :has() — les autres pages
+   gardent leur croissance naturelle + le scroll de `.layout-content`. ══════ */
+.layout-content > .route-fade:has(> .lp-page) {
+  height: 100%;
+}
+.lp-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+/* Toutes les rangées du shell (header/FilterBar/SavedViewsBar/BulkActionBar/
+   bannières) restent figées à leur hauteur naturelle ; seule la zone de vue
+   s'étire — le cockpit (filtres/KPI/actions) ne défile JAMAIS. */
+.lp-page > :not(.lp-view-area) {
+  flex: 0 0 auto;
+}
+.lp-page > .lp-view-area {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* Défaut (calendrier/graphique/carte) : la zone de vue scrolle verticalement
+     — comportement « page » actuel, mais sous un header/filtres épinglés. */
+  overflow: hidden auto;
+}
+/* Vues « planche » : la zone de vue NE scrolle PAS elle-même — chaque vue
+   possède son propre scrolleur interne (LB41 : `.kb-board` est le scrolleur
+   UNIQUE des deux axes pour kanban/prévision — toutes les étapes défilent
+   ensemble, patron Odoo ; `.lv-wrap` deux axes pour la liste). Piloté par
+   `data-view` (LeadsPage.jsx), zéro logique dupliquée. */
+.lp-page[data-view="kanban"] .lp-view-area,
+.lp-page[data-view="prevision"] .lp-view-area,
+.lp-page[data-view="liste"] .lp-view-area {
+  overflow: hidden;
+}
+/* Les 3 vues denses échappent au cap `.page{max-width:1200px}` : un board
+   full-bleed sous un header centré 1200px paraîtrait cassé (Linear/Trello
+   alignent toolbar et board). Calendrier/graphique/carte gardent le cap
+   (lisibilité). */
+.lp-page[data-view="kanban"],
+.lp-page[data-view="prevision"],
+.lp-page[data-view="liste"] {
+  max-width: none;
+}
+
+/* Liste : thead + colonne nom épinglés — activé dès maintenant (le thead
+   existe déjà), `.lv-sticky-name` posée sur la cellule nom par le refit D4
+   sans retoucher ce bloc. */
+.lv-table thead th {
+  position: sticky;
+  top: 0;
+  /* Paliers LOCAUX au scrolleur .lv-wrap : `isolation: isolate` (posé sur
+     .lv-wrap ci-dessous) confine ces jetons au tableau — ils ne concourent
+     jamais avec le chrome de page (garde MB3 : jamais un z-index en dur). */
+  z-index: var(--z-sticky);
+  background: var(--card);
+}
+/* Le scrolleur crée son PROPRE contexte d'empilement : les paliers sticky du
+   tableau (en-tête/colonne nom/coin) restent internes. */
+.lv-wrap {
+  isolation: isolate;
+}
+@media (min-width: 768px) {
+  .lv-table .lv-sticky-name {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--card);
+  }
+  /* Cellule de COIN (th nom, sticky sur les 2 axes) : au-dessus des autres th
+     (qui glissent dessous au scroll horizontal) — palier local, isolé. */
+  .lv-table thead th.lv-sticky-name {
+    z-index: var(--z-overlay);
+  }
+}
+
+/* Scrollbars fines TOUJOURS visibles (Linear/Notion), tokenisées deux thèmes —
+   sans elles, un scrolleur interne borné mais vide de scrollbar visible reste
+   aussi indécouvrable que le bug qu'on corrige. */
+.kb-board,
+.kb-col-body,
+.lv-wrap {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.kb-board::-webkit-scrollbar {
+  height: 10px;
+}
+.kb-col-body::-webkit-scrollbar {
+  width: 8px;
+}
+.kb-board::-webkit-scrollbar-thumb,
+.kb-col-body::-webkit-scrollbar-thumb,
+.lv-wrap::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
+
+/* LB18 — colgroup à largeurs fixes (ListView.jsx) : sans table-layout:fixed
+   le <colgroup> n'est qu'indicatif — un <select> d'édition en place plus
+   large que le texte affiché ferait quand même danser les colonnes
+   voisines (P3 #14). */
+.lv-table {
+  table-layout: fixed;
+}
+/* Ombre de bord sur la colonne nom épinglée (.lv-sticky-name) une fois que
+   la table a défilé horizontalement — classe togglée par un listener de
+   scroll passif sur .lv-wrap (ListView.jsx), jamais par un re-rendu React. */
+.lv-wrap.lv-scrolled-x .lv-sticky-name {
+  box-shadow: 4px 0 6px -4px rgba(0, 0, 0, 0.25);
+}
+
+/* LB19 — barre d'outils locale de la liste (choix de colonnes, puis LB20 le
+   segmented Plat/Par étape) : HORS du scrolleur .lv-wrap pour rester
+   visible pendant le défilement vertical de la table — même recette flex
+   que .lp-view-area/.kb-board (D1) : .lv-view remplace .lv-wrap comme
+   enfant direct de .lp-view-area, .lv-wrap garde sa règle flex existante
+   inchangée (elle ne dépend pas du nom de son parent). */
+.lv-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lv-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+/* LB20 — option « Par étape » : rangées de groupe collantes SOUS le thead
+   sticky — `--lv-thead-h` est MESURÉE (ResizeObserver, ListView.jsx),
+   jamais un pixel deviné, posée sur .lv-wrap (le repère commun le plus
+   proche entre le thead et les rangées de groupe). */
+.lv-table tr.lv-group td {
+  position: sticky;
+  top: var(--lv-thead-h, 37px);
+  left: 0;
+  z-index: 1;
+  background: var(--muted);
+  padding: 0;
+}
+.lv-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 12px;
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .lv-group-toggle:hover {
+    background: var(--accent, #e2e8f0);
+  }
+}
+.lv-group-toggle:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: -2px;
+}
+.lv-group-chevron {
+  display: inline-block;
+  width: 1em;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+.lv-group-count {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
+.lv-group-total {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--cat-navy, #0b1f3a);
+}
+
+/* LB21 — le nom (.lv-lead-name) est un <button> depuis le refit clavier
+   (élément interactif sémantique, blueprint D4) : reset des styles natifs
+   de bouton par-dessus la règle existante ci-dessus (5357) — APPEND-ONLY,
+   cette règle ne la modifie pas, elle ajoute les propriétés qu'un <button>
+   pose par défaut et qu'un <span> n'avait jamais eues. */
+.lv-lead-name {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.lv-lead-name:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Ligne ouvrable au clavier (LB21) : anneau de focus visible sur tr.lv-row
+   quand elle est focus directement (Tab), pas quand le focus est descendu
+   sur un contrôle interne. */
+.lv-table tbody tr.lv-row:focus-visible {
+  outline: 2px solid var(--cat-gold, #f5a623);
+  outline-offset: -2px;
+}
+
+/* Gap responsive 769-899px (recon-05) : le palier fixe 150px ci-dessus ne
+   s'active qu'à partir de 900px — entre 768 et 900, `.kb-col` retombait à sa
+   largeur desktop (272px) et ne montrait plus que ~3 colonnes sur iPad
+   portrait/petits laptops. Largeur fluide bornée pour ce seul intervalle. */
+@media (min-width: 769px) and (max-width: 899px) {
+  .kb-col {
+    flex: 0 0 clamp(220px, 24vw, 272px);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB9 — Ergonomie du board (docs/design/leads-board-blueprint.md D2) : en-tête
+   riche épinglé (déjà hors du corps scrollant depuis LB2), zone de scroll
+   `.kb-col-body` atteignable au clavier, zone de dépôt en pointillés sur
+   colonne vide. Append-only, même bloc `.kb-*`. ══════════════════════════ */
+
+/* LB41 — l'anneau de focus suit le tabindex : il vit désormais sur le board
+   (scrolleur unique desktop) ET reste sur la colonne (scrolleur mobile).
+   `outline-offset` négatif le ramène À L'INTÉRIEUR du cadre. */
+.kb-board:focus-visible,
+.kb-col:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: -2px;
+}
+
+/* Zone de dépôt d'une colonne vide : surbrillance accentuée pendant le survol
+   d'un drag (au-dessus du halo déjà posé sur `.kb-over` au niveau colonne). */
+.kb-over .kb-col-empty {
+  border-color: var(--kb-accent);
+  background: color-mix(in srgb, var(--kb-accent) 10%, transparent);
+  color: var(--foreground, #0b1f3a);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB10 — Repli de colonne persisté (docs/design/leads-board-blueprint.md D2) :
+   colonne repliée = rail vertical 44px, TOUJOURS une zone droppable (aucune
+   règle `.kb-over`/`.kb-col` de base à dupliquer — `.kb-col-collapsed` ne fait
+   QUE réduire la largeur/réorganiser l'intérieur). ═══════════════════════ */
+.kb-col-collapsed {
+  flex: 0 0 44px;
+  width: 44px;
+  align-items: center;
+}
+
+/* Rangée titre : en repli, seuls le chevron + le compteur restent (le libellé
+   quitte cette rangée pour le rail pivoté ci-dessous) — recentrés. */
+.kb-col-collapsed .kb-col-header {
+  padding: 0.5rem 0.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+.kb-col-collapsed .kb-col-title-row {
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.kb-col-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-col-collapse-btn:hover {
+    background: var(--muted, #f1f5f9);
+    color: var(--foreground, #0b1f3a);
+  }
+}
+.kb-col-collapse-btn:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: 1px;
+}
+
+/* Chevron pivote pour indiquer déplier/replier — un simple `transform`, donc
+   déjà neutralisé sous `prefers-reduced-motion` par le garde global en tête
+   de fichier (transition-property y exclut `transform`). */
+.kb-col-chevron {
+  width: 14px;
+  height: 14px;
+  transition: transform var(--motion-base) ease;
+}
+.kb-col-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
+/* Libellé pivoté du rail replié — lisible de haut en bas, compteur déjà rendu
+   juste au-dessus dans `.kb-col-header`. */
+.kb-col-rail-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+  padding: 0.4rem 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB11 — Drag-to-pan sur l'espace vide du board (features/kanban/
+   usePanScroll.js, docs/design/leads-board-blueprint.md D2). Curseur grab
+   sur le fond (cohérent avec `.kb-card{cursor:grab}` déjà posé) ; grabbing
+   pendant le pan réellement armé (classe posée/retirée par le hook). ═════ */
+.kb-board {
+  cursor: grab;
+}
+.kb-board.kb-board-panning {
+  cursor: grabbing;
+}
+
+/* ===== LB28 — Prévision (ForecastView) : parité clavier KanbanView =====
+   Équivalent clavier du glisser (<select> mois — l'ex-motif StageMover,
+   supprimé côté étapes le 2026-08-02) + hint de drop en pointillés pour une
+   colonne-mois vide (« Non daté » garde son texte neutre — jamais une cible
+   valide, cf. handleDragEnd). */
+.fv-month-mover {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 6px;
+}
+.fv-month-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.78rem;
+}
+.fv-month-status {
+  white-space: nowrap;
+}
+.fv-col-drop-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  margin: 4px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+  text-align: center;
+}
+.kb-over .fv-col-drop-hint {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+}
+
+/* ===== LB29 — Calendrier (CalendarView) : aujourd'hui + relance en retard =====
+   `.cal-cell-today`/`.cal-chip*` sont des classes PARTAGÉES avec MonthGrid/
+   CalendarPage.jsx (VX25) — on ne touche jamais la règle générique (gold,
+   ci-dessus dans ce fichier) : ces overrides sont scopés sous
+   `.lp-page[data-view="calendrier"]` (page leads UNIQUEMENT), la même
+   technique de scoping que le contrat de hauteur LB2. */
+.lp-page[data-view="calendrier"] .cal-cell-today {
+  box-shadow: inset 0 0 0 2px var(--module-accent-azur);
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, var(--card));
+}
+.lp-page[data-view="calendrier"] .cal-cell-today .cal-day-number {
+  background: var(--module-accent-azur);
+  color: var(--info-foreground);
+  border-radius: 999px;
+}
+/* Relance en retard : soulignée destructive (un lead perdu porte déjà sa
+   propre pastille rouge — jamais les deux signaux à la fois). */
+.cal-chip-late .cal-chip-name {
+  text-decoration: underline;
+  text-decoration-color: var(--destructive);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB24 — Bandeau KPI = filtres (docs/design/leads-board-blueprint.md D5, « le
+   cockpit du matin ») : rangée compacte entre l'en-tête et FilterBar, scroll-x
+   sur mobile (jamais un wrap qui pousse le contenu). Tuiles 1-3 sont des
+   boutons-filtres (`aria-pressed`) accentés `--module-accent-azur` quand
+   actifs ; la tuile Pipeline (`.lp-kpi-tile-display`) est un AFFICHAGE seul,
+   jamais un filtre. ══════════════════════════════════════════════════════ */
+.lp-kpi-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.lp-kpi-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  flex: 0 0 auto;
+  min-width: 108px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  background: var(--card, #fff);
+  color: var(--foreground, #1e293b);
+  cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast),
+              color var(--motion-fast);
+}
+.lp-kpi-tile[aria-pressed="true"] {
+  border-color: var(--module-accent-azur);
+  background: color-mix(in srgb, var(--module-accent-azur) 12%, var(--card));
+  color: var(--module-accent-azur);
+}
+@media (hover: hover) {
+  .lp-kpi-tile:hover { background: var(--muted, #f1f5f9); }
+  .lp-kpi-tile[aria-pressed="true"]:hover {
+    background: color-mix(in srgb, var(--module-accent-azur) 18%, var(--card));
+  }
+}
+/* Tuile Pipeline : affichage seul (jamais interactive — pas de :hover/press). */
+.lp-kpi-tile-display {
+  cursor: default;
+}
+.lp-kpi-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.lp-kpi-label {
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+.lp-kpi-tile[aria-pressed="true"] .lp-kpi-label { color: inherit; }
+@media (max-width: 768px) {
+  .lp-kpi-tile { min-width: 96px; padding: 5px 10px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB25 — Barre bulk FLOTTANTE (blueprint D5) : l'ancienne barre inline
+   (`.bulk-bar`) poussait le layout à chaque sélection (le board sautait de
+   hauteur). Toolbar bas-centre fixed, même palier `--z-sticky` que le reste
+   du chrome collant (FAB/tabbar), safe-area + AU-DESSUS de la tabbar mobile
+   (même calcul que `.fab-button` ci-dessus), glissée depuis le bas. La règle
+   globale `prefers-reduced-motion` (tout en haut de ce fichier) neutralise
+   déjà l'animation (`animation-duration:0.01ms`) — aucun garde dédié requis.
+   MÊME composant BulkActionBar à l'intérieur, seul le conteneur change. ═══ */
+.lp-bulk-float {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: var(--z-sticky, 1100);
+  width: min(92vw, 720px);
+  animation: lp-bulk-float-in var(--motion-base) var(--ease-out);
+}
+.lp-bulk-float .bulk-bar {
+  margin: 0;
+  box-shadow: var(--shadow-lg);
+}
+@keyframes lp-bulk-float-in {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (max-width: 768px) {
+  .lp-bulk-float {
+    /* Même réserve que le FAB (VX42) : 52px de tabbar + son safe-area. */
+    bottom: calc(52px + env(safe-area-inset-bottom) + 12px);
+    width: calc(100vw - 24px);
+  }
+}
+
+/* LB26 — « Copier le lien » sur une puce de vue enregistrée (blueprint D5) :
+   même famille visuelle que `.lp-saved-view-del` (ligne ~5792 ci-dessus,
+   FG11) — bouton neutre entre le libellé et la suppression, jamais teinté
+   destructif (ce n'est pas une action dangereuse). */
+.lp-saved-view-share {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border, #e2e8f0);
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+@media (hover: hover) {
+  .lp-saved-view-share:hover {
+    background: var(--muted, #f1f5f9);
+    color: var(--foreground, #1e293b);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   LB27 — Squelette EN FORME dans le shell (docs/design/leads-board-blueprint.md
+   I9) : même contrat que `.lw-skeleton-swap` (LW13/LW25 ci-dessus) — le
+   conteneur FadeSwap doit s'étirer en flex:1 pour hériter de la chaîne de
+   hauteur D1 (`.lp-view-area`), le calque actif de FadeSwap (`[aria-hidden]`,
+   posé sur SES DEUX enfants) hérite `height:100%` + redevient flex column,
+   sinon le squelette/contenu s'affaisse à sa hauteur intrinsèque. ══════════ */
+.lp-view-skeleton-swap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lp-view-skeleton-swap > [aria-hidden] {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.lp-skeleton-kanban {
+  display: flex;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+  padding: 4px 2px;
+}
+.lp-skeleton-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 0 0 272px;
+  min-width: 220px;
+}
+.lp-skeleton-liste {
+  height: 100%;
+  overflow: hidden;
+  padding: 4px 2px;
+}
+
+/* ===========================================================================
+   LB13 — Carte lead : anatomie à 4 zones (blueprint D3). Bloc append-only
+   `.kb-card*` : nom → valeur → UNE ligne d'action → pied. Tokens sémantiques
+   uniquement (aucun hex). Complète/écrase les règles `.kb-card*` plus haut.
+   =========================================================================== */
+
+/* Checkbox de sélection : présente en permanence mais révélée seulement au
+   survol / focus / sélection active (bruit en moins au repos, blueprint D3).
+   Toujours visible au toucher — (hover: none). LB17 durcit la cible ≥44px. */
+.kb-card-check {
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease;
+}
+/* Révélation non-hover (focus, sélection) — s'applique partout, tactile inclus. */
+.kb-card:focus-within .kb-card-check,
+.kb-card-selected .kb-card-check,
+.kb-card-selection-active .kb-card-check {
+  opacity: 1;
+}
+/* Révélation au survol — gardée par @media (hover: hover) (VX53 : pas de hover
+   collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-check { opacity: 1; }
+}
+@media (hover: none) {
+  .kb-card-check { opacity: 1; }
+}
+
+/* Formulaire « Marquer perdu » (PerduPopover, partagé). Le bouton ✗ 20×20 de
+   la face a été retiré en LB15 (déplacé dans le menu ••• → PerduPopover). */
+.kb-perdu-form { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
+.kb-perdu-title { font-size: 13px; font-weight: 500; margin: 0; }
+.kb-perdu-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* Zone VALEUR : montant (devis sinon estimé) + chip type d'installation. */
+.kb-card-value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+.kb-card-montant {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+.kb-card-type {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* UNE ligne d'action (précédence D3). Une seule tonalité à la fois. */
+.kb-card-actionline {
+  margin-top: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.kb-actionline-perdu {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--destructive);
+}
+.kb-actionline-danger { color: var(--destructive); font-weight: 600; }
+.kb-actionline-warning { color: var(--warning-text); font-weight: 600; }
+.kb-actionline-info { color: var(--info); }
+.kb-actionline-muted { color: var(--muted-foreground); }
+.kb-act-overdue { color: var(--destructive); }
+.kb-act-today { color: var(--warning-text); }
+.kb-act-upcoming { color: var(--success); }
+/* Variante « lien » (bouton reset) : planifier une relance / renseigner la facture. */
+.kb-actionline-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: var(--info);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .kb-actionline-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+}
+.kb-actionline-link:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
+}
+
+/* Tag « +N » (repli des tags au-delà de 2). */
+.kb-tag-more {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+/* PIED — méta canal · ville, readiness, pill d'âge. */
+.kb-foot-meta {
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.kb-readi { display: inline-flex; align-items: center; gap: 4px; }
+.kb-readi-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted-foreground);
+}
+.kb-readi-devis { color: var(--primary-text); }
+
+/* Pill d'âge « rotting » (absorbe « Inactif N j » + horloge). LB13 : neutre ;
+   LB14 la teinte via [data-rot]. */
+.kb-age-pill {
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.64rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Lead perdu : atténue aussi la nouvelle zone valeur. */
+.kb-card-perdu .kb-card-value { filter: saturate(0.5); opacity: 0.9; }
+
+/* Actions rapides révélées au survol (tel / WhatsApp / ⚡ Devis auto) —
+   permanentes au toucher (hover: none). Les hrefs tel/wa restent TOUJOURS
+   dans le DOM (contrat). Trello-like : la carte s'étire légèrement au survol.
+   LB15 posera ici le menu ••• ; LB17 durcit les cibles ≥44px. */
+.kb-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height var(--motion-base) ease, opacity var(--motion-base) ease,
+    margin-top var(--motion-base) ease;
+}
+@media (hover: hover) {
+  .kb-card:hover .kb-quick,
+  .kb-card:focus-within .kb-quick {
+    max-height: 3rem;
+    opacity: 1;
+    margin-top: 0.4rem;
+  }
+}
+@media (hover: none) {
+  .kb-quick {
+    max-height: none;
+    overflow: visible;
+    opacity: 1;
+    margin-top: 0.4rem;
+    justify-content: flex-end;
+  }
+}
+.kb-quick-tel,
+.kb-quick-wa {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.95rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+.kb-quick-tel { color: var(--success); }
+.kb-quick-wa { color: var(--brand-whatsapp); }
+@media (hover: hover) {
+  .kb-quick-tel:hover { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+  .kb-quick-wa:hover { border-color: color-mix(in srgb, var(--brand-whatsapp) 45%, transparent); }
+}
+.kb-quick-tel:focus-visible,
+.kb-quick-wa:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* ===========================================================================
+   LB14 — Rampe « rotting » sur la carte. `data-rot` (ok|warning|danger) est
+   posé sur `article.kb-card` (features/crm/workspace/rotting.js, réutilisé tel
+   quel sur stage_since_days). La pill d'âge se teinte ; un liseré intérieur
+   gauche 3px n'apparaît QU'EN danger (discret). Jamais en SIGNED/COLD/perdu
+   (rot = 'ok' par construction). Tokens sémantiques uniquement.
+   =========================================================================== */
+.kb-card[data-rot='warning'] .kb-age-pill {
+  background: color-mix(in srgb, var(--warning) 18%, var(--card));
+  color: var(--warning-text);
+}
+.kb-card[data-rot='danger'] .kb-age-pill {
+  background: color-mix(in srgb, var(--destructive) 18%, var(--card));
+  color: var(--destructive);
+  font-weight: 700;
+}
+/* Liseré intérieur gauche 3px, UNIQUEMENT en danger — pseudo dédié (::before
+   est déjà la poignée de glissé). N'altère pas la boîte (pas de décalage). */
+.kb-card[data-rot='danger']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius, 10px) 0 0 var(--radius, 10px);
+  background: var(--destructive);
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   LB15 — Menu ••• (DropdownMenu) révélé au survol/focus, permanent au toucher.
+   Le bouton ✗ 20×20 a quitté la face : la popover « Marquer perdu » est
+   désormais le composant partagé PerduPopover, contrôlé par le menu et ancré
+   au coin de la carte. LB17 durcira la cible tactile ≥44px.
+   =========================================================================== */
+.kb-card-menu {
+  flex: 0 0 auto;
+  display: inline-flex;
+}
+.kb-card-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: var(--radius-sm, 6px);
+  opacity: 0;
+  transition: opacity var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+.kb-card:focus-within .kb-card-menu-btn,
+.kb-card-menu-btn[data-state='open'] {
+  opacity: 1;
+}
+.kb-card-menu-btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  opacity: 1;
+}
+/* Révélation + fond au survol — gardés (VX53 : pas de hover collant en tactile). */
+@media (hover: hover) {
+  .kb-card:hover .kb-card-menu-btn { opacity: 1; }
+  .kb-card-menu-btn:hover {
+    background: var(--muted);
+    color: var(--foreground);
+  }
+}
+@media (hover: none) {
+  .kb-card-menu-btn { opacity: 1; }
+}
+/* Ancre invisible de la popover « Marquer perdu » contrôlée (coin haut-droit). */
+.kb-perdu-anchor {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 0;
+  height: 0;
+}
+
+/* ===========================================================================
+   LB17 — Tactile (cibles ≥44px par STYLESHEET, jamais une taille inline) + PII.
+   La case et le bouton ••• gardent leur taille visuelle en pointeur fin ; en
+   pointeur COARSE, un overlay ::before de 44×44 étend la zone de frappe SANS
+   décaler la mise en page (tue le sliver 16px horizontal — recon-05 touch).
+   Les actions rapides tel/WA/⚡ passent à 44px au toucher (rangée dédiée).
+   =========================================================================== */
+.kb-check-hit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+@media (pointer: coarse) {
+  .kb-check-hit,
+  .kb-card-menu-btn { position: relative; }
+  .kb-check-hit::before,
+  .kb-card-menu-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .kb-quick-tel,
+  .kb-quick-wa,
+  .kb-flash.kb-quick-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  /* CAD177 (APX8) — le plancher global `button { min-height: 44px }` du bloc
+     tactile écrasait la boîte 24 px du menu ••• ET gonflait le pied de carte
+     (sélecteur de responsable) à 44 px : la carte tactile passait de ~105 à
+     154 px (3 rangées de 44 px au lieu d'une seule). La BOÎTE rétrécit, la
+     ZONE de frappe non (même idiome overlay ::before que ci-dessus ; le
+     responsable : 44 × 28 px, sans empiéter sur la rangée d'actions rapides). */
+  .kb-card-menu-btn,
+  input[type='checkbox'].kb-card-check { min-height: 0; }
+  .kb-card--lead .kb-card-assignee .ap-trigger {
+    min-height: 0;
+    position: relative;
+  }
+  .kb-card--lead .kb-card-assignee .ap-trigger::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 28px;
+    transform: translate(-50%, -50%);
+  }
+}
+/* Cadenas PII : à la place des actions d'appel quand `lead.pii_masked`. */
+.kb-quick-lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: var(--muted-foreground);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm, 8px);
+}
+
+/* ═══ LB43 — ligne de contrôle UNIQUE façon Odoo (retour fondateur) ═══════
+   Une seule rangée : titre+compteur → recherche+facettes+« Filtres ▾ »
+   (FilterBar, au centre, extensible) → ⋯ / + Nouveau / sélecteur de vues.
+   Sous 768px la recherche décroche en 2e ligne (Odoo : flex-wrap) — le
+   chrome au-dessus du board passe de ~3 rangées à 2 lignes minces. */
+.lp-controlbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+}
+.lp-controlbar .lp-cb-title {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.lp-controlbar .fb-bar {
+  flex: 1 1 320px;
+  min-width: 240px;
+  margin-top: 0;
+}
+.lp-controlbar .lp-header-actions {
+  margin-left: auto;
+}
+
+/* Facettes Odoo (web.SearchBar.Facets) : une chip « Dimension : valeur ✕ »
+   par filtre actif, dans la barre — l'état des filtres se LIT d'un coup
+   d'œil et se retire d'un clic, sans ouvrir le panneau. */
+.fb-facet {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 220px;
+  padding: 0.15rem 0.25rem 0.15rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--module-accent-azur, #2563eb) 35%, transparent);
+  background: color-mix(in srgb, var(--module-accent-azur, #2563eb) 10%, var(--card, #fff));
+  border-radius: 999px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.fb-facet-dim {
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+.fb-facet-val {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fb-facet-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  padding: 0.15rem;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+}
+.fb-facet-x svg { width: 12px; height: 12px; }
+@media (hover: hover) {
+  .fb-facet-x:hover {
+    background: color-mix(in srgb, var(--module-accent-azur, #2563eb) 18%, transparent);
+    color: var(--foreground, #0b1f3a);
+  }
+}
+
+/* Le panneau « Filtres » (Odoo SearchBarMenu) : toutes les dimensions en
+   pile verticale, borné à l'écran et scrollable — un seul gabarit
+   desktop/mobile. */
+.fb-panel {
+  display: grid;
+  gap: 0.5rem;
+  max-width: calc(100vw - 1.5rem);
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+.fb-panel .fb-select {
+  max-width: none;
+  min-width: 0;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  /* LB47 — la barre n'est plus une ligne pleine largeur : [🔍|Filtres]
+     compacts DANS l'unique ligne de chrome ; seule la recherche DÉPLIÉE
+     (.fb-search-expanded) décroche en ligne transitoire pleine largeur. */
+  .lp-controlbar .fb-bar {
+    order: 0;
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  .lp-controlbar .lp-header-actions {
+    margin-left: auto;
+  }
+  /* LB42 — densité Odoo mobile : le chrome au-dessus du board rend l'écran
+     au board (la plainte « la partie qui reste est toute petite »). Titre
+     ramené à une taille de barre d'outils, séparateur inutile masqué,
+     tuiles KPI resserrées, gouttières réduites. */
+  .lp-controlbar {
+    gap: 0.4rem 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .lp-controlbar .lp-cb-title {
+    font-size: 1.15rem;
+    margin-right: auto;
+  }
+  .lp-controlbar .lp-header-sep {
+    display: none;
+  }
+  /* Gotcha flex-wrap : le bloc d'actions casse la ligne sur sa largeur de
+     CONTENU (~430px) avant même de pouvoir rétrécir — `display:contents`
+     fait participer chaque bouton individuellement au packing : ligne 1 =
+     titre + ⋯ + Nouveau, la recherche (order:3) en ligne 2, le sélecteur de
+     vues (order:4) en dernier. */
+  .lp-controlbar .lp-header-actions {
+    display: contents;
+  }
+  .lp-controlbar .lp-header-actions .vs-group {
+    order: 4;
+  }
+  .lp-kpi-tile {
+    min-width: 88px;
+    padding: 4px 10px;
+  }
+  .lp-kpi-value {
+    font-size: 0.95rem;
+  }
+  .lp-page[data-view="kanban"] .lp-view-area,
+  .lp-page[data-view="prevision"] .lp-view-area {
+    padding: 0.25rem;
+  }
+}
+
+/* ═══ LB46/LB47 — cockpit UNE ligne (fondateur 2026-07-20 05h) ═══════════
+   « je ne vois même pas un lead complet — trop de choses en haut » : les
+   tuiles KPI deviennent des CHIPS compactes DANS la ligne de contrôle, les
+   chips de vues enregistrées aussi ; plus aucune rangée dédiée. */
+.lp-controlbar .lp-kpi-strip {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+.lp-controlbar .lp-kpi-tile {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.lp-controlbar .lp-kpi-value {
+  font-size: 0.92rem;
+}
+.lp-saved-views-inline {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.lp-saved-view-star {
+  color: var(--warning, #f5a623);
+  margin-right: 0.15rem;
+}
+.lp-saved-view-move {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.65rem;
+  color: var(--muted-foreground, #64748b);
+}
+.lp-saved-view-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (hover: hover) {
+  .lp-saved-view-move:not(:disabled):hover { color: var(--foreground, #0b1f3a); }
+}
+
+/* LB47 — mobile : recherche dépliée = ligne transitoire pleine largeur ;
+   facettes + chips fréquentes + bandeau KPI vivent EN TÊTE du panneau
+   Filtres (pile verticale, chips en rangée fluide). */
+@media (max-width: 768px) {
+  .fb-search-expanded {
+    flex: 1 1 100%;
+    order: 9;
+    min-width: 0;
+  }
+}
+.fb-panel-facets,
+.fb-panel-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.fb-panel .lp-kpi-strip {
+  flex-wrap: wrap;
+  overflow-x: visible;
+  padding: 0;
+}
+.fb-panel .lp-kpi-tile {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  min-width: 0;
+}
+
+/* LB46 — la ligne de contrôle doit rester MINCE : le titre h2 hérite de
+   --text-h1 (~2rem, .page-header h2) — ramené à une taille de barre d'outils
+   dans le cockpit une-ligne (mesuré : 80px → ~56px de rangée). */
+.lp-controlbar .lp-cb-title {
+  font-size: 1.35rem;
+}
+
+/* LB46 — la barre recherche/filtres est CONTENT-SIZED dans le cockpit une
+   ligne : `flex:1 1 320px` la faisait GRANDIR (recherche pleine largeur →
+   chips rejetées sur une 2e ligne interne → rangée gonflée à 80px, mesuré).
+   La recherche garde une base fixe confortable et le tout rétrécit
+   gracieusement avant de se replier. */
+@media (min-width: 769px) {
+  .lp-controlbar .fb-bar {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .lp-controlbar .fb-search {
+    flex: 0 1 280px;
+    min-width: 180px;
+  }
+}
+
+/* ═══ LB50-LB53 — cockpit final (blueprint leads-cockpit-blueprint.md) :
+   ~52px de chrome au repos. Rangée contrôle 44px ; rangée facettes 32px
+   CONDITIONNELLE (hors DOM à vide) ; PipelineTotal masqué < 1600px. ═══ */
+.lvp-trigger {
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+}
+.lvp-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lvp-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground, #64748b);
+}
+.lvp-menu {
+  min-width: 260px;
+}
+.lvp-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.lvp-row .lvp-apply {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.lvp-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  padding-right: 0.35rem;
+}
+.lp-quick-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.lp-pipeline-total {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted-foreground, #64748b);
+  white-space: nowrap;
+}
+@media (max-width: 1600px) {
+  .lp-controlbar > .lp-pipeline-total { display: none; }
+}
+.lp-facet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  margin-top: -0.5rem;
+}
+.lp-controlbar {
+  min-height: 44px;
+}
+.lp-controlbar .lvp-trigger .count-badge {
+  font-size: 0.72rem;
+}
+/* Le panneau Filtres mobile empile chips rapides + total proprement. */
+.fb-panel .lp-quick-chips { flex-wrap: wrap; }
+.fb-panel .lp-pipeline-total { display: block; }
+
+/* LB53 — trims mesurés : 128px → ≤100px desktop (marge héritée de
+   .page-header) ; mobile : le trigger du picker se compacte pour que la
+   ligne [picker|🔍|Filtres|⋯] ne se replie jamais (86px mesurés → 1 ligne). */
+.lp-controlbar {
+  margin-bottom: 0.4rem;
+}
+.lp-page[data-view="kanban"] .lp-view-area,
+.lp-page[data-view="prevision"] .lp-view-area,
+.lp-page[data-view="liste"] .lp-view-area {
+  padding-top: 0.25rem;
+}
+@media (max-width: 768px) {
+  .lvp-trigger {
+    font-size: 1rem;
+    padding: 0.25rem 0.3rem;
+  }
+  .lvp-name {
+    max-width: 96px;
+  }
+}
+
+/* LB53 — dernier trim (102 → ~90px) : le board porte déjà son propre padding
+   interne (0.75rem) — la zone de vue n'a pas besoin d'en rajouter au-dessus. */
+.lp-page[data-view="kanban"] .lp-view-area,
+.lp-page[data-view="prevision"] .lp-view-area,
+.lp-page[data-view="liste"] .lp-view-area {
+  padding-top: 0;
+}
+.lp-controlbar {
+  margin-bottom: 0.3rem;
+}
+
+/* LB53 — la paire [recherche|Filtres] ne se sépare JAMAIS au desktop (le
+   wrap interne posait « Filtres » sous l'input → rangée doublée, vu à la
+   revue visuelle). */
+@media (min-width: 769px) {
+  .lp-controlbar .fb-bar {
+    flex-wrap: nowrap;
+  }
+}
+
+/* CAD177 (APX8, mesuré au rendu réel rejoué du nocturne 37573380397) — les
+   chips rapides ont gagné « Touche due » et « ≥ 7 tentatives » : leur rangée
+   (~720 px, `flex-wrap: wrap`) ne tenait plus à côté de rien et la ligne de
+   contrôle passait à TROIS rangées en 1440×900 (128 px) — la capacité du
+   board tombait de 7 à 6 cartes, et à 4 en 1280×720. Au bureau, les chips
+   restent sur UNE rangée qui défile horizontalement dans la place restante
+   (les ⋯ / + Nouveau / sélecteur gardent leur rangée) : deux rangées
+   minces au plus, comme promis par LB43/LB53. */
+@media (min-width: 769px) {
+  .lp-controlbar .lp-quick-chips {
+    flex: 1 1 240px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .lp-controlbar .lp-quick-chips::-webkit-scrollbar { display: none; }
+  .lp-controlbar .lp-quick-chips > * { flex: 0 0 auto; }
+}
+
+/* CAD177 (LB33) — `.data-table { overflow: hidden }` (coins arrondis) fait de
+   la TABLE un conteneur de défilement : les `th` sticky (thead + colonne nom)
+   s'y accrochaient au lieu du scrolleur `.lv-wrap` et partaient avec le
+   contenu (thead à −1939 px au défilement, nocturne 37573380397 ; reproduit
+   au rendu réel : hidden → le th suit, clip → il reste épinglé). `clip`
+   rogne pareil SANS créer de conteneur de défilement (repli `visible` pour
+   un moteur qui ignorerait `clip`). */
+.lv-table {
+  overflow: visible;
+  overflow: clip;
+}
+
+/* CAD177 (APX8) — densité COMPACTE de la liste leads : les contrôles en ligne
+   (bouton « Marquer perdu » figé à 32 px, responsable, étoiles, cellules
+   éditables 27-29 px) portaient la rangée à 45 px — 14 lignes visibles en
+   1440×900 contre 16 promises. En compact, le bouton suit le jeton de
+   densité (`--control-h-sm`, 28 px) et le padding vertical de la liste
+   descend à 4 px : 38 px par rangée, 16 lignes. Le confort reste inchangé. */
+[data-density='compact'] .lv-table td {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+[data-density='compact'] .lv-table td .size-8 {
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+}
+
+/* CAD177 (APX8) — téléphone : le bouton « Archivés » (incident 02/10) a
+   ajouté une icône à la ligne [titre|🔍|Filtres|⋯] ; à 390 px elle débordait
+   de 3 px et « ⋯ » partait seul sur une 2e rangée (≈50 px de board perdus,
+   3 cartes au lieu de 4). Gouttières resserrées : la ligne tient à nouveau. */
+@media (max-width: 768px) {
+  .lp-controlbar { column-gap: 0.3rem; }
+  .lp-controlbar .fb-bar { gap: 0.3rem; }
+  .lvp-trigger { padding: 0.25rem 0.2rem; }
+}
+
+/* LB40 — la barre bulk flottante ne couvre plus la scrollbar du board.
+   `.lp-bulk-float` (LB25) est fixed bas-CENTRE : pendant une sélection elle
+   se posait pile sur le milieu de la scrollbar horizontale de `.kb-board`
+   (lane de 10px collée au bas du board, elle-même au bas du viewport) — la
+   poignée devenait inattrapable exactement là où on la vise. On remonte donc
+   la barre d'une hauteur de scrollbar + un interstice, via un token partagé
+   avec la lane elle-meme pour que les deux ne puissent plus deriver.
+   Bloc APPEND-ONLY (surcharge par ordre de cascade, specificite identique) :
+   la regle LB25 d'origine reste lisible telle qu'ecrite. */
+:root {
+  /* Meme valeur que `.kb-board::-webkit-scrollbar { height }` (bloc LB2). */
+  --kb-scrollbar-h: 10px;
+  --lp-bulk-float-gap: 6px;
+}
+.lp-bulk-float {
+  bottom: calc(
+    max(20px, env(safe-area-inset-bottom))
+    + var(--kb-scrollbar-h) + var(--lp-bulk-float-gap)
+  );
+}
+@media (max-width: 768px) {
+  /* Meme reserve que le FAB (VX42 : 52px de tabbar + safe-area), a laquelle
+     s'ajoute desormais la lane de scrollbar. */
+  .lp-bulk-float {
+    bottom: calc(
+      52px + env(safe-area-inset-bottom) + 12px
+      + var(--kb-scrollbar-h) + var(--lp-bulk-float-gap)
+    );
+  }
+}
+

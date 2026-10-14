@@ -1,0 +1,83 @@
+/* VX87 — CallLogPopover : journal d'appel en un geste (issue + note +
+   prochaine action), le tout dans le popover ouvert depuis LeadForm/LeadCard/
+   ListView. */
+.clp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clp-title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--foreground, #0b1f3a);
+}
+
+.clp-outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.clp-outcome-btn {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--card, #fff);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.clp-outcome-btn-active {
+  background: var(--primary, #e8b54a);
+  border-color: var(--primary, #e8b54a);
+  color: var(--primary-foreground, #1a1505);
+  font-weight: 600;
+}
+
+.clp-note { font-size: 0.8rem; }
+
+.clp-next-action {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.clp-next-action-label {
+  font-size: 0.76rem;
+  color: var(--muted-foreground, #5a6488);
+}
+
+.clp-next-action-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.clp-next-btn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--muted, #eef1f8);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.clp-next-btn-active {
+  background: var(--color-info, #2342b5);
+  border-color: var(--color-info, #2342b5);
+  color: #fff;
+  font-weight: 600;
+}
+
+.clp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+

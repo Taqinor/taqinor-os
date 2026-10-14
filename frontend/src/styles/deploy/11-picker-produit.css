@@ -1,0 +1,105 @@
+/* ── Picker produit du générateur (catégorie → marque → article) ── */
+.pp-root { position: relative; }
+.pp-trigger {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-placeholder { color: #94a3b8; }
+.pp-pop {
+  position: absolute;
+  /* MB3 — barème de tokens : le picker produit est un POPOVER. À 300 (en dur)
+     il passait SOUS les modales (--z-modal 1300) → ouvert dans une modale, la
+     liste se cachait derrière. --z-popover (1400) le place au-dessus des
+     modales, aligné sur les popovers /src/ui (Combobox/Select/ProduitPicker).
+     La sticky `.pp-cat` (z-index:1) plus bas reste locale : elle vit dans le
+     contexte d'empilement propre de .pp-pop, sans lien avec le barème global. */
+  z-index: var(--z-popover, 1400);
+  top: calc(100% + 4px);
+  left: 0;
+  /* MB2 — min(), jamais max() : max(100%, 380px) imposait 380px de large sur
+     un téléphone de 375px (débordement horizontal garanti). min() épouse le
+     déclencheur et plafonne à 380px partout. */
+  width: min(100%, 380px);
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-top: 2px solid var(--cat-gold);
+  border-radius: 10px;
+  box-shadow: 0 16px 44px rgba(11, 31, 58, 0.18);
+  overflow: hidden;
+}
+.pp-search {
+  margin: 8px;
+  width: calc(100% - 16px);
+}
+.pp-list { max-height: 300px; overflow-y: auto; padding-bottom: 6px; }
+.pp-cat {
+  font-size: 0.6563rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #fff;
+  background: var(--cat-navy);
+  padding: 4px 10px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.pp-brand {
+  font-size: 0.6563rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--cat-gold);
+  padding: 5px 10px 1px;
+}
+.pp-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: #0f172a;
+}
+.pp-item.cursor { background: var(--cat-gold-soft); }
+.pp-item.pp-off { color: #b6c2d2; cursor: not-allowed; }
+.pp-item-nom {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.pp-item-spec {
+  font-size: 0.6563rem;
+  font-weight: 700;
+  color: var(--cat-navy);
+  background: #eef2f7;
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.pp-item.pp-off .pp-item-spec { color: #b6c2d2; }
+.pp-item-prix {
+  font-size: 0.71rem;
+  font-weight: 700;
+  color: var(--cat-navy);
+  white-space: nowrap;
+}
+.pp-item.pp-off .pp-item-prix {
+  color: #b45309;
+  font-style: italic;
+  font-weight: 600;
+}
+.pp-clear { color: #64748b; font-style: italic; }
+.pp-empty { padding: 12px; font-size: 0.78rem; color: #94a3b8; }
+

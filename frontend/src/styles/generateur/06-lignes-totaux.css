@@ -1,0 +1,122 @@
+/* ── Lines table ──────────────────────────────────────── */
+/* VX17 — tableau de lignes : tokens de thème plutôt qu'hex codés en dur
+   (fonctionne en clair ET sombre). */
+.lines-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.lines-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.lines-table th {
+  background: var(--muted);
+  padding: 8px 10px;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  /* VX122 — même token que .data-table th (remplace 0.04em codé en dur). */
+  letter-spacing: var(--text-eyebrow-tracking);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.lines-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.lines-table tbody tr:last-child td { border-bottom: none; }
+@media (hover: hover) {
+  .lines-table tbody tr:hover { background: var(--muted); }
+}
+
+.col-num { width: 90px; text-align: right; }
+.col-del { width: 32px; }
+/* PVORD (fondateur 19/08/2026) — monter/descendre une ligne de devis. */
+.col-ordre { width: 60px; }
+.line-reorder-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.line-reorder-buttons button:disabled {
+  opacity: 0.35;
+}
+
+.line-total {
+  text-align: right;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+}
+
+.btn-icon-danger {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--motion-base), color var(--motion-base);
+}
+@media (hover: hover) {
+  .btn-icon-danger:hover { background: #fee2e2; color: #ef4444; }
+}
+
+/* ── Devis totals ─────────────────────────────────────── */
+.devis-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: flex-end;
+  min-width: 260px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.devis-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+  color: #475569;
+}
+
+.devis-total-row strong { color: #1e293b; }
+
+.devis-total-discount { color: #15803d; }
+
+/* VX5 — total TTC = chiffre héros : data typography `.num` (police
+   d'affichage + tabular-nums slashed-zero + tracking resserré) pour aligner
+   la colonne monétaire. */
+.devis-total-ttc {
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 10px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+.devis-total-ttc span,
+.devis-total-ttc strong { color: var(--foreground); }
+
