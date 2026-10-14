@@ -104,6 +104,23 @@ class ResolutionVueDefautTests(TestCase):
         res = self.api.get(f'{URL}?defaut=1')
         self.assertEqual(res.status_code, 400)
 
+    def test_schema_liste_ou_defaut_non_repagine(self):
+        """ERR-ENF11-FUZZ-CORE (api-fuzz « Response violates schema ») — la
+        réponse 200 publiée est ``oneOf`` [page, {vue}] elle-même, jamais une
+        page dont chaque ligne serait une page ou ``{vue}``."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/core/', include('core.urls'))]).get_schema(
+                request=None, public=True)
+        reponse = schema['paths']['/api/django/core/vues/']['get'][
+            'responses']['200']['content']['application/json']['schema']
+        self.assertEqual(
+            reponse, {'$ref': '#/components/schemas/VuesListeOuDefaut'})
+        self.assertIn(
+            'oneOf', schema['components']['schemas']['VuesListeOuDefaut'])
+
     def test_list_without_defaut_is_unchanged(self):
         _vue(self.company, nom='A', est_defaut=True)
         _vue(self.company, nom='B')
