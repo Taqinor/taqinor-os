@@ -145,12 +145,6 @@ API accepted schema-violating request|GET /api/django/parametres/statuts/
 API accepted schema-violating request|GET /api/django/parametres/taux-tva/
 API accepted schema-violating request|GET /api/django/parametres/traductions/
 API accepted schema-violating request|GET /api/django/parametres/unites-mesure/
-API accepted schema-violating request|GET /api/django/portail/acceptations-devis-portail/
-API accepted schema-violating request|GET /api/django/portail/comptes-portail/
-API accepted schema-violating request|GET /api/django/portail/demandes-ticket-portail/
-API accepted schema-violating request|GET /api/django/portail/documents-client-portail/
-API accepted schema-violating request|GET /api/django/portail/jalons-chantier-portail/
-API accepted schema-violating request|GET /api/django/portail/paiements-facture-portail/
 API accepted schema-violating request|GET /api/django/publicapi/keys/
 API accepted schema-violating request|GET /api/django/publicapi/webhooks/
 API accepted schema-violating request|GET /api/django/records/activity-types/
@@ -296,7 +290,6 @@ API accepted schema-violating request|PATCH /api/django/parametres/messages/
 API accepted schema-violating request|PATCH /api/django/parametres/taux-tva/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/traductions/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/unites-mesure/{id}/
-API accepted schema-violating request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
 API accepted schema-violating request|PATCH /api/django/records/activities/{id}/
 API accepted schema-violating request|PATCH /api/django/records/tags/{id}/
 API accepted schema-violating request|PATCH /api/django/ventes/listes-prix/{id}/
@@ -345,7 +338,6 @@ API accepted schema-violating request|POST /api/django/parametres/tarification/r
 API accepted schema-violating request|POST /api/django/parametres/taux-tva/
 API accepted schema-violating request|POST /api/django/parametres/traductions/
 API accepted schema-violating request|POST /api/django/parametres/unites-mesure/
-API accepted schema-violating request|POST /api/django/portail/demandes-ticket-portail/
 API accepted schema-violating request|POST /api/django/publicapi/sandbox/try/
 API accepted schema-violating request|POST /api/django/records/activities/
 API accepted schema-violating request|POST /api/django/records/activities/{id}/snooze/
@@ -381,7 +373,6 @@ API accepted schema-violating request|PUT /api/django/parametres/taux-tva/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/traductions/bulk/
 API accepted schema-violating request|PUT /api/django/parametres/traductions/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/unites-mesure/{id}/
-API accepted schema-violating request|PUT /api/django/portail/demandes-ticket-portail/{id}/
 API accepted schema-violating request|PUT /api/django/records/activities/{id}/
 API accepted schema-violating request|PUT /api/django/records/tags/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/listes-prix/{id}/
@@ -1261,7 +1252,6 @@ API rejected schema-compliant request|PUT /api/django/core/workflow-step-definit
 # PR #991, 1er tirage (13/10/2026) — 6 constats PRÉ-EXISTANTS (ids FK du fuzz, énumérations de filtres, Allow OPTIONS portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -RECORDS / -PORTAIL.
 API accepted schema-violating request|GET /api/django/records/activities/
 API rejected schema-compliant request|POST /api/django/records/activities/{id}/done/
-Invalid Allow header|OPTIONS /api/django/portail/paiements-facture-portail/
 # PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
 API accepted schema-violating request|GET /api/django/parametres/audit/
 # PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.

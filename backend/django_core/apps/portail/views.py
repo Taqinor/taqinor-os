@@ -456,7 +456,7 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
         """ADOC118 — résolution commune à ``prendre_en_charge`` et
         ``lier-ticket`` : le ticket doit exister dans la société de la demande
         (``apps.sav.selectors.ticket_scoped``, lecture cross-app) ET appartenir
-        au même client. Renvoie le ticket, ou ``None`` (→ 400 nommé)."""
+        au même client. Renvoie le ticket, ou ``None`` (→ 404 identique)."""
         from apps.sav.selectors import ticket_scoped
 
         try:
@@ -471,8 +471,11 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
         return ticket
 
     def _refus_ticket(self):
+        # ENF11 (api-fuzz « rejected schema-compliant request ») — un entier
+        # conforme au schéma qui ne désigne aucun ticket de ce client est un
+        # id INCONNU : 404, corps identique pour tous les cas (jamais 400).
         return Response({'detail': self.TICKET_INCONNU},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_404_NOT_FOUND)
 
     @extend_schema(request=_TICKET_ID_OPT, responses=DemandeTicketPortailSerializer)
     @action(detail=True, methods=['post'])
