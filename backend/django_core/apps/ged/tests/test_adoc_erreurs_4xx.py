@@ -676,10 +676,9 @@ class Enf11FuzzGedTour2Tests(TestCase):
                 ('demandes-signature/creer-multi/', {
                     'document': 0, 'destinataires': [{'nom': 'A'}]},
                  'document')):
-            with self.subTest(route=route, corps=corps):
-                resp = self.api.post(f'{BASE}{route}', corps, format='json')
-                self.assertEqual(resp.status_code, 404, resp.content)
-                self.assertIn(champ, resp.data)
+            resp = self.api.post(f'{BASE}{route}', corps, format='json')
+            self.assertEqual(resp.status_code, 404, resp.content)
+            self.assertIn(champ, resp.data)
         # Une erreur d'une autre nature, même mêlée, garde le 400.
         resp = self.api.post(f'{BASE}documents/', {'folder': 0},
                              format='json')
@@ -762,10 +761,9 @@ class Ci997FuzzGedTour3Tests(TestCase):
                 ('demandes-approbation/?en_attente=AAA', 'en_attente'),
                 ('validations-ocr/?en_attente=AAA', 'en_attente'),
                 ('liens/?model=', 'model')):
-            with self.subTest(route=route):
-                resp = self.api.get(f'{BASE}{route}')
-                self.assertEqual(resp.status_code, 400, resp.content)
-                self.assertIn(nom, resp.json())
+            resp = self.api.get(f'{BASE}{route}')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn(nom, resp.json())
         tag = self._post('tags/', {'nom': 'T'}).json()['id']
         resp = self.api.get(f'{BASE}tags/{tag}/documents/?descendants=AAA')
         self.assertEqual(resp.status_code, 400, resp.content)
@@ -775,9 +773,8 @@ class Ci997FuzzGedTour3Tests(TestCase):
                       'demandes-approbation/?en_attente=1',
                       'validations-ocr/?en_attente=true',
                       f'tags/{tag}/documents/?descendants=1'):
-            with self.subTest(route=route):
-                resp = self.api.get(f'{BASE}{route}')
-                self.assertEqual(resp.status_code, 200, resp.content)
+            resp = self.api.get(f'{BASE}{route}')
+            self.assertEqual(resp.status_code, 200, resp.content)
 
     def test_slug_tag_vide_derive_du_nom_et_motif_publie(self):
         resp = self._post('tags/', {'nom': 'Contrats', 'slug': ''})
