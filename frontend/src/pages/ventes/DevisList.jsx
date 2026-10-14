@@ -925,7 +925,7 @@ export default function DevisList() {
       <FacturerVenteDialog
         devis={facturerTarget}
         onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
-        onDone={() => dispatch(fetchDevis())}
+        onDone={() => dispatch(rafraichirDevis(facturerTarget?.id))}
       />
 
       {/* ── T9 — Modale d'acceptation inline (nom / date / option) — MB4

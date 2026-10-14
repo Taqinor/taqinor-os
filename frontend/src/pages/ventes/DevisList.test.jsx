@@ -1489,6 +1489,13 @@ describe('DevisList — VNT79 : puce de vente, sous-ligne, bouton unique « Fact
     expect(within(row).getAllByRole('button', { name: /^Facturer/ })).toHaveLength(1)
     await user.click(within(row).getByRole('button', { name: 'Facturer…' }))
     await waitFor(() => expect(ventesApi.apercuFacturerVente).toHaveBeenCalledWith(502))
+    // APRF8 — la facture créée relit la SEULE ligne (GET devis/<id>/), jamais la liste.
+    vi.spyOn(ventesApi, 'facturerVente').mockResolvedValue({ data: documentContrat('ventes', 'devis_facturer').exemple })
+    ventesApi.getDevisById.mockClear()
+    const fetchAvant = fetchDevis.mock.calls.length
+    await user.click(await screen.findByRole('button', { name: 'Créer la facture' }))
+    await waitFor(() => expect(ventesApi.getDevisById).toHaveBeenCalledWith(502))
+    expect(fetchDevis.mock.calls.length).toBe(fetchAvant)
   })
 
   it('tout facturé (9 sur 10 tranches n’est plus une chaîne) : aucun « Facturer… »', () => {
