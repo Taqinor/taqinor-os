@@ -184,16 +184,17 @@ export function formatMoney(val) {
 }
 
 // ── Estimation des factures mensuelles depuis hiver/été ──────────────────────
-export function interpolerFactures(hiver, ete) {
-  if (!ete || ete <= 0) return Array(12).fill(hiver)
-  const premiere = Array.from({ length: 7 }, (_, i) => hiver + (ete - hiver) / 6 * i)
-  const seconde = Array.from({ length: 5 }, (_, i) => ete - (ete - hiver) / 4 * i)
-  return [...premiere, ...seconde]
-}
+// AGNR34 (D-AGNR-1 option (a)) — les MARCHES du moteur, plus de rampe : la
+// facture d'été sur mai → octobre (indices 4 à 9), celle d'hiver ailleurs —
+// même série que `horaire/conso.py::serie_mad_mensuelle`. Ces mois sont
+// « estimés » : ils ne partent jamais en `factures_mensuelles_reelles`.
+const MOIS_ETE_FACTURE = [4, 5, 6, 7, 8, 9]
 
 // Les mois affichés sont toujours arrondis à l'entier (renderMonthlyInputs)
 export function estimerMois(hiver, ete) {
-  return interpolerFactures(hiver, ete).map(v => Math.round(v))
+  const h = hiver > 0 ? hiver : (ete || 0)
+  const e = ete > 0 ? ete : h
+  return Array.from({ length: 12 }, (_, m) => Math.round(MOIS_ETE_FACTURE.includes(m) ? e : h))
 }
 
 // CIQ128 — la doctrine de paliers ÉCRAN (pas de 5 kWc, tranche de 900 MAD,

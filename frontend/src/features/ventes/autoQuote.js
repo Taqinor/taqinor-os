@@ -9,12 +9,9 @@
    d'étude locale, plus de `createDevisAtomic`. Lit le lead directement (pas d'état React). */
 import ventesApi from '../../api/ventesApi'
 import {
-  estimerMois, panneauxPourKwc,
+  panneauxPourKwc,
   // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
   kwcPourPanneaux, PANEL_W_DEFAUT,
-  // PACT10/QF-REAL — consommation annuelle RÉELLE du lead (résidentiel),
-  // dérivée de ses factures par le barème national (COUV-HOR).
-  consoAnnuelleDepuisFactures,
 } from './solar'
 
 // QX52 — parité 4 modes : `commercial` route désormais vers son PROPRE mode
@@ -99,9 +96,6 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
  * catalogue, les marques épinglées et l'ordre des lignes de la société.
  */
 export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc }) {
-  // AGNR35 — le barème EFFECTIF de la société (`baremeDepuisProfil`), option
-  // de l'appelant (la signature publique reste celle épinglée par EZ5).
-  const bareme = arguments[0]?.bareme ?? null
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
   // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -132,26 +126,14 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc 
     const kwpAuto = panels > 0 ? kwcPourPanneaux(panels, PANEL_W_DEFAUT) : 0
 
     const etudeExtra = {}
-    // PACT10/QF-REAL — les 12 factures RÉELLES du client (et la
-    // consommation annuelle qui s'en déduit) : sans elles, le PDF
-    // reconstruit les « factures avant » depuis l'économie SUPPOSÉE, un
-    // proxy circulaire. Le `scenario`, lui, n'est PLUS envoyé d'ici : le
-    // serveur le décide depuis `lead.batterie_souhaitee` (défaut « les
-    // deux » — U2), sinon on recréerait à l'instant la divergence qu'on
-    // vient de supprimer.
+    // AGNR34 (D-AGNR-1 option (a)) — plus de série de douze mois ni de conso
+    // calculée au barème JS : le serveur lit les deux factures du lead
+    // (`lead_bills_for_devis`) et dérive lui-même les marches (source
+    // `facture_hiver_ete`). Seul le distributeur DÉCLARÉ du lead voyage. Le
+    // `scenario`, lui, est décidé au serveur depuis `lead.batterie_souhaitee` (U2).
     if (hiver > 0) {
-      const eteReel = (lead.ete_differente && lead.facture_ete)
-        ? parseFloat(lead.facture_ete) : hiver
-      const facturesReelles = estimerMois(hiver, eteReel)
       const distributeurLead = ['onee', 'lydec', 'redal'].includes(lead.distributeur)
         ? lead.distributeur : undefined
-      // COUV-HOR — barème NATIONAL (Q7) même sans distributeur connu : jamais
-      // factures ÷ 1,20 MAD/kWh (DEV-202609-0113 : 165 000 kWh au lieu de 122 007).
-      // AGNR35 — au barème EFFECTIF de la société quand il est réglé.
-      const consoAnnuelleReelle = consoAnnuelleDepuisFactures(
-        facturesReelles, distributeurLead || 'onee', bareme?.tranches, bareme?.chargesFixes)
-      etudeExtra.factures_mensuelles_reelles = facturesReelles
-      if (consoAnnuelleReelle > 0) etudeExtra.conso_annuelle = consoAnnuelleReelle
       if (distributeurLead) etudeExtra.distributeur = distributeurLead
     }
     let reponse

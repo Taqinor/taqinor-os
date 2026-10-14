@@ -27,7 +27,7 @@ export function useChargeurEdition(ctx) {
     setAccessoiresOnly, setHorsReseau, setHorsReseauTouched, setPompeCv, setPompeType, setPompeHmt,
     setPompeDebit, setPompeProfondeur, setPompeDistance, setFarmRegion, setFarmCrop,
     setFarmSurfaceHa, setFarmIrrigation, setEcoPompage, setAttestationAgricole, setFarmHmtStatic,
-    setFarmHmtDrawdown, setPompageSaisie, clear, baremeSociete,
+    setFarmHmtDrawdown, setPompageSaisie, clear, baremeSociete, setMoisDerives = null,
   } = ctx
 
   // QJR548 — le chargeur `?edit=` se relance quand le devis a été recomposé
@@ -150,6 +150,13 @@ export function useChargeurEdition(ctx) {
       pose(etat.distributeur, setDistributeur)
       pose(etat.distributeurChoisi, setDistributeurChoisi)
       pose(etat.monthly, setMonthly)
+      // AGNR34 — deux factures relues : hiver / été tels que stockés, la
+      // grille en marches « estimé » (jamais relue comme des mois tapés).
+      if (etat.facturesHiverEte && setMoisDerives) {
+        setFHiver(etat.fHiver)
+        setFEte(etat.fEte)
+        setMoisDerives(etat.moisEstimes)
+      }
       consoStockee.current = etat.consoStockee
       pose(etat.realBillMode, setRealBillMode)
       pose(etat.realBillKwh, setRealBillKwh)

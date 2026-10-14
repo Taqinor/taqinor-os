@@ -12,7 +12,7 @@ import {
   controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
 } from '../../solar'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, baremePourDerivation } from '../etatDevis'
+import { etatVersEcritures, baremePourDerivation, facturesHiverEte } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -61,6 +61,7 @@ export function usePersistanceDevis(ctx) {
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
     setEditDevis, setReserveEnregistrement, setErreursChamps, baremeSociete, kpiTotal = null,
+    provenanceMois = [], fHiver = '', fEte = '',
     // EDC7 (contrat EDC) — rester dans l'éditeur après l'enregistrement.
     embedded = false, onEnregistre = null,
   } = ctx
@@ -305,8 +306,14 @@ export function usePersistanceDevis(ctx) {
 
   const entreesReellesEcran = (consoDejaConnue) => {
     const entrees = {}
-    if (facturesSaisies) {
+    // AGNR34 (D-AGNR-1 option (a)) — douze mois TAPÉS ⇒ `factures_mensuelles_reelles` ;
+    // des mois estimés depuis hiver / été ⇒ `factures_hiver_ete` (le moteur
+    // dérive lui-même les marches) — jamais une série dérivée envoyée « réelle ».
+    const deuxFactures = facturesHiverEte(fHiver, fEte)
+    if (provenanceMois.length === 12 && provenanceMois.every(p => p === 'tapee')) {
       entrees.factures_mensuelles_reelles = monthly.map(v => parseFloat(v) || 0)
+    } else if (facturesSaisies && deuxFactures) {
+      entrees.factures_hiver_ete = deuxFactures
     }
     // Conso annuelle : la source la plus DIRECTE d'abord (l'étude du marché,
     // qui descend de la saisie « consommation »), puis la facture réelle QF4,

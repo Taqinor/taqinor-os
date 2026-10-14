@@ -30,7 +30,7 @@ export default function CarteFacturesElectriques({
   onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth,
   distributeur, setDistributeur, realBillMode, setRealBillMode,
   realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
-  onRealBillPaste, consoAnnuelleReelle, moisNonSaisis = [], avisFactures = null,
+  onRealBillPaste, consoAnnuelleReelle, moisNonSaisis = [], avisFactures = null, provenanceMois = [],
   children,
 }) {
   return (
@@ -72,6 +72,10 @@ export default function CarteFacturesElectriques({
               <input type="number" min="0" step="any" className="form-control form-control-sm"
                      value={monthly[i]}
                      onChange={e => setMonth(i, e.target.value)} />
+              {/* AGNR34 — mois dérivés de hiver / été : une estimation en marches, jamais une facture. */}
+              {provenanceMois[i] === 'derivee' && (
+                <span className="text-xs text-muted-foreground" data-testid={`mois-estime-${i}`}>estimé</span>
+              )}
             </div>
           ))}
         </div>
