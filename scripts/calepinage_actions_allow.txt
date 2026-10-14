@@ -15,9 +15,3 @@
 #     `--autoriser-croissance`, drapeau reserve au fondateur, visible en revue.
 #
 # Format : `<fichier>:<ligne>  <url_path>  # <raison datee>`.
-backend/django_core/apps/calepinage/views/sorties.py:194  planche\.pdf  # non consommee au 23/09/2026 (CALX381)
-backend/django_core/apps/calepinage/views/sorties.py:259  plan-pose\.pdf  # non consommee au 23/09/2026 (CALX381)
-backend/django_core/apps/calepinage/views/sorties.py:270  plan-toiture\.pdf  # non consommee au 23/09/2026 (CALX381)
-backend/django_core/apps/calepinage/views/sorties.py:279  plan-masse\.pdf  # non consommee au 23/09/2026 (CALX381)
-backend/django_core/apps/calepinage/views/sorties.py:289  note-calcul\.pdf  # non consommee au 23/09/2026 (CALX381)
-backend/django_core/apps/calepinage/views/sorties.py:308  export\.dxf  # non consommee au 23/09/2026 (CALX381)

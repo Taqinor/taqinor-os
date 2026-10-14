@@ -254,28 +254,28 @@ const config = {
     { path: '/calepinage/:id', component: AtelierCalepinage, roles: ROLES },
     // contextuelle: comparatif d'UN calepinage, ouvert depuis son atelier (CAL37) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/variantes', component: VariantesCompare, roles: ROLES },
-    // CAL121 — contextuelle elle aussi : les fiches techniques trouées des
-    // équipements de CE calepinage, avec le calcul que chaque champ débloque.
+    // CAL121
+    // contextuelle: les fiches techniques trouées des équipements de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/fiches', component: FichesIncompletes, roles: ROLES },
-    // CAL159 — le dimensionnement de pompage de CE calepinage.
+    // contextuelle: (CAL159) le dimensionnement de pompage de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/pompage', component: PompagePanel, roles: ROLES },
-    // CAL63 — caler le plan importé de CE calepinage sur la carte.
+    // contextuelle: (CAL63) caler le plan importé de CE calepinage sur la carte — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/plan', component: PlanImporteCalage, roles: ROLES },
     // CAL53 — caler une photo de site (CAL52) de CE calepinage sur la carte.
     { path: '/calepinage/:id/photos', component: PhotoSiteCalage, roles: ROLES },
-    // CAL58 — la pente de CE calepinage, par l'un des trois modes de saisie.
+    // contextuelle: (CAL58) la pente de CE calepinage, par l'un des trois modes de saisie — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/pente', component: SaisiePente, roles: ROLES },
-    // CAL89 — le champ au SOL de CE calepinage (mode terrain).
+    // contextuelle: (CAL89) le champ au SOL de CE calepinage (mode terrain) — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/terrain', component: ModeTerrain, roles: ROLES },
     // CAL91 — l'ombrière / carport de CE calepinage.
     { path: '/calepinage/:id/ombriere', component: Ombriere, roles: ROLES },
     // contextuelle: le schéma unifilaire d'UN calepinage, ouvert depuis son atelier (CAL195) — une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/schema', component: SchemaUnifilairePanel, roles: ROLES },
-    // CAL236 — contextuelle : le panneau Production de CE calepinage.
+    // contextuelle: (CAL236) le panneau Production de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/production', component: PanneauProduction, roles: ROLES },
-    // CAL143 — contextuelle : le diagramme de pertes de CE calepinage.
+    // contextuelle: (CAL143) le diagramme de pertes de CE calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/pertes', component: DiagrammePertes, roles: ROLES },
-    // CAL93 — contextuelle elle aussi : l'horizon lointain d'UN calepinage.
+    // contextuelle: (CAL93) l'horizon lointain d'UN calepinage — onglet du rail de l'atelier (onglets.js) aussi ouvrable en lien direct ; une entrée de menu permanente n'aurait aucun calepinage à désigner.
     { path: '/calepinage/:id/horizon', component: HorizonPanel, roles: ROLES },
     // CAL96 — contextuelle : la course du soleil par pan d'UN calepinage.
     { path: '/calepinage/:id/course-soleil', component: CourseSoleil, roles: ROLES },

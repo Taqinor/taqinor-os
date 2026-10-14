@@ -212,6 +212,7 @@ class SortiesMixin:
 
     @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
                               409: REPONSE_REFUS_ETAT})
+    # headless: appelée via l'endpoint servi par sorties/ (CAL175)
     @action(detail=True, methods=['get'], url_path=r'planche\.pdf',
             url_name='planche-pdf', permission_classes=[PeutVoirCalepinage])
     def planche_pdf(self, request, pk=None):
@@ -281,6 +282,7 @@ class SortiesMixin:
 
     @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
                               409: REPONSE_REFUS_ETAT})
+    # headless: appelée via l'endpoint servi par sorties/ (CAL175)
     @action(detail=True, methods=['get'], url_path=r'plan-pose\.pdf',
             url_name='plan-pose-pdf', permission_classes=[PeutVoirCalepinage])
     def plan_pose_pdf(self, request, pk=None):
@@ -293,6 +295,7 @@ class SortiesMixin:
 
     @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
                               409: REPONSE_REFUS_ETAT})
+    # headless: appelée via l'endpoint servi par sorties/ (CAL175)
     @action(detail=True, methods=['get'], url_path=r'plan-toiture\.pdf',
             url_name='plan-toiture-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -304,6 +307,7 @@ class SortiesMixin:
 
     @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
                               409: REPONSE_REFUS_ETAT})
+    # headless: appelée via l'endpoint servi par sorties/ (CAL175)
     @action(detail=True, methods=['get'], url_path=r'plan-masse\.pdf',
             url_name='plan-masse-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -316,6 +320,7 @@ class SortiesMixin:
     # ── CAL176/CAL177 — la note de calcul ──────────────────────────────────
     @extend_schema(responses={(200, MIME_PDF): OpenApiTypes.BINARY,
                               409: REPONSE_REFUS_ETAT})
+    # headless: appelée via l'endpoint servi par sorties/ (CAL175)
     @action(detail=True, methods=['get'], url_path=r'note-calcul\.pdf',
             url_name='note-calcul-pdf',
             permission_classes=[PeutVoirCalepinage])
@@ -338,6 +343,7 @@ class SortiesMixin:
     # ── CAL178/CAL179 — les exports réutilisables ──────────────────────────
     @extend_schema(responses={(200, MIME_DXF): OpenApiTypes.BINARY,
                               409: REPONSE_REFUS_ETAT})
+    # headless: appelée via l'endpoint servi par sorties/ (CAL175)
     @action(detail=True, methods=['get'], url_path=r'export\.dxf',
             url_name='export-dxf', permission_classes=[PeutVoirCalepinage])
     def export_dxf(self, request, pk=None):
