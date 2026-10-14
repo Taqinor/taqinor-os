@@ -43,6 +43,10 @@ from rest_framework import serializers as drf_serializers
 from .schema_fields import champ_choix
 from drf_spectacular.utils import inline_serializer
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _co(user):
     if user.company_id:
@@ -440,6 +444,7 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
         # (palier approbateur + séparation des tâches) : 403, jamais 400.
         return 403, {'detail': str(exc) or 'Accès refusé.'}
     except Exception as exc:  # garde générique : jamais de 500 opaque
+        logger.warning("decider approbation core : échec ignoré, comportement dégradé", exc_info=True)
         return 400, {'detail': str(exc)}
 
     return 200, {'detail': 'Décision enregistrée.'}

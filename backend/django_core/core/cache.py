@@ -56,6 +56,7 @@ def get(company_id, name: str, default=None):
     try:
         return cache.get(tenant_key(company_id, name), default)
     except Exception:  # noqa: BLE001 — backend cache indisponible → défaut
+        logger.debug("get : échec ignoré, comportement dégradé", exc_info=True)
         return default
 
 
@@ -112,6 +113,7 @@ def _on_change(sender, instance, **kwargs):
     try:
         label = f'{sender._meta.app_label}.{sender._meta.model_name}'
     except Exception:  # noqa: BLE001 — sender atypique → ignore
+        logger.warning("on change : échec ignoré, comportement dégradé", exc_info=True)
         return
     names = _INVALIDATION.get(label)
     if not names:

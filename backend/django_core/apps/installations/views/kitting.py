@@ -531,7 +531,10 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 serializer.instance, user=self.request.user)
         activity.log_changes(old, serializer.instance, self.request.user)
 
-    @oa.extend_schema(request=oa.body('OrdresDepuisDevisRequete', devis=oa.i(True)), responses={200: OrdreAssemblageSerializer(many=True), 201: OrdreAssemblageSerializer(many=True)})
+    @oa.extend_schema(
+        request=oa.body('OrdresDepuisDevisRequete', devis=oa.i(True)),
+        responses={200: OrdreAssemblageSerializer(many=True), 201: OrdreAssemblageSerializer(many=True)},
+    )
     @action(detail=False, methods=['post'], url_path='depuis-devis')
     def depuis_devis(self, request):
         """XMFG3 — assembler-à-la-commande : pour un devis donné, détecte les
@@ -705,7 +708,10 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             OrdreAssemblageActivitySerializer(
                 ordre.activites.all(), many=True).data)
 
-    @oa.extend_schema(request=oa.body('NoterRequete', body=oa.s(True)), responses={201: OrdreAssemblageActivitySerializer})
+    @oa.extend_schema(
+        request=oa.body('NoterRequete', body=oa.s(True)),
+        responses={201: OrdreAssemblageActivitySerializer},
+    )
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -719,7 +725,16 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(OrdreAssemblageActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
-    @oa.extend_schema(request=oa.body('DeclarerRebutRequete', produit=oa.i(True), quantite=oa.dec(True), motif=oa.s(True), note=oa.s()), responses={201: oa.OBJ})
+    @oa.extend_schema(
+        request=oa.body(
+            'DeclarerRebutRequete',
+            produit=oa.i(True),
+            quantite=oa.dec(True),
+            motif=oa.s(True),
+            note=oa.s(),
+        ),
+        responses={201: oa.OBJ},
+    )
     @action(detail=True, methods=['post'], url_path='declarer-rebut')
     def declarer_rebut(self, request, pk=None):
         """XMFG11 — déclare un rebut de production (casse/défaut/erreur/autre)
@@ -800,7 +815,11 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         controles = instancier_controle_qualite(ordre)
         return Response(ControleQualiteOrdreSerializer(controles, many=True).data)
 
-    @oa.extend_schema(parameters=[oa.OpenApiParameter('item_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('ControleQualiteItemRequete', resultat=oa.s(True), valeur_mesuree=oa.dec(null=True)), responses=ControleQualiteOrdreSerializer)
+    @oa.extend_schema(
+        parameters=[oa.OpenApiParameter('item_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)],
+        request=oa.body('ControleQualiteItemRequete', resultat=oa.s(True), valeur_mesuree=oa.dec(null=True)),
+        responses=ControleQualiteOrdreSerializer,
+    )
     @action(detail=True, methods=['post'],
             url_path='controle-qualite/(?P<item_modele_id>[^/.]+)')
     def enregistrer_controle_qualite_item(self, request, pk=None,
@@ -830,7 +849,11 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         etapes = instancier_etapes_ordre(ordre)
         return Response(EtapeOrdreSerializer(etapes, many=True).data)
 
-    @oa.extend_schema(parameters=[oa.OpenApiParameter('etape_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('CocherEtapeRequete', fait=oa.b(), duree_reelle_min=oa.i(null=True)), responses=EtapeOrdreSerializer)
+    @oa.extend_schema(
+        parameters=[oa.OpenApiParameter('etape_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)],
+        request=oa.body('CocherEtapeRequete', fait=oa.b(), duree_reelle_min=oa.i(null=True)),
+        responses=EtapeOrdreSerializer,
+    )
     @action(detail=True, methods=['post'],
             url_path='etapes/(?P<etape_modele_id>[^/.]+)/cocher')
     def cocher_etape(self, request, pk=None, etape_modele_id=None):
@@ -858,7 +881,18 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(EtapeOrdreSerializer(etape_ordre).data)
 
-    @oa.extend_schema(request=oa.body('TerminerOrdreAssemblageRequete', forcer=oa.b(), motif_forcage=oa.s(), quantite_produite=oa.dec(null=True), emplacement_source=oa.i(null=True), emplacement_destination=oa.i(null=True), series_composite=oa.lst(null=True), series_composants=oa.lst(null=True)))
+    @oa.extend_schema(
+        request=oa.body(
+            'TerminerOrdreAssemblageRequete',
+            forcer=oa.b(),
+            motif_forcage=oa.s(),
+            quantite_produite=oa.dec(null=True),
+            emplacement_source=oa.i(null=True),
+            emplacement_destination=oa.i(null=True),
+            series_composite=oa.lst(null=True),
+            series_composants=oa.lst(null=True),
+        ),
+    )
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """FG328/XMFG1 — clôture l'ordre (→ terminé, horodate) et backflush le

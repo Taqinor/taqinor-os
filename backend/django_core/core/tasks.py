@@ -446,10 +446,11 @@ def export_reversibilite_tenant(
         try:
             client.head_bucket(Bucket=REVERSIBILITE_BUCKET)
         except Exception:  # noqa: BLE001 — best-effort, bucket peut-être absent
+            logger.warning("export reversibilite tenant : échec ignoré, comportement dégradé", exc_info=True)
             try:
                 client.create_bucket(Bucket=REVERSIBILITE_BUCKET)
             except Exception:  # noqa: BLE001
-                pass
+                logger.warning("export reversibilite tenant : échec ignoré, comportement dégradé", exc_info=True)
         client.put_object(
             Bucket=REVERSIBILITE_BUCKET, Key=object_key, Body=buf.getvalue())
     except Exception:  # noqa: BLE001 — jamais bloquant, journalisé

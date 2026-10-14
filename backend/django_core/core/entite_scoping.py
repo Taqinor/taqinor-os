@@ -28,6 +28,10 @@ from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'entite_id_demandee',
     'filtre_entite_demandee',
@@ -201,6 +205,7 @@ class EntiteScopeMixin:
         try:
             data = request.data
         except Exception:  # noqa: BLE001 — corps illisible : le parseur DRF
+            logger.warning("initial : échec ignoré, comportement dégradé", exc_info=True)
             return           # de la vue tranchera (400/415), jamais un 500 ici
         if not hasattr(data, 'get') or self.entite_field not in data:
             return

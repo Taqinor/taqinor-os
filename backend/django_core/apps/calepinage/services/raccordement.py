@@ -48,6 +48,10 @@ from core.electrique.types import (
 )
 from .valeurs import nombre as _nombre
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'RaccordementInvalide', 'CODE_ELEVATION', 'LIBELLES',
     'verdicts_raccordement',
@@ -500,6 +504,7 @@ def _evaluation(conception):
         return evaluer_onduleurs(conception)
     except Exception:  # une conception incomplète ne fait pas
         # tomber la page de raccordement : elle rend le contrôle OMIS.
+        logger.warning("evaluation : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 

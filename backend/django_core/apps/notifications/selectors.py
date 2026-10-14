@@ -59,6 +59,7 @@ def _jour_ouvre_repli(d, company):
     try:
         return calendar_utils.is_jour_ouvre(d, company)
     except Exception:  # noqa: BLE001 — repli du repli : lundi-vendredi
+        logger.warning("jour ouvre repli : échec ignoré, comportement dégradé", exc_info=True)
         return d.weekday() < 5
 
 
@@ -114,6 +115,7 @@ def fenetre_notifications(company, maintenant=None):
         try:
             return _fenetre_repli(company, maintenant)
         except Exception:  # noqa: BLE001 — ne jamais bloquer une notification
+            logger.warning("fenetre notifications : échec ignoré, comportement dégradé", exc_info=True)
             return FenetreNotifications(True, maintenant)
     if prochaine is None or prochaine <= maintenant:
         return FenetreNotifications(True, maintenant)
@@ -161,6 +163,7 @@ def escalade_state_pour(instance):
         state = ApprovalReminderState.objects.filter(
             content_type=ct, object_id=instance.pk).first()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("escalade state pour : échec ignoré, comportement dégradé", exc_info=True)
         return (None, None)
     if state is None or not state.palier:
         return (None, None)

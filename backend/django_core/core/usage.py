@@ -98,6 +98,7 @@ def minio_bytes(company_id: int) -> int:
         from .backup import _minio_client
         client = _minio_client()
     except Exception:  # noqa: BLE001 - stockage indisponible → 0
+        logger.warning("minio bytes : échec ignoré, comportement dégradé", exc_info=True)
         return 0
     for bucket in buckets:
         try:
@@ -106,6 +107,7 @@ def minio_bytes(company_id: int) -> int:
                 for obj in page.get('Contents', []) or []:
                     total += int(obj.get('Size', 0) or 0)
         except Exception:  # noqa: BLE001 - bucket absent/erreur → ignore
+            logger.warning("minio bytes : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return total
 

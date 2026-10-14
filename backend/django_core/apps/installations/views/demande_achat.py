@@ -45,6 +45,10 @@ from ..serializers import (
 )
 from . import _openapi as oa
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # SCA36 — 'chatter_historique' est une lecture (patron flotte : le
 # get_permissions maison prime sur les permission_classes d'@action du mixin).
 READ_ACTIONS = ['list', 'retrieve', 'chatter_historique',
@@ -116,7 +120,7 @@ def _notifier_demandeur_decision(da, approuvee):
             link='/chantiers/demandes-achat',
             company=da.company)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("notifier demandeur decision : échec ignoré, comportement dégradé", exc_info=True)
 
 
 class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
@@ -456,7 +460,10 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)
 
-    @oa.extend_schema(request=oa.body('ImporterLignesCsvRequete', fichier=oa.serializers.FileField()), responses={(200, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()), (201, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst())})
+    @oa.extend_schema(
+        request=oa.body('ImporterLignesCsvRequete', fichier=oa.serializers.FileField()),
+        responses={(200, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()), (201, 'application/json'): oa.body('ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst())},
+    )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='importer-lignes-csv')
     def importer_lignes_csv(self, request, pk=None):
         """NTP2P40 — Import CSV en masse de ``DemandeAchatLigne``.

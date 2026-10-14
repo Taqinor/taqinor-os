@@ -10,6 +10,10 @@ justification d'écart ; jamais un prix interne. Complète le PV de réception.
 """
 from apps.ventes.utils.pdf import _company_context, _html_to_pdf, _render_html
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _nom_client_facing(user, company):
     """APDF41 — nom affichable d'un intervenant sur un document client : nom
@@ -113,6 +117,7 @@ def _photo_data_uri(attachment):
             img.save(sortie, format='JPEG', quality=PDF_PHOTO_QUALITE,
                      optimize=True)
     except Exception:  # une photo illisible ne casse pas le PDF
+        logger.warning("photo data uri : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return 'data:image/jpeg;base64,' + base64.b64encode(
         sortie.getvalue()).decode()

@@ -55,6 +55,10 @@ from __future__ import annotations
 
 from html import escape
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'CODE_DOCUMENT', 'MOTIF_SANS_MATRICE', 'LIBELLE_METHODE_ACCES',
     'RapportOmbrageRefuse',
@@ -390,6 +394,7 @@ def html_carte_de_chaleur(calepinage):
                 MOTIF_CARTE_PERIMEE.format(date=date))
         data_uri = derniere_image_encodee(calepinage, genre='ombrage')
     except Exception:  # image omise, jamais rapport cassé
+        logger.warning("html carte de chaleur : échec ignoré, comportement dégradé", exc_info=True)
         import logging
 
         logging.getLogger(__name__).warning(

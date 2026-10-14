@@ -64,6 +64,10 @@ import urllib.parse
 import urllib.request
 from .valeurs import nombre as _flottant
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'BASES_HEURE', 'BASES_RAYONNEMENT', 'BASE_HEURE_LOCALE_LEGALE',
     'BASE_HEURE_LOCALE_STANDARD', 'BASE_HEURE_UTC', 'BASE_PAR_DEFAUT',
@@ -387,6 +391,7 @@ def _transport_urllib(url, timeout_s):
         try:
             corps = erreur.read().decode('utf-8', 'replace')
         except Exception:  # pragma: no cover - défensif
+            logger.warning("transport urllib : échec ignoré, comportement dégradé", exc_info=True)
             corps = ''
         return erreur.code, corps
 

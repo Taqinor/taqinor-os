@@ -27,6 +27,10 @@ import time
 
 from django.core.cache import cache
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 BEAT_HEARTBEAT_CACHE_KEY = 'core_beat_heartbeat_ts'
 # Au-delà de cet âge (secondes), le beat est considéré arrêté/dégradé. Le
 # heartbeat tourne toutes les 5 minutes (voir celery.py) — 15 min = 3 ticks
@@ -197,6 +201,7 @@ def redis_queue_length(queue_name='celery'):
         client = redis_lib.Redis.from_url(broker_url, socket_timeout=0.5)
         return client.llen(queue_name)
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning("redis queue length : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -205,6 +210,7 @@ def _django_prometheus_available():
         __import__('django_prometheus')  # sonde de disponibilité
         return True
     except Exception:  # noqa: BLE001 — dépendance optionnelle non installée
+        logger.warning("django prometheus available : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 

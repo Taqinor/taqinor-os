@@ -20,6 +20,10 @@ from __future__ import annotations
 
 from django.http import Http404
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def get_company_object(model_or_queryset, pk, user, extra_scope=None,
                        **extra_filters):
@@ -215,6 +219,7 @@ def resolve_email_signature(company, nom_societe='', **context) -> str:
             .first()
         )
     except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        logger.warning("resolve email signature : échec ignoré, comportement dégradé", exc_info=True)
         tpl = None
     if tpl is None or not (tpl.corps or '').strip():
         return fallback
@@ -256,6 +261,7 @@ def wrap_email_html(
             'couleur_principale': couleur_principale or '',
         })
     except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        logger.warning("wrap email html : échec ignoré, comportement dégradé", exc_info=True)
         return corps_texte or ''
 
 

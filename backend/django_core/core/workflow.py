@@ -74,6 +74,10 @@ from core.models import (
     WorkflowStepInstance,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'demarrer_workflow',
     'avancer',
@@ -146,7 +150,7 @@ def _sla_echeance(started, sla_heures, *, calendrier_ouvre=False, company=None):
         try:
             return _business_day_advance_resolver(started, sla_heures, company)
         except Exception:  # pragma: no cover - défensif, jamais bloquant
-            pass
+            logger.warning("sla echeance : échec ignoré, comportement dégradé", exc_info=True)
     return started + datetime.timedelta(hours=sla_heures)
 
 
@@ -254,6 +258,7 @@ def _contexte_cible(instance):
         return {f.name: getattr(target, f.name, None)
                 for f in target._meta.fields}
     except Exception:  # pragma: no cover - défensif
+        logger.warning("contexte cible : échec ignoré, comportement dégradé", exc_info=True)
         return {}
 
 
@@ -342,6 +347,7 @@ def _emit_etape_activee(step, company):
             workflow_etape_activee.send(
                 sender='core.workflow', step=step, company=company)
     except Exception:  # noqa: BLE001 — best-effort, journalisé
+        logger.warning("emit etape activee : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
             'APAR48 : émission workflow_etape_activee échouée (étape %s)',
@@ -881,6 +887,7 @@ def delegants_actifs_pour(suppleant, company, at=None):
     try:
         return list(_delegation_resolver(suppleant, company, at=at) or [])
     except Exception:  # pragma: no cover - défensif
+        logger.warning("delegants actifs pour : échec ignoré, comportement dégradé", exc_info=True)
         return []
 
 
@@ -996,6 +1003,7 @@ def decisions_conformite(company, periode=None):
         try:
             produites = list(fn(company, periode) or [])
         except Exception:  # noqa: BLE001 — une source cassée n'emporte pas tout
+            logger.warning("decisions conformite : échec ignoré, comportement dégradé", exc_info=True)
             rapport['sources_en_erreur'].append(nom)
             continue
         rapport['sources'].append(nom)

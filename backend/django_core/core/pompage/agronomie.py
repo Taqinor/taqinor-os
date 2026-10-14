@@ -123,14 +123,18 @@ CROP_STAGES = MappingProxyType({
     "vigne":     _spec(start=4, stages=(1, 1, 3, 2), kc_ini=0.30, kc_mid=0.70, kc_end=0.45),  # FAO-56 T12 grape (table)
     "grenadier": _spec(start=3, stages=(1, 2, 4, 2), kc_ini=0.35, kc_mid=0.85, kc_end=0.55, kc_estimated=True),  # EST.
     "figuier":   _spec(start=3, stages=(1, 2, 4, 2), kc_ini=0.35, kc_mid=0.70, kc_end=0.50, kc_estimated=True),  # EST.
-    "tomate-serre":  _spec(start=9, stages=(1, 2, 3, 1), kc_ini=0.60, kc_mid=1.10, kc_end=0.80, sous_abri=True),  # FAO-56 T12 tomato
-    "poivron-serre": _spec(start=9, stages=(1, 2, 3, 1), kc_ini=0.60, kc_mid=1.05, kc_end=0.90),  # FAO-56 T12 bell pepper
+    # FAO-56 T12 tomato
+    "tomate-serre":  _spec(start=9, stages=(1, 2, 3, 1), kc_ini=0.60, kc_mid=1.10, kc_end=0.80, sous_abri=True),
+    # FAO-56 T12 bell pepper
+    "poivron-serre": _spec(start=9, stages=(1, 2, 3, 1), kc_ini=0.60, kc_mid=1.05, kc_end=0.90),
     "pomme-de-terre": _spec(start=1, stages=(1, 1, 2, 1), kc_ini=0.50, kc_mid=1.15, kc_end=0.75),  # FAO-56 T12 potato
     "oignon":    _spec(start=10, stages=(1, 2, 3, 1), kc_ini=0.70, kc_mid=1.05, kc_end=0.75),  # FAO-56 T12 onion (dry)
-    "melon-pasteque": _spec(start=3, stages=(1, 1, 2, 1), kc_ini=0.50, kc_mid=1.00, kc_end=0.75),  # FAO-56 T12 melon/watermelon (1,00 prudent)
+    # FAO-56 T12 melon/watermelon (1,00 prudent)
+    "melon-pasteque": _spec(start=3, stages=(1, 1, 2, 1), kc_ini=0.50, kc_mid=1.00, kc_end=0.75),
     "cereales":  _spec(start=11, stages=(1, 2, 2, 1), kc_ini=0.40, kc_mid=1.15, kc_end=0.40),  # FAO-56 T12 wheat
     "fraise":    _spec(start=10, stages=(1, 2, 3, 1), kc_ini=0.40, kc_mid=1.00, kc_end=0.75, kc_estimated=True),  # EST.
-    "cannabis":  _spec(start=5, stages=(1, 1, 2, 1), kc_ini=0.40, kc_mid=1.00, kc_end=0.60, kc_estimated=True),  # EST. (cannabis licite, flag ANRAC)
+    # EST. (cannabis licite, flag ANRAC)
+    "cannabis":  _spec(start=5, stages=(1, 1, 2, 1), kc_ini=0.40, kc_mid=1.00, kc_end=0.60, kc_estimated=True),
 })
 
 # Valeurs Maroc CITÉES (recherche 2026-07-16) — référence de CALAGE, sourcées.

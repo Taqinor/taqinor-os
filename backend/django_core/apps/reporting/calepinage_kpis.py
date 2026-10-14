@@ -34,6 +34,10 @@ from __future__ import annotations
 
 from statistics import fmean, median
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: La clé de module du calepinage (``apps/calepinage/platform.py``) : sert à
 #: n'exposer ces tuiles qu'aux sociétés chez qui le module est ACTIF.
 MODULE_CALEPINAGE = 'calepinage'
@@ -158,6 +162,7 @@ def _compteurs_par_statut(queryset, rangs):
         choix = queryset.model._meta.get_field('statut').choices or []
         compteurs = {code: 0 for code, _libelle in choix}
     except Exception:  # noqa: BLE001 — jamais un 500 pour un champ déplacé
+        logger.warning("compteurs par statut : échec ignoré, comportement dégradé", exc_info=True)
         compteurs = {}
     for ligne in rangs:
         statut = getattr(ligne, 'statut', '') or ''

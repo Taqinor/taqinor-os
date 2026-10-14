@@ -28,6 +28,10 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _UsageRessourceSerializer = inline_serializer('UsageRessource', {
     'nom': drf_serializers.CharField(),
     'utilise': drf_serializers.IntegerField(allow_null=True),
@@ -161,6 +165,7 @@ def usage_summary(company):
         try:
             res = calc()
         except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres
+            logger.warning("usage summary : échec ignoré, comportement dégradé", exc_info=True)
             res = None
         if res is not None:
             ressources.append(res)

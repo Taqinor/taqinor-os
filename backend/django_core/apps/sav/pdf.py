@@ -14,6 +14,10 @@ from apps.ventes.utils.pdf import (
     _company_context, _render_html, _html_to_pdf,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _EMAIL_RE = re.compile(r'[\w.+-]+@[\w-]+(?:\.[\w-]+)+')
 
 
@@ -43,9 +47,11 @@ def _pieces_payload(ticket):
     try:
         rows_qs = manager.select_related('produit').all()
     except Exception:
+        logger.warning("pieces payload : échec ignoré, comportement dégradé", exc_info=True)
         try:
             rows_qs = manager.all()
         except Exception:
+            logger.warning("pieces payload : échec ignoré, comportement dégradé", exc_info=True)
             return []
     rows = []
     for p in rows_qs:

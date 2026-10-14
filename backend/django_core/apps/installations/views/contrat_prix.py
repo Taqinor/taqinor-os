@@ -98,7 +98,10 @@ class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
         c.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(c).data)
 
-    @oa.extend_schema(parameters=[oa.qi('produit', required=True), oa.qi('fournisseur'), oa.qd('date')], responses=oa.OBJ)
+    @oa.extend_schema(
+        parameters=[oa.qi('produit', required=True), oa.qi('fournisseur'), oa.qd('date')],
+        responses=oa.OBJ,
+    )
     @action(detail=False, methods=['get'], url_path='prix-convenu')
     def prix_convenu(self, request):
         """FG318 — prix convenu d'un produit à une date, d'après les contrats en

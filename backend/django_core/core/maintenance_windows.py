@@ -35,6 +35,10 @@ from rest_framework.response import Response
 
 from .models import TimestampedModel
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class MaintenanceWindow(TimestampedModel):
     """Fenêtre de maintenance planifiée (``company`` NULL = annonce système
@@ -208,6 +212,7 @@ def _emettre_maintenance_window_announced(fenetre, user):
             sender=MaintenanceWindow, fenetre=fenetre,
             company=fenetre.company, user=user)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("emettre maintenance window announced : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'NTOBS26 : émission maintenance_window_announced échouée (%s)',
@@ -225,6 +230,7 @@ def _emettre_maintenance_window_created(fenetre, user):
             sender=MaintenanceWindow, fenetre=fenetre,
             company=fenetre.company, user=user)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("emettre maintenance window created : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'NTOBS30-reste : émission maintenance_window_created échouée (%s)',

@@ -23,6 +23,10 @@ from __future__ import annotations
 from django.apps import apps as registre
 from django.core.management.base import BaseCommand
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class Command(BaseCommand):
     help = ('ACAL256 — liste (lecture seule) le compte moteur actuel et le '
@@ -66,6 +70,7 @@ class Command(BaseCommand):
                     layout, company=devis.company, devis=devis,
                     traduire=True)
             except Exception as exc:  # signalé, jamais fatal
+                logger.warning("handle : échec ignoré, comportement dégradé", exc_info=True)
                 ecrire(f'  {devis.reference} : illisible ({exc})')
                 continue
             avant = actuel['modules'] if actuel else None

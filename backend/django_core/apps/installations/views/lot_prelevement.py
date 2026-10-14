@@ -45,7 +45,10 @@ class LotPrelevementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
-    @oa.extend_schema(request=oa.body('CreerLotPrelevementRequete', pick_list_ids=oa.ids(True)), responses={201: LotPrelevementSerializer})
+    @oa.extend_schema(
+        request=oa.body('CreerLotPrelevementRequete', pick_list_ids=oa.ids(True)),
+        responses={201: LotPrelevementSerializer},
+    )
     def create(self, request, *args, **kwargs):
         company = request.user.company
         pick_list_ids = oa.ids_entiers(
@@ -75,7 +78,10 @@ class LotPrelevementViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         lot = self.get_object()
         return Response(services.lignes_lot_prelevement(lot))
 
-    @oa.extend_schema(request=oa.body('CocherLigneLotRequete', ligne_id=oa.i(True), quantite_prelevee=oa.dec()), responses=oa.LIST)
+    @oa.extend_schema(
+        request=oa.body('CocherLigneLotRequete', ligne_id=oa.i(True), quantite_prelevee=oa.dec()),
+        responses=oa.LIST,
+    )
     @action(detail=True, methods=['post'], url_path='cocher-ligne')
     def cocher_ligne(self, request, pk=None):
         """ZSTK10 — coche une ligne du lot (`ligne_id` dans le corps),

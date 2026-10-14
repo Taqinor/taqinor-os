@@ -28,6 +28,10 @@ from core.throttling import IdentIpPartageeMixin
 
 from .models import SalleVente, SalleVenteItem, SalleVenteVue
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _SALLE_VENTE_RESPONSE = inline_serializer('PublicSalleVente', {
     'titre': drf_serializers.CharField(),
     'expires_at': drf_serializers.DateTimeField(allow_null=True),
@@ -190,7 +194,7 @@ def _item_payload(item):
             try:
                 payload['proposal_path'] = url_proposition(devis)
             except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-                pass
+                logger.warning("item payload : échec ignoré, comportement dégradé", exc_info=True)
         else:
             payload['reference'] = None
     else:
@@ -249,7 +253,7 @@ def public_salle_vente(request, token):
         from .clients_pilotage import detecter_signal_interet_salle_vente
         detecter_signal_interet_salle_vente(salle)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("public salle vente : échec ignoré, comportement dégradé", exc_info=True)
 
     items = salle.items.all().order_by('ordre', 'id')
     return Response({

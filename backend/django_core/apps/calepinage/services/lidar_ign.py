@@ -55,6 +55,10 @@ import math
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Le seul pays couvert. Le RGE ALTI® et le LiDAR HD sont des produits du
 #: territoire français : les servir ailleurs ne serait pas « permissif »,
 #: ce serait rendre des pentes fausses.
@@ -363,6 +367,7 @@ def _altimetre_ign(points):
                      timeout=DELAI_RESEAU_S) as reponse:
             charge = json.loads(reponse.read().decode('utf-8'))
     except Exception:
+        logger.warning("altimetre ign : échec ignoré, comportement dégradé", exc_info=True)
         return [None] * len(points)
     return _altitudes_de_la_reponse(charge, len(points))
 

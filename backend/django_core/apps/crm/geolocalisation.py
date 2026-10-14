@@ -26,6 +26,10 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Domaines de liens COURTS Google Maps — les seuls pour lesquels une
 #: résolution HTTP est tentée (jamais une URL arbitraire).
 _DOMAINES_COURTS = (
@@ -87,6 +91,7 @@ def coords_depuis_lien_maps(lien):
             return coords
         return _extraire(reponse.text[:200000])
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("coords depuis lien maps : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -117,7 +122,7 @@ def coords_depuis_adresse(adresse, ville=''):
                 if coords:
                     return (*coords, 'adresse')
         except Exception:  # noqa: BLE001 — best-effort, repli ville
-            pass
+            logger.warning("coords depuis adresse : échec ignoré, comportement dégradé", exc_info=True)
     # VREF-LIEUX (08/09/2026, cas « Sidi Hashass ») — lieu-dit GeoNames
     # (douar, quartier, hameau) : l'ADRESSE d'abord, corroborée par la ville
     # tapée, puis le champ ville lui-même. Correspondance sans équivoque

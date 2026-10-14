@@ -23,6 +23,10 @@ n'interrompt jamais le traitement des autres leads. Aucun argument requis :
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Corps de note système marquant une escalade déjà traitée (idempotence —
 #: recherché parmi les activités du lead avant d'en journaliser une nouvelle).
 ESCALATION_MARKER = 'auto — recyclage SLA : lead non travaillé'
@@ -108,7 +112,7 @@ def _deassign_hours(company):
         if profile is not None and profile.lead_sla_deassign_hours:
             return int(profile.lead_sla_deassign_hours)
     except Exception:
-        pass
+        logger.warning("deassign hours : échec ignoré, comportement dégradé", exc_info=True)
     return 0
 
 
@@ -137,7 +141,7 @@ def _escalate(lead, seuil, now):
                 company=lead.company,
             )
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-        pass
+        logger.warning("escalate : échec ignoré, comportement dégradé", exc_info=True)
 
 
 def _deassign(lead):

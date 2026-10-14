@@ -20,6 +20,10 @@ from decimal import Decimal, InvalidOperation
 
 from core.reglementaire import regime_8221 as noyau
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 CODE_A_QUALIFIER = 'a_qualifier'
 CODE_NON_CONCERNE = 'non_concerne'
 TYPE_INDUSTRIEL = 'industriel'
@@ -69,6 +73,7 @@ def regime_surcharges(company):
         from apps.parametres.models import CompanyProfile
         prof = CompanyProfile.get(company=company)
     except Exception:
+        logger.warning("regime surcharges : échec ignoré, comportement dégradé", exc_info=True)
         return None, None
     return (prof.seuil_regime_declaration_kwc, prof.seuil_regime_anre_kwc)
 
@@ -108,6 +113,7 @@ def kw_ac_onduleurs(bom, company):
         try:
             produit = get_produit_scoped(company, ligne['produit_id'])
         except Exception:
+            logger.warning("kw ac onduleurs : échec ignoré, comportement dégradé", exc_info=True)
             continue
         ac_kw = _decimal((specs_for_produit(produit) or {}).get('ac_kw'))
         quantite = _decimal(ligne.get('quantite'))

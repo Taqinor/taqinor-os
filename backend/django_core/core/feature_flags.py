@@ -172,6 +172,7 @@ def _modules_hors_perimetre(company):
     try:
         manifests = modules_infra.collect_manifests()
     except Exception:  # noqa: BLE001 — jamais casser /auth/me
+        logger.warning("modules hors perimetre : échec ignoré, comportement dégradé", exc_info=True)
         return set()
     installables = {
         key for key, manifest in manifests.items()

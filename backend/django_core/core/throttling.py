@@ -20,6 +20,10 @@ from __future__ import annotations
 
 from rest_framework.throttling import SimpleRateThrottle
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Longueur maximale retenue d'une adresse lue dans un en-tête (une IPv6 en
 #: fait 45 ; au-delà, l'en-tête ne décrit plus une adresse).
 MAX_LONGUEUR_IP = 64
@@ -31,6 +35,7 @@ def _texte_ip(valeur) -> str:
     try:
         return str(valeur).strip()[:MAX_LONGUEUR_IP]
     except Exception:  # noqa: BLE001 — défensif : une IP illisible vaut ''
+        logger.warning("texte ip : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 
@@ -115,6 +120,7 @@ def ip_de_requete(request) -> str:
                 return cloudflare
         return _texte_ip(meta.get('REMOTE_ADDR'))
     except Exception:  # noqa: BLE001 — défensif
+        logger.warning("ip de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 
@@ -151,6 +157,7 @@ def ips_declarees_de_requete(request):
         )
         return tuple(c for c in candidates if c)
     except Exception:  # noqa: BLE001 — défensif, comme ip_de_requete
+        logger.warning("ips declarees de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ()
 
 

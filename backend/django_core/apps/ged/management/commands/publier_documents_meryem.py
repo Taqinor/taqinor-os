@@ -110,6 +110,10 @@ from apps.records.storage import store_attachment
 from apps.roles.models import Role
 from apps.roles.permissions_registre import CANONICAL_PORTAIL_ROLES
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 CABINET_NOM = 'Documents internes'
 DOSSIER_RACINE_NOM = 'Commercial'
 DOSSIER_MERYEM_NOM = 'Guides de Meryem'
@@ -424,6 +428,7 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
                     recipients, EventType.ANNONCE_PUBLISHED, titre_notif,
                     body=corps, link='/ged', company=company)
         except Exception as exc:  # noqa: BLE001 — best-effort par entrée
+            logger.warning("publier documents : échec ignoré, comportement dégradé", exc_info=True)
             counters['echecs'] += 1
             message = f'{fichier or titre or "?"} : {exc}'
             erreurs.append(message)

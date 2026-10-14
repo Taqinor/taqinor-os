@@ -13,6 +13,10 @@ from __future__ import annotations
 
 from django.http import JsonResponse
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Méthodes considérées comme SÛRES (jamais bloquées en maintenance).
 _SAFE_METHODS = frozenset({'GET', 'HEAD', 'OPTIONS'})
 
@@ -55,6 +59,7 @@ class MaintenanceModeMiddleware:
         try:
             message = MaintenanceMode.get_solo().message
         except Exception:  # noqa: BLE001 — DB KO → message générique
+            logger.warning("maintenance response : échec ignoré, comportement dégradé", exc_info=True)
             message = 'Maintenance en cours.'
         resp = JsonResponse(
             {'detail': message, 'maintenance': True}, status=503)

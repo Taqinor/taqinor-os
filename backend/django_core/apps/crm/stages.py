@@ -19,6 +19,10 @@ import importlib.util
 import os
 from pathlib import Path
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _HERE = Path(__file__).resolve()
 
 
@@ -36,7 +40,7 @@ def _load_stages_module():
         if hasattr(module, "STAGES") and hasattr(module, "STAGE_LABELS"):
             return module
     except Exception:
-        pass
+        logger.warning("load stages module : échec ignoré, comportement dégradé", exc_info=True)
 
     # 2) Search known locations for the real STAGES.py, skipping this file.
     candidates = [Path("/opt") / "STAGES.py"]           # docker-compose mount

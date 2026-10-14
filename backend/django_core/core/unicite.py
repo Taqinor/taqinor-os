@@ -41,6 +41,10 @@ import re
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 CHAMP_SOCIETE = 'company'
 
 
@@ -78,6 +82,7 @@ def contraintes_societe(model) -> tuple[tuple[str, ...], ...]:
     try:
         model._meta.get_field(CHAMP_SOCIETE)
     except Exception:  # noqa: BLE001 — modèle sans champ company
+        logger.warning("contraintes societe : échec ignoré, comportement dégradé", exc_info=True)
         return ()
     groupes: list[tuple[str, ...]] = []
     for groupe in model._meta.unique_together or ():

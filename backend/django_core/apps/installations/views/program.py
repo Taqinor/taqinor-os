@@ -159,21 +159,30 @@ class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanySc
             serializer_class(obj).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
-    @oa.extend_schema(request=oa.body('AttacherChantierRequete', installation=oa.i(True)), responses={200: ProjetChantierSerializer, 201: ProjetChantierSerializer})
+    @oa.extend_schema(
+        request=oa.body('AttacherChantierRequete', installation=oa.i(True)),
+        responses={200: ProjetChantierSerializer, 201: ProjetChantierSerializer},
+    )
     @action(detail=True, methods=['post'])
     def attacher_chantier(self, request, pk=None):
         """FG291 — rattache un chantier (`installation`) au programme."""
         return self._attach(
             request, ProjetChantier, 'installation', ProjetChantierSerializer)
 
-    @oa.extend_schema(request=oa.body('AttacherDevisRequete', devis=oa.i(True)), responses={200: ProjetDevisSerializer, 201: ProjetDevisSerializer})
+    @oa.extend_schema(
+        request=oa.body('AttacherDevisRequete', devis=oa.i(True)),
+        responses={200: ProjetDevisSerializer, 201: ProjetDevisSerializer},
+    )
     @action(detail=True, methods=['post'])
     def attacher_devis(self, request, pk=None):
         """FG291 — rattache un devis (`devis`) au programme (statut intact)."""
         return self._attach(
             request, ProjetDevis, 'devis', ProjetDevisSerializer)
 
-    @oa.extend_schema(request=oa.body('AttacherTicketRequete', ticket=oa.i(True)), responses={200: ProjetTicketSerializer, 201: ProjetTicketSerializer})
+    @oa.extend_schema(
+        request=oa.body('AttacherTicketRequete', ticket=oa.i(True)),
+        responses={200: ProjetTicketSerializer, 201: ProjetTicketSerializer},
+    )
     @action(detail=True, methods=['post'])
     def attacher_ticket(self, request, pk=None):
         """FG291 — rattache un ticket SAV (`ticket`) au programme (statut

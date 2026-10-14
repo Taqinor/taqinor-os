@@ -35,6 +35,10 @@ from django.db import IntegrityError, models, transaction
 from rest_framework import status
 from rest_framework.exceptions import APIException
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class ProcessedWebhookEvent(models.Model):
     """Marque un événement webhook ENTRANT comme traité — une seule fois
@@ -240,5 +244,5 @@ class IdempotentCreateMixin:
             )
         except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT, ne
             # doit jamais faire échouer une création qui a déjà réussi.
-            pass
+            logger.warning("avec idempotence : échec ignoré, comportement dégradé", exc_info=True)
         return response

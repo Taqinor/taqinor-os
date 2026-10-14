@@ -32,6 +32,10 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Taille maximale acceptée (octets) — même ordre que les pièces jointes
 #: génériques (``records.storage``). Une photo drone brute dépasse rarement
 #: cette borne ; au-delà, le refus NOMME le champ plutôt que de faire tomber
@@ -278,6 +282,7 @@ def _supprimer_objet(cle):
 
             ventes_services.supprimer_fichier_toiture(cle)
     except Exception:  # journalisé, jamais propagé
+        logger.warning("supprimer objet : échec ignoré, comportement dégradé", exc_info=True)
         import logging
 
         logging.getLogger(__name__).exception(

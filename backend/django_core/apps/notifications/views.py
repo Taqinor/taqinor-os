@@ -54,6 +54,10 @@ from .services import (
     submit_template_for_approval,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _q(nom, type_, description, **kw):
     """ENF8 — paramètre de requête optionnel lu par la vue."""
@@ -883,14 +887,14 @@ def attention_summary(request):
             for source in appro._SOURCE_LOADERS:
                 nb_approbations += len(appro._SOURCE_LOADERS[source](company))
         except Exception:  # pragma: no cover - défensif, jamais de 500
-            pass
+            logger.warning("attention summary : échec ignoré, comportement dégradé", exc_info=True)
 
     nb_mentions = 0
     try:
         nb_mentions = notif_selectors.mentions_non_lues(
             request.user, company).count()
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("attention summary : échec ignoré, comportement dégradé", exc_info=True)
 
     return Response({
         'actions_dues': en_retard + aujourdhui + nb_approbations,

@@ -48,6 +48,10 @@ from ..services import pompage as dim
 from .calepinages import CalepinageViewSet, contexte_conception
 from ..services.valeurs import nombre as _nombre
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = ['pompage']
 
 #: Valeurs par défaut de FORME (pas de grandeur physique) : le type de pompe et
@@ -86,6 +90,7 @@ def _site(calepinage, request):
     try:
         contexte = contexte_conception(calepinage, request)
     except Exception:  # le pompage survit à une carte muette
+        logger.warning("site : échec ignoré, comportement dégradé", exc_info=True)
         return None, None, None
     pin = ((contexte or {}).get('geometrie') or {}).get('pin') or {}
     ville = ((contexte or {}).get('calepinage') or {}).get('client_ville') or None

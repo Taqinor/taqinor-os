@@ -93,22 +93,28 @@ SOURCES_ADMISES = ('societe', 'mesure', 'saisie', 'texte')
 #: UNE LIGNE PAR CLÉ, AJOUTÉE EN FIN — voir la règle en tête de module.
 CLES_SIMULATION = (
     ('fenetre_annees', "Fenêtre d'années météo", 'années', 'PVGIS — seriescalc, fenêtre pluriannuelle'),  # CALX145
-    ('mode_meteo', 'Mode météo (année type ou fenêtre pluriannuelle)', '', 'HelioScope — TMY weather file primer'),  # CALX145
+    # CALX145
+    ('mode_meteo', 'Mode météo (année type ou fenêtre pluriannuelle)', '', 'HelioScope — TMY weather file primer'),
     ('modele_iam', "Modèle d'incidence (IAM)", '', 'PVsyst — Array incidence loss (IAM)'),  # CALX145
     ('b0_iam', 'Coefficient b0 du modèle ASHRAE', '', 'PVsyst — Array incidence loss (IAM)'),  # CALX145
     ('sigma_modele_pct', 'Incertitude de simulation (σ modèle)', '%', 'PVsyst — P50/P90 evaluations'),  # CALX145
-    ('sigma_biais_meteo_pct', 'Biais long terme de la source météo (σ)', '%', 'PVsyst — P50/P90 evaluations'),  # CALX145
-    ('sigma_meteo_saisi_pct', 'Variabilité interannuelle saisie (σ météo)', '%', 'PVsyst — P50/P90 evaluations'),  # CALX145
+    # CALX145
+    ('sigma_biais_meteo_pct', 'Biais long terme de la source météo (σ)', '%', 'PVsyst — P50/P90 evaluations'),
+    # CALX145
+    ('sigma_meteo_saisi_pct', 'Variabilité interannuelle saisie (σ météo)', '%', 'PVsyst — P50/P90 evaluations'),
     ('tolerance_validation_pct', "Tolérance d'écart admise face à PVGIS", '%', 'Décision fondateur 21/09/2026 — aucun verdict sans tolérance saisie'),  # CALX145
     ('resolution_minutes', 'Pas de temps de la simulation', 'minutes', 'PVGIS — seriescalc, pas horaire'),  # CALX145
     ('albedo_mensuel', 'Albédo du sol, mois par mois', '', 'PVsyst — Array and system losses'),  # CALX145
     ('annees_exploitation', "Durée d'exploitation simulée", 'années', 'PVsyst — Array and system losses'),  # CALX145
-    ('regle_qualite_module', 'Règle de qualité module (tolérance de puissance)', '', 'PVsyst — Module quality losses'),  # CALX145
+    # CALX145
+    ('regle_qualite_module', 'Règle de qualité module (tolérance de puissance)', '', 'PVsyst — Module quality losses'),
     ('lid_par_techno', 'Perte LID déclarée par technologie de cellule', '%', 'PVsyst — LID loss (aucune valeur par défaut proposée)'),  # CALX145
-    ('mismatch_fabricant_pct', 'Mismatch de fabrication entre modules', '%', 'PVsyst — Array and system losses'),  # CALX145
+    # CALX145
+    ('mismatch_fabricant_pct', 'Mismatch de fabrication entre modules', '%', 'PVsyst — Array and system losses'),
     ('modele_degradation', 'Modèle de dégradation pluriannuelle', '', 'PVsyst — Array and system losses'),  # CALX145
     ('thermique_par_pose', 'Coefficients Uc/Uv par type de pose', 'W/m²K et W/m³sK', 'PVsyst — Array thermal losses (Faiman)'),  # CALX145
-    ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),  # CALX145
+    # CALX145
+    ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),
     ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%', 'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
     ('indisponibilite_fenetres', "Fenêtres d'arrêt de l'installation (début, fin, motif)", '', 'PVsyst — Unavailability loss (des périodes d\'arrêt explicites, jamais un forfait annuel)'),  # CALX176
     ('auxiliaires_w_constants', 'Auxiliaires — terme constant en marche', 'W', 'PVsyst — Auxiliaries consumption (terme constant au-dessus d\'un seuil)'),  # CALX175
@@ -132,7 +138,8 @@ CLES_ELECTRIQUE_SOCIETE = (
     ('seuil_alerte_dc_ac', "Seuil d'alerte du rapport DC/AC", '', 'PV*SOL — Configuration check'),  # CALX145
     ('correspondances_nomenclature', 'Correspondances de nomenclature du bordereau', '', 'Réglage société — aucun code article n\'est deviné'),  # CALX145
     ('regle_bom_structure', 'Règle de sortie de la structure hors bordereau électrique', '', 'Décision fondateur 21/09/2026 — la structure sort du bordereau électrique'),  # CALX145
-    ('cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n\'est supposée'),  # CALX145
+    # CALX145
+    ('cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n\'est supposée'),
     ('seuil_bas_dc_ac', 'Seuil bas du rapport DC/AC (onduleur sous-utilisé)', '', 'OpenSolar — Inverter sizing and stringing recommendations'),  # CALX213
 )
 
@@ -198,7 +205,8 @@ TYPES_CLES = {
         'resolution_minutes': {'type': 'entier', 'minimum': 1},  # ACAL132
         'albedo_mensuel': {'type': 'table_mensuelle', 'minimum': 0, 'maximum': 1},  # ACAL132
         'annees_exploitation': {'type': 'entier', 'minimum': 1},  # ACAL132
-        'regle_qualite_module': {'type': 'enum', 'valeurs': ('quart_pvsyst', 'borne_basse', 'moyenne', 'aucune')},  # ACAL132
+        # ACAL132
+        'regle_qualite_module': {'type': 'enum', 'valeurs': ('quart_pvsyst', 'borne_basse', 'moyenne', 'aucune')},
         'lid_par_techno': {'type': 'table'},  # ACAL132
         'mismatch_fabricant_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
         'modele_degradation': {'type': 'enum', 'valeurs': ('lineaire', 'exponentiel')},  # ACAL132

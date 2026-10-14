@@ -70,6 +70,10 @@ from .contrat import (  # réexport (__all__)
     CHEMIN_CONTRAT, CODE_DOCUMENT, RapportRefuse, sections_declarees,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'CODE_DOCUMENT', 'CHEMIN_CONTRAT', 'MODULES_DE_SECTION', 'RapportRefuse',
     'sections_declarees', 'valeur_au_chemin', 'entrees_manquantes',
@@ -575,6 +579,7 @@ def _schema_du_calepinage(calepinage):
     try:
         return schema_du_calepinage(calepinage)
     except Exception as erreur:  # motif nommé au rapport
+        logger.warning("schema du calepinage : échec ignoré, comportement dégradé", exc_info=True)
         return {'svg': None, 'bloquants': [str(erreur)], 'manquantes': []}
 
 

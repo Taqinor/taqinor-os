@@ -20,6 +20,10 @@ import io
 import math
 import re
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Garde-fou de taille (~5 Mo) — un DXF de toiture réel tient très large en
 __all__ = [
     'TAILLE_MAX_OCTETS', 'DxfInvalide', 'analyser_dxf',
@@ -72,6 +76,7 @@ def _unite_document(doc):
     try:
         code = int(doc.header.get('$INSUNITS', 0) or 0)
     except Exception:  # un en-tête bizarre ne doit rien casser
+        logger.warning("unite document : échec ignoré, comportement dégradé", exc_info=True)
         return 'inconnu'
     return _UNITES_INSUNITS.get(code, 'inconnu')
 
@@ -465,6 +470,7 @@ def _analyser_pdf_vectoriel(contenu, *, nom_fichier=''):
             try:
                 traces = page.get_drawings()
             except Exception:  # page corrompue : pas un 500
+                logger.warning("analyser pdf vectoriel : échec ignoré, comportement dégradé", exc_info=True)
                 traces = []
             entites = _entites_des_traces(traces)
             if entites:

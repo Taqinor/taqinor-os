@@ -31,6 +31,10 @@ from .integrations import (
     register_provider,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class BankTransaction:
     """Transaction bancaire normalisée (objet pur, agnostique du fournisseur)."""
@@ -86,6 +90,7 @@ class GenericOpenBankingProvider(BankAggregatorProvider):
         try:
             import requests
         except Exception:  # noqa: BLE001
+            logger.warning("fetch transactions : échec ignoré, comportement dégradé", exc_info=True)
             return []
         params = {'account': self.config.get('account', '')}
         if since:
@@ -101,6 +106,7 @@ class GenericOpenBankingProvider(BankAggregatorProvider):
                 return []
             rows = resp.json().get('transactions', [])
         except Exception:  # noqa: BLE001 — réseau/format : dégrade en vide.
+            logger.warning("fetch transactions : échec ignoré, comportement dégradé", exc_info=True)
             return []
         out = []
         for r in rows:

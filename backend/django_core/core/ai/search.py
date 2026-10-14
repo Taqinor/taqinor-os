@@ -178,6 +178,7 @@ def _valeurs(instance, champs):
         try:
             valeur = getattr(instance, champ, None)
         except Exception:  # noqa: BLE001 - propriété métier en erreur.
+            logger.warning("valeurs : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if valeur in (None, ''):
             continue
@@ -288,6 +289,7 @@ def _route_pour(label, object_id):
             return None
         return entree.route.replace('{id}', str(object_id))
     except Exception:  # noqa: BLE001
+        logger.warning("route pour : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -373,6 +375,7 @@ def connect_signals():
         try:
             modele = django_apps.get_model(label)
         except Exception:  # noqa: BLE001 - app non installée : on ignore.
+            logger.warning("connect signals : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if modele is None:
             continue

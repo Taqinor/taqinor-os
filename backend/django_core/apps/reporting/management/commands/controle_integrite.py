@@ -15,6 +15,10 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.reporting.integrity import controle_integrite, total_anomalies
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class Command(BaseCommand):
     help = (
@@ -81,4 +85,4 @@ def _notify_anomalies(company, result, n):
         notify_many(recipients, EventType.DIGEST, titre, body=corps,
                     company=company)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning("notify anomalies : échec ignoré, comportement dégradé", exc_info=True)

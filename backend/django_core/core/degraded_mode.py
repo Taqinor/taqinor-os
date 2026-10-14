@@ -22,6 +22,10 @@ from rest_framework.response import Response
 
 from core.throttling import PublicTokenReadThrottle
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _DegradedModeEntreeSerializer = inline_serializer('DegradedModeEntree', {
     'cle': drf_serializers.CharField(),
     'label': drf_serializers.CharField(),
@@ -114,11 +118,13 @@ def _statut_llm_ia():
     try:
         from core.ai.registry import is_capability_configured
     except Exception:  # noqa: BLE001 — module IA absent/KO, jamais bloquant
+        logger.warning("statut llm ia : échec ignoré, comportement dégradé", exc_info=True)
         return 'unknown'
     for capability in ('llm', 'ocr', 'stt'):
         try:
             is_capability_configured(capability)
         except Exception:  # noqa: BLE001
+            logger.warning("statut llm ia : échec ignoré, comportement dégradé", exc_info=True)
             return 'degraded'
     return 'ok'
 
@@ -132,6 +138,7 @@ def degraded_mode_status():
     try:
         services = {s['name']: s['status'] for s in health.check_services()}
     except Exception:  # noqa: BLE001 — jamais bloquant
+        logger.warning("degraded mode status : échec ignoré, comportement dégradé", exc_info=True)
         services = {}
 
     resultat = []

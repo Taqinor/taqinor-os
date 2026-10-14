@@ -59,7 +59,7 @@ def bind_company(company_id: Optional[int]) -> None:
         import sentry_sdk  # paresseux, présent seulement si init
         sentry_sdk.set_tag('company', str(company_id) if company_id else None)
     except Exception:  # noqa: BLE001 — jamais casser une requête pour un tag
-        pass
+        logger.warning("bind company : échec ignoré, comportement dégradé", exc_info=True)
 
 
 def _before_send(event, hint):
@@ -70,7 +70,7 @@ def _before_send(event, hint):
             tags = event.setdefault('tags', {})
             tags.setdefault('company', str(company_id))
     except Exception:  # noqa: BLE001 — un before_send ne doit jamais lever
-        pass
+        logger.warning("before send : échec ignoré, comportement dégradé", exc_info=True)
     return event
 
 

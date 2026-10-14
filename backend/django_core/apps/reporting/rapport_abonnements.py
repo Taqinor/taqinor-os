@@ -101,6 +101,7 @@ def _now_casablanca():
         from zoneinfo import ZoneInfo
         return timezone.now().astimezone(ZoneInfo(CASABLANCA_TZ))
     except Exception:  # pragma: no cover - zoneinfo absent (très improbable)
+        logger.warning("now casablanca : échec ignoré, comportement dégradé", exc_info=True)
         return timezone.localtime()
 
 
@@ -273,6 +274,7 @@ def _email_configure():
         from apps.ventes.email_service import is_email_configured
         return is_email_configured()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("email configure : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 

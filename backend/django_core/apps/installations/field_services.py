@@ -25,6 +25,10 @@ from .models import (
     PreparationOutilLigne, ShotListSlot,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ── F7/F8 — shot list par défaut (standard de documentation chantier solaire) ─
 # (cle, libellé, phase, obligatoire). Les créneaux « avant/après » de toiture et
 # le tableau électrique sont obligatoires : ce sont les preuves d'installation.
@@ -572,6 +576,7 @@ def signature_client_requise(intervention):
         prof = CompanyProfile.get(company)
         return bool(getattr(prof, 'signature_client_obligatoire', False))
     except Exception:
+        logger.warning("signature client requise : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 

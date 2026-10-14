@@ -62,6 +62,7 @@ def _admins_rh(company):
             if u.has_erp_permission('rh_voir')
         ]
     except Exception:  # pragma: no cover - défensif
+        logger.warning("admins rh : échec ignoré, comportement dégradé", exc_info=True)
         candidats = []
     if candidats:
         return candidats
