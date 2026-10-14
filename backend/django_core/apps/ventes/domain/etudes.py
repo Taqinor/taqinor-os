@@ -181,6 +181,36 @@ def _bloc_horaire_deja_a_jour(devis, kwc, cle='etude_horaire'):
         return False
 
 
+def bloc_horaire_enregistre_pour(devis, kwc):
+    """ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — le bloc horaire RANGÉ que
+    le document lira pour ``kwc``, ou ``None``.
+
+    L'aperçu de l'« Édition complète » recalculait l'étude EN DIRECT avec ses
+    propres arguments, pendant que le PDF, l'API et la proposition lisent le
+    bloc rangé : deux chemins, deux chiffres. Ce prédicat rend le bloc que le
+    document chiffre — frais au sens de :func:`_bloc_horaire_deja_a_jour`
+    (kWc dans la tolérance du moteur, même batterie, même empreinte des
+    entrées) ET accepté par la garde du moteur
+    (``pricing._lire_etude_horaire`` : économies, douze mois). Lecture pure,
+    ne lève jamais.
+    """
+    if not kwc:
+        return None
+    try:
+        from apps.ventes.quote_engine.pricing import _lire_etude_horaire
+        etude_params = getattr(devis, 'etude_params', None) or {}
+        for cle in ('etude_horaire', CLE_ETUDE_HORAIRE_SANS):
+            bloc = etude_params.get(cle)
+            if (isinstance(bloc, dict)
+                    and _bloc_horaire_deja_a_jour(devis, kwc, cle=cle)
+                    and _lire_etude_horaire(bloc, kwc) is not None):
+                return bloc
+    except Exception:  # noqa: BLE001 — au moindre doute, l'aperçu recalcule
+        logger.warning('bloc_horaire_enregistre_pour indisponible sur %s',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+    return None
+
+
 def puissances_etude_horaire(devis):
     """I7 — ``(kwc du bloc principal, kwc du bloc « sans » ou None)``.
 
