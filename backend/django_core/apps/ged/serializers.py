@@ -1050,6 +1050,17 @@ class RoutageDocumentaireSerializer(ChampsStrictsSansDecimalMixin,
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
+    def to_internal_value(self, data):
+        # CI #997 api-fuzz : ``tags_defaut`` = ``{}`` passait pour une liste
+        # vide (``ManyRelatedField`` accepte tout itérable) alors que le
+        # schéma déclare un tableau → 400 nommé pour tout JSON non-liste.
+        if (hasattr(data, 'get') and not hasattr(data, 'getlist')
+                and data.get('tags_defaut') is not None
+                and not isinstance(data.get('tags_defaut'), list)):
+            raise serializers.ValidationError(
+                {'tags_defaut': "Une liste d'identifiants est attendue."})
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
         request = self.context.get('request')
         cabinet = attrs.get(
