@@ -546,3 +546,20 @@ class CorpsFuzzTests(TestCase):
         r = api.post(f'{BASE}/consignations/', {**corps, 'adresse_site': 'x' * 255}, format='json')
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(r.data['adresse_site'], 'x' * 255)
+
+    def test_fuzz_ci997_3_bcf_fournisseur_mal_forme_400(self):
+        """CI #997 fuzz (3) — `fournisseur: [null, null]` (ou `{}`) dans un
+        corps de BCF par ailleurs complet faisait un 500 (pré-contrôles du
+        fournisseur) : 400 nommant `fournisseur` ; un corps non objet aussi."""
+        api = self._api_admin()
+        url = f'{BASE}/bons-commande-fournisseur/'
+        corps = {'date_commande': JOUR, 'devise': 'MAD', 'taux_change': '1',
+                 'lignes': [{'designation': 'x', 'quantite': 1}]}
+        for fournisseur in ([None, None], {}, True):
+            r = api.post(url, {**corps, 'fournisseur': fournisseur}, format='json')
+            self.assertEqual(r.status_code, 400, (fournisseur, r.content))
+            self.assertIn('fournisseur', r.data, fournisseur)
+        r = api.post(url, [None, None], format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = api.post(url, {**corps, 'fournisseur': self.fa.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)

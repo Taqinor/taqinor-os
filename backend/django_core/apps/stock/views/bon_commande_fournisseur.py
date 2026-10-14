@@ -324,7 +324,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         # XPUR4 — refuse la création si le fournisseur est bloqué commandes
         # (ou total). No-op pour un fournisseur actif (comportement
         # historique).
-        fournisseur_id = request.data.get('fournisseur')
+        # CI #997 fuzz (3) — `fournisseur: [null, null]` faisait un TypeError
+        # ORM (500) dans ces pré-contrôles : seul un id entier bien formé y
+        # entre ; toute autre forme (et un corps non objet) est refusée en 400
+        # par le sérialiseur, comme le schéma le déclare.
+        from ..utils.params import id_corps
+        donnees = request.data if hasattr(request.data, 'get') else {}
+        fournisseur_id = id_corps(donnees.get('fournisseur'))
         if fournisseur_id:
             try:
                 from ..services import check_fournisseur_statut_commande
