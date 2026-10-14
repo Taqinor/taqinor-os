@@ -467,15 +467,10 @@ ignore_imports =
     core.** -> apps.roles.**
     core.** -> apps.records.**
     core.** -> apps.parametres.**
-# MÊME arête fondation→fondation, atteinte d'une hop plus loin :
-# `core.tenant_context -> authentication.cookie_auth -> authentication.
-# session_policy -> apps.parametres.models` (lecture fonction-locale du
-# `CompanyProfile` pour la politique de session). `authentication` est une app
-# de fondation autorisée (elle n'a jamais figuré parmi les 14 interdites), et
-# `parametres` l'est aussi : on élague cette SEULE hop, exactement comme les
-# exceptions `authentication.tasks -> …` plus bas. Toute arête DIRECTE
-# `core.* -> apps.<domaine>` reste détectée.
-    authentication.session_policy -> apps.parametres.models
+# ENF20 — l'exception `authentication.session_policy -> apps.parametres.models`
+# est RETIRÉE : la politique de session lit `CompanyProfile` par libellé
+# (`django_apps.get_model('parametres', 'CompanyProfile')`, même patron que
+# `cookie_auth`), plus aucune arête statique vers apps.parametres.
 # AUD231 — le test des huit balayages beat a DÉMÉNAGÉ dans apps/pos/tests
 # (contrat core = couche de base, fix-ci #620) : plus aucune arête core.tests
 # vers les domaines, les exceptions mortes sont retirées (06/09/2026).
