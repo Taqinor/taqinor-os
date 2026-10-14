@@ -96,11 +96,16 @@ class TestEncaissementGroupe(TestCase):
                 'factures': [self.f1.id]}
         for patch in ({'montant': '1e20'}, {'montant': 'NaN'},
                       {'mode': 'troc'}, {'date': 'pas-une-date'},
-                      {'factures': ['abc']}, {'reference': 'x' * 121}):
+                      {'factures': ['abc']}, {'reference': 'x' * 121},
+                      # CI #997 — ``client`` tableau : TypeError (500).
+                      {'client': [None, None]}, {'client': 'abc'}):
             resp = api.post(
                 '/api/django/ventes/factures/encaissement-groupe/',
                 dict(base, **patch), format='json')
             self.assertEqual(resp.status_code, 400, (patch, resp.data))
+        resp = api.post('/api/django/ventes/factures/encaissement-groupe/',
+                        [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
         self.assertFalse(Paiement.objects.exists())
 
     def test_partial_split_settles_only_what_amount_covers(self):

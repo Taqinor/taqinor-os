@@ -254,6 +254,10 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         from ..services import enregistrer_avance as _enregistrer_avance
 
         company = request.user.company
+        # CI #997 — corps non objet (``[null, null]``) : 400, plus 500.
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         client_id = request.data.get('client')
         # ENF11 — un ``client`` non entier (« None », texte…) répond 400 comme
         # un id inconnu : ``filter(pk='None')`` levait ValueError (500).

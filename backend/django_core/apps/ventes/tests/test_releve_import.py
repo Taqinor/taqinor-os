@@ -320,6 +320,16 @@ class TestAUD121FileDeRevueEtJeton(_ReleveImportBase):
         self.assertEqual(r.status_code, 400, r.data)
         self.assertEqual(Paiement.objects.filter(facture=fac).count(), 0)
 
+    def test_commit_corps_ou_jeton_mal_type_400(self):
+        # CI #997 — ``{"token": [null, null]}`` levait AttributeError dans le
+        # service (filet 500) ; un corps tableau aussi : 400 nommés.
+        r = self.api.post(
+            self.COMMIT_URL, {'token': [None, None], 'lignes': []},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(self.COMMIT_URL, [None, None], format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+
     def test_commit_jeton_inconnu_refuse(self):
         r = self.api.post(
             self.COMMIT_URL, {'token': 'jeton-fabrique'}, format='json')

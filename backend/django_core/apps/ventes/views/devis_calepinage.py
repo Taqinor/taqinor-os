@@ -110,6 +110,10 @@ class DevisCalepinageActionsMixin:
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # CI #997 — corps non objet (``[null, null]``) : 400, plus 500.
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         layout = request.data.get('layout')
         # ACAL108 (D-ACAL-2) — la porte jumelle CAL185 `{calepinage}` est
         # RETIRÉE : un calepinage se chiffre par SON « Générer le devis »
@@ -131,10 +135,12 @@ class DevisCalepinageActionsMixin:
         # Résolution bornée société du lead et du client. On passe par les
         # sélecteurs/services crm (jamais d'import direct des models crm depuis
         # ventes) ; un id d'une autre société → 404 (introuvable dans la portée).
+        from core.champs_stricts import entier_ou_400
         lead_obj = None
         client_obj = None
-        lead_id = request.data.get('lead')
-        client_id = request.data.get('client')
+        # CI #997 — id non entier : 400 nommé (TypeError du filtre ``pk=``).
+        lead_id = entier_ou_400(request.data.get('lead'), 'lead')
+        client_id = entier_ou_400(request.data.get('client'), 'client')
         if lead_id:
             from apps.crm.selectors import get_company_lead
             lead_obj = get_company_lead(company, lead_id)
