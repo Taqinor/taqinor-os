@@ -125,6 +125,25 @@ class TestMigrationSafety(unittest.TestCase):
     def test_index_hash_name_ok(self):
         self.assertNotIn("INDEX_NAME_DRIFT", _check(INDEX_HASH_NAME_OK))
 
+    def test_nom_retire_par_une_migration_ulterieure_ok(self):
+        """VNT103 — une contrainte posée puis RETIRÉE (même dans
+        ``SeparateDatabaseAndState``) n'est plus décrite par les modèles : ce
+        n'est pas une dérive ; un nom jamais retiré reste signalé."""
+        retrait = (
+            "from django.db import migrations\n"
+            "class Migration(migrations.Migration):\n"
+            "    operations = [migrations.SeparateDatabaseAndState(\n"
+            "        state_operations=[migrations.RemoveConstraint(\n"
+            "            model_name='m', name='handwritten_idx')])]\n")
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = Path(dossier) / "0002_retrait.py"
+            chemin.write_text(retrait, encoding="utf-8")
+            retires = cms._noms_retires([chemin])
+        self.assertEqual(retires, {"handwritten_idx"})
+        self.assertNotIn("INDEX_NAME_DRIFT",
+                         _check(INDEX_NAME_DRIFT, model_names=retires))
+        self.assertIn("INDEX_NAME_DRIFT", _check(INDEX_NAME_DRIFT))
+
 
 if __name__ == "__main__":
     unittest.main()
