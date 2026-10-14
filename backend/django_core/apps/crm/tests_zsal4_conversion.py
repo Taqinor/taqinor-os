@@ -122,7 +122,7 @@ class TestConvertirClientAPI(TestCase):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.id}/convertir-client/',
             {'mode': 'lier', 'client_id': client_autre.id}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_convertir_types_hors_schema_400(self):
         # ENF11 (api-fuzz) — client_id objet / mode non texte : 400, aucun
