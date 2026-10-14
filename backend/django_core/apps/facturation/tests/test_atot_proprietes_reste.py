@@ -135,7 +135,8 @@ class ProprietesResteTests(HypothesisDjangoTestCase):
                     {'lignes': [{'designation': 'Avoir', 'quantite': '1',
                                  'prix_unitaire': str(ht), 'taux_tva': '20',
                                  'produit': produit.id}]}, format='json')
-                self.assertIn(r.status_code, (201, 400), r.data)
+                # Seul refus possible : le plafond (état) — 409, CI #997.
+                self.assertIn(r.status_code, (201, 409), r.data)
                 if r.status_code == 201:
                     verifier_chaine_document(Avoir.objects.get(pk=r.data['id']))
             else:

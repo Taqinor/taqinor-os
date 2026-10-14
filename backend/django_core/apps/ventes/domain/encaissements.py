@@ -1417,7 +1417,9 @@ from apps.ventes.domain.recouvrement import reset_relance_escalation  # noqa: E4
 class CorrectionPaiementRefusee(Exception):
     """AFAC17 — refus d'une correction de paiement (``code`` + ``detail`` FR,
     contrats ``paiement_annuler_saisie.json`` / ``paiement_reaffecter.json``).
-    ``conflit`` : l'état du paiement interdit le geste (409)."""
+    ``conflit`` : l'état du paiement interdit le geste (409). CI #997 (3) —
+    tout refus d'un corps CONFORME (paiement remis, cible = facture du
+    paiement, autre client, non encaissable, reste dépassé) en est un."""
 
     def __init__(self, code, detail, conflit=False):
         super().__init__(detail)
@@ -1441,7 +1443,7 @@ def _refus_si_remis(paiement, geste):
             'paiement_remis_en_banque',
             f'Ce paiement est déjà porté par la remise '
             f'{remise.reference or remise.pk} : retirez-le de la remise '
-            f'avant {geste}.')
+            f'avant {geste}.', conflit=True)
 
 
 def _note_facture(facture, user, field, label, body, ancien='', nouveau=''):
@@ -1483,11 +1485,13 @@ def reaffecter_paiement(*, paiement, facture_cible, user=None):
         if p.facture_id is None:
             raise CorrectionPaiementRefusee(
                 'paiement_sans_facture',
-                "Avance non rattachée : utilisez la ventilation.")
+                "Avance non rattachée : utilisez la ventilation.",
+                conflit=True)
         if facture_cible is None or facture_cible.pk == p.facture_id:
             raise CorrectionPaiementRefusee(
                 'cible_invalide',
-                'Choisissez une autre facture que celle du paiement.')
+                'Choisissez une autre facture que celle du paiement.',
+                conflit=True)
         _refus_si_remis(p, 'de le réaffecter')
         ids = sorted([p.facture_id, facture_cible.pk])
         verrous = {f.pk: f for f in
@@ -1501,17 +1505,20 @@ def reaffecter_paiement(*, paiement, facture_cible, user=None):
             raise CorrectionPaiementRefusee(
                 'facture_autre_client',
                 "La facture cible appartient à un autre client : un paiement "
-                "ne se réaffecte qu'entre factures du même client.")
+                "ne se réaffecte qu'entre factures du même client.",
+                conflit=True)
         motif = motif_non_encaissable(cible, p.date_paiement)
         if motif:
-            raise CorrectionPaiementRefusee('cible_non_encaissable', motif)
+            raise CorrectionPaiementRefusee('cible_non_encaissable', motif,
+                                            conflit=True)
         total = Decimal(str(p.montant)) + Decimal(
             str(p.escompte_montant or 0))
         if total - cible.montant_du > Decimal('0.01'):
             raise CorrectionPaiementRefusee(
                 'depasse_reste_cible',
                 f'Le paiement ({total:.2f} MAD) dépasse le reste à payer de '
-                f'la facture cible ({cible.montant_du:.2f} MAD).')
+                f'la facture cible ({cible.montant_du:.2f} MAD).',
+                conflit=True)
         _rattacher_paiement(p, cible)
         texte = (f'Paiement de {p.montant} MAD du {p.date_paiement} '
                  f'réaffecté : {source.reference} → {cible.reference}.')

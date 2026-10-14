@@ -136,17 +136,18 @@ class ProprietesAvoirEcheancierTests(_Base):
         total = Avoir.objects.get(pk=r.data['id'])
         self.assertEqual(Decimal(str(total.total_ttc)), ttc)
         verifier_chaine_document(total)
-        # Plus rien à créditer : tout avoir supplémentaire = 400 (plafond).
+        # Plus rien à créditer : tout avoir supplémentaire = 409 (plafond,
+        # refus d'état — CI #997).
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
             {'lignes': [{'designation': 'Trop', 'quantite': '1',
                          'prix_unitaire': '10', 'taux_tva': '20',
                          'produit': self.produit.id}]}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.api.post(f'/api/django/ventes/avoirs/{total.id}/annuler/', {},
                       format='json')
 
-        # Avoirs partiels successifs : Σ actifs ≤ TTC, refus en 400 au-delà.
+        # Avoirs partiels successifs : Σ actifs ≤ TTC, refus en 409 au-delà.
         for fraction in fractions:
             ht = max(_q(Decimal(str(relire(facture).total_ht))
                         * fraction / 100), CENT)
@@ -155,7 +156,7 @@ class ProprietesAvoirEcheancierTests(_Base):
                 {'lignes': [{'designation': 'Partiel', 'quantite': '1',
                              'prix_unitaire': str(ht), 'taux_tva': '20',
                              'produit': self.produit.id}]}, format='json')
-            self.assertIn(r.status_code, (201, 400), r.data)
+            self.assertIn(r.status_code, (201, 409), r.data)
             actifs = sum((Decimal(str(a.total_ttc)) for a in
                           Avoir.objects.filter(facture=facture).exclude(
                               statut=Avoir.Statut.ANNULEE)), ZERO)
