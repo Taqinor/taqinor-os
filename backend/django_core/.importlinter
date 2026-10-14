@@ -774,9 +774,13 @@ forbidden_modules =
 # (échéancier, sélecteurs de facturation, module de lecture, domaine de
 # facturation) ; ils passent par `apps.ventes.selectors` / `apps.ventes.services`
 # (CLAUDE.md, « Cross-app boundary »). Seuls les imports DIRECTS sont jugés.
-# `ignore_imports` : les 4 arêtes de TESTS existantes (sonde R3-E du 12/10/2026 :
-# sans la 4e, le contrat est BROKEN), nommées une à une, jamais un joker ; la
-# liste ne peut que rétrécir.
+# `ignore_imports` : VIDE (ENF20, 14/10/2026). Les 4 arêtes de TESTS de la
+# sonde R3-E (crm crx20/mry7 -> domain.recouvrement, installations astk et
+# stock produit_nom_unique -> domain.facturation_ops) testent des helpers du
+# domaine que la façade n'exporte pas (`_x` privés, `facturer_devis_complet`
+# appelé par sa seule vue) : elles les chargent par `importlib.import_module`
+# (test boîte blanche délibéré, politique QJR645 « un test importe depuis
+# apps.ventes.domain.<module> »). Aucun code de PRODUCTION n'y est exempté.
 [importlinter:contract:vente-lue-par-la-facade]
 name = Les autres domaines lisent la vente par la facade ventes, jamais ses internes de facturation (VNT9)
 type = forbidden
@@ -799,8 +803,3 @@ forbidden_modules =
     apps.ventes.domain.recouvrement
     apps.ventes.domain.facturation_vente
     apps.ventes.domain.annulation_facture
-ignore_imports =
-    apps.crm.tests_crx20_stage_events -> apps.ventes.domain.recouvrement
-    apps.crm.tests_mry7_apres_devis -> apps.ventes.domain.recouvrement
-    apps.installations.tests_astk_garde_sortie_unique -> apps.ventes.domain.facturation_ops
-    apps.stock.test_produit_nom_unique -> apps.ventes.domain.facturation_ops
