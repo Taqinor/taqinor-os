@@ -941,3 +941,17 @@ class MandatPaiementSerializer(SameCompanyFKSerializerMixin,
             'id', 'token', 'company', 'created_at', 'revoked_at',
             'statut', 'consentement_horodate',
         ]
+
+
+class FactureListeSerializer(FactureSerializer):
+    """CI #997 (api-fuzz « Response violates schema » sur ``GET factures/``) —
+    la LISTE paginée ne sert jamais les blocs de vente du détail (VNT91 :
+    ``situation_vente`` / ``prochaines_echeances``, un calcul par ligne) ;
+    le schéma de la liste ne les promet donc pas. Même lecture que le
+    détail pour tout le reste."""
+
+    situation_vente = None
+    prochaines_echeances = None
+
+    class Meta(FactureSerializer.Meta):
+        pass
