@@ -10,7 +10,7 @@ Agrégation LECTURE SEULE, scopée société, sans aucune écriture. Renvoie :
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from . import openapi_shapes as SH
-from .openapi_params import MOIS
+from .openapi_params import MOIS_OU_VIDE, qdate_ou_vide
 from decimal import Decimal
 
 from django.db.models import Count, Q
@@ -117,10 +117,9 @@ def _cle_commercial(devis):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('start', OpenApiTypes.DATE, required=False),
-        OpenApiParameter('end', OpenApiTypes.DATE, required=False),
+        qdate_ou_vide('start'), qdate_ou_vide('end'),
         OpenApiParameter('month', OpenApiTypes.STR, required=False,
-                         description='YYYY-MM', pattern=MOIS)],
+                         description='YYYY-MM', pattern=MOIS_OU_VIDE)],
     responses={200: SH.DashboardQuoteToCashResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])

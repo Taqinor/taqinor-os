@@ -5,6 +5,7 @@ sur la période, avec sa TVA par ligne ; (2) Résumé TVA = HT/TVA/TTC répartis
 par taux (10 % / 20 %…), réconciliés au centime, + totaux. Lecture seule,
 borné à la société. openpyxl (pré-approuvé). Groundwork DGI (per-ligne + ICE).
 """
+import re
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -116,6 +117,24 @@ def lignes_ventilees(facture):
     return resultat
 
 
+def valider_periode(params):
+    """ENF11 (api-fuzz « accepted schema-violating ») — chaque paramètre de
+    période RENSEIGNÉ a la forme publiée (``openapi_params.PERIODE``), même
+    quand un autre l'emporte : ``?start=abc`` seul retombait en silence sur
+    le mois courant. Vide = non renseigné. Lève ``ValueError`` (400)."""
+    from .openapi_params import MOIS, TRIMESTRE
+    for champ in ('start', 'end'):
+        brut = params.get(champ)
+        if brut:
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', brut):
+                raise ValueError(champ)
+            date.fromisoformat(brut)
+    for champ, motif in (('month', MOIS), ('quarter', TRIMESTRE)):
+        brut = params.get(champ)
+        if brut and not re.fullmatch(motif, brut):
+            raise ValueError(champ)
+
+
 def period_bounds(params):
     """Calcule (debut, fin) depuis ?month=YYYY-MM, ?quarter=YYYY-Q ou
     ?start=&end=. Défaut : mois courant.
@@ -125,6 +144,7 @@ def period_bounds(params):
     l'utilisateur : ``end=2026-09-30`` couvre le 30/09, donc ``fin`` = end +
     1 jour. ``?month=2026-09`` et ``start=2026-09-01&end=2026-09-30``
     donnent exactement les mêmes lignes."""
+    valider_periode(params)
     month = params.get('month')
     quarter = params.get('quarter')
     start = params.get('start')

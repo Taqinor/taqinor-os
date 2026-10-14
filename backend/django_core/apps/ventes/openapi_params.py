@@ -28,14 +28,28 @@ ENTITE = qint('entite', desc="Filtre optionnel par entité juridique.")
 #: invalide »).
 MOIS = r'^(?!0000)\d{4}-(0[1-9]|1[0-2])$'
 TRIMESTRE = r'^(?!0000)\d{4}-[Qq][1-4]$'
+#: ENF11 (api-fuzz « accepted schema-violating », ``?start=``) — les vues
+#: lisent une valeur VIDE comme « non renseignée » (``if start and end``) :
+#: le schéma publie « date OU chaîne vide », ce que le serveur accepte
+#: (même forme que ``crm.schema_docs.DATE_OU_VIDE``).
+DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+#: Mois / trimestre : le motif, ou vide (« non renseigné »).
+MOIS_OU_VIDE = r'^(?:(?!0000)\d{4}-(0[1-9]|1[0-2]))?$'
+TRIMESTRE_OU_VIDE = r'^(?:(?!0000)\d{4}-[Qq][1-4])?$'
+
+
+def qdate_ou_vide(name, desc=None):
+    return OpenApiParameter(name, DATE_OU_VIDE, OpenApiParameter.QUERY,
+                            required=False, description=desc)
+
 
 PERIODE = [
     OpenApiParameter('month', OpenApiTypes.STR, required=False,
-                     description='YYYY-MM', pattern=MOIS),
+                     description='YYYY-MM', pattern=MOIS_OU_VIDE),
     OpenApiParameter('quarter', OpenApiTypes.STR, required=False,
-                     description='YYYY-Qn (n de 1 à 4)', pattern=TRIMESTRE),
-    OpenApiParameter('start', OpenApiTypes.DATE, required=False,
-                     description='Date de début (ISO), avec `end`.'),
-    OpenApiParameter('end', OpenApiTypes.DATE, required=False,
-                     description='Date de fin incluse (ISO), avec `start`.'),
+                     description='YYYY-Qn (n de 1 à 4)',
+                     pattern=TRIMESTRE_OU_VIDE),
+    qdate_ou_vide('start', 'Date de début (ISO), avec `end`.'),
+    qdate_ou_vide('end', 'Date de fin incluse (ISO), avec `start`.'),
 ]

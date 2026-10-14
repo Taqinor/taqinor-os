@@ -876,10 +876,6 @@ Unsupported methods|TRACE /api/django/core/usage/couts/
 API accepted schema-violating request|GET /api/django/roles/revue-acces/
 API accepted schema-violating request|GET /api/django/stock/fournisseurs/{id}/delai-mesure/
 API accepted schema-violating request|GET /api/django/stock/profils-saisonniers/
-API accepted schema-violating request|GET /api/django/ventes/dashboard/
-API accepted schema-violating request|GET /api/django/ventes/etats/analyse-facturation/
-API accepted schema-violating request|GET /api/django/ventes/export-comptable/
-API accepted schema-violating request|GET /api/django/ventes/journal-ventes/
 API accepted schema-violating request|PATCH /api/django/custom-fields/objects/{id}/
 API accepted schema-violating request|POST /api/django/custom-fields/objects/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
