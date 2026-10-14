@@ -341,6 +341,15 @@ class RoleEtGammeInvalidesRejetesTests(ParametresGammesBase):
             partial=True)
         self.assertTrue(serializer.is_valid(), serializer.errors)
 
+    def test_serializer_libelles_et_drapeau_strictement_types(self):
+        # CI #997 (2) (cas Sv9EEQ) — ``nom_premium: 0`` devenait « 0 » (200),
+        # ``deux_gammes: "true"`` était lu vrai : 400 nommant le champ.
+        for data in ({'nom_premium': 0}, {'nom_essentielle': ['x']},
+                     {'deux_gammes': 'true'}, {'deux_gammes': 0}):
+            serializer = ParametresGammesSerializer(data=data, partial=True)
+            self.assertFalse(serializer.is_valid(), data)
+            self.assertIn(next(iter(data)), serializer.errors)
+
 
 # ── 7bis. PVORD (fondateur 19/08/2026) — ordre_lignes ──────────────────────
 #

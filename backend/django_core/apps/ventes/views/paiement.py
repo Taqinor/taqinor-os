@@ -14,6 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from core.mixins import company_qs
+from core.parseurs import corps_valide
 from ..models import Facture, Paiement, RetenueSubie
 from ..serializers_facturation import (
     FactureSerializer, PaiementSerializer, AffectationPaiementSerializer,
@@ -137,16 +138,13 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         refusé (409)."""
         from ..services import rejeter_paiement, PaiementRejectError
         paiement = self.get_object()
-        motif = (request.data.get('motif') or '').strip()
-        if not motif:
-            return Response(
-                {'detail': 'Le motif du rejet est obligatoire.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 (2) — corps validé par sa forme publiée (texte, décimal,
+        # date stricts) : ``date_rejet: ""`` valait « aujourd'hui » en silence.
+        corps = corps_valide(request, D.RejeterPaiementRequest)
         try:
             rejeter_paiement(
-                paiement=paiement, motif=motif,
-                frais=request.data.get('frais'),
-                date_rejet=request.data.get('date_rejet'),
+                paiement=paiement, motif=corps['motif'],
+                frais=corps.get('frais'), date_rejet=corps.get('date_rejet'),
                 user=request.user,
             )
         except PaiementRejectError as exc:
@@ -165,10 +163,14 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             CorrectionPaiementRefusee, annuler_saisie_paiement,
         )
         paiement = self.get_object()
+        # CI #997 (2) — ``motif: [null, null]`` levait AttributeError (500) :
+        # présent, il est validé (texte strict) ; absent → ``motif_requis``.
+        motif = None
+        if not isinstance(request.data, dict) or 'motif' in request.data:
+            motif = corps_valide(request, D.AnnulerSaisieRequest)['motif']
         try:
             annuler_saisie_paiement(
-                paiement=paiement, motif=request.data.get('motif'),
-                user=request.user)
+                paiement=paiement, motif=motif, user=request.user)
         except CorrectionPaiementRefusee as exc:
             return Response(
                 {'code': exc.code, 'detail': exc.detail},
@@ -187,19 +189,14 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             CorrectionPaiementRefusee, reaffecter_paiement,
         )
         paiement = self.get_object()
-        cible_id = request.data.get('facture_cible')
-        try:
-            cible_id = int(cible_id)
-        except (TypeError, ValueError):
-            return Response(
-                {'code': 'cible_invalide',
-                 'detail': 'La facture cible est requise.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 (2) — corps tableau → 500, ``"5"``/``5.5`` lus en entier :
+        # entier JSON strict ; un id bien formé inconnu → 404 (ressource).
+        cible_id = corps_valide(request, D.ReaffecterRequest)['facture_cible']
         cible = self._facture_visible(cible_id)
         if cible is None:
             return Response(
                 {'code': 'cible_invalide', 'detail': 'Facture cible inconnue.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         try:
             paiement, source, cible = reaffecter_paiement(
                 paiement=paiement, facture_cible=cible, user=request.user)

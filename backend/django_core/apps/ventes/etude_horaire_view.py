@@ -47,6 +47,9 @@ from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from core.champs_stricts import ChaineStricte, non_blanc
+
+from .dimensionnement import CRITERES
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +115,33 @@ def _serie_12(corps, nom):
     except (ValueError, OverflowError):
         return False, None
     return all(map(math.isfinite, valeurs)), valeurs
+
+
+#: CI #997 (2) — forme publiée des champs scalaires : un champ PRÉSENT a son
+#: type JSON exact (``critere: "\f"``, ``lat: "0"``, ``devis: null`` étaient
+#: lus en silence) ; un champ absent reste facultatif.
+_ENTIERS = ('devis', 'lead')
+_NOMBRES = ('lat', 'lon', 'facture_hiver', 'facture_ete', 'kwc',
+            'batterie_kwh')
+_TEXTES = ('ville', 'raccordement')
+
+
+def _champ_hors_forme(corps):
+    """Nom du premier champ scalaire présent hors de sa forme publiée, ou
+    ``None``."""
+    def _nombre(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+    regles = [(_ENTIERS, lambda v: _nombre(v) and isinstance(v, int)),
+              (_NOMBRES, _nombre),
+              (_TEXTES, lambda v: isinstance(v, str) and non_blanc(v)),
+              (('occupation',), lambda v: isinstance(v, str)),
+              (('equipements',), lambda v: isinstance(v, dict)),
+              (('critere',), lambda v: v in CRITERES)]
+    for noms, valide in regles:
+        for nom in noms:
+            if nom in corps and not valide(corps.get(nom)):
+                return nom
+    return None
 
 
 class _DevisDepuisLead:
@@ -289,7 +319,7 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
             help_text='L-QA1 — profil lu directement sur ce lead SANS devis '
                       'persisté (écran générateur), scopé société. Un `devis` '
                       'fourni en même temps PRIME toujours sur `lead`.'),
-        'ville': serializers.CharField(required=False),
+        'ville': ChaineStricte(required=False),
         'lat': serializers.FloatField(required=False),
         'lon': serializers.FloatField(required=False),
         'facture_hiver': serializers.FloatField(
@@ -304,14 +334,18 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
             child=serializers.FloatField(), required=False, allow_null=True,
             min_length=12, max_length=12,
             help_text='12 consommations kWh saisies'),
-        'occupation': serializers.ChoiceField(
-            choices=OCCUPATIONS, required=False),
+        # Une occupation hors des valeurs servies est IGNORÉE (repli
+        # documenté de ``OCCUPATIONS``) : le schéma publie un texte libre.
+        'occupation': serializers.CharField(
+            required=False, allow_blank=True,
+            help_text='Servies : ' + ', '.join(OCCUPATIONS) + ' ; toute '
+                      'autre valeur est ignorée (repli documenté).'),
         'equipements': serializers.DictField(required=False),
-        'raccordement': serializers.CharField(required=False),
+        'raccordement': ChaineStricte(required=False),
         'kwc': serializers.FloatField(required=False),
         'batterie_kwh': serializers.FloatField(required=False),
         'dimensionner': serializers.BooleanField(required=False),
-        'critere': serializers.CharField(required=False),
+        'critere': serializers.ChoiceField(choices=CRITERES, required=False),
     }),
     responses={
         200: inline_serializer('EtudeHorairePreviewResponse', {
@@ -430,6 +464,12 @@ def etude_horaire_preview(request):
         if valeurs is not None and isinstance(corps, QueryDict):
             corps = corps.copy()
             corps[nom] = valeurs  # la liste lue, plus la dernière chaîne
+    hors_forme = _champ_hors_forme(corps)
+    if hors_forme:
+        return Response(
+            {'detail': f'Corps de requête invalide : « {hors_forme} » ne '
+                       'suit pas sa forme publiée.'},
+            status=400)
 
     company = getattr(request.user, 'company', None)
     avertissements = []

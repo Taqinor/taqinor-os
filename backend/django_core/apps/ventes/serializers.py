@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from drf_spectacular.utils import extend_schema_field
 from django.db.models import DecimalField, Q
 from rest_framework import serializers
@@ -366,72 +364,19 @@ class TiersPayeurValidationMixin:
     # ── CIQ214 — retenue, pénalités, caution : SEULEMENT à la demande du
     # client (D-CIQ-14), jamais de valeur par défaut ; formes normalisées
     # (enregistrer → rouvrir → enregistrer sans toucher = entête identique).
-
-    @staticmethod
-    def _pct_ci(champ, brut, *, strict=True):
-        try:
-            if isinstance(brut, bool) or brut in (None, ''):
-                raise ValueError(brut)
-            valeur = Decimal(str(brut).replace(',', '.'))
-            if not valeur.is_finite():
-                raise ValueError(brut)
-        except (TypeError, ValueError, ArithmeticError):
-            raise serializers.ValidationError(
-                f"« {champ} » : un pourcentage numérique est attendu.")
-        if valeur < 0 or valeur > 100 or (strict and valeur == 0):
-            raise serializers.ValidationError(
-                f"« {champ} » doit être compris entre 0 et 100 %.")
-        return float(valeur)
+    # CI #997 (2) — forme publiée ET validation : ``domain/conditions_ci``.
 
     def validate_retenue_garantie(self, value):
-        if value in (None, {}, ''):
-            return None
-        if not isinstance(value, dict):
-            raise serializers.ValidationError(
-                "Retenue de garantie : un objet {taux_pct, liberation} est "
-                "attendu.")
-        liberation = value.get('liberation') or 'reception_definitive'
-        if liberation != 'reception_definitive':
-            raise serializers.ValidationError(
-                "« retenue_garantie.liberation » : seule la réception "
-                "définitive libère la retenue (reception_definitive).")
-        return {'taux_pct': self._pct_ci('retenue_garantie.taux_pct',
-                                         value.get('taux_pct')),
-                'liberation': liberation}
+        from .domain.conditions_ci import retenue
+        return retenue(value)
 
     def validate_penalites_retard_livraison(self, value):
-        if value in (None, {}, ''):
-            return None
-        if not isinstance(value, dict):
-            raise serializers.ValidationError(
-                "Pénalités de retard : un objet {taux_pct_par_semaine, "
-                "plafond_pct} est attendu.")
-        for cle, libelle in (('taux_pct_par_semaine', 'le taux par semaine'),
-                             ('plafond_pct', 'le plafond')):
-            if value.get(cle) in (None, ''):
-                raise serializers.ValidationError(
-                    f"Pénalités de retard : {libelle} "
-                    f"(penalites_retard_livraison.{cle}) est obligatoire — "
-                    "taux et plafond vont ensemble.")
-        return {
-            'taux_pct_par_semaine': self._pct_ci(
-                'penalites_retard_livraison.taux_pct_par_semaine',
-                value.get('taux_pct_par_semaine')),
-            'plafond_pct': self._pct_ci(
-                'penalites_retard_livraison.plafond_pct',
-                value.get('plafond_pct')),
-        }
+        from .domain.conditions_ci import penalites
+        return penalites(value)
 
     def validate_caution(self, value):
-        if value in (None, {}, ''):
-            return None
-        if not isinstance(value, dict) or not str(
-                value.get('nature') or '').strip():
-            raise serializers.ValidationError(
-                "Caution : la nature (caution.nature) est obligatoire.")
-        return {'nature': str(value['nature']).strip(),
-                'montant_ou_pct': value.get('montant_ou_pct'),
-                'plafond': value.get('plafond')}
+        from .domain.conditions_ci import caution
+        return caution(value)
 
 
 class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
@@ -1179,12 +1124,17 @@ class DevisWriteSerializer(DecimalSoupleMixin, SameCompanyFKSerializerMixin,
     # ATOT21 — la remise globale bornée 0-100 (2 décimales) au sérialiseur :
     # PATCH « 150 » répondait 500 (contrainte ck_devis_remise_globale_0_100).
     def get_fields(self):
+        from .domain.conditions_ci import publier
         fields = super().get_fields()
         _messages_decimaux(fields, ('remise_globale',))
+        publier(fields)  # CI #997 (2) — retenue / pénalités / caution
         return fields
 
     def validate_remise_globale(self, value):
         return _borne_saisie(value, 'remise_globale', 'pourcentage')
+
+    def validate_acompte_montant(self, value):  # CI #997 (2) : -1 → 500
+        return _borne_saisie(value, 'acompte_montant', 'montant')
 
     def create(self, validated_data):
         """ASEC22 — l'auteur est TOUJOURS ``request.user`` (le corps ne
@@ -1357,7 +1307,8 @@ class _OrdreLignes(ListeJSON):
                       'enum': list(ROLES_AUTO_COMPOSITION)}})
 
 
-class ParametresGammesSerializer(serializers.ModelSerializer):
+class ParametresGammesSerializer(ChampsStrictsSansDecimalMixin,  # CI #997 (2)
+                                 serializers.ModelSerializer):
     """PVMRQ — réglages « gammes » de la société (singleton, GET/PATCH).
 
     ``marques`` est validé avec la MÊME règle que ``ParametresGammes.clean()``

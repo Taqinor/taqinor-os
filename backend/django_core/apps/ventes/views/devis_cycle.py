@@ -126,13 +126,11 @@ class DevisCycleActionsMixin:
             return Response(
                 {'detail': 'Le nom du modèle est obligatoire.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        # CI #997 — ``description`` publiée chaîne : un objet (``{}``) était
-        # lu « vide » (201), un objet rempli levait AttributeError (500).
-        description = corps.get('description', '')
-        if not isinstance(description, str):
-            return Response({'description': ['Chaîne attendue.']},
-                            status=status.HTTP_400_BAD_REQUEST)
-        description = description.strip()
+        # CI #997 — le corps suit sa forme publiée (``valider_corps``) : nom de
+        # 151 caractères → 500 DataError, ``description: {}`` lue « vide »,
+        # caractère nul refusé en base ; tout cela répond 400 nommé.
+        description = valider_corps(request, D.SavePresetRequest).get(
+            'description', '')
         try:
             preset = save_devis_as_preset(
                 devis, nom, description, user=request.user)

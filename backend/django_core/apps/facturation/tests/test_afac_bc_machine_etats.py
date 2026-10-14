@@ -229,7 +229,7 @@ class BcMachineEtatsTests(TestCase):
         self.assertEqual(recus, [r.data['id']])
         r2 = self.api.post('/api/django/ventes/bons-commande/', corps,
                            format='json')
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.status_code, 409, r2.data)  # CI #997 (2)
         self.assertIn('Un bon de commande existe déjà pour ce devis.',
                       str(r2.data))
         self.assertEqual(BonCommande.objects.filter(devis=devis).count(), 1)

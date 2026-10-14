@@ -279,7 +279,15 @@ class TestApplyPresetSupprime(TestCase):
                               format='json')
             self.assertEqual(r.status_code, 400, (description, r.data))
         self.assertFalse(DevisPreset.objects.exists())
+        # CI #997 (2) (cas h6HMOl) — 151 caractères : DataError en base (500).
+        for corps in ({'nom': '0' * 151}, {'nom': 'a\x00b'},
+                      {'nom': 'Modèle', 'description': 'a\x00'}):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        self.assertFalse(DevisPreset.objects.exists())
         r = self.api.post(url, {'nom': 'Modèle'}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.post(url, {'nom': '0' * 150}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
 
     def test_service_supprime(self):
