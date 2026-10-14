@@ -183,10 +183,12 @@ annuler_acceptation = _cycle_vie.annuler_acceptation
 AnnulationAcceptationBloquee = _cycle_vie.AnnulationAcceptationBloquee
 raison_blocage_annulation_acceptation = (
     _cycle_vie.raison_blocage_annulation_acceptation)
-share_link_for_bcf = _cycle_vie.share_link_for_bcf
-INSTALLATION_SHARE_UTM_CAMPAIGN = _cycle_vie.INSTALLATION_SHARE_UTM_CAMPAIGN
-installation_share_link = _cycle_vie.installation_share_link
-bcf_share_url = _cycle_vie.bcf_share_url
+# VNT50 — liens de partage et courriel fournisseur dans ``domain/partage.py``.
+from apps.ventes.domain import partage as _partage  # noqa: E402
+share_link_for_bcf = _partage.share_link_for_bcf
+INSTALLATION_SHARE_UTM_CAMPAIGN = _partage.INSTALLATION_SHARE_UTM_CAMPAIGN
+installation_share_link = _partage.installation_share_link
+bcf_share_url = _partage.bcf_share_url
 contexte_clauses_devis = _envoi.contexte_clauses_devis
 # SPL262 — l'historique de configuration vit dans ``domain/historique_config.py``.
 from apps.ventes.domain import historique_config as _historique_config  # noqa: E402
@@ -389,9 +391,9 @@ entrees_dimensionnement_du_devis = _etudes.entrees_dimensionnement_du_devis
 
 
 # ═════════════════════════════════════════════════════════════════════════
-# RÉ-EXPORTS — QJR76 : garde d'envoi et courriel fournisseur → ``domain/cycle_vie.py``
+# RÉ-EXPORTS — QJR76 : garde d'envoi et courriel fournisseur → ``domain/partage.py``
 # ═════════════════════════════════════════════════════════════════════════
-log_supplier_email = _cycle_vie.log_supplier_email
+log_supplier_email = _partage.log_supplier_email
 
 
 def consigner_correction_apres_envoi(devis, *, user=None, objet='',

@@ -736,88 +736,6 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                        getattr(devis, 'reference', '?'), exc)
 
 
-def _champs_signature_entreprise(entreprise):
-    """CIQ319 — ``{raison_sociale, signataire_qualite, ice_declare}`` du
-    bloc ``entreprise`` (contrat ``acceptation_entreprise.json``), bornés aux
-    longueurs du modèle ; ``{}`` sans bloc."""
-    if not isinstance(entreprise, dict):
-        return {}
-    return {
-        'raison_sociale': str(entreprise.get('raison_sociale') or '')
-        .strip()[:200],
-        'signataire_qualite': str(entreprise.get('signataire_qualite') or '')
-        .strip()[:150],
-        'ice_declare': str(entreprise.get('ice') or '').strip()[:30],
-    }
-
-
-#: CIQ319 — modes dont l'acceptation EN LIGNE exige l'identité d'entreprise.
-MODES_ACCEPTATION_ENTREPRISE = ('commercial', 'industriel')
-#: Champs du bloc ``entreprise`` (contrat ``acceptation_entreprise.json``) et
-#: le message 400 qui NOMME chacun.
-CHAMPS_ENTREPRISE = (
-    ('raison_sociale',
-     "La raison sociale de l'entreprise est requise pour accepter ce devis."),
-    ('signataire_qualite',
-     'La qualité du signataire est requise pour accepter ce devis.'),
-    ('ice', "L'ICE de l'entreprise est requis pour accepter ce devis."),
-)
-
-
-class EntrepriseInvalide(Exception):
-    """CIQ319 — bloc ``entreprise`` refusé : ``detail`` + ``champ`` nommé
-    (``entreprise.<cle>``), rendus en 400 par les vues."""
-
-    def __init__(self, detail, champ):
-        super().__init__(detail)
-        self.detail = detail
-        self.champ = champ
-
-
-def exige_identite_entreprise(devis):
-    """Vrai pour un devis commercial / industriel (règle sur le MODE)."""
-    mode = str(getattr(devis, 'mode_installation', '') or '').strip().lower()
-    return mode in MODES_ACCEPTATION_ENTREPRISE
-
-
-def lire_entreprise_acceptation(devis, brut, *, obligatoire):
-    """CIQ319/CIQ323 — le bloc ``entreprise`` d'un corps d'acceptation,
-    validé, ou ``None``.
-
-    * hors commercial / industriel : IGNORÉ (``None``, ni erreur ni écriture) ;
-    * ``obligatoire`` (lien public, portail) : les trois champs requis ;
-    * ICE validé par ``parametres.tax_id_validators.validate_ice_ma`` (la
-      règle EXISTANTE, jamais une seconde).
-
-    Lève :class:`EntrepriseInvalide` (détail + champ nommé)."""
-    if not exige_identite_entreprise(devis):
-        return None
-    if brut in (None, ''):
-        brut = {}
-    if not isinstance(brut, dict):
-        raise EntrepriseInvalide(
-            'Le bloc entreprise doit être un objet.', 'entreprise')
-    valeurs = {}
-    for cle, message in CHAMPS_ENTREPRISE:
-        valeur = brut.get(cle)
-        if valeur is not None and not isinstance(valeur, (str, int)):
-            raise EntrepriseInvalide(
-                f'entreprise.{cle} : texte attendu.', f'entreprise.{cle}')
-        valeur = str(valeur or '').strip()
-        if obligatoire and not valeur:
-            raise EntrepriseInvalide(message, f'entreprise.{cle}')
-        valeurs[cle] = valeur
-    if valeurs['ice']:
-        from apps.parametres.tax_id_validators import validate_ice_ma
-        verdict = validate_ice_ma(valeurs['ice'])
-        if not verdict.get('valide'):
-            raise EntrepriseInvalide(verdict.get('message') or 'ICE invalide.',
-                                     'entreprise.ice')
-    if not any(valeurs.values()):
-        return None
-    return valeurs
-
-
 def signature_entreprise(devis):
     """CIQ319 — le bloc de RENDU ``signature_entreprise`` (contrat
     ``acceptation_entreprise.json``) : ``{raison_sociale, signataire_nom,
@@ -838,71 +756,6 @@ def signature_entreprise(devis):
         'signataire_qualite': sig.signataire_qualite,
         'ice': sig.ice_declare,
         'date': sig.signed_at.date().isoformat() if sig.signed_at else None,
-    }
-
-
-def divergence_ice(devis, ice_declare):
-    """CIQ319 — vrai quand le Client porte DÉJÀ un ICE différent de celui
-    déclaré à l'acceptation (jamais écrasé : drapeau pour le vendeur)."""
-    client = getattr(devis, 'client', None)
-    ice_client = ''.join(str(getattr(client, 'ice', '') or '').split())
-    declare = ''.join(str(ice_declare or '').split())
-    return bool(ice_client and declare and ice_client != declare)
-
-
-def verifier_empreinte_signature(devis, *, lignes=None):
-    """QJR144 — LE VÉRIFICATEUR du sceau d'un devis signé.
-
-    ``DevisSignature.content_hash`` existait depuis QJ10 mais AUCUN code du
-    dépôt ne savait le recomparer : il était écrit une fois et relu seulement
-    par des tests — un sceau que personne ne pouvait vérifier. Ce service est
-    la porte de lecture, exposée en cross-app par ``apps.ventes.services``.
-
-    Rend un dict FRANÇAIS, affichable tel quel :
-
-    * ``signee`` — ce devis porte-t-il une signature électronique ;
-    * ``intacte`` — ``True`` (le contenu reproduit l'empreinte), ``False`` (il
-      a changé depuis la signature), ``None`` (aucune empreinte scellée : « on
-      ne sait pas » n'est pas « falsifié ») ;
-    * ``version`` — la version du payload qui concorde (2 = sceau étendu de
-      QJR144 ; 1 = sceau d'origine, qui ne couvrait NI le taux de TVA par
-      ligne, NI les lignes optionnelles, NI l'option retenue) ;
-    * ``message`` — la phrase à montrer.
-
-    LECTURE PURE : ne touche ni statut, ni ligne, ni total (règle #4).
-    """
-    from apps.ventes.models import DevisSignature
-
-    signature = DevisSignature.objects.filter(devis=devis).first()
-    if signature is None:
-        return {
-            'signee': False, 'intacte': None, 'version': None,
-            'message': "Ce devis ne porte aucune signature électronique.",
-        }
-    intacte, version = signature.verifier_contenu(lignes=lignes)
-    if intacte is None:
-        return {
-            'signee': True, 'intacte': None, 'version': None,
-            'message': ("Cette signature ne porte aucune empreinte de "
-                        "contenu : elle est antérieure au scellement, son "
-                        "contenu ne peut donc pas être vérifié."),
-        }
-    if not intacte:
-        return {
-            'signee': True, 'intacte': False, 'version': None,
-            'message': ("Le contenu de ce devis NE correspond PLUS à ce qui a "
-                        "été signé : l'empreinte scellée ne se reproduit pas."),
-        }
-    if version == DevisSignature.CONTENT_HASH_V1:
-        return {
-            'signee': True, 'intacte': True, 'version': version,
-            'message': ("Empreinte conforme (sceau d'origine). Portée : ce "
-                        "sceau ne couvre ni le taux de TVA par ligne, ni les "
-                        "lignes optionnelles, ni l'option retenue."),
-        }
-    return {
-        'signee': True, 'intacte': True, 'version': version,
-        'message': "Empreinte conforme : le contenu signé n'a pas changé.",
     }
 
 
@@ -1085,94 +938,6 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ10: notif vendeur échec pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
-
-
-def _notify_seller_accepted(*, devis, user):
-    """QJ10 / QJ2 (c) — Notification in-app + wa.me au vendeur (créateur du
-    devis) lors de l'acceptation.
-
-    Réutilise notifications.services.notify (N75). Best-effort : appelé
-    dans un bloc except de l'appelant. Pas de notification si le devis n'a
-    pas de créateur ou si le créateur est l'utilisateur courant (in-app
-    pour soi-même serait du bruit). QJ2 ajoute un lien wa.me « répondre
-    maintenant » vers le client dans le corps de la notification.
-    """
-    vendeur = getattr(devis, 'created_by', None)
-    if vendeur is None:
-        return
-    # Éviter de notifier l'utilisateur qui effectue l'action lui-même.
-    if user is not None and getattr(user, 'pk', None) == getattr(vendeur, 'pk', None):
-        return
-    from apps.notifications.services import notify
-    client_nom = ''
-    client = getattr(devis, 'client', None)
-    if client is not None:
-        client_nom = getattr(client, 'nom', '') or ''
-    # QJ2 (c) — lien wa.me vers le client (via son téléphone sur le lead ou le
-    # client). Best-effort : on préfère le numéro WhatsApp du lead d'origine.
-    wa_url = _build_acceptance_wa_url(devis=devis)
-    body_lines = [
-        (
-            f'Le client {client_nom} a accepté le devis {devis.reference}.'
-        ) if client_nom else f'Le devis {devis.reference} a été accepté.',
-    ]
-    if wa_url:
-        body_lines.append(f'Répondre maintenant : {wa_url}')
-    notify(
-        user=vendeur,
-        event_type='devis_accepted',
-        title=f'Devis {devis.reference} accepté',
-        body='\n'.join(body_lines),
-        link=f'/ventes/devis/{devis.pk}',
-        company=getattr(devis, 'company', None),
-    )
-
-
-def _build_acceptance_wa_url(*, devis):
-    """QJ2 (c) — Construit le lien wa.me « répondre maintenant » au client.
-
-    Cherche d'abord le numéro WhatsApp du lead lié au devis, puis le numéro
-    du client (champ telephone). Renvoie l'URL ou None. Best-effort — jamais
-    d'exception remontée. Les prix d'achat ne sont JAMAIS exposés (règle #4).
-    """
-    try:
-        import urllib.parse
-        # Prefer lead WhatsApp, then lead telephone, then client telephone.
-        phone_raw = ''
-        lead = getattr(devis, 'lead', None)
-        if lead is not None:
-            phone_raw = (
-                getattr(lead, 'whatsapp', None)
-                or getattr(lead, 'telephone', None)
-                or ''
-            )
-        if not phone_raw:
-            client = getattr(devis, 'client', None)
-            if client is not None:
-                phone_raw = getattr(client, 'telephone', '') or ''
-        # ACRM39 — normaliseur sanctionné (E.164), jumeau de
-        # ``crm.services._build_lead_wa_reply_url`` ; non normalisable ⇒ pas
-        # de lien (jamais un numéro inventé).
-        from apps.ventes.utils.phone import normalize_phone_e164
-        digits = normalize_phone_e164(phone_raw)
-        if not digits:
-            return None
-        nom = ''
-        if lead is not None:
-            nom = (getattr(lead, 'nom', '') or '').strip()
-        if not nom and devis.client_id:
-            client = getattr(devis, 'client', None)
-            if client is not None:
-                nom = (getattr(client, 'nom', '') or '').strip()
-        nom = nom or 'votre client'
-        text = urllib.parse.quote(
-            f'Bonjour {nom}, votre proposition {devis.reference} a bien été '
-            f'confirmée. Merci pour votre confiance !'
-        )
-        return f'https://wa.me/{digits}?text={text}'
-    except Exception as exc:  # noqa: BLE001 — best-effort
-        logger.warning('QJ2: _build_acceptance_wa_url échoué : %s', exc)
-        return None
 
 
 # ── QJ9 — Attribution first-touch + Meta CAPI hook ───────────────────────────
@@ -1903,100 +1668,6 @@ def annuler_acceptation(*, devis, user, motif=''):
     return devis
 
 
-def share_link_for_bcf(bcf):
-    """QS3 — Point d'entrée cross-app : crée (ou réutilise) le lien tokenisé
-    vers le PDF d'un Bon de Commande FOURNISSEUR (stock).
-
-    L'app ``stock`` appelle CE service plutôt que d'importer ``ventes.models``
-    (règle de modularité). La société vient du BCF (jamais du corps). Renvoie
-    l'objet ShareLink (porte ``token`` + ``expires_at``)."""
-    from apps.ventes.models import ShareLink
-    return ShareLink.for_bon_commande_fournisseur(bcf)
-
-
-# ── PUB69 — Carte de partage client trackable (« mon installation ») ────────
-# Canal UTM dédié, remonte dans l'attribution existante comme canal DISTINCT
-# (`apps.adsengine.attribution.referral_share_channel_summary`).
-INSTALLATION_SHARE_UTM_CAMPAIGN = 'parrainage_whatsapp'
-
-
-def installation_share_link(devis, *, base_url=''):
-    """PUB69 — Réutilise l'infra ``ShareLink``/UTM EXISTANTE de ventes
-    (``ShareLink.for_devis``, QJ1 — RÉUTILISÉE, aucun nouveau modèle) pour
-    générer (ou récupérer) le lien « mon installation » du client APRÈS
-    SIGNATURE — un devis ACCEPTÉ seulement (avant signature, ce n'est pas
-    encore « son installation »). ``None`` si le devis n'est pas accepté.
-
-    Renvoie ``(ShareLink, url)`` ; ``url`` porte les UTM canal
-    ``parrainage_whatsapp`` (bouche-à-oreille organique mesuré) — remonte
-    dans l'attribution existante comme canal DISTINCT, sans toucher le
-    canal Meta."""
-    from django.conf import settings
-
-    from ..models import Devis, ShareLink
-    from ..utils.client_links import chemin_proposition
-
-    if devis is None or devis.statut != Devis.Statut.ACCEPTE:
-        return None, ''
-    link = ShareLink.for_devis(devis)
-    base = base_url or getattr(settings, 'PUBLIC_BASE_URL', '') or ''
-    query = (
-        'utm_source=client&utm_medium=whatsapp'
-        f'&utm_campaign={INSTALLATION_SHARE_UTM_CAMPAIGN}')
-    path = f'{chemin_proposition(devis, link.token)}?{query}'
-    url = (base.rstrip('/') + path) if base else path
-    return link, url
-
-
-def bcf_share_url(bcf, request=None):
-    """QS3 — URL publique absolue vers le PDF tokenisé d'un BCF fournisseur.
-
-    Réutilise la construction d'URL publique existante. Renvoie ``(url, token)``.
-    Le lien reste imprévisible + expirant ; il est destiné au FOURNISSEUR et
-    n'est jamais surfacé dans l'UI client."""
-    from .encaissements import public_url
-    link = share_link_for_bcf(bcf)
-    url = public_url(f'/api/django/public/bcf/{link.token}/', request)
-    return url, link.token
-
-
-# ── QJR76 : le courriel fournisseur ─────────────────────────────────────────
-# `log_supplier_email` est l'autre envoi de document du domaine : il rejoint
-# les e-mails d'acceptation et les OTP.
-def log_supplier_email(
-        *, company, to_email, sujet, corps, attachment=None,
-        attachment_name=None, reference='', user=None):
-    """QS3 — Envoie un email FOURNISSEUR (PDF joint) et le consigne dans EmailLog.
-
-    Point d'entrée cross-app pour ``stock`` (qui n'importe pas ``ventes.models``
-    ni ``ventes.email_service``). Le fil EmailLog n'a pas de FK fournisseur : on
-    consigne company + destinataire + référence (client/devis/facture restent
-    nuls). NO-OP réseau sans clé configurée (backend console) — l'entrée est tout
-    de même écrite. Renvoie ``(ok, log)``."""
-    from apps.ventes.models import EmailLog
-    from apps.ventes.email_service import _send, _from_email
-    dest = (to_email or '').strip()
-    log = EmailLog(
-        company=company,
-        direction=EmailLog.Direction.SORTANT,
-        to_email=dest[:254], from_email=_from_email(),
-        sujet=(sujet or '')[:300], corps=corps or '',
-        reference=(reference or '')[:80],
-        piece_jointe=(attachment_name or '')[:255],
-        created_by=user if getattr(user, 'is_authenticated', False) else None,
-    )
-    if not dest:
-        log.statut = EmailLog.Statut.ECHEC
-        log.erreur = 'Aucune adresse email destinataire.'
-        log.save()
-        return False, log
-    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
-    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
-    log.erreur = err
-    log.save()
-    return ok, log
-
-
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER (voir la docstring) : ils s'exécutent après toutes
 # les définitions de ce module, donc l'ordre de chargement ne peut jamais faire
@@ -2015,3 +1686,20 @@ from apps.ventes.domain.capi_signee import (  # noqa: E402
 )
 # VNT54 / VNT57 — la préparation d'une acceptation (vente unique, gel).
 from apps.ventes.domain.negociation import preparer_acceptation  # noqa: E402
+
+# VNT50 (budget) — déplacés tels quels : identité d'entreprise et sceau
+# (``domain/identite_entreprise.py``), notification vendeur
+# (``domain/notifications_acceptation.py``). ``_create_esign_record``,
+# ``signature_entreprise`` et ``_send_acceptance_emails`` les appellent par ce
+# nom (un patch sur ``cycle_vie._notify_seller_accepted`` intercepte encore) ;
+# vues, portail et tests les importent encore ici.
+from apps.ventes.domain.identite_entreprise import (  # noqa: E402
+    _champs_signature_entreprise, exige_identite_entreprise,
+)
+from apps.ventes.domain.identite_entreprise import (  # noqa: E402, F401
+    EntrepriseInvalide, divergence_ice, lire_entreprise_acceptation,
+    verifier_empreinte_signature,
+)
+from apps.ventes.domain.notifications_acceptation import (  # noqa: E402, F401
+    _build_acceptance_wa_url, _notify_seller_accepted,
+)
