@@ -146,3 +146,36 @@ class SimulationTests(TestCase):
                        {'target_model': 'crm.lead',
                         'target_id': self.lead.pk}, format='json')
         self.assertEqual(res.status_code, 403)
+
+    def test_identifiant_zero_est_inconnu_pas_manquant(self):
+        # ENF11 : 0 est une valeur (404 « inconnu »), pas un champ absent.
+        res = self._simuler(target_id=0)
+        self.assertEqual(res.status_code, 404, res.content)
+
+    def test_identifiant_non_entier_400(self):
+        res = self._simuler(target_id='abc')
+        self.assertEqual(res.status_code, 400, res.content)
+
+    def test_corps_regle_n_offre_pas_les_declencheurs_parques(self):
+        # ENF11 : le corps publié de la création exclut les valeurs que le
+        # sérialiseur refuse (déclencheur parqué, action sans fournisseur).
+        from apps.automation.actions import ACTIONS_INDISPONIBLES
+        from apps.automation.selectors import DECLENCHEURS_PARQUES
+        from apps.automation.views import REGLE_CORPS_RESSERRE as regle
+        props = regle['properties']
+        self.assertFalse(
+            set(props['trigger_type']['enum']) & set(DECLENCHEURS_PARQUES))
+        self.assertFalse(
+            set(props['action_type']['enum']) & set(ACTIONS_INDISPONIBLES))
+        self.assertIn('lead_stage_change', props['trigger_type']['enum'])
+
+    def test_filtre_rule_illisible_400_pas_500(self):
+        # ENF11 : ?rule=abc levait une erreur de base (500).
+        for url in ('/api/django/automation/runs/',
+                    '/api/django/automation/rule-versions/'):
+            for valeur in ('abc', '', '0'):
+                res = self.api.get(url, {'rule': valeur})
+                self.assertEqual(
+                    res.status_code, 400, (url, valeur, res.content))
+            res = self.api.get(url, {'rule': '99999999999999999999'})
+            self.assertEqual(res.status_code, 200, (url, res.content))

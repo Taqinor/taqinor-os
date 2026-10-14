@@ -18,14 +18,6 @@ API accepted schema-violating request|GET /api/django/achats/retours-fournisseur
 API accepted schema-violating request|GET /api/django/adminops/config-packages/
 API accepted schema-violating request|GET /api/django/adminops/sandbox/
 API accepted schema-violating request|GET /api/django/audit/entries/
-API accepted schema-violating request|GET /api/django/automation/approval-delegations/
-API accepted schema-violating request|GET /api/django/automation/approval-request-types/
-API accepted schema-violating request|GET /api/django/automation/approval-requests/
-API accepted schema-violating request|GET /api/django/automation/approvals/
-API accepted schema-violating request|GET /api/django/automation/incoming-webhooks/
-API accepted schema-violating request|GET /api/django/automation/rule-versions/
-API accepted schema-violating request|GET /api/django/automation/rules/
-API accepted schema-violating request|GET /api/django/automation/runs/
 API accepted schema-violating request|GET /api/django/companies/
 API accepted schema-violating request|GET /api/django/core/consent-records/
 API accepted schema-violating request|GET /api/django/core/dashboards-partages-internes/
@@ -825,7 +817,6 @@ API rejected schema-compliant request|PUT /api/django/ventes/tests-pr-reception/
 JSON deserialization error|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Missing Content-Type header|POST /api/django/installations/chantiers/{id}/reserves/{rid}/lever/
 Response violates schema|GET /api/django/adminops/settings/
-Response violates schema|GET /api/django/automation/approval-delegations/
 Response violates schema|GET /api/django/core/bulk-edit/targets/
 Response violates schema|GET /api/django/core/dossiers/{id}/checklist/
 Response violates schema|GET /api/django/core/dossiers/{id}/historique/
@@ -909,7 +900,6 @@ Response violates schema|GET /api/django/ventes/factures/{id}/relance-apercu/
 Response violates schema|GET /api/django/ventes/factures/{id}/relances/
 Response violates schema|GET /api/django/ventes/paiements/attestations-ras-en-attente/
 Response violates schema|GET /api/django/ventes/paiements/avances-non-affectees/
-Response violates schema|PATCH /api/django/automation/approval-delegations/{id}/
 Response violates schema|PATCH /api/django/core/dossiers/{id}/
 Response violates schema|PATCH /api/django/facturation/factures/{id}/
 Response violates schema|PATCH /api/django/installations/chantiers/{id}/
@@ -932,7 +922,6 @@ Response violates schema|PATCH /api/django/stock/plans-echantillonnage/{id}/
 Response violates schema|PATCH /api/django/stock/produits/{id}/
 Response violates schema|PATCH /api/django/ventes/devis/{id}/
 Response violates schema|PATCH /api/django/ventes/factures/{id}/
-Response violates schema|POST /api/django/automation/approval-delegations/
 Response violates schema|POST /api/django/facturation/factures/
 Response violates schema|POST /api/django/installations/chantiers/
 Response violates schema|POST /api/django/installations/chantiers/{id}/annuler/
