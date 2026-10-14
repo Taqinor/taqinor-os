@@ -1,0 +1,141 @@
+/* ── Page header actions (search + button row) ────────── */
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* VX4 — barre de recherche tokenisée (fond carte, filet input, focus anneau) ;
+   l'icône loupe reste en data-URI (couleur neutre lisible dans les deux thèmes). */
+.search-input {
+  height: 36px;
+  padding: 0 12px 0 32px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--foreground);
+  background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center;
+  width: 220px;
+  outline: none;
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
+  font-family: inherit;
+}
+
+.search-input:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 20%, transparent);
+}
+
+/* ── Count pill (inside table cell) ──────────────────── */
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  padding: 0 7px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 50px;
+}
+
+/* ── Client name ──────────────────────────────────────── */
+.client-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+/* ── Link ─────────────────────────────────────────────── */
+/* LB31 — tokenized (was raw #3b82f6/#2563eb, invisible-on-dark risk shared
+   across RH/installations/stock/SAV/CRM, not just leads). */
+.link-blue {
+  color: var(--info);
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .link-blue:hover {
+    text-decoration: underline;
+    color: color-mix(in oklch, var(--info) 80%, var(--foreground) 20%);
+  }
+}
+
+/* ── Text truncate ────────────────────────────────────── */
+.text-truncate {
+  max-width: 180px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Status tabs ──────────────────────────────────────── */
+.status-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* N64 — min-height : le libellé d'onglet ne se rogne pas à 200 %. */
+  min-height: 36px;
+  padding: 0 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: color var(--motion-base), border-color var(--motion-base);
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+@media (hover: hover) {
+  .status-tab:hover { color: var(--foreground); }
+}
+
+/* VX4 — onglet actif = accent primary (au lieu du bleu figé), retard =
+   destructive ; comptes tokenisés. */
+.status-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+
+.status-tab.overdue { color: var(--destructive); }
+.status-tab.overdue.active { border-bottom-color: var(--destructive); }
+
+.tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: var(--muted);
+  border-radius: 50px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+}
+
+.status-tab.active   .tab-count { background: color-mix(in oklch, var(--primary) 22%, transparent); color: var(--foreground); }
+.status-tab.overdue  .tab-count { background: color-mix(in oklch, var(--destructive) 18%, transparent); color: var(--destructive); }
+
+/* ── Overdue row ──────────────────────────────────────── */
+.row-overdue td { background: #fff7f7; }
+@media (hover: hover) {
+  .row-overdue:hover td { background: #fff0f0 !important; }
+}
+.text-danger  { color: #b91c1c; font-weight: 600; }
+.text-muted   { color: #94a3b8; }
+.text-success { color: #15803d; font-weight: 600; }
+

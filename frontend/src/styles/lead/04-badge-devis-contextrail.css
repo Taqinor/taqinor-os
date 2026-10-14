@@ -1,0 +1,48 @@
+/* ── Badge « N devis » (ContextRail, onglet Devis) ─────────────────────────
+   LW31 — hook CI-GATED (devis.spec.js E4 : `.lead-devis-badge` contient
+   « N devis ») : la CLASSE reste posée telle quelle, seul le style hex hérité
+   de l'ancien en-tête LeadForm (disparu en LW13) est retokenisé. `.lead-head-
+   actions`/`.lead-head-error`/`.lead-archived-badge` (voisines mortes,
+   0 usage JSX vivant — grep confirmé) sont supprimées. */
+.lead-devis-badge {
+  border: 1px solid var(--cat-navy);
+  background: var(--card);
+  color: var(--cat-navy);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-base), color var(--motion-base);
+}
+@media (hover: hover) {
+  .lead-devis-badge:hover {
+    background: var(--cat-navy);
+    color: var(--color-lune);
+  }
+}
+.lead-devis-badge.is-zero {
+  border-color: var(--border);
+  color: var(--muted-foreground);
+  font-weight: 600;
+}
+@media (hover: hover) {
+  .lead-devis-badge.is-zero:hover {
+    background: var(--muted);
+    color: var(--muted-foreground);
+  }
+}
+/* Astérisque doré : champ requis pour le devis automatique */
+.req-auto { color: var(--cat-gold); font-weight: 700; }
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+

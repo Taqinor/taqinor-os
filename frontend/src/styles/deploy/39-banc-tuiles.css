@@ -1,0 +1,75 @@
+/* ==========================================================================
+   ODY33 — Banc d'essai des TUILES d'apps dans la vitrine /ui. Bloc
+   APPEND-ONLY. La scene est volontairement NUIT dans les deux themes : c'est
+   le fond reel du portail d'accueil, donc le seul ou juger la palette.
+   ========================================================================== */
+.ody33-demo-scene {
+  padding: 1.5rem 1.25rem;
+  border-radius: 16px;
+  background:
+    radial-gradient(125% 90% at 50% -10%, var(--color-nuit-700) 0%, var(--color-nuit) 62%),
+    var(--color-nuit);
+  color: var(--color-lune);
+}
+
+.ody33-demo-legend {
+  margin-bottom: 0.9rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-lune-soft);
+}
+
+.ody33-demo-legend + .ody33-demo-grid + .ody33-demo-legend {
+  margin-top: 1.75rem;
+}
+
+.ody33-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 1.75rem 1.25rem;
+  justify-items: center;
+}
+
+.ody33-demo-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+}
+
+.ody33-demo-label {
+  font-size: 0.78rem;
+  font-weight: 550;
+  line-height: 1.25;
+  color: var(--color-lune);
+}
+
+/* ── NTMOB22 — Mode « une main » (terrain) ────────────────────────────────
+   Sur un grand téléphone, la barre d'onglets du panneau d'intervention (choix
+   de l'étape : photos, série, conso, signature…) vit tout en HAUT de la
+   feuille — hors de portée du pouce quand on tient le téléphone d'une main,
+   l'autre étant occupée par un outil. Activé (attribut `data-one-hand` posé
+   sur <html> par la préférence d'affichage), ce bloc DÉPLACE cette barre dans
+   le tiers bas de l'écran et l'y colle. Purement CSS/layout : aucune donnée,
+   aucun changement de comportement, désactivé par défaut. */
+[data-one-hand='true'] .oh-tabs {
+  display: flex;
+  flex-direction: column;
+}
+
+[data-one-hand='true'] .oh-tabs > [data-testid='mj-tab-rail'] {
+  order: 99;                 /* après le contenu de l'onglet actif */
+  position: sticky;
+  bottom: 0;
+  /* MB3 — palier partagé, jamais une valeur en dur. */
+  z-index: var(--z-sticky, 1100);
+  margin-top: 0.5rem;
+  padding-top: 0.35rem;
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}
+

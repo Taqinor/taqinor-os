@@ -18,7 +18,7 @@ import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveCss } from '../src/test/readCss.mjs'
 
@@ -63,8 +63,11 @@ function main(argv) {
     console.error('[css_golden] usage : node frontend/scripts/css_golden.mjs --base <ref> [--build]')
     return 2
   }
-  const reference = execFileSync('git', ['show', `${base}:frontend/src/index.css`],
+  // Le ref est résolu comme l'arbre : un ref déjà découpé (SPL281/SPL282) relit
+  // ses fichiers de styles/ via `git show`, un ref monolithique rend son index.css tel quel.
+  const lireRef = (chemin) => execFileSync('git', ['show', `${base}:${relative(RACINE, chemin).replace(/\\/g, '/')}`],
     { cwd: RACINE, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  const reference = resolveCss(INDEX, lireRef)
   const egal = memeCss(INDEX, reference)
   console.log(egal
     ? `[css_golden] OK : index.css résolu = ${base}:frontend/src/index.css`

@@ -1,0 +1,374 @@
+/* ===== migrated from src/pages/crm/leads/views/calendar.css (P67) ===== */
+/* ── Vue CALENDRIER des leads CRM ──
+   Grille mensuelle façon Odoo : fond clair, cellules blanches, filets
+   #e2e8f0, numéros de jour navy, accent or sur aujourd'hui.
+   Toutes les classes sont préfixées cal- (aucune fuite globale). */
+
+.cal-root {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 100%;
+}
+
+/* ── Barre d'en-tête ── */
+.cal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cal-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.cal-nav-btn {
+  min-width: 40px;
+  min-height: 40px;
+  line-height: 1;
+}
+
+.cal-today-btn {
+  min-height: 40px;
+}
+
+/* VX25 — regroupe le contenu additionnel de l'en-tête (Segmented, sélecteur
+   responsable…) + le bouton « Aujourd'hui » ; poussé à droite en bloc
+   (auparavant seul le bouton portait `margin-left: auto`). */
+.cal-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.cal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+}
+
+/* ── Grille mensuelle ── */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  background: var(--border, #e2e8f0); /* les gaps de 1px dessinent les filets */
+  gap: 1px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  overflow: hidden;
+}
+
+.cal-weekday {
+  background: var(--muted, #f8fafc);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  /* VX122 — même token « eyebrow » que .data-table/.lines-table th (remplace
+     0.04em codé en dur). */
+  letter-spacing: var(--text-eyebrow-tracking);
+  text-align: center;
+  padding: 8px 4px;
+}
+
+.cal-cell {
+  position: relative;
+  background: var(--card, #fff);
+  min-height: 96px;
+  padding: 6px;
+  padding-top: 26px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cal-cell-out {
+  background: var(--muted, #f8fafc);
+}
+
+.cal-cell-out .cal-day-number {
+  color: var(--muted-foreground, #94a3b8);
+}
+
+.cal-cell-today {
+  box-shadow: inset 0 0 0 2px var(--cat-gold, var(--warning, #f5a623));
+  background: var(--cat-gold-soft, color-mix(in srgb, var(--warning, #f5a623) 14%, var(--card, #fff)));
+}
+
+.cal-cell-today .cal-day-number {
+  background: var(--cat-gold, var(--warning, #f5a623));
+  color: #1a1505;
+  border-radius: 999px;
+}
+
+.cal-day-number {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground, #0b1f3a);
+}
+
+/* ── Pastilles lead ── */
+.cal-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 0.76rem;
+  color: var(--foreground, #0b1f3a);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
+}
+
+@media (hover: hover) {
+  .cal-chip:hover {
+    border-color: var(--primary, #cbd5e1);
+    box-shadow: var(--shadow-ui-xs, 0 1px 3px rgba(11, 31, 58, 0.12));
+  }
+}
+
+.cal-chip:focus-visible {
+  outline: 2px solid var(--ring, #94a3b8);
+  outline-offset: 1px;
+}
+
+.cal-chip-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  /* VX149 — pilotée par --kb-accent (StatusAccentCard), plus un style inline. */
+  background: var(--kb-accent, var(--muted-foreground, #64748b));
+}
+
+.cal-chip-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-chip-perdu {
+  color: var(--destructive, #dc2626);
+}
+
+.cal-more {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .cal-more:hover {
+    color: var(--foreground, #0b1f3a);
+    text-decoration: underline;
+  }
+}
+
+.cal-more-static {
+  cursor: default;
+  text-decoration: none;
+}
+
+/* ── Leads sans date de relance ── */
+.cal-undated {
+  /* VX25 — MonthGrid.jsx ne fournit plus .cal-root en parent flex direct
+     (CalendarView compose la grille + cette section via un Fragment) : le
+     gap de 12px qu'apportait .cal-root est reproduit ici en margin-top. */
+  margin-top: 12px;
+  border-top: 1px solid var(--border, #e2e8f0);
+  padding-top: 10px;
+}
+
+/* VX144(d) — accent --warning : les leads sans date de relance ni de visite
+   n'étaient signalés qu'en note neutre (muted), invisible au balayage rapide. */
+.cal-undated-label {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--warning, #d97706);
+}
+
+.cal-undated-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-undated-chips .cal-chip {
+  width: auto;
+  max-width: 220px;
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  .cal-cell {
+    min-height: 64px;
+    padding: 3px;
+    padding-top: 20px;
+  }
+
+  .cal-day-number {
+    top: 2px;
+    right: 2px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.72rem;
+  }
+
+  .cal-chip {
+    padding: 2px 4px;
+    font-size: 0.68rem;
+    gap: 4px;
+  }
+
+  .cal-title {
+    font-size: 1rem;
+  }
+
+  .cal-undated-chips .cal-chip {
+    max-width: 150px;
+  }
+}
+
+/* ── VX25 — CalendarPage (calendrier transverse) restylé sur MonthGrid +
+   tokens : 100 % inline style / ~20 hex codés / boutons `btn btn-light`
+   pré-design-system remplacés par les primitifs + var(--module-accent-*). */
+.cp-page-header {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cp-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cp-subscribe-box {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--muted, #f8fafc);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.cp-subscribe-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted-foreground, #475569);
+}
+
+.cp-subscribe-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.cp-subscribe-input {
+  flex: 1 1 320px;
+  min-width: 0;
+  font-size: 0.8rem;
+}
+
+.cp-type-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.cp-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--cp-chip-color);
+  font-size: 0.8rem;
+  background: var(--cp-chip-color);
+  color: var(--primary-foreground, #fff);
+}
+
+.cp-type-chip-off {
+  background: transparent;
+  color: var(--cp-chip-color);
+}
+
+.cp-type-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--primary-foreground, #fff);
+}
+
+.cp-type-chip-off .cp-type-dot {
+  background: var(--cp-chip-color);
+}
+
+.cp-error { color: var(--destructive, #dc2626); }
+
+.cp-empty {
+  margin-top: 0.75rem;
+  text-align: center;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.9rem;
+}
+
+/* Évènements du calendrier transverse : rendus dans .cal-chips (layout
+   colonne déjà fourni par MonthGrid/CalendarView), fond de couleur pleine
+   (type d'évènement) au lieu du fond carte + point des pastilles lead. */
+.cp-event {
+  color: var(--primary-foreground, #fff);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Évènement passé (date < aujourd'hui) : atténué + bord d'alerte. */
+.cp-event-past {
+  opacity: 0.55;
+  box-shadow: inset 0 0 0 1.5px var(--destructive, #dc2626);
+}
+

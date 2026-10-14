@@ -1,0 +1,688 @@
+/* ── Layout principal (sidebar + contenu) ─────────────────── */
+.layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.layout-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* U2-GUARD: ne jamais mettre height:auto ici — cela briserait la chaîne de
+     hauteur bornée et réintroduirait la régression de défilement roue. */
+}
+
+.layout-content {
+  flex: 1;
+  /* U2-GUARD: min-height:0 indispensable dans un flex column borné :
+     sans lui flex refuse de réduire sous la taille du contenu et overflow-y
+     n'active pas le scroll interne. */
+  min-height: 0;
+  padding: 2rem;
+  overflow-y: auto;
+  /* U2-GUARD: overscroll-behavior:contain empêche le scroll de se propager
+     vers un ancêtre quand on atteint le bord (évite rebonds iOS indésirables). */
+  overscroll-behavior-y: contain;
+  /* CAD177 (MB6, mesuré au rendu réel 390×844) : bloc conteneur des éléments
+     `position:absolute` sans ancêtre positionné — le <select> natif caché que
+     Radix Select pose à côté de son déclencheur (offsetParent = BODY). Sans
+     lui, ces éléments se plaçaient par rapport au bloc initial, ÉCHAPPAIENT
+     au scrolleur et allongeaient le DOCUMENT (html 2269 px pour 844 de
+     viewport sur le générateur de devis) : un scrollIntoView faisait alors
+     défiler toute la coquille (en-tête hors écran, tab-bar remontée sur le
+     bouton « Créer le devis »). */
+  position: relative;
+}
+
+/* ── Sidebar ──────────────────────────────────────────────── */
+.sidebar {
+  width: 240px;
+  /* Hauteur BORNÉE au viewport (sticky) pour que la navigation défile à
+     l'intérieur et que la déconnexion reste toujours visible, même sur un
+     écran court ou un iPhone. */
+  height: 100vh;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  /* VX2 — coquille permanente aux couleurs de marque : fond nuit signature,
+     texte sur la rampe lune/encre, filets et item actif via tokens. */
+  background: var(--color-nuit);
+  color: var(--color-lune-faint);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width var(--motion-base) var(--ease-out);
+  overflow: hidden;
+}
+
+.sidebar--collapsed {
+  width: 64px;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.6rem 0 0.75rem;
+  height: 56px;
+  border-bottom: 1px solid var(--color-nuit-700);
+  flex-shrink: 0;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar-bolt {
+  width: 28px;
+  height: 28px;
+  background: var(--primary);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sidebar-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+.sidebar-company-name {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: var(--color-lune);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.01em;
+}
+.sidebar-brand-sub {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  /* a11y — `--color-encre-faint` (#5a6488) sur le fond de barre `--color-nuit`
+     (#070b1d) ne donne que 3,36:1 : sous le plancher AA de 4,5:1 pour du texte
+     de cette taille (9,6 px). axe le relevait en `serious` sur CHAQUE écran de
+     la coquille (job nocturne `e2e-full`). On monte d'un cran dans la MÊME
+     rampe « lune » — `--color-lune-faint` (#8d96b4) = 6,66:1 — sans inventer
+     de couleur locale ni toucher au reste de la hiérarchie visuelle. */
+  color: var(--color-lune-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-encre-faint);
+  padding: 5px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition: color var(--motion-base), background var(--motion-base);
+  flex-shrink: 0;
+}
+@media (hover: hover) {
+  .sidebar-toggle:hover { color: var(--color-lune); background: var(--color-nuit-700); }
+}
+
+.sidebar-role {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 1rem 0.55rem;
+  border-bottom: 1px solid var(--color-nuit-700);
+  flex-shrink: 0;
+}
+.sidebar-role-icon { color: var(--color-encre-faint); display: flex; }
+.sidebar-role-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  /* Même correctif AA que `.sidebar-brand-sub` ci-dessus : 3,36:1 → 6,66:1.
+     Gras à 10,88 px ne compte PAS comme « grand texte » (seuil : 18,66 px
+     gras), donc le plancher applicable reste bien 4,5:1. */
+  color: var(--color-lune-faint);
+  font-weight: 700;
+}
+
+/* ── VX10 — Apps épinglées personnelles (bande fine sous le badge de rôle) ── */
+.sidebar-pinned {
+  padding: 0.4rem 0.85rem 0.5rem;
+  border-bottom: 1px solid var(--color-nuit-700);
+  flex-shrink: 0;
+}
+.sidebar-pinned-list { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.sidebar-pinned-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 7px;
+  color: var(--color-lune-soft);
+  background: var(--color-nuit-700);
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .sidebar-pinned-item:hover { background: var(--color-nuit-700); color: var(--color-lune); }
+}
+.sidebar-pinned-item.active { color: var(--primary); }
+.sidebar-pinned-icon { display: flex; }
+.sidebar-pinned-toggle,
+.sidebar-pinned-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 7px;
+  border: 1px dashed var(--color-encre-soft);
+  background: none;
+  color: var(--color-lune-faint);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+.sidebar-pinned--empty .sidebar-pinned-add {
+  width: auto;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.7rem;
+}
+@media (hover: hover) {
+  .sidebar-pinned-toggle:hover, .sidebar-pinned-add:hover { background: var(--color-nuit-700); color: var(--color-lune); }
+}
+.sidebar-pinned-picker {
+  margin-top: 0.4rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-nuit-700);
+  border-radius: var(--radius-md);
+  background: var(--color-nuit);
+  padding: 0.25rem;
+}
+.sidebar-pinned-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  background: none;
+  border: none;
+  color: var(--color-lune);
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+.sidebar-pinned-picker-item:disabled { opacity: 0.4; cursor: not-allowed; }
+@media (hover: hover) {
+  .sidebar-pinned-picker-item:not(:disabled):hover { background: var(--color-nuit-700); }
+}
+.sidebar-pinned-picker-icon { display: flex; flex-shrink: 0; }
+.sidebar-pinned-picker-label { flex: 1; }
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  /* min-height:0 indispensable : sans lui, un enfant flex ne rétrécit pas sous
+     la hauteur de son contenu, donc overflow-y ne défile jamais et les
+     derniers liens + la déconnexion sont coupés (bug iPhone — C1). */
+  min-height: 0;
+  padding: 0.4rem 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* I135 — Sidebar « calme » : chaque section est séparée par un léger filet en
+   haut (sauf la première), pour structurer la nav sans bruit visuel. */
+/* VX8 — accent de module : `--module-accent` (posé inline par Sidebar.jsx
+   depuis `section.accent` / `nav.accent`) retinte liseré + icône actifs de
+   CETTE section ; repli sur le brass historique quand la variable est absente
+   (première section « coquille » sans label, ou un module qui n'en déclare pas
+   encore). Contraste AA déjà garanti par le choix des 7 clés dans tokens.css. */
+.sidebar-section { padding: 0.25rem 0.5rem 0.2rem; --module-accent: var(--primary); }
+.sidebar-section + .sidebar-section {
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--color-nuit-700);
+  padding-top: 0.4rem;
+}
+
+.sidebar-nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.48rem 0.75rem;
+  border-radius: var(--radius-md);
+  /* I135 — libellés inactifs en sourdine (muted) ; le contraste monte au survol
+     et surtout sur l'item actif. */
+  color: var(--color-lune-soft);
+  text-decoration: none;
+  font-size: 0.855rem;
+  font-weight: 400;
+  transition: background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+  white-space: nowrap;
+}
+@media (hover: hover) {
+  .sidebar-nav-item:hover { background: var(--color-nuit-700); color: var(--color-lune); }
+}
+/* I135 — item ACTIF : pastille DISCRÈTE teintée (brass tamisé), surtout PAS le
+   bleu vif #1d4ed8. Fond très peu opaque + liseré gauche brass + texte clair.
+   Le repère est calme, pas criard. */
+.sidebar-nav-item.active {
+  /* VX8 — fond très peu opaque teinté de l'accent du module (color-mix garde
+     l'opacité ~10 % déjà validée AA, seule la teinte source change). */
+  background: color-mix(in oklch, var(--module-accent) 10%, transparent);
+  color: var(--color-lune);
+  font-weight: 500;
+}
+.sidebar-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 1.05rem;
+  border-radius: 0 3px 3px 0;
+  background: var(--module-accent);
+  /* VX134(b) — chaque item nav porte SON PROPRE pseudo-élément : à la
+     navigation, le repère ne glisse jamais d'un item à l'autre (deux
+     éléments distincts, aucune mesure DOM partagée) — il téléportait. Une
+     mesure DOM pour faire glisser un indicateur PARTAGÉ entre items est
+     jugée invasive ici ; repli : un fondu --motion-fast à l'apparition de
+     chaque nouveau pseudo-élément actif (l'entrée d'un élément nouvellement
+     créé déclenche son animation CSS), moins sec qu'un pop instantané. */
+  animation: var(--animate-fade-in);
+}
+.sidebar-nav-item.active .sidebar-nav-icon { color: var(--module-accent); }
+/* I135 — anneau focus-visible sur les items (navigation clavier), aligné sur le
+   plancher d'accessibilité (anneau ≥ 2px contrasté). */
+.sidebar-nav-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+/* En tiroir replié, la pastille active reste discrète mais le liseré gauche
+   resterait coupé par le centrage : on bascule sur un anneau interne brass. */
+.sidebar--collapsed .sidebar-nav-item.active::before { display: none; }
+.sidebar--collapsed .sidebar-nav-item.active {
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--module-accent) 45%, transparent);
+}
+
+.sidebar-nav-icon { display: flex; flex-shrink: 0; }
+/* VX175(d) — à texte-zoom élevé (accessibilité) ou libellé long, le label
+   était silencieusement COUPÉ par la largeur fixe de la sidebar sans aucun
+   repère visuel (pas de "…", pas de title en état déplié). `min-width: 0`
+   est nécessaire pour qu'un enfant flex accepte réellement `text-overflow`
+   (sinon il déborde son parent au lieu de tronquer). */
+.sidebar-nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* VX86 — pastille de compte (ex. « Approbations en attente ») : même langage
+   que `.nb-badge` (cloche) pour un repère visuel cohérent dans toute la
+   coquille, mais posée en flux (pas en position absolute) puisqu'elle vit à
+   la fin d'un item nav plutôt que sur un bouton icône seul. */
+.sidebar-nav-badge {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  min-width: 17px; height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--destructive); color: var(--destructive-foreground);
+  font-size: 0.66rem; font-weight: 700;
+  line-height: 1;
+}
+/* Tiroir replié : l'item est centré sur l'icône seule ; la pastille se pose
+   en coin plutôt que de forcer l'item à s'élargir. */
+.sidebar--collapsed .sidebar-nav-badge {
+  position: absolute;
+  top: 2px; right: 2px;
+  min-width: 14px; height: 14px;
+  font-size: 0.6rem;
+  padding: 0 3px;
+}
+
+.sidebar--collapsed .sidebar-nav-item { justify-content: center; padding: 0.52rem; }
+.sidebar--collapsed .sidebar-section { padding-bottom: 0.05rem; }
+
+/* VX157 — pastille d'impact du parc : discrète, teinte brass tamisée (même
+   esprit que le repère d'item actif ci-dessus), jamais criarde. */
+.sidebar-impact {
+  margin: 0.5rem 0.5rem 0;
+  padding: 0.4rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--primary) 8%, transparent);
+  color: var(--color-brass-300);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sidebar-impact-icon { flex-shrink: 0; color: var(--primary); }
+.sidebar-impact-label { overflow: hidden; text-overflow: ellipsis; }
+.sidebar--collapsed .sidebar-impact { justify-content: center; padding: 0.4rem; }
+
+.sidebar-logout {
+  margin: 0.5rem;
+  padding: 0.48rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--color-nuit-700);
+  border-radius: var(--radius-md);
+  color: var(--color-lune-faint);
+  font-size: 0.855rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  transition: background var(--motion-base), color var(--motion-base), border-color var(--motion-base);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+@media (hover: hover) {
+  .sidebar-logout:hover {
+    background: color-mix(in oklch, var(--destructive) 22%, var(--color-nuit));
+    color: color-mix(in oklch, var(--destructive) 55%, #fff);
+    border-color: color-mix(in oklch, var(--destructive) 45%, var(--color-nuit));
+  }
+}
+.sidebar--collapsed .sidebar-logout { justify-content: center; padding: 0.52rem; }
+
+/* ── Header ───────────────────────────────────────────────── */
+.header {
+  /* I136 — en-tête COMPACT (52 px) et COLLANT en haut de la zone de contenu :
+     le contenu défile dessous, l'en-tête reste visible. */
+  min-height: 52px;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky, 1100);
+  /* VX2 — l'en-tête suit ENFIN le dark mode : surface = carte tokenisée,
+     filet = bordure sémantique. */
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* iOS PWA plein écran (status-bar translucide) : le contenu passe SOUS la
+     barre d'état / l'encoche. On réserve l'inset haut pour que le bouton menu
+     (hamburger) ne soit plus masqué et reste tappable. env() = 0 hors iOS. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: 0;
+  padding-left: max(1.25rem, env(safe-area-inset-left));
+  padding-right: max(1.25rem, env(safe-area-inset-right));
+  flex-shrink: 0;
+}
+
+/* VX176 — safe-area sur les overlays PLEIN ÉCRAN Radix (Sheet/Dialog/
+   AlertDialog). `black-translucent` (index.html) fait passer le contenu SOUS
+   la barre d'état iOS ; seul `.header` (ci-dessus) réservait l'inset haut —
+   un Sheet latéral (side="left"/"right", `inset-y-0 h-full`, VX176a) ou une
+   Dialog/AlertDialog proche de sa hauteur max collait son bord sous
+   l'encoche/Dynamic Island en PWA standalone. `env()` vaut 0 hors iOS/
+   standalone : no-op ailleurs. */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* VX189(c) — sections HORS-ÉCRAN de Dashboard/Rapports (listes/texte, sous
+   le pli) : `content-visibility: auto` saute le paint/layout du contenu tant
+   qu'il n'approche pas du viewport (gain mesuré sans une ligne de JS).
+   `contain-intrinsic-size` évite un saut de scrollbar au premier paint (le
+   navigateur réserve cette hauteur estimée avant d'avoir mesuré le contenu
+   réel). Réservé aux sections LISTE/TEXTE (jamais aux blocs contenant un
+   graphique recharts — un recharts monté alors que son conteneur measure
+   `display:none`-like ne peut pas lire ses dimensions et rend un SVG vide). */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 320px;
+}
+
+/* I136 — Repère de marque cliquable (pastille éclair → accueil). */
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 2px;
+  border-radius: 9px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .header-brand:hover { transform: scale(1.05); }
+}
+.header-brand:active { transform: scale(0.96); }
+.header-brand-bolt {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* SCA24 — logo white-label de la société (TenantTheme.logo_url), remplace la
+   pastille éclair quand renseigné. Même emprise que .header-brand-bolt. */
+.header-brand-logo {
+  height: 26px;
+  width: auto;
+  max-width: 120px;
+  display: block;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+/* I35 — Groupes gauche (menu + titre/fil d'Ariane) et droite (recherche +
+   cloche + menu utilisateur). */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.header-heading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  /* VX2 — espace INTER-grappes légèrement plus large que l'espace intra-grappe
+     ci-dessous : les 3 grappes (Recherche / Communication / Préférences+compte)
+     se lisent comme des groupes distincts sans séparateur dessiné. */
+  gap: 0.85rem;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* VX2 — grappe de contrôles d'en-tête : rangée compacte, espace intra-grappe
+   resserré ; les grappes elles-mêmes sont espacées par le gap de .header-right. */
+.header-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.header-title {
+  /* I136 — hiérarchie de titre resserrée : tracking légèrement négatif,
+     interligne court, taille mesurée. Le titre prime, le fil d'Ariane sert de
+     contexte (plus petit, au-dessus). */
+  font-size: 1.05rem;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* I35 — Fil d'Ariane (au-dessus du titre). */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
+  color: var(--muted-foreground);
+  margin-bottom: 1px;
+}
+.breadcrumb-segment { display: inline-flex; align-items: center; gap: 0.15rem; min-width: 0; }
+.breadcrumb-sep { color: var(--border); flex-shrink: 0; }
+/* I137 — chaque libellé tronque visuellement s'il est trop large (le title
+   restitue le plein libellé). */
+.breadcrumb-link,
+.breadcrumb-current,
+.breadcrumb-text {
+  max-width: 16ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.breadcrumb-link {
+  color: var(--muted-foreground);
+  text-decoration: none;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+@media (hover: hover) {
+  .breadcrumb-link:hover { color: var(--info); text-decoration: underline; }
+}
+.breadcrumb-current { color: var(--muted-foreground); font-weight: 600; }
+.breadcrumb-text { color: var(--muted-foreground); }
+/* I137 — débordement « … » des segments masqués (chemin tronqué au milieu). */
+.breadcrumb-overflow {
+  color: var(--muted-foreground);
+  font-weight: 700;
+  cursor: default;
+  padding: 0 2px;
+  flex-shrink: 0;
+  letter-spacing: 0.05em;
+}
+
+/* I35 — Déclencheur ⌘K (recherche + palette de commandes). */
+.header-cmdk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+  border-radius: var(--radius-md);
+  padding: 6px 9px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: border-color var(--motion-fast) var(--ease-out),
+              background var(--motion-fast) var(--ease-out),
+              color var(--motion-fast) var(--ease-out);
+  flex-shrink: 0;
+}
+@media (hover: hover) {
+  .header-cmdk:hover { border-color: var(--input); background: var(--card); color: var(--foreground); }
+}
+/* I136 — affordance ⌘K renforcée : la touche est une vraie pastille `kbd`
+   contrastée, façon raccourci clavier, qui ressort de la barre de recherche. */
+.header-cmdk-kbd {
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px solid var(--input);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 1px 5px;
+  color: var(--muted-foreground);
+  background: var(--card);
+  line-height: 1.3;
+  box-shadow: 0 1px 0 color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* I35 — Déclencheur du menu utilisateur (avatar + nom). */
+.header-usermenu-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-md);
+  transition: background var(--motion-base);
+}
+@media (hover: hover) {
+  .header-usermenu-trigger:hover { background: var(--muted); }
+}
+
+.header-user-avatar-rt {
+  width: 32px;
+  height: 32px;
+  background: var(--primary);
+}
+
+/* Ancien avatar « simple » conservé pour rétro-compat éventuelle. */
+.header-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.header-user-name {
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.header-usermenu-email {
+  padding: 0 0.5rem 0.4rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

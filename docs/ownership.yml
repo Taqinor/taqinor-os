@@ -999,7 +999,7 @@ append_only:
   - path: frontend/src/test/fixtures/contractSamples.js
     rule: "un export par nouvel échantillon de contrat (PACT10), ajouté en fin"
   - path: frontend/src/index.css
-    rule: "UN bloc ajouté EN FIN, ouvert par « /* ── <TASKID> — <titre> ── */ », classes préfixées par le module ; jamais réécrire une règle existante"
+    rule: "index.css ne contient que des @import : UN @import en fin de liste par fichier neuf ; le CSS d'une tâche va en FIN du fichier de son thème dans styles/<propriétaire>/ (ouvert par « /* ── <TASKID> — <titre> ── */ », classes préfixées par le module) ; jamais réécrire une règle existante"
   - path: frontend/src/design/tokens.css
     rule: "un jeton déclaré EN FIN de CHAQUE bloc (clair :root et variantes sunlight) sous « /* <TASKID> */ »"
   - path: frontend/src/styles/print.css

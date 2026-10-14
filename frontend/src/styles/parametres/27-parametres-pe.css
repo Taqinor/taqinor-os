@@ -1,0 +1,226 @@
+/* ===== migrated from src/pages/parametres/parametres.css (P67) ===== */
+/* Barre d'onglets (J48) : le primitif <TabsList> est rendu défilable
+   horizontalement sur téléphone — la barre scrolle à l'intérieur, la page ne
+   déborde jamais. Le style visuel des onglets vient des tokens (@/ui Tabs). */
+.pe-tabs-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+/* Grilles responsives de la page Paramètres : multi-colonnes au bureau,
+   une seule colonne sur téléphone (plus de débordement horizontal). */
+.pe-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+.pe-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.pe-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.6rem; }
+.pe-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0.6rem; }
+.pe-grid-relance { display: grid; grid-template-columns: 1fr 110px; gap: 0.6rem; align-items: end; }
+
+/* Le bloc principal passe en 1 colonne tôt (la colonne droite descend). */
+@media (max-width: 900px) {
+  .pe-main { grid-template-columns: 1fr; }
+}
+/* Sur téléphone, toutes les grilles de champs passent en 1 colonne. */
+@media (max-width: 560px) {
+  .pe-grid-2,
+  .pe-grid-3,
+  .pe-grid-4 { grid-template-columns: 1fr; }
+  .pe-grid-relance { grid-template-columns: 1fr 1fr; }
+}
+/* L789 — sur petit téléphone (~380px), même pe-grid-relance passe en 1 colonne
+   (plus aucun débordement horizontal sur aucune carte Paramètres). */
+@media (max-width: 400px) {
+  .pe-grid-relance { grid-template-columns: 1fr; }
+}
+
+/* ── FG11 — Vues enregistrées (partagé : LeadsPage, ClientList, DevisList, etc.) ── */
+.lp-saved-views {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.lp-saved-view-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 9999px;
+  background: var(--card, #fff);
+  overflow: hidden;
+  font-size: 0.78rem;
+}
+
+.lp-saved-view-apply {
+  background: none;
+  border: none;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  color: var(--foreground, #1e293b);
+  white-space: nowrap;
+  font-size: inherit;
+  transition: background var(--motion-fast);
+}
+
+@media (hover: hover) {
+  .lp-saved-view-apply:hover {
+    background: var(--muted, #f1f5f9);
+  }
+}
+
+.lp-saved-view-del {
+  background: none;
+  border: none;
+  border-left: 1px solid var(--border, #e2e8f0);
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  color: var(--muted-foreground, #64748b);
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: background var(--motion-fast), color var(--motion-fast);
+}
+
+@media (hover: hover) {
+  .lp-saved-view-del:hover {
+    background: color-mix(in srgb, var(--destructive, #dc2626) 10%, transparent);
+    color: var(--destructive, #dc2626);
+  }
+}
+
+/* ── N93 — support RTL (langue arabe) ─────────────────────────────────────────
+   La bascule RTL est portée par `dir="rtl"` sur <html> (posé par I18nProvider).
+   La quasi-totalité de la coquille utilise flexbox, qui se réordonne seule sous
+   RTL — on n'ajoute donc QUE les correctifs minimaux là où un décalage codé en
+   dur (marge/position directionnelle) casserait visuellement en arabe. On
+   privilégie les propriétés logiques. Tout ajout futur reste petit et ciblé. */
+[dir="rtl"] body { text-align: right; }
+
+/* Le petit code de langue à côté du globe : léger espacement logique. */
+.header-lang-btn { display: inline-flex; align-items: center; gap: 0.25rem; }
+
+/* NTI18N2 — Sidebar (flex order déjà direction-aware, non touché) : SEUL le
+   chevron replier/déplier est codé en dur (ChevronLeft = « vers le bord » en
+   LTR où la sidebar est à gauche). En RTL la sidebar migre visuellement au
+   bord droit (flex-direction row, comportement natif) : le miroir horizontal
+   du chevron restaure le bon sens (« vers le bord ») sans dupliquer la logique
+   collapsed/expanded côté JS. */
+[dir="rtl"] .sidebar-toggle svg { transform: scaleX(-1); }
+
+/* ── VX15 — ModuleHero : liseré gradient brass→transparent ───────────────────
+   Le SEUL gradient de marque autorisé à l'intérieur de l'app (« lumière à
+   travers le verre »). Opacité plafonnée à 8 % — jamais criard. Le léger
+   déplacement du dégradé est une animation `background-position` : coupée
+   automatiquement sous `prefers-reduced-motion` par la règle globale
+   `animation-duration: 0.01ms !important` (ci-dessus), donc statique pour les
+   utilisateurs sensibles au mouvement sans média-query dupliquée ici. */
+.module-hero-sheen {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-brass-400, #e8b54a) 8%, transparent),
+    transparent 60%
+  );
+  background-size: 200% 100%;
+  animation: module-hero-sheen-drift 6s ease-in-out infinite;
+}
+
+@keyframes module-hero-sheen-drift {
+  0%, 100% { background-position: 0% 0; }
+  50% { background-position: 100% 0; }
+}
+/* ── VX9 — Lanceur d'applications (grille légère, PAS une page) ──────────────
+   Overlay Radix Dialog (AppLauncher.jsx) : grille de modules par catégorie
+   (favoris / récents / toutes), icône + label FR. `--module-accent` (VX8) sur
+   `.sidebar-section` n'entre PAS ici (le lanceur est hors Sidebar) — les tuiles
+   restent neutres, le liseré/l'icône de survol reprend le brass (cohérent avec
+   l'item actif générique de la nav). reduced-motion géré globalement (§ plus
+   haut) : aucune animation propre à ajouter ici. */
+.app-launcher-content {
+  max-width: 34rem;
+  max-height: min(32rem, calc(100dvh - 4rem));
+}
+.app-launcher-title { margin-right: 0; }
+.app-launcher-section + .app-launcher-section { margin-top: 0.9rem; }
+.app-launcher-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  margin-bottom: 0.4rem;
+}
+.app-launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+}
+.app-launcher-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.75rem 0.4rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  color: var(--foreground);
+  text-align: center;
+  transition: background var(--motion-fast) var(--ease-out),
+              border-color var(--motion-fast) var(--ease-out);
+}
+@media (hover: hover) {
+  .app-launcher-tile:hover { background: var(--secondary); border-color: var(--border); }
+}
+.app-launcher-tile:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.app-launcher-tile-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+  color: var(--primary);
+}
+.app-launcher-tile-label {
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+.app-launcher-tile-pin {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out), color var(--motion-fast) var(--ease-out);
+}
+.app-launcher-tile-pin:focus-visible {
+  opacity: 1;
+}
+@media (hover: hover) {
+  .app-launcher-tile:hover .app-launcher-tile-pin { opacity: 1; }
+}
+.app-launcher-tile-pin[aria-label^="Désépingler"] {
+  color: var(--primary);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .app-launcher-content[data-state="open"] { animation-duration: 150ms; }
+}
+.header-lang-code { font-size: 0.7rem; font-weight: 600; line-height: 1; }
+

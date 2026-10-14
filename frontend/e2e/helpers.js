@@ -535,6 +535,42 @@ export async function creerDevisCommercialDepuisLead(page, leadId) {
   return id
 }
 
+// ── VNT82 — monter une vente « devis accepté » par l'API ─────────────────────
+// Montage PARTAGÉ des specs de la vente (budget de clics, panneau de vente) :
+// lead → devis (une ligne produit au prix imposé) → lignes → acceptation, tout
+// par l'API, hors budget. Renvoie `{ lead, devis, produit }` ; la fiche du lead
+// s'ouvre ensuite par `/crm/leads/<id>` puis l'onglet « Devis ». Le prix de la
+// ligne est posé (HT) pour qu'un acompte libre de 15 000 MAD tienne toujours
+// dans le prix convenu, quel que soit le catalogue de la pile.
+export async function monterVenteAcceptee(request, { tag = 'Vente E2E', prixHt = '50000.00' } = {}) {
+  const produits = listeDe(await lireJson(
+    await request.get(`${API_DJANGO}/stock/produits/?page_size=100`), 'catalogue'))
+  const produit = produits.find((p) => parseFloat(p.prix_vente) > 0)
+  expect(produit, 'catalogue sans produit chiffré — jouer `manage.py seed_catalogue`').toBeTruthy()
+  const lead = await lireJson(await request.post(`${API_DJANGO}/crm/leads/`, {
+    data: {
+      nom: uniq(tag), ville: 'Casablanca', telephone: telephoneMobileUnique(),
+      type_installation: 'residentiel', facture_hiver: '800',
+    },
+  }), 'création du lead')
+  const devis = await lireJson(await request.post(`${API_DJANGO}/ventes/devis/`, {
+    data: { lead: lead.id, taux_tva: '20.00', mode_installation: 'residentiel' },
+  }), 'création du devis')
+  await lireJson(await request.post(`${API_DJANGO}/ventes/devis/${devis.id}/replace-lines/`, {
+    data: {
+      lignes: [{
+        produit: produit.id, designation: produit.nom, quantite: '1.00',
+        prix_unitaire: prixHt, remise: '0.00', taux_tva: '20.00',
+        type_ligne: 'produit', ordre: 0,
+      }],
+    },
+  }), 'lignes du devis')
+  await lireJson(await request.post(`${API_DJANGO}/ventes/devis/${devis.id}/accepter/`, {
+    data: { nom: `Client ${tag}` },
+  }), 'acceptation du devis')
+  return { lead, devis, produit }
+}
+
 // ── Parcours « site professionnel » (CIQ650, CIQ665) ────────────────────────
 // PNG 1×1 valide : une vraie photo de slot (magic-bytes contrôlés par le serveur).
 export const PNG_1PX = Buffer.from(

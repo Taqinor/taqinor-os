@@ -1,0 +1,112 @@
+/* ── Forms ────────────────────────────────────────────── */
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 140px;
+}
+
+.fg-grow { flex: 1 1 180px; }
+.fg-sm   { flex: 0 0 110px; }
+
+.form-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.req { color: var(--destructive); }
+
+/* VX4 — champs tokenisés (fond carte, filet input, texte foreground, focus =
+   anneau azur) : lisibles et cohérents en clair ET en sombre. */
+.form-control,
+.form-select {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--foreground);
+  background: var(--card);
+  width: 100%;
+  font-family: inherit;
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
+  outline: none;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 20%, transparent);
+}
+
+.form-control.is-invalid,
+.form-select.is-invalid {
+  border-color: var(--destructive);
+}
+
+textarea.form-control {
+  height: auto;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control-sm,
+.form-select-sm {
+  height: 30px;
+  font-size: 0.8rem;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+
+.form-feedback {
+  font-size: 0.75rem;
+  color: var(--destructive);
+  margin-top: 2px;
+}
+
+.form-error-box {
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 0.8rem;
+  color: var(--destructive);
+}
+
+/* ── Form section (VX143 — traitement de carte) ──────────
+   Avant : sections nues (flex sans frontière), distinguées SEULEMENT par une
+   emoji. Maintenant : bordure/fond visibles (`preview_inspect`-vérifiables)
+   qui séparent chaque section, quel que soit le contenu qu'elle porte
+   (FormSection interne gère la grille des champs). */
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--card, #ffffff);
+}
+
+.form-section-title-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground, #374151);
+}
+
+.form-section-icon {
+  flex-shrink: 0;
+  color: var(--primary, #2563eb);
+}
+

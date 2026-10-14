@@ -12,13 +12,17 @@ import { dirname, join } from 'node:path'
 
 const IMPORT_STYLES = /^@import\s+(['"])\.\/styles\/([^/'"]+)\/([^/'"]+\.css)\1;[ \t]*(\r?)$/
 
-/** Le texte d'une feuille avec ses `@import './styles/<dossier>/<f>.css'` inlinés. */
-export function resolveCss(chemin) {
+const lireDisque = (chemin) => readFileSync(chemin, 'utf8')
+
+/** Le texte d'une feuille avec ses `@import './styles/<dossier>/<f>.css'` inlinés.
+ *  `lire(chemin)` (défaut : le disque) permet de résoudre un autre arbre — le
+ *  golden relit ainsi l'index.css d'un ref git, découpé ou non. */
+export function resolveCss(chemin, lire = lireDisque) {
   const base = dirname(chemin)
-  return readFileSync(chemin, 'utf8').split('\n').map((ligne) => {
+  return lire(chemin).split('\n').map((ligne) => {
     const m = ligne.match(IMPORT_STYLES)
     if (!m) return ligne
-    const contenu = resolveCss(join(base, 'styles', m[2], m[3]))
+    const contenu = resolveCss(join(base, 'styles', m[2], m[3]), lire)
     return contenu.replace(/\r?\n$/, '') + m[4]
   }).join('\n')
 }
