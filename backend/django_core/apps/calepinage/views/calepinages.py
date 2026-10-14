@@ -682,10 +682,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
 
     @extend_schema(
         request=inline_serializer('CalepinageLayoutSectionCorps', {
-            # ERR-ENF11-FUZZ-CALEPINAGE — liste blanche et jeton (vide admis :
-            # document encore vide) publiés tels que la vue les applique.
-            'cle': drf_serializers.ChoiceField(
-                choices=[*CLES_SECTION_RACINE, 'zones']),
+            # ERR-ENF11-FUZZ-CALEPINAGE — jeton (vide admis : document encore
+            # vide) publié ; la liste blanche de `cle` vit dans _SECTION_RESSERRE
+            # (anyOf : racines OU zones), sans composant d'énumération neuf.
+            'cle': drf_serializers.CharField(),
             'valeur': drf_serializers.JSONField(required=False),
             'zone_id': drf_serializers.CharField(required=False),
             'champs': drf_serializers.JSONField(required=False),
