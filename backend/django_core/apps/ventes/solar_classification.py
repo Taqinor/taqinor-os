@@ -136,9 +136,23 @@ OFFGRID_KEYWORDS = (
 )
 
 
+#: AMOT57 — « hors-réseau », « off_grid » : un trait d'union ou un souligné
+#: entre deux mots est une ESPACE pour la reconnaissance. Sans cela
+#: « Onduleur hors-réseau » ne portait aucun mot-clé hors-réseau et tombait
+#: dans le panier RÉSEAU (il contient « réseau »). Même règle dans
+#: ``solar.js`` et dans le seeder (contrat ``classification_lignes.json``).
+_SEPARATEURS_RE = re.compile(r"[-_]+")
+
+
+def _sans_separateurs(texte: str) -> str:
+    """Le texte minusculé, traits d'union et soulignés ramenés à une espace."""
+    return _SEPARATEURS_RE.sub(" ", (texte or "").lower())
+
+
 def _a_mot_cle_offgrid(d: str) -> bool:
-    """Le texte (DÉJÀ minusculé) porte-t-il un mot-clé hors-réseau ?"""
-    return any(mot in d for mot in OFFGRID_KEYWORDS)
+    """Le texte porte-t-il un mot-clé hors-réseau (séparateurs normalisés) ?"""
+    d = _sans_separateurs(d)
+    return any(_sans_separateurs(mot) in d for mot in OFFGRID_KEYWORDS)
 
 
 #: QJR-OFFGRID ROUND 2 (incident fondateur 01/09/2026) — les VRAIS produits du
@@ -179,7 +193,7 @@ def is_offgrid_inverter(designation: str) -> bool:
     produit ne soit présent (sinon on volerait un panneau/une batterie/un
     accessoire nommé « ... off-grid ... » par le revendeur).
     """
-    d = (designation or "").lower()
+    d = _sans_separateurs(designation)
     if not _a_mot_cle_offgrid(d) or "hybride" in d:
         return False
     if "onduleur" in d:
@@ -188,7 +202,7 @@ def is_offgrid_inverter(designation: str) -> bool:
 
 
 def is_reseau_inverter(designation: str) -> bool:
-    d = (designation or "").lower()
+    d = _sans_separateurs(designation)
     return ("onduleur" in d
             and ("réseau" in d or "reseau" in d or "injection" in d)
             # QJR-OFFGRID — « hors réseau » n'est PAS « réseau ».
@@ -202,7 +216,14 @@ def is_any_inverter(designation: str) -> bool:
 
 
 def is_inverter(designation: str) -> bool:
-    return "onduleur" in (designation or "").lower()
+    """Tout onduleur : le mot « onduleur » OU l'une des trois familles.
+
+    AMOT57 — union des familles : « Deye off-Grid 6kw » (nom réel du
+    fondateur, sans le mot « onduleur ») est un onduleur ; sa provision de
+    remplacement et sa garantie sont imprimées comme pour les autres.
+    """
+    return ("onduleur" in (designation or "").lower()
+            or is_any_inverter(designation))
 
 
 def is_smart_meter(designation: str) -> bool:

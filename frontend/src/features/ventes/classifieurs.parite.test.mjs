@@ -32,7 +32,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  isPanel, isBattery, isHybridInverter, isReseauInverter, isAnyInverter,
+  isPanel, isBattery, isHybridInverter, isReseauInverter, isAnyInverter, isOffgridInverter,
   parseKwh, batteryKwhFromLines, classifyProduct,
   texteClassement, appartientAuPanierSans, appartientAuPanierAvec, inverterCostFromLines,
   optionTotalsTTC, avecBatterieAvailability,
@@ -104,6 +104,15 @@ for (const cas of CAS) {
           `isAnyInverter(« ${d} ») doit être vrai pour un onduleur classé`)
       }
     })
+    // AMOT57 — colonnes facultatives des cas d'onduleur autonome.
+    if ('onduleur_offgrid' in cas) {
+      await t.test('onduleur_offgrid (isOffgridInverter) + onduleur (isAnyInverter)', () => {
+        assert.equal(isOffgridInverter(d), cas.onduleur_offgrid,
+          `isOffgridInverter(« ${d} ») attendu ${cas.onduleur_offgrid} (contrat AMOT57)`)
+        assert.equal(isAnyInverter(d), cas.onduleur,
+          `isAnyInverter(« ${d} ») attendu ${cas.onduleur} (contrat AMOT57)`)
+      })
+    }
   })
 }
 

@@ -43,6 +43,7 @@ from apps.ventes.quote_engine.lignes_classement import (
     _is_battery,
     _is_hybrid_inverter,
     _is_inverter,
+    _is_offgrid_inverter,
     _is_panel,
     _is_reseau_inverter,
     panneaux_et_watt_lu,
@@ -146,6 +147,24 @@ class ClassificationPariteBackendTest(SimpleTestCase):
                         _is_inverter(d),
                         "_is_inverter(« {} ») doit être vrai pour un onduleur "
                         "classé".format(d))
+
+    def test_onduleur_autonome_amot57(self):
+        """AMOT57 — colonnes facultatives ``onduleur_offgrid`` / ``onduleur``.
+
+        Moteur (``solar_classification``) ET seeder (copie de frontière
+        stock → ventes) jouent les MÊMES cas : « hors-réseau », « off_grid »
+        et « Deye off-Grid 6kw » sont des onduleurs autonomes, jamais réseau.
+        """
+        from apps.stock.management.commands import seed_catalogue as seed
+        cas = [c for c in _cas() if 'onduleur_offgrid' in c]
+        self.assertTrue(cas, 'aucun cas AMOT57 dans classification_lignes.json')
+        for c in cas:
+            d = c['designation']
+            with self.subTest(cas=d, colonne='onduleur_offgrid'):
+                self.assertEqual(_is_offgrid_inverter(d), c['onduleur_offgrid'])
+                self.assertEqual(seed.is_offgrid(d), c['onduleur_offgrid'])
+            with self.subTest(cas=d, colonne='onduleur'):
+                self.assertEqual(_is_inverter(d), c['onduleur'])
 
 
 class BatterieCapaciteParitesTest(SimpleTestCase):

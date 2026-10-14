@@ -8,7 +8,8 @@
     "divergence_batterie_sans_kwh": "Cas `Batterie Deye BOS-B-Pack` — DIVERGENCE ACTUELLE (constatée en code le 29/08/2026, toujours vraie au moment de ce commit). Le libellé ne porte aucun kWh lisible (`_KWH_RE` ne matche rien). `frontend/src/features/ventes/solar.js:1215 batteryKwhFromLines` (règle BAT5DEF, 26/08/2026) contribue `0` pour cette ligne — `kwhLisible` vaut donc `null` et la capacité totale SOUS-ESTIME plutôt que d'inventer. `apps/ventes/quote_engine/builder.py:262 BATTERY_DEFAULT_KWH = 5.0`, utilisé `builder.py:289 total += qty * (_parse_kwh(text) or BATTERY_DEFAULT_KWH)`, contribue `5.0` — un nombre FABRIQUÉ, publié sur le PDF client. CÔTÉ CORRECT : LE FRONTEND (`solar.js`, règle BAT5DEF) — confirmé par QJR92b (M4) : `5.0` kWh qu'aucune donnée ne soutient est un nombre inventé sur un document client, la règle fondateur absolue « zéro chiffre inventé ». `builder.py` doit RETIRER `BATTERY_DEFAULT_KWH` et adopter le comportement `solar.js` (contribuer 0, faire remonter l'inconnu) — ce correctif touche `public_views.py:1862-1886` aussi (même défaut sur la page publique) et n'est PAS dans ce commit.",
     "portee": "Cette fixture couvre les classifieurs RÉSIDENTIELS (`_is_panel`/`isPanel`, `_is_battery`/`isBattery`, `_is_hybrid_inverter`/`isHybridInverter`, `_is_reseau_inverter`/`isReseauInverter`, `_parse_kwh`/`parseKwh`). Elle ne couvre PAS les classifieurs de structure/câblage/protection (`ligne_fiche_mapping.json`, un contrat séparé, un découpage différent — familles de fiches, pas classification panneau/batterie/onduleur). STKCAT19 (16/09/2026) ajoute une colonne `role` séparée (voir `notes.role_stkcat19`) sur trois cas structure/accessoire, et STKCAT22 la porte sur les deux cas panneau `Module PV 550 W` / `JA Solar 550 Wc` (voir `notes.role_stkcat22`) — cinq cas au total. Elle n'étend PAS la couverture de cette fixture au rail `ligne_fiche_mapping.json`.",
     "role_stkcat19": "STKCAT19 (audit L3 stock↔CRM↔devis du 16/09/2026) — colonne `role` : la réponse ACTUELLE de `classifyProduct` (frontend, `frontend/src/features/ventes/solar.js:1303`) / `classer_produit` (backend, `backend/django_core/apps/ventes/domain/catalogue.py:740`) sur la désignation — un classifieur DIFFÉRENT de `isPanel`/`_is_panel` et consorts (colonnes ci-dessus), qui décide plutôt du TYPE DE PRODUIT au sens large (structure, câble, wifi_dongle, etc.). ÉTIQUETTE DE LA COLONNE : comportement MOT-CLÉ COURANT, REPLI DERRIÈRE LE RÔLE DÉCLARÉ — STKCAT21 fera du rôle produit DÉCLARÉ sur la fiche la source PRIORITAIRE ; ce classifieur par mot-clé ne restera qu'un REPLI pour les produits sans rôle déclaré. Cette colonne PIN donc le comportement d'AUJOURD'HUI, pas une cible corrigée. Portée : seulement les trois cas ci-dessous (`Structure pergola`, `Pergola alu`, `Passerelle Wi-Fi Deye`) — les neuf cas résidentiels déjà présents restent hors périmètre de cette colonne (STKCAT19, taille S, ne les rouvre pas). VÉRIFIÉ PAR EXÉCUTION le 16/09/2026 (node pour `classifyProduct`, `python -c` pour `classer_produit` — les deux modules s'importent sans réglages Django) : les deux moitiés rendent EXACTEMENT la même valeur sur les trois cas, AUCUNE divergence écran/PDF ici. `Pergola alu` et `Passerelle Wi-Fi Deye` rendent `null` des DEUX côtés — ce sont des NOMS RÉELS qui divergent du mot-clé attendu (pas les deux moitiés qui divergent entre elles) : `Pergola alu` ne porte aucun mot-clé `structure` ; le tiret de « Wi-Fi » dans `Passerelle Wi-Fi Deye` empêche le test naïf `'wifi' in nom` de `classer_produit`/`classifyProduct` de matcher, alors qu'un AUTRE prédicat backend plus tolérant (`apps/ventes/solar_design.py:261 is_wifi_dongle`, regex `wi[\\s\\-_.]*fi`) le reconnaîtrait — `classer_produit` ne l'appelle PAS, cette tolérance est réservée à `is_wifi_dongle`/`est_accessoire_huawei`.",
-    "cas_ligne_produit": "AGNR2 (C-AGNR-016, C-AGNR-007 — contrat d'abord, PACT10) — `exemple.cas_ligne_produit` : une ligne de devis dont la DÉSIGNATION a été retouchée à la main est classée sur `designation` + `produit_nom` (nom du produit lié), jamais sur la désignation seule. Colonnes : `designation`, `produit_nom` ('' = aucun produit lié), `panier_sans` / `panier_avec` (la ligne entre-t-elle dans le panier « sans batterie » / « avec batterie »), `kwh_batterie` (kWh lus si la ligne est une batterie, `null` sinon), `provision_onduleur` (la ligne compte-t-elle comme onduleur pour la provision de remplacement), `est_panneau`, `watt_lu` (puissance unitaire LUE, `null` si illisible). Référence : le SERVEUR (`utils/options.texte_classement`, `blob_va_dans_sans`, `blob_va_dans_avec`, `builder._is_battery` / `_parse_kwh` / `_is_inverter`, `builder.panneaux_et_watt_lu`), joué par `tests/test_classification_parite.py::CasLigneProduitTest`. Moitié JS : AGNR18 et AGNR36 (le test `classifieurs.parite.test.mjs` ne lit pas encore cette section). Le champ « panneau » de l'écran ne change rien à `watt_lu` (cas « Panneau Jinko 550W »)."
+    "cas_ligne_produit": "AGNR2 (C-AGNR-016, C-AGNR-007 — contrat d'abord, PACT10) — `exemple.cas_ligne_produit` : une ligne de devis dont la DÉSIGNATION a été retouchée à la main est classée sur `designation` + `produit_nom` (nom du produit lié), jamais sur la désignation seule. Colonnes : `designation`, `produit_nom` ('' = aucun produit lié), `panier_sans` / `panier_avec` (la ligne entre-t-elle dans le panier « sans batterie » / « avec batterie »), `kwh_batterie` (kWh lus si la ligne est une batterie, `null` sinon), `provision_onduleur` (la ligne compte-t-elle comme onduleur pour la provision de remplacement), `est_panneau`, `watt_lu` (puissance unitaire LUE, `null` si illisible). Référence : le SERVEUR (`utils/options.texte_classement`, `blob_va_dans_sans`, `blob_va_dans_avec`, `builder._is_battery` / `_parse_kwh` / `_is_inverter`, `builder.panneaux_et_watt_lu`), joué par `tests/test_classification_parite.py::CasLigneProduitTest`. Moitié JS : AGNR18 et AGNR36 (le test `classifieurs.parite.test.mjs` ne lit pas encore cette section). Le champ « panneau » de l'écran ne change rien à `watt_lu` (cas « Panneau Jinko 550W »).",
+    "onduleur_autonome_amot57": "AMOT57 (C-AMOT-002, C-AMOT-003) — deux colonnes FACULTATIVES, portées par les seuls cas d'onduleur autonome : `onduleur_offgrid` (`is_offgrid_inverter` / `isOffgridInverter` / seeder `is_offgrid`) et `onduleur` (`is_inverter` / `isAnyInverter` — union des familles : « Deye off-Grid 6kw » est un onduleur, sa provision de remplacement est imprimée). Traits d'union et soulignés valent une espace avant tout test de mot-clé (« hors-réseau », « off_grid ») dans les trois copies. Lus par `tests/test_classification_parite.py` (moteur + seeder) et `classifieurs.parite.test.mjs` (écran)."
   },
   "exemple": {
     "cas": [
@@ -127,6 +128,50 @@
         "onduleur_reseau": false,
         "kwh_lisible": null,
         "role": null
+      },
+      {
+        "designation": "Onduleur hors-réseau Deye 6kW",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null,
+        "onduleur_offgrid": true,
+        "onduleur": true,
+        "role": "onduleur_offgrid"
+      },
+      {
+        "designation": "Deye off-Grid 6kw",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null,
+        "onduleur_offgrid": true,
+        "onduleur": true,
+        "role": "onduleur_offgrid"
+      },
+      {
+        "designation": "Onduleur off_grid Deye 5kW",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null,
+        "onduleur_offgrid": true,
+        "onduleur": true,
+        "role": "onduleur_offgrid"
+      },
+      {
+        "designation": "Onduleur hors réseau 5kW",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null,
+        "onduleur_offgrid": true,
+        "onduleur": true,
+        "role": "onduleur_offgrid"
       }
     ],
     "cas_ligne_produit": [
@@ -179,6 +224,16 @@
         "provision_onduleur": false,
         "est_panneau": true,
         "watt_lu": 550
+      },
+      {
+        "designation": "Deye off-Grid 6kw",
+        "produit_nom": "",
+        "panier_sans": false,
+        "panier_avec": true,
+        "kwh_batterie": null,
+        "provision_onduleur": true,
+        "est_panneau": false,
+        "watt_lu": null
       }
     ]
   }
