@@ -631,8 +631,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             'contact': document.contact_id,
         }
         if 'proprietaire' in data:
-            proprietaire_id = data.get('proprietaire')
-            if proprietaire_id in (None, '', 'null'):
+            # CI #997 (3) fuzz ged — identifiant lu SÛREMENT (`_pk`) : une liste
+            # ou un objet (`{"contact": [null, null]}`) est un 400 nommé, jamais
+            # une 500 ; hors plage 32 bits -> 404 (aucune ligne).
+            proprietaire_id = _pk(data.get('proprietaire'), 'proprietaire')
+            if proprietaire_id is None:
                 document.proprietaire = None
             else:
                 from django.contrib.auth import get_user_model
@@ -645,8 +648,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                         status=status.HTTP_404_NOT_FOUND)
                 document.proprietaire = user
         if 'contact' in data:
-            contact_id = data.get('contact')
-            if contact_id in (None, '', 'null'):
+            contact_id = _pk(data.get('contact'), 'contact')
+            if contact_id is None:
                 document.contact_id = None
             else:
                 from apps.crm.selectors import get_company_client
@@ -1672,6 +1675,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if not target:
             return Response(
                 {'statut': 'Le statut cible est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(target, str):
+            # Liste/objet : non hachable -> 500 dans la machine à états.
+            return Response(
+                {'statut': 'Chaîne attendue.'},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             doc = services.change_lifecycle_status(
