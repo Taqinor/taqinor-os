@@ -41,6 +41,7 @@ from .models import (
 )
 from .dateutils import add_months
 from .query_params import (
+    CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE, CORPS_TICKET_CLIENT_OU_EQUIPEMENT,
     DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, choix_param, date_param, entier_param,
 )
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
@@ -629,7 +630,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         GET : liste les fenêtres (en cours + closes). POST : ouvre une
         nouvelle fenêtre (body : ``debut`` ISO8601 optionnel — défaut
         maintenant, ``ticket`` id optionnel, ``motif`` optionnel). Refuse tout
-        chevauchement avec une fenêtre existante (400 explicite, jamais une
+        chevauchement avec une fenêtre existante (409 explicite, jamais une
         seconde fenêtre concurrente créée par erreur)."""
         equipement = self.get_object()
         if request.method == 'GET':
@@ -657,7 +658,9 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 motif=(entree.validated_data.get('motif') or '').strip(),
                 created_by=request.user)
         except DowntimeOverlapError as exc:
-            return Response({'detail': str(exc)}, status=400)
+            # ERR-ENF11-FUZZ-SAV : une immobilisation déjà ouverte (ou qui
+            # chevauche) est un refus d'ÉTAT — 409, jamais un 400.
+            raise ConflitEtat(str(exc))
         return Response(
             EquipementDowntimeSerializer(dt).data, status=201)
 
@@ -821,7 +824,8 @@ class TicketEnDoubleError(APIException):
     default_code = 'ticket_en_double'
 
 
-@extend_schema_view(list=extend_schema(
+@extend_schema_view(create=extend_schema(
+    extensions=CORPS_TICKET_CLIENT_OU_EQUIPEMENT), list=extend_schema(
     parameters=[
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
         OpenApiParameter('type', OpenApiTypes.STR, required=False),
@@ -1337,6 +1341,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 _MOTIF_PRIORITE, required=False),
             'motif': _CharF(required=False, allow_blank=True),
         }),
+        extensions=CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE,
         responses=_sch('SavActionsGroupeesReponse', {
             'traites': drf_serializers.ListField(
                 child=drf_serializers.IntegerField()),
@@ -3732,9 +3737,10 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         tickets = list(_tickets_visibles(request).filter(
             pk__in=demandes, company=company))
         if len(tickets) != len(set(demandes)):
-            raise ValidationError(
-                {'ticket_ids': 'Ticket inconnu (il appartient à une autre '
-                               'société ou a été supprimé).'})
+            # ERR-ENF11-FUZZ-SAV : identifiants bien formés mais inconnus
+            # (ou hors portée) = ressource introuvable, 404 — jamais un 400.
+            raise NotFound('Ticket inconnu (il appartient à une autre '
+                           'société ou a été supprimé).')
 
         with transaction.atomic():
             probleme = create_with_reference(

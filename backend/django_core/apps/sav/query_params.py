@@ -8,6 +8,8 @@ from datetime import date
 
 from rest_framework.exceptions import ValidationError
 
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
 # Borne haute d'une clé primaire PostgreSQL (integer).
 ID_MAX = 2147483647
 
@@ -89,3 +91,27 @@ def nombre_param(request, nom, mini, maxi):
         raise ValidationError(
             {nom: f'Nombre attendu entre {mini} et {maxi}.'})
     return valeur
+
+
+# ── ERR-ENF11-FUZZ-SAV — règles de corps publiées sur UNE opération ─────────
+# (``extend_schema(extensions=…)``, combinées en ``allOf`` au corps publié par
+# ``core.openapi_erreurs`` ; aucun composant ne change de nom ni de forme).
+
+#: La création d'un ticket exige un ``client`` OU un ``equipement`` (dont le
+#: client est repris, ``TicketViewSet.perform_create``) : un ``{}`` était
+#: « conforme » puis refusé « client obligatoire ».
+CORPS_TICKET_CLIENT_OU_EQUIPEMENT = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['client'], 'properties': {'client': {'type': 'integer'}}},
+    {'required': ['equipement'],
+     'properties': {'equipement': {'type': 'integer'}}},
+]}}
+
+#: Chaque opération groupée exige SA valeur : ``priorite`` pour « priorite »,
+#: ``statut`` pour « statut » (``TicketViewSet.actions_groupees``).
+CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'operation': {'enum': ['priorite']}},
+     'required': ['priorite']},
+    {'properties': {'operation': {'enum': ['statut']}},
+     'required': ['statut']},
+    {'properties': {'operation': {'enum': ['technicien', 'annuler']}}},
+]}}
