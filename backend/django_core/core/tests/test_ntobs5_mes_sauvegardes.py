@@ -1,15 +1,17 @@
 """NTOBS5 — écran self-service « Sauvegardes » pour l'admin tenant (lecture
 seule des BackupRun déjà produits, jamais un nouveau moteur)."""
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from authentication.models import Company
-from apps.parametres.models import CompanyProfile
 
 from core.backup import resume_sauvegardes
 from core.models import BackupRun
+
+CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
 
 User = get_user_model()
 

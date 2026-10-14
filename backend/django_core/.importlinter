@@ -452,18 +452,17 @@ source_modules =
     core
 forbidden_modules =
     apps
-# AUD825 / ARÊTES FONDATION → FONDATION. `roles`, `records` et `parametres`
-# sont des apps de FONDATION au sens de CLAUDE.md (« foundation-app imports
-# (roles, records, authentication, core, customfields, parametres, reporting…)
-# are exempt ») : elles vivaient déjà HORS de la liste des 14 interdites, donc
-# les exempter ici ne relâche RIEN par rapport à l'état d'avant l'inversion —
-# c'est la traduction fidèle de l'ancien périmètre. Deux arêtes de PRODUCTION
-# les empruntent (`core.scoping -> apps.roles.models`,
-# `core.feature_flags -> apps.records.models`, plus la commande
-# `preflight_edition`), le reste sont des tests noyau qui montent un rôle ou un
-# enregistrement réel. Un import `core -> apps.<domaine>` reste refusé.
-ignore_imports =
-    core.** -> apps.parametres.**
+# AUD825 / ARÊTES FONDATION → FONDATION (historique). `roles`, `records` et
+# `parametres` sont des apps de FONDATION au sens de CLAUDE.md ; AUD825 les
+# exemptait ici par trois jokers `core.** -> apps.<fondation>.**`. ENF20
+# (14/10/2026) les a retirés : core lit désormais ces apps par libellé
+# (`django_apps.get_model`) ou par `import_module`, sans aucune arête statique.
+# ENF20 — l'arête fondation `core.** -> apps.parametres.**` est RETIRÉE (la
+# dernière) : `core.backup.resume_sauvegardes`, `core.tz_display` et
+# `core.usage_limits` résolvent `CompanyProfile` par
+# `django_apps.get_model('parametres', 'CompanyProfile')` et les tests noyau
+# CompanyProfile/ApprovalPolicy par libellé. Ce contrat n'a plus AUCUNE
+# exception : ne pas réintroduire `from apps.<app>` dans core/.
 # ENF20 — l'arête fondation `core.** -> apps.records.**` est RETIRÉE :
 # `core.feature_flags.journal_modules` résout `Activity` par
 # `django_apps.get_model('records', 'Activity')`, les tests noyau résolvent

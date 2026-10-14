@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.apps import apps as django_apps
 from django.utils import timezone as dj_timezone
 
 #: Repli historique — comportement inchangé pour toute société sans réglage
@@ -36,8 +37,9 @@ def _company_timezone_name(company):
     if company is None:
         return DEFAULT_TIMEZONE
     try:
-        from apps.parametres.models_company import CompanyProfile
-    except ImportError:  # pragma: no cover — apps.parametres toujours présente
+        # ENF20 : profil résolu par libellé, aucune arête statique core -> apps.
+        CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
+    except LookupError:  # pragma: no cover — apps.parametres toujours présente
         return DEFAULT_TIMEZONE
 
     nom = (CompanyProfile.objects.filter(company=company)
