@@ -243,6 +243,17 @@ class RefusTest(BaseGabarits):
         self.assertEqual(ok.status_code, 201, ok.data)
         self.assertIsNone(ok.data['gabarit']['fichiers'])
 
+    def test_schema_publie_genre_vide_accepte(self):
+        # CI #997 api-fuzz : ``genre`` vide est accepté par le serveur, le
+        # motif publié doit donc l'admettre (sinon « accepted schema-violating »).
+        from ..views.gabarits_dossier import _CORPS_GABARIT
+        champ = _CORPS_GABARIT().fields['genre']
+        self.assertEqual(champ.run_validation(''), '')
+        corps = {'pays': 'AA', 'code': 'g-vide', 'genre': '',
+                 'intitule': 'Dossier', 'version': ''}
+        reponse = self.api.post(URL, corps, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+
     def test_403_sans_calepinage_gerer(self):
         lecteur = Role.objects.create(
             company=self.company, nom='Lecteur calepinage',

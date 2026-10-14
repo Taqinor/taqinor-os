@@ -58,8 +58,10 @@ _CORPS_GABARIT = inline_serializer('CalepinageGabaritDossierCorps', {
     'fichier': serializers.FileField(required=False),
     'pays': serializers.RegexField(r'^[A-Za-z]{2}$', max_length=2),
     'code': serializers.SlugField(max_length=60),
-    'genre': serializers.SlugField(required=False, max_length=40,
-                                   allow_blank=True),
+    # CI #997 api-fuzz : le formulaire envoie ``genre`` vide (facultatif) et le
+    # serveur l'accepte — le schéma publie donc un motif qui admet le vide.
+    'genre': serializers.RegexField(r'^[-a-zA-Z0-9_]*$', required=False,
+                                    max_length=40, allow_blank=True),
     'intitule': serializers.CharField(max_length=200),
     'version': serializers.CharField(required=False, max_length=20,
                                      allow_blank=True),

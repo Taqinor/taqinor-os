@@ -564,13 +564,17 @@ class TestFuzzCrmTour2(TestCase):
     def test_ci997_client_fk_inconnue_404(self):
         """CI #997 fuzz — ``liste_prix``/``parent``/``tiers`` bien formés mais
         inexistants : 404 (ressource absente), plus 400 sur requête valide."""
+        # Corps COMPLET par ailleurs (email requis) : le 404 ne vaut que si
+        # la FK inconnue est la seule erreur ; sans subTest (le runner
+        # parallèle ne sérialise pas un échec de sous-test).
         for champ in ('liste_prix', 'parent', 'tiers'):
-            with self.subTest(champ=champ):
-                resp = self.api.post(
-                    '/api/django/crm/clients/',
-                    {'nom': 'Client FK', champ: 987654321}, format='json')
-                self.assertEqual(resp.status_code, 404, resp.content)
-                self.assertIn(champ, resp.data)
+            resp = self.api.post(
+                '/api/django/crm/clients/',
+                {'nom': 'Client FK', 'email': f'fk-{champ}@exemple.ma',
+                 'telephone': '0612345678', champ: 987654321},
+                format='json')
+            self.assertEqual(resp.status_code, 404, (champ, resp.data))
+            self.assertIn(champ, resp.data)
 
     def test_tour3_corps_types_jamais_500(self):
         """ERR-ENF11-FUZZ-CRM — textes non chaîne : 400 nommé, plus de 500

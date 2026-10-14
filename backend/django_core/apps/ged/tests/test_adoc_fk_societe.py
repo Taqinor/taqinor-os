@@ -210,6 +210,18 @@ class FkSocieteGedTests(TestCase):
         self.assertFalse(RoutageDocumentaire.objects.filter(
             source='ventes_devis').exists())
 
+    def test_routage_tags_defaut_non_liste_400(self):
+        # CI #997 api-fuzz : ``{}`` passait pour une liste vide.
+        routage = RoutageDocumentaire.objects.create(
+            company=self.co_a, source='ventes_devis',
+            cabinet_cible=self.cab_a)
+        resp = self.api.put(
+            BASE + f'routages-documentaires/{routage.pk}/', {
+                'source': 'ventes_devis', 'cabinet_cible': self.cab_a.pk,
+                'tags_defaut': {}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('tags_defaut', resp.data)
+
     def test_export_annote_ignore_annotation_etrangere(self):
         import fitz
         pdf = fitz.open()
