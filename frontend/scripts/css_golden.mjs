@@ -6,32 +6,31 @@
 // uniquement (copie de travail Windows en CRLF, `git show` en LF) — aucun
 // fichier réécrit.
 //
-// Usage : node scripts/css_golden.mjs --base <ref> [--build]
+// Usage : node frontend/scripts/css_golden.mjs --base <ref> [--build]
 //   --build : hash du .css émis par `vite build` du ref (worktree temporaire)
 //   contre celui de l'arbre courant — INFORMATIF seulement (Tailwind v4 scanne
 //   tout le dépôt : un nouveau mot-utilitaire émet une règle de plus). La preuve
 //   de référence est l'égalité d'octets de `resolveCss`.
+// Vit sous frontend/scripts (à côté de check_hex) : son test (styles/print.test.mjs)
+// le lit, et un fichier hors de frontend/ lu par un test frontend exigerait une
+// règle du filtre `changes` de ci.yml (garde ADEP13).
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
+import { resolveCss } from '../src/test/readCss.mjs'
 
-const RACINE = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const RACINE = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const INDEX = join(RACINE, 'frontend', 'src', 'index.css')
 
 const lf = (s) => s.replace(/\r\n/g, '\n')
 const sha = (s) => createHash('sha256').update(lf(s), 'utf8').digest('hex')
 
-async function resolveCss(chemin) {
-  const mod = await import(pathToFileURL(join(RACINE, 'frontend', 'src', 'test', 'readCss.mjs')).href)
-  return mod.resolveCss(chemin)
-}
-
 /** Vrai si l'index.css résolu de `chemin` a les mêmes octets (CRLF→LF) que `reference`. */
-export async function memeCss(chemin, reference) {
-  return sha(await resolveCss(chemin)) === sha(reference)
+export function memeCss(chemin, reference) {
+  return sha(resolveCss(chemin)) === sha(reference)
 }
 
 function cssDuBuild(frontend) {
@@ -57,16 +56,16 @@ function buildInformatif(base) {
   }
 }
 
-async function main(argv) {
+function main(argv) {
   const i = argv.indexOf('--base')
   const base = i >= 0 ? argv[i + 1] : null
   if (!base) {
-    console.error('[css_golden] usage : node scripts/css_golden.mjs --base <ref> [--build]')
+    console.error('[css_golden] usage : node frontend/scripts/css_golden.mjs --base <ref> [--build]')
     return 2
   }
   const reference = execFileSync('git', ['show', `${base}:frontend/src/index.css`],
     { cwd: RACINE, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  const egal = await memeCss(INDEX, reference)
+  const egal = memeCss(INDEX, reference)
   console.log(egal
     ? `[css_golden] OK : index.css résolu = ${base}:frontend/src/index.css`
     : `[css_golden] ÉCART : index.css résolu ≠ ${base}:frontend/src/index.css`)
@@ -75,5 +74,5 @@ async function main(argv) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  process.exitCode = await main(process.argv.slice(2))
+  process.exitCode = main(process.argv.slice(2))
 }

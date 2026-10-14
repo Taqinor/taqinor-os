@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { lireSourcesDevisList } from '../pages/ventes/devisList/lireSources.mjs'
 import { resolveCss } from '../test/readCss.mjs'
+import { memeCss } from '../../scripts/css_golden.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
@@ -77,12 +78,11 @@ test('InstallationDetail : bouton Imprimer la checklist → window.print()', () 
   assert.match(INSTALL, />\s*Imprimer la checklist\s*</)
 })
 
-// ── SPL280 — golden d'index.css (lecteur `resolveCss`, `scripts/css_golden.mjs`) ──
+// ── SPL280 — golden d'index.css (lecteur `resolveCss`, `frontend/scripts/css_golden.mjs`) ──
 // Capturé sur le code ACTUEL avant tout déplacement (SPL281/SPL282 passeront
 // leur ref de base à `--base`) : aucune règle ne bouge, seuls les lecteurs
 // passent par la résolution des `@import './styles/<dossier>/<f>.css'`.
-const GOLDEN = join(HERE, '../../../scripts/css_golden.mjs')
-const { memeCss } = await import(new URL('../../../scripts/css_golden.mjs', import.meta.url).href)
+const GOLDEN = join(HERE, '../../scripts/css_golden.mjs')
 
 function arbre(index, styles) {
   const racine = mkdtempSync(join(tmpdir(), 'spl280-'))
@@ -107,7 +107,7 @@ test('SPL280 (a) — resolveCss inline ./styles/<dossier>/<f>.css verbatim, lais
   assert.equal(INDEX_CSS, read('../index.css'))
 })
 
-test('SPL280 (b) — @import permutés ou octet changé dans un fichier de styles ⇒ écart', async () => {
+test('SPL280 (b) — @import permutés ou octet changé dans un fichier de styles ⇒ écart', () => {
   const cas = {
     fidele: ["@import './styles/x/a.css';\n@import './styles/y/c.css';\n", '.a { color: red; }\n.b {}\n', true],
     permute: ["@import './styles/y/c.css';\n@import './styles/x/a.css';\n", '.a { color: red; }\n.b {}\n', false],
@@ -116,9 +116,9 @@ test('SPL280 (b) — @import permutés ou octet changé dans un fichier de style
   for (const [nom, [imports, a, attendu]] of Object.entries(cas)) {
     const racine = arbre(TETE + imports + '.z {}\n', { 'x/a.css': a, 'y/c.css': '.c {}\n' })
     try {
-      assert.equal(await memeCss(join(racine, 'index.css'), MONOLITHE), attendu, nom)
+      assert.equal(memeCss(join(racine, 'index.css'), MONOLITHE), attendu, nom)
       // CRLF→LF : seule normalisation, pour la comparaison uniquement.
-      assert.equal(await memeCss(join(racine, 'index.css'), MONOLITHE.replace(/\n/g, '\r\n')), attendu, nom)
+      assert.equal(memeCss(join(racine, 'index.css'), MONOLITHE.replace(/\n/g, '\r\n')), attendu, nom)
     } finally { rmSync(racine, { recursive: true, force: true }) }
   }
 })
