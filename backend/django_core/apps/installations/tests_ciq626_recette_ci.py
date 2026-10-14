@@ -98,7 +98,7 @@ class RecetteCITest(TestCase):
         r = self.api.patch(
             f'{BASE}/recettes-commissioning/{self.record.id}/',
             {'instruments_par_essai': {'iv': outil.id}}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
 
     def test_essais_ci_sans_objet_par_defaut_et_non_ok_est_faux(self):
         self.assertEqual(self.record.limitation_injection_etat, 'sans_objet')

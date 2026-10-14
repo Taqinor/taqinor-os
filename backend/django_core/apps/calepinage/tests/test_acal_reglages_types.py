@@ -265,6 +265,12 @@ class RouteParametresTest(TestCase):
         self.assertEqual(par_cle['mode_meteo']['valeurs'],
                          ['tmy', 'pluriannuel'])
 
+    def test_put_multipart_refuse_415(self):
+        # Fuzz CI #997 : un multipart ne porte que des chaînes → « doit être
+        # un objet (reçu : str) » ; le PUT ne publie/accepte plus que du JSON.
+        reponse = self.api.put(URL, {'imagerie': '{}'}, format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.data)
+
 
 class FormeRequetePartielleTest(SimpleTestCase):
     """CI #997 fuzz — le PUT est partiel : aucune section n'est obligatoire
