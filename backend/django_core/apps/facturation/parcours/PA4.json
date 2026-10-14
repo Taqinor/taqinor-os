@@ -578,10 +578,6 @@
     "etape": "PA4.16"
    },
    {
-    "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::facturer_devis_complet._create",
-    "etape": "PA4.16"
-   },
-   {
     "source": "backend/django_core/apps/ventes/domain/facturation_ops.py::creer_facture_contrat._create",
     "etape": "PA4.16"
    },
@@ -616,10 +612,6 @@
    {
     "source": "backend/django_core/apps/ventes/domain/revision.py::rattacher_aval_financier_revision._facture",
     "etape": "PA4.16"
-   },
-   {
-    "source": "backend/django_core/apps/ventes/utils/echeancier.py::creer_facture_tranche._create",
-    "etape": "PA4.05"
    },
    {
     "source": "backend/django_core/apps/ventes/domain/facturation_vente.py::_inserer_facture",
