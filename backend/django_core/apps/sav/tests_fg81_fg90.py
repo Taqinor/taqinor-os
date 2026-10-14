@@ -752,3 +752,45 @@ class CorpsStrictsCi997Tests(TestCase):
                                               partial=True)
             with self.subTest(valeur=valeur):
                 self.assertEqual(ser.is_valid(), ok, ser.errors)
+
+    def test_deuxieme_passe_corps_stricts(self):
+        # CI #997 api-fuzz (2e passe) : TOUS les champs de ces corps sont exacts
+        # (booléen 0, entier chaîne, nombre pour un décimal-chaîne → 400).
+        from apps.sav import serializers as S
+        from apps.sav.serializers_maintenance import (
+            ContratMaintenanceSerializer, PrestationContratSerializer)
+        for classe, corps, champ in (
+                (S.KbArticleSerializer, {'actif': 0}, 'actif'),
+                (S.KbArticleSerializer, {'corps': 0}, 'corps'),
+                (S.WorksheetMaintenanceModeleSerializer, {'actif': 0}, 'actif'),
+                (S.WarrantyClaimSerializer, {'fournisseur_id_ext': '5'},
+                 'fournisseur_id_ext'),
+                (S.WarrantyClaimSerializer, {'cout_recupere': 5},
+                 'cout_recupere'),
+                (ContratMaintenanceSerializer, {'actif': 0}, 'actif'),
+                (ContratMaintenanceSerializer, {'notes': 0}, 'notes'),
+                (ContratMaintenanceSerializer, {'equipements': {}},
+                 'equipements'),
+                (PrestationContratSerializer, {'incluse': 0}, 'incluse'),
+                (PrestationContratSerializer, {'id': '1'}, 'id')):
+            ser = classe(data=corps, partial=True)
+            self.assertFalse(ser.is_valid(), (classe.__name__, corps))
+            self.assertIn(champ, ser.errors, (classe.__name__, corps))
+
+    def test_deuxieme_passe_valeurs_conformes(self):
+        # Les écrans envoient `prix`/`prix_ht` en chaîne OU nombre, une
+        # réclamation sans coût (`""`) et un fournisseur numérique : acceptés.
+        from apps.sav import serializers as S
+        from apps.sav.serializers_maintenance import (
+            ContratMaintenanceSerializer, PrestationContratSerializer)
+        for classe, corps in (
+                (S.WarrantyClaimSerializer, {'cout_recupere': ''}),
+                (S.WarrantyClaimSerializer, {'cout_recupere': '12.50',
+                                             'fournisseur_id_ext': 5}),
+                (ContratMaintenanceSerializer, {'prix': '1200.00'}),
+                (ContratMaintenanceSerializer, {'prix': 1200}),
+                (ContratMaintenanceSerializer, {'duree_mois': '12'}),
+                (PrestationContratSerializer, {'prix_ht': 0}),
+                (PrestationContratSerializer, {'prix_ht': '0'})):
+            ser = classe(data=corps, partial=True)
+            self.assertTrue(ser.is_valid(), (classe.__name__, corps, ser.errors))
