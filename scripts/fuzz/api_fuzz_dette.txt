@@ -393,7 +393,6 @@ API rejected schema-compliant request|GET /api/django/stock/quais/planning/
 API rejected schema-compliant request|GET /api/django/stock/receptions-fournisseur/scan-gs1/
 API rejected schema-compliant request|GET /api/django/stock/scanner/retour-fournisseur/
 API rejected schema-compliant request|GET /api/django/stock/simuler-capacite/
-API rejected schema-compliant request|GET /api/django/ventes/plans-commission/resoudre/
 API rejected schema-compliant request|PATCH /api/django/core/ui-boutons/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/vues/{id}/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
@@ -882,19 +881,11 @@ API accepted schema-violating request|GET /api/django/ventes/etats/analyse-factu
 API accepted schema-violating request|GET /api/django/ventes/export-comptable/
 API accepted schema-violating request|GET /api/django/ventes/journal-ventes/
 API accepted schema-violating request|PATCH /api/django/custom-fields/objects/{id}/
-API accepted schema-violating request|PATCH /api/django/ventes/attestations-re/{id}/
-API accepted schema-violating request|PATCH /api/django/ventes/recettes-mes/{id}/
-API accepted schema-violating request|PATCH /api/django/ventes/regularisations-8221/{id}/
-API accepted schema-violating request|PATCH /api/django/ventes/tests-pr-reception/{id}/
 API accepted schema-violating request|POST /api/django/custom-fields/objects/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
-API accepted schema-violating request|POST /api/django/ventes/attestations-re/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/conception-electrique/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/share-link/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
-API accepted schema-violating request|POST /api/django/ventes/recettes-mes/
-API accepted schema-violating request|POST /api/django/ventes/regularisations-8221/
-API accepted schema-violating request|POST /api/django/ventes/tests-pr-reception/
 API accepted schema-violating request|POST /api/django/ventes/toiture/charge/
 API accepted schema-violating request|PUT /api/django/custom-fields/objects/{id}/
 API rejected schema-compliant request|GET /api/django/stock/factures-fournisseur/suggestions-bcf/
@@ -953,7 +944,6 @@ API accepted schema-violating request|PATCH /api/django/entites/entites/{id}/
 API accepted schema-violating request|PATCH /api/django/stock/achats-parametres/{id}/
 API accepted schema-violating request|POST /api/django/entites/entites/
 API accepted schema-violating request|POST /api/django/stock/mouvements/export-xlsx/
-API accepted schema-violating request|POST /api/django/ventes/plans-commission/
 API accepted schema-violating request|PUT /api/django/entites/entites/{id}/
 API accepted schema-violating request|PUT /api/django/stock/plans-chargement/{id}/
 Server error|POST /api/django/agent/actions/automation-draft/
@@ -961,13 +951,11 @@ Server error|POST /api/django/stock/blocages-qualite/lever-quarantaine/
 Server error|POST /api/django/stock/kits/remplacer-composant/
 Server error|POST /api/django/stock/produits/inventaire/
 API accepted schema-violating request|GET /api/django/stock/produits/analyse-achats/pdf/
-API accepted schema-violating request|PATCH /api/django/ventes/plans-commission/{id}/
 API accepted schema-violating request|PUT /api/django/records/activity-types/{id}/
 API rejected schema-compliant request|PATCH /api/django/core/theme/courant/
 API rejected schema-compliant request|POST /api/django/core/dsr-requests/
 API rejected schema-compliant request|POST /api/django/core/formulaires/
 Response violates schema|PATCH /api/django/ventes/bons-commande/{id}/
-Response violates schema|PATCH /api/django/ventes/plans-commission/{id}/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 API accepted schema-violating request|GET /api/django/crm/relance-etapes/

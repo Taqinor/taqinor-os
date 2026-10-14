@@ -78,6 +78,10 @@ class CommissioningApiTest(TestCase):
         self.url = '/api/django/ventes/recettes-mes/'
 
     def test_result_derived_server_side(self):
+        # ENF11 — texte strict : ``observations: 0`` n'est plus converti.
+        refus = self.api.post(self.url, {
+            'devis': self.devis.id, 'observations': 0}, format='json')
+        self.assertEqual(refus.status_code, 400, refus.content)
         # Le corps tente d'imposer resultat=conforme ; serveur l'ignore et
         # dérive non_conforme car polarite_ok=False.
         resp = self.api.post(self.url, {
