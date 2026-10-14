@@ -134,3 +134,11 @@ class ReinitialisationMotDePasseTests(TestCase):
         self.assertEqual(resp.status_code, 403)
         self.directeur.refresh_from_db()
         self.assertTrue(self.directeur.check_password('Dir-mdp-123!'))
+
+    def test_corps_publie_de_modification_sans_password(self):
+        """CI #997 api-fuzz : le corps PUT/PATCH du schéma ne promet pas un
+        champ que la vue refuse (400 ``password_via_reinitialisation``)."""
+        from authentication.serializers import (
+            UserModificationSerializer, UserSerializer)
+        self.assertIn('password', UserSerializer().fields)
+        self.assertNotIn('password', UserModificationSerializer().fields)

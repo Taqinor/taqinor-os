@@ -202,6 +202,11 @@ class EntiteScopeMixin:
         super().initial(request, *args, **kwargs)
         if request.method not in ('POST', 'PUT', 'PATCH'):
             return
+        # CI #997 api-fuzz : une méthode que la route ne porte pas (``action``
+        # nul — ex. PUT sur une @action POST seule) est un 405 : le contrôle
+        # d'entité ne doit pas répondre 400/403 à sa place.
+        if hasattr(self, 'action') and self.action is None:
+            return
         try:
             data = request.data
         except Exception:  # noqa: BLE001 — corps illisible : le parseur DRF

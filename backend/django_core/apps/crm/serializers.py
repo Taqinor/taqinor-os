@@ -5,6 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import (
     model_is_company_scoped,
@@ -1494,12 +1495,16 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
 # DC12 — Profil site/énergie réutilisable par client ─────────────────────────
 
 class SiteProfileSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
-                            serializers.ModelSerializer):
+                            ChampsStrictsMixin, serializers.ModelSerializer):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
     Société posée CÔTÉ SERVEUR (HiddenField — jamais lue du corps de requête,
     multi-tenant). Le client référencé doit appartenir à la même société
-    (validate_client). Une seule fiche par client (OneToOne)."""
+    (validate_client). Une seule fiche par client (OneToOne).
+
+    CI #997 api-fuzz : décimaux / textes / booléens STRICTS (``ChampsStrictsMixin``)
+    — un nombre JSON pour un décimal-chaîne (``pompe_debit_m3h: 0``) est un 400,
+    et ``""`` (non renseigné) est publié au schéma d'un décimal nullable."""
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
 
     class Meta:

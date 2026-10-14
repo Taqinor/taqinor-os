@@ -65,6 +65,15 @@ class ApporteursParquesTests(TestCase):
             with self.subTest(url=url):
                 self.assertEqual(api.get(url).status_code, 404)
 
+    def test_methode_non_portee_405_meme_eteint(self):
+        """CI #997 api-fuzz : TRACE n'est portée par aucune de ces routes — le
+        schéma attend 405, la porte parquée ne répond pas 404 à sa place."""
+        _deal, _devis, api = self._societe('acrm66-trace', actif=False)
+        for url in ROUTES:
+            with self.subTest(url=url):
+                self.assertEqual(api.generic('TRACE', url).status_code, 405)
+                self.assertEqual(api.get(url).status_code, 404)
+
     def test_allume_inchange(self):
         deal, devis, api = self._societe('acrm66-on', actif=True)
         devis_accepted.send(
