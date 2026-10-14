@@ -4,7 +4,8 @@ from . import openapi_docs as D
 from rest_framework.parsers import JSONParser
 from rest_framework import filters
 from ..models import Facture
-from ..serializers_facturation import FactureSerializer, FactureWriteSerializer
+from ..serializers_facturation import (
+    FactureListeSerializer, FactureSerializer, FactureWriteSerializer)
 from .facture_cycle import PEUT_ANNULER, FactureCycleActionsMixin
 from .facture_documents import FactureDocumentsActionsMixin
 from .facture_encaissement import FactureEncaissementActionsMixin
@@ -111,6 +112,8 @@ class FactureViewSet(FactureCycleActionsMixin,
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
             return FactureWriteSerializer
+        if self.action == 'list':
+            return FactureListeSerializer  # CI #997 : sans les blocs VNT91
         return FactureSerializer
 
     def get_permissions(self):
