@@ -11,8 +11,9 @@ Couvre :
   * mode TV liste société-partagée + partages internes ;
   * isolation multi-tenant (aucune fuite cross-société) ;
   * VIA L'API : un dashboard (ou un utilisateur bénéficiaire) d'une AUTRE
-    société est REFUSÉ par un 400 de validation, à la création comme à la mise
-    à jour, sur les DEUX viewsets (lien public tokenisé + partage interne).
+    société est REFUSÉ, à la création comme à la mise à jour, sur les DEUX
+    viewsets (lien public tokenisé + partage interne) — 404 « objet
+    inexistant », le même corps qu'un id absent (ERR-ENF11-FUZZ-CORE).
 """
 import datetime
 
@@ -219,12 +220,13 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
         """L'exploit : poster l'id d'un dashboard de la société B depuis un
         compte de la société A créait un lien PUBLIC (résolu par le seul
         jeton, sans login) servant titre/description/layout de B au monde
-        entier. Doit être un 400 de validation explicite, pas un 500."""
+        entier. Refusé en 404 « objet inexistant » (même corps qu'un id
+        absent), jamais un 500 (ERR-ENF11-FUZZ-CORE : 400 avant)."""
         other_dash = self._other_company_dashboard()
         resp = self.api.post('/api/django/core/dashboards-partages/', {
             'dashboard': other_dash.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('dashboard', resp.data)
         self.assertFalse(
             PartageDashboard.objects.filter(dashboard=other_dash).exists())
@@ -239,7 +241,7 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
         resp = self.api.patch(
             f'/api/django/core/dashboards-partages/{partage.id}/',
             {'dashboard': other_dash.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('dashboard', resp.data)
         partage.refresh_from_db()
         self.assertEqual(partage.dashboard_id, self.dashboard.id)
@@ -251,7 +253,7 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
                 'dashboard': other_dash.id,
                 'utilisateur': self.viewer.id,
             }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('dashboard', resp.data)
         self.assertFalse(DashboardPartageInterne.objects.filter(
             dashboard=other_dash).exists())
@@ -269,7 +271,7 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
                 'dashboard': self.dashboard.id,
                 'utilisateur': other_user.id,
             }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('utilisateur', resp.data)
         self.assertFalse(DashboardPartageInterne.objects.filter(
             utilisateur=other_user).exists())
@@ -287,3 +289,28 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
         self.assertEqual(partage.company_id, self.company.id)
         self.assertEqual(partage.dashboard_id, self.dashboard.id)
         self.assertEqual(partage.utilisateur_id, self.viewer.id)
+
+    def test_dashboard_inconnu_404_comme_autre_societe(self):
+        """ERR-ENF11-FUZZ-CORE (api-fuzz) — un id de dashboard bien formé mais
+        inexistant (``0`` compris) répond 404, plus 400, avec le même message
+        « objet inexistant » qu'un dashboard d'une autre société."""
+        other_dash = self._other_company_dashboard()
+        for url in ('/api/django/core/dashboards-partages/',
+                    '/api/django/core/dashboards-partages-internes/'):
+            for dash_id in (0, 987654321, other_dash.id):
+                with self.subTest(url=url, dashboard=dash_id):
+                    resp = self.api.post(
+                        url, {'dashboard': dash_id}, format='json')
+                    self.assertEqual(resp.status_code, 404, resp.content)
+                    self.assertIn('dashboard', resp.data)
+                    self.assertIn(str(dash_id), str(resp.data['dashboard']))
+
+    def test_role_texte_strict(self):
+        """ERR-ENF11-FUZZ-CORE — ``role`` est un texte JSON : ``0`` était
+        converti en ``"0"`` (requête hors schéma acceptée)."""
+        resp = self.api.post(
+            '/api/django/core/dashboards-partages-internes/', {
+                'dashboard': self.dashboard.id, 'role': 0,
+            }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('role', resp.data)

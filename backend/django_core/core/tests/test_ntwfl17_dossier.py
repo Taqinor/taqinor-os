@@ -188,6 +188,25 @@ class DossierApiTests(TestCase):
                     LIER(appeler(self.user, **corps), pk=dossier_id).status_code,
                     400)
 
+    def test_textes_stricts_creation_et_maj(self):
+        """ERR-ENF11-FUZZ-CORE (api-fuzz) — ``titre``/``description`` sont des
+        textes JSON : ``0`` était converti en ``"0"`` (POST/PUT/PATCH hors
+        schéma acceptés) ; NUL refusé comme le schéma le publie."""
+        for corps in ({'titre': 0}, {'titre': 'Ok', 'description': 5},
+                      {'titre': 'a\x00b'}):
+            with self.subTest(corps=corps):
+                requete = APIRequestFactory().post('/', corps, format='json')
+                force_authenticate(requete, user=self.user)
+                reponse = LISTE(requete)
+                self.assertEqual(reponse.status_code, 400, reponse.data)
+                self.assertTrue(set(corps) & set(reponse.data))
+        dossier_id = self._creer_dossier()
+        requete = APIRequestFactory().patch('/', {'titre': 0}, format='json')
+        force_authenticate(requete, user=self.user)
+        reponse = DETAIL(requete, pk=dossier_id)
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('titre', reponse.data)
+
     def test_checklist_corps_vide_400(self):
         # ERR-ENF11-FUZZ-CORE — `{}` n'est conforme à aucune des deux formes.
         dossier_id = self._creer_dossier()

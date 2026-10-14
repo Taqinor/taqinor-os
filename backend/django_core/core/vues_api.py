@@ -14,7 +14,8 @@ from drf_spectacular.utils import (
     extend_schema_view, inline_serializer,
 )
 from rest_framework import serializers
-from rest_framework.parsers import JSONParser
+from rest_framework.parsers import JSONParser
+
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.response import Response
 
@@ -141,10 +142,13 @@ class VuePersonnaliseeViewSet(CompanyScopedModelViewSet):
                 required=False,
                 description='1/true : résout LA vue par défaut de la cible.'),
         ],
+        # ERR-ENF11-FUZZ-CORE — ``many=False`` : sans lui, drf-spectacular
+        # repaginait le ``oneOf`` (une page dont CHAQUE ligne devait être une
+        # page ou ``{vue}``) — toute réponse servie violait son schéma.
         responses=PolymorphicProxySerializer(
             component_name='VuesListeOuDefaut',
             serializers=[_VUES_PAGE, _VUE_DEFAUT],
-            resource_type_field_name=None))
+            resource_type_field_name=None, many=False))
     def list(self, request, *args, **kwargs):
         """NTEXT17 — ``?cible=<x>&defaut=1`` résout LA vue par défaut.
 
