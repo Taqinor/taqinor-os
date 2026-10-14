@@ -682,15 +682,23 @@ def _etat_vente(devis, palier) -> dict:
     }
 
 
-def etat_vente_map(rows, user=None) -> dict:
+def etat_vente_map(rows, user=None, soldes=None) -> dict:
     """``{devis.pk: etat_vente(devis, user)}`` pour une liste de devis (la
     ligne devis du lead, la fiche, une page de la liste des devis) : le
     palier est résolu UNE fois et les chaînes/factures de toute la liste sont
     chargées en lot (:func:`ventes_prechargees`) — le nombre de requêtes ne
-    grandit pas avec le nombre de devis (VNT68)."""
+    grandit pas avec le nombre de devis (VNT68).
+
+    ``soldes`` (dict fourni par l'appelant, VNT68/VNT70) reçoit, sous le MÊME
+    lot, le bloc ``solde`` de chaque devis (``solde_devis``, valeurs en
+    texte — contrat ``devis_solde.json``) : un seul appel pour les deux."""
+    from apps.ventes.utils.echeancier import solde_devis
     rows = list(rows)
     palier = peut_gerer_la_vente(user)
     with ventes_prechargees(rows):
+        if soldes is not None:
+            soldes.update({d.pk: {k: str(v) for k, v in solde_devis(d).items()}
+                           for d in rows})
         return {d.pk: _etat_vente(d, palier) for d in rows}
 
 

@@ -609,18 +609,17 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         même devis recalcule : jamais un état d'avant une écriture)."""
         lots = self.context.setdefault('_lot_vente', {})
         if cle not in lots.get(obj.pk, {}):
-            from .utils.echeancier import solde_devis
-            from .vente_facturation import etat_vente_map, ventes_prechargees
+            from .vente_facturation import etat_vente_map
             page = getattr(self.parent, 'instance', None)
             rows = list(page) if isinstance(
                 self.parent, serializers.ListSerializer) and page is not None else []
             rows = rows if obj.pk is not None and obj in rows else [obj]
             request = self.context.get('request')
-            with ventes_prechargees(rows):
-                ventes = etat_vente_map(rows, getattr(request, 'user', None))
-                for d in rows:
-                    lots[d.pk] = {'vente': ventes[d.pk], 'solde': {
-                        k: str(v) for k, v in solde_devis(d).items()}}
+            soldes = {}
+            ventes = etat_vente_map(rows, getattr(request, 'user', None),
+                                    soldes=soldes)
+            for d in rows:
+                lots[d.pk] = {'vente': ventes[d.pk], 'solde': soldes[d.pk]}
         entree = lots[obj.pk]
         valeur = entree.pop(cle)
         if not entree:
