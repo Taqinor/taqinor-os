@@ -264,3 +264,14 @@ class RefusTest(BaseGabarits):
         self.assertEqual(api.get(URL).status_code, 403)
         self.assertEqual(self._deposer(api=api).status_code, 403)
         self.assertFalse(GabaritDossierReglementaire.objects.exists())
+
+    def test_actif_en_formulaire_true_false_seulement(self):
+        # CI #997 fuzz (2) : ``actif={}`` en multipart était lu « faux » et le
+        # dépôt répondait 201 ; seul un booléen (true / false) est admis.
+        refus = self._deposer(actif='{}')
+        self.assertEqual(refus.status_code, 400, refus.data)
+        self.assertIn('actif', refus.data)
+        self.assertFalse(GabaritDossierReglementaire.objects.exists())
+        ok = self._deposer(actif='False')
+        self.assertEqual(ok.status_code, 201, ok.data)
+        self.assertFalse(ok.data['gabarit']['actif'])

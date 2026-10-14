@@ -47,6 +47,8 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.parseurs import PARSEURS_JSON
+
 from ..permissions import PeutGererCalepinage
 from ..services.variantes import DuplicationEnConflit, VarianteRefusee
 from ..services.variantes import dupliquer as service_dupliquer
@@ -97,7 +99,8 @@ def _drapeau(brut, defaut=True):
         'layout_hash': drf_serializers.CharField(allow_blank=True),
     })})
 @action(detail=True, methods=['post'], url_path='dupliquer',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage],
+        parser_classes=PARSEURS_JSON)  # fuzz CI #997 (2) : un booléen JSON — un multipart n'en porte que des chaînes (« True »)
 def dupliquer(self, request, pk=None):
     """CALX35 — duplique ce calepinage et rend la COPIE.
 

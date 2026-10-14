@@ -360,6 +360,18 @@ class ComparaisonProjetsApiEnBaseTest(BaseApiCalepinage):
         self.assertIn('ids', reponse.data)
         self.assertIn('Au plus 5', str(reponse.data['ids']))
 
+    def test_six_fois_le_meme_id_refuse_400(self):
+        # CI #997 fuzz (2) : maxItems porte sur la liste REÇUE ; le doublon
+        # dédoublonné à 1 passait en 200.
+        reponse = self.api.post(URL_COMPARER, {'ids': [self.a.pk] * 6},
+                                format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('Au plus 5', str(reponse.data['ids']))
+        # Un doublon dans la borne reste accepté (compté une fois).
+        reponse = self.api.post(URL_COMPARER, {'ids': [self.a.pk] * 2},
+                                format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+
     def test_autre_societe_ignoree_et_listee_dans_refus(self):
         reponse = self.api.post(
             URL_COMPARER,

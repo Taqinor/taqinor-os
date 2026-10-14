@@ -1057,9 +1057,16 @@ def _liste_saisie(valeur, champ):
 
 
 def _booleen(valeur):
-    if isinstance(valeur, str):
-        return valeur.strip().lower() in ('1', 'true', 'vrai', 'oui', 'on')
-    return bool(valeur)
+    """``actif`` : un booléen JSON, ou « true » / « false » en formulaire —
+    toute autre valeur est refusée 400 (``{}`` ou ``5`` étaient lus « faux » /
+    « vrai » en silence, CI #997 fuzz (2))."""
+    if isinstance(valeur, bool):
+        return valeur
+    if isinstance(valeur, str) and valeur.strip().lower() in ('true', 'false'):
+        return valeur.strip().lower() == 'true'
+    raise GabaritRefuse({'actif': (
+        "« actif » se donne en booléen (true ou false) "
+        f"(reçu : {type(valeur).__name__}).")})
 
 
 def _premier_element_fautif(liste, cles, prefixe):

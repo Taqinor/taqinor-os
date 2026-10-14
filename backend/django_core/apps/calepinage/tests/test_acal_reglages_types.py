@@ -284,3 +284,70 @@ class FormeRequetePartielleTest(SimpleTestCase):
         self.assertTrue(requete)
         self.assertFalse(any(c.required for c in requete.values()))
         self.assertTrue(all(c.required for c in reponse.values()))
+
+
+class SectionsResserreesRequeteTest(SimpleTestCase):
+    """CI #997 fuzz (2) — le schéma du PUT ne promet que ce que le serveur
+    accepte : une clé de plus (``x-schemathesis-additional``) dans une section
+    à vocabulaire fermé était « conforme » puis refusée 400."""
+
+    @staticmethod
+    def _valeurs(schema):
+        if 'anyOf' in schema:
+            return [v for s in schema['anyOf'] for v in
+                    SectionsResserreesRequeteTest._valeurs(s)]
+        genre = schema['type']
+        if genre == 'string':
+            return list(schema['enum'])
+        if genre == 'boolean':
+            return [True, False]
+        if genre in ('number', 'integer'):
+            bornes = [schema.get('minimum', 0)]
+            if 'maximum' in schema:
+                bornes.append(schema['maximum'])
+            return bornes
+        return [{'a': 1}] if genre == 'object' else [[1]]
+
+    def test_sections_a_registre_publiees_cle_par_cle_et_acceptees(self):
+        from apps.calepinage.services.parametres import (
+            _normaliser_section_a_registre,
+        )
+        from apps.calepinage.views.parametres import (
+            _sections_requete_resserrees,
+        )
+
+        champs = _sections_requete_resserrees()
+        refus = []
+        for section in REGISTRES:
+            schema = champs[section]._spectacular_annotation['field']
+            self.assertIs(schema['additionalProperties'], False)
+            self.assertEqual(set(schema['properties']),
+                             set(registre(section)), section)
+            for cle, entree in schema['properties'].items():
+                for valeur in self._valeurs(entree['properties']['valeur']):
+                    try:
+                        _normaliser_section_a_registre(
+                            section, {cle: {'valeur': valeur,
+                                            'source': 'societe',
+                                            'reference': ''}})
+                    except ReglageInvalide as erreur:
+                        refus.append((section, cle, valeur, str(erreur)))
+        self.assertEqual(refus, [])
+
+    def test_sections_a_vocabulaire_ferme_refusent_toute_cle_de_plus(self):
+        from apps.calepinage.services.parametres import _normaliseurs
+        from apps.calepinage.views.parametres import (
+            _SECTIONS_A_VOCABULAIRE_FERME, _sections_requete_resserrees,
+        )
+
+        champs = _sections_requete_resserrees()
+        acceptees = []
+        for section in _SECTIONS_A_VOCABULAIRE_FERME:
+            schema = champs[section]._spectacular_annotation['field']
+            self.assertIs(schema['additionalProperties'], False)
+            try:
+                _normaliseurs()[section]({'x-schemathesis-additional': {}})
+                acceptees.append(section)
+            except ReglageInvalide:
+                pass
+        self.assertEqual(acceptees, [])

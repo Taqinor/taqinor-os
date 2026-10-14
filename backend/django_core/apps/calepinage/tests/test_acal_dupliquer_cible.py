@@ -145,3 +145,13 @@ class DupliquerCible(BaseApiCalepinage):
         self.assertIn('lead', reponse.data)
         self.assertIn('introuvable', str(reponse.data['lead']))
         self.assertEqual(Calepinage.objects.count(), avant)
+
+    def test_corps_multipart_refuse_415(self):
+        # fuzz CI #997 (2) : « True » en formulaire est une chaîne, pas le
+        # booléen publié — le corps est JSON seul, rien n'est copié.
+        avant = Calepinage.objects.count()
+        reponse = self.api.post(_url(self.source.pk, 'dupliquer/'),
+                                {'avec_variantes': 'True', 'titre': ''},
+                                format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.content)
+        self.assertEqual(Calepinage.objects.count(), avant)
