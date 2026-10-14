@@ -9,6 +9,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, inline_serializer
 from rest_framework import serializers as s
 
+from core.champs_stricts import ChaineStricte
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from apps.records.openapi import CibleModelField
@@ -92,8 +93,8 @@ FAVORI_REPONSE = S('FavoriReponse', {'favori': s.BooleanField()})
 TELEVERSER_CORPS = S('TeleverserCorps', {
     'folder': s.IntegerField(),
     'file': s.FileField(),
-    'nom': s.CharField(required=False, allow_blank=True),
-    'description': s.CharField(required=False, allow_blank=True),
+    'nom': ChaineStricte(required=False, allow_blank=True, max_length=255),
+    'description': ChaineStricte(required=False, allow_blank=True),
 })
 SCAN_LOT_CORPS = S('ScanLotCorps', {
     'folder': s.IntegerField(),
@@ -104,14 +105,14 @@ PHOTOS_CORPS = S('AssemblerPhotosCorps', {
     'folder': s.IntegerField(),
     'photos': s.ListField(
         child=s.FileField(), allow_empty=False, min_length=1),
-    'nom': s.CharField(required=False, allow_blank=True),
-    'description': s.CharField(required=False, allow_blank=True),
+    'nom': ChaineStricte(required=False, allow_blank=True, max_length=255),
+    'description': ChaineStricte(required=False, allow_blank=True),
 })
 LOT_SEPARE_CORPS = S('LotScansSepareCorps', {
     'folder': s.IntegerField(),
     'files': s.ListField(
         child=s.FileField(), allow_empty=False, min_length=1),
-    'nom_base': s.CharField(required=False, allow_blank=True),
+    'nom_base': ChaineStricte(required=False, allow_blank=True, max_length=200),
 })
 IMPORT_MASSE_CORPS = S('ImportMasseCorps', {
     'folder': s.IntegerField(),

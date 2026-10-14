@@ -881,3 +881,89 @@ class Ci997FuzzGedTour3Tests(TestCase):
             self.assertEqual(liste['minItems'], 1, route)
         ocr = schema['components']['schemas']['GedOcrPieceCorpsRequest']
         self.assertTrue(ocr['properties']['type_piece']['nullable'])
+
+
+class Ci997FuzzGedTour4Tests(TestCase):
+    """CI #997 (2) — dépôts GED : le schéma publié dit ce que la vue accepte
+    (``params`` selon ``operation``, textes bornés) et les fichiers minimaux que
+    le harnais fuzz envoie (PDF, CSV d'une ligne) sont acceptés 201."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='ci997-ged-t4', defaults={'nom': 'CI997 GED T4'})[0]
+        self.admin = User.objects.create_user(
+            username='ci997-ged-t4-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='D')
+        self.api = auth(self.admin)
+
+    def _multipart(self, route, corps):
+        return self.api.post(f'{BASE}{route}', corps, format='multipart')
+
+    def test_operations_lot_params_exiges_selon_l_operation(self):
+        for operation in ('tagger', 'detaguer', 'deplacer'):
+            resp = self.api.post(f'{BASE}documents/operations-lot/', {
+                'documents': [self.doc.pk], 'operation': operation,
+                'params': {}}, format='json')
+            self.assertEqual(resp.status_code, 400, (operation, resp.content))
+        resp = self.api.post(f'{BASE}documents/operations-lot/', {
+            'documents': [self.doc.pk], 'operation': 'corbeille',
+            'params': {}}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_schema_publie_params_par_operation_et_textes_bornes(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ged import urls as ged_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ged/', include(ged_urls)),
+        ]).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        branches = composants['GedOperationsLotCorpsRequest']['anyOf']
+        par_operation = {}
+        for branche in branches:
+            operations = branche['properties']['operation']['anyOf'][0]['enum']
+            for operation in operations:
+                par_operation[operation] = branche
+        self.assertEqual(set(par_operation), {
+            'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
+            'partager', 'demander_signature', 'demander_revue'})
+        self.assertEqual(
+            par_operation['tagger']['properties']['params']['required'], ['tag'])
+        self.assertEqual(par_operation['deplacer']['properties']['params'][
+            'required'], ['folder'])
+        self.assertIn('params', par_operation['detaguer']['required'])
+        self.assertNotIn('params', par_operation['corbeille']['required'])
+        nom = composants['GedTeleverserCorpsRequest']['properties']['nom']
+        self.assertEqual(nom['maxLength'], 255)
+        base = composants['GedLotScansSepareCorpsRequest']['properties'][
+            'nom_base']
+        self.assertEqual(base['maxLength'], 200)
+
+    def test_pdf_minimal_accepte_au_televerser_et_au_scan_lot(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        pdf = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+        resp = self._multipart('documents/televerser/', {
+            'folder': self.folder.pk,
+            'file': SimpleUploadedFile('file', pdf)})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        resp = self._multipart('documents/scan-lot/', {
+            'folder': self.folder.pk,
+            'files': [SimpleUploadedFile('files', pdf),
+                      SimpleUploadedFile('files', pdf)]})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(len(resp.json()['documents']), 2)
+
+    def test_csv_d_une_ligne_accepte_a_l_import_en_masse(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = self._multipart('documents/import-masse/', {
+            'folder': self.folder.pk,
+            'csv': SimpleUploadedFile(
+                'csv', b'nom,description\r\nFuzz,Import\r\n')})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['crees'], 1)

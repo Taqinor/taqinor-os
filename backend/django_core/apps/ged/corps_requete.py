@@ -1,6 +1,8 @@
 """ERR-ENF11-FUZZ-GED — lecture SÛRE des identifiants, dates et textes d'un corps JSON
 (``views.py`` est un fichier-mur : les aides vivent ici, importées par les vues)."""
-from drf_spectacular.extensions import OpenApiSerializerFieldExtension
+from drf_spectacular.extensions import (
+    OpenApiSerializerExtension, OpenApiSerializerFieldExtension,
+)
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers as drf_serializers
@@ -224,14 +226,17 @@ _PARAMS_PAR_OPERATION = {
 }
 
 
+_OPERATIONS_LOT = [
+    'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
+    'partager', 'demander_signature', 'demander_revue']
+
+
 class GedOperationsLotCorps(drf_serializers.Serializer):
     # ERR-ENF11-FUZZ-GED : ``min_length`` publie ``minItems: 1`` (``[]``
     # était « conforme » puis refusé « liste vide »).
     documents = drf_serializers.ListField(
         child=_id_corps(), allow_empty=False, min_length=1)
-    operation = drf_serializers.ChoiceField(choices=[
-        'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
-        'partager', 'demander_signature', 'demander_revue'])
+    operation = drf_serializers.ChoiceField(choices=_OPERATIONS_LOT)
     params = drf_serializers.DictField(required=False)
 
     def validate(self, attrs):
@@ -241,6 +246,39 @@ class GedOperationsLotCorps(drf_serializers.Serializer):
             sous.is_valid(raise_exception=True)
             attrs['params'] = dict(sous.validated_data)
         return attrs
+
+
+class _OperationsLotParamsPublies(OpenApiSerializerExtension):
+    """CI #997 fuzz ged (2) — ``params`` dépend de ``operation`` (``validate``) :
+    ``tagger``/``detaguer`` exigent ``params.tag``, ``deplacer`` ``params.folder``,
+    ``demander_signature`` type ``signataire_nom``/``signataire_email`` ; les
+    autres opérations ignorent ``params``. Publié en REQUÊTE (``{operation:
+    "tagger"}`` sans tag était « conforme » puis refusé 400). Enums enveloppés
+    (``anyOf``) : le post-traitement des enums ne renomme rien."""
+    target_class = 'apps.ged.corps_requete.GedOperationsLotCorps'
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+
+        def branche(operations, classe=None, *, params_requis=False):
+            propres = {'operation': {'anyOf': [{'enum': operations}]}}
+            if classe is not None:
+                propres['params'] = auto_schema._map_serializer(
+                    classe(), 'request', bypass_extensions=True)
+            requis = ['operation'] + (['params'] if params_requis else [])
+            return {'properties': propres, 'required': requis}
+
+        sans_params = [op for op in _OPERATIONS_LOT
+                       if op not in _PARAMS_PAR_OPERATION]
+        return {**schema, 'anyOf': [
+            branche(['tagger', 'detaguer'], _ParamsTag, params_requis=True),
+            branche(['deplacer'], _ParamsDossier, params_requis=True),
+            branche(['demander_signature'], _ParamsSignature),
+            branche(sans_params),
+        ]}
 
 
 def conflit_archivage(document):

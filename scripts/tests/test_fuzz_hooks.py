@@ -399,6 +399,81 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertEqual(self._corps(corps={'code': '0'}), {'code': '0'})
         self.assertIsNone(self._corps(corps={'fichier': None})['fichier'])
 
+    def test_depot_ged_recoit_un_fichier_du_format_lu(self):
+        # CI #997 (2) : PDF au téléversement, PNG aux photos/scans séparés, CSV
+        # (en-têtes + une ligne) à l'import en masse — champs de formulaire et
+        # autres fichiers du corps intacts.
+        ged = '/api/django/ged/documents/'
+        for chemin, champ, debut in (
+                (ged + 'televerser/', 'file', b'%PDF-'),
+                (ged + 'assembler-photos/', 'photos', b'\x89PNG'),
+                (ged + 'import-masse/', 'csv', b'nom,')):
+            with self.subTest(chemin=chemin):
+                corps = self._corps(
+                    chemin=chemin,
+                    corps={champ: [b''] if champ == 'photos' else b'',
+                           'folder': 1, 'zip': b''})
+                valeur = corps[champ][0] if champ == 'photos' else corps[champ]
+                self.assertTrue(valeur.startswith(debut))
+                self.assertEqual(corps['folder'], 1)
+                self.assertEqual(corps['zip'], b'')
+
+    def test_liste_de_fichiers_chaque_element_remplace(self):
+        # ``files`` est une liste de fichiers (au moins un) : tous sont valides,
+        # la liste garde sa longueur ; Binary garde son type.
+        class Binary(str):
+            def __new__(cls, data):
+                return super().__new__(cls)
+
+            def __init__(self, data):
+                self.data = data
+
+        premier = Binary(b'')
+        for chemin, debut in (
+                ('/api/django/ged/documents/scan-lot/', b'%PDF-'),
+                ('/api/django/ged/documents/deposer-lot-scans-separe/',
+                 b'\x89PNG')):
+            with self.subTest(chemin=chemin):
+                corps = self._corps(
+                    chemin=chemin, corps={'files': [premier, b''],
+                                          'folder': 1})
+                self.assertEqual(len(corps['files']), 2)
+                self.assertIs(corps['files'][0], premier)
+                self.assertTrue(premier.data.startswith(debut))
+                self.assertTrue(corps['files'][1].startswith(debut))
+
+    def test_png_minimal_est_un_png_noir_valide(self):
+        import struct
+        import zlib
+        png = self.hooks._PNG_MINIMAL
+        self.assertTrue(png.startswith(b'\x89PNG\r\n\x1a\n'))
+        pos, blocs = 8, {}
+        while pos < len(png):
+            n, = struct.unpack('>I', png[pos:pos + 4])
+            type_, data = png[pos + 4:pos + 8], png[pos + 8:pos + 8 + n]
+            crc, = struct.unpack('>I', png[pos + 8 + n:pos + 12 + n])
+            self.assertEqual(crc, zlib.crc32(type_ + data) & 0xffffffff)
+            blocs[type_] = data
+            pos += 12 + n
+        self.assertEqual(struct.unpack('>II', blocs[b'IHDR'][:8]), (2, 2))
+        # 2 lignes de (filtre 0 + 2 pixels RGB) toutes à zéro = pixels noirs.
+        self.assertEqual(zlib.decompress(blocs[b'IDAT']), bytes(14))
+
+    def test_depot_ged_negatif_et_autres_operations_intacts(self):
+        ged = '/api/django/ged/documents/'
+        self.assertEqual(
+            self._corps(chemin=ged + 'scan-lot/', mode='NEGATIVE',
+                        corps={'files': [b'']})['files'], [b''])
+        self.assertEqual(
+            self._corps(chemin=ged + 'scan-lot/', methode='GET',
+                        corps={'files': [b'']})['files'], [b''])
+        self.assertEqual(
+            self._corps(chemin=ged + '{id}/versions/',
+                        corps={'files': [b'']})['files'], [b''])
+        self.assertEqual(
+            self._corps(chemin=ged + 'scan-lot/',
+                        corps={'files': []})['files'], [])
+
 
 class IdsFkParCheminTests(unittest.TestCase):
     """ENF11 (seed) — une règle par chemin donne les ids du BON modèle
