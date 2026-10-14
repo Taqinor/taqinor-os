@@ -26,7 +26,8 @@ class MlopsConfig(AppConfig):
         'icone': 'cpu',
         'depends': [],
         'installable': False,
-        'description': "Versionne par société les paramètres des scorers prédictifs (churn, probabilité de gain, retard de paiement…) et matérialise les signaux (features) qu'ils consomment.",
+        'description': "Versionne par société les paramètres des scorers prédictifs (churn, probabilité de gain, "
+                       "retard de paiement…) et matérialise les signaux (features) qu'ils consomment.",
         'categorie': 'Technique',
         'parked': True,
     }
