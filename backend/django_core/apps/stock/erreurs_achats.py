@@ -13,7 +13,9 @@ attrapent ``ValueError`` continuent de fonctionner) que les vues traduisent en
 serializer, là où un ``ValidationError`` donnerait un 400.
 """
 from rest_framework import status
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound, ValidationError
+
+from core.champs_stricts import IdInconnu404Mixin, _ids_inconnus_seulement
 
 
 class IntrouvableMetier(ValueError):
@@ -30,3 +32,40 @@ class ConflitEtat(APIException):
     status_code = status.HTTP_409_CONFLICT
     default_detail = "L'état actuel du document s'oppose à cette opération."
     default_code = 'state_conflict'
+
+
+class IdInconnu404LignesMixin(IdInconnu404Mixin):
+    """``IdInconnu404Mixin`` étendu aux lignes IMBRIQUÉES (ENF11, réception) :
+    ``lignes[].ligne_commande`` inconnu (``0`` compris) répond 404 comme une
+    clé de premier niveau — même corps DRF. Toute autre erreur garde le 400."""
+
+    def is_valid(self, *, raise_exception=False):
+        valide = super().is_valid(raise_exception=False)
+        if valide or not raise_exception:
+            return valide
+        if self._ligne_commande_inconnue_seulement():
+            raise NotFound(self.errors)
+        if _ids_inconnus_seulement(self.errors, self.fields):
+            raise NotFound(self.errors)
+        raise ValidationError(self.errors)
+
+    def _ligne_commande_inconnue_seulement(self):
+        erreurs = self.errors
+        lignes = erreurs.get('lignes') if isinstance(erreurs, dict) else None
+        if not isinstance(lignes, list) or not all(
+                isinstance(e, dict) for e in lignes):
+            return False
+        inconnues = 0
+        for erreur in lignes:
+            if not erreur:
+                continue
+            details = erreur.get('ligne_commande')
+            if set(erreur) != {'ligne_commande'} or not isinstance(
+                    details, list) or any(
+                    getattr(d, 'code', None) != 'does_not_exist'
+                    for d in details):
+                return False
+            inconnues += 1
+        reste = {nom: v for nom, v in erreurs.items() if nom != 'lignes'}
+        return bool(inconnues) and (
+            not reste or _ids_inconnus_seulement(reste, self.fields))

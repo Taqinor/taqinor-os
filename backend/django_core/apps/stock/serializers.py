@@ -14,7 +14,7 @@ from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
 
-from .erreurs_achats import ConflitEtat
+from .erreurs_achats import ConflitEtat, IdInconnu404LignesMixin
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -1814,7 +1814,7 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
 
-class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
+class ReceptionFournisseurSerializer(IdInconnu404LignesMixin, CompanyScopedRelationsMixin,
                                      serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
