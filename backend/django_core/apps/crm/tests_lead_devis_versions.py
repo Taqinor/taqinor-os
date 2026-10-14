@@ -166,6 +166,10 @@ class TestLeadDevisVersions(TestCase):
         requêtes (``etat_vente_map`` lit la vente en lot)."""
         v1, v2 = self._chaine_acceptee()
         self._facture(v1, 1)
+        # Appel d'échauffement (caches de process : ContentType, permissions,
+        # rôles) — la 1re requête en paie ~6 de plus, indépendamment du
+        # nombre de factures (CI #997 : 40 puis 34).
+        self._lignes()
         _lignes, une = self._detail_mesure()
         self._facture(v2, 2)
         self._facture(v2, 3)
