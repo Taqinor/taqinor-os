@@ -195,7 +195,6 @@ API rejected schema-compliant request|POST /api/django/parametres/upload-logo/
 API rejected schema-compliant request|POST /api/django/parametres/upload-signature/
 API rejected schema-compliant request|POST /api/django/public/portail/invitations/accepter/
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
-API rejected schema-compliant request|POST /api/django/publicapi/ocr-to-crm/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
 API rejected schema-compliant request|POST /api/django/register/
 API rejected schema-compliant request|POST /api/django/reporting/classeurs/{id}/evaluer/
