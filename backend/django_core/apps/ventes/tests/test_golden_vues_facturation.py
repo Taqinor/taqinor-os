@@ -85,6 +85,9 @@ PLACE = {
     'encaissement': 'facture_encaissement.py',  # VNT98
     'gardes': 'facture_gardes.py',  # VNT98
     'rectificatifs': 'facture_rectificatifs.py',  # VNT99
+    'documents': 'facture_documents.py',  # VNT100
+    'recouvrement': 'facture_recouvrement.py',  # VNT100
+    'lot': 'facture_lot.py',  # VNT100
 }
 
 DEFAUT = 'facture.py'
