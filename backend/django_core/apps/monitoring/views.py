@@ -186,10 +186,11 @@ _VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_FLEET_REPONSE = inline_serializer('ViewsMo
 })
 
 
-_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetBenchmarkReponse', {
-    'systems_ranked': drf_serializers.JSONField(allow_null=True),
-    'systems': drf_serializers.JSONField(allow_null=True),
-})
+_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE = inline_serializer(
+    'ViewsMonitoringConfigViewSetBenchmarkReponse', {
+        'systems_ranked': drf_serializers.JSONField(allow_null=True),
+        'systems': drf_serializers.JSONField(allow_null=True),
+    })
 
 
 _VIEWS_MONITORING_CONFIG_VIEW_SET_SOILING_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetSoilingReponse', {
@@ -229,29 +230,31 @@ _VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_REPONSE = inline_serializer('ViewsMonitori
 })
 
 
-_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetClientPortalReponse', {
-    'client': drf_serializers.JSONField(allow_null=True),
-    'systems_count': drf_serializers.JSONField(allow_null=True),
-    'total_production_kwh': drf_serializers.JSONField(allow_null=True),
-    'economies_mad': drf_serializers.JSONField(allow_null=True),
-    'co2_kg': drf_serializers.JSONField(allow_null=True),
-    'co2_tonnes': drf_serializers.JSONField(allow_null=True),
-    'tarif_mad_par_kwh': drf_serializers.JSONField(allow_null=True),
-    'co2_kg_par_kwh': drf_serializers.JSONField(allow_null=True),
-})
+_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE = inline_serializer(
+    'ViewsMonitoringConfigViewSetClientPortalReponse', {
+        'client': drf_serializers.JSONField(allow_null=True),
+        'systems_count': drf_serializers.JSONField(allow_null=True),
+        'total_production_kwh': drf_serializers.JSONField(allow_null=True),
+        'economies_mad': drf_serializers.JSONField(allow_null=True),
+        'co2_kg': drf_serializers.JSONField(allow_null=True),
+        'co2_tonnes': drf_serializers.JSONField(allow_null=True),
+        'tarif_mad_par_kwh': drf_serializers.JSONField(allow_null=True),
+        'co2_kg_par_kwh': drf_serializers.JSONField(allow_null=True),
+    })
 
 
-_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetOmMetricsReponse', {
-    'installation': drf_serializers.JSONField(allow_null=True),
-    'window_days': drf_serializers.JSONField(allow_null=True),
-    'production_kwh': drf_serializers.JSONField(required=False, allow_null=True),
-    'expected_kwh': drf_serializers.JSONField(required=False, allow_null=True),
-    'pr_pct': drf_serializers.JSONField(required=False, allow_null=True),
-    'availability_pct': drf_serializers.JSONField(required=False, allow_null=True),
-    'degradation_pct_per_year': drf_serializers.JSONField(required=False, allow_null=True),
-    'soiling_suspected': drf_serializers.JSONField(required=False, allow_null=True),
-    'monthly_pr': drf_serializers.JSONField(required=False, allow_null=True),
-})
+_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE = inline_serializer(
+    'ViewsMonitoringConfigViewSetOmMetricsReponse', {
+        'installation': drf_serializers.JSONField(allow_null=True),
+        'window_days': drf_serializers.JSONField(allow_null=True),
+        'production_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+        'expected_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+        'pr_pct': drf_serializers.JSONField(required=False, allow_null=True),
+        'availability_pct': drf_serializers.JSONField(required=False, allow_null=True),
+        'degradation_pct_per_year': drf_serializers.JSONField(required=False, allow_null=True),
+        'soiling_suspected': drf_serializers.JSONField(required=False, allow_null=True),
+        'monthly_pr': drf_serializers.JSONField(required=False, allow_null=True),
+    })
 
 
 @extend_schema_view(list=extend_schema(
