@@ -8,7 +8,8 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import { toast } from '../../ui'
-import { reviserEtOuvrir } from './reviserDevis'
+import { reviserEtOuvrir, conflitDevis } from './reviserDevis'
+import { documentContrat } from '../../test/fixtures/contractSamples'
 
 const DEVIS = { id: 12, reference: 'DEV-202609-0012', chantier: null }
 
@@ -63,5 +64,44 @@ describe('QJR533 — reviserEtOuvrir', () => {
       navigate: vi.fn(),
     })
     expect(ordre).toEqual(['warning', 'appel'])
+  })
+})
+
+// VNT80 — un 409 qui NOMME un autre devis (forme unique `successeur` VNT24, ou
+// `vente_active` VNT54 ; exemples committés de devis_prix_negocie.json) rend
+// `{conflit, successeur}` à l'appelant, qui l'affiche sous la carte.
+describe('VNT80 — conflit nommant un autre devis', () => {
+  const ERREURS = documentContrat('ventes', 'devis_prix_negocie').erreurs_409
+  const refus = (data) => ({ response: { status: 409, data } })
+
+  it('conflitDevis lit le CODE du corps : successeur ou vente_active, sinon null', () => {
+    expect(conflitDevis(ERREURS.version_remplacee)).toEqual({
+      code: 'version_remplacee', conflit: ERREURS.version_remplacee.detail,
+      successeur: ERREURS.version_remplacee.successeur,
+    })
+    expect(conflitDevis(ERREURS.vente_active_existante).successeur).toEqual(ERREURS.vente_active_existante.vente_active)
+    expect(conflitDevis(ERREURS.pas_une_vente_active)).toBeNull()
+    expect(conflitDevis(null)).toBeNull()
+  })
+
+  it('version remplacée + onConflit : {conflit, successeur} rendu, aucun toast, aucune navigation', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    const navigate = vi.fn()
+    const onConflit = vi.fn()
+    ventesApi.reviserDevis.mockRejectedValue(refus(ERREURS.version_remplacee))
+    const r = await reviserEtOuvrir({ devis: DEVIS, navigate, onConflit })
+    const attendu = { conflit: ERREURS.version_remplacee.detail, successeur: ERREURS.version_remplacee.successeur }
+    expect(r).toEqual(attendu)
+    expect(onConflit).toHaveBeenCalledWith(attendu)
+    expect(erreur).not.toHaveBeenCalled()
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('vente active existante sans onConflit : toast du message serveur, conflit rendu', async () => {
+    const erreur = vi.spyOn(toast, 'error').mockImplementation(() => {})
+    ventesApi.reviserDevis.mockRejectedValue(refus(ERREURS.vente_active_existante))
+    const r = await reviserEtOuvrir({ devis: DEVIS, navigate: vi.fn() })
+    expect(r.successeur).toEqual(ERREURS.vente_active_existante.vente_active)
+    expect(erreur).toHaveBeenCalledWith(ERREURS.vente_active_existante.detail)
   })
 })

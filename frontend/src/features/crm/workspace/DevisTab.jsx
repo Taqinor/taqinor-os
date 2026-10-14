@@ -82,15 +82,29 @@ function jumpToMissingField(champ) {
 
 // QJR534 — le bouton « Réviser » porte SON `useNavigate` (monté seulement sur
 // une carte révisable) : le reste de l'onglet n'exige aucun contexte Router.
+// VNT80 — un refus qui nomme un autre devis s'affiche SOUS la carte avec
+// « Ouvrir <réf> », qui fait défiler jusqu'à la carte de la tête.
 function BoutonReviser({ devis }) {
   const navigate = useNavigate()
+  const [conflit, setConflit] = useState(null)
+  const ouvrir = (id) => document.getElementById(`devis-carte-${id}`)?.scrollIntoView({ block: 'center' })
   return (
-    <Button
-      type="button" size="sm" variant="outline"
-      onClick={() => reviserEtOuvrir({ devis, navigate })}
-    >
-      <Pencil size={14} aria-hidden="true" /> Réviser (nouvelle version)
-    </Button>
+    <>
+      <Button
+        type="button" size="sm" variant="outline"
+        onClick={() => { setConflit(null); reviserEtOuvrir({ devis, navigate, onConflit: setConflit }) }}
+      >
+        <Pencil size={14} aria-hidden="true" /> Réviser (nouvelle version)
+      </Button>
+      {conflit && (
+        <p className="basis-full text-sm text-destructive" role="alert">
+          {conflit.conflit}{' '}
+          <Button type="button" size="sm" variant="link" onClick={() => ouvrir(conflit.successeur.id)}>
+            Ouvrir {conflit.successeur.reference}
+          </Button>
+        </p>
+      )}
+    </>
   )
 }
 
@@ -518,7 +532,7 @@ export default function DevisTab({
           <p className="gen-hint">Aucun devis pour ce lead.</p>
         ) : (
           devisList.map((d) => (
-            <div key={d.id} className="lw-context-devis-card">
+            <div key={d.id} id={`devis-carte-${d.id}`} className="lw-context-devis-card">
               <div className="lw-context-devis-card-head">
                 <Checkbox
                   checked={wa.selected.includes(d.id)}

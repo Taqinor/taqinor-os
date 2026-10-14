@@ -568,6 +568,32 @@ describe('VNT78 — panneau : Prix négocié', () => {
   })
 })
 
+// VNT80 — un 409 qui nomme un autre devis (forme unique `successeur`, exemple
+// committé devis_prix_negocie.json) s'affiche SOUS la carte ; « Ouvrir <réf> »
+// fait défiler jusqu'à la carte de la tête.
+describe('VNT80 — conflit nommant un autre devis : erreur sous la carte + « Ouvrir »', () => {
+  it('Réviser refusé (version remplacée) : message sous la carte, Ouvrir défile vers la tête', async () => {
+    const refus = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.version_remplacee
+    reviserDevis.mockRejectedValueOnce({ response: { status: 409, data: refus } })
+    const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView')
+    const user = userEvent.setup()
+    const base = { statut: 'accepte', total_ttc: '49000.00', date_creation: '2026-10-10', chantier: null }
+    renderTab({
+      state: leadState({
+        devis: [
+          { ...base, id: 410, reference: 'DEV-202610-0009', is_active: true, revision_possible: true },
+          { ...base, id: refus.successeur.id, reference: refus.successeur.reference, is_active: true },
+        ],
+      }),
+    })
+    const carte = document.getElementById('devis-carte-410')
+    await user.click(within(carte).getByRole('button', { name: /Réviser/ }))
+    expect(await within(carte).findByRole('alert')).toHaveTextContent(refus.detail)
+    await user.click(within(carte).getByRole('button', { name: `Ouvrir ${refus.successeur.reference}` }))
+    expect(defile.mock.contexts.at(-1)).toBe(document.getElementById(`devis-carte-${refus.successeur.id}`))
+  })
+})
+
 describe('LW22 — WhatsApp multi-devis', () => {
   const devis1 = {
     id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',

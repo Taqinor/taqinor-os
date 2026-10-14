@@ -97,6 +97,7 @@ export default function DevisRow({ d, ctx }) {
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
     pdfGenerating, pdfDownloading, pdfSlowPoll, convertingId, chantierBusy, setFacturerTarget,
     panneauVenteOpenId, setPanneauVenteOpenId,
+    conflitLigne, setConflitLigne, ouvrirDevis,
     openEdit, openVarianteModal, openGammeModal, handleDelete, handleEnvoyer, handleRelancer,
     handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, handleCopierApercuInterne, copierLienInterne, handlePreview, openPdfModal,
@@ -776,6 +777,8 @@ export default function DevisRow({ d, ctx }) {
                   // ouvre la V2 en Édition complète.
                   reviserEtOuvrir({
                     devis: d, navigate, onApres: () => dispatch(rafraichirDevis(d.id)),
+                    // VNT80 — un refus qui nomme un autre devis : sous la ligne.
+                    onConflit: setConflitLigne && ((c) => setConflitLigne({ devisId: d.id, ...c })),
                   })
                 }}>
                   Réviser (nouvelle version)
@@ -997,6 +1000,19 @@ export default function DevisRow({ d, ctx }) {
               />
             </div>
           </div>
+        </td>
+      </tr>
+    )}
+    {/* VNT80 — refus serveur nommant un autre devis : sous CETTE ligne. */}
+    {conflitLigne?.devisId === d.id && (
+      <tr>
+        <td colSpan={8}>
+          <p className="px-3 py-2 text-sm text-destructive" role="alert">
+            {conflitLigne.conflit}{' '}
+            <Button size="sm" variant="link" onClick={() => ouvrirDevis(conflitLigne.successeur.id)}>
+              Ouvrir {conflitLigne.successeur.reference}
+            </Button>
+          </p>
         </td>
       </tr>
     )}

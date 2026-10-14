@@ -34,6 +34,7 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import FacturerVenteDialog from '../../features/ventes/vente/FacturerVenteDialog'
+import { conflitDevis } from '../../features/ventes/reviserDevis'
 // La fête « affaire signée » est rendue par l'hôte global (ShellGlobal).
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../ui/dealSignedBus'
 import { DataTable } from '../../ui/datatable'
@@ -324,10 +325,25 @@ export default function DevisList() {
   // QX12 — deep-link ?devis=<pk> ouvre/surligne ce devis précis au montage
   // (notifications « Devis accepté »/« Devis expiré » qui pointaient vers une
   // route inexistante /devis/{pk} — le producteur redirige maintenant ici).
-  const [highlightId] = useState(() => {
+  const [highlightId, setHighlightId] = useState(() => {
     const v = searchParams.get('devis')
     return v ? Number(v) : null
   })
+  // VNT80 — un refus qui NOMME un autre devis (`version_remplacee.successeur`,
+  // `vente_active_existante.vente_active`) s'affiche sous la ligne refusée avec
+  // « Ouvrir <réf> » ⇒ `?devis=<id>` (même surlignage/défilement que QX12).
+  const [conflitLigne, setConflitLigne] = useState(null) // {devisId, conflit, successeur}
+  const signalerConflit = (d, err) => {
+    const c = conflitDevis(err?.response?.data)
+    if (!c) return false
+    setConflitLigne({ devisId: d.id, conflit: c.conflit, successeur: c.successeur })
+    return true
+  }
+  const ouvrirDevis = (id) => {
+    setConflitLigne(null)
+    setHighlightId(id)
+    setSearchParams({ devis: String(id) }, { replace: true })
+  }
   // U7 — masque par défaut les révisions remplacées (is_active=False) pour
   // qu'un devis révisé n'apparaisse plus comme un doublon « vivant ». Un
   // bouton « voir les versions remplacées » les réaffiche, toujours badgées
@@ -594,7 +610,8 @@ export default function DevisList() {
       toast.success(`Devis ${d.reference} marqué « Refusé ».`)
       closeRefusModal()
     } catch (err) {
-      toast.error(frenchError(err, 'Refus impossible.'))
+      if (signalerConflit(d, err)) closeRefusModal()
+      else toast.error(frenchError(err, 'Refus impossible.'))
     } finally {
       setRefusBusy(false)
     }
@@ -637,7 +654,7 @@ export default function DevisList() {
             detail: data.detail || 'Acceptation bloquée.',
           })
           setAcceptTarget(d)
-        } else {
+        } else if (!signalerConflit(d, err)) {
           toast.error(frenchError(err, 'Acceptation impossible.'))
         }
       }
@@ -784,6 +801,7 @@ export default function DevisList() {
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, convertingId, chantierBusy, setFacturerTarget,
     panneauVenteOpenId, setPanneauVenteOpenId,
+    conflitLigne, setConflitLigne, ouvrirDevis,
     openEdit, openVarianteModal, openGammeModal, handleDelete,
     openAcceptModal, openRefusModal, handleConvertBC,
     handleChantier, handleRevoquerLienPublic,
