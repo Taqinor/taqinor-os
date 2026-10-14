@@ -26,7 +26,8 @@ class ConversationAiConfig(AppConfig):
         'icone': 'phone',
         'depends': [],
         'installable': True,
-        'description': "Enregistrements d'appels commerciaux : transcription asynchrone (key-gated STT) et analyse du transcript — sans clé, l'appel reste « non transcrit » sans erreur.",
+        'description': "Enregistrements d'appels commerciaux : transcription asynchrone (key-gated STT) et analyse du "
+                       "transcript — sans clé, l'appel reste « non transcrit » sans erreur.",
         'categorie': 'Commercial',
         'parked': True,
     }
