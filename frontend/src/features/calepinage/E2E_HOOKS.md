@@ -1,12 +1,10 @@
 # Contrat de hooks DOM `data-testid="cal-*"` (CALX400)
 
-> **FIGÉ après coup, sur l'état RÉEL du module.** Contrairement au socle AO
-> (`data-ao-*`, `frontend/parked/features/ao/E2E_HOOKS.md`), publié avant le
-> premier écran, le calepinage a grandi sans contrat pendant les lots M1 à M4 :
-> ce document catalogue les 406 hooks `cal-*` mesurés ce jour dans
-> `frontend/src/features/calepinage/**` — davantage que la mesure citée par la
-> tâche CALX400 à l'écriture du lot (200), le lot ayant ajouté des
-> onglets entre-temps (documents, pompage, production, équipements). Chaque
+> **FIGÉ après coup, sur l'état RÉEL du module.** Le calepinage a grandi sans
+> contrat de hooks pendant les lots M1 à M4 : ce document catalogue les
+> 623 hooks `cal-*` (lignes de tableau ci-dessous, mesure du 14/10/2026) posés
+> dans `frontend/src/features/calepinage/**` ; le compte monte à chaque onglet
+> ajouté. Chaque
 > hook est valué par le composant qui le pose (un hook dynamique — un `${id}`
 > au milieu ou en fin du gabarit — est normalisé à sa base fixe, séparateurs `-`
 > conservés au point d'interpolation, jamais un index).

@@ -2,8 +2,8 @@
 
 ## Pourquoi ce dossier existe AVANT l'application
 
-`apps/calepinage/` n'a encore ni `models.py`, ni `views/`, ni migration. Ce
-dossier, lui, existe déjà — et ce n'est pas un oubli d'ordre, c'est l'ordre.
+`apps/calepinage/` a aujourd'hui ses modèles, ses vues et ses migrations, mais
+ce dossier est né AVANT eux — et ce n'est pas un oubli d'ordre, c'est l'ordre.
 
 Le 03/08/2026, l'écran « Appels d'offres — Tableau de bord » a planté en
 production avec **zéro clé sur six** concordante entre l'écran et le serveur,
@@ -24,9 +24,8 @@ forme. Les échantillons de ce dossier atterrissent donc **SEULS sur `main`**,
 avant toute lane productrice, et les deux moitiés branchent ensuite depuis un
 `main` qui les contient déjà.
 
-Le patron est `apps/ao/contract_samples/` — lisez son README, il porte le récit
-complet de l'incident. Ce dossier-ci n'en est pas une copie : il ajoute ce que
-le module Calepinage a de particulier, ci-dessous.
+Ce README porte le récit de l'incident et la règle ; il ajoute ce que le
+module Calepinage a de particulier, ci-dessous.
 
 ## La règle
 
@@ -72,7 +71,7 @@ Un fichier `<nom_endpoint>.json` par endpoint agrégé :
    `Devis.client` pointe déjà `'crm.Client'`. Les échantillons nomment donc
    `client` et `lead` (`crm.Lead`), jamais un tiers modèle.
 3. **Une grandeur non mesurée vaut `null`, jamais `0`** — c'est la discipline
-   déjà tenue par `apps/ao/calepinage_io.marges_vers_json` : `Marges` rend
+   déjà tenue par `apps/calepinage/moteur_io.marges_vers_json` : `Marges` rend
    `0.0` aussi bien pour « au ras » que pour « rien de ce type n'existe dans ce
    plan ». Publier ce zéro ferait lire « marge nulle » là où **rien n'a été
    mesuré**. Chaque `exemple_vide` de ce dossier garde donc TOUTES ses clés

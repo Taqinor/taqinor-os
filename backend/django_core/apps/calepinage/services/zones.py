@@ -37,8 +37,8 @@ Aucune projection n'est appliquée d'office : ce module ne sait pas, seul, si
 le document est en degrés (lng/lat) ou déjà en mètres locaux, et PROJETER À
 L'AVEUGLE produirait des aires fausses présentées comme justes. L'appelant
 qui travaille en lng/lat passe donc ``projection=projeteur_local(origine)`` —
-c'est le futur traducteur complet roof_layout → ``EntreeCalepinage`` (CAL78,
-ABSENT du dépôt aujourd'hui) qui projettera pans ET zones ensemble.
+c'est le traducteur roof_layout → ``EntreeCalepinage``
+(``services/traduction.py``, CAL78) qui projette pans ET zones ensemble.
 
 ÉQUIVALENCE : un document SANS ``exclusionZones`` laisse l'entrée moteur
 strictement inchangée — comportement d'aujourd'hui.

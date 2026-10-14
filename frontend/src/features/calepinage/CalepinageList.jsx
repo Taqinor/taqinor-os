@@ -22,7 +22,7 @@ import { STATUTS_CALEPINAGE } from './CalepinageList.helpers'
    CAL35 — L'ÉCRAN LISTE `/calepinage` : la porte autonome, enfin.
    ----------------------------------------------------------------------------
    D3 — cette porte n'existait pas : le seul accès au calepinage passait par un
-   devis (`router/index.jsx`) ou par une affaire AO (`features/ao`). Un
+   devis (`router/index.jsx`). Un
    calepinage sans devis est pourtant un objet de PREMIÈRE CLASSE (décision
    fondateur du 19/09/2026) — il lui fallait une liste à lui.
 

@@ -43,11 +43,11 @@ export function filterNavSections(sections, disabled) {
 
    Deux sémantiques, choisies PAR ENTRÉE, parce que le serveur en a deux :
 
-   1. DÉFAUT (inchangé) — ET strict `palier × permission`. C'est le miroir des
-      gardes serveur SANS repli légacy : `CanViewAoRentabilite`
-      (apps/ao/permissions.py — AOF2 : « AUCUN repli historique », sinon la
-      fuite de marge se rouvre) et `CanViewActivityLog` (apps/audit/views.py,
-      qui exclut délibérément l'admin légacy sans rôle fin). Ne JAMAIS relâcher
+   1. DÉFAUT (inchangé) — ET strict `palier × permission`. Même règle que les
+      gardes serveur SANS repli légacy, par exemple `CanViewActivityLog`
+      (apps/audit/views.py, qui exclut délibérément l'admin légacy sans rôle
+      fin) ; la garde de rentabilité d'AO appliquait la même règle (AOF2,
+      module parqué). Ne JAMAIS relâcher
       cette branche.
 
    2. `permRepliPalier: true` — miroir EXACT de `HasPermissionOrLegacy`

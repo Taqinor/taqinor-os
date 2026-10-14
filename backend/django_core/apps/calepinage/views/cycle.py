@@ -4,7 +4,7 @@ LA CAPACITÉ ÉTAIT DÉJÀ LÀ
 -------------------------
 ``services/variantes.py::dupliquer`` (CAL14) recopie DÉJÀ le layout et les
 variantes vers un NOUVEAU calepinage sans reprendre ``devis`` ni
-``appel_offre_id`` — sa docstring le dit, ses tests le prouvent. Aucune vue,
+``appel_offre_id`` (colonne héritée de AO, SOLMVP15) — sa docstring le dit, ses tests le prouvent. Aucune vue,
 aucun bouton ne l'appelait : ``grep dupliquer`` sur ``views/`` et ``urls.py``
 ne rendait rien. Cette vue n'écrit donc AUCUNE logique de copie ; elle ouvre
 la porte HTTP du service qui existe. **Aucun second chemin de copie** (ni

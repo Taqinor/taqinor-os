@@ -9,14 +9,14 @@
    voyaient JAMAIS le dessin. Ce module transforme le contour en une FORME
    affichable, sans carte, sans clé MapTiler, sans réseau : un polygone SVG.
 
-   ORDRE DES AXES — la règle du dépôt (apps/ao/geometrie.py, repere.js) :
+   ORDRE DES AXES — la règle du dépôt (`features/calepinage/repere.js`) :
    `Lead.roof_outline` est en **[lat, lng]** (latitude d'abord). On le déclare
    à chaque frontière (`ORDRE_LATLNG`) plutôt que de le deviner : une inversion
    est silencieuse (le polygone reste plausible, il atterrit à 800 km).
 
    AUCUN CHIFFRE INVENTÉ : la surface et l'emprise rendues ici sont CALCULÉES
    sur les sommets réels du client (projection locale métrique de `repere.js`,
-   déjà utilisée par l'atelier AO) ; sans contour exploitable, ce module rend
+   déjà utilisée par l'atelier calepinage) ; sans contour exploitable, ce module rend
    `null` et l'écran n'affiche rien — jamais un « 0 m² » ni une forme par
    défaut. */
 import {

@@ -24,7 +24,8 @@ import {
    jamais une supposition d'écran.
 
    AUCUN TEXTE DE REFUS N'EST FABRIQUÉ ICI. Le pré-vol de composition (422) et
-   le conflit « devis déjà envoyé » (409) portent déjà leur phrase FRANÇAISE,
+   le conflit « devis figé » (409 : accepté, refusé, expiré ou remplacé ; un
+   devis envoyé se corrige sur place, tracé) portent déjà leur phrase FRANÇAISE,
    écrite par le serveur ventes et propagée MOT POUR MOT par
    `services/devis.py::_refus_devis`. La réécrire côté client, c'est apprendre
    deux règles différentes à l'utilisateur pour un seul comportement. Le seul
@@ -453,8 +454,8 @@ export default function BoutonDevis({
         </div>
       )}
 
-      {/* 409 — le document est parti chez le client. Le motif est celui du
-          serveur ; l'écran choisit seulement d'offrir, ou non, la révision. */}
+      {/* 409 — le devis est figé (accepté, refusé, expiré ou remplacé). Le motif
+          est celui du serveur ; l'écran choisit seulement d'offrir, ou non, la révision. */}
       {conflit && (
         <div className="border border-brass-400/40 p-3" data-testid="cal-devis-conflit">
           <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>

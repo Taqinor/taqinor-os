@@ -143,8 +143,8 @@ INSTALLED_APPS = [
     # apps.ao.models.
     'apps.ao',
     # CAL4 — Calepinage autonome (conception de toiture pour un lead, un
-    # client, un devis ou une affaire d'AO). Module NEUF, additif : il ne
-    # remplace ni l'atelier 3D ventes ni le calepinage 2D opposable de l'AO.
+    # client ou un devis). Module additif : il ne remplace pas l'atelier 3D
+    # ventes.
     'apps.calepinage',
     # ODX12 — Portail self-service client (FG228–233). Sorti de compta en
     # préservant les tables physiques (SeparateDatabaseAndState). Chargé AVANT

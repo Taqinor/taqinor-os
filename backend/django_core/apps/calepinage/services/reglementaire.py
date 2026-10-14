@@ -2,8 +2,7 @@
 
 LE CONSTAT ET LA DOCTRINE REPRISE
 ----------------------------------
-La fabrique AO ÉCHOUE plutôt que d'inventer
-(``apps/ao/fabrique/rendus/note_calcul.py``) : c'est la bonne doctrine pour
+La note de calcul ÉCHOUE plutôt que d'inventer : c'est la bonne doctrine pour
 une note de calcul. Ici la pièce est ADMINISTRATIVE, donc elle doit rester
 REMPLISSABLE — mais sans jamais qu'une valeur par défaut ne se déguise en
 donnée. D'où la règle unique de ce module :
