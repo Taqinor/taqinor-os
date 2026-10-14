@@ -379,6 +379,30 @@ def _semer_entite(company, user):
         company=company, nom='Entité fuzz', code='FUZZ')
 
 
+def _semer_categorie_fournisseur(company, user):
+    existant = _premier('stock.CategorieFournisseur', company)
+    if existant is not None:
+        return existant
+    return _modele('stock.CategorieFournisseur').objects.create(
+        company=company, nom='Catégorie fuzz')
+
+
+def _semer_condition_paiement(company, user):
+    existant = _premier('parametres.ConditionPaiement', company)
+    if existant is not None:
+        return existant
+    return _modele('parametres.ConditionPaiement').objects.create(
+        company=company, libelle='Comptant (fuzz)')
+
+
+def _semer_emplacement_stock(company, user):
+    existant = _premier('stock.EmplacementStock', company)
+    if existant is not None:
+        return existant
+    return _modele('stock.EmplacementStock').objects.create(
+        company=company, nom='Dépôt fuzz', is_principal=True)
+
+
 def _semer_gabarit_dossier(company, user):
     existant = _premier('calepinage.GabaritDossierReglementaire', company)
     if existant is not None:
@@ -465,6 +489,9 @@ SEMEURS = (
     ('calepinage.SystemeFixation', _semer_systeme_fixation),
     ('calepinage.GabaritDossierReglementaire', _semer_gabarit_dossier),
     ('entites.Entite', _semer_entite),
+    ('stock.CategorieFournisseur', _semer_categorie_fournisseur),
+    ('parametres.ConditionPaiement', _semer_condition_paiement),
+    ('stock.EmplacementStock', _semer_emplacement_stock),
     ('ged (coffre, dossier, étiquette)', _semer_ged),
     ('achats.RetourFournisseur', _semer_retour_fournisseur),
 )
