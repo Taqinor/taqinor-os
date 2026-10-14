@@ -15,7 +15,7 @@ admins à notifier.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 
 from django.db import models
 from django.db.models import Q
@@ -153,6 +153,10 @@ class MaintenanceWindowSerializer(CompanyScopedRelationsMixin, serializers.Model
     termine_le_local = serializers.SerializerMethodField()
     # ERR-ENF11-FUZZ-CORE — textes JSON stricts (``description: 0`` était
     # converti en « 0 » et accepté).
+    # Horodatages servis en UTC (``Z``) : le fuseau d'affichage d'une date très
+    # ancienne porte un décalage à secondes (LMT -00:30:20), que RFC 3339 refuse.
+    debute_le = serializers.DateTimeField(default_timezone=dt_timezone.utc)
+    termine_le = serializers.DateTimeField(default_timezone=dt_timezone.utc)
     region = ChaineStricte(required=False, allow_blank=True, max_length=60)
     description = ChaineStricte(required=False, allow_blank=True)
 
