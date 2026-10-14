@@ -281,6 +281,7 @@ class EmailTemplate(models.Model):
                 from apps.parametres.selectors import company_identity
                 nom = (company_identity(company).get('nom') or '').strip()
             except Exception:  # pragma: no cover — best-effort, jamais bloquant
+                logger.warning("render : erreur absorbée, repli dégradé", exc_info=True)
                 nom = ''
             if not nom:
                 nom = (getattr(company, 'nom', '') or '').strip()

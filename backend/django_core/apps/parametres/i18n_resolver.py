@@ -33,6 +33,9 @@ maîtres du choix de leur propre dictionnaire de libellés (NTI18N5 pour le
 moteur premium).
 """
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Langues supportées par le cadre i18n léger (fr/en/ar). Toute valeur hors
 #: de cette liste, à n'importe quel niveau de la chaîne de priorité, est
@@ -62,6 +65,7 @@ def _defaut_du_champ(client, nom_champ='langue_document'):
     try:
         champ = client._meta.get_field(nom_champ)
     except Exception:  # noqa: BLE001 — jamais bloquant pour un rendu PDF
+        logger.warning("_defaut_du_champ : erreur absorbée, repli dégradé", exc_info=True)
         return None
     defaut = getattr(champ, 'default', None)
     # ``TextChoices`` : le défaut est un membre d'énum (sous-classe de ``str``)
@@ -124,6 +128,6 @@ def resolve_langue_sortie(*, langue_explicite=None, client=None, company=None) -
             if company_langue:
                 return company_langue
         except Exception:  # noqa: BLE001 — jamais bloquant pour un rendu PDF
-            pass
+            logger.warning("resolve_langue_sortie : erreur absorbée, repli dégradé", exc_info=True)
 
     return LANGUE_PAR_DEFAUT

@@ -31,6 +31,9 @@ est exactement le genre de signal muet que cette tâche existe pour supprimer.
 from __future__ import annotations
 
 from apps.records.xlsx import XLSX_CONTENT_TYPE, coerce_cell, neutralize_cell
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Langues de la relecture : le FR est la source, EN et AR sont les cibles
 #: contrôlées (mêmes trois langues que le reste du cadre i18n léger).
@@ -70,6 +73,7 @@ def _variantes(instance):
     try:
         return translations_for(instance)
     except Exception:  # noqa: BLE001 — un export ne casse jamais sur ce point
+        logger.warning("_variantes : erreur absorbée, repli dégradé", exc_info=True)
         return {}
 
 

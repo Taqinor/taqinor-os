@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 #: Rayon maximal (km) d'une preuve « ville voisine ». Au-delà, « une
 #: installation comparable à la vôtre » ne serait plus vrai : mieux vaut
@@ -28,6 +31,7 @@ def _profile(company):
             from apps.parametres.models import CompanyProfile
             return CompanyProfile.get(company=company)
         except Exception:  # noqa: BLE001 — un PDF/simulateur ne casse jamais ici
+            logger.warning("_load : erreur absorbée, repli dégradé", exc_info=True)
             return None
 
     # SCA43 / NTPLT16 — mémo PAR REQUÊTE (contextvar), MÊME clé que
@@ -90,6 +94,7 @@ def nom_intervenant(user, company) -> str:
     try:
         nom = (user.get_full_name() or "").strip()
     except Exception:  # noqa: BLE001 — un document ne casse jamais ici
+        logger.warning("nom_intervenant : erreur absorbée, repli dégradé", exc_info=True)
         nom = ""
     if nom and "@" not in nom and nom != (getattr(user, "username", "") or ""):
         return nom
@@ -243,6 +248,7 @@ def residential_tranches_for(company) -> dict | None:
         from apps.parametres.models_tariff import TariffSettings
         settings = TariffSettings.get(company=company)
     except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        logger.warning("residential_tranches_for : erreur absorbée, repli dégradé", exc_info=True)
         return None
     if not settings.residential_tiers:
         return None
@@ -440,6 +446,7 @@ def _puissance_du_dernier_devis(lead):
         kwc = (conception_pour_lead(lead, lead.company) or {}).get("kwc")
         return float(kwc) if kwc not in (None, "") else None
     except Exception:  # noqa: BLE001 — un message ne casse jamais sur ce point
+        logger.warning("_puissance_du_dernier_devis : erreur absorbée, repli dégradé", exc_info=True)
         return None
 
 
@@ -480,6 +487,7 @@ def _kwc_dernier_devis_pro(lead):
         from apps.ventes.selectors import kwc_dernier_devis
         return kwc_dernier_devis(lead, lead.company)
     except Exception:  # noqa: BLE001 — un message ne casse jamais sur ce point
+        logger.warning("_kwc_dernier_devis_pro : erreur absorbée, repli dégradé", exc_info=True)
         return None
 
 
