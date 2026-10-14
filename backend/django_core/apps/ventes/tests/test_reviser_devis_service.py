@@ -234,3 +234,29 @@ class ReviserDevisService(TestCase):
                            {'is_active': False}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self._assert_v1_reactivee(v1, bc)
+
+    # ── VNT56 — les jumeaux refus et expiration d'une V2 non acceptée ──────
+
+    def _v2_envoyee(self):
+        v1, v2, bc = self._v1_acceptee_et_v2()
+        Devis.objects.filter(pk=v2.pk).update(statut=Devis.Statut.ENVOYE)
+        v2.refresh_from_db()
+        return v1, v2, bc
+
+    def test_vnt56_refus_de_la_v2_reactive_v1(self):
+        v1, v2, bc = self._v2_envoyee()
+        r = self.api.post(f'/api/django/ventes/devis/{v2.id}/refuser/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self._assert_v1_reactivee(v1, bc)
+
+    def test_vnt56_expiration_de_la_v2_reactive_v1(self):
+        import datetime
+        from apps.ventes.domain.recouvrement import expire_stale_devis
+        v1, v2, bc = self._v2_envoyee()
+        Devis.objects.filter(pk=v2.pk).update(
+            date_validite=datetime.date(2020, 1, 1))
+        expire_stale_devis()
+        v2.refresh_from_db()
+        self.assertEqual(v2.statut, Devis.Statut.EXPIRE)
+        self._assert_v1_reactivee(v1, bc)
