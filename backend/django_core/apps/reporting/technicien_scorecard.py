@@ -122,10 +122,11 @@ def _technicien_stats(company, technicien, *, start=None, end=None):
     }
 
 
-_TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE = inline_serializer('TechnicienScorecardTechnicienScorecardReponse', {
-    'scorecard': drf_serializers.JSONField(allow_null=True),
-    'moyenne_equipe': drf_serializers.JSONField(allow_null=True),
-})
+_TECHNICIEN_SCORECARD_TECHNICIEN_SCORECARD_REPONSE = inline_serializer(
+    'TechnicienScorecardTechnicienScorecardReponse', {
+        'scorecard': drf_serializers.JSONField(allow_null=True),
+        'moyenne_equipe': drf_serializers.JSONField(allow_null=True),
+    })
 
 
 @extend_schema(
