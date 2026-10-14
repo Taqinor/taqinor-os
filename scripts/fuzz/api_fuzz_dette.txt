@@ -830,7 +830,6 @@ Server error|GET /api/django/stock/produits/analyse-achats/
 Server error|GET /api/django/stock/produits/analyse-achats/pdf/
 Server error|GET /api/django/stock/produits/expirant-bientot/
 Server error|GET /api/django/stock/produits/previsions-reappro/
-Server error|GET /api/django/ventes/devis/{id}/proposal/
 Server error|POST /api/django/installations/approbations-bcf/approuver/
 Server error|POST /api/django/installations/chantiers/creer-depuis-devis/
 Server error|POST /api/django/installations/lots-prelevement/

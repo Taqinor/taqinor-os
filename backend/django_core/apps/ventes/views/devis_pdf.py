@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 #: ADEV31 — le seul texte servi quand le rendu de ``/proposal`` échoue.
+#: ENF11 (api-fuzz « Server error ») — la RÈGLE DURE du moteur (« une option
+#: ne se rend jamais sans onduleur », ``quote_engine/builder.py``) lève un
+#: ``ValueError`` dont ce fragment est stable : c'est un refus tenant au
+#: CONTENU du devis (409), pas une panne (500). Le moteur n'est pas touché.
+FRAGMENT_REFUS_SANS_ONDULEUR = 'génération du PDF à options refusée'
+MSG_PROPOSITION_SANS_ONDULEUR = (
+    "Aucune option de ce devis ne contient d'onduleur : le document à "
+    "options ne peut pas être généré (format une page possible : "
+    "?pdf_mode=onepage).")
 MSG_PROPOSITION_INDISPONIBLE = (
     'Génération de la proposition momentanément indisponible.')
 
@@ -115,7 +124,7 @@ class DevisPdfActionsMixin:
             'date': job.get('at') if statut == 'echec' else None,
         })
 
-    @extend_schema(parameters=[OpenApiParameter('pdf_mode', OpenApiTypes.STR, required=False, enum=['full', 'onepage']), OpenApiParameter('show_monthly', OpenApiTypes.STR, required=False), OpenApiParameter('devis_final', OpenApiTypes.STR, required=False), OpenApiParameter('include_etude', OpenApiTypes.STR, required=False), OpenApiParameter('include_calepinage', OpenApiTypes.STR, required=False), OpenApiParameter('include_note_calcul', OpenApiTypes.STR, required=False), OpenApiParameter('langue', OpenApiTypes.STR, required=False)], responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    @extend_schema(parameters=[OpenApiParameter('pdf_mode', OpenApiTypes.STR, required=False, enum=['full', 'onepage']), OpenApiParameter('show_monthly', OpenApiTypes.STR, required=False), OpenApiParameter('devis_final', OpenApiTypes.STR, required=False), OpenApiParameter('include_etude', OpenApiTypes.STR, required=False), OpenApiParameter('include_calepinage', OpenApiTypes.STR, required=False), OpenApiParameter('include_note_calcul', OpenApiTypes.STR, required=False), OpenApiParameter('langue', OpenApiTypes.STR, required=False)], responses={(200, 'application/pdf'): OpenApiTypes.BINARY, 409: D.ErreurDetail})
     @action(
         detail=True,
         methods=['get'],
@@ -183,7 +192,11 @@ class DevisPdfActionsMixin:
             key = generate_premium_devis_pdf(
                 devis.id, clean_pdf_options(raw), persist=False)
             pdf_bytes = download_pdf(key)
-        except Exception:
+        except Exception as exc:
+            if (isinstance(exc, ValueError)
+                    and FRAGMENT_REFUS_SANS_ONDULEUR in str(exc)):
+                return Response({'detail': MSG_PROPOSITION_SANS_ONDULEUR},
+                                status=status.HTTP_409_CONFLICT)
             # ADEV31 (C-ADEV-043) — jamais le texte brut de l'exception au
             # client (hôte, bucket, chemin) : message neutre, pile au journal.
             logger.warning("devis_pdf.DevisPdfActionsMixin.proposal : erreur ignorée (mode dégradé)", exc_info=True)
