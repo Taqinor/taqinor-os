@@ -837,6 +837,11 @@ def _precharger(rows) -> list:
             and getattr(d, '_lot_vente', None) is None]
     if not rows:
         return []
+    # Ce que le prix convenu et l'échéancier lisent par devis (société,
+    # lignes et produits) : déjà préchargé par la liste des devis (aucune
+    # requête alors) ; chargé ici en lot pour une autre liste (lead, VNT70).
+    from django.db.models import prefetch_related_objects
+    prefetch_related_objects(rows, 'company', 'lignes', 'lignes__produit')
     connus = {d.pk: d for d in rows}
     complexes = [d for d in rows if d.superseded_by_id is not None
                  or d.version_parent_id is not None]

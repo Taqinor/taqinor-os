@@ -230,7 +230,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         serializer = self.get_serializer(
             instance, context={
                 **self.get_serializer_context(),
-                'include_chatter_recent': True,
+                'include_chatter_recent': True, 'include_vente': True,  # VNT70
             })
         return Response(serializer.data)
 
