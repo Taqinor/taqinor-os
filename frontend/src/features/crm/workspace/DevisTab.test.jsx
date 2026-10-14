@@ -3,7 +3,7 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
 import DevisTab from './DevisTab'
 import {
@@ -22,7 +22,7 @@ import { resolveCss } from '../../../test/readCss.mjs'
    props contrôlées, comme le fera réellement ContextRail). */
 
 const {
-  genererFacture, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
+  apercuFacturerVente, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
@@ -32,7 +32,9 @@ const {
     { id: 41, nom: 'Panneau Longi 610W', marque: 'Longi', prix_vente: 1400, prix_achat: 1000 },
   ]
   return {
-    genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
+    // VNT75 — « Facturer… » du panneau ouvre FacturerVenteDialog, qui lit
+    // l'aperçu serveur (réponse fournie par le test depuis devis_facturer.json).
+    apercuFacturerVente: vi.fn(),
     createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
     whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR538 — l'aperçu sans effet : réponse fournie par le test depuis
@@ -65,7 +67,7 @@ const {
   }
 })
 vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+  default: { apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
 }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
@@ -242,51 +244,58 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     date_creation: '2026-01-05', option_acceptee: 'A', chantier: null,
   }
 
-  it('carte rend référence, statut, total .num et « Générer la facture »/« Créer le chantier »', () => {
+  it('carte rend référence, statut, total .num et « Créer le chantier » ; sans `vente` aucun « Facturer »', () => {
     renderTab({ state: leadState({ devis: [devisAccepte] }) })
     expect(screen.getByText('DEV-2026-001')).toBeInTheDocument()
     expect(screen.getByText('Accepté')).toBeInTheDocument()
     expect(document.querySelector('.num')).toHaveTextContent('15 000')
-    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Facturer|Générer la facture/ })).toBeNull()
     expect(screen.getByRole('button', { name: /Créer le chantier/ })).toBeInTheDocument()
   })
 
-  it('« Générer la facture » appelle ventesApi puis onAction(\'refresh\')', async () => {
-    const user = userEvent.setup()
-    const { onAction } = renderTab({ state: leadState({ devis: [devisAccepte] }) })
-    await user.click(screen.getByRole('button', { name: /Facturer par tranches/ }))
-    await waitFor(() => expect(genererFacture).toHaveBeenCalledWith(1))
-    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
-    expect(await screen.findByText(/FAC-1 créée/)).toBeInTheDocument()
-  })
-
-  // ATOT31 — les boutons suivent `solde.porte_facturation` du contrat
-  // `devis_solde.json` (exemples COMMITTÉS, jamais un mock inventé).
-  const avecPorte = (variante) => ({
+  // VNT75 — les boutons suivent `vente.peut` du contrat `vente_etat.json`
+  // (exemples COMMITTÉS, jamais un mock inventé) ; plus de repli `'libre'`.
+  const avecVente = (variante) => ({
     ...devisAccepte,
-    solde: exempleContrat('ventes', 'devis_solde', variante).solde,
+    vente: exempleContrat('ventes', 'vente_etat', variante).vente,
   })
 
-  it('porte aucune masque generer-facture', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple_tout_facture')] }) })
-    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
+  it('« Facturer l’acompte » ouvre « Facturer la vente » (aperçu serveur)', async () => {
+    apercuFacturerVente.mockResolvedValue({ data: documentContrat('ventes', 'devis_facturer').apercu_get.reponse_200 })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [avecVente('exemple')] }) })
+    await user.click(screen.getByRole('button', { name: /Facturer l.acompte/ }))
+    await waitFor(() => expect(apercuFacturerVente).toHaveBeenCalledWith(1))
+    expect(await screen.findByText(/Facturer — DEV-2026-001/)).toBeInTheDocument()
   })
 
-  it('porte tranche', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple')] }) })
-    expect(screen.getByRole('button', { name: /Générer la facture/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
+  it('porte aucune (tout facturé) : aucun bouton « Facturer »', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_tout_facture')] }) })
+    expect(screen.queryByRole('button', { name: /Facturer/ })).toBeNull()
   })
 
-  it('porte libre', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple_vide')] }) })
-    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
+  it('acompte payé : seul le geste suivant (`peut.facturer_solde`)', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_acompte_paye_solde_a_faire')] }) })
+    expect(screen.getByRole('button', { name: /Facturer (le solde|la tranche suivante)/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Facturer l.acompte/ })).toBeNull()
+  })
+
+  it('vente neuve : seul « Facturer l’acompte » (`peut.facturer_acompte`)', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple')] }) })
+    expect(screen.getByRole('button', { name: /Facturer l.acompte/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Facturer/ })).toHaveLength(1)
+  })
+
+  it('version remplacée / révision en cours : jamais de « Facturer »', () => {
+    renderTab({
+      state: leadState({
+        devis: [
+          avecVente('exemple_version_remplacee'),
+          { ...avecVente('exemple_revision_en_cours'), id: 2, reference: 'DEV-2' },
+        ],
+      }),
+    })
+    expect(screen.queryByRole('button', { name: /Facturer/ })).toBeNull()
   })
 
   it('« Créer le chantier » appelle installationsApi puis onAction(\'refresh\')', async () => {

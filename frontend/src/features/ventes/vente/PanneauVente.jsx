@@ -2,9 +2,15 @@
 // la carte devis du lead. Tout est LU de `d.vente` (GET détail du lead,
 // VNT70 ; contrat `ventes/contract_samples/vente_etat.json`) : `vente` absent
 // ou null ⇒ rien. Une version remplacée dit « Remplacé par … », sans bouton.
+// VNT75 — « Facturer l'acompte » / « Facturer le solde » : deux boutons au
+// plus, ouverts par `vente.peut` SEUL (jamais le repli `'libre'`), jamais sur
+// une version remplacée ni quand le serveur dit `prochaine_action: 'aucune'`.
 import { useState } from 'react'
+import { Button } from '../../../ui'
 import BilanVente from './BilanVente'
 import LigneFactureVente from './LigneFactureVente'
+import FacturerVenteDialog from './FacturerVenteDialog'
+import { peutFacturerAcompte, peutFacturerSolde } from './venteEtat'
 
 /**
  * La `vente` du DERNIER GET détail : une réponse qui ne porte pas la clé
@@ -19,12 +25,17 @@ function useVenteMemorisee(devis) {
   return presente ? devis.vente : memo
 }
 
-export default function PanneauVente({ devis }) {
+export default function PanneauVente({ devis, onRafraichir }) {
   const vente = useVenteMemorisee(devis)
+  const [facturer, setFacturer] = useState(false)
   if (!vente) return null
   const remplacee = vente.est_tete === false
   const tete = remplacee ? (vente.versions || []).find((v) => v.id === vente.tete_id) : null
   const factures = vente.factures || []
+  const d = { ...devis, vente }
+  const ouvert = !remplacee && vente.prochaine_action !== 'aucune'
+  const acompte = ouvert && peutFacturerAcompte(d)
+  const solde = ouvert && peutFacturerSolde(d)
   return (
     <section
       className="grid gap-2 rounded-md border p-2"
@@ -42,6 +53,25 @@ export default function PanneauVente({ devis }) {
           {factures.map((f) => <LigneFactureVente key={f.id} facture={f} />)}
         </ul>
       )}
+      {(acompte || solde) && (
+        <div className="flex flex-wrap gap-2">
+          {acompte && (
+            <Button type="button" size="sm" onClick={() => setFacturer(true)}>
+              Facturer l&apos;acompte
+            </Button>
+          )}
+          {solde && (
+            <Button type="button" size="sm" variant="outline" onClick={() => setFacturer(true)}>
+              {vente.prochaine_action === 'intermediaire' ? 'Facturer la tranche suivante' : 'Facturer le solde'}
+            </Button>
+          )}
+        </div>
+      )}
+      <FacturerVenteDialog
+        devis={facturer ? devis : null}
+        onOpenChange={(o) => { if (!o) setFacturer(false) }}
+        onDone={() => onRafraichir?.()}
+      />
     </section>
   )
 }
