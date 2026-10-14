@@ -208,7 +208,12 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
         OpenApiParameter('installation', ENTIER_ID, required=False),
         OpenApiParameter('client', ENTIER_ID, required=False),
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
-        OpenApiParameter('garantie', OpenApiTypes.STR, required=False, enum=['non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie', 'legale_uniquement']),
+        OpenApiParameter(
+            'garantie',
+            OpenApiTypes.STR,
+            required=False,
+            enum=['non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie', 'legale_uniquement'],
+        ),
         OpenApiParameter('categorie', ENTIER_ID, required=False),
         OpenApiParameter('rebut', OpenApiTypes.STR, required=False, enum=['only', 'tous']),
     ]))

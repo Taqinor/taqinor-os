@@ -877,7 +877,8 @@ class NotificationsSchemaTests(SimpleTestCase):
 
 # ── ENF17 — FK des sérialiseurs notifications bornées société ──────────
 # ``NotificationRoutingRuleSerializer.target_user`` (une règle ne cible plus
-# le compte d'une autre société) (``AnnonceLectureSerializer``, mort et cassé — champs absents du modèle — a été retiré) :
+# le compte d'une autre société) (``AnnonceLectureSerializer``, mort et cassé — champs absents du modèle — a été retiré)
+# :
 # id d'ailleurs = id absent (400), id de la société accepté.
 
 
