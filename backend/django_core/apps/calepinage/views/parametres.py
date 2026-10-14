@@ -29,6 +29,7 @@ from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.parseurs import PARSEURS_JSON
 from core.permissions import ScopedPermission
 
 from ..permissions import CAL_GERER, CAL_VOIR
@@ -133,6 +134,9 @@ def _forme_reglages(nom, avec_registre=False, partielle=False):
 class ParametresCalepinageView(APIView):
     """Les réglages calepinage de la société de l'appelant."""
 
+    # Fuzz CI #997 : sections = objets JSON ; un multipart n'en porte que des
+    # chaînes (« doit être un objet (reçu : str) ») → corps JSON seul publié.
+    parser_classes = PARSEURS_JSON
     permission_classes = [ScopedPermission]
     read_permission = CAL_VOIR
     write_permission = CAL_GERER
