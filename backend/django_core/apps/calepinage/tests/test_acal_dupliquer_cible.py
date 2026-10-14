@@ -165,5 +165,8 @@ class DupliquerCible(BaseApiCalepinage):
             self.assertEqual(reponse.status_code, 400, reponse.data)
             self.assertIn('titre', reponse.data)
         self.assertEqual(Calepinage.objects.count(), avant)
-        reponse = self._dupliquer(self.source, {'titre': 'x' * 200})
+        # ACAL187 : la source est le calepinage OUVERT du lead — la copie
+        # exige une cible (autre lead), sinon 409 MESSAGE_SOURCE_OUVERTE.
+        cible = Lead.objects.create(company=self.company, nom='Titre 200')
+        reponse = self._dupliquer(self.source, {'titre': 'x' * 200, 'lead': cible.pk})
         self.assertEqual(reponse.status_code, 201, reponse.data)

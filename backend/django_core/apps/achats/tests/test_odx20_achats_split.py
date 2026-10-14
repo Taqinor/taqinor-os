@@ -212,6 +212,13 @@ class TestEnf11SchemaCreationsAchats(TestCase):
     def _propriete(self, composant, champ):
         return self.composants[composant]['properties'][champ]
 
+    def _motif(self, composant, champ):
+        # CI #997 (2) : montants publiés « chaîne OU nombre » (`DecimalSouple`,
+        # anyOf) — le motif vit sur la branche chaîne.
+        prop = self._propriete(composant, champ)
+        branches = prop.get('anyOf', [prop])
+        return next(b['pattern'] for b in branches if 'pattern' in b)
+
     def test_lignes_non_vides_declarees_minitems(self):
         for composant in ('BonCommandeFournisseurRequest',
                           'ReceptionFournisseurRequest',
@@ -230,8 +237,7 @@ class TestEnf11SchemaCreationsAchats(TestCase):
 
     def test_montant_de_paiement_chaine_decimale_positive(self):
         import re
-        motif = re.compile(
-            self._propriete('PaiementFournisseurRequest', 'montant')['pattern'])
+        motif = re.compile(self._motif('PaiementFournisseurRequest', 'montant'))
         for refuse in ('', '-', '.', '0', '0.00', '-5', '5.'):
             self.assertIsNone(motif.match(refuse), refuse)
         for accepte in ('12.50', '0.05', '1200', '0.5'):
@@ -239,9 +245,8 @@ class TestEnf11SchemaCreationsAchats(TestCase):
 
     def test_decimaux_de_ligne_sans_chaine_vide(self):
         import re
-        motif = re.compile(self._propriete(
-            'LigneBonCommandeFournisseurRequest',
-            'prix_achat_unitaire')['pattern'])
+        motif = re.compile(self._motif(
+            'LigneBonCommandeFournisseurRequest', 'prix_achat_unitaire'))
         for refuse in ('', '-', '.'):
             self.assertIsNone(motif.match(refuse), refuse)
         self.assertIsNotNone(motif.match('800.00'))
