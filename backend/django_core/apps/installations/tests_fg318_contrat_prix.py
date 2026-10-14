@@ -144,6 +144,20 @@ class TestLignesEtLookup(TestCase):
         self.assertEqual(float(r.data['prix_convenu']), 1100.0)
         self.assertEqual(r.data['version'], 1)
 
+    def test_lookup_parametres_illisibles_400(self):
+        """ERR-ENF11-FUZZ-INSTALLATIONS — ``produit``/``fournisseur`` entiers
+        >= 1 et ``date`` AAAA-MM-JJ stricte : 400 nommant le paramètre."""
+        url = f'{BASE}/contrats-prix-fournisseur/prix-convenu/'
+        for params, champ in (
+                ({'produit': 'abc'}, 'produit'),
+                ({'produit': self.produit.id, 'fournisseur': '0'},
+                 'fournisseur'),
+                ({'produit': self.produit.id, 'date': '2026-1-5'}, 'date')):
+            with self.subTest(params=params):
+                r = self.api.get(url, params)
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertIn(champ, r.data)
+
     def test_lookup_prefers_highest_version(self):
         c1 = self._contrat(version=1, statut='actif')
         ContratPrixLigne.objects.create(

@@ -8,7 +8,7 @@ convenu d'un produit à une date (d'après les contrats en vigueur).
 `company` propre) sont scopées par leur contrat parent. Cross-app :
 ``stock.Fournisseur`` / ``stock.Produit`` en string-FK. Montants INTERNES.
 """
-from datetime import date
+from core.champs_stricts import date_ou_400, entier_ou_400
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -104,23 +104,20 @@ class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
         """FG318 — prix convenu d'un produit à une date, d'après les contrats en
         vigueur. Params : `produit` (requis), `fournisseur` (optionnel), `date`
         (optionnelle, YYYY-MM-DD). Lecture seule, montant INTERNE."""
-        produit_id = request.query_params.get('produit')
+        # ERR-ENF11-FUZZ-INSTALLATIONS : identifiants entiers >= 1 et date
+        # stricte (400 nommant le paramètre) ; ``produit`` reste requis.
+        produit_id = entier_ou_400(
+            request.query_params.get('produit'), 'produit', mini=1)
         if not produit_id:
             return Response(
                 {'produit': 'Paramètre `produit` requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        a_la_date = None
-        raw = request.query_params.get('date')
-        if raw:
-            try:
-                a_la_date = date.fromisoformat(raw)
-            except ValueError:
-                return Response(
-                    {'date': 'Date invalide (attendu YYYY-MM-DD).'},
-                    status=status.HTTP_400_BAD_REQUEST)
+        a_la_date = date_ou_400(request.query_params.get('date'), 'date')
         result = selectors.prix_convenu_fournisseur(
             request.user.company, produit_id,
-            fournisseur_id=request.query_params.get('fournisseur') or None,
+            fournisseur_id=entier_ou_400(
+                request.query_params.get('fournisseur'), 'fournisseur',
+                mini=1),
             a_la_date=a_la_date)
         return Response(result)
 
