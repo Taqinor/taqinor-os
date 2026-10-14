@@ -53,6 +53,14 @@ class CreationRefusee(ValueError):
         self.champ = champ
 
 
+class JeuDeReglagesInconnu(CreationRefusee):
+    """``preset_id`` bien formé mais absent des jeux de la société : 404
+    (CI #993 api-fuzz — introuvable, pas mal formé) ; le message ne recopie
+    jamais la valeur reçue (même texte qu'un jeu d'une autre société)."""
+
+    statut_http = 404
+
+
 class DevisTenuParUnArchive(CreationRefusee):
     """Refus 409 NOMMÉ : le devis est déjà tenu par un calepinage ARCHIVÉ
     (contrainte ``calepinage_un_par_devis`` ; l'archivé est caché par
@@ -548,16 +556,16 @@ def _jeux_disponibles(company):
 
 def _jeu_de_reglages(company, preset_id):
     """Le jeu ``preset_id`` de la société, ``None`` s'il n'est pas demandé —
-    refus nommant ``preset_id`` s'il est inconnu."""
+    :class:`JeuDeReglagesInconnu` (404, nomme ``preset_id``) s'il est inconnu."""
     if preset_id in (None, ''):
         return None
     demande = str(preset_id).strip()
     for jeu in _jeux_disponibles(company):
         if str(jeu.get('id') or '').strip() == demande:
             return jeu
-    raise CreationRefusee(
-        f"Jeu de réglages inconnu : « {demande} » — choisissez l'un des jeux "
-        "enregistrés dans les réglages de la société.", champ='preset_id')
+    raise JeuDeReglagesInconnu(
+        "Jeu de réglages inconnu — choisissez l'un des jeux enregistrés dans "
+        "les réglages de la société.", champ='preset_id')
 
 
 def _layout_regle(roof_layout, jeu):

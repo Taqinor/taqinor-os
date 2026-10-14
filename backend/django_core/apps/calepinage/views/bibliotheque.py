@@ -141,8 +141,12 @@ CHAMPS_DU_CORPS = {'modele': 'modele_id', 'lead': 'lead_id',
 
 
 def _refus_nomme(refus):
+    """Le refus nommé — 400, ou le statut du refus (``statut_http`` : 404
+    pour un jeu de réglages inconnu)."""
     champ = CHAMPS_DU_CORPS.get(refus.champ, refus.champ) or 'detail'
-    return Response({champ: str(refus)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({champ: str(refus)},
+                    status=getattr(refus, 'statut_http',
+                                   status.HTTP_400_BAD_REQUEST))
 
 
 @extend_schema(
@@ -152,7 +156,10 @@ def _refus_nomme(refus):
         'client_id': drf_serializers.IntegerField(required=False),
         'devis_id': drf_serializers.IntegerField(required=False),
         'titre': drf_serializers.CharField(required=False, allow_blank=True),
-        'preset_id': drf_serializers.JSONField(required=False)}),
+        'preset_id': drf_serializers.CharField(
+            required=False, allow_blank=True, allow_null=True)}),
+    # CI #993 api-fuzz — ``preset_id`` est l'identifiant TEXTE d'un jeu :
+    # inconnu ⇒ 404 nommant ``preset_id`` ; non-texte (objet, nombre) ⇒ 400.
     responses={200: FORME_DETAIL_CALEPINAGE, 201: FORME_DETAIL_CALEPINAGE})
 @action(detail=False, methods=['post'], url_path='depuis-modele',
         permission_classes=[PeutGererCalepinage])
@@ -180,6 +187,10 @@ def depuis_modele(self, request):
     devis_id = _identifiant(corps.get('devis_id'))
     titre = str(corps.get('titre') or '')
     preset_id = corps.get('preset_id')
+    if preset_id is not None and not isinstance(preset_id, str):
+        return Response(
+            {'preset_id': 'Identifiant de jeu de réglages attendu (texte).'},
+            status=status.HTTP_400_BAD_REQUEST)
     brut_modele = corps.get('modele_id')
     cree = True
     try:
