@@ -158,3 +158,35 @@ class TestT17GardeEnvoi(TestCase):
             mark_devis_sent(devis=d, user=self.resp)
         d.refresh_from_db()
         self.assertEqual(d.statut, 'brouillon')
+
+    # ── VNT57 — accepter un BROUILLON passe par LA règle de gel ────────────
+
+    def _accepter_brouillon(self, user):
+        CompanyProfile.objects.filter(company=self.company).update(
+            discount_approval_threshold=Decimal('5'))
+        d = self._devis(ref='DEV-QJR539-570')
+        r = self._api(user).post(
+            self._url(d, 'accepter/'), {'nom': 'Alaoui'}, format='json')
+        d.refresh_from_db()
+        return r, d
+
+    def test_vnt57_brouillon_remise_accepte_par_responsable_400(self):
+        r, d = self._accepter_brouillon(self.resp)
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.json()['code'], 'approbation_requise')
+        self.assertEqual(d.statut, 'brouillon')
+        self.assertIsNone(d.date_envoi)
+        self.assertFalse(d.remise_approuvee)
+
+    def test_vnt57_brouillon_remise_accepte_par_admin_gele_et_consigne(self):
+        r, d = self._accepter_brouillon(self.admin)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(d.statut, 'accepte')
+        self.assertTrue(d.remise_approuvee)
+        self.assertEqual(d.remise_approuvee_par_id, self.admin.pk)
+        self.assertIsNotNone(d.date_envoi)
+        # Textes contractuels gelés (APDF20 : toujours, même par défaut).
+        from apps.ventes.domain.envoi import TYPE_DOC_TEXTS_GELES
+        self.assertIn(TYPE_DOC_TEXTS_GELES, [
+            c.get('type') for c in (d.clauses_appliquees or [])
+            if isinstance(c, dict)])

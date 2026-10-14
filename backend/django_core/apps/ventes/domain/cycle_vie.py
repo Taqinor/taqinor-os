@@ -1513,6 +1513,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                       if scenario == 'Avec batterie'
                       else Devis.OptionAcceptee.SANS_BATTERIE)
 
+        if devis.statut == Devis.Statut.BROUILLON:  # VNT57 — T17 + gels (ADEV12)
+            from apps.ventes.domain.envoi import geler_document_engage
+            geler_document_engage(devis, user, acceptation=True)
         ancien = devis.statut
         devis.statut = Devis.Statut.ACCEPTE
         devis.date_acceptation = date_acc
