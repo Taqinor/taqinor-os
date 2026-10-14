@@ -253,18 +253,21 @@ class FolderSerializer(ChampsStrictsSansDecimalMixin,
     def validate(self, attrs):
         """Cabinet et parent doivent appartenir à la société de l'utilisateur,
         et le parent doit vivre dans le même cabinet."""
+        # CI #997 fuzz — hors société ou autre cabinet = objet INEXISTANT pour
+        # cette requête : 404 (même corps qu'une FK inconnue), plus 400.
+        from rest_framework.exceptions import NotFound
         request = self.context.get('request')
         cabinet = attrs.get('cabinet') or getattr(self.instance, 'cabinet', None)
         parent = attrs.get('parent', getattr(self.instance, 'parent', None))
         if request is not None:
             cid = request.user.company_id
             if cabinet is not None and cabinet.company_id != cid:
-                raise serializers.ValidationError({'cabinet': 'Cabinet inconnu.'})
+                raise NotFound({'cabinet': 'Cabinet inconnu.'})
             if parent is not None and parent.company_id != cid:
-                raise serializers.ValidationError({'parent': 'Dossier parent inconnu.'})
+                raise NotFound({'parent': 'Dossier parent inconnu.'})
         if parent is not None and cabinet is not None \
                 and parent.cabinet_id != cabinet.id:
-            raise serializers.ValidationError(
+            raise NotFound(
                 {'parent': 'Le parent doit appartenir au même cabinet.'})
         return attrs
 
