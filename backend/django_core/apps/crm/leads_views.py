@@ -21,6 +21,9 @@ from . import schema_docs as sd
 from .params_requete import (
     date_param, entier_param, texte_param, valider_pagination)
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema(parameters=[sd.P_DEBUT, sd.P_FIN], responses=sd.OBJ)
@@ -128,7 +131,7 @@ class PointContactViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
                 + ".",
             )
         except Exception:
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'perform_create', exc_info=True)
 
 
 class LeadIntakeActionsMixin:

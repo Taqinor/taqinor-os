@@ -54,6 +54,9 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(create=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE))
@@ -808,6 +811,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
             try:
                 return obj.get_statut_display()
             except Exception:
+                logger.warning('%s : échec ignoré (dégradé)', '_statut', exc_info=True)
                 return getattr(obj, 'statut', None)
 
         def _date(obj):
@@ -1258,7 +1262,7 @@ class ParrainageViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
                 if prof and prof.referral_reward is not None:
                     extra['recompense'] = prof.referral_reward
             except Exception:
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', 'perform_create', exc_info=True)
         serializer.save(**extra)
 
     @extend_schema(responses=inline_serializer('CrmParrainageStats', {
@@ -1512,7 +1516,7 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
                 f"Concurrent gagnant saisi : {obj.concurrent_nom}{prix}.",
             )
         except Exception:
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'perform_create', exc_info=True)
 
 
 @extend_schema_view(list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'),

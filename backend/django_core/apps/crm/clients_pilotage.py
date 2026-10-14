@@ -114,6 +114,7 @@ def _format_date_fr(valeur):
     try:
         return timezone.localtime(valeur).strftime('%d/%m/%Y')
     except Exception:  # noqa: BLE001 — jamais bloquant pour une note
+        logger.warning('%s : échec ignoré (dégradé)', '_format_date_fr', exc_info=True)
         return str(valeur)
 
 

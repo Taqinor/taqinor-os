@@ -11,6 +11,9 @@ n'est jamais patché par les tests.
 from .clients_selectors import (
     get_latest_lead_for_client,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def lead_du_devis(devis):
@@ -56,6 +59,7 @@ def _srm_deduite(ville):
         from .srm_regions import srm_depuis_ville
         return srm_depuis_ville(ville)
     except Exception:  # noqa: BLE001 — une déduction ratée n'arrête rien
+        logger.warning('%s : échec ignoré (dégradé)', '_srm_deduite', exc_info=True)
         return None
 
 

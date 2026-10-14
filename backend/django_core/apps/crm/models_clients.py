@@ -27,6 +27,9 @@ from .models import (
     Lead, _default_deal_expiry, _default_salle_vente_expiry,
     _default_salle_vente_token)
 from .stages import STAGE_CHOICES
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── FG234–237 — Partenaires & territoires commerciaux (ODX13, rapatriés de
 # compta : leur foyer Odoo naturel CRM/resellers) ──────────────────────────
@@ -1471,7 +1474,7 @@ class ForecastEntry(TenantModel):
             if devis is not None:
                 return devis.total_ttc
         except Exception:
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'montant_effectif', exc_info=True)
         return self.lead.montant_estime or Decimal('0')
 
 

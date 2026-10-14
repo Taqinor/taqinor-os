@@ -12,6 +12,9 @@ from .cadence_selectors import (
 from .portee_selectors import (
     cles_numeros_lead,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_phone_key(value):
@@ -178,6 +181,7 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
                 echeance = horaires.echeance_en_temps_ouvre(
                     horloge, delai, company, canal=CANAL_RAPPEL_SLA)
             except Exception:  # noqa: BLE001 — repli calendaire, jamais muet
+                logger.warning('%s : échec ignoré (dégradé)', 'leads_callback_sla_depasse', exc_info=True)
                 echeance = horloge + delai
             if echeance <= now:
                 en_retard.append(pk)
@@ -359,6 +363,7 @@ def _objectif_premier_contact(company):
         valeur = getattr(profil, 'premier_contact_objectif_min', None)
         return int(valeur) if valeur is not None else 5
     except Exception:  # noqa: BLE001 — défaut assumé
+        logger.warning('%s : échec ignoré (dégradé)', '_objectif_premier_contact', exc_info=True)
         return 5
 
 
