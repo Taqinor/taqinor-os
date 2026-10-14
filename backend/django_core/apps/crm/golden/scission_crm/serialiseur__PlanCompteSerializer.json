@@ -13,7 +13,7 @@
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "objectifs_strategiques",
    "read_only": false,
    "required": false
@@ -25,7 +25,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "concurrents_presents",
    "read_only": false,
    "required": false

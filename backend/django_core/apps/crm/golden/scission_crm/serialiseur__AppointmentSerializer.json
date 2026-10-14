@@ -43,13 +43,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "notes",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "reminder_sent",
    "read_only": true,
    "required": false

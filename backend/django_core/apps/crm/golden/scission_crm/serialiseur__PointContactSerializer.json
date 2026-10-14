@@ -37,7 +37,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "source",
    "read_only": false,
    "required": false
@@ -55,13 +55,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "detail",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalStricte",
    "nom": "cout",
    "read_only": false,
    "required": false

@@ -13,7 +13,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "nom",
    "read_only": false,
    "required": true
@@ -49,13 +49,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "recompense",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "actif",
    "read_only": false,
    "required": false
