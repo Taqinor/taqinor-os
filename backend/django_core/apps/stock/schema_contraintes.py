@@ -54,6 +54,11 @@ PHASES_LIMITEUR = {'type': 'integer', 'enum': [1, 3, None], 'nullable': True,
 #: (``MinValueValidator(1)`` / ``MaxValueValidator(100)``, ``decimal_places=1``).
 MOTIF_POURCENTAGE_1_100 = r'^(?:[1-9]\d?(?:\.\d?)?|100(?:\.0?)?)$'
 
+#: ICE : vide (non renseigné) ou exactement 15 chiffres (``validate_ice`` du
+#: serializer fournisseur / ``validate_ice_format``) — le schéma publiait une
+#: chaîne libre de 20 caractères.
+ICE_15_CHIFFRES = {'ice': {'pattern': r'^(?:\d{15})?$', 'maxLength': 15}}
+
 #: composant de requête -> {'proprietes': {champ: fragment fusionné},
 #: 'racine': fragment fusionné à la racine du composant}.
 CONTRAINTES = {
@@ -85,6 +90,8 @@ CONTRAINTES = {
         'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
         'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
         'remplacer': {'lim_phases': PHASES_LIMITEUR}},
+    'FournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
+    'PatchedFournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     'PrixFournisseurRequest': {},
     'PatchedPrixFournisseurRequest': {},
     'TrancheEcheancierRequest': {},
