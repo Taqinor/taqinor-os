@@ -129,8 +129,6 @@ API rejected schema-compliant request|POST /api/django/crm/leads/{id}/resume-ass
 API rejected schema-compliant request|POST /api/django/crm/partenaires/{id}/provisionner-acces/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/fait/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/piece-recue/
-API rejected schema-compliant request|POST /api/django/custom-fields/definitions/
-API rejected schema-compliant request|POST /api/django/custom-fields/permissions-role/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
 API rejected schema-compliant request|POST /api/django/facturation/factures/encaissement-groupe/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/
@@ -296,11 +294,8 @@ Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/pv-recept
 Undocumented HTTP status code|POST /api/public/v1/oauth/token/
 Unsupported methods|POST /api/django/core/module-toggles/
 Unsupported methods|TRACE /api/django/core/usage/couts/
-API accepted schema-violating request|PATCH /api/django/custom-fields/objects/{id}/
-API accepted schema-violating request|POST /api/django/custom-fields/objects/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
-API accepted schema-violating request|PUT /api/django/custom-fields/objects/{id}/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
 Server error|POST /api/django/imports/mapping/
 API rejected schema-compliant request|PATCH /api/django/core/formulaire-champs/{id}/
@@ -322,9 +317,6 @@ Server error|POST /api/django/core/sla/credits/{id}/statut/
 API accepted schema-violating request|GET /api/django/tiers/tiers/
 JSON deserialization error|POST /api/django/core/maintenance-windows/{id}/annuler/
 Missing Content-Type header|POST /api/django/core/maintenance-windows/{id}/annuler/
-API accepted schema-violating request|GET /api/django/achats/bons-commande-fournisseur/achats-hors-contrat/
-API accepted schema-violating request|GET /api/django/achats/factures-fournisseur/releve-deductions-tva/
-API accepted schema-violating request|GET /api/django/achats/paiements-fournisseur/ras-tva/export/
 API accepted schema-violating request|PATCH /api/django/records/activity-types/{id}/
 Server error|POST /api/django/records/comments/
 API accepted schema-violating request|PATCH /api/django/roles/{id}/

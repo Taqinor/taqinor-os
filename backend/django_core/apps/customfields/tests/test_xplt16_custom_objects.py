@@ -33,6 +33,15 @@ class TestCustomObjectDefCRUD(CF16Base):
         self.assertTrue(CustomObjectDef.objects.filter(
             company=self.company, code='registre_cles').exists())
 
+    def test_icone_non_texte_refusee(self):
+        """ENF11 (api-fuzz) — `icone` est une chaîne : `0` = 400, jamais « 0 »."""
+        resp = self.api.post('/api/django/custom-fields/objects/', {
+            'code': 'icone_nombre', 'libelle': 'Icone', 'icone': 0,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertFalse(CustomObjectDef.objects.filter(
+            company=self.company, code='icone_nombre').exists())
+
     def test_object_scoped_to_company(self):
         other = Company.objects.create(slug='cf16-other', nom='Autre')
         CustomObjectDef.objects.create(
