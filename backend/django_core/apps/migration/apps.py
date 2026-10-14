@@ -25,7 +25,8 @@ class MigrationConfig(AppConfig):
         'label': 'Migration',
         'icone': 'database',
         'depends': [],
-        'description': 'Projets de migration ERP sortants (Odoo/Sage/Excel) avec rapport de réconciliation obligatoire : comptages et totaux source vs cible avant toute clôture.',
+        'description': 'Projets de migration ERP sortants (Odoo/Sage/Excel) avec rapport de réconciliation '
+                       'obligatoire : comptages et totaux source vs cible avant toute clôture.',
         'categorie': 'Technique',
         'parked': True,
     }
