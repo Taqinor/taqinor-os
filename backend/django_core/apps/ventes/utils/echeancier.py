@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from apps.ventes.models import Avoir, Facture
+from apps.ventes.models import Facture
 import logging
 
 logger = logging.getLogger(__name__)
@@ -710,28 +710,6 @@ def schedule_for_devis(devis):
     return [(t['key'], t['valeur']) for t in tranches_normalisees(devis)]
 
 
-def factures_actives(devis):
-    """Factures de tranche non annulées du devis, dans l'ordre de création.
-
-    YOPSB13 — filtre en Python la relation ``factures`` PRÉCHARGÉE (prefetch de
-    DevisViewSet) au lieu de ``.exclude().order_by()`` : ce dernier clone le
-    manager, IGNORE le cache prefetch et ré-exécute une requête par appel (N+1
-    en liste), en perdant au passage les prefetch imbriqués paiements/avoirs.
-    Renvoie une liste — les 3 appelants la consomment déjà en liste/itération.
-    Hors liste (cache absent) : un seul SELECT, comportement inchangé."""
-    factures = sorted(devis.factures.all(), key=lambda f: f.id)
-    return [f for f in factures if f.statut != Facture.Statut.ANNULEE]
-
-
-def avoirs_correction(factures):
-    """ATOT36 — avoirs ÉMIS de type CORRECTION des ``factures`` : les seuls
-    remis au solde de l'échéancier (``next_tranche``, ``solde_devis``).
-    Lit le prefetch ``avoirs`` (aucune requête de plus en liste)."""
-    return [a for f in factures for a in f.avoirs.all()
-            if a.statut == Avoir.Statut.EMISE
-            and a.type == Avoir.Type.CORRECTION]
-
-
 def blended_tva_pct(devis) -> Decimal:
     """Taux de TVA mélangé du devis (TVA/HT×100), pour l'étiquette du PDF.
 
@@ -755,51 +733,6 @@ def _repartir_au_centime(total, poids):
     la porte historique de ses appelants."""
     from apps.facturation.totaux import repartir_au_centime
     return repartir_au_centime(total, poids)
-
-
-def ventilation_tva_tranche(devis, tranche, existantes=None):
-    """CIQ215 — ventilation ``[{taux, base_ht, montant}]`` (chaînes) d'une
-    tranche, ou None quand l'option retenue n'a qu'un taux (facture d'hier,
-    octet-identique).
-
-    Bases et TVA de la tranche réparties au prorata des bases (resp. des TVA)
-    par taux de l'option retenue (``option_totaux``), au centime par le plus
-    fort reste. La DERNIÈRE tranche prend le reste de CHAQUE taux, pour que
-    la somme des factures égale la ventilation du devis au centime. Aucun
-    taux ne change (convention 12)."""
-    from apps.ventes.utils.options import option_totaux
-    paniers = option_totaux(devis).get('tva_par_taux') or []
-    if len(paniers) < 2:
-        return None
-    taux = [Decimal(str(b['taux'])) for b in paniers]
-    bases_devis = {t: Decimal(str(b['base_ht'])) for t, b in zip(taux, paniers)}
-    tva_devis = {t: Decimal(str(b['montant'])) for t, b in zip(taux, paniers)}
-    ht, tva = Decimal(str(tranche['ht'])), Decimal(str(tranche['tva']))
-    bases = tvas = None
-    if tranche.get('is_last'):
-        precedentes = list(existantes if existantes is not None
-                           else factures_actives(devis))
-        if all(f.ventilation_tva for f in precedentes):
-            deja_b = {t: Decimal('0') for t in taux}
-            deja_t = {t: Decimal('0') for t in taux}
-            for f in precedentes:
-                for b in f.ventilation_tva:
-                    t = Decimal(str(b['taux']))
-                    if t in deja_b:
-                        deja_b[t] += Decimal(str(b['base_ht']))
-                        deja_t[t] += Decimal(str(b['montant']))
-            bases = {t: _q(bases_devis[t] - deja_b[t]) for t in taux}
-            tvas = {t: _q(tva_devis[t] - deja_t[t]) for t in taux}
-            if sum(bases.values()) != ht or sum(tvas.values()) != tva:
-                bases = tvas = None
-    if bases is None:
-        # ATOT6 — LE service unique de ventilation d'un document figé.
-        from apps.facturation.totaux import ventilation_document_fige
-        return ventilation_document_fige(
-            [{'taux': t, 'base_ht': bases_devis[t], 'montant': tva_devis[t]}
-             for t in taux], ttc=ht + tva, ht=ht, tva=tva)
-    return [{'taux': str(t), 'base_ht': str(_q(bases[t])),
-             'montant': str(_q(tvas[t]))} for t in taux]
 
 
 def _tranche_type(key, is_last=False):
@@ -1035,8 +968,7 @@ def porte_facturation(devis, actives=None):
     ``'tranche'`` (un échéancier est en cours : seule la tranche suivante),
     ``'aucune'`` (complète, BC, consolidée, ou échéancier soldé).
 
-    Lit les factures PRÉCHARGÉES du devis (``factures_actives``, liste sans
-    N+1) ; la consolidée (``devis=None``) n'est visible que par
+    Lit les factures PRÉCHARGÉES du devis (liste sans N+1) ; la consolidée (``devis=None``) n'est visible que par
     ``FactureSource`` : une seule requête, et seulement pour un devis accepté
     sans facture directe (seul cas où elle change la réponse).
 

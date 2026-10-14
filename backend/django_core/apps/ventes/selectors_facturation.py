@@ -380,30 +380,6 @@ def encours_ouvert_par_tiers(company):
     return [v for v in par_client.values() if v['encours'] > 0]
 
 
-def reste_du_factures_brouillon(company, client_id):
-    """WIR93 — reste dû des factures ``BROUILLON`` d'un client, borné société.
-
-    ``encours_ouvert_par_tiers`` inclut les brouillons, tandis que
-    ``crm.selectors.client_credit_warning`` (moteur FG41/XFAC28) ne compte que
-    ``emise``/``en_retard``. Point d'entrée cross-app sanctionné (jamais un
-    import direct de ``ventes.models``). Lecture seule."""
-    from decimal import Decimal
-    from .models import Facture
-
-    total = Decimal('0')
-    qs = (Facture.objects
-          .filter(company=company, client_id=client_id,
-                  statut=Facture.Statut.BROUILLON))
-    # APRF11 — toutes les relations lues par `montant_du`.
-    from apps.facturation.selectors import factures_avec_montant_du
-    qs = factures_avec_montant_du(qs)
-    for facture in qs:
-        du = facture.montant_du
-        if du:
-            total += Decimal(du)
-    return total
-
-
 def ca_devis_factures_par_clients(company, client_ids):
     """XSAL9 — CA (devis + factures) agrégé, PAR client, pour une liste
     d'ids clients d'une même société. Point d'entrée cross-app sanctionné
@@ -663,43 +639,6 @@ def jours_impaye_facture(facture_id, company):
     if facture is None:
         return 0
     return facture.jours_retard
-
-
-def montants_factures_par_devis(devis_ids, company, exclure_annulee=True):
-    """CHT12 — Montants HT/TTC des factures RATTACHÉES à chaque devis,
-    agrégés PAR devis, EN BATCH (Facture via le shim ``ventes.models`` —
-    ODX17 laisse ``facturation.selectors`` vide).
-
-    Point d'entrée cross-app en LECTURE SEULE — jamais un import direct de
-    ``ventes.models``. Renvoie ``{devis_id: {'ht': Decimal, 'ttc': Decimal}}``;
-    un devis sans facture rattachée n'apparaît PAS dans le résultat.
-    ``exclure_annulee`` (défaut ``True``) exclut les factures ``ANNULEE`` de
-    l'agrégat. VNT87 — un BROUILLON n'est jamais facturé : toujours exclu."""
-    from decimal import Decimal
-
-    from .models import Facture
-
-    devis_ids = list(devis_ids or [])
-    if not devis_ids:
-        return {}
-    qs = (Facture.objects.filter(company=company, devis_id__in=devis_ids)
-          .exclude(statut=Facture.Statut.BROUILLON))
-    if exclure_annulee:
-        qs = qs.exclude(statut=Facture.Statut.ANNULEE)
-    # APRF12 — totaux de N factures en un nombre constant de requêtes.
-    from apps.facturation.selectors import factures_avec_montant_du
-    qs = factures_avec_montant_du(qs)
-    out = {}
-    for facture in qs:
-        entry = out.setdefault(
-            facture.devis_id, {'ht': Decimal('0'), 'ttc': Decimal('0')})
-        try:
-            entry['ht'] += Decimal(str(facture.total_ht or 0))
-            entry['ttc'] += Decimal(str(facture.total_ttc or 0))
-        except Exception:  # noqa: BLE001 — jamais casser l'agrégat
-            logger.warning(
-                "selectors_facturation.montants_factures_par_devis : erreur ignorée (mode dégradé)", exc_info=True)
-    return out
 
 
 def carnet_commande_par_mois(company, mois_debut, mois_fin):

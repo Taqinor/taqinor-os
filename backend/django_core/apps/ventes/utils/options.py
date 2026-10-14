@@ -456,7 +456,7 @@ def option_totaux(devis, option=None, lignes=None) -> dict:
     et sans remise, les valeurs restent identiques au comportement historique.
 
     NPLUS1 (27/08/2026) — ``lignes`` accepte les lignes DÉJÀ CHARGÉES par
-    l'appelant (patron YOPSB13, cf. ``utils/echeancier.factures_actives``) : le
+    l'appelant (patron YOPSB13 : la relation préchargée filtrée en Python) : le
     chemin d'acceptation publique appelait cette fonction deux fois de suite,
     chaque appel refaisant sa propre requête lignes+produit sur des lignes qui
     ne bougent pas pendant l'acceptation. Paramètre ABSENT (tous les autres
