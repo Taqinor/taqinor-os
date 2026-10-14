@@ -11,12 +11,16 @@ Couvre :
     erreur n'empêche jamais l'enregistrement) ;
   * ``core`` reste fondation : les modèles sont déclarés par CHAÎNE.
 """
+from django.apps import apps as django_apps
 from django.test import TestCase, override_settings
 
 from authentication.models import Company
-from apps.crm.models import Client, Lead
 from core.ai import search
 from core.models import SearchChunk
+
+# ENF20 — modèles crm résolus par libellé : core n'importe aucune app.
+Client = django_apps.get_model('crm', 'Client')
+Lead = django_apps.get_model('crm', 'Lead')
 
 
 def make_company(slug, nom):

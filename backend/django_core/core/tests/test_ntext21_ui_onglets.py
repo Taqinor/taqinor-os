@@ -9,6 +9,8 @@ que les boutons NTEXT20, ``core`` ne connaît aucune app métier).
 """
 import itertools
 
+# ENF20 — modèles domaine résolus par libellé : core n'importe aucune app.
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -81,9 +83,10 @@ class ContenuObjetCustomLieTests(TestCase):
     ``CustomfieldsConfig.ready()``)."""
 
     def setUp(self):
-        from apps.crm.models import Client
-        from apps.customfields.models import CustomObjectDef, CustomRecord
-        from apps.ventes.models import Devis
+        Client = django_apps.get_model('crm', 'Client')
+        CustomObjectDef = django_apps.get_model('customfields', 'CustomObjectDef')
+        CustomRecord = django_apps.get_model('customfields', 'CustomRecord')
+        Devis = django_apps.get_model('ventes', 'Devis')
 
         self.company = make_company()
         self.user = make_user(self.company)
@@ -134,8 +137,8 @@ class ConditionOngletTests(TestCase):
     est omis (arbre core.rules, comme les conditions de champ XPLT15)."""
 
     def setUp(self):
-        from apps.crm.models import Client
-        from apps.ventes.models import Devis
+        Client = django_apps.get_model('crm', 'Client')
+        Devis = django_apps.get_model('ventes', 'Devis')
 
         self.company = make_company()
         self.user = make_user(self.company)

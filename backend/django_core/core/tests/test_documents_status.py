@@ -292,10 +292,12 @@ class DocumentMetierChampStatutIsoleTests(TestCase):
     def test_pilotes_reels_conservent_leur_contrat_statut(self):
         # Les 2 pilotes réels (OST-, DA-) DOIVENT garder choices/default exacts —
         # bit-identiques aux migrations 0094/0095 (max_length=32, blank=True).
-        from apps.installations.models_ordre_soustraitance import (
-            OrdreSousTraitance,
-        )
-        from apps.installations.models_demande_achat import DemandeAchat
+        from django.apps import apps as django_apps
+
+        # ENF20 — pilotes résolus par libellé : core n'importe aucune app.
+        OrdreSousTraitance = django_apps.get_model(
+            "installations", "OrdreSousTraitance")
+        DemandeAchat = django_apps.get_model("installations", "DemandeAchat")
 
         ost = OrdreSousTraitance._meta.get_field("statut")
         self.assertEqual(

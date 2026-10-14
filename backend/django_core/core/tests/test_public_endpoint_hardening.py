@@ -11,6 +11,7 @@ Deux gardes :
 """
 from datetime import timedelta
 
+from django.apps import apps as django_apps
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -174,10 +175,12 @@ class PublicEndpointHardeningTests(TestCase):
         from django.test import override_settings
         from rest_framework.test import APIClient
 
-        from apps.audit.models import AuditLog
         from apps.parametres.models_company import CompanyProfile
         from authentication.models import Company
         from core.models import TenantTheme
+
+        # ENF20 — journal résolu par libellé : core n'importe aucune app.
+        AuditLog = django_apps.get_model("audit", "AuditLog")
 
         hote = "asec17-banner.example"
         company = Company.objects.create(nom="ASEC17 Co", slug="asec17-co")
@@ -234,8 +237,8 @@ class TokenLinkExpiryContractTests(TestCase):
 
     def _make_devis(self):
         from authentication.models import Company
-        from apps.crm.models import Client
-        from apps.ventes.models import Devis
+        Client = django_apps.get_model("crm", "Client")
+        Devis = django_apps.get_model("ventes", "Devis")
         company = Company.objects.get_or_create(
             slug="yrbac9", defaults={"nom": "YRBAC9"})[0]
         client = Client.objects.create(company=company, nom="Client YRBAC9")
@@ -244,7 +247,7 @@ class TokenLinkExpiryContractTests(TestCase):
         return company, devis
 
     def test_sharelink_rejects_expired_token(self):
-        from apps.ventes.models import ShareLink
+        ShareLink = django_apps.get_model("ventes", "ShareLink")
         company, devis = self._make_devis()
         expired = ShareLink.objects.create(
             company=company, devis=devis,
@@ -256,7 +259,7 @@ class TokenLinkExpiryContractTests(TestCase):
         self.assertTrue(valid.is_valid)
 
     def test_paymentlink_rejects_expired_token(self):
-        from apps.ventes.models import PaymentLink
+        PaymentLink = django_apps.get_model("ventes", "PaymentLink")
         # PaymentLink porte aussi expires_at + is_valid (même contrat).
         self.assertTrue(hasattr(PaymentLink, "is_valid"))
         fields = {f.name for f in PaymentLink._meta.get_fields()}

@@ -62,10 +62,18 @@ class ProduitLeakTests(TestCase):
             slug="yrbac6", defaults={"nom": "YRBAC6"})[0]
 
     def test_low_priv_role_never_sees_prix_achat_or_marge(self):
-        from apps.stock.models import Produit
-        from apps.stock.serializers import ProduitSerializer
+        import importlib
+
+        from django.apps import apps as django_apps
         from rest_framework.test import APIRequestFactory
         from rest_framework.request import Request
+
+        # ENF20 — test d'intégration cross-couche : le modèle est résolu par
+        # libellé et le sérialiseur par import dynamique (core n'importe
+        # aucune app, contrat core-foundation-is-a-base-layer).
+        Produit = django_apps.get_model("stock", "Produit")
+        ProduitSerializer = importlib.import_module(
+            "apps.stock.serializers").ProduitSerializer
 
         role = Role.objects.create(
             company=self.company, nom="lecteur-stock",

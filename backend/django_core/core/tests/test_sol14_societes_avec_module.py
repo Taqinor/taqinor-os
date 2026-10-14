@@ -59,8 +59,12 @@ class SocietesAvecModuleTests(TestCase):
 
     def test_respecte_aussi_le_plan_de_licence(self):
         """SOL9 : un module hors plan est aussi sauté par le beat."""
-        from apps.adminops.models import PlanLicence
+        from django.apps import apps as django_apps
+
         from apps.parametres.models import CompanyProfile
+
+        # ENF20 — modèle d'adminops résolu par libellé : core n'importe aucune app.
+        PlanLicence = django_apps.get_model('adminops', 'PlanLicence')
 
         plan, _ = PlanLicence.objects.update_or_create(
             code=PlanLicence.Code.STARTER,

@@ -8,13 +8,16 @@ import json
 import os
 import tempfile
 
+from django.apps import apps as django_apps
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
 from authentication.models import Company
 from core import anonymize_export
-from apps.crm.models import Client
+
+# ENF20 — modèle crm résolu par libellé : core n'importe aucune app.
+Client = django_apps.get_model('crm', 'Client')
 
 
 class ExportAnonymiseGuardTests(TestCase):
