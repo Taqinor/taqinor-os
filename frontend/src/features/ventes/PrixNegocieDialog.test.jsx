@@ -102,7 +102,7 @@ describe('PrixNegocieDialog (VNT73)', () => {
     await user.click(screen.getByRole('checkbox', { name: /confirme l'émission de l'avoir/ }))
     await user.click(screen.getByRole('button', { name: /Voir les effets/ }))
     await screen.findByLabelText(/Effets du prix négocié/)
-    expect(api.post.mock.calls[1][1]).toMatchObject({ avoir_confirme: true })
+    expect(api.post.mock.calls[1][1]).toMatchObject({ confirmer_avoir: true })
   })
 
   it('« Faire signer l\'avenant » copie le lien et ne fait qu\'UN appel', async () => {

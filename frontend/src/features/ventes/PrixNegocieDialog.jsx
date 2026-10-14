@@ -77,7 +77,7 @@ export default function PrixNegocieDialog({ devis, open, onOpenChange, onApplied
     setErreur(null)
     try {
       const body = { ...corps, mode }
-      if (avoirConfirme) body.avoir_confirme = true
+      if (avoirConfirme) body.confirmer_avoir = true
       const { data } = await ventesApi.prixNegocie(devis.id, body)
       if (mode === 'apercu') setApercu(data)
       else {
