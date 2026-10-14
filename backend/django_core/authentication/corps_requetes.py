@@ -5,7 +5,9 @@ Un corps qui n'est pas un objet JSON (``[null]``, ``-1``…) levait une 500 sur
 sérialiseurs répondent 400 (DRF) et servent aussi de déclaration OpenAPI.
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema_field
+from drf_spectacular.utils import (
+    OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_field, inline_serializer,
+)
 from rest_framework import serializers
 
 from core.champs_stricts import BooleenStrict, ChaineStricte
@@ -66,3 +68,17 @@ REPONSE_400_COMPTE = OpenApiResponse(
 ID_COMPTE = [OpenApiParameter(
     'id', OpenApiTypes.INT, OpenApiParameter.PATH,
     description="Identifiant du compte utilisateur de la société.")]
+
+
+#: ENF11 — schéma de ``POST auth/logout/`` (``LogoutView``), posé dans
+#: ``authentication/urls.py`` : ``views.py`` est un fichier-mur (C20). Corps
+#: OPTIONNEL — ``refresh`` (repli du cookie ``refresh_token``) et
+#: ``push_endpoint`` (APAR57, désabonnement push de cet appareil).
+SCHEMA_LOGOUT = extend_schema(
+    request=inline_serializer('LogoutRequete', {
+        'refresh': serializers.CharField(required=False),
+        'push_endpoint': serializers.CharField(required=False),
+    }),
+    responses=inline_serializer('LogoutReponse', {
+        'detail': serializers.CharField(),
+    }))

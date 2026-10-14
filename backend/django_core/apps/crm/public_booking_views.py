@@ -45,6 +45,11 @@ class PublicBookingRateThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(responses={200: inline_serializer('PublicBookingStatut', {
+    'valid': serializers.BooleanField(),
+    'prenom': serializers.CharField(allow_blank=True),
+    'expires_at': serializers.DateTimeField(),
+}), 404: PUBLIC_DETAIL})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

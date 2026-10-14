@@ -136,6 +136,15 @@ def open_chat_session(request):
         status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    request=inline_serializer('PublicChatMessageRequete', {
+        'message': serializers.CharField(),
+    }),
+    responses={200: inline_serializer('PublicChatMessageReponse', {
+        'reply': serializers.CharField(),
+        'statut': serializers.CharField(),
+        'lead_created': serializers.BooleanField(),
+    }), 404: PUBLIC_DETAIL, 410: PUBLIC_DETAIL})
 @api_view(['POST'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -205,6 +214,10 @@ def post_chat_message(request, token):
     })
 
 
+@extend_schema(responses={200: inline_serializer('PublicChatSession', {
+    'transcript': serializers.JSONField(),
+    'statut': serializers.CharField(),
+}), 404: PUBLIC_DETAIL})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

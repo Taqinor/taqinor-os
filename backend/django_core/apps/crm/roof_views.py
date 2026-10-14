@@ -22,6 +22,8 @@ French, why. Frozen by
 """
 
 from django.http import JsonResponse
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 
 from authentication.permissions import HasPermissionOrLegacy, IsAnyRole
@@ -55,6 +57,13 @@ def _leads_visibles(request):
     return vue.get_queryset()
 
 
+@extend_schema(responses=inline_serializer("LeadEmpreinteToit", {
+    # polygone OSM [[lat, lng], …] (vide : dessin manuel) + bloc bâtiment CALX106.
+    "polygon": serializers.ListField(child=serializers.JSONField()),
+    "source": serializers.CharField(),
+    "batiment": serializers.DictField(),
+    "message": serializers.CharField(required=False),
+}))
 @api_view(["GET"])
 @permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
 def lead_roof_footprint(request, lead_id):

@@ -20,6 +20,7 @@ quota est par IP, donc indépendant du `Host` — faire varier le domaine ne
 réarme pas le compteur, ce qui est précisément l'abus visé.
 """
 from django.core.validators import RegexValidator
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -72,6 +73,7 @@ class ThemePortailPublicThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT)  # ENF11 — marque (branding.py)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -216,6 +218,7 @@ def _resoudre_compte_par_token(token):
     return compte
 
 
+@extend_schema(responses=OpenApiTypes.OBJECT)  # ENF11 — relevé (ventes.selectors)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

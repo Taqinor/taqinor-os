@@ -1840,6 +1840,11 @@ class _LeadPlaybookPermission(IsAnyRole):
             request, view)
 
 
+@extend_schema(methods=['GET'], responses=LeadPlaybookProgressSerializer(many=True))
+@extend_schema(methods=['POST'], request=inline_serializer('LeadPlaybookCocherRequete', {
+    'tache': serializers.IntegerField(),
+    'fait': serializers.BooleanField(required=False, default=True),
+}), responses=LeadPlaybookProgressSerializer)
 @api_view(['GET', 'POST'])
 @permission_classes([_LeadPlaybookPermission])
 def lead_playbook_view(request, lead_id):

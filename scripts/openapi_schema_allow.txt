@@ -4,19 +4,6 @@
 # liste (nouveau serializer non resolu, nouvelle collision d'operationId,
 # nouveau type non resolu...). Une entree qui disparait est un progres :
 # elle peut etre retiree d'ici lors de la prochaine regeneration.
-Error|InterventionLienClientPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|InterventionRapportPdfPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|InterventionRapportPublicView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|LogoutView|exception raised while getting serializer. Hint: Is get_serializer_class() returning None or is get_queryset() not worki
-Error|candidature_fournisseur|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|contact|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|get_chat_session|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|lead_playbook_view|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|lead_roof_footprint|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|portail_mon_releve|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|post_chat_message|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|public_booking_status|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|theme_portail_public|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Warning|<global>|encountered multiple names for the same choice set (MetricEnum). This may be unwanted even though the generated schema i
 Warning|<global>|encountered multiple names for the same choice set (Severit<hash>Enum). This may be unwanted even though the generated s
 Warning|<global>|encountered multiple names for the same choice set (SeveriteDe#Enum). This may be unwanted even though the generated sch
@@ -33,4 +20,3 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "source". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "statut". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee
-Warning|public_uptime_90j|could not resolve "DictField(child=ListField(child=PublicUptimeJour():

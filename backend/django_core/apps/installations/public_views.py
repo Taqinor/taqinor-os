@@ -45,6 +45,7 @@ class InterventionLienClientPublicView(APIView):
     authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)  # selectors.intervention_public_payload
     def get(self, request, token):
         interv = (
             Intervention.objects
@@ -75,6 +76,7 @@ class InterventionRapportPublicView(APIView):
     authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
+    @extend_schema(responses=OpenApiTypes.OBJECT)  # selectors.intervention_rapport_public_payload
     def get(self, request, token):
         interv = (
             Intervention.objects
@@ -134,6 +136,7 @@ class InterventionRapportPdfPublicView(APIView):
     authentication_classes = []
     throttle_classes = [PublicTokenThrottle]
 
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
     def get(self, request, token):
         interv = (
             Intervention.objects
