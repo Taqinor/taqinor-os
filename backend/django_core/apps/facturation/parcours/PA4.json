@@ -300,7 +300,7 @@
    "proprietaire": "facturation",
    "declencheur": {
     "type": "clic",
-    "source": "frontend/src/pages/ventes/FactureList.jsx::avoirTarget"
+    "source": "frontend/src/pages/ventes/factureList/useFactureGestes.js::avoirTarget"
    },
    "ecran": {
     "route": "/ventes/factures",
