@@ -20,6 +20,7 @@ const REPLIS = {
   recu: 'Reçu indisponible pour le moment.',
   pdf: 'PDF de la facture indisponible pour le moment.',
   envoyer: 'Envoi impossible.',
+  montant: 'Modification du montant impossible.',
 }
 
 /** `Quittance_<numero_recu>.pdf` lu de l'en-tête serveur, sinon repli sur le paiement. */
@@ -134,9 +135,13 @@ export function useActionsVente({ onSucces } = {}) {
   const envoyerEmail = (facture) => executer(
     'envoyer', facture, () => ventesApi.envoyerEmailFacture(facture.id), { rafraichirListe: false })
 
+  /** VNT77 — le TTC d'un brouillon de tranche (tapé tel quel, jamais arrondi ici). */
+  const modifierMontant = (facture, montantTtc) => executer(
+    'montant', facture, () => ventesApi.montantTrancheFacture(facture.id, montantTtc))
+
   return {
     occupe, erreur, effacerErreur, facturesChargees,
-    annuler, supprimer, emettre, recu, pdf, whatsapp, envoyerEmail,
+    annuler, supprimer, emettre, recu, pdf, whatsapp, envoyerEmail, modifierMontant,
   }
 }
 

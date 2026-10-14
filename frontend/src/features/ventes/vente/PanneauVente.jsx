@@ -51,7 +51,10 @@ export default function PanneauVente({ devis, onRafraichir }) {
       {factures.length > 0 && (
         <ul className="grid gap-2" aria-label="Factures de la vente">
           {factures.map((f) => (
-            <LigneFactureVente key={f.id} facture={f} onRafraichir={onRafraichir} lectureSeule={remplacee} />
+            <LigneFactureVente
+              key={f.id} facture={f} facturesVente={factures}
+              onRafraichir={onRafraichir} lectureSeule={remplacee}
+            />
           ))}
         </ul>
       )}

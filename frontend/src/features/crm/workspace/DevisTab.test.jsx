@@ -442,6 +442,76 @@ describe('VNT76 — panneau : Émettre, PDF, Envoyer, Encaisser, Reçu par paiem
   })
 })
 
+// VNT77 — Annuler / Supprimer / Modifier le montant suivent `facture.peut`
+// (palier serveur) ; variantes dérivées des exemples COMMITTÉS de vente_etat.
+describe('VNT77 — panneau : Annuler, Supprimer, Modifier le montant', () => {
+  const carteAvec = (variante, retouche) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    const factures = ex.vente.factures.map((f) => ({ ...f, ...retouche(f) }))
+    return {
+      id: ex.id, reference: ex.reference, statut: 'accepte', total_ttc: '49000.00',
+      date_creation: '2026-10-10', chantier: null, is_active: true,
+      vente: { ...ex.vente, factures },
+    }
+  }
+
+  it('Commercial (peut fermé par le serveur) : aucun des trois', () => {
+    const ferme = (f) => ({ peut: { ...f.peut, annuler: false, supprimer: false, modifier_montant: false } })
+    renderTab({ state: leadState({ devis: [carteAvec('exemple_acompte_brouillon', ferme)] }) })
+    const ligne = screen.getByTestId('facture-vente-117')
+    expect(within(ligne).queryByRole('button', { name: /Annuler|Supprimer|Modifier le montant/ })).toBeNull()
+  })
+
+  it('Responsable : brouillon 14 700 → 15 000 ⇒ montant-tranche puis rafraîchit', async () => {
+    ventesApi.montantTrancheFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const { onAction } = renderTab({
+      state: leadState({ devis: [carteAvec('exemple_acompte_brouillon', () => ({ total_ttc: '14700.00' }))] }),
+    })
+    const ligne = screen.getByTestId('facture-vente-117')
+    await user.click(within(ligne).getByRole('button', { name: 'Modifier le montant' }))
+    const champ = within(ligne).getByLabelText(/Montant TTC de BROUILLON-117/)
+    await user.clear(champ)
+    await user.type(champ, '15 000')
+    await user.click(within(ligne).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(ventesApi.montantTrancheFacture).toHaveBeenCalledWith(117, '15000'))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('brouillon : Supprimer (BROUILLON-<id>) confirme puis DELETE', async () => {
+    ventesApi.supprimerFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carteAvec('exemple_acompte_brouillon', () => ({}))] }) })
+    await user.click(within(screen.getByTestId('facture-vente-117')).getByRole('button', { name: 'Supprimer' }))
+    await user.click(await screen.findByTestId('supprimer-brouillon-confirmer'))
+    await waitFor(() => expect(ventesApi.supprimerFacture).toHaveBeenCalledWith(117))
+  })
+
+  it('émise sans argent : confirmation nommant l’avoir, puis annulation', async () => {
+    ventesApi.annulerFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    renderTab({
+      state: leadState({ devis: [carteAvec('exemple_acompte_paye_solde_a_faire', () => ({ montant_paye: '0.00', paiements: [] }))] }),
+    })
+    await user.click(within(screen.getByTestId('facture-vente-118')).getByRole('button', { name: 'Annuler' }))
+    expect(await screen.findByTestId('annulation-avoir')).toHaveTextContent(/avoir de contre-passation/)
+    await user.click(screen.getByRole('button', { name: 'Annuler la facture' }))
+    await waitFor(() => expect(ventesApi.annulerFacture).toHaveBeenCalledWith(118, undefined))
+  })
+
+  it('émise avec argent : la directive est obligatoire avant l’annulation', async () => {
+    ventesApi.annulerFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carteAvec('exemple_acompte_paye_solde_a_faire', () => ({}))] }) })
+    await user.click(within(screen.getByTestId('facture-vente-118')).getByRole('button', { name: 'Annuler' }))
+    const confirmer = await screen.findByRole('button', { name: 'Annuler la facture' })
+    expect(confirmer).toBeDisabled()
+    await user.click(screen.getByRole('radio', { name: 'Rembourser' }))
+    await user.click(confirmer)
+    await waitFor(() => expect(ventesApi.annulerFacture).toHaveBeenCalledWith(118, { acompte: { action: 'rembourser' } }))
+  })
+})
+
 describe('LW22 — WhatsApp multi-devis', () => {
   const devis1 = {
     id: 1, reference: 'DEV-1', statut: 'envoye', total_ttc: '5000',

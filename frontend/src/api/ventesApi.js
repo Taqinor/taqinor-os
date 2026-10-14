@@ -587,6 +587,11 @@ const ventesApi = {
   prixNegocie: (id, data) => api.post(`/ventes/devis/${id}/prix-negocie/`, data),
   // Pose le lien de signature de l'avenant ET la tâche unique (idempotent).
   demanderSignatureAvenant: (id) => api.post(`/ventes/devis/${id}/avenant/demander-signature/`, {}),
+
+  // VNT77 — « Modifier le montant » d'un BROUILLON de tranche (VNT67) : le TTC
+  // tapé part tel quel, le serveur réécrit HT / TVA et l'échéancier (409 sur une émise).
+  montantTrancheFacture: (id, montantTtc) =>
+    api.post(`/ventes/factures/${id}/montant-tranche/`, { montant_ttc: montantTtc }),
 }
 
 // 409 « déjà accepté » sur un POST d'acceptation : le devis EST accepté (clic
