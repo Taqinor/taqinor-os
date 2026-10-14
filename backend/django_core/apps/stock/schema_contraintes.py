@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import re
 
+from core.champs_stricts import QUANTITE_MAX
+
 #: Un schéma de chaîne décimale « fait de chiffres » : au moins un chiffre de
 #: chaque côté du séparateur quand il y en a un (la regex de drf-spectacular en
 #: admettait zéro).
@@ -203,6 +205,7 @@ CONTRAINTES = {
     # Un mouvement libre ne déclare pas un rebut (motif obligatoire : la
     # déclaration de rebut) ; le scanner ne rend que ses trois gestes.
     'MouvementStockRequest': {'remplacer': {'type_mouvement': TYPE_MOUVEMENT_LIBRE},
+                              'proprietes': {'quantite': {'maximum': QUANTITE_MAX}},
                               'racine': QUANTITE_SELON_TYPE},
     'KitProduitComposantRequest': {'montants_positifs': ['quantite'],
                                    'motifs': {'taux_perte_pct': MOTIF_TAUX_0_100},

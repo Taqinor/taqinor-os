@@ -1,4 +1,3 @@
-from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
@@ -7,7 +6,8 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, ID_OU_VIDE, LISTE, P, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
-from ..erreurs_achats import ConflitEtat
+from core.champs_stricts import QUANTITE_MAX
+from ..erreurs_achats import ConflitEtat, debordement_compteur_en_409
 from ..models import Produit, MouvementStock
 from ..utils.params import choix_ou_400, date_ou_400, id_requete_ou_400
 from ..serializers import MouvementStockSerializer
@@ -221,10 +221,17 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             raise ValidationError(
                 {'quantite': 'Le niveau de stock visé ne peut pas être '
                              'négatif.'})
+        # CI #997 fuzz (3) — plafond métier publié (``maximum``), vérifié
+        # AVANT tout calcul : ``2147483646`` en entrée débordait au save (500).
+        if qte is not None and qte > QUANTITE_MAX:
+            raise ValidationError(
+                {'quantite': f'Quantité au plus égale à {QUANTITE_MAX}.'})
         # ERR23 — section critique atomique + verrou de ligne produit pour que
         # des SORTIEs concurrentes ne perdent pas de mise à jour et ne
         # corrompent pas les colonnes d'audit quantite_avant/quantite_apres.
-        with transaction.atomic():
+        # CI #997 fuzz (3) — un compteur (produit, casier) qui déborderait sa
+        # colonne : 409 nommé (l'état s'oppose), jamais un 500.
+        with debordement_compteur_en_409():
             produit = (Produit.objects.select_for_update()
                        .get(pk=produit.pk))
             qte_avant = produit.quantite_stock

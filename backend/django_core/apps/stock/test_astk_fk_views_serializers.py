@@ -240,12 +240,12 @@ class FkViewsSerializersTests(TestCase):
             (CatalogueAchatSerializer, {'categorie': self.cat_b.pk}),
         )
         for cls, corps in cas:
-            with self.subTest(serializer=cls.__name__):
-                self.assertTrue(issubclass(cls, CompanyScopedRelationsMixin))
-                ser = cls(data=corps, partial=True, context=ctx)
-                self.assertTrue(ser.is_valid(), ser.errors)
-                for champ in corps:
-                    self.assertNotIn(champ, ser.validated_data)
+            nom = cls.__name__
+            self.assertTrue(issubclass(cls, CompanyScopedRelationsMixin), nom)
+            ser = cls(data=corps, partial=True, context=ctx)
+            self.assertTrue(ser.is_valid(), (nom, ser.errors))
+            for champ in corps:
+                self.assertNotIn(champ, ser.validated_data, (nom, champ))
 
 
 class CorpsFuzzTests(TestCase):
@@ -286,9 +286,8 @@ class CorpsFuzzTests(TestCase):
                 'kits/remplacer-composant/')] + [
             (m, f'{BASE}/emplacements/{self.emp.id}/') for m in ('put', 'patch')]
         for methode, url in cas:
-            with self.subTest(url=url, methode=methode):
-                r = getattr(self.api, methode)(url, [None, None], format='json')
-                self.assertEqual(r.status_code, 400, r.content)
+            r = getattr(self.api, methode)(url, [None, None], format='json')
+            self.assertEqual(r.status_code, 400, (methode, url, r.content))
 
     def test_fuzz_ids_non_entiers_400(self):
         cas = (
@@ -305,16 +304,14 @@ class CorpsFuzzTests(TestCase):
                                     'quantite_consommee': 1, 'quantite_produite': 1}),
         )
         for fin, corps in cas:
-            with self.subTest(url=fin):
-                r = self.api.post(f'{BASE}/{fin}', corps, format='json')
-                self.assertEqual(r.status_code, 400, r.content)
+            r = self.api.post(f'{BASE}/{fin}', corps, format='json')
+            self.assertEqual(r.status_code, 400, (fin, corps, r.content))
 
     def test_fuzz_modele_bcf_lignes_et_note(self):
         url = f'{BASE}/modeles-bcf/{self.modele.id}/'
         for lignes in ([{'quantite': 0}], [{'produit': self.pa.id}, {'produit': self.pa.id}]):
-            with self.subTest(lignes=lignes):
-                r = self.api.patch(url, {'lignes': lignes}, format='json')
-                self.assertEqual(r.status_code, 400, r.content)
+            r = self.api.patch(url, {'lignes': lignes}, format='json')
+            self.assertEqual(r.status_code, 400, (lignes, r.content))
         r = self.api.put(url, {'nom': 'M', 'note': 0, 'lignes': []}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(f'{BASE}/modeles-bcf/', {
@@ -335,9 +332,8 @@ class CorpsFuzzTests(TestCase):
         r = self.api.put(url, {'nom': 'K', 'sku': 0, 'composants': []}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         for facteur, attendu in (('0', 400), (0.00001, 400), (2, 201)):
-            with self.subTest(facteur=facteur):
-                r = self.api.post(f'{url}dupliquer/', {'facteur_echelle': facteur}, format='json')
-                self.assertEqual(r.status_code, attendu, r.content)
+            r = self.api.post(f'{url}dupliquer/', {'facteur_echelle': facteur}, format='json')
+            self.assertEqual(r.status_code, attendu, (facteur, r.content))
 
     def test_fuzz_prix_fournisseur_texte_strict(self):
         r = self.api.post(f'{BASE}/prix-fournisseurs/', {
@@ -448,16 +444,14 @@ class CorpsFuzzTests(TestCase):
             'mouvements/agregation/?date_max=abc', 'mouvements/?produit=null',
         )
         for fin in refuses:
-            with self.subTest(url=fin):
-                self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 400)
+            self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 400, fin)
         acceptes = (
             'produits/?entite=', 'profils-saisonniers/?actif=true', f'blocages-qualite/?produit={self.pa.id}',
             'budgets-departement/?annee=2026&mois=0&actif=false', 'quais/?actif=1',
             'catalogue-b2b/?offset=0&limite=10', 'mouvements/?date_min=', 'mouvements/agregation/?date_min=',
         )
         for fin in acceptes:
-            with self.subTest(url=fin):
-                self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 200)
+            self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 200, fin)
         r = api.post(f'{BASE}/mouvements/export-xlsx/?date_min=')
         self.assertEqual(r.status_code, 200, r.content)
 
@@ -525,3 +519,110 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(r.status_code, 415, r.content)
         self.pa.refresh_from_db()
         self.assertEqual(self.pa.quantite_stock, 50)
+
+    def test_fuzz_ci997_3_entier_hors_colonne_et_texte_trop_long_400(self):
+        """CI #997 fuzz (3) — un entier au-delà de la colonne (``maximum``
+        publié 2147483647) répond 400 avant tout calcul (il faisait un 500 au
+        save) ; un texte plus long que son ``maxLength`` publié répond 400 (il
+        était tronqué en silence, 201). La borne exacte reste acceptée."""
+        api = self._api_admin()
+        pa = self.pa.id
+        url = f'{BASE}/blocages-qualite/'
+        r = api.post(url, {'produit': pa, 'quantite': 2147483648, 'motif': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('quantite', r.data)
+        r = api.post(url, {'produit': pa, 'quantite': 2147483647, 'motif': ''}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = api.post(f'{BASE}/mouvements-rebut/', {'produit': pa, 'quantite': 2147483648, 'motif': 'casse'},
+                     format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        corps = {'client': self.client_a.id, 'produit': pa, 'quantite_deposee': 1, 'date_depot': JOUR}
+        r = api.post(f'{BASE}/consignations/', {**corps, 'adresse_site': 'x' * 256}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('adresse_site', r.data)
+        r = api.post(f'{BASE}/consignations/', {**corps, 'quantite_deposee': 2147483648}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('quantite_deposee', r.data)
+        r = api.post(f'{BASE}/consignations/', {**corps, 'adresse_site': 'x' * 255}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['adresse_site'], 'x' * 255)
+
+    def test_fuzz_ci997_3_bcf_fournisseur_mal_forme_400(self):
+        """CI #997 fuzz (3) — `fournisseur: [null, null]` (ou `{}`) dans un
+        corps de BCF par ailleurs complet faisait un 500 (pré-contrôles du
+        fournisseur) : 400 nommant `fournisseur` ; un corps non objet aussi."""
+        api = self._api_admin()
+        url = f'{BASE}/bons-commande-fournisseur/'
+        corps = {'date_commande': JOUR, 'devise': 'MAD', 'taux_change': '1',
+                 'lignes': [{'designation': 'x', 'quantite': 1}]}
+        for fournisseur in ([None, None], {}, True):
+            r = api.post(url, {**corps, 'fournisseur': fournisseur}, format='json')
+            self.assertEqual(r.status_code, 400, (fournisseur, r.content))
+            self.assertIn('fournisseur', r.data, fournisseur)
+        r = api.post(url, [None, None], format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = api.post(url, {**corps, 'fournisseur': self.fa.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_fuzz_ci997_3_quantite_plafonnee_et_compteur_deborde_409(self):
+        """CI #997 fuzz (3) — mouvement libre et scan : quantité publiée
+        ``maximum`` QUANTITE_MAX, vérifiée avant tout calcul (400) ; un
+        compteur (stock produit, casier) qui déborderait sa colonne entière
+        répond 409 sans rien écrire (il faisait un 500 au save) ; un transfert
+        scanné vers un seul casier destination reste accepté."""
+        from apps.installations.models import BinAffectation
+        from apps.stock.models import MouvementStock
+        from core.champs_stricts import QUANTITE_MAX
+        api = self._api_admin()
+        pa = self.pa.id
+        mouvements = f'{BASE}/mouvements/'
+        scanner = f'{BASE}/scanner/mouvement/'
+        r = api.post(mouvements, {'produit': pa, 'type_mouvement': 'entree', 'quantite': QUANTITE_MAX + 1},
+                     format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('quantite', r.data)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'entree', 'quantite': QUANTITE_MAX + 1},
+                     format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.pa.refresh_from_db()
+        self.assertEqual(self.pa.quantite_stock, 50)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'transfert', 'quantite': 1,
+                               'bin_destination': self.bin_a.id}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        # Stock produit au bord de la colonne : l'entrée déborderait → 409.
+        Produit.objects.filter(pk=pa).update(quantite_stock=2147483647 - 10)
+        avant = MouvementStock.objects.count()
+        r = api.post(mouvements, {'produit': pa, 'type_mouvement': 'entree', 'quantite': 11}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'entree', 'quantite': 11}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(MouvementStock.objects.count(), avant)
+        # Casier au bord de la colonne : le transfert scanné déborderait → 409.
+        Produit.objects.filter(pk=pa).update(quantite_stock=50)
+        BinAffectation.objects.filter(bin=self.bin_a, produit_id=pa).update(quantite=2147483647)
+        r = api.post(scanner, {'produit': pa, 'type_mouvement': 'transfert', 'quantite': 1,
+                               'bin_destination': self.bin_a.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(MouvementStock.objects.count(), avant)
+        self.assertEqual(BinAffectation.objects.get(bin=self.bin_a, produit_id=pa).quantite, 2147483647)
+
+    def test_fuzz_ci997_3_kit_composant_sous_kit_champs_produit_null_publies(self):
+        """CI #997 fuzz (3) — un composant SOUS-KIT n'a pas de produit : ses
+        `produit_nom`/`produit_sku`/`prix_vente` valent null (et
+        `composant_kit_nom` pour un composant produit) — publiés null-ables,
+        la réponse respecte le schéma."""
+        from apps.stock.serializers import KitComposantSerializer
+        champs = KitComposantSerializer().fields
+        for nom in ('produit_nom', 'produit_sku', 'prix_vente', 'composant_kit_nom'):
+            self.assertTrue(champs[nom].allow_null, nom)
+        api = self._api_admin()
+        r = api.post(f'{BASE}/kits/', {'nom': 'Kit parent', 'composants': [
+            {'composant_kit': self.kit.id, 'quantite': '1'},
+            {'produit': self.pa.id, 'quantite': '2'}]}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        sous_kit, produit = sorted(r.data['composants'], key=lambda c: c['produit'] is not None)
+        self.assertEqual(sous_kit['composant_kit_nom'], 'Kit F')
+        for nom in ('produit_nom', 'produit_sku', 'prix_vente'):
+            self.assertIsNone(sous_kit[nom], nom)
+        self.assertEqual(produit['produit_nom'], 'ProdF')
+        self.assertIsNone(produit['composant_kit_nom'])

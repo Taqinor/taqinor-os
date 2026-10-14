@@ -2352,18 +2352,20 @@ class KitComposantSerializer(CompanyScopedRelationsMixin,
                              ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
+    # CI #997 fuzz (3) — un composant est un produit OU un sous-kit (XOR) :
+    # les champs lus de l'autre branche valent null, publiés null-ables.
     produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None)
+        source='produit.nom', read_only=True, default=None, allow_null=True)
     produit_sku = serializers.CharField(
-        source='produit.sku', read_only=True, default=None)
+        source='produit.sku', read_only=True, default=None, allow_null=True)
     # DC36 — prix de vente catalogue affiché en LECTURE SEULE (jamais stocké sur
     # le kit) ; aucun prix d'achat ici (interne).
     prix_vente = serializers.DecimalField(
         source='produit.prix_vente', max_digits=10, decimal_places=2,
-        read_only=True, default=None)
+        read_only=True, default=None, allow_null=True)
     # XMFG17 — nom du sous-kit (lecture seule, quand `composant_kit` est posé).
     composant_kit_nom = serializers.CharField(
-        source='composant_kit.nom', read_only=True, default=None)
+        source='composant_kit.nom', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = KitComposant
