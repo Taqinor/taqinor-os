@@ -249,8 +249,6 @@ API accepted schema-violating request|GET /api/django/stock/unites-logistiques/
 API accepted schema-violating request|GET /api/django/stock/vagues-picking/
 API accepted schema-violating request|GET /api/django/trash/corbeille/
 API accepted schema-violating request|GET /api/django/users/
-API accepted schema-violating request|GET /api/django/uxviews/favoris/
-API accepted schema-violating request|GET /api/django/uxviews/saved-views/
 API accepted schema-violating request|GET /api/django/ventes/attestations-conformite/
 API accepted schema-violating request|GET /api/django/ventes/attestations-re/
 API accepted schema-violating request|GET /api/django/ventes/avoirs/
@@ -311,7 +309,6 @@ API accepted schema-violating request|PATCH /api/django/parametres/unites-mesure
 API accepted schema-violating request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
 API accepted schema-violating request|PATCH /api/django/records/activities/{id}/
 API accepted schema-violating request|PATCH /api/django/records/tags/{id}/
-API accepted schema-violating request|PATCH /api/django/uxviews/parametres/
 API accepted schema-violating request|PATCH /api/django/ventes/listes-prix/{id}/
 API accepted schema-violating request|POST /api/django/adminops/config-packages/exporter/
 API accepted schema-violating request|POST /api/django/calepinage/calepinages/{id}/dupliquer/
@@ -801,8 +798,6 @@ API rejected schema-compliant request|POST /api/django/stock/unites-logistiques/
 API rejected schema-compliant request|POST /api/django/stock/unites-logistiques/{id}/lignes/
 API rejected schema-compliant request|POST /api/django/stock/vagues-picking/
 API rejected schema-compliant request|POST /api/django/users/
-API rejected schema-compliant request|POST /api/django/uxviews/favoris/
-API rejected schema-compliant request|POST /api/django/uxviews/saved-views/
 API rejected schema-compliant request|POST /api/django/ventes/bons-commande/{id}/confirmer/
 API rejected schema-compliant request|POST /api/django/ventes/bons-commande/{id}/creer-facture/
 API rejected schema-compliant request|POST /api/django/ventes/bons-commande/{id}/livrer-partiel/
@@ -994,7 +989,6 @@ Response violates schema|GET /api/django/stock/modeles-bcf/{id}/
 Response violates schema|GET /api/django/stock/produits/
 Response violates schema|GET /api/django/stock/produits/{id}/
 Response violates schema|GET /api/django/stock/produits/{id}/prix-fournisseurs/
-Response violates schema|GET /api/django/uxviews/saved-views/toutes-company/
 Response violates schema|GET /api/django/ventes/devis/{id}/design-context/
 Response violates schema|GET /api/django/ventes/devis/{id}/economie-ci/
 Response violates schema|GET /api/django/ventes/devis/{id}/economie-pompage/
