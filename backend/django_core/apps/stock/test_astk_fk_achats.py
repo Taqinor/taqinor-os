@@ -115,9 +115,11 @@ class FkAchatsTests(TestCase):
 
     # ── aides ────────────────────────────────────────────────────────────
 
-    def _assert_comme_absent(self, r, r_absent, pk):
-        self.assertEqual(r.status_code, 400, r.content)
-        self.assertEqual(r_absent.status_code, 400, r_absent.content)
+    def _assert_comme_absent(self, r, r_absent, pk, statut=400):
+        # ENF11 — une clé de PREMIER niveau inconnue répond 404 (``IdInconnu404Mixin``) ;
+        # une clé imbriquée / un autre sérialiseur garde le 400.
+        self.assertEqual(r.status_code, statut, r.content)
+        self.assertEqual(r_absent.status_code, statut, r_absent.content)
         corps = r.content.decode()
         # L'erreur « objet inexistant » de cet id : elle a bien visé le champ.
         self.assertIn('<INEXISTANT>', str(_sans_id(r.json(), pk)))
@@ -126,11 +128,11 @@ class FkAchatsTests(TestCase):
         for secret in SECRETS:
             self.assertNotIn(secret, corps)
 
-    def _post_compare(self, url, payload, champ, pk_etranger):
+    def _post_compare(self, url, payload, champ, pk_etranger, statut=400):
         r = self.api.post(url, {**payload, champ: pk_etranger}, format='json')
         r_absent = self.api.post(
             url, {**payload, champ: ID_ABSENT}, format='json')
-        self._assert_comme_absent(r, r_absent, pk_etranger)
+        self._assert_comme_absent(r, r_absent, pk_etranger, statut)
 
     def _serializer_compare(self, cls, payload, champ, pk_etranger):
         ctx = {'request': SimpleNamespace(user=self.admin_a)}
@@ -220,7 +222,7 @@ class FkAchatsTests(TestCase):
     def test_facture_fournisseur_autre_societe(self):
         self._post_compare('/api/django/stock/factures-fournisseur/', {
             'montant_ht': '10', 'montant_tva': '2', 'montant_ttc': '12',
-        }, 'fournisseur', self.fb.pk)
+        }, 'fournisseur', self.fb.pk, statut=404)
 
     def test_fuzz_paiement_facture_illisible_400(self):
         """ERR fuzz : ``facture`` non entier (liste/texte) = 400, pas 500."""
@@ -340,5 +342,5 @@ class FkAchatsTests(TestCase):
     def test_prix_fournisseur_produit_etranger(self):
         self._post_compare('/api/django/stock/prix-fournisseurs/', {
             'fournisseur': self.fa.pk, 'prix_achat': '10',
-        }, 'produit', self.pb.pk)
+        }, 'produit', self.pb.pk, statut=404)
         self.assertFalse(PrixFournisseur.objects.exists())
