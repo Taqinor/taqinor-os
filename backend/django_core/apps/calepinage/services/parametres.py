@@ -73,6 +73,30 @@ def _exiger_droit_de_gouvernance(avant, apres, user):
             raise ReglageInterdit(MESSAGE_GOUVERNANCE, champ=cle)
 
 
+def _chemin_caractere_interdit(valeur, chemin):
+    """Le chemin du premier texte (valeur OU clé) qui porte un caractère que
+    la colonne JSONB ne sait pas ranger — U+0000 ou un demi-substitut isolé —,
+    ou ``None``. Sans ce refus, l'écriture échouait à l'INSERT (500, CI #997
+    api-fuzz (3) : ``reference`` portant un NUL)."""
+    if isinstance(valeur, str):
+        interdit = any(c == '\x00' or '\ud800' <= c <= '\udfff'
+                       for c in valeur)
+        return chemin if interdit else None
+    if isinstance(valeur, dict):
+        for cle, sous in valeur.items():
+            if _chemin_caractere_interdit(cle, chemin):
+                return f'{chemin} (clé)'
+            trouve = _chemin_caractere_interdit(sous, f'{chemin}.{cle}')
+            if trouve:
+                return trouve
+    elif isinstance(valeur, (list, tuple)):
+        for rang, sous in enumerate(valeur):
+            trouve = _chemin_caractere_interdit(sous, f'{chemin}[{rang}]')
+            if trouve:
+                return trouve
+    return None
+
+
 def _texte_journal(valeur):
     import json
 
@@ -148,6 +172,12 @@ def enregistrer_parametres(company, donnees, *, remplacer=False, user=None):
             raise ReglageInvalide(
                 f"La section « {section} » doit être un objet "
                 f"(reçu : {type(valeur).__name__}).", champ=section)
+        fautif = _chemin_caractere_interdit(valeur, section)
+        if fautif:
+            raise ReglageInvalide(
+                f"« {fautif} » porte un caractère interdit (nul U+0000 ou "
+                "demi-substitut isolé) : le réglage n'est pas enregistré.",
+                champ=section)
 
     # CAL47 — une section peut avoir son PROPRE domaine de validité (contrat
     # CAL46 pour « imagerie »). Le crochet est ici, une fois : chaque section

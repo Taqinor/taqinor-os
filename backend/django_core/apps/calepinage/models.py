@@ -1082,6 +1082,10 @@ class GabaritDossierReglementaire(TenantModel):
         'nombre_modules', 'orientation_deg', 'inclinaison_deg',
     )
 
+    #: Le fragment commun des deux refus « deux éléments, même code » : le
+    #: service d'écriture y lit un CONFLIT (409), pas un corps mal formé.
+    FRAGMENT_DOUBLON = 'portent le même code'
+
     #: Les types de champ admis (ils décrivent la SAISIE, pas une valeur).
     TYPES_CHAMP = ('texte', 'nombre', 'date')
 
@@ -1161,6 +1165,17 @@ class GabaritDossierReglementaire(TenantModel):
         if erreurs:
             raise ValidationError(erreurs)
 
+    @staticmethod
+    def _texte_plein(valeur):
+        """Vrai pour une VRAIE chaîne non blanche et sans caractère nul — la
+        règle du motif publié (``MOTIF_NON_BLANC_SANS_NUL``) : un nombre ou un
+        objet n'est jamais lu comme texte (``str(5)``), et un NUL casserait
+        l'INSERT JSONB (500)."""
+        from core.champs_stricts import non_blanc
+
+        return (isinstance(valeur, str) and '\x00' not in valeur
+                and non_blanc(valeur))
+
     def _erreur_pieces(self):
         if not isinstance(self.pieces_attendues, list):
             return ("Les pièces attendues se donnent en liste ordonnée "
@@ -1170,22 +1185,25 @@ class GabaritDossierReglementaire(TenantModel):
             if not isinstance(piece, dict):
                 return (f"La pièce n°{rang} doit être un objet "
                         f"(reçu : {type(piece).__name__}).")
-            code = str(piece.get('code') or '').strip()
-            if not code:
+            if not self._texte_plein(piece.get('code')):
                 return f"La pièce n°{rang} doit porter un code."
+            code = piece['code'].strip()
             if code in codes:
                 return f"Deux pièces portent le même code : « {code} »."
             codes.add(code)
-            if not str(piece.get('intitule') or '').strip():
+            if not self._texte_plein(piece.get('intitule')):
                 return (f"La pièce « {code} » doit porter son intitulé, tel "
                         "que le gabarit déposé le nomme.")
-            if not str(piece.get('source_reference') or '').strip():
+            if not self._texte_plein(piece.get('source_reference')):
                 return (
                     f"La pièce « {code} » doit porter sa SOURCE (référence "
                     "CERFA, notice Consuel, documentation Enedis, texte "
                     "marocain…) : aucune liste de pièces n'est reproduite de "
                     "mémoire."
                 )
+            if not isinstance(piece.get('obligatoire', True), bool):
+                return (f"La pièce « {code} » : « obligatoire » se donne en "
+                        "booléen (true ou false).")
         return ''
 
     def _erreur_champs(self):
@@ -1197,26 +1215,29 @@ class GabaritDossierReglementaire(TenantModel):
             if not isinstance(champ, dict):
                 return (f"Le champ n°{rang} doit être un objet "
                         f"(reçu : {type(champ).__name__}).")
-            code = str(champ.get('code') or '').strip()
-            if not code:
+            if not self._texte_plein(champ.get('code')):
                 return f"Le champ n°{rang} doit porter un code."
+            code = champ['code'].strip()
             if code in codes:
                 return f"Deux champs portent le même code : « {code} »."
             codes.add(code)
-            if not str(champ.get('libelle') or '').strip():
+            if not self._texte_plein(champ.get('libelle')):
                 return f"Le champ « {code} » doit porter son libellé."
-            type_champ = str(champ.get('type') or 'texte').strip()
+            type_champ = champ.get('type', 'texte')
             if type_champ not in self.TYPES_CHAMP:
                 return (f"Type de champ inconnu pour « {code} » : "
                         f"« {type_champ} ». Types admis : "
                         f"{', '.join(self.TYPES_CHAMP)}.")
-            cle = champ.get('cle_calepinage')
-            if cle and cle not in self.CLES_PREREMPLISSAGE:
+            if 'cle_calepinage' in champ and (
+                    champ['cle_calepinage'] not in self.CLES_PREREMPLISSAGE):
                 return (
                     f"Le champ « {code} » demande un préremplissage inconnu : "
-                    f"« {cle} ». Clés admises : "
+                    f"« {champ['cle_calepinage']} ». Clés admises : "
                     f"{', '.join(self.CLES_PREREMPLISSAGE)}."
                 )
+            if not isinstance(champ.get('obligatoire', False), bool):
+                return (f"Le champ « {code} » : « obligatoire » se donne en "
+                        "booléen (true ou false).")
         return ''
 
 
