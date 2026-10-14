@@ -24,6 +24,8 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
+from core.champs_stricts import QUANTITE_MAX
+from ..erreurs_achats import debordement_compteur_en_409
 
 
 @extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=r'\S')], responses={
@@ -69,7 +71,8 @@ _ID = {'min_value': 1, 'max_value': 2147483647}
 
 
 @extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(**_ID),
-                             type_mouvement=serializers.CharField(), quantite=serializers.IntegerField(),
+                             type_mouvement=serializers.CharField(),
+                             quantite=serializers.IntegerField(min_value=1, max_value=QUANTITE_MAX),
                              bin_source=serializers.IntegerField(required=False, allow_null=True, **_ID),
                              bin_destination=serializers.IntegerField(required=False, allow_null=True, **_ID),
                              reference=serializers.CharField(required=False),
@@ -118,16 +121,22 @@ def scanner_mouvement_view(request):
                'reference' in donnees and not donnees['reference'].strip()):
         return Response({'detail': 'Corps invalide : identifiants entiers, quantité entière et textes attendus.'},
                         status=status.HTTP_400_BAD_REQUEST)
+    # CI #997 fuzz (3) — plafond métier publié (``maximum``), AVANT tout calcul.
+    if donnees['quantite'] > QUANTITE_MAX:
+        return Response({'detail': f'Quantité au plus égale à {QUANTITE_MAX}.'},
+                        status=status.HTTP_400_BAD_REQUEST)
     try:
-        mouvement = enregistrer_mouvement_scanne(
-            company=request.user.company, user=request.user,
-            produit_id=donnees.get('produit'),
-            type_mouvement=donnees.get('type_mouvement'),
-            quantite=donnees.get('quantite'),
-            bin_source_id=donnees.get('bin_source'),
-            bin_destination_id=donnees.get('bin_destination'),
-            reference=donnees.get('reference') or 'SCAN',
-            note=donnees.get('note') or '')
+        # Un casier (ou le stock) qui déborderait sa colonne : 409, pas 500.
+        with debordement_compteur_en_409():
+            mouvement = enregistrer_mouvement_scanne(
+                company=request.user.company, user=request.user,
+                produit_id=donnees.get('produit'),
+                type_mouvement=donnees.get('type_mouvement'),
+                quantite=donnees.get('quantite'),
+                bin_source_id=donnees.get('bin_source'),
+                bin_destination_id=donnees.get('bin_destination'),
+                reference=donnees.get('reference') or 'SCAN',
+                note=donnees.get('note') or '')
     except ValueError as exc:
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)

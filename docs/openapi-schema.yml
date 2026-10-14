@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3500}
+counts: {paths: 4814, operations: 7566, components: 3506}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9581,9 +9581,12 @@ components:
 - CalepinageFixationRequeteRequest
 - CalepinageFondPlan
 - CalepinageFondPlanCorpsRequest
+- CalepinageGabaritChampSaisiRequest
+- CalepinageGabaritChampSaisiTypeEnum
 - CalepinageGabaritDepose
 - CalepinageGabaritDossier
 - CalepinageGabaritDossierCorpsRequest
+- CalepinageGabaritPieceAttendueRequest
 - CalepinageGabaritsListe
 - CalepinageGenererDevisCorpsRequest
 - CalepinageGenererDossier
@@ -9739,6 +9742,7 @@ components:
 - ClasseurEvaluerRequeteRequest
 - ClasseurRafraichi
 - ClasseurRequest
+- CleCalepinageEnum
 - CleVapid
 - CleaningEvent
 - CleaningEventRequest
@@ -10482,6 +10486,7 @@ components:
 - GedTimelineLigne
 - GedValiderOcrCorpsRequest
 - GedVerifierIntegriteReponse
+- GedVerrouCorpsRequest
 - GedVersionCreationCorpsRequest
 - GedVersionPagesReponse
 - GedVersionRestaurerCorpsRequest
@@ -11255,6 +11260,7 @@ components:
 - PaiementEnregistrerAvanceRequestRequest
 - PaiementEnvoyerRecuRequestRequest
 - PaiementEnvoyerRecuResponse
+- PaiementErreurCode
 - PaiementFacturePortail
 - PaiementFacturePortailStatutEnum
 - PaiementFournisseur

@@ -161,7 +161,8 @@ class TestAvoirs(TestCase):
 
     def test_avoir_exceeding_remaining_rejected(self):
         # Une ligne d'avoir à 20 000 HT (24 000 TTC) dépasse les 17 000 TTC
-        # créditables de la facture → 400, aucun avoir persisté.
+        # créditables de la facture → 409 (refus d'état, CI #997), aucun
+        # avoir persisté.
         api = self._api(self.admin)
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
@@ -170,7 +171,7 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '20000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('dépasse', resp.data['detail'])
         self.assertEqual(Avoir.objects.count(), 0)
 
@@ -327,7 +328,7 @@ class TestAvoirConcurrenceAUD126(TransactionTestCase):
         for thread in threads:
             thread.join(timeout=90)
 
-        self.assertEqual(sorted(resultats), [201, 400], resultats)
+        self.assertEqual(sorted(resultats), [201, 409], resultats)
         self.facture.refresh_from_db()
         self.assertEqual(Avoir.objects.filter(facture=self.facture).count(), 1)
         self.assertLessEqual(

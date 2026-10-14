@@ -328,6 +328,65 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertTrue(corps['file'].startswith(b'%PDF-'))
         self.assertEqual(corps['model'], 'crm.lead')
 
+    def test_portail_documents_client_recoit_un_pdf(self):
+        # CI #997 (3) — le dépôt d'un document du portail exige un vrai fichier.
+        corps = self._corps('POST', '/api/django/portail/documents-client-portail/',
+                            {'fichier': b'', 'client_id': 1})
+        self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
+        self.assertEqual(corps['client_id'], 1)
+
+    def _operation_multipart(self, schema):
+        corps = types.SimpleNamespace(
+            media_type='multipart/form-data', definition={'schema': schema})
+        return types.SimpleNamespace(body=[corps])
+
+    def test_noms_de_fichiers_resout_le_ref_du_corps_regroupe(self):
+        # CI #997 (3) — schéma référençant une énumération : Schemathesis range
+        # le corps sous ``x-bundled`` et ne voit plus les champs binaires.
+        propres = {'file': {'type': 'string', 'format': 'binary'},
+                   'model': {'type': 'string'},
+                   'pieces': {'type': 'array',
+                              'items': {'type': 'string', 'format': 'binary'}}}
+        regroupe = {'$ref': '#/x-bundled/schema5',
+                    'x-bundled': {'schema5': {'type': 'object',
+                                              'properties': propres}}}
+        self.assertEqual(
+            self.hooks._noms_de_fichiers(self._operation_multipart(regroupe)),
+            {'file', 'pieces'})
+        en_ligne = {'type': 'object', 'properties': propres}
+        self.assertEqual(
+            self.hooks._noms_de_fichiers(self._operation_multipart(en_ligne)),
+            {'file', 'pieces'})
+        self.assertEqual(self.hooks._noms_de_fichiers(
+            types.SimpleNamespace(body=[types.SimpleNamespace(
+                media_type='application/json',
+                definition={'schema': en_ligne})])), set())
+
+    def test_parts_de_fichier_recoivent_leur_nom(self):
+        schema = {'type': 'object', 'properties': {
+            'file': {'type': 'string', 'format': 'binary'},
+            'model': {'type': 'string'}}}
+        operation = self._operation_multipart(schema)
+        vus = []
+
+        def original(op, donnees, choisis=None):
+            vus.append((op, choisis))
+            return ([('file', (None, b'%PDF-1.4')), ('model', (None, b'x')),
+                     ('file', ('deja.pdf', b'%PDF')), ('autre', (None, b'y'))],
+                    None)
+
+        prepare = self.hooks._avec_noms_de_fichier(original)
+        fichiers, donnees = prepare(operation, {})
+        self.assertEqual(fichiers, [
+            ('file', ('file', b'%PDF-1.4')),     # nom posé
+            ('model', (None, b'x')),             # champ texte : intact
+            ('file', ('deja.pdf', b'%PDF')),     # nom déjà là : intact
+            ('autre', (None, b'y'))])            # champ hors schéma : intact
+        self.assertIsNone(donnees)
+        self.assertEqual(vus, [(operation, None)])
+        # Idempotent : un second habillage ne s'empile pas.
+        self.assertIs(self.hooks._avec_noms_de_fichier(prepare), prepare)
+
     def test_binaire_schemathesis_garde_son_type(self):
         # ``Binary`` (str + ``.data``) : des octets nus feraient basculer le cas
         # positif en négatif à la revalidation de Schemathesis.

@@ -74,6 +74,8 @@ def corps_objet(request):
 
 #: Borne d'une clé primaire entière PostgreSQL.
 ID_MAX = 2147483647
+#: Plancher d'une colonne entière PostgreSQL (``integer``).
+ENTIER_MIN = -ID_MAX - 1
 
 
 def id_corps(valeur):
@@ -89,7 +91,7 @@ def id_corps(valeur):
     return n if 1 <= n <= ID_MAX else None
 
 
-def types_corps_ou_400(donnees, textes=(), entiers=(), ids=(), nuls=None):
+def types_corps_ou_400(donnees, textes=(), entiers=(), ids=(), nuls=None, longueurs=None):
     """Corps libre lu À LA MAIN (sans sérialiseur) : chaque champ PRÉSENT et
     non nul doit avoir son type JSON déclaré — texte, entier (jamais un
     booléen ni un flottant), identifiant entier 1..ID_MAX — sinon 400 nommant les
@@ -97,7 +99,13 @@ def types_corps_ou_400(donnees, textes=(), entiers=(), ids=(), nuls=None):
 
     ``nuls`` (CI #997 fuzz 2) : quand il est donné, seuls ces champs acceptent
     un ``null`` explicite ; sur tout autre champ listé (non nullable au schéma)
-    ``null`` répond 400 au lieu d'être lu « vide »."""
+    ``null`` répond 400 au lieu d'être lu « vide ».
+
+    CI #997 fuzz (3) — un entier tient dans la colonne entière qui le reçoit
+    (``ENTIER_MIN``..``ID_MAX``, le ``maximum`` publié par le modèle) : au-delà,
+    400 avant tout calcul (``quantite: 2147483648`` faisait un 500 au save) ;
+    ``longueurs`` ({champ: max}) refuse un texte plus long que le ``maxLength``
+    publié (il était tronqué en silence)."""
     from rest_framework.exceptions import ValidationError
     erreurs = {}
     for nom in (*textes, *entiers, *ids):
@@ -110,6 +118,10 @@ def types_corps_ou_400(donnees, textes=(), entiers=(), ids=(), nuls=None):
             erreurs[nom] = ['Texte attendu.']
         elif nom in entiers and (isinstance(valeur, bool) or not isinstance(valeur, int)):
             erreurs[nom] = ['Entier attendu.']
+        elif nom in entiers and not ENTIER_MIN <= valeur <= ID_MAX:
+            erreurs[nom] = [f'Entier hors plage ({ENTIER_MIN} à {ID_MAX}).']
+        elif nom in textes and len(valeur) > (longueurs or {}).get(nom, len(valeur)):
+            erreurs[nom] = [f'Au plus {longueurs[nom]} caractères.']
         elif nom in ids and (isinstance(valeur, bool) or not isinstance(valeur, int)
                              or not 1 <= valeur <= ID_MAX):
             erreurs[nom] = ['Identifiant entier attendu.']

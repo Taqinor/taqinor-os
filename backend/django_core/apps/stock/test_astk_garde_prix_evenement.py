@@ -114,7 +114,7 @@ class GardePrixEvenement(TestCase):
         return self.api.post(
             f'{BASE}bulk/',
             {'ids': [self.produit.pk], 'action': 'set_price',
-             'mode': 'percent', 'valeur': 10}, format='json')
+             'mode': 'percent', 'valeur': '10'}, format='json')
 
     SCENARIOS = {
         'update': ('_put', {'prix_vente': '3000.00', 'tva': '10',
@@ -143,29 +143,28 @@ class GardePrixEvenement(TestCase):
         for geste, (methode, champs) in self.SCENARIOS.items():
             self.assertIn(geste, gestes, f'scénario orphelin : {geste}')
             for champ, valeur in champs.items():
-                with self.subTest(geste=geste, champ=champ):
-                    self.evenements.clear()
-                    self.produit.refresh_from_db()
-                    reponse = getattr(self, methode)(champ, valeur)
-                    if reponse is None:
-                        continue
-                    self.assertEqual(
-                        reponse.status_code, 200,
-                        f'{geste}/{champ} : {reponse.content}')
-                    self.assertEqual(
-                        len(self.evenements), 1,
-                        f'Le geste `{geste}` change `{champ}` mais émet '
-                        f'{len(self.evenements)} événement(s) produit_modifie '
-                        '(attendu : exactement 1).')
-                    self.assertIn(champ, self.evenements[0]['champs'],
-                                  f'`{geste}` : événement sans `{champ}`')
-                    ancien, nouveau = self.evenements[0]['champs'][champ]
-                    self.assertNotEqual(ancien, nouveau)
-                    # remet le produit dans son état de départ pour la suite
-                    Produit.objects.filter(pk=self.produit.pk).update(
-                        prix_vente=Decimal('2500'), tva=Decimal('20'),
-                        prix_fixe_ht=Decimal('2000'),
-                        prix_par_panneau_ht=Decimal('250'))
+                self.evenements.clear()
+                self.produit.refresh_from_db()
+                reponse = getattr(self, methode)(champ, valeur)
+                if reponse is None:
+                    continue
+                self.assertEqual(
+                    reponse.status_code, 200,
+                    f'{geste}/{champ} : {reponse.content}')
+                self.assertEqual(
+                    len(self.evenements), 1,
+                    f'Le geste `{geste}` change `{champ}` mais émet '
+                    f'{len(self.evenements)} événement(s) produit_modifie '
+                    '(attendu : exactement 1).')
+                self.assertIn(champ, self.evenements[0]['champs'],
+                              f'`{geste}` : événement sans `{champ}`')
+                ancien, nouveau = self.evenements[0]['champs'][champ]
+                self.assertNotEqual(ancien, nouveau, f'{geste}/{champ}')
+                # remet le produit dans son état de départ pour la suite
+                Produit.objects.filter(pk=self.produit.pk).update(
+                    prix_vente=Decimal('2500'), tva=Decimal('20'),
+                    prix_fixe_ht=Decimal('2000'),
+                    prix_par_panneau_ht=Decimal('250'))
 
     def test_exemptions_et_scenarios_sont_des_gestes_reels(self):
         """Pas d'exemption fantôme : chaque nom exempté existe encore (sinon

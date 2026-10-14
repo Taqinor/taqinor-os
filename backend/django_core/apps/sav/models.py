@@ -1744,15 +1744,11 @@ class ContratMaintenance(models.Model):
         un jour non ouvré. Repli silencieux sur la date brute si le calendrier
         est indisponible.
         """
-        from datetime import date
         base = self.derniere_visite or self.date_debut
         m = self.MONTHS.get(self.periodicite, 12)
-        # Avance de m mois sans dépendance externe.
-        y, mo = base.year, base.month + m
-        y += (mo - 1) // 12
-        mo = ((mo - 1) % 12) + 1
-        day = min(base.day, 28)
-        cible = date(y, mo, day)
+        # Avance de m mois sans dépendance externe (jour recadré sur 28 ;
+        # une base en fin de calendrier est recadrée sur ``date.max``).
+        cible = add_months(base.replace(day=min(base.day, 28)), m)
         try:
             from apps.notifications.calendar_utils import prochain_jour_ouvre
             return prochain_jour_ouvre(cible, self.company)
@@ -1785,7 +1781,11 @@ class ContratMaintenance(models.Model):
         expiration = self.date_expiration()
         if expiration is None:
             return None
-        return expiration + timezone.timedelta(days=self.GRACE_EXPIRATION_JOURS)
+        try:
+            return expiration + timezone.timedelta(
+                days=self.GRACE_EXPIRATION_JOURS)
+        except OverflowError:  # échéance recadrée sur date.max
+            return expiration
 
     def est_expire(self, today=None):
         """True dès que l'échéance est dépassée (grâce NON comprise)."""
@@ -1846,14 +1846,9 @@ class ContratMaintenance(models.Model):
         Basé sur `derniere_facturation` (si posé) ou `date_debut`.
         Utilise la même périodicité MONTHS que les visites.
         """
-        from datetime import date as _date
         base = self.derniere_facturation or self.date_debut
         m = self.MONTHS.get(self.periodicite, 12)
-        y, mo = base.year, base.month + m
-        y += (mo - 1) // 12
-        mo = ((mo - 1) % 12) + 1
-        day = min(base.day, 28)
-        return _date(y, mo, day)
+        return add_months(base.replace(day=min(base.day, 28)), m)
 
     def facturation_due(self, today=None):
         """True si la facturation récurrente est due aujourd'hui ou passée.

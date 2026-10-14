@@ -147,7 +147,8 @@ class AbandonCreanceTests(TestCase):
         self.assertEqual(self._abandonner(f).status_code, 200)
         r = self.api.post(f'{BASE}{f.id}/creer-avoir/',
                           {'motif': 'Avoir total'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 (3) — plafond = refus d'état : 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn("L'avoir dépasse le montant restant", r.data['detail'])
         self.assertFalse(Avoir.objects.filter(facture=f).exists())
 

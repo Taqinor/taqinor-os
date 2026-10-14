@@ -384,6 +384,13 @@ class BooleenStrict(serializers.BooleanField):
         return data
 
 
+#: CI #997 fuzz (3) — plafond MÉTIER d'une quantité de stock saisie en une
+#: fois (mouvement libre, scan) : publié en ``maximum`` et appliqué AVANT tout
+#: calcul. Le schéma annonçait tout l'entier 32 bits : ``2147483646`` en entrée
+#: faisait déborder ``quantite_stock`` (ou le casier) au save — 500.
+QUANTITE_MAX = 1_000_000
+
+
 class EntierStrict(serializers.IntegerField):
     """Entier JSON réel : ``"5"``, ``5.0`` et ``true`` sont refusés (400)."""
 

@@ -49,8 +49,9 @@ from . import openapi as oa, selectors, services
 from .corps_requete import (
     GedArchiverLegalementCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
-    GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
-    _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides, refus_cycle_vie,
+    GedMotifCorps, GedOperationsLotCorps, GedVerrouCorps, _date_iso,
+    _entier_borne, _id_filtre, _pk, _pks, _txt, conflit_archivage, corps_valide,
+    lignes_csv_invalides, refus_cycle_vie,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
@@ -631,8 +632,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             'contact': document.contact_id,
         }
         if 'proprietaire' in data:
-            proprietaire_id = data.get('proprietaire')
-            if proprietaire_id in (None, '', 'null'):
+            # CI #997 (3) fuzz ged — identifiant lu SÛREMENT (`_pk`) : une liste
+            # ou un objet (`{"contact": [null, null]}`) est un 400 nommé, jamais
+            # une 500 ; hors plage 32 bits -> 404 (aucune ligne).
+            proprietaire_id = _pk(data.get('proprietaire'), 'proprietaire')
+            if proprietaire_id is None:
                 document.proprietaire = None
             else:
                 from django.contrib.auth import get_user_model
@@ -645,8 +649,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                         status=status.HTTP_404_NOT_FOUND)
                 document.proprietaire = user
         if 'contact' in data:
-            contact_id = data.get('contact')
-            if contact_id in (None, '', 'null'):
+            contact_id = _pk(data.get('contact'), 'contact')
+            if contact_id is None:
                 document.contact_id = None
             else:
                 from apps.crm.selectors import get_company_client
@@ -1582,7 +1586,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
-    @extend_schema(request=GedMotifCorps, responses=DocumentSerializer)
+    @extend_schema(request=GedVerrouCorps, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='verrouiller')
     def verrouiller(self, request, pk=None):
         """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours
@@ -1592,8 +1596,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         try:
             services.assert_not_archive_legalement(document)  # ADOC22
+            # CI #997 (3) fuzz ged — motif validé par le corps publié (NUL ou
+            # > 300 caractères = `DataError` 500 ; non-texte = 500 plus loin).
             doc = services.verrouiller_avertissement(
-                document, request.user, motif=request.data.get('motif', ''))
+                document, request.user, motif=corps_valide(
+                    GedVerrouCorps, request).get('motif', ''))
         except ArchivageLegalError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1669,9 +1676,10 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         """
         document = self.get_object()
         target = request.data.get('statut')
-        if not target:
+        # Liste/objet : non hachable -> 500 dans la machine à états.
+        if not target or not isinstance(target, str):
             return Response(
-                {'statut': 'Le statut cible est requis.'},
+                {'statut': 'Le statut cible est requis (chaîne).'},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             doc = services.change_lifecycle_status(

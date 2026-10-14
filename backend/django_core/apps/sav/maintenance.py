@@ -27,6 +27,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.openapi_operations import mots_operation
+from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -238,10 +239,11 @@ class PlanifierTourneeRequete(drf_serializers.Serializer):
 @extend_schema_view(
     list=extend_schema(parameters=[
         OpenApiParameter(
-            'due', OpenApiTypes.STR, required=False,
+            'due', OpenApiTypes.STR, required=False, enum=['1', 'true'],
             description="'1' ou 'true' : seulement les contrats dont la visite est due."),
         OpenApiParameter(
             'a_renouveler', OpenApiTypes.STR, required=False,
+            enum=['1', 'true'],
             description="'1' ou 'true' : seulement les contrats à renouveler."),
         OpenApiParameter(
             'client', ENTIER_ID, required=False,
@@ -292,13 +294,14 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
         client = entier_param(self.request, 'client')
         if client:
             qs = qs.filter(client_id=client)
-        if self.request.query_params.get('due') in ('1', 'true'):
+        # CI #997 : énumération PUBLIÉE — toute autre valeur (vide comprise) → 400.
+        if choix_ou_400(self.request, 'due', ('1', 'true')):
             ids = [c.id for c in qs if c.is_due()]
             qs = qs.filter(id__in=ids)
         # AUD502 — file « à renouveler » : date de renouvellement atteinte OU
         # échéance duree_mois dépassée (période de grâce comprise — la
         # couverture tombe à la fin de la fenêtre de 30 jours).
-        if self.request.query_params.get('a_renouveler') in ('1', 'true'):
+        if choix_ou_400(self.request, 'a_renouveler', ('1', 'true')):
             ids = [c.id for c in qs if c.a_renouveler()]
             qs = qs.filter(id__in=ids)
         return qs

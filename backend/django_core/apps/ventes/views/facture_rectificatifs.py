@@ -101,7 +101,7 @@ class FactureRectificatifsActionsMixin:
     débit, retour client, facture de pénalités."""
 
     @extend_schema(request=D.CreerAvoirRequest,
-                   responses={201: AvoirSerializer})
+                   responses={201: AvoirSerializer, 409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='creer-avoir',
             permission_classes=[PeutEncaisser])
     def creer_avoir(self, request, pk=None):
@@ -197,16 +197,21 @@ class FactureRectificatifsActionsMixin:
         # la facture, plafond lu SOUS le verrou (AUD126), remise globale et
         # palier repris, ventilation TVA (ATOT6), chatter, `avoir_cree`,
         # contre-passation (ZFAC5) et recalcul du statut (ATOT8).
-        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        from ..domain.facturation_ops import (
+            AvoirPlafondDepasse, AvoirRefuse, creer_avoir_facture,
+        )
         try:
             avoir = creer_avoir_facture(
                 facture=facture, user=request.user, motif=motif, mode=mode,
                 lignes_saisies=clean_lignes,
                 type_avoir=str(request.data.get('type') or '').strip() or None)
+        except AvoirPlafondDepasse as exc:
+            # CI #997 (3) — corps conforme, reste créditable épuisé ou
+            # dépassé : refus d'ÉTAT (ENF11), 409.
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_409_CONFLICT)
         except AvoirRefuse as exc:
-            # Refus de VALEUR (ligne, type, plafond créditable) : 400 — les
-            # oracles ATOT (machine, reste, avoir/échéancier, AUD126) le
-            # figent ; seul le refus d'ÉTAT ci-dessus est un 409 (ENF11).
+            # Refus de VALEUR (ligne, type) : 400.
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)
         # Le PDF est de l'I/O : hors transaction, verrou déjà relâché.
@@ -346,7 +351,7 @@ class FactureRectificatifsActionsMixin:
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(request=D.RetourClientRequest,
-                   responses={201: AvoirSerializer})
+                   responses={201: AvoirSerializer, 409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='retour-client',
             permission_classes=[IsResponsableOrAdmin])
     def retour_client(self, request, pk=None):
@@ -377,11 +382,17 @@ class FactureRectificatifsActionsMixin:
         # d'arrondi de la facture (au prorata, le dernier retour porte le
         # solde au centime), plafond SOUS verrou, re-stockage dans la même
         # transaction, `avoir_cree`, recalcul du statut (ATOT8).
-        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        from ..domain.facturation_ops import (
+            AvoirPlafondDepasse, AvoirRefuse, creer_avoir_facture,
+        )
         try:
             avoir = creer_avoir_facture(
                 facture=facture, user=request.user, motif=motif,
                 retour_lignes=lignes, restocker=restocker)
+        except AvoirPlafondDepasse as exc:
+            # CI #997 (3) — même refus d'ÉTAT que creer-avoir : 409.
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_409_CONFLICT)
         except AvoirRefuse as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_400_BAD_REQUEST)

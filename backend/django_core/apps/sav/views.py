@@ -1392,7 +1392,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if not isinstance(ids, list) or not ids:
             return Response({'ids': 'Liste d\'identifiants requise.'},
                             status=400)
-        if operation not in self._ACTIONS_GROUPEES_VALEURS:
+        # CI #997 : un objet/une liste n'est pas hachable (``{} in dict`` → 500) —
+        # `operation` est une chaîne de l'énumération publiée, rien d'autre.
+        if (not isinstance(operation, str)
+                or operation not in self._ACTIONS_GROUPEES_VALEURS):
             return Response(
                 {'operation': 'Opération inconnue.'}, status=400)
         # ENF11 : `motif` est déclaré chaîne — un objet/nombre n'est plus avalé.

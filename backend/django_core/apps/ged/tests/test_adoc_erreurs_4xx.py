@@ -967,3 +967,81 @@ class Ci997FuzzGedTour4Tests(TestCase):
                 'csv', b'nom,description\r\nFuzz,Import\r\n')})
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.json()['crees'], 1)
+
+    # ── CI #997 (3) fuzz ged : assigner / verrouiller / cycle-vie ────────────
+    def _doc(self):
+        return Document.objects.create(
+            company=self.co, folder=self.folder, nom='fuzz3.pdf')
+
+    def test_assigner_liste_ou_objet_400_jamais_500(self):
+        doc = self._doc()
+        url = f'{BASE}documents/{doc.pk}/assigner/'
+        resp = self.api.post(
+            url, {'proprietaire': None, 'contact': [None, None]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('contact', resp.json())
+        resp = self.api.post(url, {'proprietaire': {'a': 1}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('proprietaire', resp.json())
+        doc.refresh_from_db()
+        self.assertIsNone(doc.proprietaire_id)
+
+    def test_assigner_entier_hors_plage_404_jamais_500(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/assigner/',
+            {'proprietaire': None, 'contact': 10 ** 12}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_assigner_null_efface_le_proprietaire(self):
+        doc = self._doc()
+        doc.proprietaire = self.admin2
+        doc.save(update_fields=['proprietaire'])
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/assigner/',
+            {'proprietaire': None, 'contact': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        doc.refresh_from_db()
+        self.assertIsNone(doc.proprietaire_id)
+
+    def test_verrouiller_motif_avec_nul_400_jamais_500(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': 'a\u0000b'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('motif', resp.json())
+        doc.refresh_from_db()
+        self.assertIsNone(doc.verrou_avertissement_par_id)
+
+    def test_verrouiller_motif_trop_long_400(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': 'x' * 301}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('motif', resp.json())
+
+    def test_verrouiller_motif_non_texte_400(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': ['x']}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_verrouiller_motif_conforme_pose_le_verrou(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/verrouiller/',
+            {'motif': 'x' * 300}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        doc.refresh_from_db()
+        self.assertEqual(doc.verrou_avertissement_par_id, self.admin.pk)
+
+    def test_cycle_vie_statut_liste_400_jamais_500(self):
+        doc = self._doc()
+        resp = self.api.post(
+            f'{BASE}documents/{doc.pk}/cycle-vie/',
+            {'statut': ['revue']}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('statut', resp.json())

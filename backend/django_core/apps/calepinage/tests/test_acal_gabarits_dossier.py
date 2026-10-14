@@ -275,3 +275,58 @@ class RefusTest(BaseGabarits):
         ok = self._deposer(actif='False')
         self.assertEqual(ok.status_code, 201, ok.data)
         self.assertFalse(ok.data['gabarit']['actif'])
+
+    def test_elements_de_liste_exigent_code_libelle_source_fuzz_997(self):
+        # CI #997 api-fuzz (3) : ``champs=[{"x": …}]`` (objet quelconque) était
+        # « conforme » au schéma puis refusé 400 « Le champ n°1 doit porter un
+        # code » — le schéma exige maintenant ``code`` + ``libelle`` (champ),
+        # ``code`` + ``intitule`` + ``source_reference`` (pièce).
+        from ..views.gabarits_dossier import _CORPS_GABARIT
+
+        champs = _CORPS_GABARIT.fields
+        for liste, requis in (
+                ('champs', {'code', 'libelle'}),
+                ('pieces_attendues', {'code', 'intitule', 'source_reference'})):
+            element = champs[liste].child
+            self.assertEqual(
+                {nom for nom, f in element.fields.items() if f.required},
+                requis, liste)
+        for corps in ({'champs': [{'x-schemathesis-additional': [None]}]},
+                      {'champs': [{'code': 'a', 'libelle': 5}]},
+                      {'champs': [{'code': 'a', 'libelle': 'L', 'type': None}]},
+                      {'champs': [{'code': 'a', 'libelle': 'L',
+                                   'cle_calepinage': ''}]},
+                      {'champs': [{'code': 'a', 'libelle': 'L',
+                                   'obligatoire': 1}]},
+                      {'pieces_attendues': [dict(PIECES[0], code='a\x00')]},
+                      {'pieces_attendues': [dict(PIECES[0],
+                                                 obligatoire=None)]},
+                      {'intitule': 'Dossier\x00'}):
+            refus = self.api.post(URL, dict(
+                {'pays': 'ma', 'code': 'r', 'intitule': 'Dossier'}, **corps),
+                format='json')
+            self.assertEqual(refus.status_code, 400, (corps, refus.data))
+        self.assertFalse(GabaritDossierReglementaire.objects.exists())
+        conforme = self.api.post(URL, {
+            'pays': 'ma', 'code': 'ok', 'intitule': 'Dossier',
+            'champs': [{'code': 'a', 'libelle': 'L', 'type': 'nombre',
+                        'cle_calepinage': 'adresse', 'obligatoire': True}],
+            'pieces_attendues': PIECES}, format='json')
+        self.assertEqual(conforme.status_code, 201, conforme.data)
+
+    def test_deux_elements_au_meme_code_409_pas_400(self):
+        # Un schéma n'exprime pas l'unicité d'une clé d'objet : un corps
+        # conforme au schéma mais en doublon répond 409 (statut attendu des
+        # requêtes valides), nommé sous l'élément fautif.
+        doublon = [{'code': 'a', 'libelle': 'L'}, {'code': 'a', 'libelle': 'M'}]
+        reponse = self.api.post(URL, {
+            'pays': 'ma', 'code': 'dbl', 'intitule': 'Dossier',
+            'champs': doublon}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('champs[1].code', reponse.data)
+        # Un doublon + une autre faute reste un 400 (corps mal formé).
+        mixte = self.api.post(URL, {
+            'pays': 'x', 'code': 'dbl', 'intitule': 'Dossier',
+            'champs': doublon}, format='json')
+        self.assertEqual(mixte.status_code, 400, mixte.data)
+        self.assertFalse(GabaritDossierReglementaire.objects.exists())

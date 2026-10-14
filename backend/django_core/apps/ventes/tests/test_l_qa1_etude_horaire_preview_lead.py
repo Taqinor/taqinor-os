@@ -217,9 +217,11 @@ class EtudeHoraireEquipementsTests(TestCase):
     def test_champs_scalaires_forme_publiee(self):
         """CI #997 (2) (cas EpXQ7i) — ``critere: "\\f"`` passait (200) comme
         ``lat: "0"`` ou ``devis: null`` : un champ PRÉSENT suit sa forme
-        publiée (400 nommé) ; une occupation hors liste reste ignorée."""
+        publiée (400 nommé) ; une occupation hors liste reste ignorée.
+        CI #997 (3) (O3EAyQ) — un nul dans ville/raccordement sort du motif."""
         for nom, brut in (('critere', '\f'), ('critere', 'x'),
                           ('ville', ' '), ('ville', '\u001c'),
+                          ('ville', 'a\u0000'), ('raccordement', 'm\u0000o'),
                           ('raccordement', 0), ('lat', '0'), ('kwc', True),
                           ('devis', None), ('lead', 1.5), ('occupation', 5),
                           ('equipements', '')):

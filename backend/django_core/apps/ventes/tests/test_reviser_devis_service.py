@@ -134,7 +134,8 @@ class ReviserDevisService(TestCase):
         self.assertEqual(self._post(v1).status_code, 201)
         r = self.api.patch(f'/api/django/ventes/devis/{v1.id}/',
                            {'is_active': True}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        # CI #997 (3) — corps conforme, état refusé : 409, plus 400.
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('is_active', r.data)
         v1.refresh_from_db()
         self.assertFalse(v1.is_active)

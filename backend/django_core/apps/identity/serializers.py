@@ -79,7 +79,10 @@ class UrlFacultative(serializers.URLField):
 
 
 class IdentityProviderSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
-    """CRUD d'un IdP SSO (NTSEC1). ``company`` forcée côté serveur."""
+    """CRUD d'un IdP SSO (NTSEC1). ``company`` forcée côté serveur.
+
+    CI #997 (3) — textes et booléens STRICTS : ``enforce_sso: 0`` (le schéma
+    déclare un booléen) était lu ``False`` et le POST répondait 201."""
     metadata_url = UrlFacultative(
         max_length=500, required=False, allow_blank=True)
     sso_url = UrlFacultative(max_length=500, required=False, allow_blank=True)

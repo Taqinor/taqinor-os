@@ -246,8 +246,9 @@ class MachineFacturation(RuleBasedStateMachine):
         r = self.api.post(f'{BASE}/factures/{f.id}/creer-avoir/', {},
                           format='json')
         # 409 = refus d'ÉTAT (ENF11) : un brouillon (VNT20) ne se crédite
-        # pas ; 400 = refus de valeur (plafond créditable).
-        self._verifier_reponse(r, (201, 400, 409))
+        # pas, ni au-delà du plafond créditable (CI #997) ; corps vide,
+        # jamais un 400.
+        self._verifier_reponse(r, (201, 409))
 
     @rule(facteur=st.sampled_from(
         [Decimal('1'), Decimal('1.1'), Decimal('0.9')]))
