@@ -139,6 +139,11 @@ def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
     synchrone sous les verrous de l'acceptation, cf. QJR422)."""
     from django.db import transaction
 
+    # VNT53 — un AVENANT n'est pas une nouvelle vente : le lien a déjà été
+    # proposé à la première signature.
+    from apps.ventes.selectors import predecesseur_accepte
+    if predecesseur_accepte(devis) is not None:
+        return
     try:
         from apps.ventes.services import installation_share_link
         with transaction.atomic():

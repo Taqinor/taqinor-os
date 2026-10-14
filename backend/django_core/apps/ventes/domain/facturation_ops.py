@@ -180,7 +180,7 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
         from .instantanes_facture import figer_a_l_emission
         figer_a_l_emission(facture)
         # VNT21 — sortie de stock U9 (reliquat, idempotente) à l'ÉMISSION : un brouillon ne sort rien.
-        if facture.devis_id and (not facture.bon_commande_id or source == 'facturer_devis_complet'):
+        if facture.devis_id and (not facture.bon_commande_id or (source == 'facturer_vente' and facture.type_facture == 'complete')):
             reserver_stock_devis_facture(devis=facture.devis, user=user, company=facture.company)
         facture.save()
 
@@ -661,90 +661,33 @@ def valider_paiements_saisis(paiements, *, aujourdhui=None):
 
 
 def facturer_devis_complet(*, devis, user, company, paiements=None):
-    """« Facturer » un devis ACCEPTÉ en UN geste atomique (fondateur, 05/10).
+    """« Facturer » un devis ACCEPTÉ en UN geste atomique (fondateur, 05/10) :
+    la facture COMPLÈTE (100 %, lignes recopiées, rattachée au BC du devis
+    s'il n'a encore aucune facture), émise, puis les paiements DÉJÀ reçus
+    consignés (0 à 5, ``valider_paiements_saisis``) — tout refus annule
+    TOUT. Renvoie ``(facture, [paiements créés])``.
 
-    Cas réel : un client a signé et déjà payé ~90 % en 1 à 3 versements, et il
-    n'existait aucun chemin simple pour émettre SA facture. Ce service :
-
-      1. refuse un devis non accepté, ou déjà facturé (échéancier OU bon de
-         commande, consolidée — LA garde ``exiger_devis_facturable``, ATOT2), en
-         nommant les références existantes ;
-      2. valide les paiements déjà reçus (``valider_paiements_saisis``) ;
-      3. dans UNE transaction : réserve le stock comme la facturation directe
-         (U9, garde anti-double-comptage incluse), crée la facture COMPLÈTE
-         (100 %, lignes du devis recopiées par ``copier_devis_sur_facture`` —
-         le même geste que la facture de BC), la rattache au bon de commande
-         du devis s'il en a un sans facture, l'ÉMET par le service unique
-         ``emettre_facture`` (qui pose le numéro légal — ATOT27), refuse une somme de paiements > total TTC, puis
-         consigne chaque paiement par ``encaisser_sur_facture`` — le MÊME code
-         que ``factures/{id}/enregistrer-paiement/``.
-
-    Tout refus annule TOUT (aucune facture, aucun numéro consommé, aucun
-    paiement). Lève ``FacturationRefusee``, ``EncaissementRefuse``,
-    ``EmissionRefusee``, ``StockInsuffisantError`` ou ``CreditHoldError``.
-    Renvoie ``(facture, [paiements créés])``.
-    """
-    from django.db import transaction
-
-    from apps.ventes.domain.encaissements import encaisser_sur_facture
-    from apps.ventes.models import BonCommande, Facture
-    from apps.ventes.selectors_facturation import (
-        DevisDejaFacture, exiger_devis_facturable,
-    )
-    from apps.ventes.utils.company_settings import create_provisoire
-
+    VNT65 — ENVELOPPE MINCE de ``facturer_vente(nature='complete',
+    emettre=True)`` : les brouillons de la vente (l'acompte automatique
+    VNT62) sont remplacés ; « déjà facturé » (toute facture ÉMISE de la
+    vente, quatre portes) et version remplacée sont des refus nommés.
+    Traduction des refus : ``FacturationRefusee`` (400), blocage crédit
+    → ``CreditHoldError`` (403). ``company`` reste dans la signature."""
+    from apps.ventes.domain.facturation_vente import (
+        FacturationVenteRefusee, facturer_vente)
     if devis.statut != devis.Statut.ACCEPTE:
         raise FacturationRefusee(
             'Seul un devis accepté peut être facturé : ce devis est au statut '
             f'« {devis.get_statut_display()} ».')
-    # ATOT2 — LA garde unique des quatre portes (consolidée comprise).
     try:
-        exiger_devis_facturable(devis, 'complete')
-    except DevisDejaFacture as exc:
-        raise FacturationRefusee(exc.motif) from exc
-    saisis = valider_paiements_saisis(paiements)
-
-    # Le bon de commande du devis est rattaché s'il n'a encore AUCUNE facture
-    # (``Facture.bon_commande`` est un OneToOne : même une facture annulée
-    # occupe la place) et n'est pas annulé.
-    bc = BonCommande.objects.filter(devis=devis).first()
-    if bc is not None and (
-            bc.statut == BonCommande.Statut.ANNULE
-            or Facture.objects.filter(bon_commande=bc).exists()):
-        bc = None
-
-    with transaction.atomic():
-        def _create(ref):
-            facture = Facture.objects.create(
-                reference=ref,
-                devis=devis,
-                bon_commande=bc,
-                client=devis.client,
-                statut=Facture.Statut.BROUILLON,
-                type_facture=Facture.TypeFacture.COMPLETE,
-                created_by=user,
-                company=company,
-                **entete_facture_depuis_devis(devis),
-            )
-            return copier_devis_sur_facture(facture, devis)
-
-        facture = create_provisoire(_create)
-        emettre_facture(facture, user=user, source='facturer_devis_complet')
-        facture.refresh_from_db()
-
-        total_ttc = Decimal(str(facture.total_ttc))
-        somme = sum((p['montant'] for p in saisis), Decimal('0'))
-        if somme - total_ttc > Decimal('0.01'):
-            raise FacturationRefusee(
-                f'Les paiements saisis ({somme:.2f} MAD) dépassent le total '
-                f'TTC de la facture ({total_ttc:.2f} MAD).')
-
-        crees = []
-        for donnees in saisis:
-            facture, paiement = encaisser_sur_facture(
-                facture=facture, donnees=donnees, user=user)
-            crees.append(paiement)
-        facture.refresh_from_db()
+        facture, crees = facturer_vente(
+            devis, nature='complete', user=user, emettre=True,
+            paiements=paiements or [], remplacer_brouillons=True)
+    except FacturationVenteRefusee as exc:
+        if exc.corps.get('code') == 'credit_hold':
+            from apps.ventes.domain.recouvrement import CreditHoldError
+            raise CreditHoldError(exc.corps['detail']) from exc
+        raise FacturationRefusee(exc.corps['detail']) from exc
     logger.info(
         'facturer_devis_complet: facture %s émise depuis devis %s avec %d '
         'paiement(s) (company=%s)', facture.reference, devis.reference,

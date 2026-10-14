@@ -51,14 +51,10 @@ LIBELLE_FAIRE_SIGNER_AVENANT = 'Faire signer l’avenant'
 
 def _a_un_predecesseur_accepte(devis):
     """ADEV57 — vrai si une version que ``devis`` REMPLACE (chaîne de
-    révision) est au statut accepté. Lecture via les sélecteurs ventes."""
-    from apps.ventes.selectors import (
-        devis_predecesseurs_revision_ids, get_devis_by_pk, is_devis_accepte)
-    for pk in devis_predecesseurs_revision_ids(devis):
-        ancien = get_devis_by_pk(pk)
-        if ancien is not None and is_devis_accepte(ancien):
-            return True
-    return False
+    révision) est au statut accepté. VNT53 — délègue au sélecteur ventes
+    ``predecesseur_accepte`` (LA lecture, aussi portée par ``devis_accepted``)."""
+    from apps.ventes.selectors import predecesseur_accepte
+    return predecesseur_accepte(devis) is not None
 
 
 def _poser_tache_avenant(lead, devis, user):

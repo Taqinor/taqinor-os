@@ -81,6 +81,24 @@ class TestNotificationProducers(TestCase):
         self.assertEqual(
             Notification.objects.filter(event_type=EventType.DEVIS_ACCEPTED).count(), 0)
 
+    def test_vnt53_avenant_accepte_ne_notifie_pas(self):
+        client = Client.objects.create(
+            company=self.company, nom='ClientCo', email='c3@example.com')
+        v2 = Devis.objects.create(
+            company=self.company, reference='DEV-NOTIF-3B', client=client,
+            statut=Devis.Statut.ENVOYE, taux_tva=Decimal('20.00'),
+            remise_globale=Decimal('0'), created_by=self.actor)
+        Devis.objects.create(
+            company=self.company, reference='DEV-NOTIF-3A', client=client,
+            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20.00'),
+            remise_globale=Decimal('0'), created_by=self.actor,
+            is_active=False, superseded_by=v2)
+        Notification.objects.all().delete()
+        v2.statut = Devis.Statut.ACCEPTE
+        v2.save()
+        self.assertEqual(
+            Notification.objects.filter(event_type=EventType.DEVIS_ACCEPTED).count(), 0)
+
     # ── YEVNT4 — SAV_TICKET_OPENED ───────────────────────────────────────────
 
     def test_sav_ticket_creation_notifies_assigned_technicien(self):

@@ -251,3 +251,88 @@ class TestDevisAcceptation(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
         devis.refresh_from_db()
         self.assertNotEqual(devis.statut, 'accepte')
+
+    # ── VNT54 — une seule vente en vigueur par lead ─────────────────────────
+
+    def _vente_388(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead VNT54', stage='QUOTE_SENT')
+        vente = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0380',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'))
+        return lead, vente
+
+    def _accepter(self, devis):
+        return self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/accepter/',
+            {'nom': 'Client', 'date': '2026-06-10'}, format='json')
+
+    def test_vnt54_variante_d_une_vente_acceptee_refusee(self):
+        lead, vente = self._vente_388()
+        variante = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0390',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+            version_parent=vente, taux_tva=Decimal('20'))
+        r = self._accepter(variante)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'vente_active_existante')
+        self.assertEqual(r.data['vente_active']['id'], vente.pk)
+        variante.refresh_from_db()
+        self.assertEqual(variante.statut, Devis.Statut.ENVOYE)
+
+    def test_vnt54_revision_de_la_vente_acceptee(self):
+        lead, vente = self._vente_388()
+        v2 = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0400',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+            version_parent=vente, version=2, taux_tva=Decimal('20'))
+        Devis.objects.filter(pk=vente.pk).update(
+            is_active=False, superseded_by=v2)
+        r = self._accepter(v2)
+        self.assertEqual(r.status_code, 200, r.data)
+        v2.refresh_from_db()
+        self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+
+    def test_vnt54_lead_sans_vente_accepte(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead libre', stage='QUOTE_SENT')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0410',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'))
+        self.assertEqual(self._accepter(devis).status_code, 200)
+
+    # ── VNT62 — échéancier figé + brouillon d'acompte, défait à la sortie ──
+
+    def test_vnt62_acceptation_pose_l_acompte_la_sortie_de_signe_l_annule(
+            self):
+        import apps.crm.stages as stages
+        from apps.ventes.models import Facture
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead VNT62', stage=stages.FOLLOW_UP)
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-{MONTH}-0620', statut='envoye',
+                                lead=lead)
+        r = self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                          {'nom': 'Client 388'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        brouillon = Facture.objects.get(
+            devis=devis, statut=Facture.Statut.BROUILLON,
+            type_facture='acompte')
+        self.assertEqual(brouillon.total_ttc, Decimal('14700.00'))
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.SIGNED)
+
+        r = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                           {'stage': stages.FOLLOW_UP,
+                            'confirme_recul': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        lead.refresh_from_db()
+        devis.refresh_from_db()
+        brouillon.refresh_from_db()
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(brouillon.statut, Facture.Statut.ANNULEE)

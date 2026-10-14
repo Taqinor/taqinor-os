@@ -122,6 +122,10 @@ def _on_devis_accepted(sender, devis, user=None, ancien_statut=None, **kwargs):
     company = getattr(devis, 'company', None)
     if company is None:
         return
+    # VNT53 — un AVENANT n'est pas une nouvelle vente : aucune règle ne rejoue.
+    from apps.ventes.selectors import predecesseur_accepte
+    if predecesseur_accepte(devis) is not None:
+        return
     evaluate(TriggerType.DEVIS_ACCEPTED, devis, company, user=user,
              context={'ancien_statut': ancien_statut,
                       'nouveau_statut': getattr(devis, 'statut', None)})

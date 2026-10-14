@@ -5,8 +5,9 @@ factures : ``AVOIR_DEPASSE_FACTURE``, ``FACTURE_STATUT_RESTE_INCOHERENT``,
 lit les factures CONSOLIDÉES liées par ``FactureSource``.
 
 Objets ORM réels, ``Facture.montant_du`` / ``avoirs_total`` réels, aucun mock.
-Test-du-test : retirer la lecture ``FactureSource`` (``_parts_consolidees``)
-⇒ ``test_consolidee_comptee`` échoue.
+Test-du-test : retirer la lecture des CONSOLIDÉES de ``plan_facturation``
+(VNT64, ``vente_facturation._factures_et_parts``) ⇒ ``test_consolidee_comptee``
+échoue.
 """
 from decimal import Decimal
 
@@ -78,3 +79,21 @@ class CoherenceArgentTests(_Base):
                      montant_tva=Decimal('2000'), montant_ttc=Decimal('12000'))
         self.assertEqual(self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS', devis,
                                        _Ctx(self.company)), [])
+
+    def test_vnt64_une_chaine_n_est_plus_signalee_comme_deux(self):
+        """VNT64 — V1 révisée en V2 (acceptée), chacune portant une facture
+        qui dépasse son total : la règle lit la VENTE (toute la chaîne) et
+        ne la signale qu'UNE fois, sur sa tête, au facturé cumulé."""
+        v1 = self.devis()  # 12 000 TTC
+        v2 = self.devis(version_parent=v1, version=2)
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        for devis in (v1, v2):
+            self._facture('12600', devis=devis)
+        sorties = [self.run_rule('DOC_FACTURATION_DEPASSE_DEVIS',
+                                 Devis.objects.get(pk=d.pk),
+                                 _Ctx(self.company)) for d in (v1, v2)]
+        self.assertEqual(sorties[0], [])
+        self.assertEqual(len(sorties[1]), 1)
+        self.assertAlmostEqual(sorties[1][0].valeurs['net_facture'],
+                               25200.0, places=2)

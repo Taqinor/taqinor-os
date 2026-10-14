@@ -149,3 +149,39 @@ class LesCasOuRienNePart(_Base):
             self._accepter(devis)      # ne doit pas lever
 
         self.assertEqual(self._notifs(), [])
+
+    def test_vnt53_un_avenant_ne_propose_aucun_lien(self):
+        """Le lien a été proposé à la première signature : la V2 acceptée
+        d'une vente déjà signée (avenant) n'en repropose pas."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Bennani', owner=self.commercial)
+        v2 = self._devis(lead=lead)
+        v1 = self._devis(lead=lead)
+        Devis.objects.filter(pk=v1.pk).update(
+            is_active=False, superseded_by=v2)
+        Notification.objects.all().delete()
+
+        self._accepter(v2)
+
+        self.assertEqual(self._notifs(), [])
+        self.assertFalse(ShareLink.objects.filter(devis=v2).exists())
+
+
+class PoserTacheAvenant(_Base):
+    """VNT53 (D-ADEV-6) — ``apps.crm.services.poser_tache_avenant`` est
+    idempotent : deux appels, UNE tâche « Faire signer l'avenant »."""
+
+    slug = 'crx38-avenant'
+
+    def test_deux_appels_une_seule_tache(self):
+        from apps.crm.receivers_cadence import LIBELLE_FAIRE_SIGNER_AVENANT
+        from apps.crm.services import poser_tache_avenant
+        lead = Lead.objects.create(
+            company=self.company, nom='Bennani', owner=self.commercial)
+        devis = self._devis(lead=lead)
+
+        poser_tache_avenant(lead, devis, self.commercial)
+        poser_tache_avenant(lead, devis, self.commercial)
+
+        self.assertEqual(lead.relance_etapes.filter(
+            libelle=LIBELLE_FAIRE_SIGNER_AVENANT).count(), 1)

@@ -92,6 +92,14 @@ EXEMPTEES = {
     # REMPLACÉE est refusée par le service (``_exiger_vente_en_jeu`` :
     # 409 ``corps_version_remplacee``), jamais par _refus_modifiabilite.
     'facturer': 'aval d’un accepté (facture de la vente, VNT31).',
+    # VNT60 — gestes d'une vente acceptée : « Prix négocié » crée la V2 par
+    # ``reviser_devis`` (le contenu de l'accepté ne change pas) ; la demande
+    # de signature d'avenant pose un lien et une tâche, rien d'autre.
+    'prix_negocie': 'crée et accepte la V2 négociée (VNT59), V1 inchangée.',
+    'avenant_demander_signature': 'lien client + tâche crm, contenu inchangé.',
+    # VNT66 — le geste ÉCHÉANCIER est PERMIS sur un accepté (VNT25) : sa garde
+    # est ``controler_echeancier_vente`` (tranches couvertes inchangées).
+    'echeancier_vente': 'geste ÉCHÉANCIER (VNT25), permis sur un accepté.',
     # detail=False — ne visent aucun devis existant.
     'atomic': 'création d’un NOUVEAU devis (detail=False).',
     'auto': 'création d’un NOUVEAU devis (detail=False).',

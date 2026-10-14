@@ -109,3 +109,71 @@ class MontantsFigesTests(TestCase):
                                             field='remise_globale')
         self.assertEqual(Decimal(trace.new_value), Decimal('5'))
         self.assertEqual(Decimal(trace.old_value or '0'), Decimal('0'))
+
+
+class MontantTrancheBrouillonTests(TestCase):
+    """VNT67 — ``factures/<id>/montant-tranche/`` : le brouillon d'acompte du
+    388 (14 700) passe à 15 000 au prorata du plan, l'échéancier est réécrit
+    (Σ = TTC) ; une facture émise est refusée (409) ; un Commercial 403."""
+
+    def setUp(self):
+        from apps.ventes.domain.facturation_vente import (
+            creer_brouillon_tranche)
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.tests.test_qjr_echeancier_validation import (
+            ECHEANCIER_30_60_10)
+        from apps.ventes.vente_facturation import plan_facturation
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.devis = creer_devis_388(
+            self.company, self.user, make_client(self.company),
+            'DEV-VNT67-10', ECHEANCIER_30_60_10)
+        self.brouillon = creer_brouillon_tranche(
+            self.devis, plan_facturation(self.devis)['prochaine'], self.user)
+
+    def _post(self, facture, montant, user=None):
+        api = APIClient()
+        api.credentials(HTTP_AUTHORIZATION=(
+            f'Bearer {AccessToken.for_user(user or self.user)}'))
+        return api.post(
+            f'/api/django/ventes/factures/{facture.id}/montant-tranche/',
+            {'montant_ttc': montant}, format='json')
+
+    def test_brouillon_14700_vers_15000_au_prorata_echeancier_reecrit(self):
+        self.assertEqual(self.brouillon.total_ttc, Decimal('14700.00'))
+        r = self._post(self.brouillon, '15000')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.brouillon.refresh_from_db()
+        self.assertEqual(
+            (self.brouillon.montant_ttc, self.brouillon.montant_ht,
+             self.brouillon.montant_tva),
+            (Decimal('15000.00'), Decimal('12720.41'), Decimal('2279.59')))
+        self.devis.refresh_from_db()
+        self.assertEqual(
+            [Decimal(str(e['pct_or_montant'])) for e in self.devis.echeancier],
+            [Decimal('15000'), Decimal('60'), Decimal('4600')])
+
+    def test_facture_emise_409(self):
+        from apps.ventes.models import Facture
+        Facture.objects.filter(pk=self.brouillon.pk).update(
+            statut=Facture.Statut.EMISE)
+        self.brouillon.refresh_from_db()
+        r = self._post(self.brouillon, '15000')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'facture_emise')
+
+    def test_commercial_403(self):
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        role = Role.objects.create(company=self.company, nom='Commercial 67',
+                                   permissions=list(COMMERCIAL_PERMISSIONS))
+        commercial = User.objects.create_user(
+            username=f'vnt67_com_{_nxt()}', password='x', role=role,
+            role_legacy='normal', company=self.company)
+        r = self._post(self.brouillon, '15000', user=commercial)
+        self.assertEqual(r.status_code, 403, r.data)
+        self.brouillon.refresh_from_db()
+        self.assertEqual(self.brouillon.total_ttc, Decimal('14700.00'))

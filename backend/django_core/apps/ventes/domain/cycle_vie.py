@@ -976,10 +976,10 @@ def _acceptance_deposit_block(devis, lignes=None):
     configurable (pas de tranche, pas de RIB) → email inchangé. Best-effort."""
     from decimal import Decimal
     try:
-        from ..utils.echeancier import next_tranche
+        from ..public.payload_conditions import acompte_prevu  # VNT63 — l'acompte PRÉVU du plan
         # NPLUS1 — ``lignes`` déjà chargées par l'acceptation (elles ne bougent
         # pas pendant l'acceptation) ; absent ⇒ requête d'hier.
-        tr = next_tranche(devis, lignes=lignes)
+        tr = acompte_prevu(devis, lignes=lignes)
         if tr is None:
             return ''
         acompte = Decimal(str(tr['ttc']))
@@ -1221,194 +1221,6 @@ def _persist_attribution(*, devis):
                 getattr(devis, 'reference', '?'), list(attribution.keys()))
 
 
-def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
-    """QJ9 — Émet un événement « SignedQuote » vers l'API Conversions Meta (CAPI).
-
-    Gate : si ``META_CAPI_ACCESS_TOKEN`` est absent (ou vide) dans les settings
-    ou l'environnement, on dégrade en no-op silencieux (log uniquement). Cela
-    permet de pré-câbler l'intégration sans créer de dépendance sur un token
-    absent en dev/staging.
-
-    Conformité règle #4 : ne touche jamais les statuts Devis/Facture.
-    Conformité règle #3 (CLAUDE.md) : le call HTTP CAPI est server-side — jamais
-    de création de campagne (interdit par règle #3).
-    Ne lève jamais : l'appelant attrape toute exception.
-
-    L'événement CAPI inclut les données d'attribution (fbclid/UTM) snapshottées
-    dans etude_params (QJ9 _persist_attribution) pour un matching maximal.
-
-    Env var attendue : ``META_CAPI_ACCESS_TOKEN`` (token de page Meta / CAPI).
-    Var optionnelle : ``META_CAPI_PIXEL_ID`` (Pixel ID — peut être vide).
-    """
-    import os
-    from django.conf import settings
-
-    token = (
-        getattr(settings, 'META_CAPI_ACCESS_TOKEN', None)
-        or os.environ.get('META_CAPI_ACCESS_TOKEN', '')
-        or ''
-    ).strip()
-    if not token:
-        logger.info(
-            'QJ9: CAPI SignedQuote ignoré pour devis %s — META_CAPI_ACCESS_TOKEN absent',
-            getattr(devis, 'reference', '?'))
-        return
-
-    pixel_id = (
-        getattr(settings, 'META_CAPI_PIXEL_ID', None)
-        or os.environ.get('META_CAPI_PIXEL_ID', '')
-        or ''
-    ).strip()
-
-    # Récupère l'attribution snapshottée (QJ9) ou tente le lead directement.
-    attribution = {}
-    params = devis.etude_params or {}
-    if 'attribution' in params:
-        attribution = params['attribution']
-    else:
-        lead = getattr(devis, 'lead', None)
-        if lead is not None:
-            for field in _ATTRIBUTION_FIELDS:
-                val = getattr(lead, field, None)
-                if val:
-                    attribution[field] = val
-
-    import hashlib
-    import time
-    # QJR147 — ``urllib.parse`` n'est plus nécessaire : le jeton ne part plus
-    # en query string (il est dans le corps JSON, voir plus bas).
-    import urllib.request
-    import json as _json
-
-    # Données de l'événement CAPI (hachage SHA-256 pour le PII).
-    def _sha256(val):
-        return hashlib.sha256((val or '').strip().lower().encode()).hexdigest()
-
-    event_time = int(time.time())
-    client = getattr(devis, 'client', None)
-    email_hash = _sha256(getattr(client, 'email', '') or '') if client else ''
-    phone_raw = ''
-    if client:
-        phone_raw = getattr(client, 'telephone', '') or ''
-    # ── QJR136 / ES9 — LE TÉLÉPHONE PART EN E.164, PAS EN CHIFFRES NUS ──────
-    #
-    # CE QUI ÉTAIT FAUX. Le hash portait ``''.join(c for c in phone_raw if
-    # c.isdigit())`` — donc « 0600000000 » SANS indicatif pays, alors que Meta
-    # apparie sur un numéro E.164. L'appariement ``ph`` échouait donc
-    # SYSTÉMATIQUEMENT et l'EMQ chutait. La MÊME app expose déjà la règle
-    # (``utils/phone.normalize_phone_e164``), ``apps/adsengine/audiences.py``
-    # l'utilise pour ses uploads Meta, et ce fichier savait le faire cent
-    # lignes plus haut pour le lien wa.me : une quatrième dérivation locale
-    # n'avait aucune raison d'exister.
-    #
-    # Un numéro NON normalisable (local ambigu, saisie incomplète) ne produit
-    # plus un hash faux : il ne produit AUCUNE clé ``ph``.
-    from apps.ventes.utils.phone import normalize_phone_e164
-    phone_e164 = normalize_phone_e164(phone_raw)
-    phone_hash = _sha256(phone_e164) if phone_e164 else ''
-
-    # ── QJR136 / ES8 — AUCUNE VALEUR N'EST ENVOYÉE SI ELLE N'EST PAS SÛRE ───
-    #
-    # Valeur de conversion : TTC REMISÉ de l'option acceptée (QX2 — chaîne
-    # canonique QX1), jamais le TTC brut du devis. Le repli sur
-    # ``Devis.total_ttc`` était précisément ce TTC BRUT (``models.Devis`` ne
-    # déduit jamais ``remise_globale``) et la SOMME des deux options — le
-    # motif brut-vs-net (QJR22/23/24) survivant dans un repli, et corrompant le
-    # ROAS et l'optimisation d'enchères de la campagne.
-    #
-    # On ne devine plus : quand la chaîne canonique échoue, on N'ENVOIE RIEN.
-    # Un événement manquant se rattrape ; un montant faux entraîne durablement
-    # l'algorithme d'enchères.
-    try:
-        from apps.ventes.utils.options import option_totaux
-        value = float(option_totaux(devis)['ttc'])
-    except Exception:  # noqa: BLE001 — CAPI ne casse jamais l'acceptation
-        logger.warning(
-            'QJR136: CAPI SignedQuote NON envoyé pour devis %s — la valeur de '
-            "conversion canonique est indisponible (aucun montant n'est "
-            'deviné).', getattr(devis, 'reference', '?'), exc_info=True)
-        return
-
-    user_data = {}
-    if email_hash:
-        user_data['em'] = [email_hash]
-    if phone_hash:
-        user_data['ph'] = [phone_hash]
-    fbclid = attribution.get('fbclid', '')
-    if fbclid:
-        user_data['fbc'] = f'fb.1.{int(time.time() * 1000)}.{fbclid}'
-    # ADSENG2 — EMQ (Event Match Quality) : ip + user_agent NON hachés (Meta les
-    # recommande tels quels). Déjà disponibles au point d'acceptation (accept_devis
-    # les reçoit), auparavant abandonnés ici. Aucune nouvelle collecte de donnée.
-    if ip:
-        user_data['client_ip_address'] = str(ip)
-    if user_agent:
-        user_data['client_user_agent'] = str(user_agent)
-
-    custom_data = {
-        'currency': 'MAD',
-        'value': value,
-        'order_id': str(getattr(devis, 'reference', '')),
-    }
-    utm_source = attribution.get('utm_source', '')
-    if utm_source:
-        custom_data['utm_source'] = utm_source
-    utm_campaign = attribution.get('utm_campaign', '')
-    if utm_campaign:
-        custom_data['utm_campaign'] = utm_campaign
-
-    # ADSENG2 — event_id DÉTERMINISTE (dedup) : Meta dé-duplique deux événements
-    # de même event_name + event_id dans une fenêtre de 48 h. La référence du
-    # devis est unique et déjà la clé d'idempotence naturelle ailleurs — la
-    # réutiliser ferme d'avance tout double-comptage si un Pixel navigateur est
-    # un jour ajouté sur /proposal.
-    event_id = f'signedquote:{getattr(devis, "reference", "") or devis.pk}'
-
-    event = {
-        'event_name': 'SignedQuote',
-        'event_time': event_time,
-        'event_id': event_id,
-        'action_source': 'website',
-        'user_data': user_data,
-        'custom_data': custom_data,
-    }
-
-    # ADSENG2 — version depuis la SOURCE UNIQUE partagée (v25 courante), jamais
-    # la v19.0 codée en dur (expirée 02/2025 → 400 garanti dès qu'un pixel est
-    # configuré). Constante plain (aucun modèle adsengine importé dans ventes).
-    from apps.adsengine.api_version import GRAPH_BASE_URL
-    api_url = f'{GRAPH_BASE_URL}/{pixel_id}/events' if pixel_id else None
-
-    if not api_url:
-        logger.info(
-            'QJ9: CAPI SignedQuote prêt pour devis %s (pixel non configuré — log seul) '
-            'fbclid=%s utm_source=%s value=%.2f MAD',
-            getattr(devis, 'reference', '?'), fbclid, utm_source, value)
-        return
-
-    # ── QJR147 / ES7 — LE JETON VOYAGE DANS LE CORPS, PAS EN QUERY STRING ───
-    # L'API Conversions accepte ``access_token`` dans le corps JSON. En query
-    # string, il finit dans les journaux d'accès et les proxys traversés —
-    # risque ENVIRONNEMENTAL (vérifié : ce code ne le journalise pas lui-même,
-    # le ``logger.warning`` du bloc HTTP ne formate que l'exception).
-    payload = _json.dumps(
-        {'data': [event], 'access_token': token}).encode('utf-8')
-    req = urllib.request.Request(
-        api_url, data=payload,
-        headers={'Content-Type': 'application/json'},
-        method='POST',
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            resp_body = resp.read().decode('utf-8', errors='replace')
-            logger.info(
-                'QJ9: CAPI SignedQuote envoyé pour devis %s — status %s body %.200s',
-                getattr(devis, 'reference', '?'), resp.status, resp_body)
-    except Exception as exc:
-        logger.warning('QJ9: CAPI SignedQuote HTTP échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
-
-
 def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
                                  groupe=None):
     """QJR134 — L'AVAL D'UNE ACCEPTATION, dans la transaction de l'appelant.
@@ -1462,8 +1274,12 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
         activity.log_devis_refusal(
             soeur, user, 'variante non retenue', date_acc)
 
+    # VNT51 — ``avenant_de`` : pk du prédécesseur de révision ACCEPTÉ (ou None).
+    from apps.ventes.selectors import predecesseur_accepte
+    pred = predecesseur_accepte(devis)
     devis_accepted.send(
-        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+        sender=Devis, devis=devis, user=user, ancien_statut=ancien,
+        avenant_de=pred.pk if pred is not None else None)
 
 
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
@@ -1471,7 +1287,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
                  entreprise=None, override_credit=False,
-                 override_avertissement=False):
+                 override_avertissement=False, canal=''):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1694,6 +1510,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                       if scenario == 'Avec batterie'
                       else Devis.OptionAcceptee.SANS_BATTERIE)
 
+        # VNT54 vente unique par lead + VNT57 gel d'un brouillon (T17, ADEV12).
+        preparer_acceptation(devis, user=user)
         ancien = devis.statut
         devis.statut = Devis.Statut.ACCEPTE
         devis.date_acceptation = date_acc
@@ -1729,6 +1547,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # appel réseau — et surtout, un email annonçant une vente qui vient
         # d'être annulée par un rollback serait pire que pas d'email du tout.
         activity.log_devis_acceptance(devis, user, nom, date_acc, option)
+        # VNT59 — avenant négocié : ni signature, PDF, e-mail, CAPI ; aval rattaché en STRICT (negociation).
+        avenant = canal == 'avenant_negocie'
         if ip:
             # Trace the e-signature origin IP in the chatter (Q7) without a new
             # column — kept beside the acceptance stamp for the audit trail.
@@ -1755,15 +1575,16 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
         # on ne crée pas de second enregistrement — la signature d'origine fait
         # foi.
-        _create_esign_record(
-            devis=devis, nom=nom, ip=ip,
-            user_agent=user_agent, consentement=consentement,
-            signature_image=signature_image, signed_at_client=signed_at_client,
-            on_behalf_of=on_behalf_of, lignes=lignes_devis,
-            # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
-            # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
-            entreprise=entreprise,
-        )
+        if not avenant:
+            _create_esign_record(
+                devis=devis, nom=nom, ip=ip,
+                user_agent=user_agent, consentement=consentement,
+                signature_image=signature_image, signed_at_client=signed_at_client,
+                on_behalf_of=on_behalf_of, lignes=lignes_devis,
+                # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
+                # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
+                entreprise=entreprise,
+            )
         # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
         # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE
         # différent déjà présent n'est jamais écrasé (``divergence_ice``).
@@ -1813,13 +1634,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # QJR560 / D-QJR5-11 — V2 d'un devis signé : BC et factures de la V1
         # passent à la V2, seul l'écart est régularisé. Point de sauvegarde :
         # un incident ici n'annule jamais la signature du client (journalisé).
-        try:
-            with transaction.atomic():
-                rattacher_aval_financier_revision(devis, user=user)
-        except Exception:  # noqa: BLE001 — best-effort, journalisé
-            logger.exception(
-                'QJR560 : aval financier de révision non rattaché (devis %s)',
-                getattr(devis, 'reference', '?'))
+        if not avenant:
+            _rattacher_revision_au_mieux(devis, user=user)
 
         # YDOCF3 + M6 — l'effondrement des sœurs ET la publication de
         # l'événement, sous le verrou du groupe pris plus haut.
@@ -1828,6 +1644,34 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             groupe=groupe)
 
     # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
+    if not avenant:
+        _apres_commit_acceptation(devis, user=user, ip=ip,
+                                  user_agent=user_agent, lignes=lignes_devis)
+    return devis
+
+
+def _rattacher_revision_au_mieux(devis, *, user):
+    """QJR560 / D-QJR5-11 — V2 d'un devis signé : BC et factures de la V1
+    passent à la V2, seul l'écart est régularisé. Point de sauvegarde : un
+    incident ici n'annule jamais la signature du client (journalisé). Un
+    avenant négocié (VNT59) rattache, lui, en STRICT (``negociation.py``)."""
+    from django.db import transaction
+    try:
+        with transaction.atomic():
+            rattacher_aval_financier_revision(devis, user=user)
+    except Exception:  # noqa: BLE001 — best-effort, journalisé
+        logger.exception(
+            'QJR560 : aval financier de révision non rattaché (devis %s)',
+            getattr(devis, 'reference', '?'))
+
+
+def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
+    """L'APRÈS-COMMIT d'une acceptation (hors avenant négocié, VNT59) :
+    échéancier figé + brouillon d'acompte (VNT62, D-SIGN-AUTO = a), PDF
+    signé, e-mails et CAPI — entrées-sorties best-effort, jamais bloquantes.
+    Les noms restent lus sur CE module (``mock.patch`` des tests)."""
+    from apps.ventes.domain.facturation_vente import acompte_a_l_acceptation
+    acompte_a_l_acceptation(devis, user)
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
@@ -1838,10 +1682,11 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     try:
         devis.refresh_from_db(fields=['fichier_pdf'])
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.debug('QX9: fichier_pdf non relu pour devis %s',
+                     getattr(devis, 'reference', '?'))
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
     try:
-        _send_acceptance_emails(devis=devis, user=user, lignes=lignes_devis)
+        _send_acceptance_emails(devis=devis, user=user, lignes=lignes)
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
@@ -1853,7 +1698,6 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
-    return devis
 
 
 # ── Décision fondateur (Reda, 08/10/2026) — DÉS-ACCEPTATION ─────────────────
@@ -1890,8 +1734,8 @@ def raison_blocage_annulation_acceptation(devis):
     ``devis``, ou ``None`` si l'annulation est permise. Lecture seule.
 
     Bloquent : une facture non annulée liée au devis (directement, par son bon
-    de commande ou par une facture consolidée — brouillon comprise : elle
-    n'est jamais créée par l'acceptation), un bon de commande non annulé, un
+    de commande ou par une facture consolidée — brouillon compris, hors l'acompte
+    automatique qu'``annuler_acceptation`` retire d'abord, VNT62), un BC non annulé, un
     dossier 82-21 sorti de « En constitution », puis ce que disent les
     sélecteurs des apps propriétaires (chantier avancé, contrat SAV engagé)."""
     from django.db.models import Q
@@ -1988,6 +1832,8 @@ def annuler_acceptation(*, devis, user, motif=''):
             return courant or devis
         devis = courant
 
+        from apps.ventes.domain.facturation_vente import retirer_acompte_automatique  # VNT62
+        retirer_acompte_automatique(devis, user=user)  # brouillon d'acompte auto annulé, sans avoir
         raison = raison_blocage_annulation_acceptation(devis)
         if raison:
             raise AnnulationAcceptationBloquee(raison)
@@ -2161,3 +2007,11 @@ def log_supplier_email(
 from apps.ventes.domain.revision import (  # noqa: E402
     rattacher_aval_financier_revision,
 )
+# VNT50 — l'émetteur CAPI SignedQuote vit dans ``domain/capi_signee.py``
+# (déplacé tel quel) ; ``accept_devis`` l'appelle et les tests l'importent et
+# le patchent encore ici (``cycle_vie._fire_capi_signed_quote``).
+from apps.ventes.domain.capi_signee import (  # noqa: E402
+    _fire_capi_signed_quote,
+)
+# VNT54 / VNT57 — la préparation d'une acceptation (vente unique, gel).
+from apps.ventes.domain.negociation import preparer_acceptation  # noqa: E402

@@ -228,6 +228,85 @@ def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux,
     }
 
 
+def _decimales_de(p):
+    """Nombre de décimales significatives d'une remise au centième (0, 1, 2)."""
+    from decimal import Decimal as D
+    if p == p.to_integral_value():
+        return 0
+    if p * D('10') == (p * D('10')).to_integral_value():
+        return 1
+    return 2
+
+
+def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=None):
+    """VNT49 — solveur « TTC négocié → remise globale », fonction PURE.
+
+    Parmi les remises globales à 2 décimales (0,00 → 100,00 %) dont la chaîne
+    canonique (:func:`_canonical_totaux`, palier ARRONDI-100 compris quand
+    ``arrondi_pas`` est donné) rend EXACTEMENT ``ttc_cible``, rend la plus
+    RONDE : un entier d'abord, puis une décimale, puis deux ; à égalité, la
+    plus petite. La plus petite remise atteignable n'est PAS la bonne : elle
+    déplace les bases de TVA (sonde R3 : 9,97 % ≠ la vente réelle à 10,00 %).
+
+    Aucune remise n'atteint la cible (au-delà d'≈ 1,2 M MAD un centième de
+    remise vaut plus qu'un palier) ⇒ ``atteint`` faux et les deux voisins
+    atteignables : ``voisin_bas`` (TTC juste sous la cible) et ``voisin_haut``
+    (TTC juste au-dessus), chacun ``{'remise_pct', 'ttc'}`` ou ``None``.
+
+    Méthode : le TTC brut (avant palier) décroît quasi linéairement avec la
+    remise ; on ne rejoue la chaîne exacte que sur la fenêtre de remises dont
+    le TTC brut peut retomber sur la cible (palier inférieur ET palier de
+    repli de :func:`_absorber_arrondi`), élargie de quelques centièmes.
+
+    Rend ``{'atteint', 'remise_pct', 'totaux', 'voisin_bas', 'voisin_haut'}``.
+    """
+    from decimal import (
+        Decimal as D, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP)
+
+    lignes = list(lignes)
+    cible = D(str(ttc_cible)).quantize(D('0.01'), rounding=ROUND_HALF_UP)
+    pas = D(str(arrondi_pas or 0))
+    vide = {'atteint': False, 'remise_pct': None, 'totaux': None,
+            'voisin_bas': None, 'voisin_haut': None}
+    ttc0 = _canonical_totaux(lignes, remise_globale_pct=0,
+                             fallback_taux=fallback_taux)['ttc']
+    if cible <= 0 or ttc0 <= 0:
+        return vide
+
+    cent = D('100')
+    marge = D('0.05')
+    p_min = (D('1') - (cible + 2 * pas + D('1')) / ttc0) * cent - marge
+    p_max = (D('1') - cible / ttc0) * cent + marge
+    bas_c = int(max(p_min, D('0')).quantize(D('0.01'), rounding=ROUND_FLOOR)
+                * cent)
+    haut_c = int(min(max(p_max, D('0')), cent).quantize(
+        D('0.01'), rounding=ROUND_CEILING) * cent)
+
+    candidats, essais = [], []
+    for c in range(bas_c, haut_c + 1):
+        p = (D(c) / cent).quantize(D('0.01'), rounding=ROUND_HALF_UP)
+        t = _canonical_totaux(lignes, remise_globale_pct=p,
+                              fallback_taux=fallback_taux, arrondi_pas=pas)
+        essais.append((p, t['ttc']))
+        if t['ttc'] == cible:
+            candidats.append((_decimales_de(p), p, t))
+    if candidats:
+        _, p, t = min(candidats, key=lambda x: (x[0], x[1]))
+        return {'atteint': True, 'remise_pct': p, 'totaux': t,
+                'voisin_bas': None, 'voisin_haut': None}
+
+    dessous = [(p, t) for p, t in essais if t < cible]
+    dessus = [(p, t) for p, t in essais if t > cible]
+    out = dict(vide)
+    if dessous:
+        p, t = max(dessous, key=lambda x: (x[1], -x[0]))
+        out['voisin_bas'] = {'remise_pct': p, 'ttc': t}
+    if dessus:
+        p, t = min(dessus, key=lambda x: (x[1], x[0]))
+        out['voisin_haut'] = {'remise_pct': p, 'ttc': t}
+    return out
+
+
 def totaux_multi_proprietes(totaux, n):
     """ERR-QAC-MULTIVILLA-TOTAL-XN — met un dict de totaux canoniques (sortie
     de :func:`_canonical_totaux`) à l'échelle ×N villas identiques.
