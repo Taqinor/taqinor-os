@@ -1,7 +1,8 @@
 # Cerveau estimateur V5 — méthode & sources (apps/web)
 
-Documente la MÉTHODE derrière le preview privé `/preview/toiture-3d-pro-8`
-(`src/lib/estimatorBrainV5.ts` + le câblage `src/scripts/roof-tool-pro8.ts`).
+Documente la MÉTHODE du cerveau `src/lib/estimatorBrainV5.ts`, aujourd'hui
+consommé par l'outil `/preview/toiture-3d-pro-11` (`src/scripts/roof-tool-pro11.ts`
+et `src/scripts/roofPro11/optimizer.ts` ; le preview pro-8 n'existe plus).
 Aucune donnée client ici — uniquement la traçabilité. Rien sur un preview n'est
 un devis : toujours une fourchette indicative.
 

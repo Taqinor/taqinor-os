@@ -589,7 +589,7 @@ function AtelierToiture({
   // ACAL37 (D-ACAL-1) — flux `/ventes/devis/:id/design` : la conception est rangée sur le
   // CALEPINAGE, PUIS le devis est resynchronisé par l'enveloppe du module
   // (`calepinages/<id>/sync-devis/`, D02-T09) — jamais `ventesApi.syncDevisLayout`.
-  // Rend `false` quand le serveur refuse (409 « déjà envoyé » révisable, ou clos).
+  // Rend `false` quand le serveur refuse (409 : devis accepté, refusé ou expiré, révisable ou clos ; un devis envoyé se corrige sur place, tracé).
   const resynchroniserDevisLie = async (corps = {}) => {
     if (!devisSynchronise || !calepinageId) return true
     try {
@@ -785,8 +785,8 @@ function AtelierToiture({
     }
   }
 
-  // PV21 / ACAL93 — « Réviser (v2) » : le devis est déjà chez le client, on en
-  // crée une NOUVELLE version (brouillon) et on rouvre la conception dessus.
+  // PV21 / ACAL93 — « Réviser (v2) » : le devis est figé (accepté, refusé ou expiré ; un
+  // envoyé se corrige sur place), on en crée une NOUVELLE version (brouillon) et on rouvre la conception dessus.
   // UNE seule fonction de révision dans tout le produit : `reviserEtOuvrir`
   // (avertit d'un chantier en cours, dit l'échec du serveur) — jamais masquée
   // ni refusée (D-QJR5-2). Ici, la V2 s'ouvre sur sa CONCEPTION.
@@ -1550,7 +1550,7 @@ function AtelierToiture({
             </div>
           )}
 
-          {/* 409 : le devis lié est parti chez le client — motif du SERVEUR. */}
+          {/* 409 : le devis lié est figé (accepté, refusé, expiré ou remplacé) — motif du SERVEUR. */}
           {conflit && !conflit.revision_possible && (
             <div className="mt-4 border border-alert-300/40 p-4" data-testid="cal-conflit-lecture-seule">
               <p className="tech-label text-alert-300">Lecture seule</p>

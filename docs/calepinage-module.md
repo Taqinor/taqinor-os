@@ -8,7 +8,7 @@
 
 ## Appels d'offres : module parqué
 
-Le module d'appels d'offres (`apps/ao`) est parqué (voir `docs/parked-modules.md`) : le calepinage 3D n'a plus de pendant AO 2D ni de règle de préséance à tenir. Le contour reste le seul objet géométrique de portée commune ; aucun autre module ne lit `apps.calepinage` pour produire un bordereau.
+Le module d'appels d'offres est parqué (voir `docs/parked-modules.md`) : le calepinage 3D n'a plus de pendant AO 2D ni de règle de préséance à tenir. Le contour reste le seul objet géométrique de portée commune ; aucun autre module ne lit `apps.calepinage` pour produire un bordereau.
 
 <!-- CAL238 -->
 
