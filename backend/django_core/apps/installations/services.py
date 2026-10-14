@@ -1055,11 +1055,11 @@ def _notifier_chantier_assigne(inst, technicien):
                     technicien, EventType.CHANTIER_ASSIGNE, titre,
                     body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', '_envoyer', exc_info=True)
 
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_notifier_chantier_assigne', exc_info=True)
 
 
 # ── N14 — Réservation de stock sur chantier → consommation à « Installé » ─────
@@ -3872,7 +3872,7 @@ def alerter_penurie_assemblage(ordre):
         notify_many(recipients, EventType.STOCK_LOW, titre, body=corps,
                     company=ordre.company)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'alerter_penurie_assemblage', exc_info=True)
 
 
 # ── XMFG6 — Composants personnalisables par ordre (kit sur-mesure) ───────────
@@ -4694,11 +4694,11 @@ def _notifier_intervention_assignee(interv, user):
                 notify(destinataire, EventType.INTERVENTION_ASSIGNEE, titre,
                        body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', '_envoyer', exc_info=True)
 
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_notifier_intervention_assignee', exc_info=True)
 
 
 def _notifier_reassignation(interv, user):
@@ -4733,11 +4733,11 @@ def _notifier_reassignation(interv, user):
                 notify(destinataire, EventType.INTERVENTION_REPLANIFIEE,
                        titre, body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', '_envoyer', exc_info=True)
 
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_notifier_reassignation', exc_info=True)
 
 
 # ── XMFG16 — Assemblage sous-traité (façon) avec suivi des composants confiés
@@ -6041,7 +6041,7 @@ def _notifier_intervention_annulee(interv, user):
     try:
         destinataires.update(interv.equipe.all())
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_notifier_intervention_annulee', exc_info=True)
     titre = f"Intervention annulée — chantier {interv.installation.reference}"
     # CHT9 — sa propre clé (INTERVENTION_ANNULEE), plus l'emprunt de
     # CHANTIER_DUE, + lien réel (lisible depuis CHT8).
@@ -6054,7 +6054,7 @@ def _notifier_intervention_annulee(interv, user):
                      'sera pas réalisée.',
                 link=lien, company=interv.company)
         except Exception:  # pragma: no cover - défensif
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', '_notifier_intervention_annulee', exc_info=True)
 
 
 def reactiver_interventions_annulees(installation, user):
@@ -6123,7 +6123,7 @@ def notifier_jalon_a_facturer(jalon, user=None):
             link=f'/chantiers?id={installation.id}',
             company=jalon.company)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'notifier_jalon_a_facturer', exc_info=True)
     jalon.rappel_facturation_envoye = True
     jalon.save(update_fields=['rappel_facturation_envoye'])
     return True
