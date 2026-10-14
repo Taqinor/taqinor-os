@@ -134,7 +134,6 @@ API rejected schema-compliant request|POST /api/django/facturation/factures/enca
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/retour-client/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/
-API rejected schema-compliant request|POST /api/django/identity/ip-allow-rules/
 API rejected schema-compliant request|POST /api/django/imports/commit/
 API rejected schema-compliant request|POST /api/django/imports/dry-run/
 API rejected schema-compliant request|POST /api/django/imports/export/{entity}/

@@ -4,13 +4,16 @@ import ipaddress
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import IdentityProvider, IpAllowRule, NetworkPolicy, TrustedDevice
 
 
-class IpAllowRuleSerializer(SameCompanyFKSerializerMixin,
+class IpAllowRuleSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                            SameCompanyFKSerializerMixin,
                             serializers.ModelSerializer):
+    # ENF11 (api-fuzz) : politique inconnue (0 compris) = 404 ; texte strict.
     # ENF15 : la politique référencée naît bornée à la société de l'appelant.
     same_company_fields = ('policy',)
 
@@ -74,7 +77,7 @@ class UrlFacultative(serializers.URLField):
     tant que l'IdP n'est pas configuré, ce que ``format: uri`` seul invalidait)."""
 
 
-class IdentityProviderSerializer(serializers.ModelSerializer):
+class IdentityProviderSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """CRUD d'un IdP SSO (NTSEC1). ``company`` forcée côté serveur."""
     metadata_url = UrlFacultative(
         max_length=500, required=False, allow_blank=True)
