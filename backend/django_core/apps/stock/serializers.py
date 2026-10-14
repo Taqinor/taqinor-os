@@ -1558,7 +1558,13 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
                 'prix_achat_unitaire_devise').help_text),
             # CI #997 fuzz — `designation` : texte JSON seulement (PUT imbriqué).
             'designation': ChaineStricte(
-                required=False, allow_blank=True, max_length=255)}
+                required=False, allow_blank=True, max_length=255),
+            # CI #997 fuzz — `frais_annexes` : décimal-chaîne (un nombre JSON
+            # était lu) ; l'écran ne l'envoie jamais.
+            'frais_annexes': DecimalStricte(
+                max_digits=12, decimal_places=2, required=False,
+                help_text=LigneBonCommandeFournisseur._meta.get_field(
+                    'frais_annexes').help_text)}
         if not _peut_voir_montants_achat(_user_du_contexte(self)):
             for nom in CHAMPS_PRIX_ACHAT_LIGNE_BCF:
                 fields.pop(nom, None)
