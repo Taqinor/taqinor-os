@@ -13,11 +13,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const CARD = readFileSync(join(HERE, 'LeadCard.jsx'), 'utf8')
 const KANBAN = readFileSync(join(HERE, 'KanbanView.jsx'), 'utf8')
-const CSS = readFileSync(join(HERE, '../../../../index.css'), 'utf8')
+const CSS = resolveCss(join(HERE, '../../../../index.css'))
 
 test('LB38 : une sélection NON VIDE arme la prop pour TOUTES les cartes du board (jamais seulement les sélectionnées)', () => {
   // Le board dérive un BOOLÉEN « il y a une sélection » et le passe à chaque

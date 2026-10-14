@@ -12,13 +12,14 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const lf = (s) => s.replace(/\r\n/g, '\n')
 const TAB = lf(readFileSync(join(HERE, 'TimelineTab.jsx'), 'utf8'))
 const RAIL = lf(readFileSync(join(HERE, 'ContextRail.jsx'), 'utf8'))
 // workspace → crm → features → src/index.css
-const CSS = lf(readFileSync(join(HERE, '..', '..', '..', 'index.css'), 'utf8'))
+const CSS = lf(resolveCss(join(HERE, '..', '..', '..', 'index.css')))
 
 test('la note s’ouvre sur 3 lignes et grandit jusqu’à 8, puis DÉFILE', () => {
   const debut = CSS.indexOf('.chatter-note-box textarea.chatter-note-input {')

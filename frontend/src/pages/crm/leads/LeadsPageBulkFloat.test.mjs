@@ -9,10 +9,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PAGE_SRC = readFileSync(join(HERE, 'LeadsPage.jsx'), 'utf8')
-const CSS_SRC = readFileSync(join(HERE, '..', '..', '..', 'index.css'), 'utf8')
+const CSS_SRC = resolveCss(join(HERE, '..', '..', '..', 'index.css'))
 
 test('LB25 : BulkActionBar reste le MÊME composant, enveloppé dans .lp-bulk-float', () => {
   const idx = PAGE_SRC.indexOf('<div className="lp-bulk-float">')

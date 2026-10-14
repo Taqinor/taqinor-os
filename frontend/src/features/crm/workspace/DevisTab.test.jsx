@@ -13,6 +13,7 @@ import {
   lectureClientLabel,
 } from './devisTabLogique'
 import { missingFieldTarget } from './missingFields'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
    `.num`, actions facture/chantier busy-par-id), CTA « Devis automatique »
@@ -1000,7 +1001,6 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
   // vérifierait que l'attribut `class` serait passé au vert pendant tout le bug —
   // c'est la DÉFINITION CSS qui manquait, donc c'est elle qu'on épingle.
   it('la boîte « Modifier les options » porte une classe de largeur RÉELLEMENT définie', async () => {
-    const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })
@@ -1012,8 +1012,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     expect(boite.className).toMatch(/lw-context-devis-edit-tailles/)
 
     // `process.cwd()` est la racine `frontend/` sous vitest (`root` du config).
-    const css = readFileSync(
-      join(globalThis.process.cwd(), 'src', 'index.css'), 'utf8')
+    const css = resolveCss(join(globalThis.process.cwd(), 'src', 'index.css'))
     const regle = css.match(/\.lw-context-devis-edit-tailles\s*\{[^}]*\}/)
     expect(regle, '.lw-context-devis-edit-tailles doit être DÉFINIE dans index.css').not.toBeNull()
     expect(regle[0]).toMatch(/max-width/)

@@ -18,12 +18,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 // Normalisation CRLF : le depot est monte sur Windows, les regex de ce fichier
 // raisonnent en \n (sinon elles passent/echouent selon la machine).
 const lf = (s) => s.replace(/\r\n/g, '\n')
-const CSS = lf(readFileSync(join(HERE, '../../../index.css'), 'utf8'))
+const CSS = lf(resolveCss(join(HERE, '../../../index.css')))
 const LEADS = lf(readFileSync(join(HERE, 'LeadsPage.jsx'), 'utf8'))
 
 const blocApx3 = () => {

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 import { lireSourcesFactureList } from './factureList/lireSources.mjs'
+import { resolveCss } from '../../test/readCss.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
@@ -74,7 +75,7 @@ test('la cellule Statut est PLAFONNÉE : pastille + piste, le reste en Popover',
 })
 
 test('aucun CSS <td> artisanal n’a été ajouté pour plafonner la hauteur', () => {
-  const css = readFileSync(path.join(__dirname, '..', '..', 'index.css'), 'utf8')
+  const css = resolveCss(path.join(__dirname, '..', '..', 'index.css'))
   assert.doesNotMatch(css, /APX17[\s\S]{0,400}?td\s*\{/)
 })
 

@@ -11,10 +11,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'KanbanView.jsx'), 'utf8')
-const CSS = readFileSync(join(HERE, '../../../../index.css'), 'utf8')
+const CSS = resolveCss(join(HERE, '../../../../index.css'))
 
 test("la barre segmentée d'activité n'existe plus (JSX)", () => {
   assert.doesNotMatch(SRC, /kb-col-activite|kb-act-seg/)

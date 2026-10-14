@@ -6,16 +6,19 @@
 //   node --test src/styles/print.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { lireSourcesDevisList } from '../pages/ventes/devisList/lireSources.mjs'
+import { resolveCss } from '../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
 
 const PRINT_CSS = read('print.css')
-const INDEX_CSS = read('../index.css')
+const INDEX_CSS = resolveCss(join(HERE, '../index.css'))
 // SPL206 — le bouton Imprimer vit dans devisList/DevisListChrome.jsx.
 const DEVIS = lireSourcesDevisList()
 const FACTURE = read('../pages/ventes/FactureList.jsx')
@@ -72,4 +75,55 @@ test('InstallationDetail : bouton Imprimer la checklist → window.print()', () 
   assert.match(INSTALL, /Printer/)
   assert.match(INSTALL, /onClick=\{\(\)\s*=>\s*window\.print\(\)\}/)
   assert.match(INSTALL, />\s*Imprimer la checklist\s*</)
+})
+
+// ── SPL280 — golden d'index.css (lecteur `resolveCss`, `scripts/css_golden.mjs`) ──
+// Capturé sur le code ACTUEL avant tout déplacement (SPL281/SPL282 passeront
+// leur ref de base à `--base`) : aucune règle ne bouge, seuls les lecteurs
+// passent par la résolution des `@import './styles/<dossier>/<f>.css'`.
+const GOLDEN = join(HERE, '../../../scripts/css_golden.mjs')
+const { memeCss } = await import(new URL('../../../scripts/css_golden.mjs', import.meta.url).href)
+
+function arbre(index, styles) {
+  const racine = mkdtempSync(join(tmpdir(), 'spl280-'))
+  writeFileSync(join(racine, 'index.css'), index)
+  for (const [rel, texte] of Object.entries(styles)) {
+    mkdirSync(dirname(join(racine, 'styles', rel)), { recursive: true })
+    writeFileSync(join(racine, 'styles', rel), texte)
+  }
+  return racine
+}
+
+const TETE = '@import "tailwindcss";\n@import \'./design/tokens.css\';\n@import \'./styles/print.css\';\n'
+const MONOLITHE = TETE + '.a { color: red; }\n.b {}\n.c {}\n.z {}\n'
+
+test('SPL280 (a) — resolveCss inline ./styles/<dossier>/<f>.css verbatim, laisse tailwind/tokens/print', () => {
+  const racine = arbre(TETE + "@import './styles/x/a.css';\n@import './styles/y/c.css';\n.z {}\n",
+    { 'x/a.css': '.a { color: red; }\n.b {}\n', 'y/c.css': '.c {}\n' })
+  try {
+    assert.equal(resolveCss(join(racine, 'index.css')), MONOLITHE)
+  } finally { rmSync(racine, { recursive: true, force: true }) }
+  // L'index.css réel ne porte aucun @import de sous-dossier : octets inchangés.
+  assert.equal(INDEX_CSS, read('../index.css'))
+})
+
+test('SPL280 (b) — @import permutés ou octet changé dans un fichier de styles ⇒ écart', async () => {
+  const cas = {
+    fidele: ["@import './styles/x/a.css';\n@import './styles/y/c.css';\n", '.a { color: red; }\n.b {}\n', true],
+    permute: ["@import './styles/y/c.css';\n@import './styles/x/a.css';\n", '.a { color: red; }\n.b {}\n', false],
+    octet: ["@import './styles/x/a.css';\n@import './styles/y/c.css';\n", '.a { color: rod; }\n.b {}\n', false],
+  }
+  for (const [nom, [imports, a, attendu]] of Object.entries(cas)) {
+    const racine = arbre(TETE + imports + '.z {}\n', { 'x/a.css': a, 'y/c.css': '.c {}\n' })
+    try {
+      assert.equal(await memeCss(join(racine, 'index.css'), MONOLITHE), attendu, nom)
+      // CRLF→LF : seule normalisation, pour la comparaison uniquement.
+      assert.equal(await memeCss(join(racine, 'index.css'), MONOLITHE.replace(/\n/g, '\r\n')), attendu, nom)
+    } finally { rmSync(racine, { recursive: true, force: true }) }
+  }
+})
+
+test('SPL280 (c) — identité : css_golden --base HEAD sort 0 sur l\'arbre actuel', () => {
+  const r = spawnSync(process.execPath, [GOLDEN, '--base', 'HEAD'], { encoding: 'utf8' })
+  assert.equal(r.status, 0, r.stdout + r.stderr)
 })

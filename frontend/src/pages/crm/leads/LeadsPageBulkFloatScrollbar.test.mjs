@@ -12,9 +12,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const CSS = readFileSync(join(HERE, '../../../index.css'), 'utf8')
+const CSS = resolveCss(join(HERE, '../../../index.css'))
 const KANBAN = readFileSync(join(HERE, 'views/KanbanView.jsx'), 'utf8')
 const SWITCHER = readFileSync(join(HERE, 'ViewSwitcher.jsx'), 'utf8')
 const SEGMENTED = readFileSync(join(HERE, '../../../ui/Segmented.jsx'), 'utf8')
