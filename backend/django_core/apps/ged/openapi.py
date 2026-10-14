@@ -172,10 +172,10 @@ PROLONGER_CORPS = S('ProlongerCorps', {'expires_at': s.DateTimeField()})
 VALIDER_OCR_CORPS = S('ValiderOcrCorps', {
     'champs_corriges': s.DictField(required=False)})
 ENVOI_MASSE_CORPS = S('EnvoiMasseCorps', {
-    'modele': s.IntegerField(),
+    'modele': s.IntegerField(min_value=1),
     'libelle': s.CharField(required=False, allow_blank=True),
     'csv': s.FileField(required=False),
-    'clients': s.ListField(child=s.IntegerField(), required=False),
+    'clients': s.ListField(child=s.IntegerField(min_value=1), required=False),
 })
 
 # ── Réponses ────────────────────────────────────────────────────────────────

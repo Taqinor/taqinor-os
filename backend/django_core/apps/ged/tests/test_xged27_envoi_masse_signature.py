@@ -176,3 +176,28 @@ class ViewTests(XGed27Base):
         resp = auth(admin_b).post(
             f'/api/django/ged/lots-envoi/{lot.pk}/rafraichir-compteurs/')
         self.assertEqual(resp.status_code, 404)
+
+    def test_modele_zero_inconnu_404_pas_requis_400(self):
+        """CI #993 api-fuzz-pr (cas jdCN8P) : ``modele: 0`` est un id bien
+        formé qui ne désigne rien → 404, pas « modèle requis » (400, `0` lu
+        comme absent par ``if not modele_id``). Clé absente : 400 conservé."""
+        api = auth(self.admin_a)
+        url = '/api/django/ged/lots-envoi/envoi-masse/'
+        resp = api.post(url, {'modele': 0, 'libelle': '', 'csv': '',
+                              'clients': [0]}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertIn('modele', resp.data)
+        resp = api.post(url, {'clients': [1]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('modele', resp.data)
+        self.assertFalse(LotEnvoi.objects.filter(company=self.co_a).exists())
+
+    def test_clients_inconnus_404_nommes(self):
+        """CI #993 : ``clients: [0]`` (id inconnu) → 404 nommant l'id, au lieu
+        d'un 400 « aucun destinataire » ; rien n'est créé."""
+        resp = auth(self.admin_a).post(
+            '/api/django/ged/lots-envoi/envoi-masse/',
+            {'modele': self.modele.pk, 'clients': [0]}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertIn('[0]', str(resp.data['clients']))
+        self.assertFalse(LotEnvoi.objects.filter(company=self.co_a).exists())
