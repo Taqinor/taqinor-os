@@ -546,3 +546,57 @@ class TestFuzzCrmTour2(TestCase):
         resp = self.api.post(f'/api/django/crm/leads/{lead.pk}/merge/',
                              {'others': [987654321]}, format='json')
         self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_tour3_ids_inconnus_404_et_bornes_publiees(self):
+        """ERR-ENF11-FUZZ-CRM (nocturnes 11-14/10) — FK ``0``/inconnue → 404
+        (``IdInconnu404Mixin``) ; mois ``0`` d'un objectif hors bornes → 400."""
+        resp = self.api.post('/api/django/crm/playbook-taches/',
+                             {'etape': 0, 'libelle': 'X'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('etape', resp.data)
+        resp = self.api.post('/api/django/crm/objectifs/', {
+            'cible': '1', 'metric': 'nb_rdv', 'owner': None,
+            'period_month': 0, 'period_quarter': None,
+            'period_year': 2026}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('period_month', resp.data)
+
+    def test_tour3_corps_types_jamais_500(self):
+        """ERR-ENF11-FUZZ-CRM — textes non chaîne : 400 nommé, plus de 500
+        (``.strip()`` sur un nombre) ; adresse sans résultat → 404."""
+        lead = Lead.objects.create(company=self.company, nom='Loc')
+        for url, corps in (
+                ('/api/django/crm/leads/ville-statut/', {'ville': 5}),
+                ('/api/django/crm/leads/resoudre-gps/', {'lien': 5}),
+                (f'/api/django/crm/leads/{lead.pk}/locataire/',
+                 {'proprietaire': {'nom': 5, 'telephone': '0612345678'}})):
+            with self.subTest(url=url):
+                resp = self.api.post(url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(
+            '/api/django/crm/leads/resoudre-gps/',
+            {'lien': 'https://exemple.com/pas-une-carte'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_tour3_regles_de_corps_publiees(self):
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.crm import urls as crm_urls
+
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+
+        def regle(route, methode='post'):
+            corps = chemins[route][methode]['requestBody']['content'][
+                'application/json']['schema']
+            return corps['allOf'][1]
+
+        self.assertIn('oneOf', regle('/api/django/crm/salles-vente/'))
+        self.assertIn('anyOf', regle('/api/django/crm/objectifs/'))
+        self.assertIn('anyOf', regle('/api/django/crm/objectifs/{id}/', 'put'))
+        self.assertIn('anyOf', regle('/api/django/crm/leads/resoudre-gps/'))
+        self.assertIn('anyOf', regle('/api/django/crm/leads/{id}/locataire/'))
+        self.assertIn(
+            'anyOf', regle('/api/django/crm/leads/{id}/convertir-client/'))

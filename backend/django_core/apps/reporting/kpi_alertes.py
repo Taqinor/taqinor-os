@@ -22,10 +22,12 @@ Catalogue fermé (``KpiAlerte.Kpi``) :
 """
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import serializers, viewsets
 
 from authentication.permissions import IsResponsableOrAdmin
-from core.champs_stricts import ChampsStrictsMixin, TexteLie
+from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin, TexteLie
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.mixins import TenantMixin
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -38,7 +40,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class KpiAlerteSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class KpiAlerteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                          SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
     """api-fuzz r12 (CI #956) — champs stricts : ``actif: 0`` ou un ``nom``
     non-chaîne répondent 400 comme le schéma le déclare ; ``seuil`` reste un
@@ -79,6 +82,16 @@ class KpiAlerteSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
             'deja_notifie', 'derniere_valeur', 'derniere_evaluation_le',
             'created_at', 'updated_at',
         ]
+
+    def to_internal_value(self, data):
+        # ERR-ENF11-FUZZ-REPORTING — DRF itère un OBJET comme une liste de
+        # clés : ``destinataires_utilisateurs: {}`` passait (liste vide) alors
+        # que le schéma publie un tableau.
+        if isinstance(data, dict) and not isinstance(
+                data.get('destinataires_utilisateurs', []), list):
+            raise serializers.ValidationError(
+                {'destinataires_utilisateurs': ['Une liste est attendue.']})
+        return super().to_internal_value(data)
 
     def validate(self, attrs):
         """NTDATA13 — la même règle que ``KpiAlerte.clean()``, rendue au
@@ -122,6 +135,20 @@ class KpiAlerteSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
         return attrs
 
 
+#: ERR-ENF11-FUZZ-REPORTING — création : un KPI du catalogue (source par
+#: défaut, détection « seuil » seule) OU une métrique nommée (``validate``).
+KPI_OU_METRIQUE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['kpi'], 'properties': {
+        'source': {'enum': [KpiAlerte.Source.CATALOGUE.value]},
+        'kpi': {'enum': [c for c, _ in KpiAlerte.Kpi.choices]},
+        'mode_detection': {'enum': [KpiAlerte.ModeDetection.SEUIL.value]}}},
+    {'required': ['source', 'metric_definition'], 'properties': {
+        'source': {'enum': [KpiAlerte.Source.METRIQUE.value]},
+        'metric_definition': {'type': 'integer'}}},
+]}}
+
+
+@extend_schema_view(create=extend_schema(extensions=KPI_OU_METRIQUE))
 class KpiAlerteViewSet(TenantMixin, viewsets.ModelViewSet):
     """CRUD des alertes KPI, bornées à la société (réservé admin/responsable
     par cohérence avec les autres réglages de Paramètres)."""

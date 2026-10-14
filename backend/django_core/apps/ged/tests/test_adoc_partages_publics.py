@@ -82,16 +82,18 @@ class PartagesPublicsTests(TestCase):
         ligne = next(r for r in lignes(resp) if r['id'] == self.partage_public.pk)
         self.assertEqual(ligne['token'], self.partage_public.token)
 
-    def test_creation_doc_invisible_400(self):
+    def test_creation_doc_invisible_404_comme_absent(self):
         api = auth(self.resp)
         self.assertEqual(
             api.get(f'{BASE}documents/{self.doc_secret.pk}/').status_code, 404)
         avant = PartageGed.objects.count()
         resp = api.post(f'{BASE}partages/', {'document': self.doc_secret.pk},
                         format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # ERR-ENF11-FUZZ-GED : invisible = absent → 404, même corps.
+        self.assertEqual(resp.status_code, 404, resp.content)
         absent = api.post(f'{BASE}partages/', {'document': 999999},
                           format='json')
+        self.assertEqual(absent.status_code, 404, absent.content)
         self.assertEqual(
             [str(m).replace(str(self.doc_secret.pk), '{pk}')
              for m in resp.data['document']],

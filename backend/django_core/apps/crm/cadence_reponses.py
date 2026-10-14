@@ -1698,7 +1698,14 @@ def refus_proprietaire(donnees):
     if not isinstance(donnees, dict):
         return {'proprietaire': ['« Propriétaire » : coordonnées attendues '
                                  '(nom et téléphone).']}
-    erreurs = {}
+    # ERR-ENF11-FUZZ-CRM — un texte NON chaîne (``.strip()`` levait : 500) ou
+    # porteur d'un NUL (refusé par Postgres : 500) est un refus NOMMÉ.
+    erreurs = {champ: ['Texte attendu (sans caractère nul).']
+               for champ in ('nom', 'prenom', 'telephone', 'whatsapp')
+               if donnees.get(champ) not in (None, '') and (
+                   not isinstance(donnees[champ], str) or chr(0) in donnees[champ])}
+    if erreurs:
+        return erreurs
     if not (donnees.get('nom') or '').strip():
         erreurs['nom'] = ['« Nom du propriétaire » : obligatoire.']
     numero = (donnees.get('telephone') or donnees.get('whatsapp') or '')

@@ -9,6 +9,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import IdInconnu404Mixin
+
 from .champs_api import MAPPING_BOOLEEN_STRICT
 from .params_requete import UniciteEn409Mixin
 from .models import (
@@ -36,7 +38,7 @@ class SalleVenteItemSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = ['created_at']
 
 
-class SalleVenteSerializer(_CompanyScopedRelationsMixin,
+class SalleVenteSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     """NTCRM17 — salle de vente digitale (écran interne, authentifié).
 
@@ -115,7 +117,7 @@ class ApporteurSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'token_acces']
 
 
-class DealEnregistreSerializer(_LeadEnPorteeMixin,
+class DealEnregistreSerializer(IdInconnu404Mixin, _LeadEnPorteeMixin,
                                _CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTCRM20 — deal enregistré par un apporteur. La fenêtre de protection
@@ -493,7 +495,8 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
         return value
 
 
-class ObjectifCommercialSerializer(_CompanyScopedRelationsMixin,
+class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
+                                   _CompanyScopedRelationsMixin,
                                    serializers.ModelSerializer):
     """Sérialise un objectif commercial + champs lecture optionnels."""
 
@@ -517,6 +520,12 @@ class ObjectifCommercialSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification',
         ]
+        # ERR-ENF11-FUZZ-CRM — bornes publiées (``0`` était « conforme » puis
+        # lu comme absent : « Requis pour un objectif mensuel »).
+        extra_kwargs = {
+            'period_month': {'min_value': 1, 'max_value': 12},
+            'period_quarter': {'min_value': 1, 'max_value': 4},
+        }
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_nom(self, obj):
@@ -752,13 +761,14 @@ class PlanCompteSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
         ]
 
 
-class PlaybookTacheSerializer(serializers.ModelSerializer):
+class PlaybookTacheSerializer(IdInconnu404Mixin, serializers.ModelSerializer):
     class Meta:
         model = PlaybookTache
         fields = ['id', 'etape', 'libelle', 'obligatoire', 'ordre']
 
 
-class PlaybookEtapeSerializer(_CompanyScopedRelationsMixin,
+class PlaybookEtapeSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
+                              _CompanyScopedRelationsMixin,
                               serializers.ModelSerializer):
     scoped_relations = ('playbook',)
     stage_display = serializers.SerializerMethodField()

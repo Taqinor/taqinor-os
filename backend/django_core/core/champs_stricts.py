@@ -294,3 +294,37 @@ class TypageStrictMixin:
         models.SmallIntegerField: EntierStrict,
         models.PositiveSmallIntegerField: EntierStrict,
     }
+
+
+def _ids_inconnus_seulement(erreurs, champs):
+    """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
+    sur des champs de relation par clé primaire."""
+    if not isinstance(erreurs, dict) or not erreurs:
+        return False
+    for nom, details in erreurs.items():
+        champ = champs.get(nom)
+        relation = getattr(champ, 'child_relation', champ)
+        if not isinstance(relation, serializers.PrimaryKeyRelatedField):
+            return False
+        if not isinstance(details, list) or not details or any(
+                getattr(d, 'code', None) != 'does_not_exist' for d in details):
+            return False
+    return True
+
+
+class IdInconnu404Mixin:
+    """ERR-ENF11-FUZZ-CRM/GED — un identifiant BIEN FORMÉ (``0`` compris) qui
+    ne désigne aucune ligne de la société répond 404, plus 400 : la requête est
+    conforme au schéma, c'est la ressource qui manque. Le corps reste celui de
+    DRF (``{champ: ["Clé primaire « n » non valide…"]}``), IDENTIQUE pour un id
+    inexistant et un id d'une autre société (aucun oracle). Toute autre erreur,
+    seule ou mêlée, garde le 400. À placer en tête des bases du sérialiseur."""
+
+    def is_valid(self, *, raise_exception=False):
+        valide = super().is_valid(raise_exception=False)
+        if not valide and raise_exception:
+            from rest_framework.exceptions import NotFound
+            if _ids_inconnus_seulement(self.errors, self.fields):
+                raise NotFound(self.errors)
+            raise serializers.ValidationError(self.errors)
+        return valide
