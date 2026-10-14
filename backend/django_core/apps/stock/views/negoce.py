@@ -186,10 +186,13 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
         # CI #997 fuzz — corps lu à la main : types déclarés exigés (``note: {}``
         # était enregistré vide, ``produit: {}`` faisait un 500 ORM).
+        # CI #997 fuzz (3) — ``adresse_site`` au-delà du ``maxLength`` publié
+        # (celui du modèle) était tronquée en silence (201) : 400.
         types_corps_ou_400(donnees, textes=('adresse_site', 'note', 'date_depot'),
                            entiers=('quantite_deposee',),
                            ids=('client', 'produit', 'emplacement_source'),
-                           nuls=('emplacement_source',))
+                           nuls=('emplacement_source',), longueurs={
+                               'adresse_site': DepotConsignation._meta.get_field('adresse_site').max_length})
         date_ou_400(donnees.get('date_depot'), 'date_depot')
         try:
             depot = creer_depot_consignation(

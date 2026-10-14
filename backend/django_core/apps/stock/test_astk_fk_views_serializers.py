@@ -519,3 +519,30 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(r.status_code, 415, r.content)
         self.pa.refresh_from_db()
         self.assertEqual(self.pa.quantite_stock, 50)
+
+    def test_fuzz_ci997_3_entier_hors_colonne_et_texte_trop_long_400(self):
+        """CI #997 fuzz (3) — un entier au-delà de la colonne (``maximum``
+        publié 2147483647) répond 400 avant tout calcul (il faisait un 500 au
+        save) ; un texte plus long que son ``maxLength`` publié répond 400 (il
+        était tronqué en silence, 201). La borne exacte reste acceptée."""
+        api = self._api_admin()
+        pa = self.pa.id
+        url = f'{BASE}/blocages-qualite/'
+        r = api.post(url, {'produit': pa, 'quantite': 2147483648, 'motif': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('quantite', r.data)
+        r = api.post(url, {'produit': pa, 'quantite': 2147483647, 'motif': ''}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = api.post(f'{BASE}/mouvements-rebut/', {'produit': pa, 'quantite': 2147483648, 'motif': 'casse'},
+                     format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        corps = {'client': self.client_a.id, 'produit': pa, 'quantite_deposee': 1, 'date_depot': JOUR}
+        r = api.post(f'{BASE}/consignations/', {**corps, 'adresse_site': 'x' * 256}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('adresse_site', r.data)
+        r = api.post(f'{BASE}/consignations/', {**corps, 'quantite_deposee': 2147483648}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('quantite_deposee', r.data)
+        r = api.post(f'{BASE}/consignations/', {**corps, 'adresse_site': 'x' * 255}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['adresse_site'], 'x' * 255)
