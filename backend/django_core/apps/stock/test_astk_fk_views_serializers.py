@@ -254,6 +254,8 @@ class CorpsFuzzTests(TestCase):
     500 ni acceptation silencieuse."""
 
     def setUp(self):
+        from apps.crm.models import Client
+        from apps.installations.models import BinLocation
         from apps.stock.models import KitProduit, ModeleBonCommandeFournisseur
         self.a = make_company('fuzz-stock-a', 'Fuzz stock A')
         self.admin = User.objects.create_user(
@@ -261,11 +263,16 @@ class CorpsFuzzTests(TestCase):
             company=self.a)
         self.api = auth_client(self.admin)
         self.fa = Fournisseur.objects.create(company=self.a, nom='Fourn. F')
+        # Stock 50 : les refus d'état (sortie 51, ajustement au niveau actuel)
+        # et les « stock inchangé » des tests CI #997 lisent ce niveau.
         self.pa = Produit.objects.create(
             company=self.a, nom='ProdF', sku='FUZZ-PA', fournisseur=self.fa,
-            prix_achat=Decimal('10'), prix_vente=Decimal('20'))
+            prix_achat=Decimal('10'), prix_vente=Decimal('20'), quantite_stock=50)
         self.emp = EmplacementStock.objects.create(
             company=self.a, nom='Dépôt F', is_principal=True)
+        self.client_a = Client.objects.create(company=self.a, nom='Client F')
+        self.bin_a = BinLocation.objects.create(
+            company=self.a, emplacement=self.emp, code='F-07-01')
         self.kit = KitProduit.objects.create(company=self.a, nom='Kit F')
         self.modele = ModeleBonCommandeFournisseur.objects.create(
             company=self.a, nom='Modèle F')
@@ -419,9 +426,8 @@ class CorpsFuzzTests(TestCase):
                                        'montant_ttc': '0', 'lignes': []}),
         )
         for fin, corps in cas:
-            with self.subTest(url=fin, corps=corps):
-                r = api.post(f'{BASE}/{fin}', corps, format='json')
-                self.assertEqual(r.status_code, 400, r.content)
+            r = api.post(f'{BASE}/{fin}', corps, format='json')
+            self.assertEqual(r.status_code, 400, (fin, corps, r.content))
         self.pa.refresh_from_db()
         self.assertEqual(self.pa.quantite_stock, 50)
         # Date extrême conforme : le détecteur de doublon ne déborde plus (± 7 j).
@@ -475,10 +481,9 @@ class CorpsFuzzTests(TestCase):
             ('revalorisations-stock/', {'produit': pa, 'nouveau_cout': '1', 'motif': [None, None]}, 'motif'),
         )
         for fin, corps, champ in refuses:
-            with self.subTest(url=fin):
-                r = api.post(f'{BASE}/{fin}', corps, format='json')
-                self.assertEqual(r.status_code, 400, r.content)
-                self.assertIn(champ, r.content.decode('utf-8'))
+            r = api.post(f'{BASE}/{fin}', corps, format='json')
+            self.assertEqual(r.status_code, 400, (fin, r.content))
+            self.assertIn(champ, r.content.decode('utf-8'), fin)
         # Ce que les écrans envoient reste accepté : prix d'achat en nombre JSON
         # (fiche produit), décimal nullable vide = non renseigné.
         r = api.post(f'{BASE}/prix-fournisseurs/', {'produit': pa, 'fournisseur': fa, 'prix_achat': 12.5},
@@ -505,8 +510,8 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(r.status_code, 409, r.content)
         for corps in ({'produit': pa, 'quantite': 1, 'motif': 'casse', 'note': 5},
                       {'produit': pa, 'quantite': '1', 'motif': 'casse'}):
-            with self.subTest(corps=corps):
-                self.assertEqual(api.post(f'{BASE}/mouvements-rebut/', corps, format='json').status_code, 400)
+            r = api.post(f'{BASE}/mouvements-rebut/', corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
         r = api.post(f'{BASE}/blocages-qualite/', {'produit': pa, 'quantite': 1, 'motif': 5}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         r = api.post(f'{BASE}/produits/bulk/', {'action': 'set_category', 'ids': [pa], 'categorie_id': 999999},

@@ -321,6 +321,13 @@ class FichiersPdfTests(unittest.TestCase):
                 self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
                 self.assertEqual(corps['code'], '0')
 
+    def test_records_attachments_recoit_un_pdf(self):
+        # CI #997 (2e passe) — la pièce jointe records suit la même table.
+        corps = self._corps('POST', '/api/django/records/attachments/',
+                            {'file': b'', 'model': 'crm.lead', 'id': '1'})
+        self.assertTrue(corps['file'].startswith(b'%PDF-'))
+        self.assertEqual(corps['model'], 'crm.lead')
+
     def test_binaire_schemathesis_garde_son_type(self):
         # ``Binary`` (str + ``.data``) : des octets nus feraient basculer le cas
         # positif en négatif à la revalidation de Schemathesis.
@@ -392,12 +399,103 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertIsInstance(corps['fichier'], str)
         self.assertTrue(corps['fichier'].startswith('%PDF-'))
 
+    def test_import_tarif_et_fiche_pvsyst_recoivent_un_fichier_lisible(self):
+        # CI #997 fuzz (2) — classeur xlsx (zip ouvrable) et fiche PVsyst.
+        import io
+        import zipfile
+        for chemin in ('/api/django/stock/prix-fournisseurs/import-xlsx/',
+                       '/api/django/achats/prix-fournisseurs/import-xlsx/'):
+            corps = self._corps(chemin=chemin, corps={'fournisseur': 1, 'file': b''})
+            self.assertTrue(zipfile.is_zipfile(io.BytesIO(corps['file'])), chemin)
+            self.assertIn('xl/worksheets/sheet1.xml', zipfile.ZipFile(io.BytesIO(corps['file'])).namelist())
+        corps = self._corps(chemin='/api/django/stock/fiches-techniques/importer-datasheet/',
+                            corps={'produit': 1, 'file': ''})
+        self.assertTrue(corps['file'].startswith('PVObject_=pvModule'))
+        negatif = self._corps(chemin='/api/django/stock/prix-fournisseurs/import-xlsx/',
+                              corps={'fournisseur': 1, 'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(
             self._corps(chemin='/api/django/ged/documents/')['fichier'], b'')
         self.assertEqual(self._corps(corps={'code': '0'}), {'code': '0'})
         self.assertIsNone(self._corps(corps={'fichier': None})['fichier'])
+
+    def test_depot_ged_recoit_un_fichier_du_format_lu(self):
+        # CI #997 (2) : PDF au téléversement, PNG aux photos/scans séparés, CSV
+        # (en-têtes + une ligne) à l'import en masse — champs de formulaire et
+        # autres fichiers du corps intacts.
+        ged = '/api/django/ged/documents/'
+        for chemin, champ, debut in (
+                (ged + 'televerser/', 'file', b'%PDF-'),
+                (ged + 'assembler-photos/', 'photos', b'\x89PNG'),
+                (ged + 'import-masse/', 'csv', b'nom,')):
+            with self.subTest(chemin=chemin):
+                corps = self._corps(
+                    chemin=chemin,
+                    corps={champ: [b''] if champ == 'photos' else b'',
+                           'folder': 1, 'zip': b''})
+                valeur = corps[champ][0] if champ == 'photos' else corps[champ]
+                self.assertTrue(valeur.startswith(debut))
+                self.assertEqual(corps['folder'], 1)
+                self.assertEqual(corps['zip'], b'')
+
+    def test_liste_de_fichiers_chaque_element_remplace(self):
+        # ``files`` est une liste de fichiers (au moins un) : tous sont valides,
+        # la liste garde sa longueur ; Binary garde son type.
+        class Binary(str):
+            def __new__(cls, data):
+                return super().__new__(cls)
+
+            def __init__(self, data):
+                self.data = data
+
+        premier = Binary(b'')
+        for chemin, debut in (
+                ('/api/django/ged/documents/scan-lot/', b'%PDF-'),
+                ('/api/django/ged/documents/deposer-lot-scans-separe/',
+                 b'\x89PNG')):
+            with self.subTest(chemin=chemin):
+                corps = self._corps(
+                    chemin=chemin, corps={'files': [premier, b''],
+                                          'folder': 1})
+                self.assertEqual(len(corps['files']), 2)
+                self.assertIs(corps['files'][0], premier)
+                self.assertTrue(premier.data.startswith(debut))
+                self.assertTrue(corps['files'][1].startswith(debut))
+
+    def test_png_minimal_est_un_png_noir_valide(self):
+        import struct
+        import zlib
+        png = self.hooks._PNG_MINIMAL
+        self.assertTrue(png.startswith(b'\x89PNG\r\n\x1a\n'))
+        pos, blocs = 8, {}
+        while pos < len(png):
+            n, = struct.unpack('>I', png[pos:pos + 4])
+            type_, data = png[pos + 4:pos + 8], png[pos + 8:pos + 8 + n]
+            crc, = struct.unpack('>I', png[pos + 8 + n:pos + 12 + n])
+            self.assertEqual(crc, zlib.crc32(type_ + data) & 0xffffffff)
+            blocs[type_] = data
+            pos += 12 + n
+        self.assertEqual(struct.unpack('>II', blocs[b'IHDR'][:8]), (2, 2))
+        # 2 lignes de (filtre 0 + 2 pixels RGB) toutes à zéro = pixels noirs.
+        self.assertEqual(zlib.decompress(blocs[b'IDAT']), bytes(14))
+
+    def test_depot_ged_negatif_et_autres_operations_intacts(self):
+        ged = '/api/django/ged/documents/'
+        self.assertEqual(
+            self._corps(chemin=ged + 'scan-lot/', mode='NEGATIVE',
+                        corps={'files': [b'']})['files'], [b''])
+        self.assertEqual(
+            self._corps(chemin=ged + 'scan-lot/', methode='GET',
+                        corps={'files': [b'']})['files'], [b''])
+        self.assertEqual(
+            self._corps(chemin=ged + '{id}/versions/',
+                        corps={'files': [b'']})['files'], [b''])
+        self.assertEqual(
+            self._corps(chemin=ged + 'scan-lot/',
+                        corps={'files': []})['files'], [])
 
 
 class IdsFkParCheminTests(unittest.TestCase):

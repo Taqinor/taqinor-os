@@ -6,12 +6,13 @@ plans de compte, playbooks), déplacés de
 module importe ``.serializers``, jamais l'inverse.
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import RegexValidator
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import IdInconnu404Mixin
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
 
-from .champs_api import MAPPING_TEXTE_STRICT, IcePublie
+from .champs_api import MAPPING_STRICT_COMPLET, MAPPING_TEXTE_STRICT, IcePublie
 from .params_requete import UniciteEn409Mixin
 from .models import (
     ConcurrentPerte, EquipeCommerciale, EtapePlanActivite, ForecastEntry,
@@ -154,7 +155,7 @@ class DealEnregistreSerializer(IdInconnu404Mixin, _LeadEnPorteeMixin,
 
 class DefiSerializer(serializers.ModelSerializer):
     """NTCRM23 — défi d'équipe. ``company`` posé côté serveur."""
-    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : actif/nom stricts
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     metrique_display = serializers.CharField(
         source='get_metrique_display', read_only=True)
@@ -229,11 +230,15 @@ class PartenaireSerializer(serializers.ModelSerializer):
     quitté cette app — reprend nativement sa propre surface API. Aucun champ
     n'a changé : seule la maison a bougé.
     """
-    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : zone/nom stricts
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     certification_expiree = serializers.BooleanField(read_only=True)
     rang_certification = serializers.IntegerField(read_only=True)
+    # CI #997 (2) : liste FERMÉE publiée (motif), éléments texte stricts.
     specialites = serializers.ListField(
-        child=serializers.CharField(), required=False)
+        child=ChaineStricte(validators=[RegexValidator(
+            '^(?:' + '|'.join(Partenaire.SPECIALITES_CLES) + ')$',
+            message='Spécialité inconnue.')]),
+        required=False)
 
     class Meta:
         model = Partenaire
@@ -460,7 +465,7 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
     (ACRM52)."""
     champs_lead_portee = ('filleul_lead',)
     champs_client_portee = ('parrain', 'filleul_client')
-    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : notes strictes
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     parrain_nom = serializers.CharField(
         source='parrain.nom', read_only=True,
@@ -508,7 +513,7 @@ class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
 
     # CRX13 — le porteur de l'objectif doit être un utilisateur de la société.
     scoped_relations = ('owner',)
-    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : notes strictes
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
 
     owner_nom = serializers.SerializerMethodField()
     metric_display = serializers.SerializerMethodField()
@@ -597,7 +602,7 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
     dans ``perform_create``. Le lead doit appartenir à la même société
     (validate_lead). ``lead_nom`` est en lecture seule pour l'UI.
     """
-    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : notes strictes
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
     saisi_par_nom = serializers.SerializerMethodField()
@@ -703,7 +708,7 @@ class ForecastEntrySerializer(UniciteEn409Mixin, _LeadEnPorteeMixin,
     # validateur d'unicité aussi, sinon « déjà utilisé » sur un lead voisin
     # resterait un oracle d'existence.
     scoped_relations = ('lead',)
-    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : commentaire strict
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
 
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True)
@@ -762,7 +767,7 @@ class PlanCompteSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
                            serializers.ModelSerializer):
     # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
     scoped_relations = ('client',)
-    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : textes stricts
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
 
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)

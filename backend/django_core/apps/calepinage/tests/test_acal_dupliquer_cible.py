@@ -145,3 +145,25 @@ class DupliquerCible(BaseApiCalepinage):
         self.assertIn('lead', reponse.data)
         self.assertIn('introuvable', str(reponse.data['lead']))
         self.assertEqual(Calepinage.objects.count(), avant)
+
+    def test_corps_multipart_refuse_415(self):
+        # fuzz CI #997 (2) : « True » en formulaire est une chaîne, pas le
+        # booléen publié — le corps est JSON seul, rien n'est copié.
+        avant = Calepinage.objects.count()
+        reponse = self.api.post(_url(self.source.pk, 'dupliquer/'),
+                                {'avec_variantes': 'True', 'titre': ''},
+                                format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.content)
+        self.assertEqual(Calepinage.objects.count(), avant)
+
+    def test_titre_trop_long_ou_nul_refuse_400(self):
+        # fuzz CI #997 (2) : un titre de 201 caractères cassait à l'INSERT
+        # (500) ; le schéma publie désormais la borne de la colonne.
+        avant = Calepinage.objects.count()
+        for titre in ('x' * 201, 'a\x00b'):
+            reponse = self._dupliquer(self.source, {'titre': titre})
+            self.assertEqual(reponse.status_code, 400, reponse.data)
+            self.assertIn('titre', reponse.data)
+        self.assertEqual(Calepinage.objects.count(), avant)
+        reponse = self._dupliquer(self.source, {'titre': 'x' * 200})
+        self.assertEqual(reponse.status_code, 201, reponse.data)

@@ -24,11 +24,14 @@ ligne en base est un GET qui ment).
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_field, inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.champs_stricts import MOTIF_SANS_NUL
 from core.parseurs import PARSEURS_JSON
 from core.permissions import ScopedPermission
 
@@ -89,6 +92,99 @@ def _forme_registre():
     })
 
 
+#: Fenêtres d'années publiées pour ``simulation.fenetre_annees`` : le serveur
+#: lit « AAAA-AAAA » (début ≤ fin), ce qu'un schéma ne sait pas exprimer — le
+#: contrat en publie des représentants (la saisie « [2015, 2024] » reste lue).
+_FENETRES_ANNEES = ('2005-2020', '2010-2023', '2015-2024')
+
+#: Valeurs que ``_booleen`` lit comme oui / non (``services/parametres.py``).
+_MOTS_BOOLEENS = ('oui', 'vrai', 'true', '1', 'active', 'activee', 'activée',
+                  'non', 'faux', 'false', '0', 'aucune', 'sans',
+                  'desactivee', 'désactivée', 'inactive')
+
+
+def _schema_valeur_de_cle(declaration):
+    """Le schéma de la ``valeur`` d'une clé à registre, tiré de son type
+    déclaré (``parametres_cles.TYPES_CLES``) — jamais une seconde table."""
+    genre = declaration.get('type')
+    bornes = {cle: declaration[cle] for cle in ('minimum', 'maximum')
+              if cle in declaration}
+    if genre in ('nombre', 'pourcentage', 'table_mensuelle'):
+        return {'type': 'number', **bornes}
+    if genre == 'entier':
+        return {'type': 'integer', **bornes}
+    if genre == 'enum':
+        return {'type': 'string', 'enum': list(declaration['valeurs'])}
+    if genre == 'booleen':
+        return {'anyOf': [{'type': 'boolean'},
+                          {'type': 'integer', 'enum': [0, 1]},
+                          {'type': 'string', 'enum': list(_MOTS_BOOLEENS)}]}
+    if genre == 'intervalle_annees':
+        return {'type': 'string', 'enum': list(_FENETRES_ANNEES)}
+    # ``table`` : un objet ou une liste non vide, validée par l'étape lectrice.
+    return {'anyOf': [
+        {'type': 'object', 'minProperties': 1,
+         'additionalProperties': {'type': 'number'}},
+        {'type': 'array', 'minItems': 1, 'items': {'type': 'number'}}]}
+
+
+def _schema_section_a_registre(section):
+    """Une section À REGISTRE : AUCUNE clé hors registre, chaque clé
+    ``{valeur, source, reference}`` (ou ``null`` pour la retirer)."""
+    from ..services.parametres_cles import (
+        SOURCES_ADMISES, registre, type_de_cle,
+    )
+
+    entree = {'type': 'object', 'nullable': True,
+              'additionalProperties': False,
+              'required': ['valeur', 'source'], 'properties': {}}
+    proprietes = {}
+    for cle in registre(section):
+        proprietes[cle] = dict(entree, properties={
+            'valeur': _schema_valeur_de_cle(type_de_cle(section, cle)),
+            'source': {'type': 'string', 'enum': list(SOURCES_ADMISES)},
+            'reference': {'type': 'string', 'nullable': True,
+                          'pattern': MOTIF_SANS_NUL}})
+    return {'type': 'object', 'additionalProperties': False,
+            'properties': proprietes}
+
+
+#: Sections dont le vocabulaire est validé clé par clé côté serveur (chacune
+#: a son normaliseur : ``services/site.py``, ``zones_reglementaires.py``,
+#: ``degagements.py``, ``lestage.py``) et qui REFUSENT toute clé inconnue. Le
+#: schéma de REQUÊTE n'en publie que l'objet vide — le vocabulaire détaillé
+#: est celui de ``contract_samples/parametres_calepinage.json`` ; rien n'est
+#: annoncé qui serait refusé.
+_SECTIONS_A_VOCABULAIRE_FERME = ('imagerie', 'degagements', 'zones_types',
+                                 'lestage')
+
+
+def _champ_section(schema):
+    @extend_schema_field(schema)
+    class ChampSection(serializers.JSONField):
+        pass
+
+    return ChampSection(required=False)
+
+
+def _sections_requete_resserrees():
+    """CI #997 fuzz (2) — ``PUT parametres/`` : un objet « conforme » portant
+    une clé de plus (``x-schemathesis-additional``) était refusé 400 « Réglage
+    inconnu ». Le schéma de REQUÊTE dit désormais la vérité des six sections
+    à vocabulaire fermé : les deux à registre clé par clé, les quatre autres
+    en objet vide."""
+    from ..services.parametres_cles import (
+        SECTION_ELECTRIQUE_SOCIETE, SECTION_SIMULATION,
+    )
+
+    champs = {section: _champ_section({
+        'type': 'object', 'additionalProperties': False})
+        for section in _SECTIONS_A_VOCABULAIRE_FERME}
+    for section in (SECTION_SIMULATION, SECTION_ELECTRIQUE_SOCIETE):
+        champs[section] = _champ_section(_schema_section_a_registre(section))
+    return champs
+
+
 def _forme_reglages(nom, avec_registre=False, partielle=False):
     """YAPIC6/PACT7 — la forme DÉCLARÉE des réglages, tirée du contrat.
 
@@ -126,6 +222,8 @@ def _forme_reglages(nom, avec_registre=False, partielle=False):
         # la clé DÉRIVÉE ``catalogue_rapport``.
         'documents': serializers.DictField(required=requis),
     }
+    if partielle:
+        champs.update(_sections_requete_resserrees())
     if avec_registre:
         champs['registre'] = _forme_registre()
     return inline_serializer(nom, champs)

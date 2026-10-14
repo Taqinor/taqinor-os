@@ -83,3 +83,20 @@ class CustomDataCalepinageTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 201, reponse.data)
         cree = Calepinage.objects.get(pk=reponse.data['id'])
         self.assertEqual(cree.custom_data, {'parcelle': 'T-5678'})
+
+    def test_custom_data_publie_en_objet_et_tableau_refuse(self):
+        """CI #997 fuzz (2) — le schéma de requête dit « objet » (il disait
+        JSON libre : un tableau « conforme » répondait 400) ; un tableau reste
+        refusé en nommant le champ."""
+        from apps.calepinage.serializers import ChampsPersonnalisesField
+
+        schema = ChampsPersonnalisesField._spectacular_annotation['field']
+        self.assertEqual(schema['type'], 'object')
+        self.assertIs(schema['additionalProperties'], False)
+        reponse = self.api.post(URL, {
+            'lead': self.lead_2.pk, 'custom_data': [None, None]},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('custom_data', reponse.data)
+        self.assertFalse(Calepinage.objects.filter(
+            lead_id=self.lead_2.pk).exists())

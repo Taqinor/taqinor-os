@@ -8,9 +8,14 @@ C20 qui ne grossit plus.
   (``facturer_vente`` : tranches, garde « une vente ne se facture qu'une
   fois ») : le corps du CRUD ne pose ni ne change jamais ``devis``.
 
-Refus nommés en 400 (le CORPS est refusé, pas un état).
+Refus nommés : ``devis`` en 400 (le CORPS est refusé — à la création le
+schéma publie ``devis`` nul, ``FactureCreationSerializer``) ; le BC d'un devis
+en 409 (CI #997 (2) : un id de BC conforme, c'est l'ORIGINE du BC qui
+s'oppose — un état des données, pas une forme).
 """
 from rest_framework.exceptions import ValidationError
+
+from core.conflit_etat import ConflitEtat
 
 #: AFAC66 — refus nommé de la cinquième porte de facturation d'un devis.
 BC_DE_DEVIS_REFUSE = (
@@ -31,8 +36,8 @@ def refuser_portes_fermees(donnees, facture=None):
     bc = donnees.get('bon_commande')
     if bc is not None and bc.devis_id and (
             facture is None or bc.pk != facture.bon_commande_id):
-        raise ValidationError({'bon_commande': BC_DE_DEVIS_REFUSE,
-                               'code': 'bon_commande_de_devis'})
+        raise ConflitEtat({'bon_commande': BC_DE_DEVIS_REFUSE,
+                           'code': 'bon_commande_de_devis'})
     devis = donnees.get('devis')
     if devis is not None and (facture is None or devis.pk != facture.devis_id):
         raise ValidationError({'devis': FACTURE_DE_DEVIS_REFUSE,

@@ -5,8 +5,8 @@ from rest_framework import serializers
 from django.utils import timezone
 
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
-    IdInconnu404Mixin, ListesStrictesMixin)
+    ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin,
+    ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, ListesStrictesMixin)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import TypageStrictMixin
 
@@ -622,8 +622,11 @@ class MaintenanceChecklistTemplateSerializer(ChampsStrictsMixin,
 
 # ── FG83 — Réclamation garantie fournisseur ───────────────────────────────────
 
-class WarrantyClaimSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class WarrantyClaimSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin,
                               serializers.ModelSerializer):
+    # CI #997 api-fuzz (2e passe) : ``cout_recupere`` (chaîne décimale ou vide),
+    # ``fournisseur_id_ext`` (entier) et les textes sont STRICTS ; l'écran
+    # n'envoie que des textes, des dates et ``Number(fournisseur)``.
     # ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('equipement', 'ticket')
     statut_display = serializers.CharField(
@@ -648,7 +651,7 @@ class WarrantyClaimSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerial
 
 # ── FG87 — Base de connaissances ──────────────────────────────────────────────
 
-class KbArticleSerializer(SameCompanyFKSerializerMixin,
+class KbArticleSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
     # ENF17 — FK inscriptible bornée à la société.
     same_company_fields = ('produit',)
@@ -936,7 +939,8 @@ class CompatibilitePieceSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKS
 
 # ── ZMFG6 — Feuilles de maintenance (worksheets) ─────────────────────────────
 
-class WorksheetMaintenanceModeleSerializer(serializers.ModelSerializer):
+class WorksheetMaintenanceModeleSerializer(ChampsStrictsMixin,
+                                           serializers.ModelSerializer):
     # CI #997 api-fuzz : JSONField non nul publié « n'importe quoi » (null
     # compris, refusé en 400) → liste de définitions de champs.
     champs = serializers.ListField(

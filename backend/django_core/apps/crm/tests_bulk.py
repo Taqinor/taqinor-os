@@ -229,7 +229,8 @@ class TestBulkCanalPriorite(BulkLeadsBase):
                              libelle='Référence')
         a = self.mk(nom='A')
         resp = self.bulk(action='set_canal', ids=[a.id], canal='inexistant')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # CI #997 (2) : canal bien formé mais hors référentiel = 404.
+        self.assertEqual(resp.status_code, 404, resp.data)
 
     def test_set_priorite_en_masse(self):
         a, b = self.mk(nom='A', priorite='normale'), self.mk(nom='B')

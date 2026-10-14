@@ -1494,8 +1494,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)),
-                                    ids=sd.ids_requis()), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)), ids=sd.ids_requis()), responses=sd.OBJ, extensions=sd.corps_bulk(BULK_ACTIONS))
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
     def bulk(self, request):
@@ -1506,7 +1505,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         'archive'|'unarchive'|'delete', + paramètres de l'action}. La société et
         l'acteur viennent du serveur ; la règle métier (funnel, garde-fous,
         Historique « en masse ») vit dans services.apply_bulk_action."""
-        from .fiche_bulk import BULK_ACTIONS, BULK_ADMIN_ONLY, apply_bulk_action
+        from .fiche_bulk import BULK_ACTIONS, BULK_ADMIN_ONLY, ReferenceInconnue, apply_bulk_action
         op = corps_objet(request).get('action')
         ids = request.data.get('ids') or []
         # ENF11 (api-fuzz) — `action: {}` (non hachable) levait TypeError (500).
@@ -1529,7 +1528,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 queryset=self._leads_en_portee())
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND if isinstance(
+                                exc, ReferenceInconnue) else status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
     @extend_schema(request=sd.corps('CrmLeadsExportRequest', ids=sd.ids_requis()), responses=sd.EXPORT_XLSX)

@@ -196,3 +196,38 @@ class UniciteReferentielsTests(TestCase):
         r = self.api.post(f'{BASE}/equipes/', {
             'nom': 'E membres', 'membres': []}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_corps_stricts_ci997_deuxieme_passe(self):
+        # CI #997 api-fuzz (2e passe) : TOUS les champs de ces 7 corps sont
+        # exacts (texte, booléen, entier, décimal-chaîne) — le fuzz nommait
+        # un champ à la fois (note, designation, actif, motif, montant…).
+        from apps.installations import serializers as S
+        from core.champs_stricts import (
+            BooleenStrict, ChaineStricte, DecimalStricte, EntierStrict)
+        attendus = (
+            (S.FraisImportSerializer, {
+                'montant': DecimalStricte, 'libelle': ChaineStricte}),
+            (S.ColisSerializer, {
+                'poids_kg': DecimalStricte, 'note': ChaineStricte}),
+            (S.SerieEntrepotSerializer, {
+                'note': ChaineStricte, 'numero_serie': ChaineStricte,
+                'reference_reception': ChaineStricte}),
+            (S.LivraisonLigneSerializer, {
+                'designation': ChaineStricte, 'quantite': EntierStrict}),
+            (S.PreuveLivraisonSerializer, {
+                'note': ChaineStricte, 'signataire_nom': ChaineStricte,
+                'gps_lat': DecimalStricte, 'gps_lng': DecimalStricte}),
+            (S.RetourLivraisonSerializer, {'motif': ChaineStricte}),
+            (S.RegleRangementSerializer, {
+                'actif': BooleenStrict, 'priorite': EntierStrict,
+                'categorie_produit': ChaineStricte}))
+        for classe, champs in attendus:
+            for nom, type_attendu in champs.items():
+                self.assertIsInstance(
+                    classe().fields[nom], type_attendu,
+                    (classe.__name__, nom))
+        refus = S.ColisSerializer(data={'poids_kg': 12.5}, partial=True)
+        self.assertFalse(refus.is_valid())
+        self.assertIn('poids_kg', refus.errors)
+        vide = S.ColisSerializer(data={'poids_kg': ''}, partial=True)
+        self.assertTrue(vide.is_valid(), vide.errors)

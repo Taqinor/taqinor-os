@@ -214,6 +214,24 @@ class EtudeHoraireEquipementsTests(TestCase):
                 self.assertEqual(response.status_code, 400, response.content)
                 self.assertIn(nom, response.json()['detail'])
 
+    def test_champs_scalaires_forme_publiee(self):
+        """CI #997 (2) (cas EpXQ7i) — ``critere: "\\f"`` passait (200) comme
+        ``lat: "0"`` ou ``devis: null`` : un champ PRÉSENT suit sa forme
+        publiée (400 nommé) ; une occupation hors liste reste ignorée."""
+        for nom, brut in (('critere', '\f'), ('critere', 'x'),
+                          ('ville', ' '), ('ville', '\u001c'),
+                          ('raccordement', 0), ('lat', '0'), ('kwc', True),
+                          ('devis', None), ('lead', 1.5), ('occupation', 5),
+                          ('equipements', '')):
+            response = self.api.post(
+                URL, {'facture_hiver': 900, nom: brut}, format='json')
+            self.assertEqual(response.status_code, 400, (nom, brut))
+            self.assertIn(nom, response.json()['detail'])
+        response = self.api.post(
+            URL, {'facture_hiver': 900, 'critere': 'economie_max',
+                  'occupation': 'inconnue'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+
     def test_drapeau_booleen_accepte(self):
         response = self.api.post(
             URL, {'facture_hiver': 900, 'dimensionner': False,

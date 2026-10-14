@@ -22,6 +22,7 @@ from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
+from ..erreurs_achats import EtatIncompatible
 from ..utils.params import (
     corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
@@ -187,7 +188,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         # était enregistré vide, ``produit: {}`` faisait un 500 ORM).
         types_corps_ou_400(donnees, textes=('adresse_site', 'note', 'date_depot'),
                            entiers=('quantite_deposee',),
-                           ids=('client', 'produit', 'emplacement_source'))
+                           ids=('client', 'produit', 'emplacement_source'),
+                           nuls=('emplacement_source',))
         date_ou_400(donnees.get('date_depot'), 'date_depot')
         try:
             depot = creer_depot_consignation(
@@ -199,6 +201,9 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
                 adresse_site=donnees.get('adresse_site') or '',
                 emplacement_id=donnees.get('emplacement_source'),
                 note=donnees.get('note') or '')
+        except EtatIncompatible as exc:
+            # CI #997 fuzz (2) — stock insuffisant : l'état s'oppose (409).
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

@@ -64,6 +64,40 @@ class ReglesPuresTest(SimpleTestCase):
         with self.assertRaises(serializers.ValidationError):
             ser.validate_caution({'montant_ou_pct': '5 %'})
 
+    def test_conditions_forme_publiee_exacte(self):
+        """CI #997 (2) (cas kr9rrL, ``PUT devis {caution: [null, null]}``) —
+        les trois conditions étaient publiées en JSON libre : le schéma porte
+        leur forme exacte, et le serveur n'accepte plus que cette forme."""
+        from rest_framework import serializers
+        from apps.ventes.domain import conditions_ci
+        from apps.ventes.serializers import DevisWriteSerializer
+        ser = DevisWriteSerializer()
+        champs = ser.fields
+        for nom in ('retenue_garantie', 'penalites_retard_livraison',
+                    'caution', 'echeancier', 'remise_globale',
+                    'acompte_montant'):
+            self.assertEqual(champs[nom]._spectacular_annotation['field'],
+                             conditions_ci.SCHEMAS[nom], nom)
+        refus = (
+            (ser.validate_caution, [None, None]),
+            (ser.validate_caution, {'nature': '\u001c'}),
+            (ser.validate_caution, {'nature': 5}),
+            (ser.validate_caution, {'nature': 'x', 'plafond': [1]}),
+            (ser.validate_retenue_garantie, ''),
+            (ser.validate_retenue_garantie,
+             {'taux_pct': 5, 'liberation': None}),
+            (ser.validate_retenue_garantie, {'taux_pct': '05'}),
+            (ser.validate_penalites_retard_livraison, 'x'),
+            (ser.validate_acompte_montant, Decimal('-1')),
+        )
+        for valider, brut in refus:
+            with self.assertRaises(serializers.ValidationError, msg=repr(brut)):
+                valider(brut)
+        self.assertIsNone(ser.validate_caution({}))
+        self.assertEqual(ser.validate_retenue_garantie({'taux_pct': '5,5'}),
+                         {'taux_pct': 5.5,
+                          'liberation': 'reception_definitive'})
+
 
 class _Base(TestCase):
     def setUp(self):
@@ -160,6 +194,21 @@ class EnteteDevisTest(_Base):
             'taux_pct_par_semaine': 0.5}})
         self.assertEqual(r.status_code, 400, r.data)
         self.assertIn('penalites_retard_livraison.plafond_pct', str(r.data))
+
+    def test_entete_hors_forme_publiee_400(self):
+        """CI #997 (2) — ``caution: [null, null]`` (cas kr9rrL),
+        ``prix_cible_kwc: ""`` lu ``null`` (cas 7RmWal), ``acompte_montant:
+        "-1"`` en 500 ``CheckViolation`` : 400 nommant le champ."""
+        devis = self._devis('DEV-CIQ214-0065', statut='brouillon')
+        for corps in ({'caution': [None, None]}, {'retenue_garantie': ''},
+                      {'echeancier': [None, None]}, {'prix_cible_kwc': ''},
+                      {'prix_cible_kwc': '1e2'}, {'acompte_montant': '-1'}):
+            r = self._patch(devis, corps)
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+            self.assertIn(next(iter(corps)), r.data)
+        r = self._patch(devis, {'caution': {}, 'prix_cible_kwc': None,
+                                'acompte_montant': 0})
+        self.assertEqual(r.status_code, 200, r.data)
 
     def test_enregistrer_rouvrir_enregistrer_entete_identique(self):
         devis = self._devis('DEV-CIQ214-0070', statut='brouillon')

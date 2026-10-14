@@ -29,7 +29,18 @@ class ChaineStricte(serializers.CharField):
 #: tout ``CharField`` (``ProhibitNullCharactersValidator``) alors que le schéma
 #: l'autorisait — le fuzz envoyait une chaîne « conforme » et recevait 400.
 MOTIF_SANS_NUL = r'^[^\u0000]*$'
-MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*[^\s\u0000][^\u0000]*$'
+#: CI #997 (2) — « non blanc » au sens de DRF (``str.strip``) : le validateur
+#: du schéma (regex Rust) ne compte pas ``\u001c``-``\u001f`` dans ``\s``,
+#: Python si — ``"\u001c"`` seul était publié conforme puis refusé « vide ».
+MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*[^\s\u0000\u001c-\u001f][^\u0000]*$'
+
+
+def non_blanc(texte):
+    """Vrai si la chaîne ``texte`` porte un caractère ni blanc (``str.strip``)
+    ni nul — la règle de ``MOTIF_NON_BLANC_SANS_NUL``."""
+    return any(not c.isspace() and c != '\u0000' for c in texte)
+
+
 #: Validateurs dont drf-spectacular publie lui-même le motif/format.
 _VALIDATEURS_PUBLIES = (
     _validateurs.RegexValidator, _validateurs.EmailValidator,
@@ -122,6 +133,16 @@ def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
 _DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}\Z')
 
 
+class DateStricte(serializers.DateField):
+    """``DateField`` limité à ``AAAA-MM-JJ`` (``format: date``) : DRF lisait
+    aussi ``2026-1-5`` et ``20261005`` (``date.fromisoformat`` de 3.11)."""
+
+    def to_internal_value(self, value):
+        if not isinstance(value, str) or not _DATE_ISO.match(value):
+            self.fail('invalid', format='AAAA-MM-JJ')
+        return super().to_internal_value(value)
+
+
 def date_ou_400(valeur, nom):
     """Date de requête ``AAAA-MM-JJ`` STRICTE : absent/vide -> ``None`` ;
     toute autre forme (``2026-1-5``, ``abc``, jour inexistant) -> 400 nommant
@@ -170,16 +191,42 @@ class DecimalStricte(serializers.DecimalField):
         return super().validate_empty_values(data)
 
 
+class DecimalBornee(DecimalStricte):
+    """CI #997 (2) — ``DecimalStricte`` dont le motif publié suit la borne
+    basse : avec ``min_value >= 0`` (prix, coût) il n'a plus de signe ``-``
+    (``"-1"`` était « conforme » au schéma puis refusé en 400)."""
+
+
+def _motif_decimal(champ):
+    """Le motif EXACT publié par ``_DecimalChaineNonVide`` pour ``champ``
+    (lu comme le validateur du schéma, regex Rust : ``re.fullmatch`` — un
+    saut de ligne final n'y passe pas)."""
+    entiers, decimales = champ.max_whole_digits, champ.decimal_places
+    if not entiers or decimales is None:
+        return r'^-?(?:\d+(?:\.\d*)?|\.\d+)$'
+    return (fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
+            fr'|\.\d{{1,{decimales}}})$')
+
+
 class DecimalSouple(serializers.DecimalField):
     """CI #997 api-fuzz (``POST ventes/devis/ {"taux_tva": 0}``) — décimal
     accepté en CHAÎNE **ou** en NOMBRE JSON, et PUBLIÉ ainsi (``anyOf`` motif
     | nombre borné, voir ``_DecimalChaineNonVide``) : des clients envoient des
     nombres (générateur de devis), le serveur ne les refuse pas. Un nombre
     hors bornes ou un booléen → 400 ; un nombre dans les bornes est arrondi
-    au demi supérieur à ``decimal_places`` (bruit flottant ``0.1 + 0.2``)."""
+    au demi supérieur à ``decimal_places`` (bruit flottant ``0.1 + 0.2``).
+
+    CI #997 (2) — une CHAÎNE suit le motif publié : ``""``, des blancs autour,
+    ``+1``, ``1e2`` ou ``1_0`` (que ``Decimal`` lit) → 400 ; ``""`` ne vaut
+    plus ``null`` en silence (``null`` reste le « non renseigné » publié)."""
+
+    def validate_empty_values(self, data):
+        return serializers.Field.validate_empty_values(self, data)
 
     def to_internal_value(self, data):
-        if isinstance(data, bool):
+        if isinstance(data, bool) or (
+                isinstance(data, str)
+                and not re.fullmatch(_motif_decimal(self), data)):
             self.fail('invalid')
         if isinstance(data, (int, float)):
             from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -242,10 +289,10 @@ class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
         if 'pattern' not in schema or not champ.max_whole_digits:
             return schema
         schema = dict(schema)
-        entiers, decimales = champ.max_whole_digits, champ.decimal_places
-        schema['pattern'] = (
-            fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
-            fr'|\.\d{{1,{decimales}}})$')
+        schema['pattern'] = _motif_decimal(champ)
+        if (isinstance(champ, DecimalBornee) and champ.min_value is not None
+                and champ.min_value >= 0):
+            schema['pattern'] = schema['pattern'].replace('^-?', '^', 1)
         if isinstance(champ, DecimalStricte) and champ.allow_null:
             motif = schema.pop('pattern')
             schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
@@ -373,6 +420,16 @@ class ChampsStrictsEntiersMixin:
         models.PositiveIntegerField: EntierStrict,
         models.SmallIntegerField: EntierStrict,
         models.PositiveSmallIntegerField: EntierStrict,
+    }
+
+
+class ChampsStrictsBornesMixin:
+    """``ChampsStrictsEntiersMixin`` avec des décimaux ``DecimalBornee`` (motif
+    publié sans signe quand le champ est borné à 0 ou plus)."""
+
+    serializer_field_mapping = {
+        **ChampsStrictsEntiersMixin.serializer_field_mapping,
+        models.DecimalField: DecimalBornee,
     }
 
 

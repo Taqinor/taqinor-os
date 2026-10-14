@@ -50,7 +50,10 @@ from __future__ import annotations
 import json
 import os
 import atexit
+import io
 import re
+import struct
+import zipfile
 import zlib
 
 import requests
@@ -408,12 +411,84 @@ atexit.register(_journal_couverture)
 # ── 5. Fichiers dont le FORMAT n'est pas exprimable au schéma ──────────
 # Un gabarit de dossier réglementaire se dépose en PDF SEULEMENT (règle
 # métier, « le fichier reçu n'en est pas un » sinon) ; OpenAPI ne dit que
-# ``format: binary``. Un cas POSITIF reçoit donc un PDF minimal valide
-# (octets ``%PDF-``) au lieu d'octets quelconques — même nature que les ids
-# réels : l'existence/le format d'une donnée que le schéma ne peut pas porter.
+# ``format: binary``. Un cas POSITIF reçoit donc un fichier minimal VALIDE du
+# format que l'opération lit (PDF, image, CSV) au lieu d'octets quelconques —
+# même nature que les ids réels : l'existence/le format d'une donnée que le
+# schéma ne peut pas porter. CI #997 (2) : le dépôt GED accepte PDF/PNG/JPEG/
+# WebP (``store_attachment``), assemble ses photos avec Pillow, ouvre ses
+# scans comme images et lit un CSV de métadonnées — des octets vides y étaient
+# refusés 400 « rejected schema-compliant request ».
 _PDF_MINIMAL = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
-_FICHIERS_PDF = re.compile(r'^/api/django/calepinage/gabarits-dossiers/')
-_METHODES_FICHIER = {'POST', 'PATCH'}
+# CI #997 fuzz (2) — même règle pour l'import d'un tarif fournisseur (un
+# classeur xlsx, ``_classeur_lisible``) et d'une fiche constructeur PVsyst
+# (``PVObject_=`` module/onduleur, ``parse_pan_ond_bytes``) : un classeur VIDE
+# (aucune ligne -> rapport d'erreurs 200, rien d'écrit) et un module sans clé.
+_NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+_NS_PKG = 'http://schemas.openxmlformats.org/package/2006/relationships'
+_NS_XLSX = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+_TYPE_OOXML = 'application/vnd.openxmlformats-officedocument.spreadsheetml'
+_XLSX_PARTIES = {
+    '[Content_Types].xml': (
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        f'<Override PartName="/xl/workbook.xml" ContentType="{_TYPE_OOXML}.sheet.main+xml"/>'
+        f'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="{_TYPE_OOXML}.worksheet+xml"/></Types>'),
+    '_rels/.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="{_NS_REL}/'
+                    'officeDocument" Target="xl/workbook.xml"/></Relationships>'),
+    'xl/workbook.xml': (f'<workbook xmlns="{_NS_XLSX}" xmlns:r="{_NS_REL}"><sheets>'
+                        '<sheet name="Tarif" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+    'xl/_rels/workbook.xml.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="'
+                                   f'{_NS_REL}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'),
+    'xl/worksheets/sheet1.xml': f'<worksheet xmlns="{_NS_XLSX}"><sheetData/></worksheet>',
+}
+
+
+def _xlsx_minimal():
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for nom, xml in _XLSX_PARTIES.items():
+            archive.writestr(nom, '<?xml version="1.0" encoding="UTF-8"?>' + xml)
+    return tampon.getvalue()
+
+
+def _png_minimal():
+    """PNG 2x2 NOIR décodable par Pillow (une page NON blanche : la séparation
+    de lots la prendrait sinon pour une page séparatrice)."""
+    def bloc(type_, donnees):
+        return (struct.pack('>I', len(donnees)) + type_ + donnees
+                + struct.pack('>I', zlib.crc32(type_ + donnees) & 0xffffffff))
+    ligne = b'\x00' + b'\x00\x00\x00' * 2
+    return (b'\x89PNG\r\n\x1a\n'
+            + bloc(b'IHDR', struct.pack('>IIBBBBB', 2, 2, 8, 2, 0, 0, 0))
+            + bloc(b'IDAT', zlib.compress(ligne * 2)) + bloc(b'IEND', b''))
+
+
+_PNG_MINIMAL = _png_minimal()
+# CSV de métadonnées d'un import en masse : en-têtes + UNE ligne (``nom`` requis).
+_CSV_MINIMAL = b'nom,description\r\nFuzz,Import\r\n'
+_GED = r'^/api/django/ged/documents/'
+# (chemin, méthodes, {champ du corps: octets d'un fichier valide})
+_FICHIERS_VALIDES = (
+    (re.compile(r'^/api/django/calepinage/gabarits-dossiers/'),
+     {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
+    (re.compile(_GED + r'televerser/$'), {'POST'}, {'file': _PDF_MINIMAL}),
+    (re.compile(_GED + r'scan-lot/$'), {'POST'}, {'files': _PDF_MINIMAL}),
+    (re.compile(_GED + r'assembler-photos/$'), {'POST'},
+     {'photos': _PNG_MINIMAL}),
+    (re.compile(_GED + r'deposer-lot-scans-separe/$'), {'POST'},
+     {'files': _PNG_MINIMAL}),
+    (re.compile(_GED + r'import-masse/$'), {'POST'}, {'csv': _CSV_MINIMAL}),
+    # CI #997 (2e passe) — pièce jointe polymorphe de records : un part sans
+    # nom ni octets est « Aucun fichier fourni » (400) ; le serveur valide
+    # les octets magiques, inexprimable dans le schéma.
+    (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
+    (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
+     {'file': _xlsx_minimal()}),
+    (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
+     {'file': b'PVObject_=pvModule\n'}),
+)
 
 
 def _meta_sans_revalidation(case):
@@ -424,26 +499,44 @@ def _meta_sans_revalidation(case):
     return meta if meta is not None else case.meta
 
 
-def _fichiers_pdf(case):
+def _octets_valides(valeur, octets):
+    """``valeur`` portant ``octets``. Schemathesis range un binaire dans
+    ``Binary`` (sous-classe de str portant ``.data``) : on change ses OCTETS en
+    place et on rend le MÊME objet — la clé du corps n'est alors pas réécrite
+    (voir ``_rester_positif``)."""
+    if isinstance(getattr(valeur, 'data', None), bytes):
+        valeur.data = octets
+        return valeur
+    if isinstance(valeur, bytes):
+        return octets
+    if isinstance(valeur, str):
+        return octets.decode('latin-1')
+    return valeur
+
+
+def _fichiers_valides(case):
     meta = _meta_sans_revalidation(case)
     if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
         return
-    if case.operation.method.upper() not in _METHODES_FICHIER:
-        return
-    if not _FICHIERS_PDF.match(case.operation.path):
-        return
     corps = case.body
-    if isinstance(corps, dict) and corps.get('fichier') is not None:
-        origine = corps['fichier']
-        # Schemathesis range un binaire dans ``Binary`` (sous-classe de str
-        # portant ``.data``) : on change ses OCTETS en place, la clé du corps
-        # n'est pas réécrite (voir ``_rester_positif``).
-        if isinstance(getattr(origine, 'data', None), bytes):
-            origine.data = _PDF_MINIMAL
-        elif isinstance(origine, bytes):
-            corps['fichier'] = _PDF_MINIMAL
-        elif isinstance(origine, str):
-            corps['fichier'] = _PDF_MINIMAL.decode('latin-1')
+    if not isinstance(corps, dict):
+        return
+    for chemin, methodes, champs in _FICHIERS_VALIDES:
+        if (case.operation.method.upper() not in methodes
+                or not chemin.match(case.operation.path)):
+            continue
+        for champ, octets in champs.items():
+            origine = corps.get(champ)
+            if isinstance(origine, list):
+                # Liste de fichiers (``scan-lot``…) : chaque élément en porte un.
+                for rang, element in enumerate(origine):
+                    nouveau = _octets_valides(element, octets)
+                    if nouveau is not element:
+                        origine[rang] = nouveau
+            elif origine is not None:
+                nouveau = _octets_valides(origine, octets)
+                if nouveau is not origine:
+                    corps[champ] = nouveau
 
 
 # ── 6. Un corps à fichier reste POSITIF après nos substitutions ─────────
@@ -496,5 +589,5 @@ def before_call(context, case, kwargs):
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
-    _fichiers_pdf(case)
+    _fichiers_valides(case)
     _rester_positif(case, etait_positif)

@@ -11,7 +11,7 @@ Le technicien déclare sa collecte du jour (des Paiement déjà encaissés,
 espèces/chèque) ; le responsable la clôture avec un bordereau PDF. L'écart
 (déclaré vs somme des lignes) est calculé et exposé, jamais masqué."""
 from drf_spectacular.utils import extend_schema_view, extend_schema
-from ..openapi_params import qint
+from ..openapi_params import entier_requete, qint
 from django.db import transaction
 from django.utils import timezone
 from django.http import HttpResponse
@@ -45,6 +45,12 @@ def paiements_remisables(qs):
         lignes_remise_encaissement__isnull=True)
 
 
+def _id_ou_vide(valeur):
+    """Vrai pour ``None`` ou un entier JSON (jamais un booléen)."""
+    return valeur is None or (
+        isinstance(valeur, int) and not isinstance(valeur, bool))
+
+
 @extend_schema_view(list=extend_schema(
     parameters=[qint('technicien')]))
 class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
@@ -72,8 +78,9 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        technicien_id = self.request.query_params.get('technicien')
-        if technicien_id:
+        # CI #997 (2) — ``?technicien=AAA`` levait ValueError au filtre (500).
+        technicien_id = entier_requete(self.request, 'technicien')
+        if technicien_id is not None:
             qs = qs.filter(technicien_id=technicien_id)
         return qs
 
@@ -94,8 +101,15 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
           monétaire, le remettre fausserait le rapprochement de caisse.
         """
         resolus = []
+        # CI #997 (2) — une ligne non objet (``"x"``) ou un id non entier
+        # levait AttributeError / ValueError (500) : 400 nommé.
+        if not isinstance(lignes, list) or not all(
+                isinstance(ligne, dict) and _id_ou_vide(ligne.get('paiement'))
+                for ligne in lignes):
+            raise ValidationError({'lignes': [
+                'Liste de lignes {"paiement": <id entier>} attendue.']})
         for ligne in lignes:
-            paiement_id = (ligne or {}).get('paiement')
+            paiement_id = ligne.get('paiement')
             if not paiement_id:
                 continue
             paiement = Paiement.objects.filter(

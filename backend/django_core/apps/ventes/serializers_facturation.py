@@ -894,10 +894,12 @@ class LigneRemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id']
 
 
-class RemiseEncaissementSerializer(ChampsStrictsSansDecimalMixin,
+class RemiseEncaissementSerializer(ChampsStrictsMixin,
                                    SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
-    # CI #997 — texte/booléens stricts (``note: 0`` était converti).
+    # CI #997 — texte/booléens stricts (``note: 0`` était converti) ; (2) le
+    # décimal aussi : ``montant_declare: 0`` (nombre JSON) → 400, l'écran
+    # envoie la chaîne saisie.
     # ASEC28 — le technicien d'une remise est un utilisateur de la société.
     same_company_fields = ('technicien',)
 

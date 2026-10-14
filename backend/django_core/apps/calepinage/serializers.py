@@ -35,6 +35,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Calepinage, CalepinageVariante
@@ -222,7 +223,33 @@ class _CalepinageListSerializer(serializers.ListSerializer):
         return [self.child.to_representation(ligne) for ligne in lignes]
 
 
-class CalepinageSerializer(SameCompanyFKSerializerMixin,
+@extend_schema_field({
+    'type': 'object', 'additionalProperties': False, 'nullable': True,
+    'description': (
+        "Champs personnalisés « code : valeur ». Les codes admis sont ceux "
+        "des définitions ACTIVES du module Calepinage de la société (propres "
+        "à chacune, donc non énumérés ici) : une clé inconnue est refusée en "
+        "la nommant.")})
+class ChampsPersonnalisesField(serializers.JSONField):
+    """CI #997 fuzz (2) — ``custom_data`` est un OBJET (ou ``null``) : publié
+    en JSON libre, un tableau « conforme » était refusé 400
+    (``validate_custom_data``)."""
+
+
+@extend_schema_field({
+    'type': 'object', 'additionalProperties': False, 'nullable': True,
+    'description': (
+        "Absent ou vide à la création : les contraintes de site (assureur, "
+        "dégagements, îlot, source) ne sont pas posées par ce geste, elles se "
+        "règlent par PATCH sur le calepinage — une clé inconnue est refusée "
+        "en la nommant.")})
+class ContraintesSiteCreationField(serializers.JSONField):
+    """CI #997 fuzz (2) — à la CRÉATION, ``contraintes_site`` est validée
+    (``normaliser_contraintes_site``) mais jamais posée : le schéma n'annonce
+    que l'objet vide, une clé de plus répondait 400 « Clé(s) inconnue(s) »."""
+
+
+class CalepinageSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """Le calepinage en liste et en écriture (le DÉTAIL agrégé est CAL17).
 
@@ -235,6 +262,8 @@ class CalepinageSerializer(SameCompanyFKSerializerMixin,
 
     lead = serializers.IntegerField(source='lead_id', required=False,
                                     allow_null=True)
+    custom_data = ChampsPersonnalisesField(required=False, allow_null=True,
+                                           write_only=True)
     #: ACAL114 (D-ACAL-19) — ``statut`` et son libellé sont DÉRIVÉS de
     #: l'approbation (brouillon | valide | perime), en LECTURE SEULE : un
     #: PATCH ``{statut}`` est sans effet. La colonne reste en base.

@@ -64,10 +64,14 @@ def scanner_resoudre_view(request):
     return Response(resultat)
 
 
-@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(),
+# CI #997 fuzz (2) — identifiants publiés 1..ID_MAX (``id_corps`` refuse 0).
+_ID = {'min_value': 1, 'max_value': 2147483647}
+
+
+@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(**_ID),
                              type_mouvement=serializers.CharField(), quantite=serializers.IntegerField(),
-                             bin_source=serializers.IntegerField(required=False, allow_null=True),
-                             bin_destination=serializers.IntegerField(required=False, allow_null=True),
+                             bin_source=serializers.IntegerField(required=False, allow_null=True, **_ID),
+                             bin_destination=serializers.IntegerField(required=False, allow_null=True, **_ID),
                              reference=serializers.CharField(required=False),
                              note=serializers.CharField(required=False, allow_blank=True)), responses={
     201: inline_serializer('StockScannerMouvementResultat', {
@@ -80,8 +84,10 @@ def scanner_resoudre_view(request):
         'bin_source': serializers.IntegerField(allow_null=True),
         'bin_destination': serializers.IntegerField(allow_null=True),
     }),
+    # ``{detail}`` (refus du service) ou l'erreur de validation DRF nommant le
+    # champ (transfert sans casier, casier hazmat incompatible — contrats WMS).
     400: inline_serializer('StockScannerMouvementErreur', {
-        'detail': serializers.CharField(),
+        'detail': serializers.CharField(required=False),
     }),
 })
 @api_view(['POST'])
@@ -106,8 +112,11 @@ def scanner_mouvement_view(request):
     from ..utils.params import id_corps
     if any(donnees.get(c) is not None and id_corps(donnees.get(c)) is None
            for c in ('produit', 'bin_source', 'bin_destination')) or any(
-               not isinstance(donnees.get(c, ''), str) for c in ('type_mouvement', 'reference', 'note')):
-        return Response({'detail': 'Corps invalide : identifiants entiers et textes attendus.'},
+               not isinstance(donnees.get(c, ''), str) for c in ('type_mouvement', 'reference', 'note')) or (
+               # CI #997 fuzz (2) : quantité ENTIÈRE JSON, référence non blanche.
+               isinstance(donnees.get('quantite'), bool) or not isinstance(donnees.get('quantite'), int)) or (
+               'reference' in donnees and not donnees['reference'].strip()):
+        return Response({'detail': 'Corps invalide : identifiants entiers, quantité entière et textes attendus.'},
                         status=status.HTTP_400_BAD_REQUEST)
     try:
         mouvement = enregistrer_mouvement_scanne(

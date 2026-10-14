@@ -103,7 +103,7 @@ PARAMS_BULK = {
     'set_priorite': {'priorite': 'haute'},
     'set_relance': {'relance_date': '2026-12-01'},
     'clear_relance': {},
-    'set_perdu': {},
+    'set_perdu': {'motif': 'Zorglub'},
     'unset_perdu': {},
     'archive': {},
     'unarchive': {},

@@ -8,11 +8,14 @@ reste une dépendance GATÉE) et envoie un `navigator.sendBeacon` par métrique.
 `request.user` — jamais lus du corps de la requête.
 """
 from rest_framework import serializers
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.champs_stricts import ChampsStrictsSansDecimalMixin
+from core.champs_stricts import ChaineStricte, ChampsStrictsSansDecimalMixin
+from core.parseurs import PARSEURS_JSON
 
 from .models import WebVitalMetric
 from .schema_fields import champ_choix
@@ -22,8 +25,28 @@ from rest_framework import serializers as drf_serializers
 from drf_spectacular.utils import inline_serializer
 
 
+class NombreVitalStrict(serializers.FloatField):
+    """CI #997 fuzz (2) — la valeur mesurée est un NOMBRE JSON réel : ``false``
+    (lu 0.0), ``"12"`` ou un entier hors flottant répondent 400 au lieu
+    d'être convertis en silence (le schéma publie ``number``)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        try:
+            return super().to_internal_value(data)
+        except OverflowError:  # entier JSON > 1e308 : ``float()`` déborde
+            self.fail('invalid')
+
+
 class WebVitalMetricSerializer(ChampsStrictsSansDecimalMixin,
                                serializers.ModelSerializer):
+    # ``route`` : le beacon n'est jamais rejeté pour une URL trop longue (elle
+    # est tronquée par ``validate_route``) — le schéma ne publie donc PAS de
+    # ``maxLength`` (sinon 256 caractères « hors schéma » répondraient 201).
+    route = ChaineStricte(required=False, allow_blank=True)
+    value = NombreVitalStrict()
+
     class Meta:
         model = WebVitalMetric
         # company/utilisateur : posés côté serveur dans la vue, jamais lus du
@@ -44,6 +67,7 @@ class WebVitalRequeteSerializer(WebVitalMetricSerializer):
     request=WebVitalRequeteSerializer,
     responses={201: None})
 @api_view(['POST'])
+@parser_classes(PARSEURS_JSON)  # CI #997 fuzz (2) : le beacon est du JSON (valeur = nombre) — un formulaire n'en porte que des chaînes
 @permission_classes([IsAuthenticated])
 def collect_vital(request):
     """Beacon POST — une ligne par métrique. `sendBeacon`/`fetch keepalive`

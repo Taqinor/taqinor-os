@@ -61,7 +61,7 @@
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "recompense",
    "read_only": false,
    "required": false

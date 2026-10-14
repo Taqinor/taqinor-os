@@ -96,8 +96,9 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
         else:
             a_ecrire, deja_saisis = dict(proposition.mapping), []
 
-        confirmer = str(request.data.get('confirmer', '')).lower() in (
-            '1', 'true', 'on', 'oui')
+        # CI #997 fuzz (2) : true/false seulement (``0``/``oui`` -> 400).
+        from ..utils.params import booleen_formulaire_ou_400
+        confirmer = booleen_formulaire_ou_400(request.data, 'confirmer')
         if not confirmer:
             return Response({
                 'type_fiche': proposition.type_fiche,

@@ -174,3 +174,35 @@ LOCATAIRE_SUITE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
                             'telephone': {'type': 'string', 'maxLength': 0}}},
         ]}}},
 ]}}
+
+
+def corps_bulk(actions):
+    """CI #997 (2) — paramètres PROPRES À CHAQUE action de ``leads/bulk/``.
+
+    Le composant ne déclare que ``action`` + ``ids`` ; or ``fiche_bulk.
+    apply_bulk_action`` valide, AVANT tout traitement, le paramètre dont
+    l'action a besoin (``tag``, ``stage``, ``canal``, ``priorite``,
+    ``relance_date``, ``motif``, ``due_date`` + ``summary``). Le schéma disait
+    « ``add_tag`` sans ``tag`` » conforme et le serveur répondait 400. Une
+    branche par famille d'actions ; les actions sans paramètre sont groupées."""
+    from . import stages
+    non_blanc = {'type': 'string', 'pattern': r'\S'}
+    avec_parametre = {
+        ('add_tag', 'remove_tag'): {'tag': non_blanc},
+        ('set_stage',): {'stage': {'type': 'string', 'enum': list(stages.STAGES)}},
+        ('set_canal',): {'canal': non_blanc},
+        ('set_priorite',): {'priorite': {
+            'type': 'string', 'enum': ['basse', 'normale', 'haute']}},
+        ('set_relance',): {'relance_date': {'type': 'string', 'format': 'date'}},
+        ('set_perdu',): {'motif': non_blanc},
+        ('plan_activity',): {'due_date': {'type': 'string', 'format': 'date'},
+                             'summary': non_blanc},
+    }
+    sans_parametre = sorted(
+        set(actions) - {a for noms in avec_parametre for a in noms})
+    branches = [{'properties': {'action': {'enum': sans_parametre}}}]
+    for noms, proprietes in avec_parametre.items():
+        branches.append({
+            'required': sorted(proprietes),
+            'properties': {'action': {'enum': list(noms)}, **proprietes}})
+    return {EXTENSION_CORPS_RESSERRE: {'anyOf': branches}}

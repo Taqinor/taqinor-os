@@ -157,9 +157,10 @@ class SkuTests(_Base):
         self.assertIsNone(Produit.objects.get(pk=reponse.json()['id']).sku)
 
         reponse = self._creer(nom='C', sku='REF-1')
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+        # CI #997 fuzz (2) : SKU déjà pris = conflit d'état (409), corps conforme.
+        self.assertEqual(reponse.status_code, 409, reponse.content)
         self.assertEqual(
-            reponse.json()['sku'], ['Ce SKU existe déjà (REF-1 ≈ ref-1).'])
+            reponse.json()['detail'], 'Ce SKU existe déjà (REF-1 ≈ ref-1).')
         self.assertFalse(Produit.objects.filter(nom='C').exists())
 
     def test_deux_produits_sans_sku_ne_collisionnent_plus(self):

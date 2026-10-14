@@ -11,7 +11,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
 
-from core.champs_stricts import BooleenStrict, ChaineStricte
+from core.champs_stricts import (
+    BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, EntierStrict,
+)
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from ..models import Paiement
 from ..payments.providers import providers_lien_actifs
@@ -19,8 +21,8 @@ from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
 )
 from ..serializers_facturation import (
-    AvoirSerializer, FactureSerializer, NoteDebitSerializer,
-    PaiementSerializer, RetenueSubieSerializer,
+    AvoirSerializer, FactureSerializer, FactureWriteSerializer,
+    NoteDebitSerializer, PaiementSerializer, RetenueSubieSerializer,
 )
 
 
@@ -147,6 +149,24 @@ PrefillSiteResponse = _ser('DevisPrefillSiteResponse', {
 })
 
 # -------------------------------------------------------------- facture
+
+
+@extend_schema_field({'type': 'integer', 'nullable': True,
+                      'not': {'type': 'integer'}})
+class _DevisNul(s.IntegerField):
+    """``devis`` d'une facture NEUVE : toujours nul (VNT89)."""
+
+
+class FactureCreationSerializer(FactureWriteSerializer):
+    """CI #997 (2) — corps PUBLIÉ de ``POST factures/`` : une facture de
+    devis ne naît que par « Facturer la vente » (VNT89, 400
+    ``facture_de_devis``) — le schéma de création dit donc ``devis`` nul ;
+    l'écriture reste ``FactureWriteSerializer`` (schéma seul)."""
+    same_company_fields = tuple(
+        c for c in FactureWriteSerializer.same_company_fields if c != 'devis')
+    devis = _DevisNul(required=False, allow_null=True)
+
+
 FactureAnnulerRequest = _ser('FactureAnnulerRequest', {
     'acompte': _ser('FactureAnnulerAcompte', {
         # VNT12 — ``garder_en_avance`` (contrat facture_annulation.json).
@@ -607,8 +627,8 @@ NoterRequest = _ser('DevisNoterRequest', {
     'body': s.RegexField(_NON_BLANC),
 })
 SavePresetRequest = _ser('DevisSavePresetRequest', {
-    'nom': s.RegexField(_NON_BLANC, max_length=150),
-    'description': s.CharField(required=False, allow_blank=True),
+    'nom': ChaineStricte(max_length=150),
+    'description': ChaineStricte(required=False, allow_blank=True),
 })
 
 LotCreationRequest = _ser('DevisLotCreationRequest', {
@@ -1012,8 +1032,8 @@ def _ligne_corrective(nom):
     appel (un sérialiseur n'est l'enfant que d'un seul ``ListField``), sous
     un nom de composant propre (deux composants homonymes = avertissement)."""
     return _ser(nom, {
-        'produit': s.IntegerField(),
-        'designation': s.CharField(),
+        'produit': EntierStrict(),
+        'designation': ChaineStricte(),
         'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
                                    min_value=Decimal('0.01'),
                                    max_value=_MONTANT_LIGNE_MAX),
@@ -1034,7 +1054,7 @@ LigneAvoirCorrective = _ligne_corrective('FactureLigneAvoirCorrective')
 CreerAvoirRequest = _ser('FactureCreerAvoirRequest', {
     'mode': s.ChoiceField(choices=['correction', 'contre_passation'],
                           required=False),
-    'motif': s.CharField(required=False, allow_blank=True),
+    'motif': ChaineStricte(required=False, allow_blank=True),
     'type': s.ChoiceField(
         choices=['correction', 'geste_commercial', 'retour'],
         required=False),
@@ -1165,17 +1185,19 @@ EnvoyerRecuResponse = _ser('PaiementEnvoyerRecuResponse', {
     'to_email': s.CharField(allow_blank=True, allow_null=True),
     'erreur': s.CharField(allow_blank=True, allow_null=True),
 })
+# CI #997 (2) — corps VALIDÉS par la vue (``corps_valide``) : texte, date et
+# entier STRICTS (``motif: [null]`` → 500, ``date_rejet: ""`` → aujourd'hui).
 RejeterPaiementRequest = _ser('PaiementRejeterRequest', {
-    'motif': s.RegexField(_NON_BLANC),
-    'frais': s.DecimalField(max_digits=10, decimal_places=2, required=False,
-                            allow_null=True),
-    'date_rejet': s.DateField(required=False, allow_null=True),
+    'motif': ChaineStricte(),
+    'frais': DecimalSouple(max_digits=10, decimal_places=2, required=False,
+                           allow_null=True),
+    'date_rejet': DateStricte(required=False, allow_null=True),
 })
 AnnulerSaisieRequest = _ser('PaiementAnnulerSaisieRequest', {
-    'motif': s.RegexField(_NON_BLANC),
+    'motif': ChaineStricte(),
 })
 ReaffecterRequest = _ser('PaiementReaffecterRequest', {
-    'facture_cible': s.IntegerField(),
+    'facture_cible': EntierStrict(min_value=1),
 })
 _FACTURE_RESUME = _ser('PaiementReaffecterFacture', {
     'id': s.IntegerField(),

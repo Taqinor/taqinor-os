@@ -213,11 +213,13 @@ class TestEndpointsExpedition(Ntwms9Base):
         # La clé MinIO n'est JAMAIS exposée.
         self.assertNotIn('etiquette_pdf_key', resp.data)
 
-    def test_unite_non_scellee_400(self):
+    def test_unite_non_scellee_409(self):
+        # CI #997 fuzz (2) : corps conforme, c'est l'ÉTAT de l'unité (encore en
+        # préparation) qui s'oppose -> 409.
         resp = self.api.post('/api/django/stock/expeditions/', {
             'unite_logistique': self.colis.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_isolation_societe(self):
         colis = self._colis_scelle()

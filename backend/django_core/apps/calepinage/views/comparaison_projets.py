@@ -66,6 +66,14 @@ def comparer_projets(self, request):
     )
 
     corps = request.data if isinstance(request.data, dict) else {}
+    ids = corps.get('ids')
+    if isinstance(ids, list) and len(ids) > BORNE_PROJETS:
+        # fuzz CI #997 (2) : le schéma publie ``maxItems`` sur la liste REÇUE ;
+        # six fois le même id était dédoublonné (1) puis accepté (200).
+        return Response(
+            {'ids': 'Au plus %d identifiants peuvent être indiqués '
+                    '(reçu : %d).' % (BORNE_PROJETS, len(ids))},
+            status=status.HTTP_400_BAD_REQUEST)
     try:
         # ACAL295 — l'APPELANT, pas sa seule société : un calepinage hors de
         # sa vue tombe en refus, avec le motif d'un identifiant absent.

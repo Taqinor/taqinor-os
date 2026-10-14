@@ -26,10 +26,12 @@ from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+    OpenApiParameter, PolymorphicProxySerializer, extend_schema,
+    extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -1052,6 +1054,28 @@ class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
             sla.installation, window_days=window))
 
 
+_PERIODE_CERTIFICAT = {
+    'periode_debut': serializers.DateField(),
+    'periode_fin': serializers.DateField(),
+}
+#: CI #997 fuzz (2) — un certificat vise UN système OU UN client, jamais les
+#: deux ni aucun (400 ``Choisissez soit un système, soit un client``) : deux
+#: formes, ``oneOf``, comme la création d'un calepinage (lead OU client).
+_CORPS_CERTIFICAT_CARBONE = PolymorphicProxySerializer(
+    component_name='CertificatCarboneEmission', resource_type_field_name=None,
+    serializers=[
+        inline_serializer('CertificatCarboneParSysteme', {
+            'installation_id': serializers.IntegerField(min_value=1),
+            **_PERIODE_CERTIFICAT}),
+        inline_serializer('CertificatCarboneParClient', {
+            'client_id': serializers.IntegerField(min_value=1),
+            **_PERIODE_CERTIFICAT}),
+    ])
+
+
+@extend_schema_view(create=extend_schema(
+    request=_CORPS_CERTIFICAT_CARBONE,
+    responses={201: CertificatCarboneSerializer}))
 class CertificatCarboneViewSet(CompanyScopedModelViewSet):
     """ASAV102 (D-ASAV-4 option (b), ASAV93) — registre des certificats
     carbone (NTNRG27) : liste + émission. Responsable/admin seulement ;
@@ -1088,4 +1112,6 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
         except CertificatCarboneError as exc:
             if exc.etat:
                 raise ConflitEtat(exc.message)
+            if exc.introuvable:
+                raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))

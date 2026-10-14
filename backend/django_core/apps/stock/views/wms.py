@@ -11,13 +11,13 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from ..openapi_helpers import BINARY, BOOL, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, OBJET, P, PDF, STR, corps
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
 from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import (
-    booleen_requete_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps, id_requete_ou_400,
-    types_corps_ou_400,
+    booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
+    id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
-from ..erreurs_achats import EtatIncompatible
+from ..erreurs_achats import ConflitEtat, EtatIncompatible
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -70,6 +70,11 @@ def _relations_scopees(view, request, noms):
     if erreurs:
         raise ValidationError(erreurs)
     return resolues
+
+
+class _ExpeditionCorps404(IdInconnu404Mixin, ExpeditionTransporteurSerializer):
+    """Corps de création d'expédition : le sérialiseur publié, un id inconnu
+    seul -> 404 (comportement historique de la création)."""
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))
@@ -229,18 +234,16 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         liens = _relations_scopees(self, request, ['parent', 'vague'])
         # Types / longueurs des champs simples validés par le sérialiseur
         # (une `dimensions` trop longue levait une 500 en base).
-        donnees = request.data
+        # CI #997 fuzz (2) : valeurs TELLES QUE REÇUES (un `null` n'est plus
+        # remplacé par le défaut — type/dimensions ne sont pas nullables).
         simples = self.get_serializer(data={
-            'type_unite': ('colis' if donnees.get('type_unite') is None
-                           else donnees.get('type_unite')),
-            'poids_kg': donnees.get('poids_kg'),
-            'dimensions': ('' if donnees.get('dimensions') is None
-                           else donnees.get('dimensions'))})
+            cle: request.data[cle] for cle in ('type_unite', 'poids_kg', 'dimensions')
+            if cle in request.data})
         simples.is_valid(raise_exception=True)
         try:
             unite = creer_unite_logistique(
                 company=company,
-                type_unite=simples.validated_data['type_unite'],
+                type_unite=simples.validated_data.get('type_unite', 'colis'),
                 parent=liens['parent'], vague=liens['vague'],
                 poids_kg=simples.validated_data.get('poids_kg'),
                 dimensions=simples.validated_data.get('dimensions') or '')
@@ -625,27 +628,23 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
 
     def create(self, request, *args, **kwargs):
         from ..services import creer_expedition_transporteur
-        company = request.user.company
-        # ERR fuzz : corps non objet / id non entier ({}) -> 400, pas 500.
-        unite_id = entier_ou_400(
-            corps_objet(request).get('unite_logistique'), 'unite_logistique')
-        unite = UniteLogistique.objects.filter(
-            id=unite_id, company=company).first()
-        if unite is None and unite_id is not None:
-            # Identifiant bien formé mais inconnu de la société : 404.
-            return Response(
-                {'detail': 'Unité logistique introuvable dans cette société.'},
-                status=status.HTTP_404_NOT_FOUND)
+        # CI #997 fuzz (2) : le corps est validé par le sérialiseur PUBLIÉ
+        # (types, énumération, longueurs, FK bornées société) ; une unité ou
+        # un transporteur inconnus (seule erreur) répondent 404.
+        corps = _ExpeditionCorps404(data=corps_objet(request),
+                                    context=self.get_serializer_context())
+        corps.is_valid(raise_exception=True)
+        valides = corps.validated_data
         try:
             expedition = creer_expedition_transporteur(
-                company=company, unite=unite,
-                provider_code=(request.data.get('transporteur_provider')
-                               or 'aucun'),
-                destination=request.data.get('destination') or '',
-                cout_reel=request.data.get('cout_reel') or None)
+                company=request.user.company, unite=valides['unite_logistique'],
+                provider_code=valides.get('transporteur_provider', 'aucun'),
+                transporteur=valides.get('transporteur'),
+                destination=valides.get('destination', ''),
+                cout_reel=valides.get('cout_reel'))
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # Unité encore en préparation : l'état s'oppose, corps conforme.
+            raise ConflitEtat(str(exc))
         return Response(self.get_serializer(expedition).data,
                         status=status.HTTP_201_CREATED)
 
@@ -876,7 +875,7 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         liens = _relations_scopees(
             self, request, ['produit', 'bin', 'lot', 'reception'])
         # CI #997 fuzz — `motif: 5` faisait un 500 (.strip()), `quantite: "5"` passait.
-        types_corps_ou_400(request.data, textes=('motif',), entiers=('quantite',))
+        types_corps_ou_400(request.data, textes=('motif',), entiers=('quantite',), nuls=())
         try:
             blocage = mettre_en_quarantaine(
                 company=company, produit=liens['produit'],
@@ -1074,7 +1073,7 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
         # ASTK6 — produit et casier bornés société ; un id étranger → 400.
         liens = _relations_scopees(self, request, ['produit', 'bin'])
         # CI #997 fuzz — `note: 5` faisait un 500 (.strip()), `quantite: "5"` passait.
-        types_corps_ou_400(request.data, textes=('note', 'motif'), entiers=('quantite',))
+        types_corps_ou_400(request.data, textes=('note', 'motif'), entiers=('quantite',), nuls=())
         try:
             rebut = declarer_mouvement_rebut(
                 company=company, user=request.user, produit=liens['produit'],
@@ -1237,7 +1236,7 @@ def _date_param(valeur, nom='date', *, ignorer_illisible=False):
                            P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
                            P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])],
                responses={
-    (200, 'application/pdf'): bytes,
+    (200, 'application/pdf'): bytes, (200, 'text/html'): STR,
     400: inline_serializer('StockEtiquettesCasiersErreur', {
         # Deux corps servis : ``{detail}`` (emplacement absent) ou l'erreur de
         # validation DRF ``{emplacement: [...], error: {...}}`` (valeur hors
@@ -1264,8 +1263,14 @@ def casiers_etiquettes_pdf_view(request):
     from ..models_wms import LignePicking
 
     emplacement_id = entier_ou_400(
-        request.query_params.get('emplacement'), 'emplacement', None, 1,
+        valeur_unique_ou_400(request, 'emplacement'), 'emplacement', None, 1,
         2147483647)
+    # CI #997 fuzz (2) : symbologie / sortie hors énumération (ou répétées)
+    # -> 400 ; elles retombaient en silence sur qr / pdf.
+    symbology = choix_ou_400(valeur_unique_ou_400(request, 'symbology'),
+                             'symbology', ('qr', 'code128')) or 'qr'
+    sortie = choix_ou_400(valeur_unique_ou_400(request, 'sortie'),
+                          'sortie', ('html', 'pdf'))
     if emplacement_id is None:
         return Response(
             {'detail': 'Précisez l\'emplacement dont vous voulez les '
@@ -1285,9 +1290,6 @@ def casiers_etiquettes_pdf_view(request):
             {'detail': 'Aucun casier à imprimer pour cet emplacement.'},
             status=status.HTTP_404_NOT_FOUND)
 
-    symbology = request.query_params.get('symbology', 'qr')
-    if symbology not in ('qr', 'code128'):
-        symbology = 'qr'
     html = labels.render_etiquettes_casiers_html([{
         'code': casier.code,
         'zone': casier.zone or '',
@@ -1296,7 +1298,7 @@ def casiers_etiquettes_pdf_view(request):
         'emplacement': (casier.emplacement.nom
                         if casier.emplacement_id else ''),
     } for casier in casiers], symbology=symbology)
-    if request.query_params.get('sortie') == 'html':
+    if sortie == 'html':
         return HttpResponse(html, content_type='text/html; charset=utf-8')
 
     from apps.ventes.utils.pdf import _html_to_pdf

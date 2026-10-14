@@ -62,6 +62,22 @@ class DevisConcevableFilterTest(TestCase):
         self.assertEqual(sorted(r['id'] for r in rows),
                          sorted([self.brouillon.id, self.envoye.id]))
 
+    def test_parametres_publies_lus_strictement(self):
+        """CI #997 (2) (cas g6VsLm) — ``?concevable=AAA`` rendait la liste
+        entière (200) ; ``?lead=null`` levait au filtre ; ``?statut=`` était
+        publié mais ignoré. Chaque paramètre suit sa forme publiée."""
+        url = '/api/django/ventes/devis/'
+        for params in ({'concevable': 'AAA'}, {'lead': 'null'},
+                       {'lead': '1.5'}, {'statut': 'AAA'}):
+            resp = self.api.get(url, params)
+            self.assertEqual(resp.status_code, 400, (params, resp.data))
+        resp = self.api.get(url + '?concevable=1&concevable=1')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        resp = self.api.get(url, {'statut': 'envoye'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual([r['id'] for r in resp.data['results']],
+                         [self.envoye.id])
+
     def test_sans_le_parametre_la_liste_est_inchangee(self):
         resp = self.api.get('/api/django/ventes/devis/')
         self.assertEqual(resp.status_code, 200)

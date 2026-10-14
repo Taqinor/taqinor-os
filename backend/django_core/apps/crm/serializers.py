@@ -5,7 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import ChampsStrictsBornesMixin, ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import (
     model_is_company_scoped,
@@ -1580,7 +1580,7 @@ class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
 
-class PointContactSerializer(ChampsStrictsMixin, _LeadEnPorteeMixin,
+class PointContactSerializer(ChampsStrictsBornesMixin, _LeadEnPorteeMixin,
                              serializers.ModelSerializer):
     """FG204 — point de contact du parcours multi-touch d'un lead.
 
