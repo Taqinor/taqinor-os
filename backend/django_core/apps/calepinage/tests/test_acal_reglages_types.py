@@ -264,3 +264,17 @@ class RouteParametresTest(TestCase):
         self.assertEqual(par_cle['sigma_modele_pct']['maximum'], 100)
         self.assertEqual(par_cle['mode_meteo']['valeurs'],
                          ['tmy', 'pluriannuel'])
+
+
+class FormeRequetePartielleTest(SimpleTestCase):
+    """CI #997 fuzz — le PUT est partiel : aucune section n'est obligatoire
+    dans le schéma de requête (les écrans n'en envoient qu'une)."""
+
+    def test_sections_facultatives_en_requete_obligatoires_en_reponse(self):
+        from apps.calepinage.views.parametres import _forme_reglages
+
+        requete = _forme_reglages('X', partielle=True).fields
+        reponse = _forme_reglages('Y').fields
+        self.assertTrue(requete)
+        self.assertFalse(any(c.required for c in requete.values()))
+        self.assertTrue(all(c.required for c in reponse.values()))

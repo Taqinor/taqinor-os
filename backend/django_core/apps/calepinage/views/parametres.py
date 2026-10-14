@@ -88,7 +88,7 @@ def _forme_registre():
     })
 
 
-def _forme_reglages(nom, avec_registre=False):
+def _forme_reglages(nom, avec_registre=False, partielle=False):
     """YAPIC6/PACT7 — la forme DÉCLARÉE des réglages, tirée du contrat.
 
     Les sept sections sont celles de `contract_samples/
@@ -103,23 +103,27 @@ def _forme_reglages(nom, avec_registre=False):
     PUT écrite) : comme ``kits`` (CAL246), ``PUT`` ne l'accepte jamais en
     entrée, donc absente de la forme de requête.
     """
+    # CI #997 fuzz — le PUT est PARTIEL (sections absentes laissées telles
+    # quelles, les écrans n'envoient qu'une section) : `partielle` les rend
+    # facultatives dans le schéma de requête.
+    requis = not partielle
     champs = {
-        'imagerie': serializers.DictField(),
-        'degagements': serializers.DictField(),
-        'zones_types': serializers.DictField(),
-        'gabarits_disposition': serializers.DictField(),
-        'presets': serializers.DictField(),
-        'favoris_materiel': serializers.DictField(),
-        'norme_electrique': serializers.DictField(),
-        'lestage': serializers.DictField(),
+        'imagerie': serializers.DictField(required=requis),
+        'degagements': serializers.DictField(required=requis),
+        'zones_types': serializers.DictField(required=requis),
+        'gabarits_disposition': serializers.DictField(required=requis),
+        'presets': serializers.DictField(required=requis),
+        'favoris_materiel': serializers.DictField(required=requis),
+        'norme_electrique': serializers.DictField(required=requis),
+        'lestage': serializers.DictField(required=requis),
         # CALX145 — deux sections à REGISTRE : leurs clés admises sont
         # déclarées une par une dans ``services/parametres_cles.py``, donc
         # leur vocabulaire vit là, pas dans la forme HTTP.
-        'simulation': serializers.DictField(),
-        'electrique_societe': serializers.DictField(),
+        'simulation': serializers.DictField(required=requis),
+        'electrique_societe': serializers.DictField(required=requis),
         # CALX307 — configuration documentaire ; ACAL288 : porte en lecture
         # la clé DÉRIVÉE ``catalogue_rapport``.
-        'documents': serializers.DictField(),
+        'documents': serializers.DictField(required=requis),
     }
     if avec_registre:
         champs['registre'] = _forme_registre()
@@ -167,7 +171,8 @@ class ParametresCalepinageView(APIView):
                                        'mention': effectif['mention']})
         return Response(reponse)
 
-    @extend_schema(request=_forme_reglages('CalepinageParametresRequete'),
+    @extend_schema(request=_forme_reglages('CalepinageParametresRequete',
+                                           partielle=True),
                    responses={200: _forme_reglages(
                        'CalepinageParametresEcrite')})
     def put(self, request, *args, **kwargs):

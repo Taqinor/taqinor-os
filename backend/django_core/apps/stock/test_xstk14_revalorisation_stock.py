@@ -111,6 +111,16 @@ class CreerRevalorisationTests(Xstk14Base):
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()['statut'], 'brouillon')
 
+    def test_motif_texte_json_seulement(self):
+        """CI #997 fuzz — `motif` : une liste/un nombre JSON est refusé (400)."""
+        from rest_framework.exceptions import ValidationError
+        from apps.stock.serializers import RevalorisationStockSerializer
+        champ = RevalorisationStockSerializer().fields['motif']
+        for mauvais in ([None, None], 0):
+            with self.assertRaises(ValidationError):
+                champ.run_validation(mauvais)
+        self.assertEqual(champ.run_validation('Dépréciation'), 'Dépréciation')
+
     def test_endpoint_corps_illisible_400_jamais_500(self):
         """ENF11 — nouveau_cout vide / corps liste / produit non entier : 400 ; id entier inconnu : 404."""
         url = '/api/django/stock/revalorisations-stock/'
