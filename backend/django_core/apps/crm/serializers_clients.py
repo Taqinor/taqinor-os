@@ -300,7 +300,8 @@ class PartenaireSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ClientSerializer(UniciteEn409Mixin, _CompanyScopedRelationsMixin,
+class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
+                       _CompanyScopedRelationsMixin,
                        serializers.ModelSerializer):
     # CRX13 — la liste de prix négociée et la fiche du répertoire unifié sont
     # deux relations SORTANTES (ventes/tiers) : sans re-scope, un PATCH pouvait
