@@ -89,6 +89,28 @@ def id_corps(valeur):
     return n if 1 <= n <= ID_MAX else None
 
 
+def types_corps_ou_400(donnees, textes=(), entiers=(), ids=()):
+    """Corps libre lu À LA MAIN (sans sérialiseur) : chaque champ PRÉSENT et
+    non nul doit avoir son type JSON déclaré — texte, entier (jamais un
+    booléen ni un flottant), identifiant entier 1..ID_MAX — sinon 400 nommant les
+    champs (``note: {}`` était lu ``''``, ``produit: {}`` faisait un 500)."""
+    from rest_framework.exceptions import ValidationError
+    erreurs = {}
+    for nom in (*textes, *entiers, *ids):
+        valeur = donnees.get(nom)
+        if valeur is None:
+            continue
+        if nom in textes and not isinstance(valeur, str):
+            erreurs[nom] = ['Texte attendu.']
+        elif nom in entiers and (isinstance(valeur, bool) or not isinstance(valeur, int)):
+            erreurs[nom] = ['Entier attendu.']
+        elif nom in ids and (isinstance(valeur, bool) or not isinstance(valeur, int)
+                             or not 1 <= valeur <= ID_MAX):
+            erreurs[nom] = ['Identifiant entier attendu.']
+    if erreurs:
+        raise ValidationError(erreurs)
+
+
 #: Formes booléennes lues dans une query string (précédent ``kits``).
 BOOLEENS_REQUETE = ('1', '0', 'true', 'false', 'True', 'False')
 

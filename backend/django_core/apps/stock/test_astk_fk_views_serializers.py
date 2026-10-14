@@ -454,3 +454,39 @@ class CorpsFuzzTests(TestCase):
                 self.assertEqual(api.get(f'{BASE}/{fin}').status_code, 200)
         r = api.post(f'{BASE}/mouvements/export-xlsx/?date_min=')
         self.assertEqual(r.status_code, 200, r.content)
+
+    def test_fuzz_ci997_corps_types_declares(self):
+        api = self._api_admin()
+        fa, pa = self.fa.id, self.pa.id
+        refuses = (
+            ('alertes-rappel/', {'produit': pa, 'motif': 0}, 'motif'),
+            ('bons-commande-fournisseur/', {'fournisseur': fa, 'conditions_paiement': 0,
+                                            'lignes': [{'designation': 'x', 'quantite': 1}]}, 'conditions_paiement'),
+            ('conditionnements/', {'produit': pa, 'nom': 'C', 'facteur': '1', 'code_barres': 0}, 'code_barres'),
+            ('consignations/', {'client': self.client_a.id, 'produit': pa, 'quantite_deposee': 1,
+                                'date_depot': JOUR, 'note': {}}, 'note'),
+            ('contacts-fournisseur/', {'fournisseur': fa, 'nom': 'N', 'telephone': 0}, 'telephone'),
+            ('documents-conformite-fournisseur/', {'fournisseur': fa, 'type_document': 'arf', 'note': 0}, 'note'),
+            ('dossiers-onboarding-fournisseur/', {'fournisseur': fa, 'note': 0}, 'note'),
+            ('produits/', {'nom': 'P', 'prix_vente': '1', 'courbe_frequence_hz': False}, 'courbe_frequence_hz'),
+            ('quais/', {'nom': 'Q', 'emplacement': self.bin_a.emplacement_id, 'actif': 0}, 'actif'),
+            ('retours-fournisseur/', {'fournisseur': fa, 'lignes': [{'produit': pa, 'quantite': 1, 'motif': 0}]},
+             'motif'),
+            ('revalorisations-stock/', {'produit': pa, 'nouveau_cout': '1', 'motif': [None, None]}, 'motif'),
+        )
+        for fin, corps, champ in refuses:
+            with self.subTest(url=fin):
+                r = api.post(f'{BASE}/{fin}', corps, format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn(champ, r.content.decode('utf-8'))
+        # Ce que les écrans envoient reste accepté : prix d'achat en nombre JSON
+        # (fiche produit), décimal nullable vide = non renseigné.
+        r = api.post(f'{BASE}/prix-fournisseurs/', {'produit': pa, 'fournisseur': fa, 'prix_achat': 12.5},
+                     format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['prix_achat'], '12.50')
+        r = api.post(f'{BASE}/tolerances-rapprochement-categorie/', {
+            'categorie': Categorie.objects.create(company=self.a, nom='Tol').id,
+            'tolerance_prix_pct': '2', 'tolerance_prix_absolu_mad': ''}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertIsNone(r.data['tolerance_prix_absolu_mad'])

@@ -22,7 +22,9 @@ from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
-from ..utils.params import corps_objet, entier_ou_400, id_requete_ou_400, valeur_unique_ou_400
+from ..utils.params import (
+    corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
+)
 
 from ..models import (
     AccordRFAFournisseur, DeclarationConsommation, DepotConsignation,
@@ -181,6 +183,12 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         from ..services_consignation import creer_depot_consignation
 
         donnees = corps_objet(request)  # corps non objet -> 400 (ERR fuzz)
+        # CI #997 fuzz — corps lu à la main : types déclarés exigés (``note: {}``
+        # était enregistré vide, ``produit: {}`` faisait un 500 ORM).
+        types_corps_ou_400(donnees, textes=('adresse_site', 'note', 'date_depot'),
+                           entiers=('quantite_deposee',),
+                           ids=('client', 'produit', 'emplacement_source'))
+        date_ou_400(donnees.get('date_depot'), 'date_depot')
         try:
             depot = creer_depot_consignation(
                 company=request.user.company, user=request.user,

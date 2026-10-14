@@ -92,8 +92,17 @@ CONTRAINTES = {
         'remplacer': {'lim_phases': PHASES_LIMITEUR}},
     'FournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     'PatchedFournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
-    'PrixFournisseurRequest': {},
-    'PatchedPrixFournisseurRequest': {},
+    # CI #997 fuzz — `prix_achat` : la fiche produit l'envoie en NOMBRE JSON
+    # (``parseFloat``), que le serveur accepte déjà (≤ 2 décimales).
+    'PrixFournisseurRequest': {'nombre_accepte': ['prix_achat']},
+    'PatchedPrixFournisseurRequest': {'nombre_accepte': ['prix_achat']},
+    # CI #997 fuzz — décimaux nullables : ``""`` est lu « non renseigné ».
+    'AccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
+    'PatchedAccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
+    'ToleranceRapprochementCategorieRequest': {
+        'vide_accepte': ['tolerance_prix_pct', 'tolerance_prix_absolu_mad']},
+    'PatchedToleranceRapprochementCategorieRequest': {
+        'vide_accepte': ['tolerance_prix_pct', 'tolerance_prix_absolu_mad']},
     'TrancheEcheancierRequest': {},
     # ERR-ENF11-FUZZ-STOCK — montants / facteurs strictement positifs et
     # quantités réellement lues (un corps sans ``quantite`` : « Quantité
@@ -144,6 +153,21 @@ def _motif_decimal_positif(motif: str) -> str:
     return '^(?:%s|%s)$' % (positif_entier, positif_fraction)
 
 
+def _chaine_ou_nombre(propriete: dict) -> dict:
+    """Décimal-chaîne -> « chaîne OU nombre JSON » de même précision (bornes
+    et pas tirés du motif : un nombre à 3 décimales reste refusé)."""
+    tailles = [int(n) for n in _MOTIF_DECIMAL.findall(propriete['pattern'])]
+    entiers = tailles[0] if tailles else 12
+    decimales = tailles[1] if len(tailles) > 1 else 2
+    pas = 10 ** -decimales
+    maxi = round(10 ** entiers - pas, decimales)
+    chaine = {k: v for k, v in propriete.items() if k not in ('description', 'nullable')}
+    nombre = {'type': 'number', 'multipleOf': pas, 'maximum': maxi,
+              'minimum': -maxi if propriete['pattern'].startswith('^-?') else 0}
+    autres = {k: v for k, v in propriete.items() if k in ('description', 'nullable')}
+    return {**autres, 'anyOf': [chaine, nombre]}
+
+
 def _reparer_decimaux(proprietes: dict) -> None:
     for propriete in proprietes.values():
         if not isinstance(propriete, dict):
@@ -184,6 +208,10 @@ def declarer_contraintes_achats(result, generator=None, request=None,
                 nullable = propriete.pop('nullable', False)
                 proprietes[champ] = {'nullable': nullable, 'oneOf': [
                     propriete, {'type': 'string', 'enum': ['']}]}
+        for champ in regles.get('nombre_accepte') or ():
+            propriete = proprietes.get(champ)
+            if isinstance(propriete, dict) and propriete.get('pattern'):
+                proprietes[champ] = _chaine_ou_nombre(propriete)
         for champ in regles.get('requis') or ():
             requis = composant.setdefault('required', [])
             if champ not in requis:
