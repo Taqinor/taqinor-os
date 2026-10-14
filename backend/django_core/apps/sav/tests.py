@@ -188,6 +188,17 @@ class TestEquipementFilters(TestCase):
             r = self.api.get('/api/django/sav/equipements/', {'garantie': etat})
             self.assertEqual(set(ids_of(r)), expected, etat)
 
+    def test_garantie_hors_enumeration_400(self):
+        # CI #997 api-fuzz (2e passe) : `?garantie=AAA` (énumération publiée)
+        # rendait la liste non filtrée en 200 ; il est refusé en nommant le
+        # paramètre, et les cinq valeurs publiées restent acceptées.
+        r = self.api.get('/api/django/sav/equipements/', {'garantie': 'AAA'})
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('garantie', r.data)
+        r = self.api.get('/api/django/sav/equipements/',
+                         {'garantie': 'legale_uniquement'})
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_sort_by_fin_garantie(self):
         r = self.api.get('/api/django/sav/equipements/',
                          {'ordering': 'date_fin_garantie'})

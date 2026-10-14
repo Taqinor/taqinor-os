@@ -191,6 +191,20 @@ _CreerLeadReponse = _sch('SavCreerLeadReponse', {
 _MOTIF_STATUT = '^(' + '|'.join(c for c, _ in Ticket.Statut.choices) + ')$'
 _MOTIF_PRIORITE = '^(' + '|'.join(c for c, _ in Ticket.Priorite.choices) + ')$'
 
+# Corps de ``actions-groupees`` : déclaré ET appliqué (CI #997 api-fuzz, 2e passe :
+# ``technicien: {}`` était lu faux, donc « désassigner », au lieu d'être refusé).
+_SCHEMA_ACTIONS_GROUPEES = _sch('SavActionsGroupeesRequete', {
+    'ids': drf_serializers.ListField(child=drf_serializers.IntegerField(
+        min_value=1, max_value=ID_MAX), min_length=1),
+    'operation': drf_serializers.RegexField(
+        r'^(technicien|priorite|statut|annuler)$'),
+    'statut': drf_serializers.RegexField(_MOTIF_STATUT, required=False),
+    'technicien': drf_serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=ID_MAX),
+    'priorite': drf_serializers.RegexField(_MOTIF_PRIORITE, required=False),
+    'motif': ChaineStricte(required=False, allow_blank=True),
+})
+
 _RegistreGaranties = _sch('SavRegistreGaranties', {
     'today': drf_serializers.DateField(),
     'expiring_soon_days': drf_serializers.IntegerField(),
@@ -208,6 +222,12 @@ _RegistreGaranties = _sch('SavRegistreGaranties', {
 
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+#: ``?garantie=`` du parc : l'énumération PUBLIÉE est celle que la vue applique
+#: (CI #997, api-fuzz : ``?garantie=AAA`` rendait la liste non filtrée en 200).
+_GARANTIES = (
+    'non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie',
+    'legale_uniquement')
+
 
 @extend_schema_view(list=extend_schema(
     parameters=[
@@ -219,11 +239,7 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
         OpenApiParameter('client', ENTIER_ID, required=False),
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
         OpenApiParameter(
-            'garantie',
-            OpenApiTypes.STR,
-            required=False,
-            enum=['non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie', 'legale_uniquement'],
-        ),
+            'garantie', OpenApiTypes.STR, required=False, enum=list(_GARANTIES)),
         OpenApiParameter('categorie', ENTIER_ID, required=False),
         OpenApiParameter('rebut', OpenApiTypes.STR, required=False, enum=['only', 'tous']),
     ]))
@@ -269,7 +285,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         installation = entier_param(self.request, 'installation')
         client = entier_param(self.request, 'client')
         statut = params.get('statut')
-        garantie = params.get('garantie')
+        garantie = choix_ou_400(self.request, 'garantie', _GARANTIES)
         categorie = entier_param(self.request, 'categorie')
         if produit:
             qs = qs.filter(produit_id=produit)
@@ -1349,18 +1365,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
     }
 
     @extend_schema(
-        request=_sch('SavActionsGroupeesRequete', {
-            'ids': drf_serializers.ListField(child=drf_serializers.IntegerField(
-                min_value=1, max_value=ID_MAX), min_length=1),
-            'operation': drf_serializers.RegexField(
-                r'^(technicien|priorite|statut|annuler)$'),
-            'statut': drf_serializers.RegexField(_MOTIF_STATUT, required=False),
-            'technicien': drf_serializers.IntegerField(
-                required=False, allow_null=True),
-            'priorite': drf_serializers.RegexField(
-                _MOTIF_PRIORITE, required=False),
-            'motif': _CharF(required=False, allow_blank=True),
-        }),
+        request=_SCHEMA_ACTIONS_GROUPEES,
         extensions=CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE,
         responses=_sch('SavActionsGroupeesReponse', {
             'traites': drf_serializers.ListField(
@@ -1380,6 +1385,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         gardée (YDOCF1) — un ticket dont la transition est illégale est
         rapporté dans ``echecs`` plutôt que de faire échouer le lot entier.
         """
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Un objet JSON est attendu.'}, status=400)
         ids = request.data.get('ids') or []
         operation = request.data.get('operation')
         if not isinstance(ids, list) or not ids:
@@ -1400,6 +1407,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     not isinstance(valeur, str)
                     or valeur not in self._ACTIONS_GROUPEES_VALEURS[cle]):
                 return Response({cle: 'Valeur inconnue.'}, status=400)
+
+        _valider_corps(_SCHEMA_ACTIONS_GROUPEES, request.data)
 
         # ASAV25 — seuls les tickets VISIBLES (portée de l'utilisateur) sont
         # traités ; les autres ids sortent en échec « introuvable », sans

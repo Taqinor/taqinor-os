@@ -155,3 +155,13 @@ class ZSAV10ActionsGroupeesTest(TestCase):
     def test_ids_vide_400(self):
         r = self._post([], 'priorite', priorite='haute')
         self.assertEqual(r.status_code, 400, r.data)
+
+    def test_technicien_non_entier_400_et_ticket_intact(self):
+        # CI #997 api-fuzz (2e passe) : `technicien: {}` était lu faux (donc
+        # « désassigner ») et rendait 200 ; le corps déclaré est appliqué.
+        t1 = self._ticket(technicien_responsable=self.tech)
+        r = self._post([t1.id], 'technicien', technicien={})
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('technicien', r.data)
+        t1.refresh_from_db()
+        self.assertEqual(t1.technicien_responsable_id, self.tech.id)
