@@ -210,13 +210,6 @@ API accepted schema-violating request|GET /api/django/installations/shotlist-slo
 API accepted schema-violating request|GET /api/django/installations/transporteurs/
 API accepted schema-violating request|GET /api/django/installations/types-intervention/
 API accepted schema-violating request|GET /api/django/monitoring/configs/co2-fleet/
-API accepted schema-violating request|GET /api/django/notifications/annonces/
-API accepted schema-violating request|GET /api/django/notifications/calendar/check/
-API accepted schema-violating request|GET /api/django/notifications/holidays/
-API accepted schema-violating request|GET /api/django/notifications/messages-accueil/
-API accepted schema-violating request|GET /api/django/notifications/notifications/
-API accepted schema-violating request|GET /api/django/notifications/routing-rules/
-API accepted schema-violating request|GET /api/django/notifications/whatsapp-templates/
 API accepted schema-violating request|GET /api/django/offlinesync/operations/
 API accepted schema-violating request|GET /api/django/outillage/kit-items/
 API accepted schema-violating request|GET /api/django/outillage/kits/
@@ -411,10 +404,6 @@ API accepted schema-violating request|PATCH /api/django/installations/shotlist-s
 API accepted schema-violating request|PATCH /api/django/installations/sous-traitants/{id}/
 API accepted schema-violating request|PATCH /api/django/installations/types-intervention/{id}/
 API accepted schema-violating request|PATCH /api/django/monitoring/settings/{id}/
-API accepted schema-violating request|PATCH /api/django/notifications/annonces/{id}/
-API accepted schema-violating request|PATCH /api/django/notifications/holidays/{id}/
-API accepted schema-violating request|PATCH /api/django/notifications/whatsapp-templates/{id}/
-API accepted schema-violating request|PATCH /api/django/notifications/working-hours/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/approbations/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/conditions-paiement/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/email-templates/{id}/
@@ -485,10 +474,6 @@ API accepted schema-violating request|POST /api/django/installations/sous-traita
 API accepted schema-violating request|POST /api/django/installations/sync/
 API accepted schema-violating request|POST /api/django/installations/types-intervention/
 API accepted schema-violating request|POST /api/django/monitoring/settings/
-API accepted schema-violating request|POST /api/django/notifications/annonces/
-API accepted schema-violating request|POST /api/django/notifications/holidays/
-API accepted schema-violating request|POST /api/django/notifications/whatsapp-templates/
-API accepted schema-violating request|POST /api/django/notifications/whatsapp-templates/{id}/decision/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API accepted schema-violating request|POST /api/django/outillage/kits/
 API accepted schema-violating request|POST /api/django/parametres/approbations/
@@ -539,10 +524,6 @@ API accepted schema-violating request|PUT /api/django/installations/sessions-com
 API accepted schema-violating request|PUT /api/django/installations/shotlist-slots/{id}/
 API accepted schema-violating request|PUT /api/django/installations/sous-traitants/{id}/
 API accepted schema-violating request|PUT /api/django/installations/types-intervention/{id}/
-API accepted schema-violating request|PUT /api/django/notifications/annonces/{id}/
-API accepted schema-violating request|PUT /api/django/notifications/holidays/{id}/
-API accepted schema-violating request|PUT /api/django/notifications/whatsapp-templates/{id}/
-API accepted schema-violating request|PUT /api/django/notifications/working-hours/{id}/
 API accepted schema-violating request|PUT /api/django/outillage/kits/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/approbations/{id}/
 API accepted schema-violating request|PUT /api/django/parametres/cadence-relance/{id}/
@@ -859,8 +840,6 @@ API rejected schema-compliant request|POST /api/django/monitoring/cleanings/
 API rejected schema-compliant request|POST /api/django/monitoring/configs/
 API rejected schema-compliant request|POST /api/django/monitoring/readings/
 API rejected schema-compliant request|POST /api/django/monitoring/warranties/
-API rejected schema-compliant request|POST /api/django/notifications/messages-accueil/
-API rejected schema-compliant request|POST /api/django/notifications/routing-rules/
 API rejected schema-compliant request|POST /api/django/outillage/kit-items/
 API rejected schema-compliant request|POST /api/django/outillage/outils/{id}/calibrer/
 API rejected schema-compliant request|POST /api/django/parametres/approbations/
@@ -1131,7 +1110,6 @@ Response violates schema|GET /api/django/installations/series-entrepot/{id}/
 Response violates schema|GET /api/django/installations/sous-traitants/
 Response violates schema|GET /api/django/monitoring/configs/providers/
 Response violates schema|GET /api/django/monitoring/settings/
-Response violates schema|GET /api/django/notifications/working-hours/
 Response violates schema|GET /api/django/onboarding/progress/
 Response violates schema|GET /api/django/parametres/
 Response violates schema|GET /api/django/records/activities/
@@ -1320,7 +1298,6 @@ Server error|GET /api/django/core/sla/
 Server error|GET /api/django/crm/clients/segments/
 Server error|GET /api/django/crm/defis/{id}/export-xlsx/
 Server error|GET /api/django/crm/relance-etapes/cadences-echues/
-Server error|GET /api/django/notifications/holidays/
 Server error|GET /api/django/parametres/fetes-mobiles/
 Server error|GET /api/django/parametres/traductions/glossaire-export/
 Server error|GET /api/django/records/attachments/all/
@@ -1362,8 +1339,6 @@ Server error|POST /api/django/ged/legal-holds/
 Server error|POST /api/django/installations/approbations-bcf/approuver/
 Server error|POST /api/django/installations/chantiers/creer-depuis-devis/
 Server error|POST /api/django/installations/lots-prelevement/
-Server error|POST /api/django/notifications/push/subscribe/
-Server error|POST /api/django/notifications/push/unsubscribe/
 Server error|POST /api/django/parametres/fetes-mobiles/enregistrer/
 Server error|POST /api/django/parametres/tarification/roi/
 Server error|POST /api/django/publicapi/sandbox/try/
