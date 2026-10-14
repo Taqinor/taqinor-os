@@ -45,8 +45,7 @@ from .serializers_clients import (
 from apps.records.serializers import ChatterActivitySerializer
 from .fiche_bulk import coerce_id_list
 from .params_requete import (
-    CorpsTexteMixin, UniciteConflitMixin, entier_param, texte_param,
-    valider_pagination)
+    CorpsTexteMixin, entier_param, texte_param, valider_pagination)
 from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
 from . import activity
 from . import schema_docs as sd
@@ -606,7 +605,7 @@ def _voit_le_crm(user):
     return bool(getattr(user, 'is_responsable', False))
 
 
-class ClientViewSet(UniciteConflitMixin, CompanyScopedModelViewSet):
+class ClientViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     # ARC2 — pilote : base transverse unique (TenantMixin + ModelViewSet). Le
     # get_queryset (portée de visibilité) et perform_create (company +
@@ -1495,8 +1494,7 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
 
 @extend_schema_view(list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'), sd.param('periode', description='AAAA-MM')]))
-class ForecastEntryViewSet(UniciteConflitMixin, _PorteeEnfantsMixin,
-                           CompanyScopedModelViewSet):
+class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
 
@@ -1625,8 +1623,7 @@ def forecast_historique_view(request):
 
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
-class PlanCompteViewSet(UniciteConflitMixin, _PorteeEnfantsMixin,
-                        ChatterViewSetMixin, CompanyScopedModelViewSet):
+class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):
 
     """NTCRM10 — Plan de compte. ARC8 : l'historique (chatter) converge sur
     ``records.Activity`` — création + changements de champ suivis journalisés

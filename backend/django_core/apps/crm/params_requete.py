@@ -15,6 +15,7 @@ français qui NOMME le champ fautif (règle maison).
 import re
 
 from rest_framework.exceptions import ValidationError
+from rest_framework.fields import empty
 
 _ENTIER = re.compile(r'^[+-]?\d+$')
 
@@ -161,27 +162,24 @@ def _codes_unicite(codes):
                for v in codes.values())
 
 
-class UniciteConflitMixin:
-    """ERR-ENF11-FUZZ-CRM — un DOUBLON refusé par les validateurs d'unicité de
-    DRF (``UniqueValidator`` / ``UniqueTogetherValidator``) répond 409
-    ``unique_conflict`` (``core.unicite.ConflitUnicite``), pas 400 : le corps
-    était conforme au schéma, c'est l'état des données qui s'y oppose. Une
-    requête qui porte AUSSI une autre erreur reste un 400."""
+class UniciteEn409Mixin:
+    """ERR-ENF11-FUZZ-CRM — mixin de SÉRIALISEUR : un DOUBLON refusé par les
+    validateurs d'unicité de DRF (``UniqueValidator`` /
+    ``UniqueTogetherValidator``) répond 409 ``unique_conflict``
+    (``core.unicite.ConflitUnicite``), pas 400 : le corps était conforme au
+    schéma, c'est l'état des données qui s'y oppose. Une requête qui porte
+    AUSSI une autre erreur reste un 400. Posé sur le sérialiseur (et non sur
+    le viewset) pour que la forme de la vue reste lisible par
+    ``check_api_shapes``."""
 
-    def _unicite_en_409(self, appel, *args, **kwargs):
+    def run_validation(self, data=empty):
         from core.unicite import ConflitUnicite
 
         try:
-            return appel(*args, **kwargs)
+            return super().run_validation(data)
         except ValidationError as exc:
             if not _codes_unicite(exc.get_codes()):
                 raise
             champs = [c for c in exc.detail if c != 'non_field_errors']
             premier = next(iter(exc.detail.values()))[0]
             raise ConflitUnicite(detail=str(premier), champs=champs) from exc
-
-    def create(self, request, *args, **kwargs):
-        return self._unicite_en_409(super().create, request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        return self._unicite_en_409(super().update, request, *args, **kwargs)

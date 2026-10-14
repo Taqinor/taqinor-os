@@ -11,6 +11,7 @@ from core.serializers import (
     request_company_id,
     scope_related_field,
 )
+from .params_requete import UniciteEn409Mixin
 from .champs_api import (
     MAPPING_DATE_HEURE_RFC3339, MAPPING_TEXTE_STRICT, DateHeureRfc3339,
 )
@@ -1591,7 +1592,7 @@ class WebsiteLeadPayloadSerializer(serializers.ModelSerializer):
 
 # DC12 — Profil site/énergie réutilisable par client ─────────────────────────
 
-class SiteProfileSerializer(_ClientEnPorteeMixin,
+class SiteProfileSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
                             serializers.ModelSerializer):
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
@@ -1742,7 +1743,7 @@ class PointContactSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
 
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────
 
-class SavedViewSerializer(serializers.ModelSerializer):
+class SavedViewSerializer(UniciteEn409Mixin, serializers.ModelSerializer):
     """LB48 — vue enregistrée personnelle (filtres + disposition d'une page).
 
     ``company`` n'est PAS exposé : toujours posé côté serveur

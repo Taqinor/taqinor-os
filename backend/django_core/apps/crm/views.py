@@ -16,7 +16,7 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
-from .params_requete import UniciteConflitMixin, booleen_param, liste_ids
+from .params_requete import booleen_param, liste_ids
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1930,8 +1930,7 @@ class WebsiteLeadPayloadViewSet(_PorteeEnfantsMixin, TenantMixin, viewsets.ReadO
 # ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('client', OpenApiTypes.INT)]))
-class SiteProfileViewSet(UniciteConflitMixin, _PorteeEnfantsMixin,
-                         CompanyScopedModelViewSet):
+class SiteProfileViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     """DC12 — profil site/énergie réutilisable, attaché au client.
 
@@ -1996,7 +1995,7 @@ class SiteProfileViewSet(UniciteConflitMixin, _PorteeEnfantsMixin,
 # ── LB48 — Vues enregistrées par compte ────────────────────────────────────
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('page')]))
-class SavedViewViewSet(UniciteConflitMixin, CompanyScopedModelViewSet):
+class SavedViewViewSet(CompanyScopedModelViewSet):
     """LB48 — vues enregistrées PERSONNELLES (filtres + disposition) pour une
     page donnée (ex. ``crm.leads``).
 

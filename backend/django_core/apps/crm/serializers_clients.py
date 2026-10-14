@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .champs_api import MAPPING_BOOLEEN_STRICT
+from .params_requete import UniciteEn409Mixin
 from .models import (
     ConcurrentPerte, EquipeCommerciale, EtapePlanActivite, ForecastEntry,
     ForecastSnapshot, LeadPlaybookProgress, ObjectifCommercial, Parrainage,
@@ -297,7 +298,7 @@ class PartenaireSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ClientSerializer(_CompanyScopedRelationsMixin,
+class ClientSerializer(UniciteEn409Mixin, _CompanyScopedRelationsMixin,
                        serializers.ModelSerializer):
     # CRX13 — la liste de prix négociée et la fiche du répertoire unifié sont
     # deux relations SORTANTES (ventes/tiers) : sans re-scope, un PATCH pouvait
@@ -666,7 +667,7 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = ['company', 'date_creation']
 
 
-class ForecastEntrySerializer(_LeadEnPorteeMixin,
+class ForecastEntrySerializer(UniciteEn409Mixin, _LeadEnPorteeMixin,
                               _CompanyScopedRelationsMixin,
                               serializers.ModelSerializer):
     # CRX13 — ``lead`` est un OneToOne : DRF lui greffe automatiquement un
@@ -727,7 +728,7 @@ class RevueCompteSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = ['created_by', 'created_at']
 
 
-class PlanCompteSerializer(_ClientEnPorteeMixin,
+class PlanCompteSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
                            _CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
