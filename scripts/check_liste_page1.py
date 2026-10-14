@@ -58,6 +58,10 @@ _HTTP_RE = re.compile(
 _PAGINE_RE = re.compile(
     r"fetchAllPages|chargerToutesLesPages|toutesLesPages|\.next\b|\bnext\s*[:=]|\bnext\?\.")
 
+# ENF15 : écran qui pagine lui-même — envoie `page` ET lit `count` (total affiché).
+_PAGE_PARAM_RE = re.compile(r"[{,]\s*page\s*[,}:]|\.page\s*=")
+_COUNT_RE = re.compile(r"\.count\b")
+
 _MOTS_CLES = {"if", "for", "while", "switch", "catch", "function", "return",
               "else", "do", "try", "with", "await", "typeof", "new", "super"}
 _DECL_RES = (
@@ -156,6 +160,8 @@ def analyser() -> dict:
             if not lit or not _HTTP_RE.search(corps):
                 continue
             if _PAGINE_RE.search(corps):
+                continue
+            if _PAGE_PARAM_RE.search(corps) and _COUNT_RE.search(corps):
                 continue
             if any(re.search(r"(?<![\w-])" + re.escape(seg) + r"/?['\"`?]",
                              corps) for seg in non_pagines):
