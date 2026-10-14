@@ -75,7 +75,27 @@ class IdentityProviderCrudTests(TenantAPITestCase):
         IdentityProvider.objects.create(
             company=self.company, protocol='saml', nom='A', actif=True)
         r = self._admin().post(self.BASE, self._payload(nom='B'), format='json')
-        self.assertEqual(r.status_code, 400)
+        # CI #997 (3) — corps conforme au schéma, ÉTAT contraire : 409.
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('actif', r.json())
+        self.assertEqual(IdentityProvider.objects.count(), 1)
+
+    def test_booleens_et_textes_stricts(self):
+        # CI #997 (3) — ``enforce_sso: 0`` (schéma : booléen) répondait 201 :
+        # un entier n'est ni un booléen ni un texte, 400 nommant le champ.
+        for champ, valeur in (('enforce_sso', 0), ('actif', 1),
+                              ('auto_provision', 'true'), ('nom', 0),
+                              ('entity_id', False)):
+            r = self._admin().post(
+                self.BASE, self._payload(**{champ: valeur}), format='json')
+            self.assertEqual(r.status_code, 400, (champ, r.content))
+            self.assertIn(champ, r.json())
+        self.assertEqual(IdentityProvider.objects.count(), 0)
+        r = self._admin().post(
+            self.BASE, self._payload(enforce_sso=True, actif=False),
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertTrue(r.json()['enforce_sso'])
 
     def test_second_active_other_protocol_allowed(self):
         IdentityProvider.objects.create(

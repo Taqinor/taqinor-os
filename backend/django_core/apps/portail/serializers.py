@@ -187,7 +187,9 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
 
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
     client_id = serializers.IntegerField(min_value=0)
-    lead_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    # CI #997 (3) — idem ``fichier`` : formulaire multipart, pas de ``null``
+    # (écrit « None » → « entier valide requis ») ; sans lead = champ OMIS.
+    lead_id = serializers.IntegerField(min_value=0, required=False)
     # AUD148 (b) — le ``FileField`` était sérialisé tel quel et rendu en lien
     # DIRECT par l'écran, alors que ``settings/base.py`` ne définit NI
     # ``MEDIA_URL`` NI ``MEDIA_ROOT`` (seules des constantes MinIO), qu'aucune
@@ -195,8 +197,12 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
     # ``location /media/`` : le lien était mort par construction. Le champ
     # reste ÉCRIVABLE (le dépôt WIR94 vers la GED se déclenche au ``save()``)
     # mais n'est plus RENDU — on n'expose jamais une URL de média statique.
-    fichier = serializers.FileField(
-        write_only=True, required=False, allow_null=True)
+    # CI #997 (3) — jamais ``allow_null`` : le dépôt est un formulaire
+    # multipart (``DocumentClientPortailViewSet``) qui ne sait pas écrire un
+    # ``null`` (un client le sérialise en texte « None » → « La donnée soumise
+    # n'est pas un fichier ») ; l'absence de fichier = champ OMIS. Le schéma ne
+    # publie donc plus ``nullable`` sur ce champ binaire.
+    fichier = serializers.FileField(write_only=True, required=False)
     fichier_present = serializers.SerializerMethodField()
     lien_ged = serializers.SerializerMethodField()
 
