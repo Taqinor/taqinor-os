@@ -15,6 +15,7 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChampsStrictsMixin
 from core.champs_stricts import EntierStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
@@ -96,7 +97,9 @@ def _resoudre_chantier(company, chantier_id):
 # ── FG228 — Comptes portail client ─────────────────────────────────────────
 
 class ComptePortailClientSerializer(SameCompanyFKSerializerMixin,
+                                    ChampsStrictsMixin,
                                     serializers.ModelSerializer):
+    # CI #997 api-fuzz — `actif` booléen STRICT (un `0` désactivait en silence).
     # SOLMVP16 — la classe a quitte le shim compta : la FK `client` (crm.Client)
     # est ecrivable, donc validee meme-societe (AUD601, check_fk_scoping).
     same_company_fields = ('client',)
