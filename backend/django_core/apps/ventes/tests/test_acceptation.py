@@ -96,6 +96,37 @@ class TestDevisAcceptation(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.date_acceptation, timezone.now().date())
 
+    def test_acceptation_fige_l_echeancier(self):
+        """AMET2 (D-ECH-FIGE) — l'échéancier est FIGÉ en base AVANT
+        ``devis_accepted`` : un abonné relit déjà le plan figé ; la
+        dés-acceptation le garde (trace), seul le statut recule."""
+        from apps.ventes.domain.cycle_vie import annuler_acceptation
+        from core.events import devis_accepted
+        devis = self._devis(num=5)
+        self.assertFalse(devis.echeancier)
+        vus = []
+
+        def _abonne(sender, devis, **kwargs):
+            vus.append(Devis.objects.get(pk=devis.pk).echeancier)
+
+        devis_accepted.connect(_abonne, weak=False)
+        try:
+            r = self.api.post(
+                f'/api/django/ventes/devis/{devis.id}/accepter/',
+                {'nom': 'Client'}, format='json')
+        finally:
+            devis_accepted.disconnect(_abonne)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(vus), 1)
+        self.assertTrue(vus[0])
+        devis.refresh_from_db()
+        self.assertEqual(devis.echeancier, vus[0])
+        self.assertEqual(devis.date_acceptation, timezone.now().date())
+        annuler_acceptation(devis=devis, user=self.user)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(devis.echeancier, vus[0])
+
     def test_invalid_date_rejected(self):
         devis = self._devis(num=3)
         r = self.api.post(

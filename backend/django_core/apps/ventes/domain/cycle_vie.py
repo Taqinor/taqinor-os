@@ -1037,6 +1037,10 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
         activity.log_devis_refusal(
             soeur, user, 'variante non retenue', date_acc)
 
+    # AMET2 (D-ECH-FIGE) — échéancier figé AVANT ``devis_accepted`` (les trois
+    # portes d'``accept_devis`` passent ici) : les abonnés lisent le plan figé.
+    from apps.ventes.utils.echeancier import figer_echeancier
+    figer_echeancier(devis)
     # VNT51 — ``avenant_de`` : pk du prédécesseur de révision ACCEPTÉ (ou None).
     from apps.ventes.selectors import predecesseur_accepte
     pred = predecesseur_accepte(devis)
