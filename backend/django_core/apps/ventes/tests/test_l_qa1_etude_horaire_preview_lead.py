@@ -189,3 +189,39 @@ class EtudeHoraireEquipementsTests(TestCase):
             URL, {'facture_hiver': 900, 'equipements': {'piscine': True}},
             format='json')
         self.assertEqual(response.status_code, 200, response.content)
+
+    def test_drapeau_non_booleen_400(self):
+        """CI #997 api-fuzz (cas fkaboo) : ``dimensionner: {}`` était lu par
+        sa « vérité » Python → 200. Un drapeau publié ``boolean`` n'accepte
+        qu'un vrai booléen JSON."""
+        corps_fuzz = {
+            'devis': 0, 'lead': 0, 'ville': '0', 'lat': 0, 'lon': 0,
+            'facture_hiver': 0, 'facture_ete': 0, 'ete_differente': False,
+            'factures_mensuelles': [], 'conso_kwh_mensuelles': [],
+            'occupation': 'presence_jour', 'equipements': {},
+            'raccordement': '0', 'kwc': 0, 'batterie_kwh': 0,
+            'dimensionner': {}, 'critere': '0'}
+        response = self.api.post(URL, corps_fuzz, format='json')
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn('dimensionner', response.json()['detail'])
+        for nom, brut in (('dimensionner', 1), ('dimensionner', 'true'),
+                          ('dimensionner', None), ('ete_differente', 0),
+                          ('ete_differente', [])):
+            with self.subTest(nom=nom, brut=brut):
+                response = self.api.post(
+                    URL, {'facture_hiver': 900, nom: brut}, format='json')
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertIn(nom, response.json()['detail'])
+
+    def test_drapeau_booleen_accepte(self):
+        response = self.api.post(
+            URL, {'facture_hiver': 900, 'dimensionner': False,
+                  'ete_differente': False}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(response.data['dimensionnement'])
+        # Formulaire : tout voyage en chaîne, « false » reste un booléen lu.
+        response = self.api.post(
+            URL, {'facture_hiver': '900', 'dimensionner': 'false'},
+            format='multipart')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(response.data['dimensionnement'])
