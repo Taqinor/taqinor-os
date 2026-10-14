@@ -1340,3 +1340,20 @@ class TestAsav100Abonnements(TestCase):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(api_b.get(self.URL).data['count'], 0)
         self.assertEqual(auth(self.normal).get(self.URL).status_code, 403)
+
+
+class MonitoringConfigSchemaTests(TestCase):
+    """CI #993 (api-fuzz-pr) — `has_credentials` est servi en booléen : le
+    schéma publié doit le dire (une SerializerMethodField sans type publiait
+    une chaîne -> « Response violates schema » sur configs/ et configs/{id}/)."""
+
+    def test_has_credentials_publie_en_booleen(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/monitoring/', include('apps.monitoring.urls'))],
+        ).get_schema(request=None, public=True)
+        composant = schema['components']['schemas']['MonitoringConfig']
+        self.assertEqual(
+            composant['properties']['has_credentials']['type'], 'boolean')

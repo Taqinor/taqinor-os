@@ -287,6 +287,24 @@ class IdsFkParCheminTests(unittest.TestCase):
         cas = self._appel('/api/django/stock/x/', None, query={'lot': '7'})
         self.assertEqual(cas.query['lot'], '40')
 
+    def test_query_texte_substituee_garde_le_type_genere(self):
+        """CI #993 — phase coverage : la query part en chaînes mais le
+        cliché typé dit entier ; la FK substituée doit rester un entier, sinon
+        Schemathesis revalide ``'40'`` contre ``integer`` et bascule le cas
+        positif en négatif (« accepted schema-violating request » sur 200)."""
+        class Lieu(str, enum.Enum):
+            QUERY = 'query'
+
+        cas = _cas(self.hooks, 'GET', '/api/django/stock/x/')
+        cas.query = {'lot': '7', 'q': 'abc', 'ids': ['7']}
+        cas.meta.raw_containers = {
+            Lieu.QUERY: {'lot': 7, 'q': 'abc', 'ids': [7]}}
+        self.hooks.before_call(None, cas, {})
+        self.assertEqual(cas.query['lot'], 40)
+        self.assertEqual(cas.query['q'], 'abc')
+        # Clé non substituée (règle absente) : forme fil intacte.
+        self.assertEqual(cas.query['ids'], ['7'])
+
     def test_liste_bornee_et_objet_imbrique(self):
         cas = self._appel('/api/django/x/comparer/', {'ids': [7, 8, 9]})
         self.assertEqual(len(cas.body['ids']), 2)
