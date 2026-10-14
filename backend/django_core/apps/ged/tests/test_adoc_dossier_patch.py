@@ -46,7 +46,7 @@ class DossierPatchTests(TestCase):
         api = auth(self.resp)
         for corps in ({'parent': self.b.pk}, {'cabinet': self.autre_cab.pk}):
             resp = api.patch(f'{BASE}{self.a.pk}/', corps, format='json')
-            self.assertIn(resp.status_code, (200, 400), resp.content)
+            self.assertIn(resp.status_code, (200, 400, 404), resp.content)
             self.assertEqual(self._etat(), avant)
         # Renommer reste possible.
         resp = api.patch(f'{BASE}{self.a.pk}/', {'nom': 'A2'}, format='json')

@@ -451,6 +451,17 @@ class Enf11FuzzGedCorpsTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.json()['sections'], [])
 
+    def test_dossier_parent_autre_cabinet_404(self):
+        """CI #997 fuzz — un parent d'un AUTRE cabinet (ou hors société) est un
+        objet inexistant pour la requête : 404 nommant ``parent``, plus 400."""
+        autre_cab = Cabinet.objects.create(company=self.co, nom='C2')
+        autre_dossier = Folder.objects.create(
+            company=self.co, cabinet=autre_cab, nom='R2')
+        resp = self._post('dossiers/', {
+            'cabinet': self.cab.pk, 'parent': autre_dossier.pk, 'nom': 'X'})
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('parent', resp.json())
+
     def test_operations_lot_corps_strict(self):
         route = 'documents/operations-lot/'
         for corps in (
