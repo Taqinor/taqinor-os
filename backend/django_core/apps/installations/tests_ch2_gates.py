@@ -142,13 +142,13 @@ class GateApiTests(TestCase):
         self.user = make_user(self.company)
         self.api = auth(self.user)
 
-    def test_patch_statut_bloque_renvoie_400(self):
+    def test_patch_statut_bloque_renvoie_409(self):
         inst = make_installation(
             self.company, statut=Installation.Statut.EN_COURS)
         r = self.api.patch(
             f'{BASE}/chantiers/{inst.id}/',
             {'statut': Installation.Statut.INSTALLE}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('statut', r.data)
 
     def test_patch_statut_autorise_apres_exigences(self):

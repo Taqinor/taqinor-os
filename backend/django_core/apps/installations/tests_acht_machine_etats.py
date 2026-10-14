@@ -110,9 +110,12 @@ class MachineEtatsChantierTests(TestCase):
     def test_patch_saut_refuse(self):
         resas = self._resas()
         r = self._patch(Installation.Statut.RECEPTIONNE)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Passage de Signé à Réceptionné refusé : un pas à la '
                       'fois', str(r.data))
+        # CI #997 api-fuzz : refus d'état = 409 ; le corps garde la clé
+        # `statut` (liste de raisons) que lit l'écran du chantier.
+        self.assertIsInstance(r.data['statut'], list)
         self._assert_rien_ecrit(Installation.Statut.SIGNE, resas)
 
     def test_mise_en_service_depuis_signe_refusee(self):
@@ -136,7 +139,7 @@ class MachineEtatsChantierTests(TestCase):
         self._annuler()
         resas = self._resas()
         r = self._patch(Installation.Statut.MATERIEL_COMMANDE)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Chantier annulé : réactivez-le avant de changer son '
                       'statut', str(r.data))
         r = self.api.post(f'{BASE}{self.inst.id}/mise-en-service/', {},
