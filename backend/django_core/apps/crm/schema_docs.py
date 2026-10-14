@@ -97,10 +97,12 @@ P_FIN = param_date('fin', description='Fin (AAAA-MM-JJ).')
 #: valeur non numérique vaut « pas de filtre » (jamais un 400) : déclaré entier
 #: OU texte pour que le schéma dise ce que le serveur fait.
 P_ENTITE = OpenApiParameter(
-    'entite', {'anyOf': [{'type': 'integer'}, {'type': 'string'}]},
+    'entite', {'anyOf': [{'type': 'integer', 'minimum': 1},
+                         {'type': 'string', 'maxLength': 0}]},
     OpenApiParameter.QUERY, required=False,
-    description="Filtre par entité (société juridique) ; une valeur non "
-                "numérique est ignorée.")
+    description="Filtre par entité (société juridique) : entier, ou vide "
+                "(= sans filtre) ; une valeur non numérique répond 400 "
+                "(CI #997, core.entite_scoping.entite_id_demandee).")
 
 
 #: ENF11 — ``{activite_id}`` des actions ``epingler``/``desepingler`` du lead :
