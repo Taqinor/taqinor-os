@@ -103,14 +103,14 @@ class SimulerVarianteTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('variante', reponse.data)
 
-    def test_simuler_variante_sans_conception_400_avant_la_file(self):
-        """Lot 2 critique #18 — refus nommé ``variante``, rien n'est mis en
-        file."""
+    def test_simuler_variante_sans_conception_409_avant_la_file(self):
+        """Lot 2 critique #18 — refus nommé ``variante`` (409 : l'état de la
+        variante empêche), rien n'est mis en file."""
         vide = CalepinageVariante.objects.create(
             company=self.company, calepinage=self.calepinage, nom='Vide',
             roof_layout=None)
         reponse, soumettre = self._poster({'variante_id': vide.pk})
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('variante', reponse.data)
         soumettre.assert_not_called()
 

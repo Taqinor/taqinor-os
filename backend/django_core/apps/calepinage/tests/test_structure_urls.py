@@ -209,3 +209,45 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
             set(forme_du_contrat('CalepinageTestDerive',
                                  'calepinage_troncons.json').fields),
             {'troncons', 'totaux', 'omissions', 'verdicts'})
+
+    def _operation(self, methode, suffixe):
+        return self.schema['paths'][
+            '/api/django/calepinage/calepinages/' + suffixe][methode]
+
+    def test_corps_oneof_ou_brut_publie_obligatoire(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE — un corps ``oneOf``/``anyOf`` ou brut
+        passait pour facultatif : une requête SANS corps, refusée en 400,
+        était « conforme » (api-fuzz du 13/10/2026)."""
+        for methode, suffixe in (
+                ('post', ''), ('post', '{id}/approbation/'),
+                ('post', '{id}/suggestions-pente/'),
+                ('post', '{id}/pose-reelle/'),
+                ('post', '{id}/joindre-piece/')):
+            with self.subTest(operation=f'{methode} {suffixe}'):
+                corps = self._operation(methode, suffixe)['requestBody']
+                self.assertIs(corps.get('required'), True)
+
+    def test_joindre_piece_publie_en_multipart_seul(self):
+        """Le champ binaire publié en JSON faisait planter le moteur du fuzz
+        (« Unsupported type: 'Binary' ») : l'upload est multipart seul."""
+        corps = self._operation('post', '{id}/joindre-piece/')['requestBody']
+        self.assertEqual(list(corps['content']), ['multipart/form-data'])
+
+    def test_refus_sans_motif_et_bornes_publies(self):
+        corps = self._operation('post', '{id}/approbation/')['requestBody']
+        schema = corps['content']['application/json']['schema']
+        composants = self.schema['components']['schemas']
+        schema = composants[schema['$ref'].rsplit('/', 1)[-1]]
+        refus = [branche for branche in schema['oneOf']
+                 if branche['properties']['decision']['anyOf']
+                 == [{'enum': ['refuse']}]]
+        self.assertEqual(refus[0]['required'], ['motif'])
+        ids = composants['CalepinageComparerProjetsRequeteRequest'][
+            'properties']['ids']
+        self.assertEqual((ids['minItems'], ids['maxItems']), (1, 5))
+
+    def test_meteo_fichier_lu_peut_etre_null(self):
+        """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
+        reponse = self._operation('get', '{id}/meteo-fichier/')['responses']
+        schema = reponse['200']['content']['application/json']['schema']
+        self.assertIs(schema.get('nullable'), True)

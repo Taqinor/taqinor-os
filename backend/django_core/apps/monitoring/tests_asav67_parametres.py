@@ -159,3 +159,22 @@ class ParametresRequeteTests(TestCase):
         r = self.api.post(f'{BASE}/settings/', {
             'underperf_threshold_pct': '15.50'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
+
+    def test_motif_publie_du_seuil_suit_le_serveur(self):
+        """ERR-ENF11-FUZZ-MONITORING — ``-.3`` correspondait au motif
+        générique publié mais était refusé : le motif publié est celui que le
+        champ accepte, valeur par valeur."""
+        import re
+
+        from apps.monitoring.serializers import MOTIF_SEUIL_POURCENT
+
+        for valeur, accepte in (('15.50', True), ('-3', True), ('007.5', True),
+                                ('100', True), ('-.3', False), ('12.', False),
+                                ('1.234', False), ('1234', False)):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(
+                    bool(re.search(MOTIF_SEUIL_POURCENT, valeur)), accepte)
+                r = self.api.post(f'{BASE}/settings/', {
+                    'underperf_threshold_pct': valeur}, format='json')
+                self.assertEqual(r.status_code, 200 if accepte else 400,
+                                 (valeur, r.content))

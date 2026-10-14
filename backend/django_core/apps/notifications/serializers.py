@@ -1,5 +1,5 @@
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -123,6 +123,9 @@ class NotificationRoutingRuleSerializer(ChampsStrictsBornesMixin,
         return data
 
 
+# ERR-ENF11-FUZZ-NOTIFICATIONS — ``list`` sert UN objet (singleton société) :
+# sans ``many=False`` drf-spectacular publiait un tableau pour le GET.
+@extend_schema_serializer(many=False)
 class WorkingHoursConfigSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG5 — Sérializer de la configuration des jours ouvrés (singleton société)."""
     # ERR-ENF11-FUZZ-NOTIFICATIONS — sans ligne en base, GET renvoie les défauts

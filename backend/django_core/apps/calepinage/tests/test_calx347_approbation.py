@@ -405,12 +405,12 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         self.assertEqual(reponse.data['motif'],
                          'Retrait de rive non respecté')
 
-    def test_hauteur_osm_non_acceptee_400_nommant_le_champ(self):
+    def test_hauteur_osm_non_acceptee_409_nommant_le_champ(self):
         self.calepinage.roof_layout = conception(pente='validee')
         self.calepinage.save(update_fields=['roof_layout'])
         reponse = self.api.post(url_approbation(self.calepinage.pk),
                                 {'decision': 'approuve'}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         # Un message par champ fautif, sous son chemin — forme du contrat.
         self.assertEqual(list(reponse.data), ['buildings[0].hauteurM'])
         self.calepinage.refresh_from_db()
@@ -423,7 +423,7 @@ class ActionApprobationEnBase(BaseApiCalepinage):
         self.assertEqual(
             self.api.post(url_approbation(self.calepinage.pk),
                           {'decision': 'approuve'},
-                          format='json').status_code, 400)
+                          format='json').status_code, 409)
         document['buildings'][0]['hauteurSuggestion']['status'] = 'validee'
         document['buildings'][0]['hauteurM'] = 7.5
         document['buildings'][0]['source'] = 'osm:height'

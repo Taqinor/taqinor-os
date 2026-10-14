@@ -1015,3 +1015,58 @@ class Enf11Notifications2eTourTests(TestCase):
             'destinataire': self.admin.id, 'corps': '   ',
             'visible_a_partir_de': '2026-01-01T08:00:00Z'}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+
+
+# ── ERR-ENF11-FUZZ-NOTIFICATIONS (3e tour) — le schéma publié dit le réel ───
+class Enf11NotificationsSchemaTests(SimpleTestCase):
+    """Nocturne api-fuzz du 13/10/2026 : ``GET working-hours/`` publié en
+    tableau (le singleton sert un objet), ``POST routing-rules/`` sans la
+    règle « un rôle OU un utilisateur », ``?date=`` vide refusé par le schéma
+    alors que la vue le lit « aujourd'hui »."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        generateur = SchemaGenerator(patterns=[path(
+            'api/django/notifications/', include('apps.notifications.urls'))])
+        cls.schema = generateur.get_schema(request=None, public=True)
+
+    def _operation(self, methode, suffixe):
+        return self.schema['paths'][
+            '/api/django/notifications/' + suffixe][methode]
+
+    def _composant(self, noeud):
+        nom = noeud['$ref'].rsplit('/', 1)[-1]
+        return self.schema['components']['schemas'][nom]
+
+    def test_working_hours_liste_publie_un_objet(self):
+        reponse = self._operation('get', 'working-hours/')['responses']['200']
+        schema = reponse['content']['application/json']['schema']
+        self.assertNotEqual(schema.get('type'), 'array')
+        self.assertIn('working_days', self._composant(schema)['properties'])
+
+    def test_regle_routage_publie_la_cible_obligatoire(self):
+        for methode in ('post', 'put'):
+            with self.subTest(methode=methode):
+                suffixe = ('routing-rules/' if methode == 'post'
+                           else 'routing-rules/{id}/')
+                corps = self._operation(methode, suffixe)['requestBody']
+                schema = self._composant(
+                    corps['content']['application/json']['schema'])
+                self.assertEqual(
+                    sorted(tuple(b['required']) for b in schema['anyOf']),
+                    [('target_role',), ('target_user',)])
+                self.assertIs(corps.get('required'), True)
+        corps = self._operation('patch', 'routing-rules/{id}/')['requestBody']
+        self.assertNotIn('anyOf', self._composant(
+            corps['content']['application/json']['schema']))
+
+    def test_calendar_check_date_ou_vide(self):
+        parametre = next(
+            p for p in self._operation('get', 'calendar/check/')['parameters']
+            if p['name'] == 'date')
+        self.assertIn({'type': 'string', 'maxLength': 0},
+                      parametre['schema']['anyOf'])

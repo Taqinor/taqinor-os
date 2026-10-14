@@ -44,6 +44,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
+from ..serializers import corps_obligatoire
 from ..services.reglementaire import (
     ChampsDossierInvalides, DossierRefuse, construire_pack_dossier,
     dossiers_du_calepinage, enregistrer_champs, packs_france,
@@ -301,13 +302,18 @@ def _forme_piece_jointe():
 _FORME_PIECE_JOINTE = _forme_piece_jointe()  # UNE instance : 200 et 201
 
 
+# ERR-ENF11-FUZZ-CALEPINAGE — le corps porte un FICHIER : il est publié en
+# ``multipart/form-data`` SEUL (l'écran envoie un FormData). Publié aussi en
+# JSON / formulaire, le champ binaire y faisait planter le moteur du fuzz
+# (« Unsupported type: 'Binary' ») et l'opération n'était jamais testée.
 @extend_schema(
-    request=_corps_designant_un_dossier(
+    request={'multipart/form-data': _corps_designant_un_dossier(
         'CalepinageJoindrePieceCorps',
         piece=serializers.CharField(),
         fichier=serializers.FileField(required=False),
-        retirer=serializers.BooleanField(required=False)),
+        retirer=serializers.BooleanField(required=False))},
     responses={200: _FORME_PIECE_JOINTE, 201: _FORME_PIECE_JOINTE})
+@corps_obligatoire
 @action(detail=True, methods=['post'], url_path='joindre-piece',
         permission_classes=[PeutGererCalepinage])
 def joindre_piece(self, request, pk=None):

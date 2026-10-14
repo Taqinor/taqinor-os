@@ -126,7 +126,7 @@ class VisiteSiteCommerce(VisiteTerrainBase):
         visite_id = self.creer_visite()
         self._remplir(visite_id, avec_site=False)
         resp = self._terminer(visite_id)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         manquants = {m['code'] for m in resp.data['manquants']}
         self.assertEqual(manquants, {'categorie', 'horaires_constates',
                                      'besoin_continuite_service'})

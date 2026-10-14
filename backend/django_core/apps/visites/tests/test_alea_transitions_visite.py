@@ -51,7 +51,7 @@ class TransitionsVisiteTests(VisiteTerrainBase):
         self.assertFalse(self._effectuee())
         resp = self.api_bureau.post(URL.format(visite_id, 'valider'), {},
                                     format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data['statut'],
                          ['La visite doit être terminée avant validation.'])
         # Persistance : rien n'a bougé.
@@ -73,7 +73,7 @@ class TransitionsVisiteTests(VisiteTerrainBase):
 
         resp = self.api_bureau.post(URL.format(visite_id, 'valider'), {},
                                     format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         attendus = selectors.visite_terrain_manquants(
             VisiteTerrain.objects.get(pk=visite_id))
         self.assertTrue(attendus)
@@ -86,7 +86,7 @@ class TransitionsVisiteTests(VisiteTerrainBase):
         avant = self._etat(visite_id)
         resp = self.api_bureau.post(URL.format(visite_id, 'renvoyer'), RENVOI,
                                     format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('statut', resp.data)
         self.assertEqual(self._etat(visite_id), avant)
 
@@ -108,7 +108,7 @@ class TransitionsVisiteTests(VisiteTerrainBase):
                         commercial=self.commercial, statut=statut)
                     resp = self.api_bureau.post(
                         URL.format(visite.id, action), corps, format='json')
-                    self.assertEqual(resp.status_code, 400, resp.data)
+                    self.assertEqual(resp.status_code, 409, resp.data)
                     self.assertIn('statut', resp.data)
                     visite.refresh_from_db()
                     self.assertEqual(visite.statut, statut)

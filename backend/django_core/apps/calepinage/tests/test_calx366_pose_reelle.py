@@ -377,9 +377,10 @@ class PoseReelleEnBase(BaseApiCalepinage):
         self.assertEqual(pose.releve_par, self.user)
         self.assertEqual(pose.company, self.company)
 
-    def test_pan_inconnu_400_nommant_pan_sans_ecriture(self):
+    def test_pan_inconnu_404_nommant_pan_sans_ecriture(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE — sous-ressource absente : 404, même corps.
         reponse = self._saisir(pan='PAN-Z')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         self.assertEqual(reponse.data, CONTRAT['refus_pan_inconnu'])
         self.assertFalse(PoseReelle.objects.exists())
 
@@ -397,7 +398,8 @@ class PoseReelleEnBase(BaseApiCalepinage):
     def test_version_sans_aucun_releve_refusee(self):
         reponse = self.api.post(url_pose(self.calepinage.pk),
                                 CONTRAT['corps_creer_version'], format='json')
-        self.assertEqual(reponse.status_code, 400)
+        # ERR-ENF11-FUZZ-CALEPINAGE — rien à figer : conflit d'état, 409.
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('creer_version', reponse.data)
 
     def test_version_depuis_les_ecarts(self):
