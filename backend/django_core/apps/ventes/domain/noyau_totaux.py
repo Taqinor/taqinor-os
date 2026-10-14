@@ -260,10 +260,11 @@ def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=None):
 
     Rend ``{'atteint', 'remise_pct', 'totaux', 'voisin_bas', 'voisin_haut'}``.
     """
-    from decimal import Decimal as D, ROUND_CEILING, ROUND_FLOOR
+    from decimal import (
+        Decimal as D, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP)
 
     lignes = list(lignes)
-    cible = D(str(ttc_cible)).quantize(D('0.01'))
+    cible = D(str(ttc_cible)).quantize(D('0.01'), rounding=ROUND_HALF_UP)
     pas = D(str(arrondi_pas or 0))
     vide = {'atteint': False, 'remise_pct': None, 'totaux': None,
             'voisin_bas': None, 'voisin_haut': None}
@@ -283,7 +284,7 @@ def remise_pour_ttc(lignes, ttc_cible, *, fallback_taux, arrondi_pas=None):
 
     candidats, essais = [], []
     for c in range(bas_c, haut_c + 1):
-        p = (D(c) / cent).quantize(D('0.01'))
+        p = (D(c) / cent).quantize(D('0.01'), rounding=ROUND_HALF_UP)
         t = _canonical_totaux(lignes, remise_globale_pct=p,
                               fallback_taux=fallback_taux, arrondi_pas=pas)
         essais.append((p, t['ttc']))
