@@ -681,3 +681,39 @@ class ConfigSchemathesisTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PartageChemins(unittest.TestCase):
+    """CI #997 — `api_fuzz_scope.py schema --shard i/N` : partition déterministe,
+    exhaustive et disjointe des chemins (plus d'échantillon aléatoire)."""
+
+    def setUp(self):
+        import importlib
+        self.scope = importlib.import_module("scripts.fuzz.api_fuzz_scope")
+
+    def test_union_disjointe_et_deterministe(self):
+        chemins = [f"/api/django/x/{k}/" for k in range(23)]
+        tranches = [self.scope.partager_chemins(chemins, f"{i}/4") for i in range(4)]
+        self.assertEqual(set().union(*tranches), set(chemins))
+        for i in range(4):
+            for j in range(i + 1, 4):
+                self.assertFalse(tranches[i] & tranches[j], (i, j))
+        self.assertEqual(tranches[1], self.scope.partager_chemins(list(reversed(chemins)), "1/4"))
+        self.assertEqual(self.scope.partager_chemins(chemins, None), set(chemins))
+
+    def test_tranche_invalide_refusee(self):
+        with self.assertRaises(ValueError):
+            self.scope.partager_chemins(["/a/"], "4/4")
+        with self.assertRaises(ValueError):
+            self.scope.partager_chemins(["/a/"], "0/0")
+
+    def test_preparer_schema_tranche(self):
+        doc = {"openapi": "3.0.3", "paths": {
+            f"/api/django/x/{k}/": {"get": {"responses": {"200": {"description": "ok"}}}}
+            for k in range(6)}, "components": {}}
+        total = 0
+        for i in range(3):
+            sortie, stats = self.scope.preparer_schema(doc, None, None, shard=f"{i}/3")
+            self.assertEqual(stats["chemins"], 2)
+            total += stats["operations"]
+        self.assertEqual(total, 6)
