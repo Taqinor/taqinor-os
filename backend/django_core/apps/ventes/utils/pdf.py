@@ -710,6 +710,18 @@ def prochaines_echeances_pdf(part, etat):
     return list(etat['prochaines_echeances'])
 
 
+def remise_negociee_pdf(facture):
+    """VNT71 — vrai quand la remise globale de ``facture`` est celle d'un
+    AVENANT négocié : son devis remplace une vente déjà acceptée
+    (``selectors.predecesseur_accepte``, VNT51). La chaîne des totaux imprime
+    alors « Remise négociée » (montant seul) ; faux sans devis, sans remise
+    globale (aucune requête) ou pour une première vente."""
+    if not facture.devis_id or not (facture.remise_globale or 0) > 0:
+        return False
+    from apps.ventes.selectors import predecesseur_accepte
+    return predecesseur_accepte(facture.devis) is not None
+
+
 def contexte_vente_facture(facture, langue='fr'):
     """Les blocs de la vente du PDF facture (dict à fusionner dans le
     contexte du gabarit) ; une facture sans devis n'en porte aucun. L'état
@@ -726,7 +738,11 @@ def contexte_vente_facture(facture, langue='fr'):
             'part_vente': part,
             'prochaines_echeances': prochaines_echeances_pdf(part, etat),
             'garanties_vente': garanties_pdf(facture, langue),
-            'situation_vente': situation_vente_pdf(tete, etat)}
+            'situation_vente': situation_vente_pdf(tete, etat),
+            # VNT71 — clé posée seulement si vraie : empreinte PVFRESH d'une
+            # facture qui n'est pas d'avenant inchangée.
+            **({'remise_negociee': True}
+               if remise_negociee_pdf(facture) else {})}
 
 
 def _facture_render_data(facture) -> dict:

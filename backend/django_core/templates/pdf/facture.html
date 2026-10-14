@@ -47,6 +47,7 @@
   'reste_du_sur_la_vente': 'Reste dû sur la vente',
   'reste_a_facturer': 'Reste à facturer', 'reste_du': 'reste dû',
   'prochaines_echeances': 'Prochaines échéances',
+  'remise_negociee': 'Remise négociée',
 }.get(cle, cle) }}{% endif %}{% endmacro %}
 {# ATOT11 — chaîne des totaux partagée. #}{% from '_chaine_totaux.html' import chaine_totaux %}
 <!DOCTYPE html>
@@ -388,9 +389,11 @@
     {{ chaine_totaux(totaux, facture.remise_globale, {
          'sous_total': _L('sous_total_ht'),
          'remise_globale': _L('remise_globale'),
+         'remise_negociee': _L('remise_negociee'),
          'arrondi': _L('arrondi_commercial'), 'total_ht': _L('total_ht'),
          'tva': _L('tva'), 'total_ttc': _L('total_ttc'), 'base_ht': _L('base_ht'),
-       }, ventilation=facture.ventilation_tva) }}
+       }, ventilation=facture.ventilation_tva,
+       remise_negociee=remise_negociee|default(false)) }}
     {# ZFAC11 — mention « Arrondi espèces » quand un écart d'arrondi de caisse a
        été appliqué (règlement espèces arrondi au pas société). Conditionnel :
        aucune mention si aucun arrondi → PDF strictement inchangé sinon. #}
