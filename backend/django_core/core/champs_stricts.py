@@ -36,6 +36,24 @@ _VALIDATEURS_PUBLIES = (
     _validateurs.URLValidator, _validateurs.FileExtensionValidator)
 
 
+#: Sous-ensemble sûr des URL que ``URLValidator`` accepte (http(s), hôte à
+#: points, chemin simple) ; vide permis (champ facultatif).
+MOTIF_URL_HTTP = r'^(|https?://[a-z]{1,10}\.[a-z]{2,10}(/[A-Za-z0-9._~/-]*)?)$'
+
+
+class MotifUrlPublie(_validateurs.RegexValidator):
+    """Valide avec ``URLValidator`` (acceptation inchangée) mais PUBLIE un
+    ``pattern`` dans le schéma : un champ texte « URL » dont la déclaration ne
+    dit rien laisse le fuzz envoyer une chaîne conforme et recevoir un 400.
+    Le motif publié est un sous-ensemble de ce que ``URLValidator`` accepte."""
+
+    def __init__(self, message='URL invalide.'):
+        super().__init__(regex=MOTIF_URL_HTTP, message=message, code='invalid')
+
+    def __call__(self, value):
+        _validateurs.URLValidator(message=self.message, code=self.code)(value)
+
+
 class _ChaineSansNul(OpenApiSerializerFieldExtension):
     """ENF11 (api-fuzz « rejected schema-compliant request ») — une chaîne
     stricte publie ``pattern`` : aucun caractère nul (seule règle que DRF ajoute

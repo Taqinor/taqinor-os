@@ -215,7 +215,7 @@ class PlaybookEnfantsScopeTests(TestCase):
             'playbook': self.playbook_autre.pk,
             'stage': stages.FOLLOW_UP, 'ordre': 2,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
         # Le refus vient bien de la garde de parent (et non d'une unicité
         # fortuite) : le couple (playbook voisin, FOLLOW_UP) n'existe pas.
         self.assertIn('playbook', resp.data)
@@ -239,7 +239,7 @@ class PlaybookEnfantsScopeTests(TestCase):
         resp = self.api.patch(
             f'/api/django/crm/playbook-etapes/{self.etape.pk}/',
             {'playbook': self.playbook_autre.pk, 'stage': stages.SIGNED}, format='json')
-        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(resp.status_code, 404, getattr(resp, 'data', resp))
         self.assertIn('playbook', resp.data)
         self.etape.refresh_from_db()
         self.assertEqual(self.etape.playbook_id, self.playbook.pk)

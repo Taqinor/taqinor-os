@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 
+from django.http import QueryDict
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
@@ -59,6 +60,27 @@ def _num(valeur, defaut=None):
         return float(valeur)
     except (TypeError, ValueError):
         return defaut
+
+
+#: CI #997 api-fuzz — drapeaux publiés ``boolean`` au schéma : un vrai
+#: booléen JSON (``{}``, ``0``, ``"oui"`` passaient en silence par leur
+#: « vérité » Python). En formulaire (multipart / urlencoded, où tout voyage en
+#: chaîne), seules « true » / « false » (casse libre) sont lues.
+DRAPEAUX = ('dimensionner', 'ete_differente')
+
+
+def _drapeau(corps, nom):
+    """``True``/``False`` d'un drapeau du corps (absent → ``False``), ou
+    ``None`` quand sa valeur n'est pas un booléen (→ 400 côté vue)."""
+    if nom not in corps:
+        return False
+    valeur = corps.get(nom)
+    if isinstance(valeur, bool):
+        return valeur
+    if isinstance(corps, QueryDict) and isinstance(valeur, str) and (
+            valeur.strip().lower() in ('true', 'false')):
+        return valeur.strip().lower() == 'true'
+    return None
 
 
 class _DevisDepuisLead:
@@ -131,7 +153,7 @@ def _profil_depuis_corps(corps):
     conso, source, detail = profil_depuis_factures(
         facture_hiver_mad=_num(corps.get('facture_hiver')),
         facture_ete_mad=_num(corps.get('facture_ete')),
-        ete_differente=bool(corps.get('ete_differente')),
+        ete_differente=bool(_drapeau(corps, 'ete_differente')),
         factures_mensuelles_mad=corps.get('factures_mensuelles'),
         conso_kwh_mensuelles=corps.get('conso_kwh_mensuelles'))
 
@@ -333,7 +355,9 @@ def etude_horaire_preview(request):
     valent ``null`` quand ils ne sont pas calculables, jamais une clé absente —
     l'écran n'a ainsi jamais à deviner.
 
-    ``400`` seulement quand le corps est inexploitable (pas un objet JSON).
+    ``400`` seulement quand le corps est inexploitable (pas un objet JSON,
+    ``equipements`` non-objet, drapeau ``dimensionner``/``ete_differente``
+    non booléen).
     """
     corps = request.data if isinstance(request.data, dict) else None
     if corps is None:
@@ -351,6 +375,13 @@ def etude_horaire_preview(request):
             {'detail': 'Corps de requête invalide : « equipements » doit '
                        'être un objet JSON (ex. {"piscine": true}).'},
             status=400)
+
+    for nom in DRAPEAUX:
+        if _drapeau(corps, nom) is None:
+            return Response(
+                {'detail': f'Corps de requête invalide : « {nom} » doit être '
+                           'un booléen (true / false).'},
+                status=400)
 
     company = getattr(request.user, 'company', None)
     avertissements = []
@@ -440,7 +471,7 @@ def etude_horaire_preview(request):
                 'chantier non résolue par PVGIS (ni GPS, ni ville reconnue).')
 
     dimensionnement = None
-    if corps.get('dimensionner'):
+    if _drapeau(corps, 'dimensionner'):
         dimensionnement = _dimensionner(
             company=company, conso=conso, ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements, corps=corps,

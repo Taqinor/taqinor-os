@@ -170,6 +170,13 @@ class PariteVolumesDevisCalepinageTest(TestCase):
             'heures_pompage': None, 'volume_reservoir_m3': None})
         self.assertEqual(donnees['entrees']['heures_pompage'], 7.0)
 
+    def test_corps_json_seul_multipart_415(self):
+        """api-fuzz #997 : le schéma ne propose que JSON (un multipart ne sait
+        pas porter ``null`` : « None » était lu comme texte → faux 400)."""
+        url = f'/api/django/calepinage/calepinages/{self.calepinage.pk}/pompage/'
+        rep = self.api.post(url, {'kwc': '1'}, format='multipart')
+        self.assertEqual(rep.status_code, 415, rep.content[:300])
+
 
 class PariteHmtTest(TestCase):
     """La HMT du calepinage est celle de ``hmt_composantes`` (AGR111)."""

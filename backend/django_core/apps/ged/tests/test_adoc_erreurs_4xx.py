@@ -546,6 +546,37 @@ class Enf11FuzzGedCorpsTests(TestCase):
         self.assertEqual(resp.data['erreurs'], [
             {'ligne': 2, 'detail': 'Nom : 255 caractères au plus.'}])
 
+    def test_ci997_listes_et_url_declarees(self):
+        """CI #997 api-fuzz : ``actions`` / ``approbateurs`` publient un tableau
+        (null refusé en 400), ``url_externe`` publie son motif http(s)."""
+        import re
+
+        from core.champs_stricts import MOTIF_URL_HTTP
+        cg = {'field': 'nom', 'operator': 'eq', 'value': 'x'}
+        for route, corps, champ in (
+                ('regles-dossier/', {'folder': self.folder.pk, 'nom': 'r',
+                                     'condition_group': cg, 'actions': None},
+                 'actions'),
+                ('regles-approbation/', {'libelle': 'r', 'condition_group': cg,
+                                         'approbateurs': None},
+                 'approbateurs')):
+            resp = self._post(route, corps)
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn(champ, resp.json())
+        self.assertEqual(self._post('regles-approbation/', {
+            'libelle': 'r', 'condition_group': cg,
+            'approbateurs': [self.admin.pk]}).status_code, 201)
+        # Tout ce que le motif publié autorise est accepté par le serveur.
+        for url in ('', 'http://a.bc', 'https://abcdefghij.klmnopqrst/a/b.c-d_e~'):
+            self.assertTrue(re.match(MOTIF_URL_HTTP, url), url)
+            resp = self._post('documents/', {
+                'folder': self.folder.pk, 'nom': 'doc-lien', 'url_externe': url})
+            self.assertNotIn('url_externe', resp.json(), (url, resp.content))
+        self.assertFalse(re.match(MOTIF_URL_HTTP, '0' * 2000))
+        resp = self._post('documents/', {
+            'folder': self.folder.pk, 'nom': 'x', 'url_externe': '0' * 50})
+        self.assertEqual(resp.status_code, 400, resp.content)
+
 
 class Enf11FuzzGedTour2Tests(TestCase):
     """ERR-ENF11-FUZZ-GED (nocturne 13/10) — refus d'état en 409, doublons en

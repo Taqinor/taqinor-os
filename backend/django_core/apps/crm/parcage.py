@@ -46,6 +46,11 @@ class ApporteursParquesMixin:
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
+        # CI #997 api-fuzz : une méthode que la route ne porte pas (``action``
+        # nul — TRACE, PUT sur une liste…) reste un 405 : la porte parquée
+        # n'y répond pas 404, la réponse ne dépend pas du réglage.
+        if hasattr(self, 'action') and self.action is None:
+            return
         if not apporteurs_actifs(getattr(request.user, 'company_id', None)):
             from rest_framework.exceptions import NotFound
             raise NotFound()

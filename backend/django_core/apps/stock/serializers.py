@@ -829,6 +829,14 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         # jamais accepté du corps (évite tout choix d'unité d'une autre société).
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour',
                             'unite']
+        # Le schéma publie ces deux JSON comme nullables (« non publié ») :
+        # ``validate_courbe_source`` / ``validate_paliers_prix_vente``
+        # normalisent déjà ``null`` (dict vide / liste vide) — DRF le refusait
+        # avant d'y arriver.
+        extra_kwargs = {
+            'courbe_source': {'allow_null': True},
+            'paliers_prix_vente': {'allow_null': True},
+        }
         # APX18 — `photo` (la FK vers `records.Attachment`) n'est
         # DÉLIBÉRÉMENT pas exposée : elle se pose uniquement par l'action
         # `POST /stock/produits/<id>/photo/`, qui téléverse ET rattache dans
@@ -1119,10 +1127,9 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 "`courbe_source.document` doit être un texte.")
         date = value.get('date') or None
         if date is not None:
-            import datetime
             try:
-                datetime.date.fromisoformat(str(date))
-            except ValueError:
+                serializers.DateField().to_internal_value(str(date))
+            except serializers.ValidationError:
                 raise serializers.ValidationError(
                     "`courbe_source.date` doit être une date ISO "
                     "(AAAA-MM-JJ).")

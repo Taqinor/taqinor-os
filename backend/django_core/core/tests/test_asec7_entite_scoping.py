@@ -61,3 +61,18 @@ class EntiteScopingTests(TestCase):
         assert_entite_assignable(self.libre, self.e_a2.id)
         assert_entite_assignable(self.libre, None)
         assert_entite_assignable(self.libre, '')
+
+    def test_methode_non_portee_par_la_route_reste_405(self):
+        """CI #997 api-fuzz : ``PUT /devis/atomic/`` (route POST seule) avec une
+        entité inconnue répondait 400 depuis ``initial`` ; la méthode refusée
+        passe avant le contrôle d'entité (405)."""
+        from rest_framework.test import APIClient
+        admin = User.objects.create_user(
+            username='asec7_admin', password='x', company=self.co_a,
+            role_legacy='admin')
+        api = APIClient()
+        api.force_authenticate(admin)
+        url = '/api/django/ventes/devis/atomic/'
+        corps = {'entite': 999999999, 'lignes': [{}]}
+        self.assertEqual(api.put(url, corps, format='json').status_code, 405)
+        self.assertEqual(api.patch(url, corps, format='json').status_code, 405)

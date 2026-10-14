@@ -552,6 +552,19 @@ class UserSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         return instance
 
 
+class UserModificationSerializer(UserSerializer):
+    """CI #997 api-fuzz (« rejected schema-compliant request ») — CORPS publié
+    d'une MODIFICATION de compte (PUT/PATCH ``/users/{id}/``) : le mot de passe
+    n'y figure plus. ASEC3 : il ne s'écrit qu'à la création et se change par
+    l'action dédiée ; la vue répond 400 ``password_via_reinitialisation`` à
+    tout corps qui le porte, le schéma ne doit donc pas le promettre. Sert au
+    SCHÉMA seulement (la vue lit toujours ``UserSerializer``)."""
+    password = None
+
+    class Meta(UserSerializer.Meta):
+        fields = tuple(f for f in UserSerializer.Meta.fields if f != 'password')
+
+
 class MeSerializer(UserSerializer):
     """ALEA31 — profil de l'utilisateur COURANT (``/auth/me/`` uniquement).
 

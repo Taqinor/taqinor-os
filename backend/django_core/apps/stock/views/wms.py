@@ -1220,7 +1220,13 @@ def _date_param(valeur, nom='date', *, ignorer_illisible=False):
                responses={
     (200, 'application/pdf'): bytes,
     400: inline_serializer('StockEtiquettesCasiersErreur', {
-        'detail': serializers.CharField(),
+        # Deux corps servis : ``{detail}`` (emplacement absent) ou l'erreur de
+        # validation DRF ``{emplacement: [...], error: {...}}`` (valeur hors
+        # plage / illisible) — aucun des deux n'est systématique.
+        'detail': serializers.CharField(required=False),
+        'emplacement': serializers.ListField(
+            child=serializers.CharField(), required=False),
+        'error': serializers.DictField(required=False),
     }),
 })
 @api_view(['GET'])

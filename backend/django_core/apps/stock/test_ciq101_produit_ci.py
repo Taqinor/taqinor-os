@@ -108,6 +108,60 @@ class TestVocabulaire(SimpleTestCase):
         self.assertEqual(len(CLES_CONTRAT_ONDULEUR), 10)
 
 
+class TestSchemaFicheBornes(SimpleTestCase):
+    """api-fuzz #997 : le schéma de requête de la fiche dit les bornes que les
+    validateurs appliquent (oracle : DRF `run_validation` sur les mêmes
+    valeurs, jamais un motif plus large que le serveur)."""
+
+    @staticmethod
+    def _schema():
+        from apps.stock.schema_contraintes import declarer_contraintes_achats
+        base = {'type': 'string', 'format': 'decimal', 'nullable': True}
+        champs = {
+            'ond_rendement_max_pct': r'^-?(?:\d{1,3}(?:\.\d{0,1})?|\.\d{1,1})$',
+            'ond_rendement_cec_pct': r'^-?(?:\d{1,3}(?:\.\d{0,1})?|\.\d{1,1})$',
+            'bat_c_rate_charge': r'^-?(?:\d{1,2}(?:\.\d{0,2})?|\.\d{1,2})$',
+            'bat_c_rate_decharge': r'^-?(?:\d{1,2}(?:\.\d{0,2})?|\.\d{1,2})$',
+            'lim_phases': None,
+        }
+        props = {n: ({**base, 'pattern': m} if m else {'type': 'integer'})
+                 for n, m in champs.items()}
+        schema = {'components': {'schemas': {
+            'FicheTechniqueRequest': {'properties': props}}}}
+        declarer_contraintes_achats(schema)
+        return props
+
+    def test_motifs_jamais_plus_larges_que_drf(self):
+        import re
+        from rest_framework.exceptions import ValidationError
+        from apps.stock.serializers_fiche_technique import (
+            FicheTechniqueSerializer,
+        )
+        props = self._schema()
+        champs = FicheTechniqueSerializer().fields
+        valeurs = ['', '-', '.', '0', '0.0', '0.00', '0.001', '0.009', '0.01',
+                   '0.5', '.5', '.01', '1', '1.0', '5.', '99.9', '100',
+                   '100.0', '100.1', '101', '-1', '12.345', '99.99']
+        for nom in ('ond_rendement_max_pct', 'ond_rendement_cec_pct',
+                    'bat_c_rate_charge', 'bat_c_rate_decharge'):
+            motif = re.compile(props[nom]['pattern'])
+            for v in valeurs:
+                if not motif.search(v):
+                    continue
+                try:
+                    champs[nom].run_validation(v)
+                except ValidationError as exc:
+                    self.fail(f'{nom}={v!r} publié mais refusé : {exc.detail}')
+
+    def test_zero_n_est_plus_publie_et_phases_limitees(self):
+        import re
+        props = self._schema()
+        for nom in ('ond_rendement_max_pct', 'bat_c_rate_charge'):
+            self.assertIsNone(re.search(props[nom]['pattern'], '0'))
+        self.assertEqual(props['lim_phases']['enum'], [1, 3, None])
+        self.assertTrue(props['lim_phases']['nullable'])
+
+
 class TestMigration(SimpleTestCase):
     def test_operations_additives_et_reversibles(self):
         module = import_module(f'apps.stock.migrations.{MIGRATION}')
@@ -207,6 +261,24 @@ class TestSaisieEtLecture(CIQ101Base):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['struct_notice'], {
             'document': 'Notice X', 'date': '2026-01-02', 'page': 3})
+
+    def test_fiche_vide_null_et_pdf_vide_acceptes(self):
+        """api-fuzz #997 : les validateurs lisent déjà `None` comme « vide » ;
+        le schéma publié (nullable) et le serveur disent la même chose."""
+        p = Produit.objects.create(
+            company=self.company, nom='Limiteur nul', prix_vente=1)
+        r = api_for(self.user).post(URL_FICHES, {
+            'produit': p.pk, 'type_fiche': 'limiteur', 'lim_phases': None,
+            'ond_compteurs_compatibles': None, 'lim_marques': None,
+            'log_marques': None, 'struct_notice': None, 'pdf': ''},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertEqual(r.data['lim_marques'], [])
+        self.assertEqual(r.data['ond_compteurs_compatibles'], [])
+        self.assertEqual(r.data['log_marques'], [])
+        self.assertEqual(r.data['struct_notice'],
+                         {'document': '', 'date': None, 'page': None})
+        self.assertIsNone(r.data['lim_phases'])
 
     def test_options_servent_les_libelles_fr_des_roles(self):
         """CIQ104 — l'écran lit les libellés par OPTIONS (aucun miroir JS)."""

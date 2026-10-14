@@ -277,3 +277,23 @@ class ContratApiFuzzPortailTests(TestCase):
             company=self.a).count(), 1)
         self.demande.refresh_from_db()
         self.assertEqual(self.demande.sujet, 'Onduleur')
+
+    def test_compte_portail_actif_booleen_strict_400(self):
+        """CI #997 api-fuzz : PATCH {"actif": 0} était lu comme False (200)
+        et désactivait le compte ; seul un vrai booléen JSON passe."""
+        from apps.portail.models import ComptePortailClient
+        compte = ComptePortailClient.objects.create(
+            company=self.a, client=self.client_a, token_acces='enf11-ci997-jeton')
+        url = f'/api/django/portail/comptes-portail/{compte.id}/'
+        for brut in (0, 1, 'false', None):
+            with self.subTest(brut=brut):
+                res = self.api.patch(url, {'client': self.client_a.id,
+                                           'actif': brut}, format='json')
+                self.assertEqual(res.status_code, 400, res.content)
+                self.assertIn('actif', res.data)
+        compte.refresh_from_db()
+        self.assertTrue(compte.actif)
+        res = self.api.patch(url, {'actif': False}, format='json')
+        self.assertIn(res.status_code, (200, 202), res.content)
+        compte.refresh_from_db()
+        self.assertFalse(compte.actif)

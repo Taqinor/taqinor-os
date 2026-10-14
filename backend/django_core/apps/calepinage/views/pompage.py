@@ -38,6 +38,7 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte
 from core.pompage.selection import selection_pompe, selection_variateur, tension_produit
@@ -178,7 +179,8 @@ def _champs_corps():
     responses=forme_du_contrat('CalepinagePompageReponse',
                                'calepinage_pompage.json'))
 @action(detail=True, methods=['post'], url_path='pompage',
-        permission_classes=[PeutVoirCalepinage])
+        permission_classes=[PeutVoirCalepinage],
+        parser_classes=[JSONParser])  # corps JSON seul : un multipart n'a pas de null
 def pompage(self, request, pk=None):
     """CAL159 — puits, besoin, réservoir, pompe/variateur et volumes mensuels.
 
