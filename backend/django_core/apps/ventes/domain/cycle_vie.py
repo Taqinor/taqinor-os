@@ -1439,6 +1439,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         _garde_blocages_acceptation(
             devis, user=user, override_credit=override_credit,
             override_avertissement=override_avertissement)
+        # VNT54 — une seule vente en vigueur par lead (hors chaîne de révision).
+        from apps.ventes.domain.negociation import garde_vente_unique
+        garde_vente_unique(devis, user=user)
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).

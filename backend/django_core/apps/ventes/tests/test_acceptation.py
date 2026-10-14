@@ -251,3 +251,54 @@ class TestDevisAcceptation(TestCase):
         self.assertEqual(r.status_code, 400, r.data)
         devis.refresh_from_db()
         self.assertNotEqual(devis.statut, 'accepte')
+
+    # ── VNT54 — une seule vente en vigueur par lead ─────────────────────────
+
+    def _vente_388(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead VNT54', stage='QUOTE_SENT')
+        vente = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0380',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'))
+        return lead, vente
+
+    def _accepter(self, devis):
+        return self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/accepter/',
+            {'nom': 'Client', 'date': '2026-06-10'}, format='json')
+
+    def test_vnt54_variante_d_une_vente_acceptee_refusee(self):
+        lead, vente = self._vente_388()
+        variante = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0390',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+            version_parent=vente, taux_tva=Decimal('20'))
+        r = self._accepter(variante)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'vente_active_existante')
+        self.assertEqual(r.data['vente_active']['id'], vente.pk)
+        variante.refresh_from_db()
+        self.assertEqual(variante.statut, Devis.Statut.ENVOYE)
+
+    def test_vnt54_revision_de_la_vente_acceptee(self):
+        lead, vente = self._vente_388()
+        v2 = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0400',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+            version_parent=vente, version=2, taux_tva=Decimal('20'))
+        Devis.objects.filter(pk=vente.pk).update(
+            is_active=False, superseded_by=v2)
+        r = self._accepter(v2)
+        self.assertEqual(r.status_code, 200, r.data)
+        v2.refresh_from_db()
+        self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+
+    def test_vnt54_lead_sans_vente_accepte(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead libre', stage='QUOTE_SENT')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-0410',
+            client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
+            taux_tva=Decimal('20'))
+        self.assertEqual(self._accepter(devis).status_code, 200)

@@ -43,7 +43,7 @@ MOTIF_INTERNE = 'Impayés anciens — validation direction'
 
 @override_settings(CACHES={'default': {
     'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
-class GardesTroisPortesTests(TestCase):
+class _PortesBase(TestCase):
 
     def setUp(self):
         cache.clear()
@@ -121,6 +121,9 @@ class GardesTroisPortesTests(TestCase):
         self.assertNotIn(MOTIF_INTERNE, reponse.content.decode('utf-8'))
         return corps
 
+
+class GardesTroisPortesTests(_PortesBase):
+
     def test_public_refuse_si_bloquant(self):
         devis = self._devis()
         corps = self._assert_refus_neutre(self._public(devis))
@@ -162,3 +165,54 @@ class GardesTroisPortesTests(TestCase):
                 devis.refresh_from_db()
                 self.assertEqual(devis.statut, Devis.Statut.ACCEPTE)
         self.assertEqual(len(self.evenements), 3)
+
+
+class VenteUniqueTroisPortesTests(_PortesBase):
+    """VNT54 — une deuxième vente en vigueur sur un lead, HORS de la chaîne de
+    révision, est refusée par les trois portes : 409
+    ``vente_active_existante`` (interne : + ``vente_active``), rien écrit."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.crm.models import Lead
+        self._debloquer()
+        self.lead = Lead.objects.create(company=self.company, nom='VNT54')
+        self.vente = self._devis()
+        Devis.objects.filter(pk=self.vente.pk).update(
+            statut=Devis.Statut.ACCEPTE)
+
+    def _devis(self):
+        devis = super()._devis()
+        Devis.objects.filter(pk=devis.pk).update(lead=self.lead)
+        devis.refresh_from_db()
+        return devis
+
+    def test_interne_409_avec_vente_active(self):
+        devis = self._devis()
+        reponse = self._interne(devis)
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertEqual(reponse.data['code'], 'vente_active_existante')
+        self.assertEqual(reponse.data['vente_active'], {
+            'id': self.vente.pk, 'reference': self.vente.reference})
+        self.assertIn(self.vente.reference, reponse.data['detail'])
+        self.assertIn('Prix négocié', reponse.data['detail'])
+        self._assert_rien_ecrit(devis)
+
+    def test_public_409_neutre(self):
+        devis = self._devis()
+        reponse = self._public(devis)
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertEqual(
+            reponse.json(), CONTRAT['reponses_409']['vente_active_existante'])
+        self.assertNotIn(self.vente.reference,
+                         reponse.content.decode('utf-8'))
+        self._assert_rien_ecrit(devis)
+
+    def test_portail_409_neutre(self):
+        devis = self._devis()
+        reponse = self._portail(devis)
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertEqual(
+            reponse.json()['detail'],
+            CONTRAT['reponses_409']['vente_active_existante']['detail'])
+        self._assert_rien_ecrit(devis)

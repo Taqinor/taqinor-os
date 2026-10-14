@@ -644,6 +644,8 @@ class DevisCycleActionsMixin:
             corps = {'detail': exc.message}
             if exc.code:
                 corps['code'] = exc.code
+            if getattr(exc, 'vente_active', None):  # VNT54 — {id, reference}
+                corps['vente_active'] = exc.vente_active
             return Response(
                 corps,
                 status=(status.HTTP_409_CONFLICT if exc.conflict
