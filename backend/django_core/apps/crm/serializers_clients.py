@@ -11,7 +11,7 @@ from rest_framework import serializers
 
 from core.champs_stricts import IdInconnu404Mixin
 
-from .champs_api import MAPPING_BOOLEEN_STRICT
+from .champs_api import MAPPING_TEXTE_STRICT, IcePublie
 from .params_requete import UniciteEn409Mixin
 from .models import (
     ConcurrentPerte, EquipeCommerciale, EtapePlanActivite, ForecastEntry,
@@ -154,6 +154,7 @@ class DealEnregistreSerializer(IdInconnu404Mixin, _LeadEnPorteeMixin,
 
 class DefiSerializer(serializers.ModelSerializer):
     """NTCRM23 — défi d'équipe. ``company`` posé côté serveur."""
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : actif/nom stricts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     metrique_display = serializers.CharField(
         source='get_metrique_display', read_only=True)
@@ -228,6 +229,7 @@ class PartenaireSerializer(serializers.ModelSerializer):
     quitté cette app — reprend nativement sa propre surface API. Aucun champ
     n'a changé : seule la maison a bougé.
     """
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : zone/nom stricts
     certification_expiree = serializers.BooleanField(read_only=True)
     rang_certification = serializers.IntegerField(read_only=True)
     specialites = serializers.ListField(
@@ -407,6 +409,8 @@ class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
         model = Client
         fields = '__all__'
         read_only_fields = ['date_modification']
+        # CI #997 (fuzz) — motif d'ICE publié (validation : ``validate_ice``).
+        extra_kwargs = {'ice': {'validators': [IcePublie()]}}
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_created_by_nom(self, obj):
@@ -456,6 +460,7 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
     (ACRM52)."""
     champs_lead_portee = ('filleul_lead',)
     champs_client_portee = ('parrain', 'filleul_client')
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : notes strictes
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     parrain_nom = serializers.CharField(
         source='parrain.nom', read_only=True,
@@ -503,6 +508,7 @@ class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
 
     # CRX13 — le porteur de l'objectif doit être un utilisateur de la société.
     scoped_relations = ('owner',)
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : notes strictes
 
     owner_nom = serializers.SerializerMethodField()
     metric_display = serializers.SerializerMethodField()
@@ -591,6 +597,7 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
     dans ``perform_create``. Le lead doit appartenir à la même société
     (validate_lead). ``lead_nom`` est en lecture seule pour l'UI.
     """
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : notes strictes
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
     saisi_par_nom = serializers.SerializerMethodField()
@@ -647,7 +654,7 @@ class EtapePlanActiviteSerializer(_CompanyScopedRelationsMixin,
 
 
 class PlanActiviteSerializer(serializers.ModelSerializer):
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     etapes = EtapePlanActiviteSerializer(many=True, read_only=True)
 
     class Meta:
@@ -661,7 +668,7 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
     # CRX13 — responsable ET membres (M2M) : le ``ManyRelatedField`` délègue à
     # son ``child_relation``, promu lui aussi.
     scoped_relations = ('responsable', 'membres')
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
 
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True,
@@ -676,6 +683,17 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
         ]
         read_only_fields = ['company', 'date_creation']
 
+    def to_internal_value(self, data):
+        # CI #997 (fuzz) — ``membres`` = ``{}`` passait pour une liste vide
+        # (``ManyRelatedField`` accepte tout itérable) alors que le schéma
+        # déclare un tableau : 400 nommé pour tout JSON non-liste.
+        if (hasattr(data, 'get') and not hasattr(data, 'getlist')
+                and data.get('membres') is not None
+                and not isinstance(data.get('membres'), list)):
+            raise serializers.ValidationError(
+                {'membres': "Une liste d'identifiants est attendue."})
+        return super().to_internal_value(data)
+
 
 class ForecastEntrySerializer(UniciteEn409Mixin, _LeadEnPorteeMixin,
                               _CompanyScopedRelationsMixin,
@@ -685,6 +703,7 @@ class ForecastEntrySerializer(UniciteEn409Mixin, _LeadEnPorteeMixin,
     # validateur d'unicité aussi, sinon « déjà utilisé » sur un lead voisin
     # resterait un oracle d'existence.
     scoped_relations = ('lead',)
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : commentaire strict
 
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True)
@@ -721,7 +740,7 @@ class ForecastSnapshotSerializer(serializers.ModelSerializer):
         ]
 
 
-class RevueCompteSerializer(_CompanyScopedRelationsMixin,
+class RevueCompteSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
                             serializers.ModelSerializer):
     # CRX13 — ``plan`` est la SEULE frontière société de ce modèle (RevueCompte
     # n'a pas de ``company`` propre) : sans re-scope, une revue pouvait être
@@ -743,6 +762,7 @@ class PlanCompteSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
                            serializers.ModelSerializer):
     # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
     scoped_relations = ('client',)
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # CI #997 : textes stricts
 
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -786,7 +806,7 @@ class PlaybookEtapeSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
 
 
 class PlaybookSerializer(serializers.ModelSerializer):
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     etapes = PlaybookEtapeSerializer(many=True, read_only=True)
 
     class Meta:

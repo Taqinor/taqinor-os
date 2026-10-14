@@ -18,6 +18,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.parametres_requete import choix_ou_400
 from core.parseurs import corps_valide
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
@@ -46,7 +47,8 @@ from .serializers_clients import (
 from apps.records.serializers import ChatterActivitySerializer
 from .fiche_bulk import coerce_id_list
 from .params_requete import (
-    CorpsTexteMixin, entier_param, texte_param, valider_pagination)
+    CorpsTexteMixin, corps_objet, entier_param, texte_param,
+    valider_pagination)
 from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
 from . import activity
 from . import schema_docs as sd
@@ -298,6 +300,13 @@ class DefiViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = DefiSerializer
     queryset = Defi.objects.select_related('company').all()
+
+    def get_queryset(self):
+        # CI #997 (fuzz) — ``?actif=`` était déclaré (booléen) mais jamais
+        # appliqué : filtre réel, ``true``/``false`` seuls (sinon 400).
+        qs = super().get_queryset()
+        actif = choix_ou_400(self.request, 'actif', ('true', 'false'))
+        return qs if actif is None else qs.filter(actif=(actif == 'true'))
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'classement':
@@ -746,7 +755,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
         from .exports import export_clients_xlsx
         # CI #956 (fuzz) — `{"ids": {}}` passait (objet vide « falsy » lu comme
         # « tout exporter ») : seule l'ABSENCE de la clé vaut tout exporter.
-        ids = request.data.get('ids', [])
+        ids = corps_objet(request).get('ids', [])
         try:
             ids = coerce_id_list(ids)
         except ValueError:
@@ -1651,6 +1660,14 @@ class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedM
     portee_clients = ('client',)
     queryset = PlanCompte.objects.select_related('client')
     serializer_class = PlanCompteSerializer
+
+    def get_queryset(self):
+        # CI #997 (fuzz) — ``?client=`` était déclaré (entier) mais jamais
+        # appliqué (le plan lu pour un client était celui d'un autre) : filtre
+        # réel, entier seul (sinon 400).
+        qs = super().get_queryset()
+        client = entier_param(self.request, 'client')
+        return qs if client is None else qs.filter(client_id=client)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique']:
