@@ -92,7 +92,8 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         from .services import resultat_recette_fiche
         # Fuzz CI #997 : ``instruments_par_essai`` est publié nullable ; null
         # se lit « aucun instrument » (la colonne, elle, n'accepte pas null).
-        if 'instruments_par_essai' in attrs                 and attrs['instruments_par_essai'] is None:
+        if 'instruments_par_essai' in attrs and (
+                attrs['instruments_par_essai'] is None):
             attrs['instruments_par_essai'] = {}
         demande = attrs.pop('resultat', None)
         fiche = (self.instance if self.instance is not None
