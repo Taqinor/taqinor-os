@@ -10,6 +10,9 @@ ne corrige RIEN automatiquement.
 Multi-tenant : chaque famille est bornée à la société appelante. Import LOCAL
 des modèles des autres apps (même pattern historique que `reports.py`) — pas
 de mutation, jamais d'exception qui casserait les autres familles."""
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def devis_acceptes_sans_chantier(company):
@@ -136,6 +139,7 @@ def factures_payees_avec_solde(company):
             if du != Decimal('0'):
                 out.append(f.id)
         except Exception:  # pragma: no cover - dégradation défensive
+            logger.warning("factures payees avec solde : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return out
 
@@ -176,6 +180,7 @@ def controle_integrite(company):
         try:
             ids = fn(company)
         except Exception:  # pragma: no cover - dégradation défensive
+            logger.warning("controle integrite : échec ignoré, comportement dégradé", exc_info=True)
             ids = []
         result[key] = {'label': label, 'ids': ids}
     return result

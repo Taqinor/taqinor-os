@@ -15,6 +15,10 @@ from __future__ import annotations
 
 from django.db import models
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class FieldPermissionRule(models.Model):
     """Règle d'accès à UN champ d'un modèle pour UN rôle d'une société."""
@@ -71,6 +75,7 @@ def field_rules_for(user, model):
             company_id=company_id, content_type=ct, role_id=str(role_id))
         return {r.field_name: r.acces for r in rules}
     except Exception:
+        logger.warning("field rules for : échec ignoré, comportement dégradé", exc_info=True)
         return {}
 
 

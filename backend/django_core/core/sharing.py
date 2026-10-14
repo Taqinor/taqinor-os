@@ -17,6 +17,10 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class SharingRule(models.Model):
     """Règle de partage d'UN enregistrement vers un principal."""
@@ -153,6 +157,7 @@ def visible_ids(user, model, *, write=False):
             _rules_qs(user, model, write=write)
             .values_list('object_id', flat=True))
     except Exception:
+        logger.warning("visible ids : échec ignoré, comportement dégradé", exc_info=True)
         return set()
 
 
@@ -164,6 +169,7 @@ def can_write(user, instance):
         return str(instance.pk) in visible_ids(
             user, instance.__class__, write=True)
     except Exception:
+        logger.warning("can write : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 

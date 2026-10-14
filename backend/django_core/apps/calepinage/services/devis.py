@@ -104,6 +104,7 @@ def _refus_deja_rattache(lie):
     try:
         libelle_statut = lie.get_statut_display()
     except Exception:  # un libellé manquant n'empêche pas le refus
+        logger.warning("refus deja rattache : échec ignoré, comportement dégradé", exc_info=True)
         libelle_statut = lie.statut
     message = (f"Ce calepinage est déjà rattaché au devis {reference} "
                f"({libelle_statut}) : utilisez « Resynchroniser le devis ».")
@@ -111,6 +112,7 @@ def _refus_deja_rattache(lie):
         revision_possible = bool(
             devis_modifiabilite(lie).get('revision_possible'))
     except Exception:  # verdict illisible : jamais un 500
+        logger.warning("refus deja rattache : échec ignoré, comportement dégradé", exc_info=True)
         revision_possible = False
     return DevisRefuse(message, champ='devis', statut=409, donnees={
         'detail': message, 'devis': lie.pk, 'reference': lie.reference,

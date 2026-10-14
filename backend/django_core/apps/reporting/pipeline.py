@@ -22,6 +22,10 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import serializers as drf_serializers
 from drf_spectacular.utils import inline_serializer
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _co_filter(user):
     if user.company_id:
@@ -72,6 +76,7 @@ def _lead_age_days(lead):
             return None
         return max(0.0, delta.total_seconds() / 86400.0)
     except Exception:
+        logger.warning("lead age days : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -94,6 +99,7 @@ def _lead_win_weight(lead):
         return Decimal(str(prob))
     except Exception:
         # Repli : table d'étape statique (via le scorer, sinon poids historique).
+        logger.warning("lead win weight : échec ignoré, comportement dégradé", exc_info=True)
         fallback = _STAGE_WEIGHTS.get(stage)
         if fallback is not None:
             return fallback
@@ -121,6 +127,7 @@ def _lead_value(lead):
         try:
             valeur = Decimal(str(devis.total_ttc or 0))
         except Exception:
+            logger.warning("lead value : échec ignoré, comportement dégradé", exc_info=True)
             valeur = Decimal('0')
     if memo:
         lead._aprf14_valeur = valeur
@@ -178,7 +185,7 @@ def durees_par_etape(leads):
                     if 0 <= days <= 730:  # ignore les valeurs aberrantes
                         stage_dwell[stage].append(days)
                 except Exception:
-                    pass
+                    logger.warning("durees par etape : échec ignoré, comportement dégradé", exc_info=True)
     return stage_dwell
 
 
@@ -197,7 +204,7 @@ def _lead_has_devis_actif(lead):
             if is_expired(devis):
                 continue
         except Exception:
-            pass
+            logger.warning("lead has devis actif : échec ignoré, comportement dégradé", exc_info=True)
         return True
     return False
 
@@ -233,6 +240,7 @@ def _lead_forecast_value(lead):
         try:
             return Decimal(str(lead.montant_estime))
         except Exception:
+            logger.warning("lead forecast value : échec ignoré, comportement dégradé", exc_info=True)
             return Decimal('0')
     return Decimal('0')
 
@@ -303,7 +311,7 @@ def pipeline(request):
         try:
             b['valeur'] += Decimal(str(d.total_ttc or 0))
         except Exception:
-            pass
+            logger.warning("pipeline : échec ignoré, comportement dégradé", exc_info=True)
     devis_par_statut = [
         {'statut': k, 'label': statut_labels.get(k, k),
          'count': v['count'], 'valeur': str(v['valeur'])}

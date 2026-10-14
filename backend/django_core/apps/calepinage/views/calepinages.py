@@ -102,6 +102,10 @@ from ..services.zones import natures_admises
 from .electrique import ElectriqueActionsMixin
 from .schema import SchemaUnifilaireMixin  # CAL195
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 
 
@@ -163,7 +167,7 @@ class ActionIdempotenteMixin:
                               json.dumps(reponse.data, default=str))})
         except Exception:  # l'idempotence est un CONFORT : elle
             # ne fait jamais échouer une action qui a déjà réussi.
-            pass
+            logger.warning("executer idempotent : échec ignoré, comportement dégradé", exc_info=True)
         return reponse
 
 
@@ -1605,6 +1609,7 @@ def _notifier_la_note(calepinage, auteur, texte):
                body=texte[:200], link='/calepinage/%d' % calepinage.pk,
                company=calepinage.company)
     except Exception:  # une notif ne casse jamais la note
+        logger.warning("notifier la note : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).exception(
             'ACAL293 : notification de la note en échec (calepinage %s)',
             calepinage.pk)

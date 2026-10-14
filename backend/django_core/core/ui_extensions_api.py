@@ -25,6 +25,10 @@ from . import ui_extensions
 from .models import UiActionBouton, UiOngletCustom
 from .viewsets import CompanyScopedModelViewSet
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _applicable_queryset(qs, request):
     """Filtre ``actif`` + palier de rôle du demandeur (``menu_tier``)."""
@@ -47,6 +51,7 @@ def _resolve_generic(target_model, target_id, company):
             lookup['company'] = company
         return model.objects.filter(**lookup).first()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("resolve generic : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -63,9 +68,10 @@ def _instance_field_context(instance):
             try:
                 out[f.attname] = getattr(instance, f.attname)
             except Exception:  # pragma: no cover - défensif
+                logger.warning("instance field context : échec ignoré, comportement dégradé", exc_info=True)
                 continue
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("instance field context : échec ignoré, comportement dégradé", exc_info=True)
     return out
 
 

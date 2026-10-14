@@ -45,6 +45,10 @@ from ..serializers import (
 )
 from . import _openapi as oa
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # SCA36 — 'chatter_historique' est une lecture (patron flotte : le
 # get_permissions maison prime sur les permission_classes d'@action du mixin).
 READ_ACTIONS = ['list', 'retrieve', 'chatter_historique',
@@ -116,7 +120,7 @@ def _notifier_demandeur_decision(da, approuvee):
             link='/chantiers/demandes-achat',
             company=da.company)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("notifier demandeur decision : échec ignoré, comportement dégradé", exc_info=True)
 
 
 class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedModelViewSet):

@@ -57,6 +57,7 @@ def lead_pre_save(sender, instance, **kwargs):
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'owner_id', flat=True).first()
         except Exception:  # noqa: BLE001
+            logger.warning("lead pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_OWNER_ATTR, old)
 
@@ -91,6 +92,7 @@ def devis_pre_save(sender, instance, **kwargs):
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'statut', flat=True).first()
         except Exception:  # noqa: BLE001
+            logger.warning("devis pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_STATUT_ATTR, old)
 
@@ -294,6 +296,7 @@ def sav_ticket_post_save(sender, instance, created, **kwargs):
         try:
             client_nom = getattr(instance.client, 'nom', '') or ''
         except Exception:  # noqa: BLE001
+            logger.warning("sav ticket post save : échec ignoré, comportement dégradé", exc_info=True)
             client_nom = ''
         title = 'Ticket SAV ouvert'
         body = (
@@ -323,6 +326,7 @@ def automation_approval_pre_save(sender, instance, **kwargs):
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'status', flat=True).first()
         except Exception:  # noqa: BLE001
+            logger.warning("automation approval pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_STATUT_ATTR, old)
 
@@ -382,6 +386,7 @@ def demande_achat_pre_save(sender, instance, **kwargs):
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'statut', flat=True).first()
         except Exception:  # noqa: BLE001
+            logger.warning("demande achat pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_DA_STATUT_ATTR, old)
 
@@ -456,6 +461,7 @@ def ged_demande_approbation_pre_save(sender, instance, **kwargs):
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'statut', flat=True).first()
         except Exception:  # noqa: BLE001
+            logger.warning("ged demande approbation pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_GED_DEMANDE_STATUT_ATTR, old)
 

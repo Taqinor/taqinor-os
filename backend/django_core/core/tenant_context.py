@@ -39,6 +39,10 @@ from typing import Optional
 
 from django.db import connection
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def rls_enabled() -> bool:
     """Vrai si la défense RLS est activée par l'environnement.
@@ -78,7 +82,7 @@ def set_current_company(company_id: Optional[int]) -> bool:
         from . import monitoring
         monitoring.bind_company(company_id)
     except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête
-        pass
+        logger.warning("set current company : échec ignoré, comportement dégradé", exc_info=True)
     if connection.vendor != 'postgresql':
         return False
     with connection.cursor() as cursor:
@@ -122,6 +126,7 @@ def _company_id_from_request(request) -> Optional[int]:
         from authentication.cookie_auth import CookieJWTAuthentication
         result = CookieJWTAuthentication().authenticate(request)
     except Exception:  # noqa: BLE001 - jeton invalide ⇒ pas de blocage
+        logger.warning("company id from request : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if result is None:
         return None
@@ -224,7 +229,7 @@ class TenantContextMiddleware:
             from . import monitoring
             monitoring.bind_company(company_id)
         except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête
-            pass
+            logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
         if connection.vendor != 'postgresql':
             return self.get_response(request)
         wrapper = TenantGucWrapper(company_id)

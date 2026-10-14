@@ -17,6 +17,10 @@ from __future__ import annotations
 
 from django.utils import timezone
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Registre en mémoire : { name: {export: fn|None, erase: fn|None} }.
 _PROVIDERS: dict[str, dict] = {}
 
@@ -73,6 +77,7 @@ def verifier_gardes_effacement(company, subject_identifier):
         except EffacementBloque:
             raise
         except Exception:  # noqa: BLE001 - une garde en échec ne bloque pas
+            logger.warning("verifier gardes effacement : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if motif:
             raise EffacementBloque(str(motif))
@@ -115,6 +120,7 @@ def exporter(company, subject_identifier):
         try:
             out[name] = fn(company, subject_identifier)
         except Exception as exc:  # noqa: BLE001 - isolation par fournisseur
+            logger.warning("exporter : échec ignoré, comportement dégradé", exc_info=True)
             out[name] = {'erreur': str(exc)}
     return out
 
@@ -142,6 +148,7 @@ def effacer(company, subject_identifier):
         try:
             out[name] = fn(company, subject_identifier)
         except Exception as exc:  # noqa: BLE001 - isolation par fournisseur
+            logger.warning("effacer : échec ignoré, comportement dégradé", exc_info=True)
             out[name] = {'erreur': str(exc)}
     return out
 
@@ -350,6 +357,7 @@ def _minio_manifest(company_id):
         from .backup import _minio_client
         client = _minio_client()
     except Exception:  # noqa: BLE001 — stockage indisponible → manifeste vide
+        logger.warning("minio manifest : échec ignoré, comportement dégradé", exc_info=True)
         return entries
     for bucket in buckets:
         try:
@@ -360,6 +368,7 @@ def _minio_manifest(company_id):
                         'bucket': bucket, 'key': obj.get('Key'),
                         'size': int(obj.get('Size', 0) or 0)})
         except Exception:  # noqa: BLE001 — bucket absent/erreur → ignore
+            logger.warning("minio manifest : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return entries
 
@@ -395,6 +404,7 @@ def export_tenant(company_id, out_path):
                 qs = model.objects.filter(company_id=company_id)
                 payload = dj_serializers.serialize('json', qs.iterator())
             except Exception:  # noqa: BLE001 — un modèle KO ne bloque pas tout
+                logger.warning("export tenant : échec ignoré, comportement dégradé", exc_info=True)
                 continue
             count = payload.count('"model":') if payload else 0
             arcname = f'data/{label}.json'

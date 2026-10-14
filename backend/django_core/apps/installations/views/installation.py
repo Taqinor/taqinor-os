@@ -26,6 +26,8 @@ from ..serializers_commissioning import (
     CommissioningRecordSerializer, HandoverPackSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -580,7 +582,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     sender=inst.__class__, installation=inst,
                     user=request.user, company=inst.company)
             except Exception:  # pragma: no cover - défensif, best-effort
-                pass
+                logger.warning("annuler : échec ignoré, comportement dégradé", exc_info=True)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -956,6 +958,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             from apps.documents.builders import figer_documents_signes
             figer_documents_signes(inst)
         except Exception as exc:  # la signature prime
+            logger.warning("signer client : échec ignoré, comportement dégradé", exc_info=True)
             logging.getLogger(__name__).warning(
                 "ADOC71 — gel GED du PV/BL du chantier %s impossible : %s",
                 inst.pk, exc)

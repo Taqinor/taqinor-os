@@ -35,6 +35,10 @@ from dataclasses import dataclass
 from django.apps import apps as django_apps
 from django.db import models as m
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Préfixe des policies posées par ce module (identifie/permet le revert ciblé).
 POLICY_PREFIX = "rls_company_"
 
@@ -95,6 +99,7 @@ def _has_local_company_fk(model):
     try:
         field = meta.get_field("company")
     except Exception:  # noqa: BLE001 - pas de champ company => hors périmètre
+        logger.warning("has local company fk : échec ignoré, comportement dégradé", exc_info=True)
         return False
     return isinstance(field, m.ForeignKey)
 

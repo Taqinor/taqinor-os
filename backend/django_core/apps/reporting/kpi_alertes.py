@@ -33,6 +33,10 @@ from core.mixins import SameCompanyFKSerializerMixin
 from .models import KpiAlerte
 from rest_framework.parsers import JSONParser
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class KpiAlerteSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
@@ -271,6 +275,7 @@ def kpi_disponible(company, kpi):
     try:
         return module_actif(company, module)
     except Exception:  # pragma: no cover - jamais masquer sur une erreur
+        logger.warning("kpi disponible : échec ignoré, comportement dégradé", exc_info=True)
         return True
 
 
@@ -471,6 +476,7 @@ def evaluate_kpi_alerte(alerte, *, now=None):
         else:
             valeur = computer(alerte.company, user)
     except Exception:  # pragma: no cover - dégradation défensive
+        logger.warning("evaluate kpi alerte : échec ignoré, comportement dégradé", exc_info=True)
         valeur = None
 
     franchi = alerte.est_franchi(valeur)
@@ -551,6 +557,7 @@ def _notify_kpi_alerte(alerte, valeur):
             notify(user, EventType.DIGEST, title, body=body,
                    company=alerte.company)
         except Exception:  # pragma: no cover - défensif, best-effort
+            logger.warning("notify kpi alerte : échec ignoré, comportement dégradé", exc_info=True)
             continue
 
 
@@ -569,6 +576,7 @@ def evaluate_all_kpi_alertes(now=None):
                 'franchi': franchi, 'notifie': notifie,
             })
         except Exception:  # pragma: no cover - défensif
+            logger.warning("evaluate all kpi alertes : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return results
 

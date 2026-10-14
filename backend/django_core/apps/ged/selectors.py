@@ -11,6 +11,10 @@ from .models import (
     PolitiqueRetention, RegleAclMetadonnee,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def tags_for_company(company):
     """GED9 — Tags de la taxonomie d'une société (QuerySet)."""
@@ -655,6 +659,7 @@ def _acl_metadonnee_rank(document, user):
         try:
             matched = evaluate_condition_group(regle.condition_group, contexte)
         except Exception:  # pragma: no cover - défensif, jamais bloquant.
+            logger.warning("acl metadonnee rank : échec ignoré, comportement dégradé", exc_info=True)
             matched = False
         if not matched:
             continue
@@ -1158,7 +1163,7 @@ def timeline_document(document):
                 'created_at': com.created_at,
             })
     except Exception:  # pragma: no cover - défensif (ContentType absent en test).
-        pass
+        logger.warning("timeline document : échec ignoré, comportement dégradé", exc_info=True)
     entries.sort(key=lambda e: e['created_at'], reverse=True)
     return entries
 
@@ -1240,6 +1245,7 @@ def analytique_approbations(company, *, date_debut=None, date_fin=None):
                 from django.utils.dateparse import parse_datetime
                 fin = parse_datetime(decision_iso)
             except Exception:  # pragma: no cover - défensif.
+                logger.warning("analytique approbations : échec ignoré, comportement dégradé", exc_info=True)
                 fin = None
             if fin is None:
                 continue

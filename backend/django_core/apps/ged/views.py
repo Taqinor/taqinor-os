@@ -88,6 +88,10 @@ from .serializers import (
     ValidationOcrDocumentSerializer, VueGedEnregistreeSerializer,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 READ_ACTIONS = ['list', 'retrieve']
 
 # ── WIR174 — permissions FINES de la GED ────────────────────────────────────
@@ -987,6 +991,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         try:
             images = [Image.open(f) for f in files]
         except Exception:
+            logger.warning("deposer lot scans separe action : échec ignoré, comportement dégradé", exc_info=True)
             return Response(
                 {'files': 'Un des fichiers fournis n\'est pas une image valide.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -2331,6 +2336,7 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
             import fitz  # PyMuPDF
             doc = fitz.open(stream=data, filetype='pdf')
         except Exception:
+            logger.warning("pages : échec ignoré, comportement dégradé", exc_info=True)
             return Response(
                 {'detail': "Ce fichier n'est pas un PDF lisible."},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -4432,6 +4438,7 @@ class LotEnvoiViewSet(CorpsObjetMixin, TenantMixin,
             try:
                 csv_text = csv_file.read().decode('utf-8-sig')
             except Exception:
+                logger.warning("envoi masse : échec ignoré, comportement dégradé", exc_info=True)
                 return Response(
                     {'csv': 'CSV illisible (encodage attendu : UTF-8).'},
                     status=status.HTTP_400_BAD_REQUEST)

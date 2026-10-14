@@ -22,6 +22,10 @@ from .integrations import (
     register_provider,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Type d'intégration dédié Odoo (sous-famille « accounting »).
 TYPE_ODOO = 'odoo'
 
@@ -56,6 +60,7 @@ class OdooJson2Client(BaseProvider):
         try:
             import requests
         except Exception:  # noqa: BLE001
+            logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
             return {'ok': False, 'detail': 'Bibliothèque HTTP indisponible.'}
         body = {
             'db': self.config['db'],
@@ -69,6 +74,7 @@ class OdooJson2Client(BaseProvider):
             data = resp.json() if ok else {}
             return {'ok': ok, 'status': resp.status_code, 'data': data}
         except Exception as exc:  # noqa: BLE001 — réseau/transport.
+            logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
             return {'ok': False, 'detail': f'Erreur réseau : {exc}'}
 
     def push_invoice(self, invoice: dict):

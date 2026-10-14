@@ -25,6 +25,10 @@ from .models import (
     SafetyChecklistSlot, SafetySignoff,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # ── F9 — n° de série par composant → parc installé (sav.Equipement) ──────────
 MESSAGE_SERIE_DOUBLON = (
@@ -85,6 +89,7 @@ def pousser_si_cloturee(intervention, user):
         with transaction.atomic():
             return push_serials_to_parc(intervention, user)
     except Exception:
+        logger.warning("pousser si cloturee : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'ACHT47: poussée immédiate au parc échouée (intervention %s)',
@@ -317,6 +322,7 @@ def overage_threshold_pct(company):
         val = getattr(prof, 'overage_seuil_pct', None)
         return Decimal(str(val)) if val is not None else Decimal('10')
     except Exception:
+        logger.warning("overage threshold pct : échec ignoré, comportement dégradé", exc_info=True)
         return Decimal('10')
 
 

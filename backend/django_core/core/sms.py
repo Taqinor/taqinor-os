@@ -34,6 +34,10 @@ from .integrations import (
     register_provider,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class SmsResult:
     """Résultat normalisé d'un envoi SMS (jamais une exception côté appelant)."""
@@ -90,6 +94,7 @@ class GenericHttpSmsProvider(SmsProvider):
         try:
             import requests  # import paresseux, optionnel
         except Exception:  # noqa: BLE001
+            logger.warning("send : échec ignoré, comportement dégradé", exc_info=True)
             return SmsResult(
                 sent=False, provider=self.code,
                 detail="Bibliothèque HTTP indisponible.")
@@ -112,6 +117,7 @@ class GenericHttpSmsProvider(SmsProvider):
                 detail=f'HTTP {resp.status_code}',
                 message_id=str(resp.headers.get('X-Message-Id', '')))
         except Exception as exc:  # noqa: BLE001 — réseau/transport.
+            logger.warning("send : échec ignoré, comportement dégradé", exc_info=True)
             return SmsResult(
                 sent=False, provider=self.code, detail=f'Erreur réseau : {exc}')
 

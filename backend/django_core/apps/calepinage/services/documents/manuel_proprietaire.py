@@ -40,6 +40,10 @@ from html import escape
 
 from ..rapport import RapportRefuse
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'CODE_DOCUMENT', 'GENRE_GABARIT', 'NON_RENSEIGNE', 'ManuelRefuse',
     'MESSAGE_AUCUN_GABARIT_MANUEL', 'VARIABLES_SYSTEME',
@@ -162,6 +166,7 @@ def _designation_modules(calepinage):
     try:
         equipements = equipements_du_calepinage(calepinage) or {}
     except Exception:  # le manuel n'exige pas de devis lié
+        logger.warning("designation modules : échec ignoré, comportement dégradé", exc_info=True)
         return ''
     bloc = equipements.get('panneau') if isinstance(equipements, dict) \
         else None

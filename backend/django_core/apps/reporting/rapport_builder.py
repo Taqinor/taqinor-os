@@ -26,6 +26,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serial
 from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class RapportDefinitionSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     # ENF11 (api-fuzz) — `titre`/`dataset` stricts : un nombre JSON → 400.
@@ -238,6 +242,7 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
                 contenu = workbook_bytes(
                     entetes, lignes, sheet_title=base[:31])
             except Exception:  # pragma: no cover - dépend d'openpyxl
+                logger.warning("export : échec ignoré, comportement dégradé", exc_info=True)
                 return Response(
                     {'detail': "Export xlsx indisponible sur ce serveur : "
                                "réessayez au format csv."},

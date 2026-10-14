@@ -24,6 +24,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import BasePagination, PageNumberPagination
 from rest_framework.response import Response
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ERR-ENF11-FUZZ-PAGE-SIZE (11/10/2026) — le schéma OpenAPI (drf-spectacular)
 # déclare ``page`` et ``page_size`` comme UN entier. DRF avalait en silence
 # toute autre forme (``?page_size=null``, ``?page_size=abc``, paramètre
@@ -103,6 +107,7 @@ def _decode_cursor(cursor: str):
         data = json.loads(raw.decode('utf-8'))
         return data.get('ca'), data.get('id')
     except Exception:  # noqa: BLE001 — curseur corrompu → ignoré (1re page)
+        logger.warning("decode cursor : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 

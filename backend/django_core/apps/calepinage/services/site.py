@@ -53,6 +53,10 @@ import re
 
 from .parametres import ReglageInvalide
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: La section des réglages que ce module porte (CAL45).
 SECTION = 'imagerie'
 
@@ -216,6 +220,7 @@ def _fuseaux_connus():
 
         return available_timezones()
     except Exception:       # pragma: no cover - dépend de l'image
+        logger.warning("fuseaux connus : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -492,6 +497,7 @@ def decalage_utc_minutes(fuseau, moment):
 
         decalage = moment.replace(tzinfo=ZoneInfo(fuseau)).utcoffset()
     except Exception:       # pragma: no cover - dépend de la base installée
+        logger.warning("decalage utc minutes : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if decalage is None:
         return None

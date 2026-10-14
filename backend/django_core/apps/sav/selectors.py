@@ -23,6 +23,10 @@ from .models import (
     TicketSatisfaction,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def reconcile_serials_to_equipements(company, produit_id, serials):
     """Réconcilie une liste de séries reçues à des `sav.Equipement` du parc.
@@ -595,6 +599,7 @@ def pareto_pannes(company, *, group_by='produit', date_debut=None,
                 f = get_fournisseur_by_id(company, fid)
                 nom = getattr(f, 'nom', None) if f else None
             except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.warning("fournisseur for : échec ignoré, comportement dégradé", exc_info=True)
                 nom = None
         fournisseur_cache[pid] = (fid, nom)
         return fid, nom
@@ -759,6 +764,7 @@ def _revenu_contrat_maintenance(contrat):
     try:
         from apps.ventes.models import Facture
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("revenu contrat maintenance : échec ignoré, comportement dégradé", exc_info=True)
         return Decimal('0')
 
     marqueur = f'contrat #{contrat.pk}'
@@ -1554,6 +1560,7 @@ def _jour_ouvre(jour, horaires, extra_holidays=None):
         from core.calendar import is_holiday
         return not is_holiday(jour, extra_holidays)
     except Exception:  # noqa: BLE001 — calendrier indisponible : jour ouvré.
+        logger.warning("jour ouvre : échec ignoré, comportement dégradé", exc_info=True)
         return True
 
 

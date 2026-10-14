@@ -24,6 +24,10 @@ from django.db import transaction
 from .dates import aujourd_hui_local
 from .models import Dossier, DossierActivity, WorkflowDefinition
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: NTWFL20 — préfixe du ``code`` d'une ``WorkflowDefinition`` associée à un
 #: ``type_dossier``. Une définition ``dossier_onboarding_grand_compte`` est LE
 #: processus des dossiers de ce type. Convention plutôt que table de mapping :
@@ -138,7 +142,7 @@ def _emettre_echeance_depassee(dossier):
             sender='core.dossiers', dossier=dossier,
             company=dossier.company, proprietaire=dossier.proprietaire)
     except Exception:  # pragma: no cover - défensif, jamais bloquant
-        pass
+        logger.warning("emettre echeance depassee : échec ignoré, comportement dégradé", exc_info=True)
 
 
 def notifier_echeances_depassees(company, aujourd_hui=None):

@@ -251,6 +251,7 @@ def _emettre_export_reversibilite_declenche(run, user):
             sender=ExportReversibiliteRun, run=run, company=run.company,
             user=user)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("emettre export reversibilite declenche : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'NTOBS30-reste : émission export_reversibilite_declenche '
@@ -328,6 +329,7 @@ def telecharger_export_reversibilite(request, token):
     try:
         resolu = signed_download.resoudre_lien(token)
     except Exception:  # noqa: BLE001 — jamais une 500 sur un jeton KO
+        logger.warning("telecharger export reversibilite : échec ignoré, comportement dégradé", exc_info=True)
         resolu = None
     if resolu is None:
         raise Http404

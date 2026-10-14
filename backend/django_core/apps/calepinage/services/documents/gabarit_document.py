@@ -47,6 +47,10 @@ from html import escape
 from ..note_calcul import _pied_de_page
 from ..planche import hash_court
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'NOIR', 'GRIS_TEXTE', 'GRIS_TRAIT', 'GRIS_FOND', 'CHARTE_IMPRESSION',
     'CLES_STYLES',
@@ -120,6 +124,7 @@ def _theme_de(company):
 
         return TenantTheme.objects.filter(company=company).first()
     except Exception:  # un logo ne fait jamais tomber une pièce
+        logger.warning("theme de : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -130,6 +135,7 @@ def _defaut_nom_profil():
 
         return CompanyProfile._meta.get_field('nom').default
     except Exception:
+        logger.warning("defaut nom profil : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -154,6 +160,7 @@ def _profil_de(company):
             return {}
         profil = dict(company_identity(company) or {})
     except Exception:
+        logger.warning("profil de : échec ignoré, comportement dégradé", exc_info=True)
         return {}
     nom = (profil.get('nom') or '').strip()
     if nom and nom == _defaut_nom_profil():
@@ -427,6 +434,7 @@ def client_du_calepinage(calepinage):
                     _texte(getattr(lead, 'prenom', '')),
                     _texte(getattr(lead, 'nom', '')))))
     except Exception:  # une garde sans client reste une garde
+        logger.warning("client du calepinage : échec ignoré, comportement dégradé", exc_info=True)
         client = ''
     return client
 

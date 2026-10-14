@@ -171,6 +171,7 @@ class MinioWarehouseDestination(ExportDestinationProvider):
         try:  # pragma: no cover - boto3 est présent en prod comme en CI
             __import__('boto3')  # sonde de disponibilité
         except Exception:
+            logger.warning("is configured : échec ignoré, comportement dégradé", exc_info=True)
             return False
         return True
 
@@ -185,12 +186,13 @@ class MinioWarehouseDestination(ExportDestinationProvider):
             try:
                 client.head_bucket(Bucket=bucket)
             except Exception:
+                logger.warning("deliver : échec ignoré, comportement dégradé", exc_info=True)
                 try:
                     client.create_bucket(Bucket=bucket)
                 except Exception:
                     # Course entre deux workers : le bucket peut avoir été créé
                     # entre-temps — le dépôt ci-dessous tranchera.
-                    pass
+                    logger.warning("deliver : échec ignoré, comportement dégradé", exc_info=True)
             client.put_object(Bucket=bucket, Key=key, Body=data or b'',
                               ContentType=content_type or 'text/csv')
         except Exception as exc:  # noqa: BLE001 — jamais d'exception remontée
@@ -286,6 +288,7 @@ class SnowflakeDestination(ExportDestinationProvider):
         try:
             __import__('snowflake.connector')  # sonde de disponibilité
         except Exception:
+            logger.warning("is configured : échec ignoré, comportement dégradé", exc_info=True)
             return False
         return True
 
@@ -543,6 +546,7 @@ def _to_parquet(rows):
         import pyarrow as pa
         import pyarrow.parquet as pq
     except Exception:
+        logger.warning("to parquet : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if not rows:  # pragma: no cover
         return None
@@ -663,6 +667,7 @@ def _champ_cron(champ, borne_max, borne_min=0):
     try:
         return crontab_parser(borne_max + 1 - borne_min, borne_min).parse(champ)
     except Exception:  # noqa: BLE001 — une expression fautive n'est jamais due
+        logger.warning("champ cron : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 

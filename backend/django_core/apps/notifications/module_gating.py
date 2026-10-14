@@ -16,6 +16,10 @@ from __future__ import annotations
 
 from .types_evenements import EventType
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 EVENT_MODULE = {
     # crm
     EventType.LEAD_ASSIGNED: 'crm',
@@ -100,4 +104,5 @@ def event_module_disabled(event_type, company) -> bool:
         from core.feature_flags import module_actif
         return not module_actif(company, module)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("event module disabled : échec ignoré, comportement dégradé", exc_info=True)
         return False

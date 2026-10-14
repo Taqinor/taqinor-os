@@ -44,6 +44,10 @@ from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser, MultiPartParser
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Types MIME acceptés pour une photo de visite. ``records.storage`` valide
 #: déjà les octets magiques et la taille (10 Mo) ; on restreint en plus aux
 #: IMAGES — un PDF n'est pas une photo de toit.
@@ -664,6 +668,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         except Exception:  # pragma: no cover - courtier indisponible
             # Sans courtier, on exécute en ligne plutôt que de laisser la
             # visite bloquée « en cours » pour toujours.
+            logger.warning("assembler photos : échec ignoré, comportement dégradé", exc_info=True)
             assembler_photos_toit_task(visite.pk)
         visite.refresh_from_db()
         return self._agregat(visite)

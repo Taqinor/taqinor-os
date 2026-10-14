@@ -27,6 +27,10 @@ from ..services import (
 )
 from . import _openapi as oa
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: ACHT20 — message unique d'une livraison expédiée (lignes et en-tête figés).
 MESSAGE_LIVRAISON_FIGEE = (
     "Livraison expédiée : annulez-la puis recréez-la.")
@@ -226,7 +230,7 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     numero_suivi=liv.numero_suivi,
                 )
             except Exception:  # pragma: no cover - défensif, best-effort
-                pass
+                logger.warning("livrer : échec ignoré, comportement dégradé", exc_info=True)
             # ACHT19 — notification + webhook « livrée » : une seule fois.
             liv.notifie_livree_le = timezone.now()
             liv.save(update_fields=['notifie_livree_le'])
@@ -242,7 +246,7 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         try:
             contre_transferer_stock_livraison(liv, request.user)
         except Exception:  # pragma: no cover - défensif, best-effort
-            pass
+            logger.warning("annuler : échec ignoré, comportement dégradé", exc_info=True)
         return self._set_statut(request, Livraison.Statut.ANNULEE)
 
     @oa.extend_schema(

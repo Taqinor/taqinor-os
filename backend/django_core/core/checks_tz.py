@@ -48,6 +48,10 @@ from zoneinfo import ZoneInfo
 
 from django.core.checks import Error, Tags, Warning as CheckWarning, register
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Le fuseau métier — le même nom que ``settings.TIME_ZONE`` et que
 #: ``core.dates.FUSEAU_METIER``, mais sans dépendre de leur valeur : ce module
 #: vérifie la BASE DE FUSEAUX, pas le réglage.
@@ -101,6 +105,7 @@ def decalage_maroc(instant=None):
     try:
         fuseau = ZoneInfo(FUSEAU_MAROC)
     except Exception:       # pragma: no cover - dépend de la base installée
+        logger.warning("decalage maroc : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return instant.astimezone(fuseau).utcoffset()
 
@@ -156,6 +161,7 @@ def verifier_heure_legale_postgres(app_configs=None, databases=None, **kwargs):
                 curseur.execute(SQL_TEMOIN)
                 ligne = curseur.fetchone()
         except Exception:   # pragma: no cover - base injoignable : pas notre sujet
+            logger.warning("verifier heure legale postgres : échec ignoré, comportement dégradé", exc_info=True)
             continue
         observe = ligne[0] if ligne else None
         if isinstance(observe, _dt.datetime):

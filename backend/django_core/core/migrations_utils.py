@@ -45,6 +45,10 @@ import time
 from django.contrib.postgres.operations import AddIndexConcurrently
 from django.db import migrations, models
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 #: Délai d'attente d'un verrou pendant la construction d'un index concurrent.
 #: Échouer vite vaut mieux que geler la base — mais uniquement PENDANT cette
@@ -87,7 +91,7 @@ class _AddIndexConcurrentlyBorne(AddIndexConcurrently):
                 try:
                     schema_editor.execute('RESET lock_timeout;')
                 except Exception:  # noqa: BLE001 — ne masque jamais l'erreur
-                    pass                                     # d'origine
+                    logger.warning("database forwards : échec ignoré, comportement dégradé", exc_info=True)
 
 
 def concurrent_index_migration(app_label, dependencies, model_name, fields,

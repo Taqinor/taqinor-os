@@ -230,7 +230,7 @@ def _request_id_garanti(context) -> str:
             try:
                 cible.request_id = request_id
             except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-                pass
+                logger.warning("request id garanti : échec ignoré, comportement dégradé", exc_info=True)
     return request_id
 
 
@@ -322,7 +322,7 @@ def _rate_limit_headers_for(exc, context):
                 'X-RateLimit-Remaining': '0',
             }
     except Exception:  # noqa: BLE001 — advisory headers, never break the 429
-        pass
+        logger.warning("rate limit headers for : échec ignoré, comportement dégradé", exc_info=True)
     return {}
 
 

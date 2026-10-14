@@ -369,6 +369,6 @@ class WhatsAppBspWebhookView(View):
                 try:
                     marqueur.delete()
                 except Exception:
-                    pass
+                    logger.warning("capture and route : échec ignoré, comportement dégradé", exc_info=True)
             logger.warning(
                 "Webhook BSP WhatsApp : routage SAV echoue : %s", exc)

@@ -51,6 +51,10 @@ sans parcelle saisie, schéma unifilaire non encore produit) est rapportée dans
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'PackRefuse', 'CABINET', 'DOSSIER', 'SPEC_PIECES', 'compter_pages',
     'construire_pack',
@@ -110,6 +114,7 @@ def compter_pages(octets_pdf):
     try:
         document = fitz.open(stream=octets_pdf, filetype='pdf')
     except Exception:  # un PDF illisible n'a pas de pages
+        logger.warning("compter pages : échec ignoré, comportement dégradé", exc_info=True)
         return 0
     try:
         return document.page_count

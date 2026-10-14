@@ -21,6 +21,10 @@ from __future__ import annotations
 
 from typing import Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 DEFAULT_LOCALE = 'fr'
 
 
@@ -54,6 +58,7 @@ def translated_value(
             object_id=str(instance.pk), locale=locale, field=field,
         ).first()
     except Exception:  # noqa: BLE001 — lecture best-effort, jamais bloquant
+        logger.warning("translated value : échec ignoré, comportement dégradé", exc_info=True)
         return raw_value
 
     if translation is None or not translation.value:

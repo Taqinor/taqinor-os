@@ -36,6 +36,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
 from drf_spectacular.utils import inline_serializer
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _co(user):
     """Filtre company (kwargs dict) ou None si l'utilisateur n'a pas accès."""
@@ -246,6 +250,7 @@ def _time_to_first_touch(co, leads, start, end, LeadActivity):
             uid = a.get('user_id') or owner_of.get(lid) or 0
             per_owner.setdefault(uid, []).append(delta)
     except Exception:  # noqa: BLE001 — métrique best-effort
+        logger.warning("time to first touch : échec ignoré, comportement dégradé", exc_info=True)
         return {'avg_minutes': None, 'sample_count': 0, 'by_seller': []}
 
     def _avg(vals):

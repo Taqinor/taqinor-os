@@ -43,6 +43,10 @@ from html import escape
 
 from django.conf import settings
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = ['render_pdf', 'branded_header_html', 'branded_footer_html']
 
 
@@ -190,10 +194,11 @@ def _upload_pdf(pdf_bytes, key, bucket):
     try:
         client.head_bucket(Bucket=bucket)
     except Exception:
+        logger.warning("upload pdf : échec ignoré, comportement dégradé", exc_info=True)
         try:
             client.create_bucket(Bucket=bucket)
         except Exception:
-            pass
+            logger.warning("upload pdf : échec ignoré, comportement dégradé", exc_info=True)
     client.put_object(
         Bucket=bucket, Key=key, Body=pdf_bytes,
         ContentType='application/pdf')

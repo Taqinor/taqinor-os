@@ -12,6 +12,10 @@ from __future__ import annotations
 
 import re
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: CAL45 — les sections de réglages, dans l'ordre du contrat publié
 #: (``contract_samples/parametres_calepinage.json``). Source unique de la FORME
 #: rendue : l'endpoint, l'écran et les tests lisent la même liste.
@@ -742,6 +746,7 @@ def entree_electrique_du_devis(devis_id, company):
                                          calepinage=calepinage)
             module_specs = (materiel or {}).get('module') or None
         except Exception:  # sans fiche, pas de NOCT
+            logger.warning("entree electrique du devis : échec ignoré, comportement dégradé", exc_info=True)
             module_specs = None
         site = temperatures_pour_calepinage(
             calepinage, saisie=donnees, module_specs=module_specs)
@@ -750,6 +755,7 @@ def entree_electrique_du_devis(devis_id, company):
                             'chaud_c': float(site.chaud_c),
                             'source': site.source}
     except Exception:  # saisie incohérente : pas de source
+        logger.warning("entree electrique du devis : échec ignoré, comportement dégradé", exc_info=True)
         temperatures = None
 
     def _longueur(cle):

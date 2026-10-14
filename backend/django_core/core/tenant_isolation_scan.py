@@ -291,6 +291,7 @@ def _model_has_company(model) -> bool:
     try:
         return any(f.name == "company" for f in model._meta.get_fields())
     except Exception:  # noqa: BLE001 — modèle exotique : hors périmètre
+        _logger.warning("model has company : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 
@@ -413,6 +414,7 @@ def detail_get_actions(view_class, limit=3) -> list[str]:
     try:
         extra = view_class.get_extra_actions()
     except Exception:  # noqa: BLE001 — vue exotique : aucune action exercée
+        _logger.warning("detail get actions : échec ignoré, comportement dégradé", exc_info=True)
         return []
     chemins = []
     for action in extra:

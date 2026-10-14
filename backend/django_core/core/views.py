@@ -115,6 +115,10 @@ from .serializers import (
     WorkflowTemplateSerializer,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _q(nom, type_, description, required=False, **kw):
     """ENF8 — paramètre de requête lu par la vue."""
@@ -1212,6 +1216,7 @@ class BulkEditViewSet(viewsets.ViewSet):
         try:
             target = (self.request.data or {}).get('target')
         except Exception:  # noqa: BLE001 — corps illisible → palier par défaut
+            logger.warning("get permissions : échec ignoré, comportement dégradé", exc_info=True)
             target = None
         # ERR-ENF11-FUZZ-CORE — une cible non texte (liste…) levait TypeError
         # ici (500) : seule une chaîne est cherchée dans le registre.
@@ -1941,6 +1946,7 @@ def metrics_view(request):
         try:
             auth_result = CookieJWTAuthentication().authenticate(request)
         except Exception:  # noqa: BLE001 — jeton absent/invalide → non-admin
+            logger.warning("metrics view : échec ignoré, comportement dégradé", exc_info=True)
             auth_result = None
         if auth_result is not None:
             user, _token = auth_result

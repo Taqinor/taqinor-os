@@ -25,6 +25,10 @@ from .qualification import (  # noqa: F401
     conseil, devis_a_reprendre, jours_avant_rappel, phrase, rappel_explicite,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _visite_url_photo(attachment_id):
     """URL du proxy Django qui sert une pièce jointe (jamais MinIO direct)."""
@@ -275,6 +279,7 @@ def _visite_devis(lead):
         return devis_lecture_seule_pour_lead(lead)
     except Exception:  # pragma: no cover - défensif : un devis illisible ne
         # doit jamais empêcher le commercial d'ouvrir sa visite sur le terrain.
+        logger.warning("visite devis : échec ignoré, comportement dégradé", exc_info=True)
         return []
 
 

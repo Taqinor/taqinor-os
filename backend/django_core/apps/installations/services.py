@@ -33,6 +33,7 @@ def default_installer_for(company):
         prof = CompanyProfile.get(company)
         return prof.default_installer if prof else None
     except Exception:
+        logger.warning("default installer for : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -56,6 +57,7 @@ def methode_reservation_stock(company):
         return getattr(prof, 'methode_reservation_stock', 'confirmation') \
             if prof else 'confirmation'
     except Exception:  # pragma: no cover - défensif
+        logger.warning("methode reservation stock : échec ignoré, comportement dégradé", exc_info=True)
         return 'confirmation'
 
 
@@ -448,6 +450,7 @@ def _devis_bon_commande(devis):
     try:
         return devis.bon_commande
     except Exception:
+        logger.warning("devis bon commande : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -552,6 +555,7 @@ def _freeze_bom(devis):
         from apps.ventes.utils.options import option_lines
         lignes = option_lines(devis)
     except Exception:
+        logger.warning("freeze bom : échec ignoré, comportement dégradé", exc_info=True)
         return bom
     # ERR-QAC-MULTIVILLA-MATERIEL-XN — devis ×N villas : les lignes décrivent
     # UNE villa, le chantier en installe N (N=1 → inchangé).
@@ -1055,11 +1059,11 @@ def _notifier_chantier_assigne(inst, technicien):
                     technicien, EventType.CHANTIER_ASSIGNE, titre,
                     body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning("envoyer : échec ignoré, comportement dégradé", exc_info=True)
 
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("notifier chantier assigne : échec ignoré, comportement dégradé", exc_info=True)
 
 
 # ── N14 — Réservation de stock sur chantier → consommation à « Installé » ─────
@@ -1901,6 +1905,7 @@ def compute_chantier_cout(installation, tarif_jour=None):
             total_ht = _dec(devis.total_ht)
             total_ttc = _dec(devis.total_ttc)
         except Exception:  # pragma: no cover - défensif
+            logger.warning("compute chantier cout : échec ignoré, comportement dégradé", exc_info=True)
             total_ht = None
 
     marge = None
@@ -3224,6 +3229,7 @@ def _reglage_recette(company, champ):
         from apps.parametres.models import CompanyProfile
         return getattr(CompanyProfile.get(company), champ, None)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("reglage recette : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -3858,6 +3864,7 @@ def alerter_penurie_assemblage(ordre):
         from apps.notifications.services import notify_many, resolve_recipients
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("alerter penurie assemblage : échec ignoré, comportement dégradé", exc_info=True)
         return
     manquants = [d for d in disponibilite_par_ligne(ordre)
                  if d['statut'] != 'disponible']
@@ -3872,7 +3879,7 @@ def alerter_penurie_assemblage(ordre):
         notify_many(recipients, EventType.STOCK_LOW, titre, body=corps,
                     company=ordre.company)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("alerter penurie assemblage : échec ignoré, comportement dégradé", exc_info=True)
 
 
 # ── XMFG6 — Composants personnalisables par ordre (kit sur-mesure) ───────────
@@ -4292,6 +4299,7 @@ def _log_transition_statut_chatter(instance, ancien, nouveau, *, user=None):
             instance, 'statut', ancien, nouveau, user=user,
             field_label='Statut')
     except Exception:  # best-effort, jamais bloquant
+        logger.warning("log transition statut chatter : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P44 : journal chatter de transition échoué (%s %s)',
@@ -4389,6 +4397,7 @@ def emettre_demande_achat_approuvee(demande, *, user=None):
             user=user,
             montant_estime=getattr(demande, 'montant_estime', None))
     except Exception:  # best-effort, jamais bloquant
+        logger.warning("emettre demande achat approuvee : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P38 : émission demande_achat_approuvee échouée (demande %s)',
@@ -4676,6 +4685,7 @@ def _notifier_intervention_assignee(interv, user):
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("notifier intervention assignee : échec ignoré, comportement dégradé", exc_info=True)
         return
     if not interv.technicien_id:
         return
@@ -4694,11 +4704,11 @@ def _notifier_intervention_assignee(interv, user):
                 notify(destinataire, EventType.INTERVENTION_ASSIGNEE, titre,
                        body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning("envoyer : échec ignoré, comportement dégradé", exc_info=True)
 
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("notifier intervention assignee : échec ignoré, comportement dégradé", exc_info=True)
 
 
 def _notifier_reassignation(interv, user):
@@ -4716,6 +4726,7 @@ def _notifier_reassignation(interv, user):
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("notifier reassignation : échec ignoré, comportement dégradé", exc_info=True)
         return
     if not interv.technicien_id:
         return
@@ -4733,11 +4744,11 @@ def _notifier_reassignation(interv, user):
                 notify(destinataire, EventType.INTERVENTION_REPLANIFIEE,
                        titre, body=corps, link=lien, company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning("envoyer : échec ignoré, comportement dégradé", exc_info=True)
 
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("notifier reassignation : échec ignoré, comportement dégradé", exc_info=True)
 
 
 # ── XMFG16 — Assemblage sous-traité (façon) avec suivi des composants confiés
@@ -5260,6 +5271,7 @@ def verifier_gate_acompte_planification(installation):
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.get(company)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("verifier gate acompte planification : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if not getattr(profil, 'exiger_acompte_avant_planification', False):
         return None
@@ -5776,6 +5788,7 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
             effets['rappel_solde'] = notifier_reception_solde_a_facturer(
                 installation, user)
         except Exception:  # pragma: no cover - défensif
+            logger.warning("changer statut chantier : échec ignoré, comportement dégradé", exc_info=True)
             effets['rappel_solde'] = None
     effets['stock'] = _apply_stock_statut_effects(
         installation, canon_old, canon_new, user)
@@ -5867,6 +5880,7 @@ def verifier_securite_avant_demarrage(intervention, nouveau_statut):
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.get(company)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("verifier securite avant demarrage : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if not getattr(profil, 'securite_obligatoire_avant_demarrage', False):
         return None
@@ -5960,6 +5974,7 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
             with _tx.atomic():
                 field_capture.push_serials_to_parc(intervention, user)
         except Exception:
+            logger.warning("changer statut intervention : échec ignoré, comportement dégradé", exc_info=True)
             import logging
             logging.getLogger(__name__).warning(
                 'ACHT37: poussée des séries au parc échouée (intervention %s)',
@@ -6034,6 +6049,7 @@ def _notifier_intervention_annulee(interv, user):
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("notifier intervention annulee : échec ignoré, comportement dégradé", exc_info=True)
         return
     destinataires = set()
     if interv.technicien_id:
@@ -6041,7 +6057,7 @@ def _notifier_intervention_annulee(interv, user):
     try:
         destinataires.update(interv.equipe.all())
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("notifier intervention annulee : échec ignoré, comportement dégradé", exc_info=True)
     titre = f"Intervention annulée — chantier {interv.installation.reference}"
     # CHT9 — sa propre clé (INTERVENTION_ANNULEE), plus l'emprunt de
     # CHANTIER_DUE, + lien réel (lisible depuis CHT8).
@@ -6054,7 +6070,7 @@ def _notifier_intervention_annulee(interv, user):
                      'sera pas réalisée.',
                 link=lien, company=interv.company)
         except Exception:  # pragma: no cover - défensif
-            pass
+            logger.warning("notifier intervention annulee : échec ignoré, comportement dégradé", exc_info=True)
 
 
 def reactiver_interventions_annulees(installation, user):
@@ -6123,7 +6139,7 @@ def notifier_jalon_a_facturer(jalon, user=None):
             link=f'/chantiers?id={installation.id}',
             company=jalon.company)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning("notifier jalon a facturer : échec ignoré, comportement dégradé", exc_info=True)
     jalon.rappel_facturation_envoye = True
     jalon.save(update_fields=['rappel_facturation_envoye'])
     return True
@@ -6383,6 +6399,7 @@ def _quantite_emplacement(produit, emplacement_id):
             if ligne.get('emplacement_id') == emplacement_id:
                 return ligne.get('quantite')
     except Exception:  # pragma: no cover - défensif, lecture d'appoint
+        logger.warning("quantite emplacement : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return 0
 
@@ -7125,6 +7142,8 @@ def _notifier_prochaine_etape_approbation_achat(demande):
             link='/approbations?source=installations',
             company=demande.company, reason=reason)
     except Exception:  # jamais bloquant
+        logger.warning(
+            "notifier prochaine etape approbation achat : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P45: notification étape suivante échouée (demande %s)',

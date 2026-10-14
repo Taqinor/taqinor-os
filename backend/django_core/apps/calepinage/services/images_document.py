@@ -117,7 +117,7 @@ def _decoder_fichier(fichier):
         try:
             fichier.seek(0)
         except Exception:  # flux non rembobinable, lu une fois
-            pass
+            logger.warning("decoder fichier : échec ignoré, comportement dégradé", exc_info=True)
         return bytes(octets), (getattr(fichier, 'name', '') or '')
     if isinstance(fichier, (bytes, bytearray)):
         return bytes(fichier), ''

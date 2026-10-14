@@ -30,6 +30,7 @@ def casablanca_today():
         from zoneinfo import ZoneInfo
         return timezone.now().astimezone(ZoneInfo(CASABLANCA_TZ)).date()
     except Exception:  # pragma: no cover - zoneinfo absent (très improbable)
+        logger.warning("casablanca today : échec ignoré, comportement dégradé", exc_info=True)
         return timezone.localdate()
 
 
@@ -215,6 +216,7 @@ def _notifier_meteo_risque(interv):
         from apps.notifications.services import notify
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.warning("notifier meteo risque : échec ignoré, comportement dégradé", exc_info=True)
         return
     responsable = getattr(interv.installation, 'technicien_responsable', None)
     if responsable is None:
@@ -231,7 +233,7 @@ def _notifier_meteo_risque(interv):
                  "envisager une replanification.",
             company=interv.company)
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("notifier meteo risque : échec ignoré, comportement dégradé", exc_info=True)
 
 
 # ── AUD231 — ZFSM3 : la prestation périodique SANS contrat de maintenance ───
@@ -280,6 +282,7 @@ def _deja_notifie_aujourdhui(event_type, titre, recipient=None):
             qs = qs.filter(recipient=recipient)
         return qs.exists()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("deja notifie aujourdhui : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 
@@ -399,6 +402,7 @@ def _seuil_purge_brouillon_jours(company):
         modele = django_apps.get_model('stock', 'AchatsParametres')
         params = modele.objects.filter(company=company).first()
     except Exception:  # pragma: no cover - app stock absente/non migrée
+        logger.warning("seuil purge brouillon jours : échec ignoré, comportement dégradé", exc_info=True)
         return PURGE_BROUILLON_JOURS_DEFAUT
     return _normaliser_seuil_purge(
         getattr(params, 'purge_brouillon_jours', None))

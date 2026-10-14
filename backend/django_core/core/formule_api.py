@@ -42,6 +42,10 @@ from authentication.permissions import IsAnyRole
 from .champs_stricts import ChaineStricte
 from .parseurs import corps_valide
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'FormuleTestView', 'FormuleFonctionsView', 'FormuleValiderView',
     'LIMITE_MAX_LIGNES',
@@ -133,6 +137,7 @@ class FormuleTestView(APIView):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         except Exception:
+            logger.warning("post : échec ignoré, comportement dégradé", exc_info=True)
             return Response(
                 {'detail': 'Impossible de lire ce dataset avec ces filtres.'},
                 status=status.HTTP_400_BAD_REQUEST)

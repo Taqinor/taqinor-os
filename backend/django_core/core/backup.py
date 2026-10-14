@@ -110,6 +110,7 @@ def construire_manifeste(company, user=None, datasets=None):
             qs = ds['provider'](company, user)
             nb = qs.count()
         except Exception as exc:  # noqa: BLE001 — dataset défaillant n'arrête pas
+            logger.warning("construire manifeste : échec ignoré, comportement dégradé", exc_info=True)
             lignes_par_dataset.append(
                 {'name': name, 'label': d['label'], 'erreur': str(exc)})
             continue
@@ -223,6 +224,7 @@ def dump_database(run: BackupRun) -> BackupRun:
                     args, stdout=fh, stderr=subprocess.PIPE, env=env,
                     timeout=3600)
         except Exception as exc:  # noqa: BLE001 — pg_dump introuvable, timeout…
+            logger.warning("dump database : échec ignoré, comportement dégradé", exc_info=True)
             run.statut = BackupRun.STATUT_ECHEC
             run.detail = {'message': f'pg_dump: exception: {exc}'}
             run.save(update_fields=['statut', 'detail', 'updated_at'])
@@ -244,6 +246,7 @@ def dump_database(run: BackupRun) -> BackupRun:
             _ensure_backup_bucket(client)
             client.upload_file(str(dump_path), BACKUP_BUCKET, object_key)
         except Exception as exc:  # noqa: BLE001 — échec upload = échec du run
+            logger.warning("dump database : échec ignoré, comportement dégradé", exc_info=True)
             run.statut = BackupRun.STATUT_ECHEC
             run.detail = {'message': f"Échec de l'upload MinIO: {exc}"}
             run.save(update_fields=['statut', 'detail', 'updated_at'])
@@ -411,6 +414,7 @@ def _top_tenants_live(limit=RESTORE_DRILL_TOP_TENANTS):
                 for company_id, n in cur.fetchall():
                     totals[company_id] = totals.get(company_id, 0) + n
             except Exception:  # noqa: BLE001 — table absente → ignorée
+                logger.warning("top tenants live : échec ignoré, comportement dégradé", exc_info=True)
                 continue
     top = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:limit]
     return dict(top)
@@ -448,6 +452,7 @@ def _tenant_counts_in_restored(cur, company_ids):
             for company_id, n in cur.fetchall():
                 counts[company_id] = counts.get(company_id, 0) + n
         except Exception:  # noqa: BLE001 — dégrade proprement
+            logger.warning("tenant counts in restored : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return counts
 
@@ -526,6 +531,7 @@ def restore_drill(run: BackupRun) -> BackupRun:
             client.download_file(BACKUP_BUCKET, source.object_key,
                                  str(dump_path))
         except Exception as exc:  # noqa: BLE001
+            logger.warning("restore drill : échec ignoré, comportement dégradé", exc_info=True)
             run.statut = BackupRun.STATUT_ECHEC
             run.detail = {'message': f'Échec du téléchargement MinIO: {exc}'}
             run.save(update_fields=['statut', 'detail', 'updated_at'])
@@ -589,6 +595,7 @@ def restore_drill(run: BackupRun) -> BackupRun:
                 finally:
                     conn.close()
             except Exception as exc:  # noqa: BLE001
+                logger.warning("restore drill : échec ignoré, comportement dégradé", exc_info=True)
                 run.statut = BackupRun.STATUT_ECHEC
                 run.detail = {'message': f'Échec des comptages: {exc}'}
                 run.save(update_fields=['statut', 'detail', 'updated_at'])
@@ -755,6 +762,7 @@ def _rpo_planifie_label():
         minute = sorted(schedule.minute)[0] if schedule.minute else 0
         return f'quotidien, {heure:02d}:{minute:02d}'
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("rpo planifie label : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -799,7 +807,7 @@ def resume_sauvegardes(company):
         if profile is not None:
             rto_annonce_heures = profile.rto_annonce_heures
     except Exception:  # noqa: BLE001 — best-effort
-        pass
+        logger.warning("resume sauvegardes : échec ignoré, comportement dégradé", exc_info=True)
 
     return {
         'derniere_sauvegarde': _run_resume(derniere_sauvegarde),
