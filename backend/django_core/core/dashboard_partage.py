@@ -25,7 +25,9 @@ from rest_framework.response import Response
 
 from core.throttling import PublicTokenReadThrottle
 
+from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.mixins import TenantMixin
+from core.serializers import CompanyScopedRelationsMixin
 
 from .models import Dashboard, DashboardPartageInterne, PartageDashboard
 
@@ -100,7 +102,7 @@ class DashboardScopeMixin:
     parce que : (1) elle couvre aussi la MISE À JOUR (un PATCH peut repointer
     un lien public existant vers le dashboard d'un autre tenant, chemin qu'un
     ``perform_create`` laisse ouvert) ; (2) elle produit une erreur de
-    validation DRF standard → **400 explicite par champ**, jamais un 500 ni un
+    validation DRF standard → **erreur explicite par champ**, jamais un 500 ni un
     échec silencieux ; (3) c'est le motif déjà en place dans `core`
     (``WorkflowStepDefinitionSerializer.validate_definition``) ; (4) elle est
     partagée telle quelle par les deux serializers. Tout reste interne à
@@ -108,6 +110,13 @@ class DashboardScopeMixin:
 
     Un superuser PLATEFORME (sans société) n'est pas contraint, exactement
     comme ``TenantMixin.get_queryset`` le laisse tout voir.
+
+    ERR-ENF11-FUZZ-CORE — les sérialiseurs posent désormais AUSSI
+    ``CompanyScopedRelationsMixin`` (``dashboard``/``utilisateur`` bornés à la
+    société) et ``IdInconnu404Mixin`` : un id inexistant OU d'une autre société
+    répond 404 au même corps « objet inexistant » (requête conforme, ressource
+    absente — plus 400, et aucun oracle d'existence). Les ``validate_*``
+    ci-dessous restent une défense en profondeur.
     """
 
     def _request_company_id(self):
@@ -125,8 +134,12 @@ class DashboardScopeMixin:
         return value
 
 
-class PartageDashboardSerializer(DashboardScopeMixin,
+class PartageDashboardSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                 CompanyScopedRelationsMixin,
+                                 DashboardScopeMixin,
                                  serializers.ModelSerializer):
+    """XPLT10 — lien public tokenisé vers un dashboard de la société."""
+
     class Meta:
         model = PartageDashboard
         fields = [
@@ -144,7 +157,7 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     demandée — la ligne DELETE reste disponible via le ModelViewSet standard).
     Bornée à la société : ``company``/``created_by`` sont imposés côté serveur
     dans ``perform_create`` (jamais lus du corps) ET le ``dashboard`` visé est
-    validé company-scope par le serializer (``DashboardScopeMixin`` → 400) —
+    validé company-scope par le serializer (``DashboardScopeMixin`` → 404) —
     sans ce second contrôle, un lien PUBLIC créé sous la société A pouvait
     pointer vers un dashboard de la société B et le servir au monde entier
     (``dashboard_public`` résout par le SEUL jeton)."""
@@ -158,8 +171,13 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
-class DashboardPartageInterneSerializer(DashboardScopeMixin,
+class DashboardPartageInterneSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                        CompanyScopedRelationsMixin,
+                                        DashboardScopeMixin,
                                         serializers.ModelSerializer):
+    """XPLT10 — partage interne d'un dashboard (utilisateur ou rôle,
+    lecture/édition), borné à la société."""
+
     class Meta:
         model = DashboardPartageInterne
         fields = [
@@ -190,7 +208,7 @@ class DashboardPartageInterneViewSet(TenantMixin, viewsets.ModelViewSet):
     ``company`` est imposée côté serveur par ``TenantMixin.perform_create``
     (ce viewset n'a pas de ``perform_create`` propre) ; le ``dashboard`` visé
     et l'``utilisateur`` bénéficiaire sont validés company-scope par le
-    serializer (``DashboardScopeMixin`` → 400)."""
+    serializer (``DashboardScopeMixin`` → 404)."""
     serializer_class = DashboardPartageInterneSerializer
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]  # ENF8 (D2) — aucun upload
