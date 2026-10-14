@@ -328,6 +328,13 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertTrue(corps['file'].startswith(b'%PDF-'))
         self.assertEqual(corps['model'], 'crm.lead')
 
+    def test_portail_documents_client_recoit_un_pdf(self):
+        # CI #997 (3) — le dépôt d'un document du portail exige un vrai fichier.
+        corps = self._corps('POST', '/api/django/portail/documents-client-portail/',
+                            {'fichier': b'', 'client_id': 1})
+        self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
+        self.assertEqual(corps['client_id'], 1)
+
     def _operation_multipart(self, schema):
         corps = types.SimpleNamespace(
             media_type='multipart/form-data', definition={'schema': schema})

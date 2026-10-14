@@ -129,3 +129,23 @@ class DocumentPortailVersMinioTests(TestCase):
             DocumentClientPortail.objects.create(
                 company=self.co, libelle='Sans fichier')
         self.assertFalse(depose.called)
+
+    def test_fichier_nul_refuse_omis_accepte(self):
+        # CI #997 (3) — le dépôt est un formulaire : ``null`` n'y existe pas
+        # (un client l'écrit « None », texte refusé « n'est pas un fichier ») ;
+        # le schéma ne le publie plus, l'absence de fichier = champ OMIS.
+        nul = DocumentClientPortailSerializer(
+            data={'client_id': 0, 'fichier': None})
+        self.assertFalse(nul.is_valid())
+        self.assertIn('fichier', nul.errors)
+        lead_nul = DocumentClientPortailSerializer(
+            data={'client_id': 0, 'lead_id': None})
+        self.assertFalse(lead_nul.is_valid())
+        self.assertIn('lead_id', lead_nul.errors)
+        omis = DocumentClientPortailSerializer(data={'client_id': 0})
+        self.assertTrue(omis.is_valid(), omis.errors)
+        champ = DocumentClientPortailSerializer().fields['fichier']
+        self.assertFalse(champ.allow_null)
+        self.assertFalse(champ.required)
+        self.assertFalse(
+            DocumentClientPortailSerializer().fields['lead_id'].allow_null)

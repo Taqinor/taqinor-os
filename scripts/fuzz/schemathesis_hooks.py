@@ -484,6 +484,10 @@ _FICHIERS_VALIDES = (
     # les octets magiques, inexprimable dans le schéma.
     (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
      {'file': _PDF_MINIMAL}),
+    # CI #997 (3) — dépôt d'un document du portail : le formulaire porte un
+    # fichier ``fichier`` (le serveur lit les octets magiques).
+    (re.compile(r'^/api/django/portail/documents-client-portail/'),
+     {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
