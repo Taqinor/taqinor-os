@@ -1130,7 +1130,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois))
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={XLSX: BINARY})
+    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)],
+                   responses={XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/export-xlsx',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats_export_xlsx(self, request):
@@ -1148,7 +1149,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois)
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={PDF: BINARY})
+    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)],
+                   responses={PDF: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/pdf',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats_pdf(self, request):

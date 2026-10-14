@@ -398,7 +398,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         incrémente `revision`, ré-exige une approbation FG312 si le montant
         augmente au-delà du seuil en vigueur. Corps optionnel :
         ``{"date_commande": "...", "date_livraison_prevue": "...",
-        "note": "...", "lignes": [{"id": <id>, "quantite": ..., "prix_achat_unitaire": ..., "designation": "..."}]}``."""
+        "note": "...", "lignes": [{"id": <id>, "quantite": ..., "prix_achat_unitaire": ..., "designation":
+        "..."}]}``."""
         from ..services import reviser_bcf
         bc = self.get_object()
         try:
