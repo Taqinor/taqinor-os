@@ -8,8 +8,35 @@ compte inactif au-delà du seuil société restait actif indéfiniment.
 import logging
 
 from celery import shared_task
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
+
+# NTDMO25 — progression du wizard démo (compteur cache léger, clé
+# ``demo_wizard_progress:<slug>``) et son exécution. Vivent ICI et non dans
+# ``views_demo_wizard`` : la tâche n'importe plus la couche vue (ENF20 —
+# exception import-linter ``authentication.tasks -> views_demo_wizard``
+# retirée) ; la vue les importe d'ici.
+_CACHE_PREFIX = 'demo_wizard_progress:'
+_CACHE_TTL = 3600
+
+
+def _progress_key(slug):
+    return f'{_CACHE_PREFIX}{slug}'
+
+
+def set_progress(slug, pourcentage, statut='en_cours'):
+    cache.set(_progress_key(slug), {'pourcentage': pourcentage,
+                                    'statut': statut}, _CACHE_TTL)
+
+
+def _run_wizard(slug, profil, densite):
+    """Exécute la commande + trace la progression (0 → 50 → 100)."""
+    from django.core.management import call_command
+    set_progress(slug, 10, 'en_cours')
+    call_command('seed_demo_company', slug=slug, profil=profil,
+                 densite=densite, force=True, verbosity=0)
+    set_progress(slug, 100, 'termine')
 
 
 @shared_task(name='authentication.desactiver_comptes_dormants')
@@ -32,9 +59,7 @@ def seed_demo_company_task(slug, profil='mixte', densite='complet'):
     """NTDMO25 — enveloppe Celery du wizard « Créer ma société de
     démonstration ». Délègue tout à la commande homonyme (mêmes options
     additives ``--profil``/``--densite``) ; la progression est tracée via le
-    cache (``views_demo_wizard.set_progress``)."""
-    from .views_demo_wizard import _run_wizard
-
+    cache (``set_progress`` ci-dessus)."""
     _run_wizard(slug, profil, densite)
     logger.info('authentication.seed_demo_company_wizard: %s (%s/%s) prêt.',
                 slug, profil, densite)
@@ -70,10 +95,11 @@ def purger_societes_demo_expirees_task():
 
     from django.utils import timezone
 
-    from apps.audit import recorder
     from authentication.management.commands.reset_demo_company import (
         _delete_cascading,
     )
+
+    from core import audit_registry
 
     from .models import Company, CustomUser
 
@@ -87,7 +113,9 @@ def purger_societes_demo_expirees_task():
     purged = []
     for company in expirees:
         slug = company.slug
-        recorder.record(
+        # ENF20 — registre d'audit de ``core`` (rempli par apps.audit
+        # ready()) : aucune arête statique authentication.tasks -> apps.audit.
+        audit_registry.record(
             'demo_company_purge', instance=company, company=company,
             user=None, actor_username='celery-beat',
             detail=(f'Société démo "{slug}" purgée automatiquement '

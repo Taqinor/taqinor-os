@@ -55,8 +55,11 @@ def _policy(company):
     if company is None:
         return None
     try:
-        from apps.parametres.models import CompanyProfile
-        return CompanyProfile.objects.filter(company=company).first()
+        # Référence paresseuse par libellé (même patron que cookie_auth) :
+        # aucune arête statique authentication -> apps.parametres (ENF20).
+        from django.apps import apps as django_apps
+        profile_model = django_apps.get_model('parametres', 'CompanyProfile')
+        return profile_model.objects.filter(company=company).first()
     except Exception:
         return None
 
