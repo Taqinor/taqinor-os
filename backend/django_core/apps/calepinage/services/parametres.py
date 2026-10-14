@@ -15,6 +15,8 @@ jamais lue d'un corps de requête.
 """
 from __future__ import annotations
 
+import math
+
 
 class ReglageInvalide(ValueError):
     """Erreur métier : un réglage refusé, avec un message français.
@@ -538,9 +540,87 @@ def _nombre_borne(valeur, cle, libelle, section, declaration):
     return nombre
 
 
+def _est_nombre(valeur):
+    """Un nombre JSON fini — le booléen n'en est pas un."""
+    return (isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
+            and math.isfinite(valeur))
+
+
+def _ecart_a_la_forme(valeur, forme, chemin):
+    """Le premier écart de ``valeur`` à ``forme`` (sous-ensemble de JSON
+    Schema de ``parametres_cles.FORMES_TABLES``), ou ``None``.
+
+    CI #997 fuzz — le serveur refuse ce que le contrat publié refuse : le
+    message NOMME le chemin fautif (``regle_bom_structure.source``,
+    ``lid_par_techno.PERC.pct``, ``indisponibilite_fenetres[0].debut``).
+    """
+    if 'anyOf' in forme:
+        ecarts = [_ecart_a_la_forme(valeur, sous, chemin)
+                  for sous in forme['anyOf']]
+        return None if None in ecarts else ecarts[0]
+    genre = forme.get('type')
+    attendu = {'object': 'un objet', 'array': 'une liste',
+               'number': 'un nombre', 'integer': 'un entier',
+               'string': 'un texte non vide'}.get(genre, 'une valeur lisible')
+    refus = (f'« {chemin} » doit être {attendu} '
+             f'(reçu : {_nom_du_type_recu(valeur)}).')
+    if genre == 'object':
+        if not isinstance(valeur, dict):
+            return refus
+        if len(valeur) < forme.get('minProperties', 0):
+            return f'« {chemin} » ne peut pas être vide.'
+        proprietes = forme.get('properties', {})
+        supplement = forme.get('additionalProperties', True)
+        for nom, sous in valeur.items():
+            if nom in proprietes:
+                ecart = _ecart_a_la_forme(sous, proprietes[nom],
+                                          f'{chemin}.{nom}')
+            elif supplement is False:
+                return (f"« {chemin} » n'admet pas la clé « {nom} » "
+                        f'(admises : {", ".join(proprietes)}).')
+            elif isinstance(supplement, dict):
+                ecart = _ecart_a_la_forme(sous, supplement,
+                                          f'{chemin}.{nom}')
+            else:
+                continue
+            if ecart:
+                return ecart
+        for requis in forme.get('required', ()):
+            if requis not in valeur:
+                return f'« {chemin}.{requis} » est obligatoire.'
+        return None
+    if genre == 'array':
+        if not isinstance(valeur, list):
+            return refus
+        if len(valeur) < forme.get('minItems', 0):
+            return f'« {chemin} » ne peut pas être vide.'
+        for rang, sous in enumerate(valeur):
+            ecart = _ecart_a_la_forme(sous, forme['items'],
+                                      f'{chemin}[{rang}]')
+            if ecart:
+                return ecart
+        return None
+    if genre in ('number', 'integer'):
+        if genre == 'integer':
+            if isinstance(valeur, bool) or not isinstance(valeur, int):
+                return refus
+        elif not _est_nombre(valeur):
+            return refus
+        if not _dans_les_bornes(valeur, forme):
+            return (f'« {chemin} » est hors bornes ({valeur:g} ; '
+                    f'{_bornes_lisibles(forme)}).')
+        return None
+    if genre == 'string':
+        if not isinstance(valeur, str):
+            return refus
+        if len(valeur) < forme.get('minLength', 0):
+            return refus
+    return None
+
+
 def _valeur_typee(valeur, cle, libelle, section):
     """``valeur`` lue dans le type déclaré de ``cle`` — ou le refus nommé."""
-    from .parametres_cles import type_de_cle
+    from .parametres_cles import forme_de_table, type_de_cle
 
     declaration = type_de_cle(section, cle)
     genre = declaration.get('type')
@@ -568,6 +648,11 @@ def _valeur_typee(valeur, cle, libelle, section):
     if genre == 'table':
         if not isinstance(valeur, (dict, list)):
             raise _refus_de_type(valeur, cle, libelle, section, declaration)
+        forme = forme_de_table(section, cle)
+        ecart = _ecart_a_la_forme(valeur, forme, cle) if forme else None
+        if ecart:
+            raise _refus_de_type(valeur, cle, libelle, section, declaration,
+                                 ecart)
         return valeur
     # Clé sans type déclaré : la garde de test l'interdit ; rien n'est deviné.
     return valeur
