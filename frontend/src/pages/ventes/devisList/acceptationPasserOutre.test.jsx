@@ -1,5 +1,4 @@
-/* global process */
-import { describe, it, expect, vi, afterEach, beforeEach, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { screen, within, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -34,12 +33,21 @@ vi.mock('../../../api/crmApi', async (importOriginal) =>
 vi.mock('../../../api/uxviewsApi', async () =>
   (await import('../../../test/devisListMocks.js')).uxviewsApiMock())
 
+// ADEV34 : espion sur la forme unique de la date locale (implémentation réelle
+// par défaut) — le test de la modale vérifie le CÂBLAGE (champ et max = la date
+// locale du helper), l'arithmétique de fuseau vit dans src/lib/dateLocale.test.mjs.
+vi.mock('../../../lib/dateLocale.js', async (importOriginal) => {
+  const m = await importOriginal()
+  return { ...m, todayLocalIso: vi.fn(m.todayLocalIso) }
+})
+
 import DevisList from '../DevisList'
 import ventesApi from '../../../api/ventesApi'
 import { renderListeVentes } from '../../../test/devisListRender.jsx'
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../../ui/dealSignedBus'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 const DEVIS = [{
   id: 515, reference: 'DEV-A15', client_nom: 'ACME', statut: 'envoye',
@@ -152,32 +160,32 @@ describe('VNT80 — acceptation refusée : vente active existante', () => {
   })
 })
 
-// ADEV34 — la date proposée par la modale est la date LOCALE (Africa/Casablanca),
-// bornée à aujourd'hui : à 00:30 au Maroc (23:30 UTC la veille) elle vaut déjà
-// le lendemain UTC. Le refus serveur d'une date future (400 nommant
-// `date_acceptation`) est affiché depuis le CORPS de la réponse.
+// ADEV34 — la date proposée par la modale est la date LOCALE (Africa/Casablanca,
+// via todayLocalIso), bornée à aujourd'hui : à 00:30 au Maroc (23:30 UTC la
+// veille) elle vaut déjà le lendemain UTC. Le refus serveur d'une date future
+// (400 nommant `date_acceptation`) est affiché depuis le CORPS de la réponse.
 describe("ADEV34 — date d'acceptation locale", () => {
-  // La date « locale » est celle du fuseau du processus : on le FIXE à
-  // Africa/Casablanca (UTC+1 en octobre) pour que le test soit le même sur un
-  // poste marocain et sur la CI en UTC.
-  let tzAvant
-  beforeAll(() => {
-    tzAvant = process.env.TZ
-    process.env.TZ = 'Africa/Casablanca'
+  // Le décalage réel de Casablanca dépend de la base tz du runtime (Node/ICU du
+  // poste ≠ runner CI) : l'arithmétique de fuseau est prouvée dans le test pur
+  // du helper (src/lib/dateLocale.test.mjs). Ici, la date locale du helper est
+  // FIXÉE au lendemain de l'instant UTC : la modale doit l'utiliser pour le champ
+  // ET le max — la forme UTC naïve (toISOString().slice(0, 10)) donnerait la veille.
+  const reelle = todayLocalIso.getMockImplementation()
+  afterEach(() => {
+    vi.useRealTimers()
+    todayLocalIso.mockImplementation(reelle)
   })
-  afterAll(() => {
-    if (tzAvant === undefined) delete process.env.TZ
-    else process.env.TZ = tzAvant
-  })
-  afterEach(() => { vi.useRealTimers() })
 
   it("à 23:30 UTC la veille : champ = date locale du jour, max = aujourd'hui", () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-10-07T23:30:00Z'))
+    todayLocalIso.mockImplementation(() => '2026-10-08')
     ouvrir('admin')
     const champ = screen.getByLabelText("Date d'acceptation")
+    expect(new Date().toISOString().slice(0, 10)).toBe('2026-10-07')
     expect(champ.value).toBe('2026-10-08')
     expect(champ.getAttribute('max')).toBe('2026-10-08')
+    expect(todayLocalIso).toHaveBeenCalled()
   })
 
   it('400 date_acceptation future : le message du corps est affiché', async () => {
