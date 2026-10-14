@@ -191,7 +191,7 @@ class TestReception(ProcurementBase):
             f'/api/django/stock/bons-commande-fournisseur/{bon.id}/recevoir/',
             {'receptions': [{'ligne': ligne.id, 'quantite': 1}]},
             format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
         produit.refresh_from_db()
         self.assertEqual(produit.quantite_stock, 3)  # inchangé
 

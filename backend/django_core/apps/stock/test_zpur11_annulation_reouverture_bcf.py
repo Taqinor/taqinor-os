@@ -4,7 +4,7 @@ Couvre :
   * annuler sans motif → 400 (refusé) ;
   * annuler avec motif → tracé (motif_annulation + chatter horodaté/acteur) ;
   * un BCF annulé SANS réception confirmée se rouvre en brouillon ;
-  * un BCF ayant des réceptions confirmées refuse la réouverture (400) ;
+  * un BCF ayant des réceptions confirmées refuse la réouverture (409) ;
   * permission : rôle standard reçoit 403 sur annuler/rouvrir.
 
 Run:
@@ -135,7 +135,7 @@ class TestReouverture(Zpur11Base):
         bc = self._annuler(bc)
         url = f'/api/django/stock/bons-commande-fournisseur/{bc.id}/rouvrir/'
         resp = self.api.post(url, {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         bc.refresh_from_db()
         self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.ANNULE)
 
@@ -143,7 +143,7 @@ class TestReouverture(Zpur11Base):
         bc = self._bcf()
         url = f'/api/django/stock/bons-commande-fournisseur/{bc.id}/rouvrir/'
         resp = self.api.post(url, {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
 
 class TestPermissions(Zpur11Base):

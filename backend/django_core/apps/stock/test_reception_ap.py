@@ -176,7 +176,7 @@ class TestReceptionFournisseur(G5Base):
             {'bon_commande': foreign_bon.id,
              'lignes': [{'ligne_commande': foreign_ligne.id, 'quantite': 1}]},
             format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
 
     def test_other_tenant_cannot_read_reception(self):
         produit = make_produit(self.company, 'REC-F', stock=0)

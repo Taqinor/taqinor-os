@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..erreurs_achats import EtatIncompatible, IntrouvableMetier
-from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, P, PDF, STR, corps
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import Fournisseur, BonCommandeFournisseur, ReceptionFournisseur
@@ -104,7 +104,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     def _refus_approbation(bc):
         """YPROC4/ASTK22 — garde d'approbation par palier (FG312) commune à
         TOUS les gestes qui envoient un BCF brouillon au fournisseur
-        (`envoyer`, `envoyer-email`, `whatsapp`). Renvoie une Response 400
+        (`envoyer`, `envoyer-email`, `whatsapp`). Renvoie une Response 409
         (même message partout) ou None. Sans seuil configuré, le sélecteur
         renvoie True : comportement strictement inchangé. Import paresseux
         (précédent : stock.services.reserved_quantity)."""
@@ -122,7 +122,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 f"approbation au palier « {palier} » est requise avant "
                 'envoi (le montant a peut-être augmenté depuis une '
                 'approbation existante).')},
-            status=status.HTTP_400_BAD_REQUEST,
+            status=status.HTTP_409_CONFLICT,
         )
 
     def _mark_bcf_envoye(self, bc):
@@ -390,7 +390,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                       date_livraison_prevue=serializers.DateField(required=False, allow_null=True),
                       note=serializers.CharField(required=False, allow_blank=True),
                       lignes=serializers.ListField(child=serializers.DictField(), required=False)),
-        responses=BonCommandeFournisseurSerializer)
+        responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='reviser')
     def reviser(self, request, pk=None):
         """XPUR18 — SEUL chemin de modification d'un BCF déjà ENVOYE/RECU :
@@ -410,6 +410,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     'date_livraison_prevue'),
                 note=request.data.get('note'),
             )
+        except EtatIncompatible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -448,14 +451,14 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet._attach_prix_warnings "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
 
-    @extend_schema(request=None, responses=BonCommandeFournisseurSerializer)
+    @extend_schema(request=None, responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='envoyer')
     def envoyer(self, request, pk=None):
         bc = self.get_object()
         if bc.statut != BonCommandeFournisseur.Statut.BROUILLON:
             return Response(
                 {'detail': 'Seul un BCF en brouillon peut être envoyé.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # YPROC4 — l'approbation par palier (FG312) doit BLOQUER l'envoi :
         # sans seuil configuré pour la société, comportement strictement
@@ -470,14 +473,14 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(bc).data)
 
     @extend_schema(request=corps('BcfAnnulerCorps', motif_annulation=serializers.CharField()),
-                   responses=BonCommandeFournisseurSerializer)
+                   responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
         bc = self.get_object()
         if bc.statut == BonCommandeFournisseur.Statut.RECU:
             return Response(
                 {'detail': 'Un BCF entièrement reçu ne peut pas être annulé.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # ZPUR11 — motif OBLIGATOIRE (400 si vide), tracé horodaté + acteur.
         motif = (request.data.get('motif_annulation') or '').strip()
@@ -504,17 +507,17 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         data['cascade'] = detail_cascade
         return Response(data)
 
-    @extend_schema(request=None, responses=BonCommandeFournisseurSerializer)
+    @extend_schema(request=None, responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='rouvrir')
     def rouvrir(self, request, pk=None):
         """ZPUR11 — réouvre un BCF ANNULE en BROUILLON (jamais si des
-        réceptions CONFIRME existent — refus explicite 400). Journalise la
+        réceptions CONFIRME existent — refus explicite 409). Journalise la
         réouverture (chatter, acteur + horodatage)."""
         bc = self.get_object()
         if bc.statut != BonCommandeFournisseur.Statut.ANNULE:
             return Response(
                 {'detail': 'Seul un BCF annulé peut être réouvert.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         if bc.receptions.filter(
                 statut=ReceptionFournisseur.Statut.CONFIRME).exists():
@@ -522,7 +525,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': (
                     'Ce BCF a des réceptions confirmées : impossible de le '
                     'réouvrir.')},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         bc.statut = BonCommandeFournisseur.Statut.BROUILLON
         bc.save(update_fields=['statut'])
@@ -533,8 +536,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(bc).data)
 
     @extend_schema(
-        request=corps('BcfConfirmerCorps', date_confirmee_fournisseur=serializers.DateField(required=False,
-                                                                                            allow_null=True),
+        request=corps('BcfConfirmerCorps', date_confirmee_fournisseur=serializers.DateField(),
                       numero_confirmation_fournisseur=serializers.CharField(required=False, allow_blank=True)),
         responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer')
@@ -549,6 +551,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         if not date_confirmee:
             return Response(
                 {'detail': 'date_confirmee_fournisseur est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            date_confirmee = serializers.DateField().to_internal_value(
+                date_confirmee)
+        except serializers.ValidationError:
+            return Response(
+                {'detail': 'date_confirmee_fournisseur : date AAAA-MM-JJ attendue.'},
                 status=status.HTTP_400_BAD_REQUEST)
         bc.date_confirmee_fournisseur = date_confirmee
         bc.numero_confirmation_fournisseur = (
@@ -647,7 +656,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(en_retard, many=True).data)
 
     @extend_schema(request=corps('BcfRecevoirCorps', receptions=serializers.ListField(child=serializers.DictField())),
-                   responses=BonCommandeFournisseurSerializer)
+                   responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='recevoir')
     def recevoir(self, request, pk=None):
         """Réception (totale ou partielle) — incrémente le stock par ENTREE.
@@ -679,7 +688,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     'Seul un BCF envoyé (non encore entièrement reçu) '
                     'peut recevoir des quantités.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
 
         receptions = request.data.get('receptions') or []
@@ -751,7 +760,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         if not plan:
             return Response(
                 {'detail': 'Rien à recevoir (quantités déjà reçues).'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
 
         from django.utils import timezone
@@ -779,6 +788,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 # destination, YPROC* GR/IR + réservation, NTWMS34 qualité,
                 # XSTK6 lots) : la confirmation de réception.
                 confirm_reception_fournisseur(reception, request.user)
+        except EtatIncompatible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -859,7 +871,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(
             self.get_serializer(cible).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=None, responses={201: FactureFournisseurSerializer})
+    @extend_schema(request=None, responses={201: FactureFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='facturer')
     def facturer(self, request, pk=None):
         """ZPUR1 — facture DIRECTEMENT ce BCF depuis ses lignes « sur
@@ -873,6 +885,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             facture = facturer_bcf_sur_commande(
                 company=request.user.company, user=request.user,
                 bon_commande=bc)
+        except EtatIncompatible as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
