@@ -101,3 +101,12 @@ class PertesServiesTest(TestCase):
         self.assertEqual(servi['pertes'], publie['pertes'])
         self.assertEqual([p['poste'] for p in servi['pertes']],
                          ['iam', 'salissure'])
+
+    def test_corps_formulaire_refuse_415_pas_400_trompeur(self):
+        # CI #997 fuzz : le schéma ne déclare que du JSON (liste d'objets) ;
+        # un corps `pertes=a&pertes=b` n'est pas « une requête valide refusée ».
+        reponse = self.api.post(
+            f'{BASE}{self.calepinage.pk}/enregistrer-pertes/',
+            'pertes=poste&pertes=mensuel',
+            content_type='application/x-www-form-urlencoded')
+        self.assertEqual(reponse.status_code, 415, reponse.content[:300])
