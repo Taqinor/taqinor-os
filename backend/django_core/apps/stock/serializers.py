@@ -1551,7 +1551,12 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
     def get_fields(self):
         # ASTK10 (D-ASTK-2) — prix d'achat retirés sans `prix_achat_voir`
         # (patron PrixFournisseurSerializer, AUD213).
-        fields = super().get_fields()
+        # CI #997 fuzz — `prix_achat_unitaire_devise` nullable : le serveur lisait
+        # "" comme null alors que le schéma l'excluait ; DecimalStricte publie "".
+        fields = {**super().get_fields(), 'prix_achat_unitaire_devise': DecimalStricte(
+            max_digits=12, decimal_places=2, required=False, allow_null=True,
+            help_text=LigneBonCommandeFournisseur._meta.get_field(
+                'prix_achat_unitaire_devise').help_text)}
         if not _peut_voir_montants_achat(_user_du_contexte(self)):
             for nom in CHAMPS_PRIX_ACHAT_LIGNE_BCF:
                 fields.pop(nom, None)
