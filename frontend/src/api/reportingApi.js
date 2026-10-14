@@ -110,7 +110,7 @@ const reportingApi = {
       items, decision, motif,
     }),
   // XPLT6 — CRUD des alertes de seuil sur KPI agrégés.
-  listKpiAlertes: () => api.get('/reporting/kpi-alertes/'),
+  listKpiAlertes: (params) => api.get('/reporting/kpi-alertes/', { params }),
   createKpiAlerte: (data) => api.post('/reporting/kpi-alertes/', data),
   updateKpiAlerte: (id, data) => api.patch(`/reporting/kpi-alertes/${id}/`, data),
   deleteKpiAlerte: (id) => api.delete(`/reporting/kpi-alertes/${id}/`),

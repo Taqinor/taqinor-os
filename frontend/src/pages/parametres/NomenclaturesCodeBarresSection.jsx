@@ -12,6 +12,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import toutesLesPages from './toutesLesPages'
 
 const TYPES = [
   { value: 'default', label: 'Défaut (EAN/UPC)' },
@@ -117,8 +118,8 @@ export default function NomenclaturesCodeBarresSection() {
   const [busy, setBusy] = useState(false)
 
   const reload = () => {
-    stockApi.getNomenclaturesCodeBarres()
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    toutesLesPages((params) => stockApi.getNomenclaturesCodeBarres(params))
+      .then(setItems)
       .catch(() => setError('Chargement des nomenclatures impossible.'))
       .finally(() => setLoading(false))
   }

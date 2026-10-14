@@ -234,7 +234,7 @@ const coreApi = {
   confidentialite: {
     // Registre des traitements CNDP — CRUD complet + export CSV.
     registreTraitements: {
-      list: () => api.get('/core/registre-traitements/'),
+      list: (params) => api.get('/core/registre-traitements/', { params }),
       create: (data) => api.post('/core/registre-traitements/', data),
       update: (id, data) => api.patch(`/core/registre-traitements/${id}/`, data),
       remove: (id) => api.delete(`/core/registre-traitements/${id}/`),
@@ -244,7 +244,7 @@ const coreApi = {
     // Demandes de personnes concernées (accès/effacement/rectification) —
     // soumission + suivi + exécution (`traiter`, gérée par core.dsr).
     dsrRequests: {
-      list: () => api.get('/core/dsr-requests/'),
+      list: (params) => api.get('/core/dsr-requests/', { params }),
       create: (data) => api.post('/core/dsr-requests/', data),
       traiter: (id) => api.post(`/core/dsr-requests/${id}/traiter/`),
     },

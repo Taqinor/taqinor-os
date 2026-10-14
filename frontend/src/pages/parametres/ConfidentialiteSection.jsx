@@ -28,6 +28,7 @@ import {
   SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import toutesLesPages from './toutesLesPages'
 import { ChargementTexte, ErreurChargementListe } from './EtatsSection'
 
 const KIND_LABELS = {
@@ -48,8 +49,8 @@ function RegistreTraitements() {
   const [draft, setDraft] = useState({ code: '', finalite: '', base_legale: '' })
   const [busy, setBusy] = useState(false)
 
-  const load = () => coreApi.confidentialite.registreTraitements.list()
-    .then((r) => { setRows(r.data.results ?? r.data ?? []); setLoadError(false) })
+  const load = () => toutesLesPages((params) => coreApi.confidentialite.registreTraitements.list(params))
+    .then((rows) => { setRows(rows); setLoadError(false) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 
@@ -171,8 +172,8 @@ function DsrRequests() {
   const [busy, setBusy] = useState(false)
   const [traitingId, setTraitingId] = useState(null)
 
-  const load = () => coreApi.confidentialite.dsrRequests.list()
-    .then((r) => { setRows(r.data.results ?? r.data ?? []); setLoadError(false) })
+  const load = () => toutesLesPages((params) => coreApi.confidentialite.dsrRequests.list(params))
+    .then((rows) => { setRows(rows); setLoadError(false) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 
@@ -290,8 +291,8 @@ function ConsentRecords() {
   const [draft, setDraft] = useState({ subject_identifier: '', purpose: '', version_texte: '' })
   const [busy, setBusy] = useState(false)
 
-  const load = () => api.get('/core/consent-records/')
-    .then((r) => { setRows(r.data?.results ?? r.data ?? []); setLoadError(false) })
+  const load = () => toutesLesPages((params) => api.get('/core/consent-records/', { params }))
+    .then((rows) => { setRows(rows); setLoadError(false) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 

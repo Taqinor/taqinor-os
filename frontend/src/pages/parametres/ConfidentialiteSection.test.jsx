@@ -117,7 +117,7 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     renderWithRole('admin')
 
     expect(await screen.findByText('prospect@x.ma')).toBeInTheDocument()
-    expect(axiosGet).toHaveBeenCalledWith('/core/consent-records/')
+    expect(axiosGet).toHaveBeenCalledWith('/core/consent-records/', { params: { page: 1 } })
     const ligne = screen.getByTestId('consent-row')
     expect(ligne).toHaveTextContent('marketing')
     expect(ligne).toHaveTextContent('Donné')

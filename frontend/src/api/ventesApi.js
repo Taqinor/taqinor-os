@@ -553,7 +553,7 @@ const ventesApi = {
   // Fiche de remise / garantie après-vente PREMIUM pour un chantier.
   getFicheRemisePremiumPdf: (chantierId) =>
     api.get(`/ventes/chantiers/${chantierId}/fiche-remise-premium/`, { responseType: 'blob' }),
-  getNiveauxRelance: () => api.get('/ventes/niveaux-relance/'),
+  getNiveauxRelance: (params) => api.get('/ventes/niveaux-relance/', { params }),
   saveNiveauRelance: (id, data) => id
     ? api.patch(`/ventes/niveaux-relance/${id}/`, data)
     : api.post('/ventes/niveaux-relance/', data),

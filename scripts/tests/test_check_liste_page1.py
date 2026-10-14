@@ -296,6 +296,17 @@ class PagesTests(Depot):
         code, out = self._main()
         self.assertEqual(code, 0, out)
 
+    def test_ecran_qui_pagine_lui_meme_accepte(self):
+        """ENF15 : `page` envoyé ET `count` lu (total + pager) = pas la page 1 silencieuse."""
+        pagine = PAGE1.replace(
+            "api.get('/portail/comptes/')", "api.get('/portail/comptes/', { params: { ...f, page } })"
+        ).replace("setRows(r.data?.results ?? [])", "setRows(r.data?.results ?? []); setTotal(r.data.count)")
+        self._monter({"sav/Pagine.jsx": pagine, "sav/Liste.jsx": PAGE1}, dossier="pages")
+        code, out = self._main()
+        self.assertEqual(code, 1, out)
+        self.assertIn("pages/sav/Liste.jsx", out)
+        self.assertNotIn("Pagine.jsx", out)
+
     def test_cle_morte_echoue(self):
         cle = "frontend/src/pages/sav/Liste.jsx::charger"
         self._monter({"sav/Liste.jsx": TOUTES_LES_PAGES}, allow=cle + chr(10),

@@ -17,7 +17,7 @@ const publicapiApi = {
   ocrToCrm: (payload) => api.post('/publicapi/ocr-to-crm/', payload),
 
   // ── Clés API ──
-  getKeys: () => api.get('/publicapi/keys/'),
+  getKeys: (params) => api.get('/publicapi/keys/', { params }),
   createKey: (data) => api.post('/publicapi/keys/', data), // → { ...key, key }
   revokeKey: (id) => api.post(`/publicapi/keys/${id}/revoke/`),
   deleteKey: (id) => api.delete(`/publicapi/keys/${id}/`),
@@ -26,7 +26,7 @@ const publicapiApi = {
     api.post(`/publicapi/keys/${id}/rotate/`, grace_jours ? { grace_jours } : {}),
 
   // ── Webhooks ──
-  getWebhooks: () => api.get('/publicapi/webhooks/'),
+  getWebhooks: (params) => api.get('/publicapi/webhooks/', { params }),
   createWebhook: (data) => api.post('/publicapi/webhooks/', data), // → { ...hook, secret }
   updateWebhook: (id, data) => api.patch(`/publicapi/webhooks/${id}/`, data),
   rotateWebhookSecret: (id) => api.post(`/publicapi/webhooks/${id}/rotate_secret/`),

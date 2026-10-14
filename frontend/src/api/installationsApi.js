@@ -35,9 +35,9 @@ const installationsApi = {
   prononcerReceptionDefinitive: (id) =>
     api.post(`/installations/chantiers/${id}/reception-definitive/`, {}),
   // N4 — étapes modèle de checklist (Paramètres → Chantiers).
-  getChecklistEtapes: (templateId) =>
+  getChecklistEtapes: (templateId, params) =>
     api.get('/installations/checklist-etapes/',
-      templateId ? { params: { template: templateId } } : undefined),
+      templateId || params ? { params: { ...(templateId ? { template: templateId } : {}), ...params } } : undefined),
   saveChecklistEtape: (id, data) => id
     ? api.patch(`/installations/checklist-etapes/${id}/`, data)
     : api.post('/installations/checklist-etapes/', data),
@@ -51,7 +51,7 @@ const installationsApi = {
   deleteChecklistTemplate: (id) => api.delete(`/installations/checklist-templates/${id}/`),
 
   // CH1/CH5 — étapes/gates configurables du cycle de vie chantier (Directeur).
-  getStagesChantier: () => api.get('/installations/etapes-chantier/'),
+  getStagesChantier: (params) => api.get('/installations/etapes-chantier/', { params }),
   saveStageChantier: (id, data) => id
     ? api.patch(`/installations/etapes-chantier/${id}/`, data)
     : api.post('/installations/etapes-chantier/', data),
@@ -209,7 +209,7 @@ const installationsApi = {
   deleteShotlistSlot: (id) => api.delete(`/installations/shotlist-slots/${id}/`),
 
   // Types d'intervention gérés (Paramètres → Chantiers). Types système protégés.
-  getTypesIntervention: () => api.get('/installations/types-intervention/'),
+  getTypesIntervention: (params) => api.get('/installations/types-intervention/', { params }),
   saveTypeIntervention: (id, data) => id
     ? api.patch(`/installations/types-intervention/${id}/`, data)
     : api.post('/installations/types-intervention/', data),
