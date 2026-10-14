@@ -25,12 +25,14 @@ class PickList(models.Model):
         TERMINE = 'termine', 'Terminé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_picklists')
     reference = models.CharField(max_length=50)
     installation = models.ForeignKey(
-        'installations.Installation', on_delete=models.CASCADE,  # on_delete: PickList est le détail de Installation — n'existe pas sans lui
+        'installations.Installation',
+        on_delete=models.CASCADE,  # on_delete: PickList est le détail de Installation — n'existe pas sans lui
         related_name='picklists')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EMIS)
@@ -66,7 +68,9 @@ class PickListLigne(models.Model):
     suivent l'exécution."""
 
     pick_list = models.ForeignKey(
-        PickList, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de PickList — n'existe pas sans son document parent
+        PickList,
+        on_delete=models.CASCADE,  # on_delete: ligne de PickList — n'existe pas sans son document parent
+        related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True,

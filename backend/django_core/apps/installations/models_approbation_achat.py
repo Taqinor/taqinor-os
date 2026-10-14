@@ -65,13 +65,19 @@ class RegleApprobationAchat(TenantModel):
         help_text='Borne haute incluse. Vide = pas de borne haute.')
     # Périmètre OPTIONNEL : une règle peut ne viser qu'un chantier ou un
     # programme. Même app → FK directe (aucune frontière franchie).
+    # CASCADE — une règle CIBLÉE sur un chantier n'a aucun sens sans lui : le chantier supprimé, la règle
+    # disparaît (les étapes déjà instanciées gardent leur trace, `EtapeApprobationAchat.regle` est SET_NULL)
     chantier = models.ForeignKey(
-        'installations.Installation', on_delete=models.CASCADE,  # on_delete: CASCADE — une règle CIBLÉE sur un chantier n'a aucun sens sans lui : le chantier supprimé, la règle disparaît (les étapes déjà instanciées gardent leur trace, `EtapeApprobationAchat.regle` est SET_NULL)
+        'installations.Installation',
+        on_delete=models.CASCADE,  # on_delete: CASCADE — règle CIBLÉE sur un chantier : sans objet sans lui
         null=True, blank=True,
         related_name='regles_approbation_achat',
         verbose_name='Chantier (optionnel)')
+    # CASCADE — symétrique de `chantier` ci-dessus : une règle ciblée sur un programme supprimé n'a plus de
+    # périmètre
     programme = models.ForeignKey(
-        'installations.Projet', on_delete=models.CASCADE,  # on_delete: CASCADE — symétrique de `chantier` ci-dessus : une règle ciblée sur un programme supprimé n'a plus de périmètre
+        'installations.Projet',
+        on_delete=models.CASCADE,  # on_delete: CASCADE — symétrique de `chantier` (règle ciblée sur un programme)
         null=True, blank=True,
         related_name='regles_approbation_achat',
         verbose_name='Programme (optionnel)')
@@ -164,8 +170,11 @@ class EtapeApprobationAchat(TenantModel):
         APPROUVE = 'approuve', 'Approuvée'
         REJETE = 'rejete', 'Rejetée'
 
+    # CASCADE — une étape d'approbation est une PARTIE de sa demande (comme une ligne) : elle n'a aucune
+    # existence propre, aucune écriture comptable n'en dépend
     demande = models.ForeignKey(
-        'installations.DemandeAchat', on_delete=models.CASCADE,  # on_delete: CASCADE — une étape d'approbation est une PARTIE de sa demande (comme une ligne) : elle n'a aucune existence propre, aucune écriture comptable n'en dépend
+        'installations.DemandeAchat',
+        on_delete=models.CASCADE,  # on_delete: CASCADE — étape = PARTIE de sa demande (comme une ligne)
         related_name='etapes_approbation',
         verbose_name="Demande d'achat")
     regle = models.ForeignKey(

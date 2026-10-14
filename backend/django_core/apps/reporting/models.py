@@ -44,10 +44,12 @@ class SavedReport(models.Model):
         MONTHLY = 'monthly', 'Mensuel'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='saved_reports')
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: auteur informatif du rapport — le rapport reste partageable sans lui
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: auteur informatif du rapport — le rapport reste partageable sans lui
         null=True, blank=True, related_name='saved_reports')
     name = models.CharField(max_length=255)
     # Paramètres du rapport (période/filtres). Forme libre, défaut objet vide.
@@ -358,7 +360,7 @@ class DashboardConfig(models.Model):
     # NULL → config de palier de rôle ; non-NULL → config per-user.
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (DashboardConfig) — sans objet sans lui
+        on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur — sans objet sans lui
         null=True,
         blank=True,
         related_name='reporting_dashboard_configs',
@@ -499,7 +501,8 @@ class KpiAlerte(models.Model):
         ANOMALIE = 'anomalie', "Écart à l'habitude (z-score)"
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_kpi_alertes')
     nom = models.CharField(max_length=120, blank=True, default='')
     # NTJUR48 — élargi 30 → 40 : ``juridique_delai_moyen_resolution`` fait 32
@@ -633,10 +636,12 @@ class Classeur(models.Model):
     ``ClasseurPartageInterne`` plus bas)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_classeurs')
     proprietaire = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (Classeur) — sans objet sans lui
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (Classeur) — sans objet sans lui
         null=True, blank=True, related_name='reporting_classeurs',
         help_text='Vide = classeur de société (non personnel).')
     titre = models.CharField(max_length=160, default='Classeur sans titre')
@@ -674,7 +679,8 @@ class ApprobationSlaConfig(models.Model):
     DEFAULT_SLA_JOURS = 3
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='approbation_sla_config')
     sla_jours = models.PositiveIntegerField(
         default=DEFAULT_SLA_JOURS,
@@ -710,12 +716,16 @@ class ClasseurPartageInterne(models.Model):
         EDITION = 'edition', 'Édition'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_classeur_partages_internes')
     classeur = models.ForeignKey(
-        Classeur, on_delete=models.CASCADE, related_name='partages_internes')  # on_delete: ClasseurPartageInterne est le détail de Classeur — n'existe pas sans lui
+        Classeur,
+        on_delete=models.CASCADE,  # on_delete: ClasseurPartageInterne est le détail de Classeur — n'existe pas sans lui
+        related_name='partages_internes')
     utilisateur = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (ClasseurPartageInterne) — sans objet sans lui
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur — sans objet sans lui
         null=True, blank=True,
         related_name='reporting_classeur_partages_recus')
     role = models.CharField(max_length=20, blank=True, default='')
@@ -763,7 +773,8 @@ class WebVitalMetric(TenantModel):
         POOR = 'poor', 'Mauvais'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         related_name='reporting_web_vitals')
     utilisateur = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -816,9 +827,11 @@ class RapportDefinition(TenantModel):
         PRIVE = 'prive', 'Privé'
         SOCIETE = 'societe', 'Société'
 
+    # même politique que core.SavedQuery (le sibling direct) — un rapport PERSONNEL disparaît avec son
+    # propriétaire ; jamais SET_NULL (dé-scoperait silencieusement la ligne)
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,  # on_delete: même politique que core.SavedQuery (le sibling direct) — un rapport PERSONNEL disparaît avec son propriétaire ; jamais SET_NULL (dé-scoperait silencieusement la ligne)
+        on_delete=models.CASCADE,  # on_delete: même politique que core.SavedQuery — suit son propriétaire
         null=True, blank=True, related_name='rapport_definitions',
         verbose_name='Propriétaire',
         help_text='Vide = rapport de société (non personnel).')
@@ -875,9 +888,11 @@ class RapportAbonnement(TenantModel):
         SANS_DESTINATAIRE = 'sans_destinataire', 'Aucun destinataire'
         ERREUR = 'erreur', 'Erreur'
 
+    # un abonnement n'existe QUE pour son rapport (composition) ; supprimer le rapport supprime ses
+    # abonnements
     rapport_def = models.ForeignKey(
         'reporting.RapportDefinition',
-        on_delete=models.CASCADE,  # on_delete: un abonnement n'existe QUE pour son rapport (composition) ; supprimer le rapport supprime ses abonnements
+        on_delete=models.CASCADE,  # on_delete: composition : abonnement propre à son rapport, part avec lui
         related_name='abonnements', verbose_name='Rapport')
     cron = models.CharField(
         'Planification (cron)', max_length=120, blank=True, default='',
@@ -917,11 +932,13 @@ class JetonCalendrier(TenantModel):
     restent valides jusqu'à leur expiration, aucune coupure au déploiement).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: la version de jeton n'a pas de sens hors de la société de l'utilisateur
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: la version de jeton n'a pas de sens hors de la société de l'utilisateur
         null=True, blank=True, related_name='jetons_calendrier',
         verbose_name='Société')  # SCA4 : TenantModel, company redéclarée (superutilisateur sans société)
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: composition — la version appartient à l'utilisateur
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: composition — la version appartient à l'utilisateur
         related_name='jeton_calendrier')
     version = models.PositiveIntegerField(default=0)
 

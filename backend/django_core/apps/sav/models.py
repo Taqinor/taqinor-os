@@ -54,7 +54,8 @@ class SavSlaSettings(models.Model):
     comportement d'aujourd'hui inchangé.
     """
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='sav_sla_settings')
     sla_response_days = models.PositiveIntegerField(default=1)
     sla_resolution_days = models.PositiveIntegerField(default=7)
@@ -257,7 +258,8 @@ class MaintenanceChecklistTemplate(models.Model):
     automatiquement. Additif — aucune migration destructive.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='maintenance_checklist_templates')
     nom = models.CharField(max_length=120)
     actif = models.BooleanField(default=True)
@@ -275,10 +277,12 @@ class MaintenanceChecklistTemplate(models.Model):
 class MaintenanceChecklistItem(models.Model):
     """Étape d'un modèle de checklist de maintenance (FG82)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='maintenance_checklist_items')
     template = models.ForeignKey(
-        MaintenanceChecklistTemplate, on_delete=models.CASCADE,  # on_delete: étape/élément de MaintenanceChecklistTemplate — n'existe pas sans lui
+        MaintenanceChecklistTemplate,
+        on_delete=models.CASCADE,  # on_delete: étape/élément de MaintenanceChecklistTemplate — n'existe pas sans lui
         related_name='items')
     cle = models.CharField(max_length=60)
     libelle = models.CharField(max_length=180)
@@ -304,11 +308,13 @@ class CategorieEquipement(models.Model):
     Batteries…), parité Odoo « Equipment Categories ». Taxonomie de PARC,
     transverse aux produits — à ne pas confondre avec `stock.Produit`."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='categories_equipement')
     nom = models.CharField(max_length=120)
     responsable = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: responsable informatif — la catégorie survit à son départ
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: responsable informatif — la catégorie survit à son départ
         null=True, blank=True, related_name='categories_equipement_dirigees')
     commentaire = models.TextField(blank=True, default='')
     # ── ZMFG7 — Alias e-mail → création auto de demande ─────────────────────
@@ -356,7 +362,8 @@ class Equipement(models.Model):
         HORS_SERVICE = 'hors_service', 'Hors service'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='equipements',
     )
     # ── ZMFG2 — Catégorie de parc (optionnelle, taxonomie transverse aux
@@ -570,10 +577,12 @@ class ReleveCompteurEquipement(models.Model):
         M3 = 'm3', 'm³'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='releves_compteur_equipement')
     equipement = models.ForeignKey(
-        'sav.Equipement', on_delete=models.CASCADE,  # on_delete: ReleveCompteurEquipement est le détail de Equipement — n'existe pas sans lui
+        'sav.Equipement',
+        on_delete=models.CASCADE,  # on_delete: détail de Equipement — n'existe pas sans lui
         related_name='releves_compteur')
     type = models.CharField(max_length=10, choices=Type.choices)
     valeur = models.DecimalField(max_digits=12, decimal_places=2)
@@ -607,14 +616,16 @@ class EquipeMaintenance(models.Model):
     Membres validés MÊME SOCIÉTÉ à l'écriture (côté serializer) — un membre
     d'une autre société est refusé."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='equipes_maintenance')
     nom = models.CharField(max_length=120)
     membres = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True,
         related_name='equipes_maintenance')
     responsable = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: chef d'équipe informatif — l'équipe survit à son départ
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: chef d'équipe informatif — l'équipe survit à son départ
         null=True, blank=True, related_name='equipes_maintenance_dirigees')
     actif = models.BooleanField(default=True)
     # ── NTSRV8 — Capacité (nombre de tickets OUVERTS simultanés) ────────────
@@ -677,7 +688,8 @@ class Ticket(models.Model):
         A_DETERMINER = 'a_determiner', 'À déterminer'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='tickets_sav',
     )
     reference = models.CharField(max_length=50)
@@ -1077,8 +1089,8 @@ class Ticket(models.Model):
 
     def _contrat_couvrant(self, today=None):
         """AUD502 — contrat de maintenance du client qui COUVRE réellement à
-        la date de référence (ASAV4 : l'ouverture du ticket ; défaut : jour) : le plus récent parmi les contrats actifs ET non
-        expirés au-delà de la grâce (``ContratMaintenance.est_actif``).
+        la date de référence (ASAV4 : l'ouverture du ticket ; défaut : jour) : le plus récent parmi les contrats
+        actifs ET non expirés au-delà de la grâce (``ContratMaintenance.est_actif``).
 
         Avant AUD502, seul le drapeau ``actif`` était testé : un contrat mort
         depuis des mois (``duree_mois`` échu) continuait d'être sélectionné et
@@ -1227,10 +1239,13 @@ class TicketChecklistItem(models.Model):
     Rendu dans le PDF de rapport d'intervention (maintenance). Miroir de
     l'Item du template, mais copié au niveau du ticket pour historisation."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ticket_checklist_items')
     ticket = models.ForeignKey(
-        Ticket, on_delete=models.CASCADE, related_name='checklist_items')  # on_delete: étape/élément de Ticket — n'existe pas sans lui
+        Ticket,
+        on_delete=models.CASCADE,  # on_delete: étape/élément de Ticket — n'existe pas sans lui
+        related_name='checklist_items')
     # Clé de l'étape (depuis le template, pour identification stable).
     cle = models.CharField(max_length=60)
     libelle = models.CharField(max_length=180)
@@ -1285,11 +1300,14 @@ class TicketActivity(models.Model):
     ]
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ticket_activities',
     )
     ticket = models.ForeignKey(
-        Ticket, on_delete=models.CASCADE, related_name='activites')  # on_delete: historique/chatter de Ticket — suit son objet
+        Ticket,
+        on_delete=models.CASCADE,  # on_delete: historique/chatter de Ticket — suit son objet
+        related_name='activites')
     kind = models.CharField(max_length=15, choices=Kind.choices)
     field = models.CharField(max_length=100, blank=True, null=True)
     field_label = models.CharField(max_length=150, blank=True, null=True)
@@ -1341,10 +1359,13 @@ class TicketActiviteAFaire(models.Model):
         RAPPEL = 'rappel', 'Rappel'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ticket_activites_a_faire')
     ticket = models.ForeignKey(
-        'sav.Ticket', on_delete=models.CASCADE, related_name='activites_a_faire')  # on_delete: historique/chatter de Ticket — suit son objet
+        'sav.Ticket',
+        on_delete=models.CASCADE,  # on_delete: historique/chatter de Ticket — suit son objet
+        related_name='activites_a_faire')
     type = models.CharField(max_length=10, choices=Type.choices)
     titre = models.CharField(max_length=200)
     echeance = models.DateField()
@@ -1387,12 +1408,16 @@ class TicketFollower(models.Model):
     PLUS du technicien assigné. Toute note chatter/transition notifie les
     suiveurs (via `notify()`, mute-aware)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ticket_followers')
     ticket = models.ForeignKey(
-        'sav.Ticket', on_delete=models.CASCADE, related_name='followers')  # on_delete: TicketFollower est le détail de Ticket — n'existe pas sans lui
+        'sav.Ticket',
+        on_delete=models.CASCADE,  # on_delete: TicketFollower est le détail de Ticket — n'existe pas sans lui
+        related_name='followers')
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur (TicketFollower) — sans objet sans lui
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: donnée personnelle de l'utilisateur — sans objet sans lui
         related_name='tickets_suivis')
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -1434,7 +1459,8 @@ class WarrantyClaim(models.Model):
         REFUSE = 'refuse', 'Refusé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='warranty_claims')
     equipement = models.ForeignKey(
         Equipement, on_delete=models.PROTECT, related_name='warranty_claims')
@@ -1495,7 +1521,8 @@ class KbArticle(models.Model):
     Aucun prix d'achat ni information sensible n'y figure.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='kb_articles')
     titre = models.CharField(max_length=200)
     corps = models.TextField()
@@ -1545,7 +1572,8 @@ class ContratMaintenance(models.Model):
     MONTHS = {'mensuel': 1, 'trimestriel': 3, 'semestriel': 6, 'annuel': 12}
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='contrats_maintenance')
     client = models.ForeignKey(
         'crm.Client', on_delete=models.PROTECT,
@@ -1930,7 +1958,8 @@ class AlarmeOnduleur(models.Model):
         ESCALADEE = 'escaladee', 'Escaladée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='alarmes_onduleur')
     # L'appareil concerné, si connu. SET_NULL : pas de perte de l'alarme.
     equipement = models.ForeignKey(
@@ -1989,10 +2018,13 @@ class TicketSatisfaction(models.Model):
     collectés côté client.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='ticket_satisfactions')
     ticket = models.OneToOneField(
-        Ticket, on_delete=models.CASCADE, related_name='satisfaction')  # on_delete: TicketSatisfaction est le détail de Ticket — n'existe pas sans lui
+        Ticket,
+        on_delete=models.CASCADE,  # on_delete: TicketSatisfaction est le détail de Ticket — n'existe pas sans lui
+        related_name='satisfaction')
     note = models.PositiveSmallIntegerField(
         help_text='Note de satisfaction 1 (très insatisfait) à 5 (très satisfait).')
     commentaire = models.TextField(blank=True, default='')
@@ -2044,7 +2076,8 @@ class CauseDefaillance(models.Model):
     modes de défaillance. Même patron que `crm.Canal`/`crm.MotifPerte` :
     liste plate, scopée société, éditable dans Paramètres, additive."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='causes_defaillance')
     nom = models.CharField(max_length=150)
     ordre = models.PositiveIntegerField(default=0)
@@ -2066,7 +2099,8 @@ class RemedeDefaillance(models.Model):
     Codifie le REMÈDE apporté à la résolution (ex. « Remplacement pièce »,
     « Reparamétrage », « Nettoyage »). Même patron que `CauseDefaillance`."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='remedes_defaillance')
     nom = models.CharField(max_length=150)
     ordre = models.PositiveIntegerField(default=0)
@@ -2096,7 +2130,8 @@ class ReponseType(models.Model):
     quand posé, l'insertion applique aussi ce changement de statut sur le
     ticket (aucun changement si vide — comportement actuel inchangé)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='reponses_type')
     titre = models.CharField(max_length=150)
     corps = models.TextField()
@@ -2200,10 +2235,14 @@ class PieceConsommee(models.Model):
     (MouvementStock SORTIE) ; `stock_decremente` évite tout double mouvement.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='pieces_sav')
+    # pièces consommées d'un ticket SAV — suivent le ticket (mouvements de stock tracés à part)
     ticket = models.ForeignKey(
-        Ticket, on_delete=models.CASCADE, related_name='pieces')  # on_delete: pièces consommées d'un ticket SAV — suivent le ticket (mouvements de stock tracés à part)
+        Ticket,
+        on_delete=models.CASCADE,  # on_delete: pièces du ticket SAV — suivent le ticket
+        related_name='pieces')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT, related_name='pieces_sav')
     quantite = models.DecimalField(
@@ -2245,10 +2284,13 @@ class EquipementDowntime(models.Model):
     en contrainte DB (Django ne supporte pas nativement les contraintes
     d'exclusion de plage sans une extension Postgres dédiée)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='downtimes_equipement')
     equipement = models.ForeignKey(
-        'sav.Equipement', on_delete=models.CASCADE, related_name='downtimes')  # on_delete: EquipementDowntime est le détail de Equipement — n'existe pas sans lui
+        'sav.Equipement',
+        on_delete=models.CASCADE,  # on_delete: EquipementDowntime est le détail de Equipement — n'existe pas sans lui
+        related_name='downtimes')
     debut = models.DateTimeField()
     fin = models.DateTimeField(null=True, blank=True)
     ticket = models.ForeignKey(
@@ -2298,13 +2340,16 @@ class CompatibilitePiece(models.Model):
     supersession (pièce A remplacée par B, elle-même par C…) quand un
     fournisseur discontinue une référence."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='compatibilites_piece')
     produit_equipement = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: CompatibilitePiece est le détail de Produit — n'existe pas sans lui
+        'stock.Produit',
+        on_delete=models.CASCADE,  # on_delete: CompatibilitePiece est le détail de Produit — n'existe pas sans lui
         related_name='pieces_compatibles')
     piece = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: CompatibilitePiece est le détail de Produit — n'existe pas sans lui
+        'stock.Produit',
+        on_delete=models.CASCADE,  # on_delete: CompatibilitePiece est le détail de Produit — n'existe pas sans lui
         related_name='equipements_compatibles')
     note = models.CharField(max_length=255, blank=True, default='')
     # Chaîne de supersession : la pièce qui remplace CETTE pièce (référence
@@ -2361,10 +2406,13 @@ class PieceRetiree(models.Model):
         RECYCLAGE = 'recyclage', 'Recyclage'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='pieces_retirees_sav')
     ticket = models.ForeignKey(
-        Ticket, on_delete=models.CASCADE, related_name='pieces_retirees')  # on_delete: PieceRetiree est le détail de Ticket — n'existe pas sans lui
+        Ticket,
+        on_delete=models.CASCADE,  # on_delete: PieceRetiree est le détail de Ticket — n'existe pas sans lui
+        related_name='pieces_retirees')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
         related_name='pieces_retirees_sav')
@@ -2425,10 +2473,13 @@ class PretEquipement(models.Model):
         RETOURNE = 'retourne', 'Retourné'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='prets_equipement')
     ticket = models.ForeignKey(
-        Ticket, on_delete=models.CASCADE, related_name='prets_equipement')  # on_delete: PretEquipement est le détail de Ticket — n'existe pas sans lui
+        Ticket,
+        on_delete=models.CASCADE,  # on_delete: PretEquipement est le détail de Ticket — n'existe pas sans lui
+        related_name='prets_equipement')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
         related_name='prets_equipement_sav')
@@ -2483,7 +2534,8 @@ class CategorieTicket(models.Model):
     ``RemedeDefaillance`` (XSAV14) : liste plate, scopée société, éditable
     dans Paramètres, additive."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='categories_ticket')
     libelle = models.CharField(max_length=150)
     ordre = models.PositiveIntegerField(default=0)
@@ -2519,7 +2571,8 @@ class WorksheetMaintenanceModele(models.Model):
         TOUS = 'tous', 'Tous types'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='worksheet_maintenance_modeles')
     nom = models.CharField(max_length=150)
     type_ticket_applicable = models.CharField(

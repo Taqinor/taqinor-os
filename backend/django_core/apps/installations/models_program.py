@@ -48,7 +48,8 @@ class Projet(models.Model):
         ANNULE = 'annule', 'Annulé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_projets')
     reference = models.CharField(max_length=50)
     nom = models.CharField(max_length=200)
@@ -66,7 +67,8 @@ class Projet(models.Model):
     date_debut = models.DateField(null=True, blank=True)
     date_fin_cible = models.DateField(null=True, blank=True)
     responsable = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: chef de projet informatif — le projet survit à son départ
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,  # on_delete: chef de projet informatif — le projet survit à son départ
         null=True, blank=True, related_name='installations_projets_responsable')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -118,10 +120,13 @@ class ProjetTache(models.Model):
         TERMINE = 'termine', 'Terminé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_projet_taches')
     projet = models.ForeignKey(
-        Projet, on_delete=models.CASCADE, related_name='taches')  # on_delete: ProjetTache est le détail de Projet — n'existe pas sans lui
+        Projet,
+        on_delete=models.CASCADE,  # on_delete: ProjetTache est le détail de Projet — n'existe pas sans lui
+        related_name='taches')
     # Sous-tâche : hiérarchie tâche/sous-tâche au sein du même programme.
     parent = models.ForeignKey(
         'self', on_delete=models.CASCADE,  # on_delete: sous-tâche — suit sa tâche parente
@@ -206,12 +211,17 @@ class ProjetChantier(models.Model):
     serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_projet_chantiers')
     projet = models.ForeignKey(
-        Projet, on_delete=models.CASCADE, related_name='chantiers')  # on_delete: ProjetChantier est le détail de Projet — n'existe pas sans lui
+        Projet,
+        on_delete=models.CASCADE,  # on_delete: ProjetChantier est le détail de Projet — n'existe pas sans lui
+        related_name='chantiers')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='projets')  # on_delete: simple table de liaison projet-chantier — le chantier lui-même n'est pas touché
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: table de liaison projet-chantier — le chantier lui-même n'est pas touché
+        related_name='projets')
     # Tranche/forage — libellé libre pour distinguer les chantiers du programme
     # (« Forage 1 », « Tranche A »…).
     libelle = models.CharField(max_length=120, blank=True, null=True)
@@ -240,12 +250,16 @@ class ProjetDevis(models.Model):
     modèles ventes). Le statut du devis n'est PAS touché ici."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_projet_devis')
     projet = models.ForeignKey(
-        Projet, on_delete=models.CASCADE, related_name='devis')  # on_delete: ProjetDevis est le détail de Projet — n'existe pas sans lui
+        Projet,
+        on_delete=models.CASCADE,  # on_delete: ProjetDevis est le détail de Projet — n'existe pas sans lui
+        related_name='devis')
     devis = models.ForeignKey(
-        'ventes.Devis', on_delete=models.CASCADE,  # on_delete: simple table de liaison projet-devis — le devis lui-même n'est pas touché
+        'ventes.Devis',
+        on_delete=models.CASCADE,  # on_delete: table de liaison projet-devis — le devis lui-même n'est pas touché
         related_name='installations_projets')
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -270,12 +284,16 @@ class ProjetTicket(models.Model):
     modèles sav). Le statut du ticket n'est PAS touché ici."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_projet_tickets')
     projet = models.ForeignKey(
-        Projet, on_delete=models.CASCADE, related_name='tickets')  # on_delete: ProjetTicket est le détail de Projet — n'existe pas sans lui
+        Projet,
+        on_delete=models.CASCADE,  # on_delete: ProjetTicket est le détail de Projet — n'existe pas sans lui
+        related_name='tickets')
     ticket = models.ForeignKey(
-        'sav.Ticket', on_delete=models.CASCADE,  # on_delete: simple table de liaison projet-ticket — le ticket lui-même n'est pas touché
+        'sav.Ticket',
+        on_delete=models.CASCADE,  # on_delete: table de liaison projet-ticket — le ticket lui-même n'est pas touché
         related_name='installations_projets')
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -311,10 +329,13 @@ class BudgetProjet(models.Model):
     budget."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_budgets_projet')
     projet = models.OneToOneField(
-        Projet, on_delete=models.CASCADE, related_name='budget')  # on_delete: BudgetProjet est le détail de Projet — n'existe pas sans lui
+        Projet,
+        on_delete=models.CASCADE,  # on_delete: BudgetProjet est le détail de Projet — n'existe pas sans lui
+        related_name='budget')
     devise = models.CharField(max_length=8, default='MAD')
     # Enveloppes budgétées HT par catégorie de coût.
     budget_materiel = models.DecimalField(
@@ -389,11 +410,14 @@ class BudgetEngagement(models.Model):
         DIVERS = 'divers', 'Divers'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_budget_engagements')
     budget = models.ForeignKey(
-        BudgetProjet, on_delete=models.CASCADE, related_name='engagements')  # on_delete: BudgetEngagement est le détail de BudgetProjet — n'existe pas sans lui
+        BudgetProjet,
+        on_delete=models.CASCADE,  # on_delete: BudgetEngagement est le détail de BudgetProjet — n'existe pas sans lui
+        related_name='engagements')
     source = models.CharField(
         max_length=12, choices=Source.choices, default=Source.BON_COMMANDE)
     categorie = models.CharField(
@@ -401,10 +425,12 @@ class BudgetEngagement(models.Model):
     # Id de l'objet stock rattaché (BCF ou facture fournisseur), selon
     # ``source`` — string-FK volontaire (jamais d'import des modèles stock).
     bon_commande = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: engagement budgétaire dérivé du BCF — recalculable, suit le bon de commande
+        'achats.BonCommandeFournisseur',
+        on_delete=models.CASCADE,  # on_delete: engagement dérivé du BCF — recalculable, suit le bon de commande
         null=True, blank=True, related_name='installations_budget_engagements')
     facture = models.ForeignKey(
-        'achats.FactureFournisseur', on_delete=models.CASCADE,  # on_delete: engagement budgétaire dérivé de la facture fournisseur — recalculable
+        'achats.FactureFournisseur',
+        on_delete=models.CASCADE,  # on_delete: engagement budgétaire dérivé de la facture fournisseur — recalculable
         null=True, blank=True, related_name='installations_budget_engagements')
     libelle = models.CharField(max_length=200, blank=True, null=True)
     date_creation = models.DateTimeField(auto_now_add=True)
