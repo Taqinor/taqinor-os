@@ -533,31 +533,13 @@ ignore_imports =
 # notifications / ventes / stock / sav / publicapi / reporting) : les élaguer
 # aurait affaibli le contrat pour TOUT LE MONDE. Ne pas « simplifier » ce test
 # en réintroduisant les imports.
-# NTDMO25 — `authentication.tasks.seed_demo_company_task` (Celery envelope)
-# imports `authentication.views_demo_wizard` LAZILY (function-local, only at
-# call time), which itself pulls in `authentication.views_console` and, from
-# there, several domain selectors (the demo-kit wizard seeds sample data
-# across apps). grimp still sees the static edge, so the legitimate
-# core.tests.test_wir50_security_beat -> authentication.tasks foundation-app
-# edge (already allowed, `authentication` not in forbidden_modules) now
-# transitively reaches those domain apps through this ONE hop. Prune just
-# that hop — the same pattern as the test-only edges above, but for a lazy
-# production edge instead of a test edge.
-    authentication.tasks -> authentication.views_demo_wizard
-# NTDMO30 — MÊME motif, une hop de plus : la purge des sociétés démo expirées
-# (`purger_societes_demo_expirees_task`) écrit son PROPRE AuditLog avant chaque
-# suppression, via un import fonction-local `apps.audit.recorder` — exactement
-# comme `authentication.device`/`password_policy`/`services`/`views`/
-# `views_console` le font depuis longtemps, et comme les exceptions
-# `notifications.services -> apps.audit.recorder` (stock/automation/
-# dataimport passent par `core.audit_registry` depuis ENF20) plus haut dans ce fichier. grimp voit l'arête statique, donc l'arête
-# fondation LÉGITIME `core.tests.test_wir50_security_beat -> authentication.
-# tasks` (autorisée : `authentication` n'est pas dans forbidden_modules)
-# atteint maintenant apps.ventes/stock/sav de façon TRANSITIVE via
-# audit.recorder -> records.services -> <domaine>.selectors. On élague cette
-# SEULE hop : toute arête DIRECTE `core.* -> apps.*` reste détectée, et aucune
-# autre source ne gagne le moindre droit.
-    authentication.tasks -> apps.audit.recorder
+# ENF20 — les exceptions NTDMO25 `authentication.tasks -> authentication.
+# views_demo_wizard` et NTDMO30 `authentication.tasks -> apps.audit.recorder`
+# sont RETIRÉES : l'exécution du wizard démo (`_run_wizard`/`set_progress`) vit
+# dans `authentication.tasks` (la vue l'importe de là, jamais l'inverse) et la
+# purge des sociétés démo journalise via `core.audit_registry` (rempli par
+# apps.audit ready()). L'arête fondation `core.tests.test_wir50_security_beat
+# -> authentication.tasks` n'atteint plus aucun domaine.
 # NTEXT21 — l'onglet custom « objet_custom_lie » (points d'extension UI
 # déclaratifs, ``core.ui_extensions``) est une FONDATION pure : ``cible`` est
 # une CHAÎNE opaque, et le contenu réel est résolu par un gestionnaire
