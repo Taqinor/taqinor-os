@@ -72,6 +72,23 @@ def corps_objet(request):
     return donnees
 
 
+#: Borne d'une clé primaire entière PostgreSQL.
+ID_MAX = 2147483647
+
+
+def id_corps(valeur):
+    """Identifiant lu dans un corps libre (CI #997 fuzz) : ``int`` (jamais un
+    booléen) ou chaîne de chiffres, 1..ID_MAX -> ``int`` ; toute autre forme
+    (objet, liste, texte, hors plage) -> ``None``. Évite le ``TypeError`` ORM
+    (500) d'un ``filter(id={})``."""
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, str)):
+        return None
+    if isinstance(valeur, str) and not _IDENTIFIANT.fullmatch(valeur):
+        return None
+    n = int(valeur)
+    return n if 1 <= n <= ID_MAX else None
+
+
 def choix_ou_400(valeur, nom, choix):
     """Paramètre de requête à VALEURS FERMÉES (ENF11) : absent/vide -> ``None`` ;
     toute valeur hors ``choix`` -> 400 nommant le paramètre, comme l'énumération

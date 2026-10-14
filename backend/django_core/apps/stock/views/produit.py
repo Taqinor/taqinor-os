@@ -19,7 +19,7 @@ from core.entite_scoping import EntiteScopeMixin
 from ..openapi_helpers import BINARY, DATE, DATE_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
 from ..utils.params import (
     MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400,
-    ids_requete_ou_400,
+    id_corps, ids_requete_ou_400,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
@@ -574,13 +574,20 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                  "quantite_comptee": <int>}]}.
         """
         from ..services import apply_inventory_count
-        lignes = request.data.get('lignes') or []
+        donnees = corps_objet(request)  # CI #997 fuzz : `[null, null]` -> 400
+        lignes = donnees.get('lignes') or []
         if not isinstance(lignes, list) or not lignes:
             return Response({'detail': 'Aucune ligne de comptage fournie.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        motif = donnees.get('motif')
+        if motif is not None and not isinstance(motif, str):
+            raise serializers.ValidationError({'motif': ['Texte attendu.']})
+        if any(isinstance(lg, dict) and lg.get('produit') is not None
+               and id_corps(lg['produit']) is None for lg in lignes):
+            raise serializers.ValidationError({'lignes': ['Produit : identifiant entier attendu.']})
         result = apply_inventory_count(
             company=request.user.company, user=request.user,
-            motif=request.data.get('motif'), lignes=lignes)
+            motif=motif, lignes=lignes)
         return Response(result)
 
     @extend_schema(request=corps('ProduitExportXlsxCorps',

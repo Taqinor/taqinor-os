@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from ..openapi_helpers import BINARY, BOOL, DATE, DATE_OU_VIDE, INT, OBJET, P, PDF, STR, corps
 from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
-from ..utils.params import corps_objet, entier_ou_400
+from ..utils.params import corps_objet, entier_ou_400, id_corps
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -904,14 +904,16 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         """Lève TOUS les blocages d'un casier de quarantaine
         (``{bin}``) — le geste du poste qualité, en un seul appel."""
         from ..services import lever_quarantaine_bin
-        bin_id = request.data.get('bin')
-        if not str(bin_id or '').isdigit():
+        # CI #997 fuzz — corps non objet (``[null, null]``) : 400 déclaré, pas 500.
+        donnees = request.data if hasattr(request.data, 'get') else {}
+        bin_id = id_corps(donnees.get('bin'))
+        if bin_id is None:
             return Response({'detail': 'Casier requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         leves = lever_quarantaine_bin(
-            company=request.user.company, bin_id=int(bin_id),
+            company=request.user.company, bin_id=bin_id,
             user=request.user)
-        return Response({'bin': int(bin_id), 'blocages_leves': leves})
+        return Response({'bin': bin_id, 'blocages_leves': leves})
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))

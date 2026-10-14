@@ -101,6 +101,14 @@ def scanner_mouvement_view(request):
         return Response({'detail': 'Le corps doit être un objet JSON.'},
                         status=status.HTTP_400_BAD_REQUEST)
     donnees = request.data
+    # CI #997 fuzz — un id non entier (``produit: {}``) faisait un TypeError ORM
+    # (500) ; un texte non textuel était enregistré tel quel.
+    from ..utils.params import id_corps
+    if any(donnees.get(c) is not None and id_corps(donnees.get(c)) is None
+           for c in ('produit', 'bin_source', 'bin_destination')) or any(
+               not isinstance(donnees.get(c, ''), str) for c in ('type_mouvement', 'reference', 'note')):
+        return Response({'detail': 'Corps invalide : identifiants entiers et textes attendus.'},
+                        status=status.HTTP_400_BAD_REQUEST)
     try:
         mouvement = enregistrer_mouvement_scanne(
             company=request.user.company, user=request.user,

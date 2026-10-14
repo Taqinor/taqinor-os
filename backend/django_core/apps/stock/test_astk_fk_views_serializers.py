@@ -395,3 +395,37 @@ class CorpsFuzzTests(TestCase):
         r = self.api.patch(f"{url}{r.data['id']}/", {'periodicite': 'annuelle'}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.data['mois'], 0)
+
+    def _api_admin(self):
+        admin = User.objects.create_user(
+            username='astk7_admin_ci997', password='x', role_legacy='admin', company=self.a)
+        return auth_client(admin)
+
+    def test_fuzz_ci997_corps_ou_ids_mal_types_400_jamais_500(self):
+        api = self._api_admin()
+        cas = (
+            ('blocages-qualite/lever-quarantaine/', [None, None]),
+            ('blocages-qualite/lever-quarantaine/', {'bin': {}}),
+            ('kits/remplacer-composant/', {'produit_ancien': 0, 'produit_nouveau': {},
+                                           'ratio_quantite': '0', 'dry_run': False}),
+            ('produits/inventaire/', [None, None]),
+            ('produits/inventaire/', {'motif': 5, 'lignes': [{'produit': self.pa.id, 'quantite_comptee': 1}]}),
+            ('produits/inventaire/', {'lignes': [{'produit': {}, 'quantite_comptee': 1}]}),
+            ('scanner/mouvement/', {'produit': {}, 'type_mouvement': 'entree', 'quantite': 1,
+                                    'bin_source': None, 'bin_destination': None, 'reference': '0'}),
+            ('scanner/mouvement/', {'produit': self.pa.id, 'type_mouvement': 'entree', 'quantite': 1,
+                                    'reference': 5}),
+            ('factures-fournisseur/', {'fournisseur': self.fa.id, 'ref_fournisseur': '', 'date_facture': {},
+                                       'montant_ttc': '0', 'lignes': []}),
+        )
+        for fin, corps in cas:
+            with self.subTest(url=fin, corps=corps):
+                r = api.post(f'{BASE}/{fin}', corps, format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+        self.pa.refresh_from_db()
+        self.assertEqual(self.pa.quantite_stock, 50)
+        # Date extrême conforme : le détecteur de doublon ne déborde plus (± 7 j).
+        r = api.post('/api/django/achats/factures-fournisseur/', {
+            'fournisseur': self.fa.id, 'ref_fournisseur': '', 'date_facture': '0001-01-01',
+            'montant_ttc': '0', 'lignes': []}, format='json')
+        self.assertLess(r.status_code, 500, r.content)
