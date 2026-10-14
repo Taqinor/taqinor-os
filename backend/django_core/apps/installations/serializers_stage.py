@@ -32,7 +32,7 @@ def valider_unicite_societe(serializer, champ, valeur, message, **portee):
 
 class StageModeleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     statut_legacy_display = serializers.CharField(
-        source='get_statut_legacy_display', read_only=True, default=None)
+        source='get_statut_legacy_display', read_only=True, default=None, allow_null=True)
 
     class Meta:
         model = StageModele

@@ -33,7 +33,7 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
     # XFSM12 — instrument de mesure (traçabilité d'étalonnage IEC 62446-1).
     instrument_nom = serializers.SerializerMethodField()
     instrument_numero_serie = serializers.SerializerMethodField()
-    instrument_etalonnage_expire = serializers.BooleanField(read_only=True)
+    instrument_etalonnage_expire = serializers.BooleanField(read_only=True, allow_null=True)
     # CIQ626 — sections du contrat ``recette_ci.json`` (lecture).
     irradiance = serializers.SerializerMethodField()
     energie = serializers.SerializerMethodField()
