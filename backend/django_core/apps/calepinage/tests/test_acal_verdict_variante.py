@@ -77,7 +77,9 @@ class Gouvernance(BaseApiCalepinage):
         calepinage = self._calepinage(24)
         reponse = self.api.post(self._url(calepinage, 'approbation/'),
                                 {'decision': 'approuve'}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # ERR-ENF11-FUZZ-CALEPINAGE : corps bien formé, conception bloquée
+        # par son ÉTAT -> 409 (même corps qui nomme le champ).
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('electrique', reponse.data)
         self.assertIn('Isc', reponse.data['electrique'])
         calepinage.refresh_from_db()
@@ -144,8 +146,9 @@ class Gouvernance(BaseApiCalepinage):
 
     def test_temperatures_incoherentes_refus_nomme_jamais_500(self):
         """Lot 2 critique #19 — une saisie de températures incohérente
-        (maximale absente) : approuver et retenir répondent 400 en nommant le
-        champ, jamais 500."""
+        (maximale absente) : approuver répond 409 (refus d'ÉTAT de la
+        conception, ERR-ENF11-FUZZ-CALEPINAGE) et retenir 400, chacun en
+        nommant le champ, jamais 500."""
         calepinage = self._calepinage(12)
         resultat = dict(calepinage.resultat)
         entree = dict(resultat[CLE_ENTREE])
@@ -154,7 +157,7 @@ class Gouvernance(BaseApiCalepinage):
         Calepinage.objects.filter(pk=calepinage.pk).update(resultat=resultat)
         reponse = self.api.post(self._url(calepinage, 'approbation/'),
                                 {'decision': 'approuve'}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('temperature_max_c', reponse.data)
         variante = self._variante(calepinage, 12)
         reponse = self.api.post(

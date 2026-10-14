@@ -145,6 +145,8 @@ from .fiche_api_publique import (  # noqa: F401 — façade
     update_lead_from_public_api,
 )
 
+from .receivers_cadence import poser_tache_avenant  # noqa: F401 — façade
+
 # T-TRACE — le traçage des visiteurs externes vit dans son propre module
 # (``apps/crm/visites.py``) pour ne pas gonfler ce fichier déjà très long,
 # mais il est RÉEXPORTÉ ici : `services` reste la porte d'entrée unique des
@@ -172,12 +174,3 @@ from .visites import (  # noqa: F401 — réexport public délibéré
 )
 
 logger = logging.getLogger(__name__)
-
-
-def poser_tache_avenant(lead, devis, user):
-    """VNT53 (D-ADEV-6) — UNE tâche « Faire signer l'avenant » sur ``lead``
-    pour la révision ``devis`` d'une vente acceptée ; idempotente (une étape
-    encore ouverte est déplacée, jamais doublée). Porte d'écriture crm lue par
-    ``ventes`` (demande de signature d'avenant, VNT60)."""
-    from .receivers_cadence import _poser_tache_avenant
-    return _poser_tache_avenant(lead, devis, user)

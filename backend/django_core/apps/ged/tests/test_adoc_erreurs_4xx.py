@@ -579,7 +579,8 @@ class Enf11FuzzGedTour2Tests(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_routage_doublon_409(self):
-        corps = {'source': 'hypothese_interne', 'cabinet_cible': self.cab.pk}
+        corps = {'source': 'hypothese_interne', 'cabinet_cible': self.cab.pk,
+                 'dossier_cible': 'Interne'}
         premier = self.api.post(f'{BASE}routages-documentaires/', corps,
                                 format='json')
         self.assertEqual(premier.status_code, 201, premier.content)

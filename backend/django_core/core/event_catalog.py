@@ -61,8 +61,9 @@ CATALOG = {
         "qui n'en avait pas) — aucun statut ne bouge.",
         ['lead', 'company']),
     'devis_accepted': _e(
-        'Un devis passe à « accepté ».',
-        ['devis', 'user', 'ancien_statut']),
+        'Un devis passe à « accepté ». ``avenant_de`` (VNT51) : pk du '
+        'prédécesseur de révision déjà accepté (avenant), ou None.',
+        ['devis', 'user', 'ancien_statut', 'avenant_de']),
     'devis_acceptation_annulee': _e(
         "L'acceptation d'un devis est annulée (le lead sort de « Signé ») : "
         'le devis repasse « envoyé ».',

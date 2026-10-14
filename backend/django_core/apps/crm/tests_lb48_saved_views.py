@@ -101,7 +101,7 @@ class SavedViewApiTests(TestCase):
         self.assertEqual(self.client_a.get(_detail_url(view_id)).status_code, 200)
 
     # (c) unicité (user, page, name) ─────────────────────────────────────────
-    def test_nom_duplique_meme_page_meme_utilisateur_renvoie_400(self):
+    def test_nom_duplique_meme_page_meme_utilisateur_renvoie_409(self):
         first = self.client_a.post(LIST_URL, {
             'page': 'crm.leads', 'name': 'Mes leads chauds', 'payload': {},
         }, format='json')
@@ -110,7 +110,9 @@ class SavedViewApiTests(TestCase):
         duplicate = self.client_a.post(LIST_URL, {
             'page': 'crm.leads', 'name': 'Mes leads chauds', 'payload': {},
         }, format='json')
-        self.assertEqual(duplicate.status_code, 400, duplicate.data)
+        # ERR-ENF11-FUZZ-CRM : doublon = conflit (409 unique_conflict).
+        self.assertEqual(duplicate.status_code, 409, duplicate.data)
+        self.assertEqual(duplicate.data['error']['code'], 'unique_conflict')
 
         # Le même nom sur une AUTRE page reste permis (contrainte scoped page).
         other_page = self.client_a.post(LIST_URL, {

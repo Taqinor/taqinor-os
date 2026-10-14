@@ -57,9 +57,11 @@ def _a_un_predecesseur_accepte(devis):
     return predecesseur_accepte(devis) is not None
 
 
-def _poser_tache_avenant(lead, devis, user):
+def poser_tache_avenant(lead, devis, user):
     """ADEV57 — UNE tâche « faire signer l’avenant » (étape de filet,
-    idempotente : une étape déjà ouverte est déplacée, jamais doublée)."""
+    idempotente : une étape déjà ouverte est déplacée, jamais doublée).
+    VNT53 (D-ADEV-6) — porte d'écriture crm aussi lue par ``ventes``
+    (demande de signature d'avenant, VNT60) via la façade ``services``."""
     reference = getattr(devis, 'reference', '') or '?'
     etape = _poser_etape_de_filet(
         lead, libelle=LIBELLE_FAIRE_SIGNER_AVENANT, canal='appel',
@@ -114,7 +116,7 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         # interne « faire signer l'avenant » est posée. Prédécesseurs lus
         # par les sélecteurs ventes (jamais ses modèles).
         if _a_un_predecesseur_accepte(devis):
-            _poser_tache_avenant(lead, devis, user)
+            poser_tache_avenant(lead, devis, user)
             return
         # RELANCE-SUITE (08/09/2026) — l'envoi ferme aussi l'étape générique
         # « préparer et envoyer le devis » / « appeler le client » devenue
