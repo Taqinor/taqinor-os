@@ -879,10 +879,7 @@ API accepted schema-violating request|GET /api/django/stock/profils-saisonniers/
 API accepted schema-violating request|PATCH /api/django/custom-fields/objects/{id}/
 API accepted schema-violating request|POST /api/django/custom-fields/objects/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
-API accepted schema-violating request|POST /api/django/ventes/devis/{id}/conception-electrique/
-API accepted schema-violating request|POST /api/django/ventes/devis/{id}/share-link/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
-API accepted schema-violating request|POST /api/django/ventes/toiture/charge/
 API accepted schema-violating request|PUT /api/django/custom-fields/objects/{id}/
 API rejected schema-compliant request|GET /api/django/stock/factures-fournisseur/suggestions-bcf/
 API rejected schema-compliant request|GET /api/django/stock/tache-retour/

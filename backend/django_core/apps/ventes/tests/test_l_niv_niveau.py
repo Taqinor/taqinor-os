@@ -187,6 +187,19 @@ class TestShareLinkActionNiveau(TestCase):
             {'niveau': 'bogus'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_share_link_types_stricts_avant_tout_effet(self):
+        # ENF11 — ``envoi: {}`` / ``otp_lecture: "false"`` / ``niveau: null``
+        # étaient lus par leur vérité ; refusés en 400, aucun lien frappé.
+        from apps.ventes.models import ShareLink
+        devis = self._devis('DEV-LNIV-A5')
+        url = f'/api/django/ventes/devis/{devis.id}/share-link/'
+        for corps in ({'envoi': {}}, {'otp_lecture': 'false'},
+                      {'niveau': None}, {'gamme_envoi': 3}):
+            with self.subTest(corps=corps):
+                resp = self.api.post(url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertFalse(ShareLink.objects.filter(devis=devis).exists())
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # (c) proposal_data payload — confiance pinned, standard degraded

@@ -387,13 +387,19 @@ class DevisCalepinageActionsMixin:
             # JAMAIS persistée.
             return Response(build_electrical_design(
                 devis, persister=not non_modifiable))
+        # ENF11 (api-fuzz « accepted schema-violating ») — le corps publié
+        # est un OBJET de surcharges : ``[null, null]`` était lu comme « aucune
+        # surcharge » et recalculait l'étude en silence.
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         if non_modifiable:
             return _reponse_non_modifiable(devis, 'ETUDE')
         from ..domain.modifiabilite import (
             consigner_correction_apres_envoi, _est_envoye)
         from ..domain.verrou_devis import toucher
 
-        surcharges = request.data if isinstance(request.data, dict) else {}
+        surcharges = request.data
         hash_avant = devis.electrical_design_hash
         design = build_electrical_design(devis, overrides=surcharges)
         # Un ENVOYÉ se corrige sur place (D-QJR5-1) : une étude réellement
