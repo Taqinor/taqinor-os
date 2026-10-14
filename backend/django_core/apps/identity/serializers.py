@@ -1,10 +1,11 @@
 """Sérialiseurs de la fondation Identité & accès."""
 import ipaddress
 
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import MOTIF_URL_HTTP, ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
 
@@ -68,12 +69,26 @@ class TrustedDeviceSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-@extend_schema_field({
-    'anyOf': [{'type': 'string', 'format': 'uri', 'maxLength': 500},
-              {'type': 'string', 'maxLength': 0}]})
 class UrlFacultative(serializers.URLField):
-    """ENF11 — URL ou chaîne vide : le schéma le dit (la réponse renvoie ``""``
-    tant que l'IdP n'est pas configuré, ce que ``format: uri`` seul invalidait)."""
+    """ENF11 — URL ou chaîne vide.
+
+    CI #997 (api-fuzz « rejected schema-compliant request ») : ``format: uri``
+    admettait des hôtes de 7 étiquettes de 63 signes (> 253 signes) que
+    ``URLValidator`` refuse. La REQUÊTE publie donc le motif ``MOTIF_URL_HTTP``
+    (sous-ensemble sûr de ce que le validateur accepte, vide permis) borné à
+    500 signes ; la RÉPONSE reste libre (``""`` tant que l'IdP n'est pas
+    configuré, ou toute URL déjà enregistrée)."""
+
+
+class _UrlFacultative(OpenApiSerializerFieldExtension):
+    target_class = 'apps.identity.serializers.UrlFacultative'
+
+    def map_serializer_field(self, auto_schema, direction):
+        if direction == 'request':
+            return {'type': 'string', 'maxLength': 500,
+                    'pattern': MOTIF_URL_HTTP}
+        return {'anyOf': [{'type': 'string', 'format': 'uri', 'maxLength': 500},
+                          {'type': 'string', 'maxLength': 0}]}
 
 
 class IdentityProviderSerializer(ChampsStrictsMixin, serializers.ModelSerializer):

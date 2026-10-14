@@ -97,6 +97,52 @@ class IdentityProviderCrudTests(TenantAPITestCase):
         self.assertEqual(r.status_code, 201, r.content)
         self.assertTrue(r.json()['enforce_sso'])
 
+    def test_url_conforme_au_motif_publie_acceptee(self):
+        # CI #997 api-fuzz — ``format: uri`` laissait publier un hôte de 7
+        # étiquettes de 63 signes (> 253) que ``URLValidator`` refuse (400 sur
+        # un corps « conforme »). La requête publie désormais le motif
+        # ``MOTIF_URL_HTTP`` : tout ce qu'il admet est accepté, et l'hôte hors
+        # limite en est exclu.
+        import re
+
+        from core.champs_stricts import MOTIF_URL_HTTP
+
+        etiquette = 'a' * 63
+        trop_long = 'https://' + '.'.join([etiquette] * 7)
+        self.assertIsNone(re.match(MOTIF_URL_HTTP, trop_long))
+        for champ in ('sso_url', 'metadata_url'):
+            r = self._admin().post(
+                self.BASE, self._payload(**{champ: trop_long, 'actif': False}),
+                format='json')
+            self.assertEqual(r.status_code, 400, (champ, r.content))
+            self.assertIn(champ, r.json())
+        for url in ('', 'http://a.bc', 'https://abcdefghij.klmnopqrst',
+                    'https://abcdefghij.klmnopqrst/a/b.c-d_e~',
+                    'https://idp.example/' + 'a' * 400):
+            self.assertTrue(re.match(MOTIF_URL_HTTP, url), url)
+            for champ in ('sso_url', 'metadata_url'):
+                r = self._admin().post(
+                    self.BASE,
+                    self._payload(**{champ: url, 'actif': False}),
+                    format='json')
+                self.assertEqual(r.status_code, 201, (champ, url, r.content))
+
+    def test_schema_url_requete_motif_reponse_libre(self):
+        # Le motif n'est publié que côté REQUÊTE : une URL déjà enregistrée,
+        # hors motif, reste conforme à la réponse.
+        from drf_spectacular.openapi import AutoSchema
+
+        from apps.identity.serializers import IdentityProviderSerializer
+        from core.champs_stricts import MOTIF_URL_HTTP
+
+        champs = IdentityProviderSerializer().fields
+        for nom in ('sso_url', 'metadata_url'):
+            requete = AutoSchema()._map_serializer_field(champs[nom], 'request')
+            self.assertEqual(requete['pattern'], MOTIF_URL_HTTP)
+            self.assertEqual(requete['maxLength'], 500)
+            reponse = AutoSchema()._map_serializer_field(champs[nom], 'response')
+            self.assertNotIn('pattern', str(reponse))
+
     def test_second_active_other_protocol_allowed(self):
         IdentityProvider.objects.create(
             company=self.company, protocol='saml', nom='A', actif=True)
