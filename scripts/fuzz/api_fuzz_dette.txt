@@ -209,7 +209,6 @@ API accepted schema-violating request|GET /api/django/installations/seuils-appro
 API accepted schema-violating request|GET /api/django/installations/shotlist-slots/
 API accepted schema-violating request|GET /api/django/installations/transporteurs/
 API accepted schema-violating request|GET /api/django/installations/types-intervention/
-API accepted schema-violating request|GET /api/django/monitoring/configs/co2-fleet/
 API accepted schema-violating request|GET /api/django/offlinesync/operations/
 API accepted schema-violating request|GET /api/django/outillage/kit-items/
 API accepted schema-violating request|GET /api/django/outillage/kits/
@@ -403,7 +402,6 @@ API accepted schema-violating request|PATCH /api/django/installations/seuils-app
 API accepted schema-violating request|PATCH /api/django/installations/shotlist-slots/{id}/
 API accepted schema-violating request|PATCH /api/django/installations/sous-traitants/{id}/
 API accepted schema-violating request|PATCH /api/django/installations/types-intervention/{id}/
-API accepted schema-violating request|PATCH /api/django/monitoring/settings/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/approbations/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/conditions-paiement/{id}/
 API accepted schema-violating request|PATCH /api/django/parametres/email-templates/{id}/
@@ -473,7 +471,6 @@ API accepted schema-violating request|POST /api/django/installations/shotlist-sl
 API accepted schema-violating request|POST /api/django/installations/sous-traitants/
 API accepted schema-violating request|POST /api/django/installations/sync/
 API accepted schema-violating request|POST /api/django/installations/types-intervention/
-API accepted schema-violating request|POST /api/django/monitoring/settings/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API accepted schema-violating request|POST /api/django/outillage/kits/
 API accepted schema-violating request|POST /api/django/parametres/approbations/
@@ -572,14 +569,6 @@ API rejected schema-compliant request|GET /api/django/installations/intervention
 API rejected schema-compliant request|GET /api/django/installations/interventions/planning-camionnettes/
 API rejected schema-compliant request|GET /api/django/installations/interventions/suggestions-creation/
 API rejected schema-compliant request|GET /api/django/installations/kits/{id}/composition-au/
-API rejected schema-compliant request|GET /api/django/monitoring/cleanings/
-API rejected schema-compliant request|GET /api/django/monitoring/configs/
-API rejected schema-compliant request|GET /api/django/monitoring/configs/attestation-carbone-client-pdf/
-API rejected schema-compliant request|GET /api/django/monitoring/configs/benchmark/
-API rejected schema-compliant request|GET /api/django/monitoring/configs/client-portal/
-API rejected schema-compliant request|GET /api/django/monitoring/configs/fleet/
-API rejected schema-compliant request|GET /api/django/monitoring/readings/
-API rejected schema-compliant request|GET /api/django/monitoring/warranties/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|GET /api/django/publicapi/monitoring/
 API rejected schema-compliant request|GET /api/django/reporting/insights/cf-group-by/
@@ -1108,8 +1097,6 @@ Response violates schema|GET /api/django/installations/recettes-commissioning/{i
 Response violates schema|GET /api/django/installations/series-entrepot/
 Response violates schema|GET /api/django/installations/series-entrepot/{id}/
 Response violates schema|GET /api/django/installations/sous-traitants/
-Response violates schema|GET /api/django/monitoring/configs/providers/
-Response violates schema|GET /api/django/monitoring/settings/
 Response violates schema|GET /api/django/onboarding/progress/
 Response violates schema|GET /api/django/parametres/
 Response violates schema|GET /api/django/records/activities/
