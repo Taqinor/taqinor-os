@@ -245,46 +245,6 @@ class TypageStrictMixin:
     }
 
 
-#: ERR-ENF11-FUZZ-CRM/GED — ``CharField`` de DRF refuse TOUJOURS le caractère
-#: NUL et les demi-paires UTF-16 (``ProhibitNullCharactersValidator`` /
-#: ``ProhibitSurrogateCharactersValidator``) : une chaîne qui en portait était
-#: conforme au schéma publié puis refusée en 400 (constat api-fuzz « API
-#: rejected schema-compliant request »). Le motif publié dit enfin cette règle ;
-#: la variante NON BLANCHE remplace le ``\S`` que ``core.openapi_erreurs``
-#: pose sur une chaîne obligatoire (``minLength`` >= 1). ``MOTIF_SANS_NUL``
-#: exige AU MOINS un caractère : sur un champ à blanc autorisé, drf-spectacular
-#: publie ``oneOf [motif, maxLength 0]`` — ``""`` ne doit vérifier QU'UNE branche.
-MOTIF_SANS_NUL = r'^[^\x00\ud800-\udfff]+$'
-MOTIF_NON_BLANC_SANS_NUL = (
-    r'^[^\x00\ud800-\udfff]*[^\s\x00\ud800-\udfff][^\x00\ud800-\udfff]*$')
-
-
-class _ChaineStricteSansNul(OpenApiSerializerFieldExtension):
-    """Publie ``MOTIF_SANS_NUL`` sur chaque ``ChaineStricte`` de REQUÊTE sans
-    motif/format/énumération propre (règle unique, réutilisée partout où les
-    mixins ``ChampsStricts*`` génèrent les champs texte)."""
-    target_class = 'core.champs_stricts.ChaineStricte'
-    match_subclasses = True
-
-    def map_serializer_field(self, auto_schema, direction):
-        from django.core import validators as dj
-        schema = auto_schema._map_serializer_field(
-            self.target, direction, bypass_extensions=True)
-        # Un validateur qui publie son propre motif/format (slug, URL…) garde
-        # le sien : drf-spectacular ne le pose qu'en l'absence de ``pattern``.
-        propre = any(isinstance(v, (dj.RegexValidator, dj.EmailValidator,
-                                    dj.FileExtensionValidator))
-                     for v in self.target.validators)
-        if (direction != 'request' or schema.get('type') != 'string' or propre
-                or any(cle in schema for cle in ('pattern', 'format', 'enum'))):
-            return schema
-        schema = dict(schema)
-        schema['pattern'] = (MOTIF_NON_BLANC_SANS_NUL
-                             if schema.get('minLength', 0) >= 1
-                             else MOTIF_SANS_NUL)
-        return schema
-
-
 def _ids_inconnus_seulement(erreurs, champs):
     """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
     sur des champs de relation par clé primaire."""
