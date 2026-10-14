@@ -209,7 +209,7 @@ class TestEmplacementApi(EmplacementBase):
             company=self.company, is_principal=True)
         r = self.api.delete(
             f'/api/django/stock/emplacements/{principal.id}/')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_emplacement_holding_stock_not_deletable(self):
         ensure_emplacements(self.company)
@@ -223,3 +223,12 @@ class TestEmplacementApi(EmplacementBase):
         r = self.api.delete(
             f'/api/django/stock/emplacements/{camionnette.id}/')
         self.assertEqual(r.status_code, 409)
+
+    def test_type_proprietaire_hors_enumeration_400(self):
+        ensure_emplacements(self.company)
+        r = self.api.get('/api/django/stock/emplacements/',
+                         {'type_proprietaire': 'AAA'})
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.get('/api/django/stock/emplacements/',
+                         {'type_proprietaire': 'interne'})
+        self.assertEqual(r.status_code, 200, r.content)

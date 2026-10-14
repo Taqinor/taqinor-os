@@ -124,7 +124,7 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
         except FactureFournisseur.DoesNotExist:
             return Response(
                 {'detail': 'Facture introuvable dans cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         from ..services import imputer_avoir_fournisseur
         try:
             with transaction.atomic():
@@ -133,6 +133,6 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
                     user=request.user)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         avoir.refresh_from_db()
         return Response(self.get_serializer(avoir).data)

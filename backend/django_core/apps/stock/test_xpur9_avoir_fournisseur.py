@@ -202,4 +202,4 @@ class TestMultiTenant(Xpur9Base):
         resp = self.api.post(
             f'/api/django/stock/avoirs-fournisseur/{avoir.id}/imputer/',
             {'facture': other_facture.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)

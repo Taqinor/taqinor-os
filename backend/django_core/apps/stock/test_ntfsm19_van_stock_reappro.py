@@ -106,7 +106,7 @@ class TestVanStockAReapprovisionner(TestCase):
             '/api/django/stock/emplacements/van-stock/creer-transfert/',
             {'produit_id': self.produit.id, 'emplacement_id': self.van.id},
             format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_creer_transfert_champs_requis(self):
         r = self.api.post(

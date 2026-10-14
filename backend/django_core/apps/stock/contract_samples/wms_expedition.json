@@ -132,7 +132,7 @@
     },
     "expeditions_tarifs": {
       "endpoint": "GET /api/django/stock/expeditions/tarifs/?unite_logistique=<id>&destination=",
-      "pourquoi": "NTWMS10 — comparatif coût/délai (selectors_wms.comparer_tarifs_transporteurs), trié du moins cher au plus cher. Unité inconnue/étrangère → 400.",
+      "pourquoi": "NTWMS10 — comparatif coût/délai (selectors_wms.comparer_tarifs_transporteurs), trié du moins cher au plus cher. Unité inconnue/étrangère → 404.",
       "exemple": {
         "unite_logistique": 12,
         "offres": [

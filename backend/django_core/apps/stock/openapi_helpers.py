@@ -134,3 +134,10 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
             branches[1]['required'] = ['periodicite']
             branches.append({'not': {'anyOf': [{'required': ['periodicite']}, {'required': ['mois']}]}})
         return {**schema, 'properties': {**schema['properties'], 'montant_alloue': montant}, 'anyOf': branches}
+
+
+#: ENF11 — date de requête facultative lue par ``date_ou_400`` / ``_date_param`` :
+#: une valeur VIDE (``?fin=``) vaut « non renseignée ». Le schéma publie donc
+#: « date OU chaîne vide », ce que le serveur accepte.
+DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}

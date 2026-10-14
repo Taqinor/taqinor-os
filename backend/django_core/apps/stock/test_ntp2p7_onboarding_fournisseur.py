@@ -206,6 +206,13 @@ class ProgressionEtValidationTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['progression_pct'], 20)
 
+    def test_doublon_de_dossier_409(self):
+        """ENF11 — un 2e dossier pour le même fournisseur : 409."""
+        resp = self.api.post(f'{STOCK}/dossiers-onboarding-fournisseur/',
+                             {'fournisseur': self.dossier.fournisseur_id},
+                             format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
     def test_piece_expiree_ne_compte_pas(self):
         hier = date.today() - timedelta(days=1)
         dossier_complet(self.company, self.dossier)

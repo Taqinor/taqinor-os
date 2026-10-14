@@ -192,6 +192,11 @@ class TestGenerationEtiquette(Ntwms9Base):
 
 
 class TestEndpointsExpedition(Ntwms9Base):
+    def test_unite_inconnue_404(self):
+        resp = self.api.post('/api/django/stock/expeditions/', {
+            'unite_logistique': 999999999}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
     def test_creation_et_tracking(self):
         colis = self._colis_scelle()
         resp = self.api.post('/api/django/stock/expeditions/', {

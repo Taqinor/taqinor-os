@@ -5,7 +5,7 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import BasePermission
-from ..openapi_helpers import BINARY, DATE, INT, P, XLSX
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, P, XLSX
 from ..utils.params import corps_objet, date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import FactureFournisseur, PaiementFournisseur
@@ -207,7 +207,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
             facture.refresh_from_db()
             recompute_facture_fournisseur_statut(facture)
 
-    @extend_schema(parameters=[P('date_debut', DATE), P('date_fin', DATE)], responses={XLSX: BINARY})
+    @extend_schema(parameters=[P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='ras-tva/export',
             permission_classes=[IsResponsableOrAdmin])
     def export_ras_tva(self, request):

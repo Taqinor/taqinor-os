@@ -13,7 +13,7 @@ garde et son test restent au même endroit.
 Toutes les vues sont en LECTURE : aucune n'écrit, aucune ne réserve.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
-from ..openapi_helpers import INT, P, STR
+from ..openapi_helpers import INT, NUM, P, STR
 from ..utils.params import decimal_ou_400, entier_ou_400
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
@@ -83,8 +83,8 @@ def entrepot_cockpit_view(request):
     ))
 
 
-@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers'), P('quantite', INT, False,
-                                                                      'Quantité supplémentaire'), P('produit', INT),
+@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers', pattern=r'\S'),
+                           P('quantite', INT, False, 'Quantité supplémentaire'), P('produit', INT),
                            P('emplacement', INT)], responses={
     200: inline_serializer('StockSimulationCapacite', {
         'zone': serializers.CharField(),
@@ -128,7 +128,7 @@ def simuler_capacite_view(request):
     return Response(resultat)
 
 
-@extend_schema(parameters=[P('seuil', INT, False, 'Seuil de remplissage (%)'), P('emplacement', INT)], responses={
+@extend_schema(parameters=[P('seuil', NUM, False, 'Seuil de remplissage (%)'), P('emplacement', INT)], responses={
     200: inline_serializer('StockZonesSurcapacite', {
         'seuil_pct': serializers.CharField(),
         'zones': serializers.ListField(child=serializers.DictField()),
@@ -197,7 +197,7 @@ def historique_casier_view(request, bin_id):
     })
 
 
-@extend_schema(parameters=[P('zone', STR), P('limite', INT)], responses={
+@extend_schema(parameters=[P('zone', STR), P('limite', INT, mini=1, maxi=100)], responses={
     200: inline_serializer('StockTacheRetour', {
         'zone_courante': serializers.CharField(allow_blank=True),
         'suggestions': serializers.ListField(child=serializers.DictField()),

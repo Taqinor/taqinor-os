@@ -177,25 +177,6 @@ API accepted schema-violating request|GET /api/django/reporting/rapport-definiti
 API accepted schema-violating request|GET /api/django/reporting/saved-reports/
 API accepted schema-violating request|GET /api/django/roles/
 API accepted schema-violating request|GET /api/django/statuspage/public/incidents/
-API accepted schema-violating request|GET /api/django/stock/achats-parametres/checklist-cloture/
-API accepted schema-violating request|GET /api/django/stock/alertes-rappel/
-API accepted schema-violating request|GET /api/django/stock/bons-commande-fournisseur/achats-hors-contrat/
-API accepted schema-violating request|GET /api/django/stock/budgets-departement/disponible/
-API accepted schema-violating request|GET /api/django/stock/emplacements/
-API accepted schema-violating request|GET /api/django/stock/entrepot/alertes-surcapacite/
-API accepted schema-violating request|GET /api/django/stock/entrepot/pertes/
-API accepted schema-violating request|GET /api/django/stock/factures-fournisseur/releve-deductions-tva/
-API accepted schema-violating request|GET /api/django/stock/fournisseurs/
-API accepted schema-violating request|GET /api/django/stock/fournisseurs/export-conformite/
-API accepted schema-violating request|GET /api/django/stock/incidents-qualite-fournisseur/
-API accepted schema-violating request|GET /api/django/stock/mouvements-rebut/
-API accepted schema-violating request|GET /api/django/stock/mouvements/agregation/
-API accepted schema-violating request|GET /api/django/stock/paiements-fournisseur/ras-tva/export/
-API accepted schema-violating request|GET /api/django/stock/produits/
-API accepted schema-violating request|GET /api/django/stock/produits/analyse-achats/
-API accepted schema-violating request|GET /api/django/stock/produits/analyse-achats/export-xlsx/
-API accepted schema-violating request|GET /api/django/stock/reslotting-suggestions/
-API accepted schema-violating request|GET /api/django/stock/tableau-bord-achats/
 API accepted schema-violating request|GET /api/django/trash/corbeille/
 API accepted schema-violating request|GET /api/django/users/
 API accepted schema-violating request|GET /api/django/ventes/attestations-conformite/
@@ -339,10 +320,6 @@ API accepted schema-violating request|PUT /api/django/records/activities/{id}/
 API accepted schema-violating request|PUT /api/django/records/tags/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/listes-prix/{id}/
 API rejected schema-compliant request|DELETE /api/django/facturation/factures-lignes/{id}/
-API rejected schema-compliant request|DELETE /api/django/stock/categories/{id}/
-API rejected schema-compliant request|DELETE /api/django/stock/emplacements/{id}/
-API rejected schema-compliant request|DELETE /api/django/stock/fournisseurs/{id}/force-delete/
-API rejected schema-compliant request|DELETE /api/django/stock/produits/{id}/force-delete/
 API rejected schema-compliant request|DELETE /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|DELETE /api/django/ventes/devis/{id}/overrides/
 API rejected schema-compliant request|DELETE /api/django/ventes/factures-lignes/{id}/
@@ -371,15 +348,7 @@ API rejected schema-compliant request|GET /api/django/reporting/insights/sav-tau
 API rejected schema-compliant request|GET /api/django/reporting/insights/sav-tickets-pivot/
 API rejected schema-compliant request|GET /api/django/reporting/rapport-definitions/{id}/export/
 API rejected schema-compliant request|GET /api/django/reporting/reports/field/
-API rejected schema-compliant request|GET /api/django/stock/achats-parametres/checklist-cloture/
-API rejected schema-compliant request|GET /api/django/stock/casiers/etiquettes-pdf/
-API rejected schema-compliant request|GET /api/django/stock/emplacements/{id}/etiquettes-kanban/
-API rejected schema-compliant request|GET /api/django/stock/expeditions/tarifs/
-API rejected schema-compliant request|GET /api/django/stock/produits/etiquettes/
 API rejected schema-compliant request|GET /api/django/stock/produits/tracabilite/
-API rejected schema-compliant request|GET /api/django/stock/quais/planning/
-API rejected schema-compliant request|GET /api/django/stock/scanner/retour-fournisseur/
-API rejected schema-compliant request|GET /api/django/stock/simuler-capacite/
 API rejected schema-compliant request|GET /api/django/ventes/etats/analyse-facturation/
 API rejected schema-compliant request|GET /api/django/ventes/export-comptable/
 API rejected schema-compliant request|GET /api/django/ventes/factures/{facture_id}/lettre-relance-pdf/
@@ -400,8 +369,6 @@ API rejected schema-compliant request|PATCH /api/django/parametres/unites-mesure
 API rejected schema-compliant request|PATCH /api/django/records/activity-types/{id}/
 API rejected schema-compliant request|PATCH /api/django/records/tagged-items/{id}/
 API rejected schema-compliant request|PATCH /api/django/roles/{id}/
-API rejected schema-compliant request|PATCH /api/django/stock/fournisseurs/{id}/unarchive/
-API rejected schema-compliant request|PATCH /api/django/stock/produits/{id}/unarchive/
 API rejected schema-compliant request|PATCH /api/django/ventes/attestations-conformite/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/attestations-re/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
@@ -612,35 +579,20 @@ API rejected schema-compliant request|POST /api/django/reporting/kpi-alertes/
 API rejected schema-compliant request|POST /api/django/sav/portail/tickets/
 API rejected schema-compliant request|POST /api/django/sav/warranty-claims/
 API rejected schema-compliant request|POST /api/django/stock/accords-rfa-fournisseur/
-API rejected schema-compliant request|POST /api/django/stock/acomptes-fournisseur/
-API rejected schema-compliant request|POST /api/django/stock/avoirs-fournisseur/{id}/imputer/
-API rejected schema-compliant request|POST /api/django/stock/blocages-qualite/
 API rejected schema-compliant request|POST /api/django/stock/blocages-qualite/lever-quarantaine/
 API rejected schema-compliant request|POST /api/django/stock/casiers-hazmat/
-API rejected schema-compliant request|POST /api/django/stock/conditionnements/
-API rejected schema-compliant request|POST /api/django/stock/consignations/
 API rejected schema-compliant request|POST /api/django/stock/documents-fournisseur/
-API rejected schema-compliant request|POST /api/django/stock/dossiers-onboarding-fournisseur/
-API rejected schema-compliant request|POST /api/django/stock/dossiers-onboarding-fournisseur/{id}/valider-dossier/
-API rejected schema-compliant request|POST /api/django/stock/emplacements/van-stock/creer-transfert/
-API rejected schema-compliant request|POST /api/django/stock/expeditions/
-API rejected schema-compliant request|POST /api/django/stock/fiches-techniques/
-API rejected schema-compliant request|POST /api/django/stock/inventaire-sessions/{id}/valider/
 API rejected schema-compliant request|POST /api/django/stock/kits/remplacer-composant/
 API rejected schema-compliant request|POST /api/django/stock/modeles-bcf/{id}/generer/
-API rejected schema-compliant request|POST /api/django/stock/mouvements-rebut/
-API rejected schema-compliant request|POST /api/django/stock/mouvements/
 API rejected schema-compliant request|POST /api/django/stock/prix-fournisseurs/
 API rejected schema-compliant request|POST /api/django/stock/produits/inventaire/
 API rejected schema-compliant request|POST /api/django/stock/produits/{id}/dupliquer/
 API rejected schema-compliant request|POST /api/django/stock/produits/{id}/photo/
-API rejected schema-compliant request|POST /api/django/stock/produits/{id}/rebuter/
 API rejected schema-compliant request|POST /api/django/stock/profils-saisonniers/
 API rejected schema-compliant request|POST /api/django/stock/quais/
 API rejected schema-compliant request|POST /api/django/stock/regles-code-barres/
 API rejected schema-compliant request|POST /api/django/stock/rendez-vous-transporteur/
 API rejected schema-compliant request|POST /api/django/stock/retours-client/
-API rejected schema-compliant request|POST /api/django/stock/scanner/mouvement/
 API rejected schema-compliant request|POST /api/django/stock/seuils-reappro-casier/
 API rejected schema-compliant request|POST /api/django/stock/taches-reappro-interne/
 API rejected schema-compliant request|POST /api/django/stock/transferts/
@@ -719,7 +671,6 @@ API rejected schema-compliant request|PUT /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/records/tagged-items/{id}/
 API rejected schema-compliant request|PUT /api/django/reporting/saved-reports/{id}/
 API rejected schema-compliant request|PUT /api/django/roles/{id}/
-API rejected schema-compliant request|PUT /api/django/stock/fiches-techniques/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/attestations-conformite/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/attestations-re/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
@@ -908,7 +859,6 @@ Undocumented HTTP status code|POST /api/public/v1/oauth/token/
 Unsupported methods|POST /api/django/core/module-toggles/
 Unsupported methods|TRACE /api/django/core/usage/couts/
 API accepted schema-violating request|GET /api/django/roles/revue-acces/
-API accepted schema-violating request|GET /api/django/stock/fournisseurs/{id}/delai-mesure/
 API accepted schema-violating request|GET /api/django/ventes/dashboard/
 API accepted schema-violating request|GET /api/django/ventes/etats/analyse-facturation/
 API accepted schema-violating request|GET /api/django/ventes/export-comptable/
@@ -939,7 +889,6 @@ API accepted schema-violating request|PUT /api/django/ventes/attestations-re/{id
 API accepted schema-violating request|PUT /api/django/ventes/recettes-mes/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/regularisations-8221/{id}/
 API accepted schema-violating request|PUT /api/django/ventes/tests-pr-reception/{id}/
-API rejected schema-compliant request|GET /api/django/stock/tache-retour/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
 Response violates schema|GET /api/django/ventes/calendrier-reglementaire/
 Response violates schema|POST /api/django/ventes/dossiers-echanges/
@@ -989,8 +938,6 @@ Missing Content-Type header|POST /api/django/core/maintenance-windows/{id}/annul
 API accepted schema-violating request|GET /api/django/achats/bons-commande-fournisseur/achats-hors-contrat/
 API accepted schema-violating request|GET /api/django/achats/factures-fournisseur/releve-deductions-tva/
 API accepted schema-violating request|GET /api/django/achats/paiements-fournisseur/ras-tva/export/
-API accepted schema-violating request|PATCH /api/django/stock/unites-logistiques/{id}/
-API accepted schema-violating request|POST /api/django/stock/unites-logistiques/
 Response violates schema|POST /api/django/ventes/factures/{id}/envoyer-email/
 API accepted schema-violating request|POST /api/django/facturation/factures/{id}/lien-paiement/
 API accepted schema-violating request|POST /api/django/roles/
@@ -1005,7 +952,6 @@ Server error|POST /api/django/ventes/factures/bulk/
 API accepted schema-violating request|PATCH /api/django/roles/{id}/
 API accepted schema-violating request|GET /api/django/ventes/devis/
 API accepted schema-violating request|PATCH /api/django/entites/entites/{id}/
-API accepted schema-violating request|PATCH /api/django/stock/achats-parametres/{id}/
 API accepted schema-violating request|POST /api/django/entites/entites/
 API accepted schema-violating request|POST /api/django/ventes/devis/{id}/save-preset/
 API accepted schema-violating request|POST /api/django/ventes/factures/{id}/annuler/

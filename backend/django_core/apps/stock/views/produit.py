@@ -16,8 +16,11 @@ from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from core.entite_scoping import EntiteScopeMixin
-from ..openapi_helpers import BINARY, DATE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
-from ..utils.params import corps_objet, date_ou_400, entier_ou_400
+from ..openapi_helpers import BINARY, DATE, DATE_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
+from ..utils.params import (
+    MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400,
+    ids_requete_ou_400,
+)
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
@@ -436,7 +439,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                       if c.isdigit()]
         if categories:
             qs = qs.filter(categorie_id__in=categories)
-        if self.request.query_params.get('show_archived') == 'true':
+        if choix_ou_400(self.request.query_params.get('show_archived'),
+                        'show_archived', ('true', 'false')) == 'true':
             return qs.annotate(
                 nb_mouvements=Count('mouvements'),
                 premiere_date_mouvement=Min('mouvements__date'),
@@ -895,11 +899,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 f'/api/django/records/attachments/{piece.pk}/download/'},
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits (répétés ou séparés par virgule)'), P('symbology',
-                                                                                                       STR, False,
-                                                                                                       'Symbologie',
-                                                                                                       ['qr',
-                                                                                                        'code128']),
+    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits (répétés ou séparés par virgule)',
+                                 pattern=MOTIF_IDS),
+                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
                                P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes',
@@ -920,13 +922,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from .. import labels
         from apps.ventes.utils.pdf import _html_to_pdf
 
-        ids = request.query_params.getlist('ids')
-        if len(ids) == 1 and ',' in ids[0]:
-            ids = ids[0].split(',')
-        ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
-        if not ids:
-            return Response({'detail': 'Sélectionnez au moins un produit.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        ids = ids_requete_ou_400(request)
 
         symbology = request.query_params.get('symbology', 'qr')
         if symbology not in ('qr', 'code128'):
@@ -1113,8 +1109,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
-    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)'), P('date_debut', DATE),
-                               P('date_fin', DATE)], responses=OBJET)
+    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)'), P('date_debut', DATE_OU_VIDE),
+                               P('date_fin', DATE_OU_VIDE)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='analyse-achats',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats(self, request):
@@ -1134,7 +1130,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois))
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE), P('date_fin', DATE)], responses={XLSX: BINARY})
+    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/export-xlsx',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats_export_xlsx(self, request):
@@ -1152,7 +1148,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois)
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE), P('date_fin', DATE)], responses={PDF: BINARY})
+    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={PDF: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/pdf',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats_pdf(self, request):
@@ -1810,7 +1806,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if not produit.is_archived:
             return Response(
                 {'detail': 'Ce produit n\'est pas archivé.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # ASTK94 — un homonyme actif sans SKU bloquerait le désarchivage par
         # la contrainte DB (500) : même garde que le serializer, 400 {nom}.
@@ -1834,7 +1830,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                         'supprimés définitivement.'
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # ASTK81 — mêmes références vivantes que destroy (helper commun) : on
         # archive au lieu de détacher/cascader. Les mouvements restent

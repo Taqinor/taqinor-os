@@ -45,7 +45,7 @@ class CategorieViewSet(CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
     def destroy(self, request, *args, **kwargs):
-        """ASTK82 — refuse (400) de supprimer une catégorie portant des
+        """ASTK82 — refuse (409) de supprimer une catégorie portant des
         produits (actifs OU archivés) : la FK est ``SET_NULL``, donc sans cette
         garde chaque produit serait dé-catégorisé en silence (son rôle devis
         retombant sur les mots-clés du nom) et les profils saisonniers de la
@@ -58,5 +58,5 @@ class CategorieViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': (f'Catégorie utilisée par {nb} {mot} : '
                             'réaffectez-les avant de la supprimer.')},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)

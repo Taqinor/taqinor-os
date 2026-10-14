@@ -8,6 +8,7 @@ from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE, INT, LISTE, P, STR, XLSX, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import Produit, MouvementStock
+from ..utils.params import choix_ou_400
 from ..serializers import MouvementStockSerializer
 from authentication.permissions import IsAnyRole, IsAdminRole, HasPermissionOrLegacy
 import logging
@@ -157,7 +158,8 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        if request.query_params.get('export') == 'xlsx':
+        if choix_ou_400(request.query_params.get('export'), 'export',
+                        ('xlsx',)) == 'xlsx':
             from apps.records.xlsx import build_xlsx_response
             headers = ['Groupe', 'Entrées', 'Sorties', 'Rebuts',
                        'Ajustements', 'Net']

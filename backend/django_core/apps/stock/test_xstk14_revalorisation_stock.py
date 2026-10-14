@@ -182,10 +182,10 @@ class ValiderRevalorisationTests(Xstk14Base):
         resp = self.api.patch(
             f'/api/django/stock/revalorisations-stock/{revalo.pk}/',
             {'motif': 'modifie'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         resp = self.api.delete(
             f'/api/django/stock/revalorisations-stock/{revalo.pk}/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_endpoint_valider(self):
         revalo = creer_revalorisation(
