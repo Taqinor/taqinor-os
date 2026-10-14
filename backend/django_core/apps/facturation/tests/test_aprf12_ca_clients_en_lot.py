@@ -1,5 +1,6 @@
-"""APRF12 (C-APRF-004) — ``ca_devis_factures_par_clients``,
-``montants_factures_par_devis`` et ``carnet_commande_par_mois`` lisent des
+"""APRF12 (C-APRF-004) — ``ca_devis_factures_par_clients`` et
+``carnet_commande_par_mois`` (VNT105 : ``montants_factures_par_devis``,
+orpheline, est retirée) lisent des
 devis passés par ``devis_avec_totaux`` (APRF7) et des factures passées par
 ``factures_avec_montant_du`` (APRF11) : +10 devis sur un client n'ajoutent
 aucune requête, montants égaux au centime.
@@ -67,23 +68,20 @@ class CaClientsEnLotTests(TestCase):
     def _mesurer(self):
         from apps.ventes.selectors_facturation import (
             ca_devis_factures_par_clients, carnet_commande_par_mois,
-            montants_factures_par_devis,
         )
         with CaptureQueriesContext(connection) as ctx:
             ca = ca_devis_factures_par_clients(
                 self.company, [self.client_obj.id])
-            montants = montants_factures_par_devis(
-                self.devis_ids, self.company)
             carnet = carnet_commande_par_mois(
                 self.company, date(2026, 9, 1), date(2026, 9, 30))
-        return len(ctx.captured_queries), ca, montants, carnet
+        return len(ctx.captured_queries), ca, carnet
 
     def test_requetes_constantes_et_montants_exacts(self):
         from apps.ventes.models import Devis, Facture
         self._ajouter(3)
-        n_petit, _, _, _ = self._mesurer()
+        n_petit, _, _ = self._mesurer()
         self._ajouter(10)
-        n_grand, ca, montants, carnet = self._mesurer()
+        n_grand, ca, carnet = self._mesurer()
         self.assertEqual(n_petit, n_grand)
         # Montants égaux au centime à la lecture sans préchargement.
         attendu_devis = sum(
@@ -95,8 +93,6 @@ class CaClientsEnLotTests(TestCase):
         self.assertEqual(ca[self.client_obj.id]['ca_devis'], attendu_devis)
         self.assertEqual(ca[self.client_obj.id]['ca_factures'],
                          attendu_factures)
-        self.assertEqual(sum((v['ttc'] for v in montants.values()),
-                             Decimal('0')), attendu_factures)
         non_factures = sum(
             (Decimal(str(d.total_ttc)) for d in Devis.objects.filter(
                 pk__in=self.devis_ids, factures__isnull=True)),

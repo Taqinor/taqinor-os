@@ -8,6 +8,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Apporteur, DealEnregistre, Lead, LeadActivity
+from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role
 
 User = get_user_model()
@@ -62,10 +63,18 @@ class DealEnregistreProtectionTests(TestCase):
         deal2.full_clean()  # ne lève pas : la protection est levée
 
 
+def _activer_apporteurs(company):
+    """ACRM66 — ces routes sont parquées (404) réglage éteint : ce module
+    teste une société qui les a ALLUMÉES."""
+    CompanyProfile.objects.update_or_create(
+        company=company, defaults={'apporteurs_actif': True})
+
+
 class ApporteurApiTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM20b', slug='taqinor-ntcrm20b')
+        _activer_apporteurs(self.company)
         self.role = Role.objects.create(
             company=self.company, nom='Responsable',
             permissions=['crm_creer', 'crm_modifier'])
@@ -140,7 +149,7 @@ class DealsTransitionsTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='ACRM57 Solaire', slug='acrm57-deals')
-        self._activer_apporteurs_si_le_reglage_existe()
+        _activer_apporteurs(self.company)
         self.admin = User.objects.create_user(
             username='acrm57-admin', password='x', role_legacy='admin',
             company=self.company)
@@ -151,16 +160,6 @@ class DealsTransitionsTests(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
         self._n = 0
-
-    def _activer_apporteurs_si_le_reglage_existe(self):
-        """ACRM66 (parcage des apporteurs) peut éteindre ces routes par
-        défaut : ce module teste les transitions d'une société qui les a
-        ALLUMÉES."""
-        from apps.parametres.models import CompanyProfile
-        champs = {f.name for f in CompanyProfile._meta.concrete_fields}
-        if 'apporteurs_actif' in champs:
-            CompanyProfile.objects.update_or_create(
-                company=self.company, defaults={'apporteurs_actif': True})
 
     def _deal(self, statut, *, apporteur=None, telephone=None, **extra):
         self._n += 1

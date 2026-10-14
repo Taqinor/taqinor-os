@@ -116,6 +116,10 @@ def _relais_arreter_cadence_on_devis_accepted(**kwargs):
 @receiver(devis_accepted, dispatch_uid="crm_deal_commission_on_devis_accepted")
 @_point_de_sauvegarde
 def _relais_calculer_commission_deal_on_devis_accepted(**kwargs):
+    # ACRM66 (D-ACRM-6 (iii)=(b)) — apporteurs parqués : aucune commission.
+    from .parcage import apporteurs_actifs
+    if not apporteurs_actifs(getattr(kwargs.get('devis'), 'company_id', None)):
+        return None
     return receivers_clients._calculer_commission_deal_on_devis_accepted(**kwargs)
     # ALEA3 (D-ALEA-3) — plus aucune émission de ``deal_commission_due`` : le
     # signal n'avait AUCUN abonné (le module compta est parqué). Le comptable

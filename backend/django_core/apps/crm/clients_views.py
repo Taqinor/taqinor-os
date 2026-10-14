@@ -31,6 +31,7 @@ from .models import (
     PlanActivite, PlanCompte, Playbook, PlaybookEtape, PlaybookTache,
     RevueCompte, SalleVente, SalleVenteItem, VisiteExterne,
 )
+from .parcage import ApporteursParquesMixin
 from .serializers import LeadActivitySerializer, masquer_pii_dict
 from .serializers_clients import (
     AppareilEquipeSerializer, ClientSerializer, PartenaireSerializer,
@@ -211,8 +212,9 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
         })
 
 
-class ApporteurViewSet(CompanyScopedModelViewSet):
-    """NTCRM20 — Apporteurs d'affaires (registre B2B, CRUD interne)."""
+class ApporteurViewSet(ApporteursParquesMixin, CompanyScopedModelViewSet):
+    """NTCRM20 — Apporteurs d'affaires (registre B2B, CRUD interne) ; ACRM66 :
+    404 tant que le réglage société ``apporteurs_actif`` est éteint."""
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = ApporteurSerializer
     queryset = Apporteur.objects.select_related('company').all()
@@ -223,7 +225,9 @@ class ApporteurViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class DealEnregistreViewSet(ApporteursParquesMixin, _PorteeEnfantsMixin,
+                            CompanyScopedModelViewSet):
+    # ACRM66 — 404 (a-payer compris) tant que ``apporteurs_actif`` est éteint.
 
     """NTCRM20 — Deals enregistrés par un apporteur (protection anti-poaching).
 

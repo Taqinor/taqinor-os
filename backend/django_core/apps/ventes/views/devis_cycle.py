@@ -235,7 +235,8 @@ class DevisCycleActionsMixin:
         # Tour 3 M1 — corps hors schéma (``variante_pct: {}``…) = 400.
         valider_corps(request, D.DupliquerVarianteRequest)
         company = source.company
-        root = source.version_parent or source
+        from ..selectors import racine_groupe
+        root = racine_groupe(source)
 
         # QG9 — échelles depuis un pourcentage : override requête ``scales``
         # (rétro-compat) > override requête ``variante_pct`` > config société
@@ -278,10 +279,9 @@ class DevisCycleActionsMixin:
         from decimal import Decimal, ROUND_HALF_UP
         # ── QJR407 (S5-1 / S5-2 / S5-4) — LE CLONEUR DU DOMAINE ─────────────
         # Cette boucle réimplémentait ``Devis.objects.create(...)`` et OMETTAIT
-        # les sept champs que le cloneur porte depuis QJR146(a) : ``devise``,
-        # ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
-        # ``entite``, ``custom_data`` — une variante perdait l'échéancier
-        # NÉGOCIÉ et l'acompte de l'original. Elle créait en outre le devis
+        # les champs que le cloneur porte depuis QJR146(a) : ``devise``,
+        # ``taux_change``, ``echeancier``, ``entite``, ``custom_data`` — une
+        # variante perdait l'échéancier NÉGOCIÉ de l'original. Elle créait en outre le devis
         # HORS transaction avant de cloner ses lignes (S5-4). La
         # réimplémentation est SUPPRIMÉE (règle permanente 2).
         #
@@ -379,7 +379,8 @@ class DevisCycleActionsMixin:
         """QJ15 — Liste les variantes liées à ce devis (même version_parent,
         toutes actives). Utilisé par la proposal côte-à-côte."""
         devis = self.get_object()
-        root = devis.version_parent or devis
+        from ..selectors import racine_groupe
+        root = racine_groupe(devis)
         siblings = (
             Devis.objects
             .filter(company=devis.company, version_parent=root, is_active=True)

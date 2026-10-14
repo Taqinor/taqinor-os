@@ -1467,6 +1467,35 @@ def predecesseur_accepte(devis):
     return acceptes[0] if acceptes else None
 
 
+def racine_groupe(devis):
+    """VNT104 — l'OBJET racine du GROUPE DE PROPOSITION de ``devis``.
+
+    Trois notions qui ne se confondent jamais :
+
+    * le GROUPE de proposition (``version_parent``) : la racine et les devis
+      rattachés à elle — versions, variantes de taille, gammes sœurs ;
+    * la CHAÎNE de révision (``superseded_by``) : V1 → V2 d'UNE vente, lue par
+      :func:`devis_predecesseurs_revision_ids` ;
+    * la VENTE (``etat_vente``) : ce qui est signé, facturé et payé.
+
+    Lit ``devis.version_parent`` (une requête si la relation n'est pas
+    chargée)."""
+    return devis.version_parent or devis
+
+
+def groupe_proposition(devis):
+    """VNT104 — le queryset du GROUPE DE PROPOSITION de ``devis`` (racine +
+    devis dont ``version_parent`` est la racine), sans filtre de société, de
+    statut, ni tri ni verrou : l'appelant garde ses ``select_related`` /
+    ``select_for_update`` / ``filter`` / ``order_by``. La racine est lue par
+    son id (aucune requête). Voir :func:`racine_groupe`."""
+    from django.db.models import Q
+    from .models import Devis
+
+    racine = devis.version_parent_id or devis.pk
+    return Devis.objects.filter(Q(pk=racine) | Q(version_parent_id=racine))
+
+
 def instantane_accepte_en_vigueur(devis_id, company):
     """ACAL107 (D-ACAL-23) — l'instantané FIGÉ de la version ACCEPTÉE en
     vigueur de la chaîne de révision de ``devis_id``, ou ``None``.
@@ -1663,7 +1692,6 @@ from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
     references_avoirs,
     encours_clients_par_tiers,
     encours_ouvert_par_tiers,
-    reste_du_factures_brouillon,
     ca_devis_factures_par_clients,
     acompte_paye_pour_devis,
     etat_recouvrement_client,
@@ -1671,7 +1699,6 @@ from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
     devis_a_facturer,
     tranche_facturee,
     jours_impaye_facture,
-    montants_factures_par_devis,
     carnet_commande_par_mois,
     factures_via_bon_commande,
     factures_du_devis,

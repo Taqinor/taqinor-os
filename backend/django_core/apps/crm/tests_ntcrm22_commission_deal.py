@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from authentication.models import Company
 from apps.crm.models import Apporteur, DealEnregistre, Lead
 from apps.crm.clients_identite import resolve_client_for_lead
+from apps.parametres.models import CompanyProfile
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from core.events import devis_accepted
@@ -20,6 +21,9 @@ class CommissionDealTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM22', slug='taqinor-ntcrm22')
+        # ACRM66 — la commission n'est calculée que réglage ALLUMÉ.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'apporteurs_actif': True})
         self.apporteur = Apporteur.objects.create(
             company=self.company, nom='Apporteur commission',
             taux_commission_pct=Decimal('5.00'))
@@ -63,6 +67,9 @@ class APayerEndpointTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor NTCRM22b', slug='taqinor-ntcrm22b')
+        # ACRM66 — `deals-enregistres/a-payer/` n'est servi que réglage allumé.
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'apporteurs_actif': True})
         self.role = Role.objects.create(
             company=self.company, nom='Comptable', permissions=['crm_creer'])
         self.user = User.objects.create_user(
