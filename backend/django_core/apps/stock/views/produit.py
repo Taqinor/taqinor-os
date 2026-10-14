@@ -562,7 +562,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         # ERR fuzz : un id non entier ({}, liste…) levait TypeError (500) ;
         # CI #997 fuzz (2) : entier JSON seulement (``null``/``"5"`` lus).
         if any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
-            return Response({'ids': ['Identifiants entiers attendus.']},
+            return Response({'detail': 'Identifiants entiers attendus.'},
                             status=status.HTTP_400_BAD_REQUEST)
         # ASTK20 (D-ASTK-3) — la variation de prix en masse = écriture du prix
         # catalogue : même helper que ProduitSerializer (jumeau unique).
