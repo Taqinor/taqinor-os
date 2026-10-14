@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from django.db.models import Q
 from rest_framework import serializers
 
+from core.champs_stricts import DecimalSoupleMixin
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import (
     ChampsStrictsMixin, CompanyScopedPrimaryKeyRelatedField, request_company_id,
@@ -999,7 +1000,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
-class DevisWriteSerializer(SameCompanyFKSerializerMixin,
+class DevisWriteSerializer(DecimalSoupleMixin, SameCompanyFKSerializerMixin,
                            TiersPayeurValidationMixin,
                            EcheancierValidationMixin,
                            serializers.ModelSerializer):
@@ -1056,6 +1057,9 @@ class DevisWriteSerializer(SameCompanyFKSerializerMixin,
     ENF17 — ``client``, ``lead`` et ``entite`` sont BORNÉS à la société de la
     requête : l'id d'une autre société reçoit la réponse d'un id absent
     (400 « objet inexistant ») au lieu du « Client/Lead inconnu. » de la vue.
+
+    CI #997 — décimaux en ``DecimalSouple`` : chaîne OU nombre JSON (le
+    générateur envoie des nombres), publiés ``anyOf`` au schéma.
     """
     same_company_fields = ('client', 'lead', 'entite')
 
