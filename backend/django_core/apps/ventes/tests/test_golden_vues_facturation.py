@@ -80,11 +80,11 @@ GROUPES = {
 
 #: groupe → fichier de ``views/`` où il DOIT vivre ; rempli par chaque
 #: déplacement (ex. VNT97 : ``PLACE['cycle'] = 'facture_cycle.py'``).
-PLACE = {}
+PLACE = {
+    'cycle': 'facture_cycle.py',  # VNT97
+}
 
 DEFAUT = 'facture.py'
-#: Emplacement d'origine des symboles qui ne vivaient pas dans le DEFAUT.
-ORIGINE = {'montant_tranche': 'facture_montant_tranche.py'}
 
 #: Posés sur la CLASSE par ``ViewSetMixin.as_view()`` dès que l'URLconf est
 #: chargée (DRF) : leur présence dépend de l'ordre des tests, pas du code.
@@ -92,7 +92,7 @@ POSES_PAR_AS_VIEW = {'basename', 'description', 'detail', 'name', 'suffix'}
 
 
 def _attendu(groupe, nom):
-    return PLACE.get(groupe) or ORIGINE.get(nom, DEFAUT)
+    return PLACE.get(groupe, DEFAUT)
 
 
 def _fichiers_vues_facture():
