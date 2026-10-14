@@ -735,3 +735,66 @@ class FacturerVenteEndpointVNT31(_BaseVente):
                              format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['facture']['statut'], 'emise')
+
+
+class AcompteAutomatiqueVNT62(_BaseVente):
+    """VNT62 (AMET2 + AMET4, D-SIGN-AUTO = a) — l'acceptation fige
+    l'échéancier puis pose UN brouillon d'acompte ; « Facturer l'acompte »
+    modifie CE brouillon ; un avenant négocié n'en pose aucun."""
+
+    def setUp(self):
+        from unittest import mock
+        super().setUp()
+        for cible in ('apps.ventes.domain.cycle_vie._store_signed_pdf',
+                      'apps.ventes.domain.cycle_vie._send_acceptance_emails'):
+            patcher = mock.patch(cible)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _accepte(self, reference):
+        from apps.ventes.domain.cycle_vie import accept_devis
+        devis = self._388(reference, echeancier=None, statut='envoye')
+        return accept_devis(devis=devis, user=self.user, nom='Client 388',
+                            option='sans_batterie')
+
+    def _brouillons_acompte(self, devis_ids):
+        return Facture.objects.filter(
+            devis_id__in=devis_ids, statut=Facture.Statut.BROUILLON,
+            type_facture='acompte')
+
+    def test_acceptation_fige_30_60_10_et_pose_le_brouillon_14700(self):
+        devis = self._accepte('DEV-VNT62-10')
+        devis.refresh_from_db()
+        self.assertEqual([e['pct_or_montant'] for e in devis.echeancier],
+                         [30, 60, 10])
+        brouillons = list(self._brouillons_acompte([devis.pk]))
+        self.assertEqual(len(brouillons), 1)
+        self.assertEqual(Decimal(str(brouillons[0].total_ttc)),
+                         Decimal('14700.00'))
+        self.assertTrue(brouillons[0].reference.startswith('BROUILLON-'))
+
+    def test_facturer_l_acompte_15000_modifie_le_meme_brouillon(self):
+        devis = self._accepte('DEV-VNT62-20')
+        auto = self._brouillons_acompte([devis.pk]).get()
+        facture, _p = self._facturer(devis, nature='acompte',
+                                     montant_ttc=Decimal('15000'))
+        self.assertEqual(facture.pk, auto.pk)
+        self.assertEqual(Decimal(str(facture.total_ttc)),
+                         Decimal('15000.00'))
+        self.assertEqual(self._brouillons_acompte([devis.pk]).count(), 1)
+
+    def test_jamais_un_deuxieme_brouillon(self):
+        from apps.ventes.domain.facturation_vente import (
+            acompte_a_l_acceptation)
+        devis = self._accepte('DEV-VNT62-30')
+        self.assertIsNone(acompte_a_l_acceptation(devis, self.user))
+        self.assertEqual(self._brouillons_acompte([devis.pk]).count(), 1)
+
+    def test_avenant_negocie_aucun_brouillon_neuf(self):
+        from apps.ventes.domain.negociation import appliquer_prix_negocie
+        devis = self._accepte('DEV-VNT62-40')
+        r = appliquer_prix_negocie(devis, prix_ttc='44100', user=self.user)
+        ids = [devis.pk, r['devis_v2']['id']]
+        # Le brouillon de la V1 est retiré par « Prix négocié », la V2
+        # acceptée n'en pose pas de nouveau.
+        self.assertEqual(self._brouillons_acompte(ids).count(), 0)

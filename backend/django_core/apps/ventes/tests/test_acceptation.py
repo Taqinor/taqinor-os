@@ -302,3 +302,37 @@ class TestDevisAcceptation(TestCase):
             client=self.client_obj, lead=lead, statut=Devis.Statut.ENVOYE,
             taux_tva=Decimal('20'))
         self.assertEqual(self._accepter(devis).status_code, 200)
+
+    # ── VNT62 — échéancier figé + brouillon d'acompte, défait à la sortie ──
+
+    def test_vnt62_acceptation_pose_l_acompte_la_sortie_de_signe_l_annule(
+            self):
+        import apps.crm.stages as stages
+        from apps.ventes.models import Facture
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead VNT62', stage=stages.FOLLOW_UP)
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                f'DEV-{MONTH}-0620', statut='envoye',
+                                lead=lead)
+        r = self.api.post(f'/api/django/ventes/devis/{devis.id}/accepter/',
+                          {'nom': 'Client 388'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        brouillon = Facture.objects.get(
+            devis=devis, statut=Facture.Statut.BROUILLON,
+            type_facture='acompte')
+        self.assertEqual(brouillon.total_ttc, Decimal('14700.00'))
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage, stages.SIGNED)
+
+        r = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
+                           {'stage': stages.FOLLOW_UP,
+                            'confirme_recul': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        lead.refresh_from_db()
+        devis.refresh_from_db()
+        brouillon.refresh_from_db()
+        self.assertEqual(lead.stage, stages.FOLLOW_UP)
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertEqual(brouillon.statut, Facture.Statut.ANNULEE)

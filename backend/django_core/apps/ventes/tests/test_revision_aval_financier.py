@@ -204,15 +204,16 @@ class PrixNegocieApercu(TestCase):
     def _vente_avec_acompte_paye_et_brouillon(self):
         from apps.facturation.models import Paiement
         from apps.ventes.domain.facturation_vente import (
-            creer_brouillon_tranche)
+            creer_brouillon_tranche, facturer_vente)
         from apps.ventes.vente_facturation import plan_facturation
         v1 = accept_devis(devis=Devis.objects.get(pk=self.v1.pk),
                           user=self.user, nom='Client 367',
                           date_acceptation=date.today(),
                           option='sans_batterie')
         self.assertEqual(_ttc(v1), Decimal('54500.00'))
-        acompte = creer_facture_tranche(v1, self.user, self.company,
-                                        create_with_reference)
+        # VNT62 — l'acceptation a posé le brouillon d'acompte : on l'émet.
+        acompte, _p = facturer_vente(v1, nature='acompte', user=self.user,
+                                     emettre=True)
         Paiement.objects.create(
             company=self.company, facture=acompte,
             montant=acompte.total_ttc, date_paiement=date.today())

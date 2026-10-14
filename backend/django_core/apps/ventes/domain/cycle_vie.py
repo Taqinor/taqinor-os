@@ -1656,6 +1656,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
     if avenant:
         return devis
+    from apps.ventes.domain.facturation_vente import acompte_a_l_acceptation  # VNT62
+    acompte_a_l_acceptation(devis, user)  # échéancier figé + brouillon d'acompte (D-SIGN-AUTO = a)
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
@@ -1718,8 +1720,8 @@ def raison_blocage_annulation_acceptation(devis):
     ``devis``, ou ``None`` si l'annulation est permise. Lecture seule.
 
     Bloquent : une facture non annulée liée au devis (directement, par son bon
-    de commande ou par une facture consolidée — brouillon comprise : elle
-    n'est jamais créée par l'acceptation), un bon de commande non annulé, un
+    de commande ou par une facture consolidée — brouillon compris, hors l'acompte
+    automatique qu'``annuler_acceptation`` retire d'abord, VNT62), un BC non annulé, un
     dossier 82-21 sorti de « En constitution », puis ce que disent les
     sélecteurs des apps propriétaires (chantier avancé, contrat SAV engagé)."""
     from django.db.models import Q
@@ -1816,6 +1818,8 @@ def annuler_acceptation(*, devis, user, motif=''):
             return courant or devis
         devis = courant
 
+        from apps.ventes.domain.facturation_vente import retirer_acompte_automatique  # VNT62
+        retirer_acompte_automatique(devis, user=user)  # brouillon d'acompte auto annulé, sans avoir
         raison = raison_blocage_annulation_acceptation(devis)
         if raison:
             raise AnnulationAcceptationBloquee(raison)
