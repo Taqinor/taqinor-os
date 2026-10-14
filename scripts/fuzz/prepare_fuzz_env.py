@@ -371,6 +371,14 @@ def _semer_systeme_fixation(company, user):
         provenance='Seed du harnais de fuzz (ENF11), jamais une donnée réelle.')
 
 
+def _semer_entite(company, user):
+    existant = _premier('entites.Entite', company)
+    if existant is not None:
+        return existant
+    return _modele('entites.Entite').objects.create(
+        company=company, nom='Entité fuzz', code='FUZZ')
+
+
 def _semer_gabarit_dossier(company, user):
     existant = _premier('calepinage.GabaritDossierReglementaire', company)
     if existant is not None:
@@ -456,6 +464,7 @@ SEMEURS = (
     ('calepinage.Calepinage (modèle)', _semer_calepinage_modele),
     ('calepinage.SystemeFixation', _semer_systeme_fixation),
     ('calepinage.GabaritDossierReglementaire', _semer_gabarit_dossier),
+    ('entites.Entite', _semer_entite),
     ('ged (coffre, dossier, étiquette)', _semer_ged),
     ('achats.RetourFournisseur', _semer_retour_fournisseur),
 )
