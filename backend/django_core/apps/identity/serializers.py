@@ -4,6 +4,7 @@ import ipaddress
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
 
@@ -75,8 +76,11 @@ class UrlFacultative(serializers.URLField):
     tant que l'IdP n'est pas configuré, ce que ``format: uri`` seul invalidait)."""
 
 
-class IdentityProviderSerializer(serializers.ModelSerializer):
-    """CRUD d'un IdP SSO (NTSEC1). ``company`` forcée côté serveur."""
+class IdentityProviderSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+    """CRUD d'un IdP SSO (NTSEC1). ``company`` forcée côté serveur.
+
+    CI #997 (3) — textes et booléens STRICTS : ``enforce_sso: 0`` (le schéma
+    déclare un booléen) était lu ``False`` et le POST répondait 201."""
     metadata_url = UrlFacultative(
         max_length=500, required=False, allow_blank=True)
     sso_url = UrlFacultative(max_length=500, required=False, allow_blank=True)
