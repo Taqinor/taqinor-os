@@ -348,11 +348,11 @@ class GedMoveEndpointTests(GedBase):
         b = Folder.objects.create(
             company=self.co_a, cabinet=self.cab_a, parent=a, nom='B')
         api = auth(self.admin_a)
-        # Déplacer A sous son propre descendant B → cycle → 400.
+        # Déplacer A sous son propre descendant B → cycle (état de l'arbre) → 409.
         resp = api.post(f'/api/django/ged/dossiers/{a.id}/deplacer/', {
             'parent': b.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_move_folder_endpoint_rejects_other_company_parent(self):
         b_parent = Folder.objects.create(
