@@ -1287,7 +1287,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
                  entreprise=None, override_credit=False,
-                 override_avertissement=False):
+                 override_avertissement=False, canal=''):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1551,6 +1551,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # appel réseau — et surtout, un email annonçant une vente qui vient
         # d'être annulée par un rollback serait pire que pas d'email du tout.
         activity.log_devis_acceptance(devis, user, nom, date_acc, option)
+        # VNT59 — avenant négocié : ni signature, PDF, e-mail, CAPI ; aval rattaché en STRICT (negociation).
+        avenant = canal == 'avenant_negocie'
         if ip:
             # Trace the e-signature origin IP in the chatter (Q7) without a new
             # column — kept beside the acceptance stamp for the audit trail.
@@ -1577,15 +1579,16 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
         # on ne crée pas de second enregistrement — la signature d'origine fait
         # foi.
-        _create_esign_record(
-            devis=devis, nom=nom, ip=ip,
-            user_agent=user_agent, consentement=consentement,
-            signature_image=signature_image, signed_at_client=signed_at_client,
-            on_behalf_of=on_behalf_of, lignes=lignes_devis,
-            # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
-            # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
-            entreprise=entreprise,
-        )
+        if not avenant:
+            _create_esign_record(
+                devis=devis, nom=nom, ip=ip,
+                user_agent=user_agent, consentement=consentement,
+                signature_image=signature_image, signed_at_client=signed_at_client,
+                on_behalf_of=on_behalf_of, lignes=lignes_devis,
+                # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
+                # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
+                entreprise=entreprise,
+            )
         # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
         # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE
         # différent déjà présent n'est jamais écrasé (``divergence_ice``).
@@ -1637,7 +1640,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # un incident ici n'annule jamais la signature du client (journalisé).
         try:
             with transaction.atomic():
-                rattacher_aval_financier_revision(devis, user=user)
+                if not avenant:
+                    rattacher_aval_financier_revision(devis, user=user)
         except Exception:  # noqa: BLE001 — best-effort, journalisé
             logger.exception(
                 'QJR560 : aval financier de révision non rattaché (devis %s)',
@@ -1650,6 +1654,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             groupe=groupe)
 
     # ── APRÈS LE COMMIT — entrées-sorties best-effort, jamais bloquantes ────
+    if avenant:
+        return devis
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)

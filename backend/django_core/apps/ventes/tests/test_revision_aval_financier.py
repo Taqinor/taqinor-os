@@ -263,3 +263,91 @@ class PrixNegocieApercu(TestCase):
                     self._apercu(v1, **saisie)
                 self.assertEqual(ctx.exception.code, code)
                 self.assertEqual(ctx.exception.statut_http, 400)
+
+    # ── VNT59 — appliquer : V2 créée ET acceptée en un geste ───────────────
+
+    def _appliquer(self, devis, **saisie):
+        from apps.ventes.domain.negociation import appliquer_prix_negocie
+        return appliquer_prix_negocie(devis, user=self.user, **saisie)
+
+    def test_appliquer_49000_v2_acceptee_sans_signature_ni_mail(
+            self, store_pdf, emails):
+        from django.core import mail
+        from django.db import transaction
+        from apps.ventes.models import DevisSignature
+        from apps.ventes.selectors import devis_signes_en_vigueur
+        v1, acompte, brouillon = self._vente_avec_acompte_paye_et_brouillon()
+        store_pdf.reset_mock()
+        emails.reset_mock()
+        mail.outbox = []
+        with transaction.atomic():
+            r = self._appliquer(v1, prix_ttc='49000')
+        v2 = Devis.objects.get(pk=r['devis_v2']['id'])
+        self.assertEqual(v2.statut, Devis.Statut.ACCEPTE)
+        self.assertTrue(v2.is_active)
+        self.assertEqual(v2.remise_globale, Decimal('10.00'))
+        self.assertIn('avenant négocié', v2.accepte_par_nom)
+        self.assertEqual(_ttc(v2), Decimal('49000.00'))
+        v1.refresh_from_db()
+        self.assertFalse(v1.is_active)
+        self.assertEqual(v1.superseded_by_id, v2.pk)
+        brouillon.refresh_from_db()
+        self.assertEqual(brouillon.statut, Facture.Statut.ANNULEE)
+        self.assertFalse(Avoir.objects.filter(facture=brouillon).exists())
+        acompte.refresh_from_db()
+        self.assertEqual(acompte.devis_id, v2.pk)
+        self.assertFalse(DevisSignature.objects.filter(devis=v2).exists())
+        store_pdf.assert_not_called()
+        emails.assert_not_called()
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(
+            set(devis_signes_en_vigueur(self.company)
+                .values_list('pk', flat=True)), {v2.pk})
+        self.assertEqual(r['factures_annulees'],
+                         [{'reference': brouillon.reference}])
+
+    def test_appliquer_incident_de_rattachement_annule_tout(self, *_):
+        v1, _acompte, brouillon = (
+            self._vente_avec_acompte_paye_et_brouillon())
+        nb_devis = Devis.objects.count()
+        with mock.patch(
+                'apps.ventes.domain.revision.'
+                'rattacher_aval_financier_revision',
+                side_effect=RuntimeError('incident')):
+            with self.assertRaises(RuntimeError):
+                self._appliquer(v1, prix_ttc='49000')
+        self.assertEqual(Devis.objects.count(), nb_devis)
+        v1.refresh_from_db()
+        self.assertTrue(v1.is_active)
+        self.assertIsNone(v1.superseded_by_id)
+        brouillon.refresh_from_db()
+        self.assertEqual(brouillon.statut, Facture.Statut.BROUILLON)
+
+    def test_appliquer_double_clic_409_version_remplacee(self, *_):
+        from apps.ventes.domain.negociation import PrixNegocieRefuse
+        v1, _a, _b = self._vente_avec_acompte_paye_et_brouillon()
+        r = self._appliquer(v1, prix_ttc='49000')
+        with self.assertRaises(PrixNegocieRefuse) as ctx:
+            self._appliquer(Devis.objects.get(pk=v1.pk), prix_ttc='49000')
+        self.assertEqual(ctx.exception.statut_http, 409)
+        corps = ctx.exception.corps()
+        self.assertEqual(corps['code'], 'version_remplacee')
+        self.assertEqual(corps['successeur']['id'], r['devis_v2']['id'])
+
+    def test_appliquer_autre_vente_sur_le_lead_409(self, *_):
+        from apps.ventes.domain.negociation import PrixNegocieRefuse
+        lead = Lead.objects.create(company=self.company, nom='Lead VNT59')
+        Devis.objects.filter(pk=self.v1.pk).update(lead=lead)
+        v1, _a, _b = self._vente_avec_acompte_paye_et_brouillon()
+        autre = make_devis(self.company, self.user, self.client_obj,
+                           LIGNES_367, reference='DEV-VNT58-0020')
+        Devis.objects.filter(pk=autre.pk).update(
+            statut=Devis.Statut.ACCEPTE, lead=lead)
+        nb_devis = Devis.objects.count()
+        with self.assertRaises(PrixNegocieRefuse) as ctx:
+            self._appliquer(v1, prix_ttc='49000')
+        self.assertEqual(ctx.exception.statut_http, 409)
+        self.assertEqual(ctx.exception.code, 'vente_active_existante')
+        self.assertEqual(ctx.exception.corps()['vente_active']['id'],
+                         autre.pk)
+        self.assertEqual(Devis.objects.count(), nb_devis)

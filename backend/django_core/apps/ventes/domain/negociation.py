@@ -248,3 +248,98 @@ def apercu_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user=None,
         'reste_a_facturer': _txt(reste),
         '_remise': remise,
     }
+
+
+# ── VNT59 — appliquer le prix négocié (UN geste, D-VNT-2) ───────────────────
+
+#: Canal d'acceptation de la V2 négociée : ni signature, ni PDF scellé, ni
+#: e-mail, ni CAPI (``accept_devis(canal=…)``).
+CANAL_AVENANT_NEGOCIE = 'avenant_negocie'
+
+
+def _refus_acceptation(exc):
+    """``AcceptError`` de la V2 ⇒ :class:`PrixNegocieRefuse` (même code)."""
+    code = getattr(exc, 'code', None)
+    if code == CODE_VENTE_ACTIVE_EXISTANTE:
+        return PrixNegocieRefuse(
+            code, statut_http=409, detail=exc.message,
+            vente_active=getattr(exc, 'vente_active', None))
+    if code == 'approbation_requise':
+        return PrixNegocieRefuse(code)
+    return PrixNegocieRefuse(
+        code or 'pas_une_vente_active',
+        statut_http=409 if exc.conflict else 400, detail=exc.message)
+
+
+def appliquer_prix_negocie(devis, *, prix_ttc=None, remise_pct=None, user,
+                           confirmer_avoir=False):
+    """VNT59 (D-VNT-2) — « Prix négocié » appliqué en UN geste, dans UNE
+    transaction (tout tombe ou tout tient) :
+
+    1. l'aperçu (:func:`apercu_prix_negocie`) refait SOUS la transaction —
+       mêmes refus, ``avoir_a_confirmer`` tant que l'avoir n'est pas confirmé ;
+    2. ``reviser_devis`` crée la V2 (V1 désactivée, ``superseded_by``) ; la V2
+       porte la remise la plus ronde du solveur ;
+    3. ``accept_devis(canal='avenant_negocie')`` l'accepte (gel du document
+       engagé, ``devis_accepted`` avec ``avenant_de``) — ni signature, ni PDF
+       scellé, ni e-mail, ni CAPI ; ``accepte_par_nom`` « … — avenant
+       négocié » ;
+    4. les BROUILLONS de la chaîne sont retirés
+       (``retirer_brouillons_de_la_vente`` : annulés, jamais supprimés) ;
+    5. rattachement STRICT de l'aval financier (aucun ``try/except``) : un
+       incident annule TOUT le geste.
+
+    Rend la forme ``reponse_appliquer_201`` du contrat ; un refus lève
+    :class:`PrixNegocieRefuse` (rien n'est écrit)."""
+    from decimal import Decimal
+
+    from django.db import transaction
+
+    from apps.ventes.domain.annulation_facture import (
+        retirer_brouillons_de_la_vente)
+    from apps.ventes.domain.cycle_vie import AcceptError, accept_devis
+    from apps.ventes.domain.modifiabilite import (
+        CODE_VERSION_REMPLACEE, corps_version_remplacee)
+    from apps.ventes.domain.revision import (
+        RevisionError, rattacher_aval_financier_revision, reviser_devis)
+    from apps.ventes.utils.options import option_totaux
+
+    with transaction.atomic():
+        apercu = apercu_prix_negocie(
+            devis, prix_ttc=prix_ttc, remise_pct=remise_pct, user=user,
+            exiger_confirmation=True, confirmer_avoir=confirmer_avoir)
+        try:
+            v2 = reviser_devis(devis, user=user)
+        except RevisionError as exc:
+            corps = corps_version_remplacee(devis)
+            raise PrixNegocieRefuse(
+                CODE_VERSION_REMPLACEE, statut_http=409,
+                detail=corps['detail'], successeur=corps['successeur'],
+            ) from exc
+        v2.remise_globale = apercu['_remise']
+        v2.save(update_fields=['remise_globale'])
+        nom = (devis.accepte_par_nom or 'Client').strip()
+        try:
+            v2 = accept_devis(
+                devis=v2, user=user, nom=f'{nom} — avenant négocié',
+                option=devis.option_acceptee or '',
+                idempotent_reaccept=False, canal=CANAL_AVENANT_NEGOCIE)
+        except AcceptError as exc:
+            raise _refus_acceptation(exc) from exc
+        total = Decimal(str(option_totaux(v2)['ttc']))
+        if total != Decimal(apercu['total_ttc']):
+            raise RuntimeError(
+                f'VNT59 : la V2 {v2.reference} vaut {total} MAD TTC, '
+                f"l'aperçu annonçait {apercu['total_ttc']} — geste annulé.")
+        retires = retirer_brouillons_de_la_vente(
+            v2, user=user, motif=f'Prix négocié ({v2.reference})')
+        rattacher_aval_financier_revision(v2, user=user)
+    logger.info('VNT59: prix négocié %s → %s (%s MAD TTC, remise %s %%).',
+                devis.reference, v2.reference, apercu['total_ttc'],
+                apercu['remise_pct'])
+    resultat = {k: v for k, v in apercu.items() if not k.startswith('_')}
+    resultat.update(
+        devis_v2={'id': v2.pk, 'reference': v2.reference,
+                  'version': v2.version},
+        factures_annulees=[{'reference': f.reference} for f in retires])
+    return resultat
