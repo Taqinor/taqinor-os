@@ -67,7 +67,13 @@ class JournalPagineTests(TestCase):
         self.assertTrue(9 <= r.data['count'] <= 11, r.data['count'])
 
     def test_parametres_invalides_400(self):
+        # ENF11 : entier vide, signé ou compact (``20261014``) = hors schéma.
         for params in ({'user': 'abc'}, {'limit': 'x'}, {'offset': '-1'},
-                       {'limit': '0'}, {'date_debut': '2026-13-45'}):
+                       {'limit': '0'}, {'date_debut': '2026-13-45'},
+                       {'user': ''}, {'offset': '+1'},
+                       {'date_fin': '20261014'}):
             r = self.api.get(URL, params)
             self.assertEqual(r.status_code, 400, (params, r.data))
+        # Une borne de date VIDE reste « non posée » (publiée comme telle).
+        r = self.api.get(URL, {'date_fin': ''})
+        self.assertEqual(r.status_code, 200, r.data)

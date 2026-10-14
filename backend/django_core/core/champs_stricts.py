@@ -45,7 +45,9 @@ class _ChaineSansNul(OpenApiSerializerFieldExtension):
                 cle in schema for cle in ('pattern', 'format', 'enum')):
             return schema
         schema = dict(schema)
-        schema['pattern'] = MOTIF_SANS_NUL
+        schema['pattern'] = (
+            MOTIF_NON_BLANC_SANS_NUL if schema.get('minLength', 0) >= 1
+            else MOTIF_SANS_NUL)
         return schema
 
 

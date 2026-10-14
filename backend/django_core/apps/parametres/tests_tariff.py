@@ -431,6 +431,18 @@ class TariffApiTest(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['source'], 'manual')
 
+    def test_productible_parametre_illisible_400_pas_500(self):
+        # ENF11 : ``tilt=abc`` levait ``int()`` (500) ; les nombres déclarés
+        # au schéma sont lus strictement, le repli « sans coordonnées » reste.
+        self.api.patch(PUT_URL, {'pvgis_actif': False}, format='json')
+        for param in ('lat', 'lon', 'peakpower', 'tilt', 'azimuth'):
+            for valeur in ('abc', 'nan'):
+                r = self.api.get(PROD_URL, {param: valeur})
+                self.assertEqual(r.status_code, 400, (param, valeur, r.data))
+        r = self.api.get(PROD_URL, {'tilt': '30', 'azimuth': '0'})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data['source'], 'manual')
+
     def test_non_admin_cannot_update(self):
         limited = User.objects.create_user(
             username='tarif_limited', password='x',

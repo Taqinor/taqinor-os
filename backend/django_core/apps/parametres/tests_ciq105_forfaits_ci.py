@@ -52,6 +52,20 @@ class ForfaitsCiTests(TestCase):
         self.assertEqual(resp.data['forfaits_ci'], {})
         self.assertIsNone(resp.data['bande_prix_kwc_ci'])
 
+    def test_null_vaut_vide_et_ne_vide_pas_en_400(self):
+        # ENF11 : ``null`` était refusé par DRF avant le validateur qui le lit
+        # comme « vide » ; il remet les deux JSON à {}.
+        self.api.patch(
+            URL_PATCH, {'forfaits_ci': {'pose_modules': FORFAIT_POSE}},
+            format='json')
+        resp = self.api.patch(
+            URL_PATCH,
+            {'forfaits_ci': None, 'reperes_energie_agricole': None},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['forfaits_ci'], {})
+        self.assertEqual(resp.data['reperes_energie_agricole'], {})
+
     def test_saisie_sourcee_acceptee_et_normalisee(self):
         resp = self.api.patch(
             URL_PATCH, {'forfaits_ci': {'pose_modules': FORFAIT_POSE}},

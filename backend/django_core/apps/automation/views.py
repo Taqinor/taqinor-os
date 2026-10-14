@@ -22,14 +22,18 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
 )
+from core.champs_stricts import entier_ou_400
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from . import engine, services
+from .actions import ACTIONS_INDISPONIBLES
 from .models import (
-    ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
+    ActionType, ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRuleVersion, AutomationRun,
     IncomingWebhookTrigger, TriggerType, creer_version_automation_rule,
     restaurer_version_automation_rule,
 )
+from .selectors import DECLENCHEURS_PARQUES
 from .serializers import (
     WEBHOOK_REGLE_INCOMPATIBLE, ApprovalDelegationSerializer,
     ApprovalRequestSerializer, ApprovalRequestTypeSerializer,
@@ -45,7 +49,21 @@ READ_ACTIONS = ['list', 'retrieve']
 
 _ENABLED = OpenApiParameter(
     'enabled', OpenApiTypes.STR, required=False)
-_RULE = OpenApiParameter('rule', OpenApiTypes.INT, required=False)
+# ENF11 — ``?rule=abc`` (ou hors entier SQL) levait une erreur de base (500) :
+# le filtre est un identifiant ≥ 1 lu par ``entier_ou_400`` (400 nommé).
+_RULE = OpenApiParameter(
+    'rule', {'type': 'integer', 'minimum': 1}, required=False)
+
+
+def _rule_ou_400(params):
+    """Filtre ``?rule=`` : absent → ``None`` ; présent, il doit être un
+    entier ≥ 1 (un ``?rule=`` vide contredit le schéma : 400 aussi)."""
+    if 'rule' in params and not params['rule'].strip():
+        raise drf_serializers.ValidationError({'rule': ['Entier attendu.']})
+    return entier_ou_400(
+        params.get('rule'), 'rule', mini=1, maxi=2147483647)
+
+
 _STATUS = OpenApiParameter('status', OpenApiTypes.STR, required=False)
 _SANS_CORPS = extend_schema(request=None)
 
@@ -79,9 +97,29 @@ class WebhookCreerSerializer(drf_serializers.Serializer):
     hmac_secret = drf_serializers.CharField(required=False, allow_blank=True)
 
 
-@extend_schema_view(list=extend_schema(parameters=[
-    OpenApiParameter('trigger_type', OpenApiTypes.STR, required=False),
-    _ENABLED]))
+#: ENF11 (api-fuzz « rejected schema-compliant request ») — une règle ne se crée
+#: ni ne se change vers un déclencheur dont l'émetteur est parqué (APAR43) ni
+#: vers une action sans fournisseur (APAR25) : le corps publié ne propose que
+#: les valeurs réellement acceptées (les composants de réponse gardent tout).
+REGLE_CORPS_RESSERRE = {
+    'type': 'object',
+    'properties': {
+        'trigger_type': {'enum': sorted(
+            v for v, _ in TriggerType.choices
+            if v not in DECLENCHEURS_PARQUES)},
+        'action_type': {'enum': sorted(
+            v for v, _ in ActionType.choices
+            if v not in ACTIONS_INDISPONIBLES)},
+    }}
+_CORPS_REGLE = extend_schema(
+    extensions={EXTENSION_CORPS_RESSERRE: REGLE_CORPS_RESSERRE})
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        OpenApiParameter('trigger_type', OpenApiTypes.STR, required=False),
+        _ENABLED]),
+    create=_CORPS_REGLE, update=_CORPS_REGLE, partial_update=_CORPS_REGLE)
 class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     """Règles d'automatisation (N72). Lecture tout rôle ; écriture admin.
     Tout est opt-in : sans règle activée, aucun comportement ne change."""
@@ -212,13 +250,19 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
 
         rule = self.get_object()
         company = request.user.company
-        target_model = (request.data.get('target_model') or '').strip()
-        target_id = request.data.get('target_id')
-        if not target_model or not target_id:
+        # ENF11 — corps validé par SON schéma publié (``0`` est un identifiant
+        # comme un autre : inconnu → 404, jamais « requis »).
+        corps = SimulerSerializer(data=request.data)
+        corps.is_valid(raise_exception=True)
+        target_model = corps.validated_data['target_model'].strip()
+        target_id = corps.validated_data['target_id']
+        if not target_model:
             return Response(
                 {'detail': '« target_model » et « target_id » sont requis.'},
                 status=400)
-        instance = _resolve_target(target_model, target_id, company)
+        instance = (
+            None if target_id < 1
+            else _resolve_target(target_model, target_id, company))
         if instance is None:
             return Response(
                 {'detail': f'Aucun enregistrement « {target_model} » '
@@ -251,8 +295,8 @@ class AutomationRuleVersionViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(rule__company=user.company)
         elif not user.is_superuser:
             qs = qs.none()
-        rule = self.request.query_params.get('rule')
-        if rule:
+        rule = _rule_ou_400(self.request.query_params)
+        if rule is not None:
             qs = qs.filter(rule_id=rule)
         return qs
 
@@ -293,8 +337,8 @@ class AutomationRunViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
-        rule = params.get('rule')
-        if rule:
+        rule = _rule_ou_400(params)
+        if rule is not None:
             qs = qs.filter(rule_id=rule)
         status = params.get('status')
         if status:

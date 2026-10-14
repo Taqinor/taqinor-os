@@ -3,6 +3,8 @@
 Domaine « Avancé / Journal d'audit ». Ouverte à l'Administrateur ET au
 Responsable (promu) — comme le reste de l'écran Paramètres — jamais au palier
 limité."""
+import re
+
 from django.utils.dateparse import parse_date
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -25,9 +27,13 @@ ENTIER_MAX = 2147483647
 def _entier(request, cle, defaut, mini=0):
     """APAR32 — paramètre entier ≥ ``mini`` ; illisible ⇒ ValueError (400)."""
     brut = request.GET.get(cle)
-    if brut in (None, ''):
+    if brut is None:
         return defaut
     try:
+        # ENF11 — ``?user=`` (vide) contredit le schéma entier : 400 aussi ;
+        # ``int()`` lisait aussi `` 5 `` ou ``+5`` : seuls les chiffres passent.
+        if not brut.isascii() or not brut.isdigit():
+            raise ValueError(cle)
         valeur = int(brut)
     except (TypeError, ValueError):
         raise ValueError(cle)
@@ -36,10 +42,19 @@ def _entier(request, cle, defaut, mini=0):
     return valeur
 
 
+#: ENF11 — ``format: date`` du schéma = ``AAAA-MM-JJ`` seulement (``parse_date``
+#: lit aussi ``20261014``) ; vide = « borne non posée », dit par le schéma.
+_DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}\Z')
+DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+
 def _date(request, cle):
     brut = request.GET.get(cle)
     if not brut:
         return None
+    if not _DATE_ISO.match(brut):
+        raise ValueError(cle)
     try:
         valeur = parse_date(brut)
     except ValueError:
@@ -68,8 +83,8 @@ def _entier_borne(nom, description, mini):
         _q('section', OpenApiTypes.STR, 'Section du journal.'),
         _q('field', OpenApiTypes.STR, 'Champ modifié.'),
         _entier_borne('user', "Identifiant de l'auteur.", 0),
-        _q('date_debut', OpenApiTypes.DATE, 'Date de début (incluse).'),
-        _q('date_fin', OpenApiTypes.DATE, 'Date de fin (incluse).'),
+        _q('date_debut', DATE_OU_VIDE, 'Date de début (incluse).'),
+        _q('date_fin', DATE_OU_VIDE, 'Date de fin (incluse).'),
         _entier_borne('limit', 'Taille de page (1 à 500, défaut 100).', 1),
         _entier_borne('offset', 'Décalage (défaut 0).', 0),
     ],

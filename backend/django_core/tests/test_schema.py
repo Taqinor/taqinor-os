@@ -132,6 +132,24 @@ class OpenAPISchemaGenerationTests(TestCase):
         requete = schemas['CompanyProfileRequest']['properties']
         self.assertEqual(requete['appel_heure_debut'].get('format'), 'time')
 
+    def test_chaine_stricte_exclut_nul_cote_requete_seulement(self):
+        """ENF11 (api-fuzz « rejected schema-compliant request ») — DRF refuse
+        le caractère NUL dans un texte (400) : le corps publié d'une
+        ``ChaineStricte`` l'exclut (motif sans NUL, variante « non blanc » pour
+        un texte obligatoire non vide) ; le composant de RÉPONSE ne change pas."""
+        from core.champs_stricts import (
+            MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL,
+        )
+        schemas = self.schema['components']['schemas']
+        unite = schemas['UniteMesureRequest']['properties']['libelle']
+        self.assertEqual(unite['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+        sujet = schemas['EmailTemplateRequest']['properties']['sujet']
+        branches = sujet.get('oneOf') or [sujet]
+        self.assertTrue(
+            any(b.get('pattern') == MOTIF_SANS_NUL for b in branches), sujet)
+        self.assertNotIn(
+            'pattern', schemas['EmailTemplate']['properties']['sujet'])
+
     def test_format_racine_redondant_retire_par_le_crochet(self):
         from core.openapi_erreurs import aligner_motifs_sur_drf
         doc = {'a': {'type': 'string', 'format': 'uri',
