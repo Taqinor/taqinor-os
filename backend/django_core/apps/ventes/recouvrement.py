@@ -757,6 +757,7 @@ def client_releve_pdf(request, client_id):
 @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
                           400: SH.DetailResponse,
                           404: SH.DetailResponse,
+                          409: SH.DetailResponse,
                           500: SH.DetailResponse})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
@@ -772,10 +773,11 @@ def lettre_relance_pdf(request, facture_id):
                         status=status.HTTP_404_NOT_FOUND)
     # AFAC24 (C-AFAC-019) — même garde que `relancer` : une facture payée,
     # annulée, brouillon ou sans exigible ne reçoit pas de lettre de relance.
+    # ENF11 — refus d'ÉTAT de la facture : 409 (la requête est valide).
     ok, motif = facture_relancable(facture)
     if not ok:
         return Response({'detail': motif},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     levels = _levels(facture.company)
     niveau = _current_level(
         facture.jours_retard, levels, montant_du=montant_exigible(facture))

@@ -70,6 +70,32 @@ def _montants_ligne_corrective(i, ligne):
     return (qte, pu, remise, taux_tva), None
 
 
+def _montant_note_debit(donnees, facture):
+    """AFAC32 — montant HT + taux saisis d'une note de débit SANS lignes.
+    Rend ``((montant, taux), None)`` ou ``((None, None), message)`` — 400.
+    ENF11 : montant borné comme une ligne (< 10^8, publié dans le motif) —
+    au-delà, le TTC débordait la colonne (500)."""
+    brut = donnees.get('montant')
+    if brut in (None, ''):
+        return (None, None), ('Saisissez les lignes ou le montant de la '
+                              'note de débit.')
+    try:
+        montant = Decimal(str(brut))
+        taux_brut = donnees.get('taux_tva')
+        taux = (Decimal(str(taux_brut)) if taux_brut not in (None, '')
+                else Decimal(str(facture.taux_tva)))
+    except (InvalidOperation, TypeError, ValueError):
+        return (None, None), 'Montant ou taux de TVA invalide.'
+    if (not montant.is_finite() or not taux.is_finite() or montant <= 0
+            or montant >= _MAX_MONTANT_LIGNE or not 0 <= taux <= 100
+            or montant.as_tuple().exponent < -2
+            or taux.as_tuple().exponent < -2):
+        return (None, None), ('Le montant doit être positif (sous '
+                              '100 000 000) et le taux de TVA compris entre '
+                              '0 et 100 %, deux décimales au plus.')
+    return (montant, taux), None
+
+
 class FactureRectificatifsActionsMixin:
     """Les documents qui corrigent une facture émise : avoir, note de
     débit, retour client, facture de pénalités."""
@@ -193,7 +219,9 @@ class FactureRectificatifsActionsMixin:
         return Response(AvoirSerializer(avoir).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=D.CreerNoteDebitRequest, responses={201: NoteDebitSerializer})
+    @extend_schema(request=D.CreerNoteDebitRequest,
+                   responses={201: NoteDebitSerializer},
+                   extensions=D.CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT)
     @action(detail=True, methods=['post'], url_path='creer-note-debit')
     def creer_note_debit(self, request, pk=None):
         """ZFAC4 — crée une NoteDebit (majoration d'une facture déjà émise) —
@@ -201,11 +229,11 @@ class FactureRectificatifsActionsMixin:
         personnalisé (`lignes` fourni) ; augmente ``Facture.montant_du``."""
         facture = self.get_object()
         if facture.statut not in ('emise', 'payee', 'en_retard'):
+            # ENF11 — refus d'ÉTAT (brouillon, annulée) : 409.
             return Response(
                 {'detail': 'Une note de débit ne peut être créée que depuis '
                            'une facture émise (ou payée/en retard).'},
-                status=status.HTTP_400_BAD_REQUEST)
-        company = facture.company
+                status=status.HTTP_409_CONFLICT)
         motif = (request.data.get('motif') or '').strip()
         lignes = request.data.get('lignes')
 
@@ -234,7 +262,7 @@ class FactureRectificatifsActionsMixin:
                         {'detail': f'Ligne {i} : produit requis.'},
                         status=status.HTTP_400_BAD_REQUEST)
                 from apps.stock.selectors import get_produit_scoped
-                if get_produit_scoped(company, produit_id) is None:
+                if get_produit_scoped(facture.company, produit_id) is None:
                     return Response(
                         {'detail': f'Ligne {i} : produit inconnu.'},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -248,34 +276,17 @@ class FactureRectificatifsActionsMixin:
         # AFAC32 (C-AFAC-026, D-AFAC-C4) — note de débit PARTIELLE seulement :
         # des `lignes` saisies, ou un `montant` HT + `taux_tva`. Plus jamais
         # la copie silencieuse de toute la facture (le montant dû doublait).
-        montant_saisi = None
-        taux_saisi = None
+        montant_saisi = taux_saisi = None
         if not clean_lignes:
-            brut = request.data.get('montant')
-            if brut in (None, ''):
-                return Response(
-                    {'detail': ('Saisissez les lignes ou le montant de la '
-                                'note de débit.')},
-                    status=status.HTTP_400_BAD_REQUEST)
-            try:
-                montant_saisi = Decimal(str(brut))
-                taux_brut = request.data.get('taux_tva')
-                taux_saisi = (Decimal(str(taux_brut))
-                              if taux_brut not in (None, '')
-                              else Decimal(str(facture.taux_tva)))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response(
-                    {'detail': 'Montant ou taux de TVA invalide.'},
-                    status=status.HTTP_400_BAD_REQUEST)
-            if montant_saisi <= 0 or taux_saisi < 0 or taux_saisi > 100:
-                return Response(
-                    {'detail': ('Le montant doit être positif et le taux de '
-                                'TVA compris entre 0 et 100 %.')},
-                    status=status.HTTP_400_BAD_REQUEST)
+            (montant_saisi, taux_saisi), erreur = _montant_note_debit(
+                request.data, facture)
+            if erreur:
+                return Response({'detail': erreur},
+                                status=status.HTTP_400_BAD_REQUEST)
 
         def _create(ref):
             note_debit = NoteDebit.objects.create(
-                company=company, reference=ref, facture=facture,
+                company=facture.company, reference=ref, facture=facture,
                 client=facture.client, statut=NoteDebit.Statut.EMISE,
                 motif=motif, taux_tva=facture.taux_tva,
                 # AUD107 — la remise globale de la facture SUIT sur la note de
@@ -315,7 +326,7 @@ class FactureRectificatifsActionsMixin:
             return note_debit
 
         note_debit = create_numbered(
-            NoteDebit, company, 'note_debit', _create)
+            NoteDebit, facture.company, 'note_debit', _create)
         # AFAC29 (C-AFAC-027) — une note de débit AUGMENTE le reste dû : le
         # statut de paiement est re-dérivé par LE service d'ATOT8 (une facture
         # PAYÉE majorée revient au recouvrement, émise ou en retard).
@@ -345,10 +356,11 @@ class FactureRectificatifsActionsMixin:
         déjà actés) est refusée."""
         facture = self.get_object()
         if facture.statut not in ('emise', 'payee', 'en_retard'):
+            # ENF11 — refus d'ÉTAT (brouillon, annulée) : 409.
             return Response(
                 {'detail': 'Un retour ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         motif = valider_corps(request, D.RetourClientRequest)['motif'].strip()
         restocker = bool(request.data.get('restocker', False))
         lignes = request.data.get('lignes')
@@ -401,17 +413,19 @@ class FactureRectificatifsActionsMixin:
         niveau = _current_level(
             jr, _levels(facture.company),
             montant_du=montant_exigible(facture))
+        # ENF11 — corps vide : aucun niveau atteint ou pénalité nulle sont
+        # des refus d'ÉTAT (retard, réglage des niveaux) → 409.
         if niveau is None:
             return Response(
                 {'detail': "Aucun niveau de relance atteint pour "
                            "cette facture."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         penalite = Decimal(niveau['penalite'])
         if penalite <= 0:
             return Response(
                 {'detail': "Aucune pénalité à facturer (taux/frais à 0)."},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         libelle = (
             f"Pénalités de retard — facture {facture.reference} "
@@ -472,8 +486,10 @@ class FactureRectificatifsActionsMixin:
                         niveau=niveau['ordre'],
                         facture_penalite=facture_penalite)
         except EmissionRefusee as exc:
+            # ENF11 — corps vide : un refus d'émission (période verrouillée,
+            # revue…) tient à l'ÉTAT → 409.
             return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},
                             status=status.HTTP_403_FORBIDDEN)

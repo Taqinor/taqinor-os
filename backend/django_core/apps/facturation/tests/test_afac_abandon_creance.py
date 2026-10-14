@@ -101,7 +101,7 @@ class AbandonCreanceTests(TestCase):
         f, _cheque = self._cheque_puis_abandon()
         self.assertEqual(self._relire(f).statut, Facture.Statut.PAYEE)
         # Sans reprise : un paiement tardif dépasse le reste (0.00).
-        self.assertEqual(self._payer(f, '480').status_code, 400)
+        self.assertEqual(self._payer(f, '480').status_code, 409)
         r = self.api.post(f'{BASE}{f.id}/reprendre-abandon/',
                           {'motif': 'Le client a finalement payé'},
                           format='json')

@@ -107,7 +107,7 @@ class XFAC6PenalitesRelanceTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/factures/{self.facture.id}/'
             'facturer-penalites/', {}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_lettre_relance_pdf_includes_penalite(self):
         r = self.api.get(

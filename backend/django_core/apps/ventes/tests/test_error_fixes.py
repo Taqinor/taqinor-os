@@ -624,7 +624,7 @@ class TestPaiementRowLock(TestCase):
 
     def test_overpayment_rejected_under_lock(self):
         r = self._pay('7000')  # > 6000 TTC
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))
         self.assertIn('dépasse', r.data['detail'])
 
     def test_partial_then_remaining_settles(self):
@@ -636,7 +636,7 @@ class TestPaiementRowLock(TestCase):
     def test_second_overpayment_rejected(self):
         self.assertEqual(self._pay('4000').status_code, 201)
         r = self._pay('3000')  # reste 2000 → refusé
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
 
 class TestReleveOwnerScope(TestCase):

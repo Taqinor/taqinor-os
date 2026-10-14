@@ -141,12 +141,12 @@ class RetenueFactureTest(_Base):
         self.assertNotIn('Retenue de garantie', facture.conditions_paiement)
         self.assertEqual(facture.montant_exigible, facture.montant_du)
 
-    def test_liberer_sans_retenue_400(self):
+    def test_liberer_sans_retenue_409(self):
         facture = self._premiere_facture(self._devis('DEV-CIQ214-0050'))
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/liberer-retenue/',
             {'date': '2027-06-30'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
 
 class EnteteDevisTest(_Base):

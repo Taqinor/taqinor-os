@@ -24,6 +24,9 @@ from ..models import Facture, Paiement
 from ..openapi_params import qstr
 from ..serializers_facturation import FactureSerializer, PaiementSerializer
 
+#: Plus grand identifiant d'une clé ``integer`` PostgreSQL (publié en borne).
+_ENTIER_MAX = 2 ** 31 - 1
+
 
 class FactureEncaissementActionsMixin:
     """Les gestes d'argent entrant d'une facture (garde ``PeutEncaisser``,
@@ -67,7 +70,8 @@ class FactureEncaissementActionsMixin:
         })
 
     @extend_schema(request=PaiementSerializer,
-                   responses={201: FactureSerializer})
+                   responses={201: FactureSerializer},
+                   extensions=D.CORPS_MONTANT_POSITIF)
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
             permission_classes=[PeutEncaisser])
     def enregistrer_paiement(self, request, pk=None):
@@ -78,13 +82,21 @@ class FactureEncaissementActionsMixin:
         Disponible à la Commerciale (création) ; l'annulation reste admin.
         """
         facture = self.get_object()
+        serializer = PaiementSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # ENF11 — le montant (publié strictement positif) est une règle
+        # d'ENTRÉE : 400 ; les refus qui suivent tiennent à l'ÉTAT de la
+        # facture (annulée, brouillon, soldée, reste dû dépassé) : 409.
+        montant = serializer.validated_data.get('montant')
+        if montant is None or montant <= 0:
+            return Response(
+                {'detail': 'Le montant du paiement doit être positif.'},
+                status=status.HTTP_400_BAD_REQUEST)
         if facture.statut == Facture.Statut.ANNULEE:
             return Response(
                 {'detail': 'Impossible d\'encaisser sur une facture annulée.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
-        serializer = PaiementSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
         # Le corps (verrou ERR72, garde sur-paiement, escompte XFAC12, chatter,
         # événement, bascule « Payée » AUD102, arrondi ZFAC11, tolérance
         # XFAC13) vit dans LE service d'encaissement, partagé avec
@@ -98,7 +110,7 @@ class FactureEncaissementActionsMixin:
                 user=request.user)
         except EncaissementRefuse as exc:
             return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
@@ -158,7 +170,7 @@ class FactureEncaissementActionsMixin:
 
     @extend_schema(request=D.ReprendreAbandonRequest,
                    responses={200: D.FactureAbandonRepris,
-                              400: D.ErreurRetenue})
+                              400: D.ErreurRetenue, 409: D.ErreurRetenue})
     @action(detail=True, methods=['post'], url_path='reprendre-abandon',
             permission_classes=[PeutEncaisser])
     def reprendre_abandon(self, request, pk=None):
@@ -191,6 +203,17 @@ class FactureEncaissementActionsMixin:
                 'detail': 'abandon : entier attendu.', 'champ': 'abandon'}
         else:
             abandon_id = int(abandon_id)
+        # ENF11 — motif (publié non blanc) et identifiant d'abandon (publié
+        # 1..2^31-1) sont des règles d'ENTRÉE : 400. Le refus du domaine qui
+        # reste (facture annulée, aucun abandon actif à reprendre) tient à
+        # l'ÉTAT : 409.
+        if not erreur and not (motif or '').strip():
+            erreur = {'detail': 'Motif obligatoire pour reprendre un abandon '
+                                'de créance.', 'champ': 'motif'}
+        if not erreur and abandon_id is not None and not (
+                1 <= abandon_id <= _ENTIER_MAX):
+            erreur = {'detail': 'abandon : identifiant hors plage.',
+                      'champ': 'abandon'}
         if erreur:
             return Response(erreur, status=status.HTTP_400_BAD_REQUEST)
         try:
@@ -199,7 +222,7 @@ class FactureEncaissementActionsMixin:
                 abandon_id=abandon_id)
         except RepriseAbandonRefusee as exc:
             return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         facture.refresh_from_db()
         return Response({**FactureSerializer(facture).data,
                          'abandon_repris': abandon.id,
@@ -207,7 +230,7 @@ class FactureEncaissementActionsMixin:
 
     @extend_schema(request=D.LibererRetenueRequest,
                    responses={200: FactureSerializer,
-                              400: D.ErreurRetenue})
+                              400: D.ErreurRetenue, 409: D.ErreurRetenue})
     @action(detail=True, methods=['post'], url_path='liberer-retenue',
             permission_classes=[IsResponsableOrAdmin])
     def liberer_retenue(self, request, pk=None):
@@ -220,17 +243,19 @@ class FactureEncaissementActionsMixin:
         écran dès que l'app chantier l'expose (lecture via selectors)."""
         import datetime as _dt
         facture = self.get_object()
+        # ENF11 — sans retenue ou retenue déjà libérée : l'ÉTAT de la facture
+        # s'oppose au geste (409) ; la date illisible reste un 400.
         if facture.retenue_garantie_mad is None:
             return Response(
                 {'detail': 'Aucune retenue de garantie sur cette facture.',
                  'champ': 'retenue_garantie_mad'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         if facture.retenue_liberee_le:
             return Response(
                 {'detail': 'La retenue de garantie est déjà libérée '
                            f'(le {facture.retenue_liberee_le:%d/%m/%Y}).',
                  'champ': 'retenue_liberee_le'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         brut = (request.data or {}).get('date')
         try:
             date = _dt.date.fromisoformat(str(brut or '').strip())
@@ -268,7 +293,10 @@ class FactureEncaissementActionsMixin:
         from ..services import LinkError, create_payment_link
         from ..domain.encaissements import url_page_paiement
         from ..payments.providers import get_provider, providers_lien_actifs
-        provider_key = request.data.get('provider') or 'noop'
+        # ENF11 — ``provider`` ABSENT = « noop » ; présent, c'est une clé de
+        # la liste blanche (``{}``, ``""`` ou ``null`` retombaient en silence
+        # sur « noop » alors que le schéma les déclare invalides).
+        provider_key = request.data.get('provider', 'noop')
         # AFAC21 (C-AFAC-020) — clé validée contre la LISTE BLANCHE des
         # fournisseurs de lien activés AVANT toute écriture : une clé
         # inconnue créait un lien (201), un fournisseur sans session un 500
@@ -281,8 +309,9 @@ class FactureEncaissementActionsMixin:
         try:
             link = create_payment_link(facture=facture, provider=provider_key)
         except LinkError as exc:
+            # ENF11 — facture annulée / payée / soldée : refus d'ÉTAT, 409.
             return Response({'detail': exc.message},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         session = get_provider(link.provider).create_session(link)
         # AFAC21 — URL ABSOLUE de la page client : le réglage d'abord, sinon
         # l'hôte de CETTE requête (jamais un chemin ``/api/…`` relatif).
@@ -420,7 +449,9 @@ class FactureEncaissementActionsMixin:
                     f"La facture {autres_clients[0].reference} "
                     "n'appartient pas à ce client."
                 )},
-                status=status.HTTP_400_BAD_REQUEST)
+                # ENF11 — ids valides, mais les DONNÉES (client de la
+                # facture) s'opposent au rapprochement : 409.
+                status=status.HTTP_409_CONFLICT)
 
         repartition = request.data.get('repartition')
         if repartition is not None and not isinstance(repartition, dict):

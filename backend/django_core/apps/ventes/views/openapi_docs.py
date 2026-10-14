@@ -12,6 +12,8 @@ from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
 
 from core.champs_stricts import BooleenStrict, ChaineStricte
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from ..models import Paiement
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
@@ -154,6 +156,17 @@ FactureAnnulerRequest = _ser('FactureAnnulerRequest', {
         'facture_cible': s.IntegerField(required=False),
     }, required=False),
 })
+#: ENF11 — « transferer » exige ``facture_cible`` (sinon 400 « La facture
+#: cible est requise. ») ; les deux autres actions n'en portent pas.
+CORPS_ANNULER_CIBLE_SI_TRANSFERT = {EXTENSION_CORPS_RESSERRE: {'properties': {
+    'acompte': {'anyOf': [
+        {'properties': {'action': {'enum': ['rembourser',
+                                            'garder_en_avance']}}},
+        {'not': {'required': ['action']}},
+        {'required': ['facture_cible'],
+         'properties': {'facture_cible': {'type': 'integer',
+                                          'minimum': 1}}},
+    ]}}}}
 ExclureRelanceRequest = _ser('FactureExclureRelanceRequest', {
     'exclu': s.BooleanField(required=False),
 })
@@ -186,10 +199,6 @@ RevoquerLienPaiementResponse = _ser('FactureRevoquerLienPaiementResponse', {
     'revoque': s.BooleanField(),
     'token': s.CharField(required=False),
     'statut': s.CharField(required=False),
-})
-CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
-    'motif': s.CharField(required=False, allow_blank=True),
-    'lignes': s.ListField(child=s.DictField(), required=False),
 })
 
 # ------------------------------------------------------- relevé bancaire
@@ -310,12 +319,52 @@ PdfOptionsRequest = _ser('DevisPdfOptionsRequest', {
     'langue_sortie': s.CharField(required=False),
 })
 
+#: ENF11 (api-fuzz « rejected schema-compliant request ») — un montant
+#: d'encaissement est STRICTEMENT positif (``"0"`` refusé « Le montant doit
+#: être positif. ») : la règle est publiée dans le motif du décimal-chaîne
+#: (drf-spectacular n'émet ni minimum ni maximum pour une chaîne), 12 chiffres
+#: dont 2 décimales.
+MOTIF_MONTANT_POSITIF = (r'^0*(?:[1-9]\d{0,9}(?:\.\d{0,2})?'
+                         r'|\.(?:[1-9]\d?|0[1-9]))$')
+
+
+def corps_resserre(regle):
+    """Extension d'opération ``x-corps-resserre`` (``core.openapi_erreurs``) :
+    ``regle`` est combinée en ``allOf`` au corps publié de CETTE opération."""
+    return {EXTENSION_CORPS_RESSERRE: regle}
+
+
+#: Le ``montant`` d'un encaissement est requis et strictement positif.
+CORPS_MONTANT_POSITIF = corps_resserre({
+    'required': ['montant'],
+    'properties': {'montant': {'type': 'string',
+                               'pattern': MOTIF_MONTANT_POSITIF}}})
+
+#: AFAC32 — une note de débit porte des ``lignes`` (au moins une) OU un
+#: ``montant`` HT strictement positif ; ``{}`` était « conforme » puis refusé
+#: « Saisissez les lignes ou le montant de la note de débit. ».
+CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT = corps_resserre({'anyOf': [
+    {'required': ['lignes'],
+     'properties': {'lignes': {'type': 'array', 'minItems': 1}}},
+    {'required': ['montant'],
+     'properties': {'montant': {'type': 'string',
+                                'pattern': r'^0*(?:[1-9]\d{0,7}(?:\.\d{0,2})?'
+                                           r'|\.(?:[1-9]\d?|0[1-9]))$'},
+                    'taux_tva': {'type': 'string',
+                                 'pattern': r'^(?:|100(?:\.0{0,2})?'
+                                            r'|\d{1,2}(?:\.\d{0,2})?'
+                                            r'|\.\d{1,2})$'}}},
+]})
+
 EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
     'client': s.IntegerField(),
-    'montant': s.DecimalField(max_digits=12, decimal_places=2),
+    'montant': s.RegexField(MOTIF_MONTANT_POSITIF),
     'date_paiement': s.DateField(required=False),
-    'mode': s.CharField(required=False),
-    'reference': s.CharField(required=False, allow_blank=True),
+    # ENF11 — ce que la vue accepte : un mode de ``Paiement.Mode`` (sinon
+    # 400 « Mode de paiement inconnu. »), une référence de 120 caractères.
+    'mode': s.ChoiceField(choices=Paiement.Mode.choices, required=False),
+    'reference': s.CharField(required=False, allow_blank=True,
+                             max_length=120),
     'note': s.CharField(required=False, allow_blank=True),
 })
 VentilerRequest = _ser('PaiementVentilerRequest', {
@@ -859,7 +908,8 @@ AbandonnerSoldeRequest = _ser('FactureAbandonnerSoldeRequest', {
 })
 ReprendreAbandonRequest = _ser('FactureReprendreAbandonRequest', {
     'motif': s.RegexField(_NON_BLANC),
-    'abandon': s.IntegerField(required=False, allow_null=True),
+    'abandon': s.IntegerField(required=False, allow_null=True, min_value=1,
+                              max_value=2 ** 31 - 1),
 })
 LibererRetenueRequest = _ser('FactureLibererRetenueRequest', {
     'date': s.DateField(),
@@ -907,25 +957,43 @@ def _decimal_publie(motif):
 
 
 _QuantiteLigne = _decimal_publie(_MOTIF_STRICT_POSITIF)
+#: ENF11 — une ligne de facture saisie porte une quantité et un prix ≥ 0
+#: (« La quantité ne peut pas être négative. », garde ``domain/bornes``) :
+#: publiés sur les écritures de ``factures-lignes`` (le composant de la
+#: réponse, partagé, ne change pas).
+CORPS_LIGNE_FACTURE_POSITIVE = corps_resserre({'properties': {
+    **{champ: {'type': 'string', 'pattern': _MOTIF_POSITIF}
+       for champ in ('quantite', 'prix_unitaire')},
+    # « La remise doit être comprise entre 0 et 100 %. »
+    'remise': {'type': 'string', 'pattern': _MOTIF_POURCENT}}})
 _MontantLigne = _decimal_publie(_MOTIF_POSITIF)
 _PourcentLigne = _decimal_publie(_MOTIF_POURCENT)
-LigneAvoirCorrective = _ser('FactureLigneAvoirCorrective', {
-    'produit': s.IntegerField(),
-    'designation': s.CharField(),
-    'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
-                               min_value=Decimal('0.01'),
-                               max_value=_MONTANT_LIGNE_MAX),
-    'prix_unitaire': _MontantLigne(max_digits=12, decimal_places=2,
-                                   min_value=Decimal('0'),
+
+
+def _ligne_corrective(nom):
+    """Une ligne saisie d'avoir / de note de débit — instance NEUVE à chaque
+    appel (un sérialiseur n'est l'enfant que d'un seul ``ListField``), sous
+    un nom de composant propre (deux composants homonymes = avertissement)."""
+    return _ser(nom, {
+        'produit': s.IntegerField(),
+        'designation': s.CharField(),
+        'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
+                                   min_value=Decimal('0.01'),
                                    max_value=_MONTANT_LIGNE_MAX),
-    'remise': _PourcentLigne(max_digits=5, decimal_places=2,
-                             min_value=Decimal('0'),
-                             max_value=Decimal('100'), required=False),
-    'taux_tva': _PourcentLigne(max_digits=5, decimal_places=2,
-                               min_value=Decimal('0'),
-                               max_value=Decimal('100'),
-                               required=False, allow_null=True),
-})
+        'prix_unitaire': _MontantLigne(max_digits=12, decimal_places=2,
+                                       min_value=Decimal('0'),
+                                       max_value=_MONTANT_LIGNE_MAX),
+        'remise': _PourcentLigne(max_digits=5, decimal_places=2,
+                                 min_value=Decimal('0'),
+                                 max_value=Decimal('100'), required=False),
+        'taux_tva': _PourcentLigne(max_digits=5, decimal_places=2,
+                                   min_value=Decimal('0'),
+                                   max_value=Decimal('100'),
+                                   required=False, allow_null=True),
+    })
+
+
+LigneAvoirCorrective = _ligne_corrective('FactureLigneAvoirCorrective')
 CreerAvoirRequest = _ser('FactureCreerAvoirRequest', {
     'mode': s.ChoiceField(choices=['correction', 'contre_passation'],
                           required=False),
@@ -936,9 +1004,24 @@ CreerAvoirRequest = _ser('FactureCreerAvoirRequest', {
     'lignes': s.ListField(child=LigneAvoirCorrective, required=False,
                           allow_null=True),
 })
+CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
+    'motif': s.CharField(required=False, allow_blank=True),
+    # ENF11 — une ligne de note de débit est validée par
+    # ``_montants_ligne_corrective`` comme une ligne d'avoir (désignation,
+    # produit, bornes) : même forme publiée.
+    'lignes': s.ListField(child=_ligne_corrective('FactureLigneNoteDebit'),
+                          required=False),
+    # AFAC32 — sans ``lignes`` : un montant HT + un taux (défaut : celui de
+    # la facture). Publiés pour que la règle « lignes OU montant » le soit.
+    'montant': s.CharField(required=False),
+    'taux_tva': s.CharField(required=False, allow_blank=True),
+})
 LigneRetour = _ser('FactureLigneRetour', {
     'produit': s.IntegerField(),
-    'quantite': s.DecimalField(max_digits=12, decimal_places=2),
+    # ENF11 — « Ligne 1 : quantité > 0 requise. » : publiée > 0.
+    'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
+                               min_value=Decimal('0.01'),
+                               max_value=_MONTANT_LIGNE_MAX),
 })
 RetourClientRequest = _ser('FactureRetourClientRequest', {
     'motif': s.RegexField(_NON_BLANC),
@@ -968,8 +1051,12 @@ ArrondiCaisseResponse = _ser('FactureArrondiCaisse', {
     'pas': s.CharField(),
 })
 ConsoliderRequest = _ser('FactureConsoliderRequest', {
-    'devis_ids': s.ListField(child=s.IntegerField(), min_length=2),
+    'devis_ids': s.ListField(child=s.IntegerField(min_value=1),
+                             min_length=2),
 })
+#: ENF11 — ``[5, 5]`` consolidait deux fois le même devis : ids DISTINCTS.
+CORPS_DEVIS_IDS_UNIQUES = corps_resserre({
+    'properties': {'devis_ids': {'type': 'array', 'uniqueItems': True}}})
 EncaissementGroupeRequest = _ser('FactureEncaissementGroupeRequest', {
     'client': s.IntegerField(min_value=1),
     # Montant STRICTEMENT positif, 2 décimales : le motif exclut "" et "0",
@@ -989,7 +1076,8 @@ EncaissementGroupeRequest = _ser('FactureEncaissementGroupeRequest', {
 BulkRequest = _ser('FactureBulkRequest', {
     'action': s.ChoiceField(
         choices=['emettre', 'envoyer-email', 'generer-pdf', 'relancer']),
-    'ids': s.ListField(child=s.IntegerField()),
+    # ENF11 — « La liste `ids` est requise et doit être non vide. »
+    'ids': s.ListField(child=s.IntegerField(), min_length=1),
 })
 BulkResponse = {
     200: {
