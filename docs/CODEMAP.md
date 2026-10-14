@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: b3ced963471ff7a27437a3e7e6150a5e3d65159e830937331b40c00c20b02116
-Plan fingerprint: 2b8ce5242ec56a3e9a826964388b2bed3734caae2a0ca0e001b31a668a6c42d3
+Plan fingerprint: d003216abdd9dc8044fb828b1290d753b4726b73cd98aaa7bdbab78d8f125cab
 
 
 
@@ -576,7 +576,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1283)**
+**Done (1284)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1182,6 +1182,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF14` — Exceptions permanentes signées
 - `ENF16` — Dette on_delete (573) à zéro
 - `ENF17` — (already present)
+- `ENF20` — import-linter : `ignore_imports` (52) à zéro
 - `ENF24` — Seuil de couverture
 - `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
 - `ENF26` — ENF17 + ENF18, tranche des apps tenues (claims 10/10)
@@ -1862,7 +1863,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (130)**
+**Open — to build (129)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1951,7 +1952,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF15` — Dettes moyennes à zéro
 - `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
 - `ENF19` — Duplicats (1 181) à zéro
-- `ENF20` — import-linter : `ignore_imports` (52) à zéro
 - `ENF21` — flake8 E501 bloquant
 - `ENF22` — [D-ENF22-BLE001 = (a), Reda 11/10/2026 : exception signée pour les except larges qui…
 - `ENF23` — Tests sautés (178) à zéro
