@@ -153,11 +153,13 @@ def export_list(request, entity):
     # APRF15 (C-APRF-028) — comme le jumeau leads (``export-xlsx``), l'export
     # des devis exporte une SÉLECTION : ``ids`` vide n'exporte plus toute la
     # société (aucune borne) mais répond 400. Les autres entités sont
-    # inchangées ici (garde APRF28).
+    # inchangées ici (garde APRF28). ENF11 (api-fuzz) : la règle dépend de
+    # l'entité du chemin, que le schéma d'un corps partagé ne sait pas dire —
+    # c'est un refus d'ÉTAT de la sélection (409), plus une requête malformée.
     if entity == 'devis' and not ids:
         return Response(
             {'detail': 'Sélection requise : sélectionnez au moins un devis '
                        'à exporter.'},
-            status=400)
+            status=409)
     filename, headers, rows, title = builder(request.user, ids, company_id)
     return build_xlsx_response(filename, headers, rows, sheet_title=title)

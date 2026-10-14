@@ -88,7 +88,7 @@ class OutillageTests(TestCase):
         resp = api.post('/api/django/outillage/outils/', {
             'nom': 'Visseuse', 'emplacement': self.depot_b.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_filter_by_statut_and_emplacement(self):
         Outillage.objects.create(
@@ -179,10 +179,10 @@ class OutillageTests(TestCase):
         resp = api.post('/api/django/outillage/kit-items/', {
             'kit': kit.id, 'outil': foreign.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_enf17_kit_item_fk_etrangere_comme_id_absent(self):
-        """ENF17 — kit / outil d'une autre société : 400 nommant le champ,
+        """ENF17 — kit / outil d'une autre société : 404 nommant le champ (ERR-ENF11-FUZZ : id bien formé inconnu),
         réponse identique à celle d'un id absent (aucun oracle d'existence)."""
         kit = KitOutillage.objects.create(company=self.co_a, nom='Kit Z')
         tool = Outillage.objects.create(company=self.co_a, nom='Clé Z')
@@ -196,7 +196,7 @@ class OutillageTests(TestCase):
                 corps = {'kit': kit.id, 'outil': tool.id}
                 resp = api.post('/api/django/outillage/kit-items/',
                                 {**corps, champ: etranger.id}, format='json')
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 404, resp.data)
                 self.assertEqual(resp.data[champ][0].code, 'does_not_exist')
                 absent = api.post('/api/django/outillage/kit-items/',
                                   {**corps, champ: 99999999}, format='json')

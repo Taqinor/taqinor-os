@@ -60,13 +60,18 @@ def _clean_objects(raw):
     return keys or list(DEFAULT_OBJECTS)
 
 
+#: ENF11 (api-fuzz) — « format absent » ≠ « format: null » : seule l'ABSENCE de
+#: la clé retombe sur le défaut ; `null` (type faux) est refusé comme tout type faux.
+_ABSENT = object()
+
+
 def _clean_format(raw, repli=False):
     """Format demandé ; absent (None) → défaut. ENF11 — une valeur FOURNIE
     mais hors ``FORMATS`` (chaîne vide, type faux) est refusée (``None``) au
     lieu d'être remplacée en silence par le défaut. ``repli`` : export d'UN
     objet, où une chaîne inconnue retombe sur le défaut (comportement
     documenté et déclaré) ; un type faux reste refusé."""
-    if raw is None:
+    if raw is _ABSENT:
         return DEFAULT_FORMAT
     if not isinstance(raw, str):
         return None
@@ -97,8 +102,10 @@ def export_objects_list(request):
 @extend_schema(
     request=inline_serializer('ExportObjetRequete', {
         'object': champ_choix(REGISTRY),
+        # allow_blank : une valeur blanche est « inconnue » donc ramenée à csv
+        # (ENF11 api-fuzz : le schéma n'exige plus un caractère visible).
         'format': serializers.CharField(
-            required=False,
+            required=False, allow_blank=True,
             help_text='csv, xlsx ou json ; valeur inconnue ⇒ csv.')}),
     responses=_FICHIERS_EXPORT)
 @api_view(['POST'])
@@ -113,7 +120,7 @@ def export_object(request):
     key = (request.data.get('object') or '').strip()
     if key not in REGISTRY:
         return Response({'detail': 'Objet inconnu.'}, status=400)
-    fmt = _clean_format(request.data.get('format'), repli=True)
+    fmt = _clean_format(request.data.get('format', _ABSENT), repli=True)
     if fmt is None:
         return Response(_FORMAT_INVALIDE, status=400)
 
@@ -146,7 +153,7 @@ def sauvegarde(request):
         return Response({'detail': 'Aucune société rattachée.'}, status=403)
 
     keys = _clean_objects(request.data.get('objects'))
-    fmt = _clean_format(request.data.get('format'))
+    fmt = _clean_format(request.data.get('format', _ABSENT))
     if fmt is None:
         return Response(_FORMAT_INVALIDE, status=400)
     stamp = datetime.date.today().isoformat()

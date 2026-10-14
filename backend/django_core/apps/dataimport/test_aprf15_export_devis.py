@@ -102,7 +102,7 @@ class ExportDevisTests(TestCase):
     def test_ids_vide_refuse(self):
         self._devis(3)
         reponse = self.api.post(URL, {'ids': []}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('Sélection requise', reponse.data['detail'])
         reponse = self.api.post(URL, {}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
