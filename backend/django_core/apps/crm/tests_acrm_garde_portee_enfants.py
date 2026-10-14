@@ -166,7 +166,8 @@ class GardePorteeEnfantsTests(TestCase):
             nom='Taqinor ACRM52', slug='taqinor-acrm52')
         # ACRM65 — réglage allumé : le comportement testé est celui d'une société qui l'a activé.
         CompanyProfile.objects.update_or_create(
-            company=self.company, defaults={'salles_vente_actif': True})
+            company=self.company, defaults={'salles_vente_actif': True,
+                                            'apporteurs_actif': True})  # ACRM66
         role_com = Role.objects.create(
             company=self.company, nom='Commercial',
             permissions=list(COMMERCIAL_PERMISSIONS))

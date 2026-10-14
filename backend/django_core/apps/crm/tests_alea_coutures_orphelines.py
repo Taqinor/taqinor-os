@@ -85,6 +85,9 @@ class CouturesOrphelinesTests(TestCase):
         self.assertEqual(self._notifications().count(), 2)
 
     def test_plus_de_deal_commission_due(self):
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(  # ACRM66 — réglage allumé
+            company=self.company, defaults={'apporteurs_actif': True})
         apporteur = Apporteur.objects.create(
             company=self.company, nom='Apporteur ALEA3',
             taux_commission_pct=Decimal('5.00'))
