@@ -50,7 +50,8 @@ class TestFavoriSociete(TestCase):
         api = _api(self.user_a)
         resp = api.post(BASE, {'modele': 'crm.client',
                                'object_id': self.client_b.pk}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ERR-ENF11-FUZZ-UXVIEWS : cible inconnue pour la société = 404.
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertNotIn('Secret Client B', str(resp.data))
         self.assertFalse(FavoriUtilisateur.objects.filter(
             owner=self.user_a, object_id=self.client_b.pk).exists())

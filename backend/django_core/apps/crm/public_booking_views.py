@@ -92,7 +92,12 @@ def public_booking_reserve(request, token):
     from django.utils.dateparse import parse_datetime
 
     raw = request.data.get('scheduled_at')
-    scheduled_at = parse_datetime(str(raw)) if raw else None
+    try:
+        scheduled_at = parse_datetime(str(raw)) if raw else None
+    except ValueError:
+        # ERR-ENF11-FUZZ-CRM : forme ISO mais valeurs hors bornes
+        # (« 12:99 ») — ``fromisoformat`` lève au lieu de rendre None : 400.
+        scheduled_at = None
     if scheduled_at is None:
         return Response(
             {'detail': 'Date/heure de créneau invalide ou manquante.'},

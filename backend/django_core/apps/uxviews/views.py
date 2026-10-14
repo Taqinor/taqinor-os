@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.conflit_etat import ConflitEtat
 from core.events import saved_view_shared
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
@@ -281,7 +282,9 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         instance = self.get_object()
         role_id = request.data.get('role', instance.role_id)
         if not role_id:
-            raise ValidationError({'role': 'Un rôle est requis pour définir une vue par défaut.'})
+            # ERR-ENF11-FUZZ-UXVIEWS : `role` est facultatif quand la vue en
+            # porte déjà un — son absence ici est un refus d'ÉTAT (409).
+            raise ConflitEtat('Un rôle est requis pour définir une vue par défaut.')
         # AANA17 — le rôle doit être de LA société de la vue : un rôle d'une
         # autre société reçoit la même réponse qu'un id absent.
         from apps.roles.models import Role
@@ -361,7 +364,14 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         app, exempte de la frontière inter-apps), jamais le moteur
         `quote_engine` (rule #4, hors périmètre — les vues n'ont rien à voir
         avec les devis)."""
+        from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+
         from apps.records.xlsx import build_xlsx_response
+
+        def _cellule(texte):
+            # ERR-ENF11-FUZZ-UXVIEWS : un caractère de contrôle saisi dans un
+            # nom de vue faisait lever openpyxl (IllegalCharacterError, 500).
+            return ILLEGAL_CHARACTERS_RE.sub('', texte or '')
 
         views = SavedView.objects.filter(
             company=request.user.company,
@@ -375,11 +385,11 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
                 full = f'{getattr(owner, "first_name", "")} {getattr(owner, "last_name", "")}'.strip()
                 owner_nom = full or getattr(owner, 'username', '') or getattr(owner, 'email', '') or ''
             rows.append([
-                v.ecran,
-                v.nom,
-                owner_nom,
+                _cellule(v.ecran),
+                _cellule(v.nom),
+                _cellule(owner_nom),
                 v.get_visibilite_display(),
-                v.role.nom if v.est_defaut_role and v.role_id else '',
+                _cellule(v.role.nom if v.est_defaut_role and v.role_id else ''),
                 v.updated_at,
             ])
         return build_xlsx_response(

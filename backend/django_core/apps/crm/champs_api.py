@@ -18,9 +18,13 @@ comportement réel divergeaient, relevés par le fuzz API (Schemathesis).
 import datetime
 
 from django.db.models import BooleanField as ModelBooleanField
+from django.db.models import CharField as ModelCharField
+from django.db.models import TextField as ModelTextField
 from django.db.models import DateTimeField as ModelDateTimeField
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
+
+from core.champs_stricts import ChaineStricte
 
 
 class BooleenStrict(serializers.BooleanField):
@@ -49,6 +53,17 @@ class DateHeureRfc3339(serializers.DateTimeField):
 MAPPING_BOOLEEN_STRICT = {
     **serializers.ModelSerializer.serializer_field_mapping,
     ModelBooleanField: BooleenStrict,
+}
+
+#: ERR-ENF11-FUZZ-CRM — booléens stricts ET textes stricts (référentiels
+#: tags / motifs de perte / canaux) : ``CharField`` de DRF convertissait un
+#: nombre en texte (``"couleur": 0`` → ``"0"``, 200) alors que le schéma dit
+#: ``string`` ; ``ChaineStricte`` répond 400 tant que la valeur n'est pas une
+#: vraie chaîne JSON.
+MAPPING_TEXTE_STRICT = {
+    **MAPPING_BOOLEEN_STRICT,
+    ModelCharField: ChaineStricte,
+    ModelTextField: ChaineStricte,
 }
 
 #: Idem, avec les dates-heures RFC 3339.

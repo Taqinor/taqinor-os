@@ -20,12 +20,14 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
-from .models import MessageTemplate, PlanActivite, RelanceEtape
+from .models import Lead, MessageTemplate, PlanActivite, RelanceEtape
 from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializer
 from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, entier_param
+from .cadence_reponses import TYPES_PIECE_RECUE
+from core.parseurs import ChoixDocumente
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
@@ -1137,7 +1139,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             etape.company, 'appeler', request.META.get('HTTP_USER_AGENT', ''))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    @extend_schema(request=sd.corps('CrmRelanceLangueRequest', langue=serializers.CharField()), responses=RelanceEtapeSerializer)
+    @extend_schema(request=sd.corps('CrmRelanceLangueRequest', langue=ChoixDocumente(choices=Lead.LanguePreferee.values)), responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def langue(self, request, pk=None):
         """CAD63 — enregistre la langue du CLIENT de cette touche, en un geste.
@@ -1163,7 +1165,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         definir_langue_preferee(etape.lead, request.user, langue)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest', type_piece=serializers.CharField(), note=serializers.CharField(required=False)), 'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest', type_piece=serializers.CharField(), note=serializers.CharField(required=False), fichier=serializers.FileField(required=False))}, responses=sd.OBJ)
+    @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest', type_piece=ChoixDocumente(choices=list(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False)), 'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest', type_piece=ChoixDocumente(choices=list(TYPES_PIECE_RECUE)), note=serializers.CharField(required=False), fichier=serializers.FileField(required=False))}, responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='piece-recue',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     @_geste_atomique
@@ -1627,7 +1629,7 @@ class LeadCadenceActionsMixin:
             lead, user=request.user, motif=motif, cadences=cadences)
         return Response({'arretees': arretees}, status=status.HTTP_200_OK)
 
-    @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False), limite=serializers.IntegerField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmPlacementCadencesRequest', apply=serializers.BooleanField(required=False), limite=serializers.IntegerField(required=False, min_value=1, max_value=200)), responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='placement-cadences',
             permission_classes=[IsResponsableOrAdmin])
     def placement_cadences(self, request):
@@ -1663,17 +1665,15 @@ class LeadCadenceActionsMixin:
             PLACEMENT_LOT_MAX,
             placer_anciens_leads,
         )
-        limite = request.data.get('limite')
-        if limite in (None, ''):
+        # ERR-ENF11-FUZZ-CRM — ``limite`` est un ENTIER JSON (schéma) :
+        # absente = lot par défaut ; ``null``, une chaîne ou un booléen
+        # (`bool` est un `int` en Python : `{"limite": true}` passerait pour
+        # un lot de 1) sont refusés au lieu d'être lus comme le défaut.
+        if 'limite' not in request.data:
             limite = PLACEMENT_LOT_DEFAUT
-        # `bool` est un `int` en Python : sans ce refus, `{"limite": true}`
-        # passerait pour un lot de 1.
-        elif isinstance(limite, bool):
-            limite = None
         else:
-            try:
-                limite = int(limite)
-            except (TypeError, ValueError):
+            limite = request.data.get('limite')
+            if isinstance(limite, bool) or not isinstance(limite, int):
                 limite = None
         if limite is None or not 1 <= limite <= PLACEMENT_LOT_MAX:
             # LEVÉ, pas renvoyé : `check_api_shapes` lit le CONTRAT d'une vue

@@ -86,11 +86,12 @@ class ApprobationTests(TestCase):
         self.assertEqual(self.demande.statut, 'approuve')
         self.assertEqual(self.doc.statut, 'approuve')
 
-    def test_cycle_vie_vers_approuve_400(self):
+    def test_cycle_vie_vers_approuve_409(self):
         resp = auth(self.appr1).post(
             f'{BASE}documents/{self.doc.pk}/cycle-vie/',
             {'statut': 'approuve'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # ERR-ENF11-FUZZ-GED : transition refusée par l'état = 409.
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('demande', resp.data['detail'])
         self.doc.refresh_from_db()
         self.assertEqual(self.doc.statut, 'revue')

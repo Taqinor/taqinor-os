@@ -144,7 +144,8 @@ class SavedViewApiTests(TestCase):
             company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='V',
         )
         resp = auth(self.directeur).post(f'{self.BASE}{view.id}/definir-par-defaut-role/')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-UXVIEWS : vue sans rôle et aucun rôle fourni = 409.
+        self.assertEqual(resp.status_code, 409)
 
     # ── Suppression : garde-fous ────────────────────────────────────────────
     def test_delete_own_personal_view(self):
@@ -1063,3 +1064,19 @@ class FavoriModeleSchemaExactTests(TestCase):
             'modele': 'authentication.customuser', 'object_id': 1})
         self.assertFalse(ser.is_valid())
         self.assertIn('modele', ser.errors)
+
+
+class Enf11FuzzUxviewsTests(TestCase):
+    """ERR-ENF11-FUZZ-UXVIEWS (nocturne 13/10) — export .xlsx d'un nom de vue
+    portant un caractère de contrôle : plus de 500."""
+
+    def test_export_xlsx_caractere_de_controle_ne_leve_plus(self):
+        co = Company.objects.get_or_create(
+            slug='enf11-ux', defaults={'nom': 'ENF11 UX'})[0]
+        admin = User.objects.create_user(
+            username='enf11-ux-admin', password='x', company=co,
+            role_legacy='admin')
+        SavedView.objects.create(company=co, owner=admin, ecran='crm.leads',
+                                 nom='a7' + chr(27))
+        resp = auth(admin).get('/api/django/uxviews/saved-views/export-xlsx/')
+        self.assertEqual(resp.status_code, 200, resp.content[:200])
