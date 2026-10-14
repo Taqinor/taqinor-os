@@ -77,6 +77,13 @@ describe('CIQ127 — devis automatique non résidentiel : UN appel serveur', () 
     expect(api.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 12, remise_globale: '2', target_kwc: 37.5 })
   })
 
+  it('AGNR39 — agricole : une cible transmise par erreur ne part jamais (le champ découle de la pompe)', async () => {
+    api.creerDevisAuto.mockResolvedValueOnce({ data: { id: 503 } })
+    const lead = { id: 14, type_installation: 'agricole' }
+    await createAutoQuote({ lead, produits: [], discountStr: '0', dispatch: vi.fn(), targetKwc: '99' })
+    expect(api.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 14, remise_globale: '0' })
+  })
+
   it('commercial : un 422 du moteur C&I remonte TEL QUEL (champ nommé), aucun devis créé', async () => {
     const detail = 'Consommation du site absente : renseignez les kWh mensuels ou une taille.'
     api.creerDevisAuto.mockRejectedValueOnce({

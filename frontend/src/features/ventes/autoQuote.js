@@ -56,7 +56,8 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
     creation = await ventesApi.creerDevisAuto({
       lead: lead.id,
       remise_globale: discountStr || '0',
-      ...(cible > 0 ? { target_kwc: cible } : {}),
+      // AGNR39 — jamais pour le pompage : le champ découle de la pompe.
+      ...(cible > 0 && marche !== 'agricole' ? { target_kwc: cible } : {}),
     })
   } catch (err) {
     const data = err?.response?.data || {}

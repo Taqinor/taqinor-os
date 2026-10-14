@@ -174,6 +174,24 @@ describe('LW21 — CTA devis automatique', () => {
     expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '3' })
   })
 
+  // AGNR39 — au pompage, aucune cible kWc : ni champ, ni cible envoyée ; le
+  // C&I garde le champ et sa cible.
+  it('lead agricole : pas de champ « puissance cible », intention sans cible', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ type_installation: 'agricole' }) })
+    expect(document.getElementById('lw-devis-kwc')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', 'auto')
+  })
+
+  it('lead industriel : le champ « puissance cible » reste et sa cible voyage', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ type_installation: 'industriel' }) })
+    await user.type(screen.getByLabelText(/Puissance cible/), '40')
+    await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '40' })
+  })
+
   it('QJR599 — devis_auto pas prêt → « Nouveau devis (édition complète) » reste proposé', async () => {
     const user = userEvent.setup()
     const { onAction } = renderTab({

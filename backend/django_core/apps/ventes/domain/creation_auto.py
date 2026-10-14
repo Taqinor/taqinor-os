@@ -524,6 +524,13 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 "Le devis automatique depuis le site n'est pas ouvert à "
                 "l'agricole : le commercial le lance depuis la fiche lead.",
                 field='type_installation')
+        # AGNR39 — une puissance cible n'a aucun sens au pompage (le champ
+        # découle de la pompe) : refusée en la NOMMANT (400), jamais ignorée.
+        if target_kwc not in (None, ''):
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'target_kwc': (
+                "La puissance cible ne s'applique pas au pompage : le champ "
+                "solaire découle de la pompe retenue (HMT et débit du lead).")})
         return _build_devis_auto_agricole(
             lead=lead, user=user, company=company, taux_tva=taux_tva,
             journal_auto=journal_auto)

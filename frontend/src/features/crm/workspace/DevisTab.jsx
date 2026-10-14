@@ -109,6 +109,10 @@ export default function DevisTab({
   // historique (taille souhaitée du lead, sinon facture d'hiver) : le trajet
   // à 1 clic du commercial est INCHANGÉ.
   const [kwcCible, setKwcCible] = useState('')
+  // AGNR39 — au pompage, le champ solaire découle de la pompe : le champ
+  // « puissance cible » n'est pas affiché pour un lead agricole, la cible
+  // reste donc vide (le serveur la refuserait en la nommant).
+  const agricole = state.server?.type_installation === 'agricole'
   // QJR602 (D-QJR5-13) — la cible tapée ici part TELLE QUELLE : le devis
   // automatique n'arrondit plus au palier de 5 kWc, plus aucun avis à montrer.
   const [waBusy, setWaBusy] = useState(false)
@@ -485,7 +489,7 @@ export default function DevisTab({
           {/* EZ5 — cible kWc facultative. `step="any"` + aucune validation
               bloquante : ce champ ne rejette ni n'arrondit jamais une saisie
               (même garde que le générateur). */}
-          <div className="lw-devis-kwc">
+          {!agricole && <div className="lw-devis-kwc">
             <label htmlFor="lw-devis-kwc" className="lw-devis-kwc-label">
               Puissance cible (kWc)
             </label>
@@ -501,7 +505,7 @@ export default function DevisTab({
               value={kwcCible}
               onChange={(e) => setKwcCible(e.target.value)}
             />
-          </div>
+          </div>}
         </div>
       ) : (
         <div className="lw-context-devis-missing">
