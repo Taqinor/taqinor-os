@@ -37,6 +37,7 @@ import DevisList from '../DevisList'
 import ventesApi from '../../../api/ventesApi'
 import { renderListeVentes } from '../../../test/devisListRender.jsx'
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../../ui/dealSignedBus'
+import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 const DEVIS = [{
   id: 515, reference: 'DEV-A15', client_nom: 'ACME', statut: 'envoye',
@@ -117,5 +118,34 @@ describe('ADEV15 — « Passer outre » à l\'acceptation', () => {
     await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
     expect(await screen.findByText(/client litigieux/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Passer outre/ })).toBeNull()
+  })
+})
+
+// VNT80 — un 409 qui NOMME un autre devis (`vente_active_existante.vente_active`,
+// exemple committé devis_prix_negocie.json) : la fête est retirée, le message
+// s'affiche SOUS la ligne et « Ouvrir <réf> » surligne ce devis (?devis=<id>).
+describe('VNT80 — acceptation refusée : vente active existante', () => {
+  it('message sous la ligne + « Ouvrir » défile jusqu’au devis nommé', async () => {
+    const refus = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.vente_active_existante
+    const cible = refus.vente_active
+    ventesApi.accepterDevis.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: refus },
+    }))
+    const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
+    const user = userEvent.setup()
+    renderListeVentes(DevisList, {
+      devis: [...DEVIS, { ...DEVIS[0], id: cible.id, reference: cible.reference, statut: 'accepte' }],
+      auth: { role: 'admin', role_nom: 'admin', permissions: ['ventes_valider'] },
+    })
+    const row = screen.getByText('DEV-A15').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Accepter/ }))
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), 'Sami')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(refus.detail)
+    expect(effacerAffaireSignee).toHaveBeenCalledTimes(1)
+    await user.click(within(alerte).getByRole('button', { name: `Ouvrir ${cible.reference}` }))
+    await waitFor(() => expect(defile.mock.contexts.at(-1)).toBe(document.getElementById(`devis-row-${cible.id}`)))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

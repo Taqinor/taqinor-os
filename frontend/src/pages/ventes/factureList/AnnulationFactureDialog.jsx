@@ -105,4 +105,28 @@ export function AnnulationFactureDialog({
   )
 }
 
+// VNT77 — confirmation de suppression d'un `BROUILLON-<id>`, partagée par la
+// liste des factures (FactureRow) et le panneau de vente du lead.
+export function SuppressionBrouillonDialog({ facture, busy = false, onConfirm, onClose }) {
+  if (!facture) return null
+  return (
+    <ResponsiveDialog
+      open
+      onOpenChange={(o) => { if (!o) onClose() }}
+      title={`Supprimer le brouillon ${facture.reference} ?`}
+      description="Ce brouillon n'a pas de numéro légal : il disparaît sans laisser de trou dans la numérotation."
+      footer={(
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>Retour</Button>
+          <Button type="button" variant="destructive" loading={busy}
+                  data-testid="supprimer-brouillon-confirmer" onClick={onConfirm}>
+            Supprimer
+          </Button>
+        </>
+      )}>
+      <span className="sr-only">{facture.reference}</span>
+    </ResponsiveDialog>
+  )
+}
+
 export default AnnulationFactureDialog

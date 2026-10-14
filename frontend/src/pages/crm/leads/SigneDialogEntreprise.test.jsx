@@ -20,7 +20,7 @@ vi.mock('../../../api/ventesApi', async (importOriginal) => {
 
 import SigneDialog from './SigneDialog'
 import ventesApi from '../../../api/ventesApi'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 
 const ERP = exempleContrat('ventes', 'acceptation_entreprise', 'exemple_erp').corps
 
@@ -68,5 +68,20 @@ describe('SigneDialog — CIQ324 identité d\'entreprise', () => {
     await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
     expect(Object.keys(ventesApi.accepterDevis.mock.calls[0][1]).sort())
       .toEqual(['date', 'nom', 'option'])
+  })
+})
+
+// VNT80 — un refus qui NOMME un autre devis (exemple committé
+// devis_prix_negocie.json, `vente_active`) : message nommé sous le bouton + lien.
+describe('SigneDialog — VNT80 : vente active existante', () => {
+  it('message serveur sous le bouton et lien « Ouvrir <réf> » vers ?devis=<id>', async () => {
+    const refus = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.vente_active_existante
+    await ouvrir('residentiel')
+    ventesApi.accepterDevis.mockRejectedValueOnce({ response: { status: 409, data: refus } })
+    confirmer()
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(refus.detail)
+    expect(screen.getByRole('link', { name: `Ouvrir ${refus.vente_active.reference}` }))
+      .toHaveAttribute('href', `/ventes/devis?devis=${refus.vente_active.id}`)
   })
 })

@@ -68,3 +68,16 @@ describe('ventes — module.config (ODY16 : cockpit + parité route↔nav)', () 
     }
   })
 })
+
+// VNT94 — les deux anciennes portes de facturation du devis n'ont plus aucun
+// appelant écran (VNT45 / VNT75 / VNT79 : « Facturer la vente ») : le client
+// API ne les expose plus (les URLs serveur restent, enveloppes VNT65).
+describe('ventes — client API sans fonction de facturation morte (VNT94)', () => {
+  it('ventesApi n’expose ni genererFacture ni facturerComplet ; facturerVente reste', async () => {
+    const { default: ventesApi } = await import('../../api/ventesApi')
+    expect(ventesApi.genererFacture).toBeUndefined()
+    expect(ventesApi.facturerComplet).toBeUndefined()
+    expect(typeof ventesApi.facturerVente).toBe('function')
+    expect(typeof ventesApi.apercuFacturerVente).toBe('function')
+  })
+})

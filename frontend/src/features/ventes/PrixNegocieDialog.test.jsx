@@ -124,3 +124,32 @@ describe('PrixNegocieDialog (VNT73)', () => {
     expect(appels[0][0]).toBe(`/ventes/devis/${APPLIQUE.devis_v2.id}/avenant/demander-signature/`)
   })
 })
+
+// VNT78 — monté depuis le panneau de vente : le bouton suit `vente.peut.prix_negocie`
+// (exemples committés de vente_etat.json) ; l'application relit le lead.
+describe('PrixNegocieDialog — VNT78 : monté dans le panneau de vente', () => {
+  const panneau = async (variante, props = {}) => {
+    const { exempleContrat } = await import('../../test/fixtures/contractSamples')
+    const { default: PanneauVente } = await import('./vente/PanneauVente')
+    const vente = exempleContrat('ventes', 'vente_etat', variante).vente
+    return render(<PanneauVente devis={{ ...DEVIS, reference: 'DEV-318', vente }} {...props} />)
+  }
+
+  it('tête acceptée : « Prix négocié » ouvre le dialogue ; appliquer rafraîchit', async () => {
+    serveur()
+    const onRafraichir = vi.fn()
+    const user = userEvent.setup()
+    await panneau('exemple_acompte_paye_solde_a_faire', { onRafraichir })
+    await user.click(screen.getByRole('button', { name: 'Prix négocié' }))
+    await user.type(screen.getByLabelText(/Nouveau prix TTC/), '49000')
+    await user.click(screen.getByRole('button', { name: /Voir les effets/ }))
+    await screen.findByLabelText(/Effets du prix négocié/)
+    await user.click(screen.getByRole('button', { name: /Appliquer le prix négocié/ }))
+    await waitFor(() => expect(onRafraichir).toHaveBeenCalled())
+  })
+
+  it('version remplacée : aucun bouton « Prix négocié »', async () => {
+    await panneau('exemple_version_remplacee')
+    expect(screen.queryByRole('button', { name: 'Prix négocié' })).toBeNull()
+  })
+})

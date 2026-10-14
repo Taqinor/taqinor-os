@@ -21,6 +21,7 @@ import { toastError } from '../../../lib/toast'
 import { useConfirmDialog } from '../../../ui/confirm'
 import { formatMAD } from '../../../lib/format'
 import { STATUT_DEVIS_LABELS } from '../../../features/ventes/devisStatuts'
+import { conflitDevis } from '../../../features/ventes/reviserDevis'
 import { PAS_ARRONDI_DEVIS } from '../../../features/ventes/remise'
 // CIQ324 — identité d'entreprise facultative à l'acceptation d'un C&I.
 import IdentiteEntrepriseFields from '../../../features/ventes/quote/IdentiteEntrepriseFields'
@@ -155,6 +156,9 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
   const [entrepriseSaisie, setEntrepriseSaisie] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // VNT80 — refus serveur qui NOMME un autre devis (vente active existante,
+  // version remplacée) : message nommé sous le bouton + lien vers ce devis.
+  const [conflit, setConflit] = useState(null)
   // Aperçu PDF inline du devis sélectionné (PDF.js canvas, comme le panneau
   // devis). previewId = devis dont on a demandé l'aperçu ; previewBlob = octets.
   const [previewId, setPreviewId] = useState(null)
@@ -252,6 +256,7 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
     }
     setBusy(true)
     setError(null)
+    setConflit(null)
     const corps = corpsAcceptation({ nom, date, option }, selected, entreprise)
     // VX40/VX155 — le SEUL moment célébré de toute l'app : devis envoyé→
     // accepté (rare, lié au revenu). Montant + kWc réels, CO₂ dérivé.
@@ -278,6 +283,20 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
       // Vrai refus serveur : la fête s'arrête et le motif s'affiche.
       effacerAffaireSignee()
       onFailed?.()
+      const c = conflitDevis(err?.response?.data)
+      if (c) {
+        // La fenêtre lead est souvent déjà fermée (fête au clic) : le toast
+        // porte aussi « Ouvrir <réf> » ; ouverte, le message reste sous le bouton.
+        setConflit(c)
+        setBusy(false)
+        toastError(c.conflit, {
+          action: {
+            label: `Ouvrir ${c.successeur.reference}`,
+            onClick: () => window.location.assign(`/ventes/devis?devis=${c.successeur.id}`),
+          },
+        })
+        return
+      }
       toastError(err?.response?.data?.detail
         ?? "L'acceptation n'a pas pu être enregistrée — réessayez.")
     }
@@ -456,6 +475,14 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
             >
               {busy ? 'Enregistrement…' : 'Confirmer l’acceptation'}
             </Button>
+          )}
+          {conflit && (
+            <p className="form-error basis-full" role="alert">
+              {conflit.conflit}{' '}
+              <a href={`/ventes/devis?devis=${conflit.successeur.id}`}>
+                Ouvrir {conflit.successeur.reference}
+              </a>
+            </p>
           )}
         </div>
     </ResponsiveDialog>

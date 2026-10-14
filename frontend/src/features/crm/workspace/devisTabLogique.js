@@ -20,14 +20,6 @@ export const DEVIS_MINI_TRACK = [
   { key: 'chantier', label: 'Chantier' },
 ]
 
-/* ATOT31 — la porte de facturation encore ouverte est DITE par le serveur
-   (`solde.porte_facturation`, contrat ventes/contract_samples/devis_solde.json) :
-   'libre' (rien de facturé), 'tranche' (échéancier en cours), 'aucune' (tout
-   est facturé). Jamais redérivée des montants. Bloc absent → 'libre' (rien
-   n'est affirmé de plus que ce que l'écran savait avant). */
-export function porteFacturation(devis) {
-  return devis?.solde?.porte_facturation ?? 'libre'
-}
 
 export function devisTrackCurrent(d) {
   return d?.chantier ? 'chantier' : 'accepte'

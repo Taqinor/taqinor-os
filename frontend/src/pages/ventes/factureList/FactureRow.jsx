@@ -5,7 +5,6 @@ import { Fragment, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, Download, FileWarning, MessageCircle, Code2, Check, FileText, ReceiptText, MoreHorizontal, CreditCard, ShieldCheck, Zap, Eye } from 'lucide-react'
 import { Button, Badge, StatusPill, Input, Checkbox, DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, Popover, PopoverTrigger, PopoverContent } from '../../../ui'
-import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import { formatMAD, toNumber, normalizePhoneE164 } from '../../../lib/format'
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK, factureTrack } from '../../../features/ventes/documentChain'
@@ -14,7 +13,7 @@ import { isOverdue, isPartiallyPaid } from './factureHelpers.js'
 import HistoriqueActivitesListe from '../HistoriqueActivitesListe'
 // VNT46 — dialogue d'annulation extrait ; ré-export nommé conservé (FactureList.jsx
 // et FactureRowAnnulation.afac.test.jsx l'importent d'ici).
-import { AnnulationFactureDialog } from './AnnulationFactureDialog'
+import { AnnulationFactureDialog, SuppressionBrouillonDialog } from './AnnulationFactureDialog'
 import { useActionsVente } from '../../../features/ventes/vente/useActionsVente'
 
 export { AnnulationFactureDialog }
@@ -561,24 +560,11 @@ export default function FactureRow({ f, ctx }) {
         }} />
     )}
     {suppOuvert && (
-      <ResponsiveDialog
-        open
-        onOpenChange={(o) => { if (!o) setSuppOuvert(false) }}
-        title={`Supprimer le brouillon ${f.reference} ?`}
-        description="Ce brouillon n'a pas de numéro légal : il disparaît sans laisser de trou dans la numérotation."
-        footer={(
-          <>
-            <Button type="button" variant="ghost" onClick={() => setSuppOuvert(false)}>Retour</Button>
-            <Button type="button" variant="destructive"
-                    loading={actions.occupe === `supprimer:${f.id}`}
-                    data-testid="supprimer-brouillon-confirmer"
-                    onClick={async () => { await actions.supprimer(f); setSuppOuvert(false) }}>
-              Supprimer
-            </Button>
-          </>
-        )}>
-        <span className="sr-only">{f.reference}</span>
-      </ResponsiveDialog>
+      <SuppressionBrouillonDialog
+        facture={f}
+        busy={actions.occupe === `supprimer:${f.id}`}
+        onClose={() => setSuppOuvert(false)}
+        onConfirm={async () => { await actions.supprimer(f); setSuppOuvert(false) }} />
     )}
     </Fragment>
   )

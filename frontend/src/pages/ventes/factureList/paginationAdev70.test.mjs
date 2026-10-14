@@ -6,9 +6,14 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { fetchAllPages } from '../../../utils/fetchAllPages.js'
+import { lireSourcesFactureList } from './lireSources.mjs'
 
 const ICI = dirname(fileURLToPath(import.meta.url))
-const lire = (f) => readFileSync(join(ICI, '..', f), 'utf8')
+// VNT102 — la consolidation vit dans factureList/useFactureGestes.js (move only) :
+// FactureList.jsx se lit avec ses fichiers extraits.
+const lire = (f) => (f === 'FactureList.jsx'
+  ? lireSourcesFactureList()
+  : readFileSync(join(ICI, '..', f), 'utf8'))
 
 const drf = (total, taille) => (page) => {
   const debut = (page - 1) * taille
@@ -30,7 +35,7 @@ const CAS = [
 for (const [fichier, motif] of CAS) {
   test(`${fichier} lit toutes les pages`, () => {
     const src = lire(fichier)
-    assert.match(src, /import fetchAllPages from '..\/..\/utils\/fetchAllPages'/)
+    assert.match(src, /import fetchAllPages from '(\.\.\/)+utils\/fetchAllPages'/)
     assert.match(src, motif)
     assert.doesNotMatch(src, /r\.data\.results \?\? r\.data/)
     assert.doesNotMatch(src, /setConsoliderDevis\(res\.data\.results/)

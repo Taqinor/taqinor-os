@@ -5,6 +5,9 @@
 // = fermé, jamais le repli `'libre'` qui ouvrait les boutons sur une version
 // remplacée.
 
+/** VNT81 — cible tactile ≥ 44 px au téléphone (< 768 px), inchangée au bureau. */
+export const CIBLE_TACTILE = 'max-md:min-h-11'
+
 /** `vente.peut.<geste>` strictement vrai, sinon faux. */
 export function peutVente(d, geste) {
   return d?.vente?.peut?.[geste] === true

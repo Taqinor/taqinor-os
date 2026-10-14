@@ -8,10 +8,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const DIALOG = readFileSync(join(HERE, 'PaiementDialog.jsx'), 'utf8')
-const FACTURE_LIST = readFileSync(join(HERE, 'FactureList.jsx'), 'utf8')
+// VNT102 — FactureList.jsx + ses fichiers extraits (factureList/).
+const FACTURE_LIST = lireSourcesFactureList()
 const RELANCES = readFileSync(join(HERE, 'RelancesPage.jsx'), 'utf8')
 
 test('VX230 : PaiementDialog est un composant PARTAGÉ (props facture / onOpenChange / onSaved)', () => {

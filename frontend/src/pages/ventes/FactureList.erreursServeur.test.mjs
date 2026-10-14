@@ -3,11 +3,11 @@
 // (FactureList monte trop de dépendances pour un test comportemental léger).
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+// VNT102 — l'avoir et le sondage du PDF vivent en factureList/ (move only) :
+// la garde lit FactureList.jsx + factureList/*.{js,jsx}.
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
-const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'FactureList.jsx'), 'utf8')
+const src = lireSourcesFactureList()
 
 test('création d\'avoir et échéance : frenchError, plus de detail ?? texte fixe', () => {
   assert.match(src, /import \{ frenchError \} from '..\/..\/lib\/frenchError'/)

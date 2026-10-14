@@ -8,6 +8,7 @@ import {
   testSessionFraiche as test,
   uniq, uiLogin, ADMIN, gotoLeads, createLead,
   assertNoSeriousA11yViolations,
+  API_DJANGO, lireJson, listeDe, telephoneMobileUnique,
 } from './helpers'
 
 // CAD85 — les écrans QUOTIDIENS de la cadence rejoignent la liste : le cockpit
@@ -491,4 +492,57 @@ test('VX190: un Sheet standalone respecte l\'inset haut (safe-top)', async ({ pa
   await expect(page.getByRole('heading', { name: 'Filtres' })).toBeVisible()
   const overlay = page.locator('.safe-top').first()
   await expect(overlay).toBeVisible()
+})
+
+// VNT81 — le panneau de vente reste utilisable au téléphone (375 px) : onglet
+// Devis du lead → carte du devis accepté → « Facturer… » ouvre le dialogue en
+// tiroir bas, cibles ≥ 44 px, aucun défilement horizontal. Le devis est posé
+// par l'API (lead, lignes, acceptation) : seul le parcours d'écran est joué.
+test('VNT81: onglet Devis → dialogue d’acompte à 375 px (tiroir bas, cibles ≥ 44 px)', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  await page.setViewportSize({ width: 375, height: 812 })
+  const produits = listeDe(await lireJson(
+    await request.get(`${API_DJANGO}/stock/produits/?page_size=100`), 'catalogue'))
+  const produit = produits.find((p) => parseFloat(p.prix_vente) > 0)
+  test.skip(!produit, 'catalogue sans produit chiffré — jouer `manage.py seed_catalogue`')
+  const lead = await lireJson(await request.post(`${API_DJANGO}/crm/leads/`, {
+    data: {
+      nom: uniq('VNT81 Mobile'), ville: 'Casablanca', telephone: telephoneMobileUnique(),
+      type_installation: 'residentiel', facture_hiver: '800',
+    },
+  }), 'création du lead')
+  const devis = await lireJson(await request.post(`${API_DJANGO}/ventes/devis/`, {
+    data: { lead: lead.id, taux_tva: '20.00', mode_installation: 'residentiel' },
+  }), 'création du devis')
+  await lireJson(await request.post(`${API_DJANGO}/ventes/devis/${devis.id}/replace-lines/`, {
+    data: {
+      lignes: [{
+        produit: produit.id, designation: produit.nom, quantite: '1.00',
+        prix_unitaire: String(produit.prix_vente), remise: '0.00', taux_tva: '20.00',
+        type_ligne: 'produit', ordre: 0,
+      }],
+    },
+  }), 'lignes du devis')
+  await lireJson(await request.post(`${API_DJANGO}/ventes/devis/${devis.id}/accepter/`, {
+    data: { nom: 'Client VNT81' },
+  }), 'acceptation du devis')
+
+  await page.goto(`/crm/leads/${lead.id}`)
+  await page.getByRole('tab', { name: /devis/i }).click()
+  const panneau = page.getByTestId('panneau-vente').first()
+  await expect(panneau).toBeVisible({ timeout: 20_000 })
+  await assertNoHorizontalOverflow(page, `/crm/leads/${lead.id} (onglet Devis)`)
+  const facturer = panneau.getByRole('button', { name: /Facturer (l.acompte|le solde|la tranche suivante)/ }).first()
+  await expect(facturer).toBeVisible()
+  const cible = await facturer.boundingBox()
+  expect(cible.height, 'cible tactile du bouton « Facturer… »').toBeGreaterThanOrEqual(44)
+  await facturer.click()
+  const dialogue = page.getByRole('dialog')
+  await expect(dialogue).toBeVisible()
+  await expect(dialogue.getByTestId('facturer-resume')).toBeVisible({ timeout: 20_000 })
+  const boite = await dialogue.boundingBox()
+  expect(boite.x, 'le tiroir commence dans l’écran').toBeGreaterThanOrEqual(0)
+  expect(boite.x + boite.width, 'le tiroir tient dans 375 px').toBeLessThanOrEqual(376)
+  expect(boite.y + boite.height, 'tiroir BAS : collé au bas de l’écran').toBeGreaterThanOrEqual(811)
+  await assertNoHorizontalOverflow(page, 'dialogue « Facturer la vente » (375 px)')
 })
