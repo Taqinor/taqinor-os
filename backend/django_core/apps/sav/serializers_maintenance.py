@@ -7,6 +7,20 @@ from core.mixins import SameCompanyFKSerializerMixin
 from .models import ContratMaintenance, PrestationContrat
 
 
+class _DecimalSansVide(serializers.DecimalField):
+    """Décimal nullable où ``""`` N'EST PAS « non renseigné » (seul ``null`` l'est).
+
+    ``DecimalField(allow_null=True)`` lit une chaîne vide comme ``None`` alors que le
+    schéma publié (motif décimal non vide) la déclare invalide : api-fuzz « accepted
+    schema-violating request » sur ``prestations[].prix_ht``. Les nombres JSON restent
+    acceptés (l'écran envoie ``null`` pour un prix à renseigner)."""
+
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and not data.strip():
+            self.fail('invalid')
+        return serializers.Field.validate_empty_values(self, data)
+
+
 class PrestationContratSerializer(serializers.ModelSerializer):
     """CIQ640 — prestation nommée (forme ``contract_samples/contrat_om.json``).
 
@@ -14,6 +28,8 @@ class PrestationContratSerializer(serializers.ModelSerializer):
     et ``prix_ht`` seulement ; ``id`` désigne la prestation du contrat,
     ``type`` / ``libelle`` restent ceux semés (prestations nommées)."""
     id = serializers.IntegerField(required=False)
+    prix_ht = _DecimalSansVide(
+        max_digits=10, decimal_places=2, required=False, allow_null=True)
 
     class Meta:
         model = PrestationContrat

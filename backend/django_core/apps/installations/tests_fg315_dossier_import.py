@@ -88,7 +88,12 @@ class TestDossierCreation(TestCase):
         r = self.api.post(f'{BASE}/dossiers-import/', {
             'designation': 'X', 'fournisseur': f_o.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 api-fuzz : id étranger ou inexistant = 404 (même réponse).
+        self.assertEqual(r.status_code, 404, r.data)
+        r = self.api.post(f'{BASE}/dossiers-import/', {
+            'designation': 'X', 'bon_commande': 99999999,
+        }, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_blank_designation_rejected(self):
         r = self.api.post(f'{BASE}/dossiers-import/', {'designation': '  '}, format='json')

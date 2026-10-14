@@ -113,7 +113,16 @@ class XSAV12FusionTest(TestCase):
         resp = self.api.post(
             f'/api/django/sav/tickets/{self.principal.pk}/fusionner/',
             {'doublon_id': self.principal.pk}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # CI #997 api-fuzz : refus d'ÉTAT (même ticket des deux côtés) = 409.
+        self.assertEqual(resp.status_code, 409)
+
+    def test_corps_illisible_400(self):
+        # CI #997 api-fuzz : un tableau/objet/0 en corps levait un 500.
+        url = f'/api/django/sav/tickets/{self.principal.pk}/fusionner/'
+        for corps in ([None, None], {'doublon_id': [None, None]},
+                      {'doublon_id': 0}, {}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
 
     def test_doublon_introuvable_404(self):
         resp = self.api.post(

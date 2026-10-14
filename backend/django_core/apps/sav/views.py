@@ -44,7 +44,8 @@ from .models import (
 from .dateutils import add_months
 from .query_params import (
     CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE, CORPS_TICKET_CLIENT_OU_EQUIPEMENT,
-    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, archives_incluses, choix_param, date_param, entier_param,
+    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, ORDRES_PROBLEME, ORDRES_PROBLEME_SCHEMA,
+    archives_incluses, choix_param, date_param, entier_param,
 )
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
@@ -118,6 +119,12 @@ def _valider_corps(schema, data):
 
 
 _SCHEMA_REBUT = _sch('SavMettreAuRebutRequete', {'motif': ChaineStricte()})
+# CI #997 api-fuzz : corps lus PAR leur déclaration (un tableau/objet en corps
+# levait un 500 sur ``.get``).
+_SCHEMA_CHECKLIST_INIT = _sch('SavChecklistInitRequete', {
+    'template_id': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX)})
+_SCHEMA_FUSIONNER = _sch('SavFusionnerRequete', {
+    'doublon_id': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX)})
 
 
 # `description`/`cause_racine` peuvent être vides : l'écran « problème depuis
@@ -274,7 +281,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             qs = qs.filter(categorie_id=categorie)
         # ZMFG12 — parc actif par défaut : exclut les équipements au rebut.
         # ?rebut=tous pour tout voir ; ?rebut=only pour ne voir que le rebut.
-        rebut = params.get('rebut')
+        rebut = choix_ou_400(self.request, 'rebut', ('only', 'tous'))
         if self.action == 'list':
             if rebut == 'only':
                 qs = qs.filter(mis_au_rebut=True)
@@ -507,7 +514,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         # XSAV19 — ?public=1 encode l'URL publique « Signaler un problème »
         # (/e/<public_token>) au lieu du jeton interne EQUIP:<id> (scan
         # interne inchangé par défaut). Le jeton public est généré lazily.
-        public = request.query_params.get('public') in ('1', 'true')
+        public = choix_ou_400(
+            request, 'public', ('0', '1', 'true', 'false')) in ('1', 'true')
 
         # AGR621 — étiquette PUBLIQUE (coffret d'un forage isolé) : pied
         # « SAV : <téléphone société> · Chantier <référence> », chaque partie
@@ -1388,7 +1396,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # clé de l'opération) est refusée, même quand l'opération ne la lit pas.
         for cle in ('statut', 'priorite'):
             valeur = request.data.get(cle)
-            if valeur is not None and (
+            if cle in request.data and (
                     not isinstance(valeur, str)
                     or valeur not in self._ACTIONS_GROUPEES_VALEURS[cle]):
                 return Response({cle: 'Valeur inconnue.'}, status=400)
@@ -1429,8 +1437,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 technicien = get_user_model().objects.filter(
                     id=technicien_id, company=company).first()
                 if technicien is None:
-                    return Response(
-                        {'technicien': 'Technicien inconnu.'}, status=400)
+                    raise NotFound({'technicien': 'Technicien inconnu.'})
             for ticket in tickets:
                 old = Ticket.objects.get(pk=ticket.pk)
                 ticket.technicien_responsable = technicien
@@ -2473,9 +2480,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=TicketChecklistItemSerializer(many=True))
     @extend_schema(
         methods=['POST'],
-        request=_sch('SavChecklistInitRequete', {
-            'template_id': drf_serializers.IntegerField(
-                min_value=1, max_value=ID_MAX)}),
+        request=_SCHEMA_CHECKLIST_INIT,
         responses={
             200: TicketChecklistItemSerializer(many=True),
             201: TicketChecklistItemSerializer(many=True)})
@@ -2506,9 +2511,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return Response(TicketChecklistItemSerializer(items, many=True).data)
 
         if request.method == 'POST':
-            template_id = request.data.get('template_id')
-            if not template_id:
-                return Response({'detail': 'template_id requis.'}, status=400)
+            template_id = _valider_corps(
+                _SCHEMA_CHECKLIST_INIT, request.data)['template_id']
             try:
                 tmpl = MaintenanceChecklistTemplate.objects.get(
                     pk=template_id, company=ticket.company)
@@ -2663,9 +2667,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=_sch('SavFusionnerRequete', {
-        'doublon_id': drf_serializers.IntegerField(
-            min_value=1, max_value=ID_MAX)}), responses=_sch(
+    @extend_schema(request=_SCHEMA_FUSIONNER, responses=_sch(
             'SavFusionnerReponse', {}, extra=True))
     @action(detail=True, methods=['post'], url_path='fusionner',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2684,17 +2686,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         déplacées, et le chatter du doublon perdrait toute trace de la
         fusion)."""
         principal = self.get_object()
-        doublon_id = request.data.get('doublon_id')
-        if not doublon_id:
-            return Response({'detail': 'doublon_id requis.'}, status=400)
-        try:
-            doublon_id = int(doublon_id)
-        except (TypeError, ValueError):
-            return Response({'detail': 'doublon_id invalide.'}, status=400)
+        doublon_id = _valider_corps(_SCHEMA_FUSIONNER, request.data)['doublon_id']
         if doublon_id == principal.pk:
-            return Response(
-                {'detail': "Un ticket ne peut pas être fusionné avec lui-même."},
-                status=status.HTTP_400_BAD_REQUEST)
+            # État des données (même ticket des deux côtés) : 409, pas 400.
+            raise ConflitEtat(
+                "Un ticket ne peut pas être fusionné avec lui-même.")
 
         # ASAV25 — le doublon doit être VISIBLE par l'utilisateur (sinon sa
         # fusion transférerait son chatter vers un ticket qu'il voit).
@@ -3477,7 +3473,7 @@ class CompatibilitePieceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 @extend_schema_view(list=extend_schema(
     parameters=[
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
-        OpenApiParameter('ordering', OpenApiTypes.STR, required=False, enum=['impact', '-impact']),
+        OpenApiParameter('ordering', ORDRES_PROBLEME_SCHEMA, required=False),
     ]))
 class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """NTSRV16 — CRUD des problèmes + rattachement/détachement des incidents.
@@ -3522,7 +3518,8 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         # lignes par société), puis l'ordre est REPROJETÉ en SQL via
         # Case/When — la pagination DRF reste donc exacte, et aucune
         # arithmétique de durée (non portable) n'est envoyée à la base.
-        ordering = (self.request.query_params.get('ordering') or '').strip()
+        ordering = choix_param(
+            self.request, 'ordering', ORDRES_PROBLEME, '')
         if ordering in ('impact', '-impact'):
             maintenant = timezone.now()
             lignes = []

@@ -108,7 +108,8 @@ class ZMFG1EquipeMaintenanceTest(TestCase):
             'client': self.client_obj.id, 'installation': self.inst.id,
             'equipe': equipe_etrangere.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 api-fuzz : id d'une autre société = id inconnu → 404.
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_company_isolation(self):
         EquipeMaintenance.objects.create(

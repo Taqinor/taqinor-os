@@ -73,6 +73,15 @@ class ZMFG12MiseAuRebutTest(TestCase):
             {}, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
+    def test_rebut_hors_enum_400(self):
+        # CI #997 api-fuzz : `?rebut=` est une énumération publiée.
+        r = self.api.get('/api/django/sav/equipements/?rebut=AAA')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('rebut', r.json())
+        for valeur in ('only', 'tous'):
+            r = self.api.get(f'/api/django/sav/equipements/?rebut={valeur}')
+            self.assertEqual(r.status_code, 200, r.content)
+
     def test_motif_non_chaine_refuse_400(self):
         # CI #985 (api-fuzz) : `motif: [null, null]` levait `.strip()` → 500.
         eq = self._equip()
