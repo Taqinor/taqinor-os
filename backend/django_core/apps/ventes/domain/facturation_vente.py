@@ -732,3 +732,78 @@ def modifier_echeancier_vente(devis, tranches, *, user):
                 resume='échéancier modifié',
                 apres_acceptation=devis.statut == 'accepte')
     return devis
+
+
+# ── VNT67 — le TTC d'un BROUILLON de tranche (D-VNT-1 « modifient librement ») ─
+
+def modifier_montant_tranche(facture, montant_ttc, *, user):
+    """VNT67 — ``POST factures/<id>/montant-tranche/`` : le brouillon de
+    tranche prend ``montant_ttc`` ; HT / TVA / ventilation au prorata du prix
+    convenu (``montants_au_prorata``) et l'échéancier RÉÉCRIT (Σ = TTC) :
+    l'acompte par l'écrivain unique de VNT28
+    (``ecrire_echeancier_depuis_acompte``, via ``_facturer_acompte``), une
+    tranche intermédiaire passe en MAD de même (dernière = reste, contrôle
+    ``controler_echeancier_vente``). Refus : 409 ``facture_emise`` (seul un
+    brouillon change de montant — une émise se corrige par avoir), 400
+    ``pas_une_tranche`` / ``montant_invalide`` (la dernière tranche vaut le
+    reste). Aucun statut écrit (règle #4). Rend la facture relue."""
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.echeancier import UNITE_MONTANT
+    from apps.ventes.vente_facturation import plan_facturation
+    from .modifiabilite import (
+        EcheancierRefuse, consigner_correction_apres_envoi,
+        controler_echeancier_vente)
+    if facture.statut != 'brouillon':
+        raise _conflit('facture_emise',
+                       'Seul un brouillon change de montant : cette facture '
+                       'est émise — corrigez-la par un avoir.')
+    if not facture.devis_id or not facture.cle_tranche \
+            or facture.type_facture == 'complete':
+        raise FacturationVenteRefusee(
+            "Cette facture n'est pas une tranche d'échéancier.",
+            code='pas_une_tranche')
+    with transaction.atomic():
+        devis = next(d for d in verrouiller_vente(facture.devis)
+                     if d.pk == facture.devis_id)
+        _exiger_vente_en_jeu(devis)
+        plan = plan_facturation(devis)
+        montant = _montant_demande(plan['prix_convenu_ttc'], montant_ttc,
+                                   None)
+        if montant is None or montant >= plan['prix_convenu_ttc']:
+            raise FacturationVenteRefusee('Montant invalide.',
+                                          code='montant_invalide')
+        if facture.type_facture == 'acompte':
+            return _facturer_acompte(
+                devis, plan, user=user, montant=montant,
+                cle_attendue=facture.cle_tranche, libelle=None)
+        cles = [t['cle'] for t in plan['tranches']]
+        if facture.cle_tranche not in cles[:-1]:
+            raise FacturationVenteRefusee(
+                'La dernière tranche vaut le reste : son montant ne se '
+                'modifie pas.', code='montant_invalide')
+        entrees = _entrees_echeancier(devis)
+        k = cles.index(facture.cle_tranche)
+        entrees[k] = dict(entrees[k], unite=UNITE_MONTANT,
+                          pct_or_montant=float(montant))
+        try:
+            entrees = controler_echeancier_vente(devis, entrees,
+                                                 figer_brouillons=False)
+        except EcheancierRefuse as exc:
+            corps = exc.corps()
+            raise FacturationVenteRefusee(corps.pop('detail'),
+                                          status=exc.status, **corps)
+        Devis.objects.filter(pk=devis.pk, company_id=devis.company_id
+                             ).update(echeancier=entrees)
+        devis.echeancier = entrees
+        consigner_correction_apres_envoi(
+            devis, user=user, objet='echeancier',
+            resume=f'échéancier — {facture.libelle} {montant} MAD',
+            apres_acceptation=True)
+        ht, tva, vent = montants_au_prorata(devis, plan, montant)
+        tranche = next(t for t in plan_facturation(devis)['tranches']
+                       if t['cle'] == facture.cle_tranche)
+        prix = plan['prix_convenu_ttc']
+        return _editer_brouillon(facture, dict(
+            tranche, montant_ttc=montant, ht=ht, tva=tva,
+            ventilation_tva=vent, pourcentage=_q(montant / prix * 100)),
+            user, None)

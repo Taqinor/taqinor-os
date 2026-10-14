@@ -130,10 +130,6 @@ def _montants_ligne_corrective(i, ligne):
 #: la garde destructive est désormais ``perform_destroy`` (brouillon seul).
 PEUT_ANNULER = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
-# NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
-# (un module par ressource). Comportement et symboles inchangés : le
-# package __init__ ré-exporte toutes les vues publiques.
-
 
 @extend_schema_view(list=extend_schema(
     parameters=[ENTITE, qint('client', desc="Filtre optionnel par client.")]),
@@ -147,27 +143,14 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     # get_permissions SURCHARGENT la base : scoping société et matrice 401/403/404
     # IDENTIQUES (règle #4 : aucun statut/sérialisation Facture touché ; la facture
     # garde son PDF légacy séparé, hors périmètre du moteur devis).
-    # AUD157 (FAC-14) — LE PRÉFETCH DIT CE QUE LE SÉRIALISEUR LIT. Il ne
-    # portait que `lignes`, alors que `FactureSerializer` sérialise pour CHAQUE
-    # facture les paiements imbriqués, les avoirs, `montant_paye` (→ paiements
-    # + affectations_paiement), `montant_du` (→ + notes_debit + retenues_subies)
-    # et `mentions_manquantes` — soit ≈6 requêtes par facture. Le viewset Devis
-    # avait reçu le correctif équivalent (YOPSB13) ; la liste des factures
-    # jamais.
-    #
-    # AUD157 (résidu) — LE SÉRIALISEUR IMBRIQUÉ COMPTE AUSSI. Le préfetch
-    # s'arrêtait à la facture, mais `PaiementSerializer` — imbriqué dans
-    # `FactureSerializer` — expose `montant_disponible`, qui interroge
-    # `Paiement.affectations` (`.exists()`, puis `montant_affecte`). Une
-    # requête PAR PAIEMENT sérialisé : le budget de la liste restait indexé
-    # sur le portefeuille (+1 par ligne), le N+1 s'était juste déplacé d'un
-    # cran. Le gestionnaire de relation sert `.all()` ET `.exists()` depuis
-    # `_prefetched_objects_cache` — préfetcher la relation suffit, aucune
-    # propriété modèle n'a à être réécrite.
-    #
-    # Même raison pour `avoirs__lignes` / `notes_debit__lignes` : `get_avoirs`
-    # et `notes_debit_total` lisent le `total_ttc` de chaque document, qui
-    # retombe sur SES lignes dès que ses montants ne sont pas figés.
+    # AUD157 (FAC-14) — LE PRÉFETCH DIT CE QUE LE SÉRIALISEUR LIT :
+    # `FactureSerializer` lit, par facture, paiements imbriqués, avoirs,
+    # `montant_paye` / `montant_du` (paiements, affectations, notes de débit,
+    # retenues) et `mentions_manquantes` (≈6 requêtes par facture sans lui).
+    # Résidu : `PaiementSerializer` imbriqué expose `montant_disponible`
+    # (`Paiement.affectations`) — préfetcher la relation sert `.all()` ET
+    # `.exists()` depuis le cache. `avoirs__lignes` / `notes_debit__lignes` :
+    # le `total_ttc` d'un document non figé retombe sur SES lignes.
     queryset = Facture.objects.select_related(
         'client', 'created_by', 'bon_commande', 'devis', 'updated_by',
         'company', 'devis__bon_commande',
@@ -628,6 +611,19 @@ class FactureViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return Response(refus.corps, status=status.HTTP_400_BAD_REQUEST)
         return Response({**FactureSerializer(facture).data,
                          'avoir': avoir_annulation_corps(facture)})
+
+    @extend_schema(request=inline_serializer('FactureMontantTranche', {'montant_ttc': drf_serializers.CharField()}),
+                   responses={200: FactureSerializer, 400: D.ErreurDevisFige, 409: D.ErreurDevisFige})
+    @action(detail=True, methods=['post'], url_path='montant-tranche', permission_classes=PEUT_ANNULER)
+    def montant_tranche(self, request, pk=None):  # api-only: écran du panneau de vente (VNT75/VNT79).
+        """VNT67 — le TTC d'un BROUILLON de tranche (corps : ``facturation_vente.modifier_montant_tranche``)."""
+        from ..domain.facturation_vente import FacturationVenteRefusee, modifier_montant_tranche
+        corps = request.data if isinstance(request.data, dict) else {}
+        try:
+            facture = modifier_montant_tranche(self.get_object(), corps.get('montant_ttc'), user=request.user)
+        except FacturationVenteRefusee as exc:
+            return Response(exc.corps, status=exc.status)
+        return Response(FactureSerializer(facture).data)
 
     @extend_schema(responses=PaiementSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='paiements',
