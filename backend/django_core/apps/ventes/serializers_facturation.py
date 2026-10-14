@@ -80,7 +80,7 @@ class BonCommandeSerializer(SameCompanyFKSerializerMixin,
     # création (la garde ERR13 de perform_create ne couvrait que la création).
     same_company_fields = ('client', 'devis', 'lead')
     client_nom = serializers.CharField(source='client.nom', read_only=True)
-    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True, default=None)
+    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True)
     has_facture = serializers.SerializerMethodField()
     # AUD118 — DISTINCT de `has_facture` : une facture ANNULÉE ne bloque plus
     # rien. `has_facture` reste le prédicat « une facture a déjà été émise »
@@ -205,10 +205,10 @@ class PaiementSerializer(serializers.ModelSerializer):
     # Champs d'affichage (lecture seule) pour la page Encaissements : référence
     # de la facture, nom du client et auteur de l'encaissement (« par qui »).
     facture_reference = serializers.CharField(
-        source='facture.reference', read_only=True, allow_null=True, default=None)
+        source='facture.reference', read_only=True, allow_null=True)
     client_nom = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
     # XFAC1 — avance non affectée : solde encore disponible pour ventilation.
     montant_disponible = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
@@ -222,7 +222,7 @@ class PaiementSerializer(serializers.ModelSerializer):
     # AFAC17 — auteur de l'annulation de saisie (contrat
     # ``paiement_annuler_saisie.json``).
     annule_par_nom = serializers.CharField(
-        source='annule_par.username', read_only=True, default=None)
+        source='annule_par.username', read_only=True, allow_null=True)
 
     # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
     # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
@@ -381,13 +381,13 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
     # L853 — téléphone du client (lecture seule) : permet de valider/désactiver
     # le bouton WhatsApp côté front sans aller-retour 400. Jamais en écriture.
     client_telephone = serializers.CharField(
-        source='client.telephone', read_only=True, allow_null=True, default=None)
+        source='client.telephone', read_only=True, allow_null=True)
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
-    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True, default=None)
+    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True)
     # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
     updated_by_nom = serializers.CharField(
-        source='updated_by.username', read_only=True, allow_null=True, default=None)
+        source='updated_by.username', read_only=True, allow_null=True)
     # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
     tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
@@ -725,7 +725,7 @@ class PromessePaiementSerializer(SameCompanyFKSerializerMixin,
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
 
     def validate_date_promise(self, value):
         from datetime import timedelta
@@ -809,7 +809,7 @@ class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     responsable_username = serializers.CharField(
-        source='responsable.username', read_only=True, allow_null=True, default=None)
+        source='responsable.username', read_only=True, allow_null=True)
 
     class Meta:
         from .models import ParametrageRelanceClient
@@ -825,7 +825,7 @@ class RelanceLogSerializer(SameCompanyFKSerializerMixin,
     # société si elle redevient inscriptible.
     same_company_fields = ('facture',)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
 
     class Meta:
         from .models import RelanceLog
@@ -842,7 +842,7 @@ class FactureActivitySerializer(SameCompanyFKSerializerMixin,
     # société si elle redevient inscriptible.
     same_company_fields = ('facture',)
     user_nom = serializers.CharField(
-        source='user.username', read_only=True, allow_null=True, default=None)
+        source='user.username', read_only=True, allow_null=True)
 
     class Meta:
         from .models import FactureActivity
@@ -867,7 +867,7 @@ class LigneRemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
     date_paiement = serializers.DateField(
         source='paiement.date_paiement', read_only=True)
     facture_reference = serializers.CharField(
-        source='paiement.facture.reference', read_only=True, allow_null=True, default=None)
+        source='paiement.facture.reference', read_only=True, allow_null=True)
 
     class Meta:
         model = LigneRemiseEncaissement
@@ -883,7 +883,7 @@ class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
 
     lignes = LigneRemiseEncaissementSerializer(many=True, read_only=True)
     technicien_nom = serializers.CharField(
-        source='technicien.username', read_only=True, allow_null=True, default=None)
+        source='technicien.username', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     montant_lignes = serializers.DecimalField(

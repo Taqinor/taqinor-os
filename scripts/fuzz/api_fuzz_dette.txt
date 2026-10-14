@@ -951,7 +951,6 @@ API accepted schema-violating request|PUT /api/django/records/activity-types/{id
 API rejected schema-compliant request|PATCH /api/django/core/theme/courant/
 API rejected schema-compliant request|POST /api/django/core/dsr-requests/
 API rejected schema-compliant request|POST /api/django/core/formulaires/
-Response violates schema|PATCH /api/django/ventes/bons-commande/{id}/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 API accepted schema-violating request|GET /api/django/crm/relance-etapes/
@@ -962,7 +961,6 @@ API rejected schema-compliant request|POST /api/django/ventes/packs-asbuilt/
 API rejected schema-compliant request|PUT /api/django/core/theme/courant/
 Response violates schema|GET /api/django/core/paiements-en-ligne/
 Response violates schema|GET /api/django/core/paiements-en-ligne/{id}/
-Response violates schema|PATCH /api/django/ventes/parametrages-relance-client/{id}/
 Response violates schema|POST /api/django/core/paiements-en-ligne/
 # VNT lot M0, 3e tour (12/10/2026, PR #979) : tirage aleatoire, ventes/core pre-existants.
 API accepted schema-violating request|PUT /api/django/core/dossiers/{id}/
