@@ -273,6 +273,12 @@ _TEXTE = {'type': 'string', 'minLength': 1}
 _TEXTE_LIBRE = {'type': 'string'}
 _NOMBRE_POSITIF = {'type': 'number', 'minimum': 0}
 
+#: Provenance des bornes des formes (CALX384) : ``minimum: 0`` = grandeurs
+#: physiques ou comptages jamais négatifs (pct, uc_w_m2k, rails/pinces/crochets
+#: par module) ; ``maximum: 100`` = définition d'un pourcentage ; ``minProperties``
+#: / ``minItems`` = 1 : une table vide n'a aucun sens pour les lecteurs
+#: (etapes/lid.py, thermique, indisponibilite, nomenclature) ; les 5 clés requises
+#: de ``regle_bom_structure`` sont celles que lit core/electrique/nomenclature.py.
 FORMES_TABLES = {
     SECTION_SIMULATION: {
         # {technologie: {pct, source, reference?}} (etapes/lid.py)
