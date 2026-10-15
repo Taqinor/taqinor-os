@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
 from core.champs_stricts import EntierStrict, entier_ou_400
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import corps_valide
 from core.viewsets import CompanyScopedModelViewSet
 from apps.parametres.models import SettingsAuditLog
@@ -16,7 +17,7 @@ from .models import (
 from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
     FieldRolePermissionSerializer, ReordonnerDefinitionsSerializer,
-    _module_model,
+    _module_model, corps_definition_resserre,
 )
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
@@ -96,8 +97,14 @@ _GENERER_REQUETE = inline_serializer('CustomFieldGenererRequete', {
     'record_id': EntierStrict(min_value=1, max_value=2147483647)})
 
 
-@extend_schema_view(list=extend_schema(parameters=[
-    OpenApiParameter('module', OpenApiTypes.STR, required=False)]))
+_CORPS_DEFINITION = extend_schema(extensions={
+    EXTENSION_CORPS_RESSERRE: corps_definition_resserre()})
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        OpenApiParameter('module', OpenApiTypes.STR, required=False)]),
+    create=_CORPS_DEFINITION, update=_CORPS_DEFINITION)
 class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
     """Définitions de champs personnalisés (Paramètres). Lecture tout rôle
     (les formulaires en ont besoin), écriture admin. Filtre ?module=lead.

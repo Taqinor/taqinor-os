@@ -2,7 +2,8 @@ from django.db import models
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 from core.champs_stricts import (
-    BooleenStrict, ChampsStrictsEntiersMixin, IdInconnu404Mixin)
+    BooleenStrict, ChampsStrictsEntiersMixin, IdInconnu404Mixin,
+    MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
 from .models import (
@@ -36,6 +37,64 @@ _MAPPING_STRICT = {
     **ChampsStrictsEntiersMixin.serializer_field_mapping,
     models.SlugField: SlugStrict,
 }
+
+
+class OptionsChamp(serializers.JSONField):
+    """CI #1000 (api-fuzz « rejected schema-compliant request ») — ``options``
+    d'un champ personnalisé : le schéma publiait « tout JSON » (``{}``) alors que
+    ``validate_options`` refusait ``0``/``true``/un texte. UN SEUL prédicat,
+    publié ET appliqué : liste de CHAÎNES (sans caractère nul), ``""`` ou
+    ``null`` (aucune option) ; tout autre type JSON répond 400. L'exigence
+    « un champ Choix porte au moins une option » dépend du ``type`` : elle est
+    publiée sur le corps de création/remplacement (``corps_definition_resserre``)."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+
+        super().__init__(**kwargs)
+        set_override(self, 'field', {'anyOf': [
+            {'type': 'array', 'nullable': True,
+             'items': {'type': 'string', 'pattern': MOTIF_SANS_NUL}},
+            {'type': 'string', 'enum': ['']},
+        ]})
+
+    def to_internal_value(self, data):
+        if data != '' and not (isinstance(data, list) and all(
+                isinstance(o, str) and '\x00' not in o for o in data)):
+            raise serializers.ValidationError('Liste d’options attendue.')
+        return super().to_internal_value(data)
+
+
+def corps_definition_resserre():
+    """Règles du corps de CRÉATION / REMPLACEMENT d'une définition que le
+    composant partagé ne peut pas porter (elles dépendent du ``type``) :
+    un champ Choix exige au moins une option non vide ; un champ Relation, un
+    module cible connu ; un champ calculé, une formule non vide. Combinées en
+    ``allOf`` au corps de CETTE opération (``EXTENSION_CORPS_RESSERRE``)."""
+    from . import registry
+    types = CustomFieldDef.FieldType.values
+
+    def autre_que(type_):
+        return {'properties': {'type': {
+            'type': 'string', 'enum': [t for t in types if t != type_]}}}
+
+    def exige(type_, **proprietes):
+        return {'anyOf': [autre_que(type_), {
+            'required': ['type', *proprietes],
+            'properties': {'type': {'type': 'string', 'enum': [type_]},
+                           **proprietes}}]}
+
+    cibles = sorted(m for m in CustomFieldDef.Module.values
+                    if registry.get_model(m) is not None)
+    return {'allOf': [
+        exige('choice', options={
+            'type': 'array', 'minItems': 1,
+            'items': {'type': 'string',
+                      'pattern': MOTIF_NON_BLANC_SANS_NUL}}),
+        exige('relation', relation_module={'type': 'string', 'enum': cibles}),
+        exige('formula', formule={
+            'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}),
+    ]}
 
 
 class ModuleChamp(serializers.CharField):
@@ -82,6 +141,7 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
     # ``JSONField`` publié `{}` (tout) alors que `validate` exige un objet :
     # `conditions: 1` était « conforme » puis refusé. Objet JSON ou null.
     conditions = ObjetJSON(required=False, allow_null=True)
+    options = OptionsChamp(required=False, allow_null=True)
     rollup_config = ObjetJSON(required=False, allow_null=True)
 
     class Meta:
@@ -121,15 +181,26 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError('Module inconnu.')
 
     def validate_options(self, value):
-        # Normalise les options en liste de chaînes non vides (tolère un dict
-        # ou des espaces parasites côté entrée).
+        # Normalise les options en liste de chaînes non vides (tolère les
+        # espaces parasites côté entrée) ; ``OptionsChamp`` a déjà exigé une
+        # liste de chaînes, ``""`` ou ``null``.
         if value in (None, ''):
             return value
-        if isinstance(value, dict):
-            value = list(value.values())
-        if not isinstance(value, list):
-            raise serializers.ValidationError('Liste d’options attendue.')
-        return [str(o).strip() for o in value if str(o).strip()]
+        propres = [o.strip() for o in value if o.strip()]
+        # Un champ Choix dont une option est blanche est refusé (le schéma de
+        # création publie « chaque option non vide ») — au lieu de l'écarter.
+        if (self._type_vise() == CustomFieldDef.FieldType.CHOICE
+                and len(propres) != len(value)):
+            raise serializers.ValidationError(
+                'Une option de choix ne peut pas être vide.')
+        return propres
+
+    def _type_vise(self):
+        """Type de la définition en cours d'écriture (corps, sinon instance)."""
+        brut = getattr(self, 'initial_data', None)
+        if hasattr(brut, 'get') and 'type' in brut:
+            return brut['type']
+        return getattr(self.instance, 'type', CustomFieldDef.FieldType.TEXT)
 
     def validate(self, attrs):
         # L816 — un champ de type « choice » exige au moins une option : un
