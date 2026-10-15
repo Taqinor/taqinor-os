@@ -17,6 +17,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from apps.crm.models import Client
 from apps.ventes.models import Devis, Facture, Avoir, BonCommande
 from apps.installations.models import Installation
@@ -157,7 +158,8 @@ _ARCHIVE_ARCHIVE_CLIENT_REPONSE = inline_serializer('ArchiveArchiveClientReponse
     responses={(200, 'application/json'): _ARCHIVE_ARCHIVE_CLIENT_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def archive_client(request, pk):
     """Tous les documents d'un client. Lecture seule, scopé société."""
     co = _co(request.user)
@@ -202,7 +204,8 @@ _ARCHIVE_ARCHIVE_CHANTIER_REPONSE = inline_serializer('ArchiveArchiveChantierRep
     responses={(200, 'application/json'): _ARCHIVE_ARCHIVE_CHANTIER_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def archive_chantier(request, pk):
     """Tous les documents d'un chantier. Lecture seule, scopé société."""
     co = _co(request.user)

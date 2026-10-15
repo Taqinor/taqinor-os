@@ -21,6 +21,7 @@ Export `?export=xlsx` (tableau récapitulatif par technicien).
 from apps.crm.exports import build_xlsx_response
 from .query_params import DATE_OU_VIDE, IDENTIFIANT, date_param, id_param
 from authentication.permissions import IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.dates import maintenant_local
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -76,7 +77,8 @@ _REPORTS_FIELD_FIELD_SERVICE_REPORT_REPONSE = inline_serializer('ReportsFieldFie
     responses={(200, 'application/json'): _REPORTS_FIELD_FIELD_SERVICE_REPORT_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def field_service_report(request):
     """XFSM16 — Rapport analytics field service (`reports/field/`).
 

@@ -18,6 +18,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from .exports import (
     export_journal_ventes, period_bounds,
     export_comptable_xlsx, export_comptable_csv,
@@ -75,7 +76,7 @@ def _maybe_async_export(request, layout, debut, fin):
         403: SH.DetailResponse,
     })
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, DroitDeLaGrille('ventes_export')])
 def journal_ventes(request):
     """GET ?month=YYYY-MM | ?quarter=YYYY-Q | ?start=&end= → .xlsx
     (journal des ventes + résumé TVA), borné à la société."""
@@ -104,7 +105,7 @@ def journal_ventes(request):
         403: SH.DetailResponse,
     })
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, DroitDeLaGrille('ventes_export')])
 def export_comptable(request):
     """GET ?start=&end= (ou ?month=/?quarter=) &fmt=xlsx|csv &layout=… → export
     comptable des factures VALIDÉES de la plage. Groundwork DGI — lecture seule,
@@ -155,7 +156,7 @@ def export_comptable(request):
     responses={200: SH.ExportStatusResponse, 202: SH.ExportStatusResponse,
                500: SH.ExportStatusResponse, 403: SH.DetailResponse})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin, DroitDeLaGrille('ventes_export')])
 def export_status(request, token):
     """SCA41 — statut d'un export asynchrone + URL de téléchargement pré-signée.
 

@@ -25,6 +25,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 
 
 def _s(d):
@@ -222,7 +223,8 @@ def cash_flow_forecast(request):
         403: SH.DetailResponse,
     })
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('ventes_export', export=('csv',))])
 def analyse_facturation_view(request):
     """GET /ventes/etats/analyse-facturation/?debut=&fin=[&export=csv]
 

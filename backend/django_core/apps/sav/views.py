@@ -980,12 +980,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 'actions_groupees',
                 # ZSAV6 — pièces unifiées (vue fusionnée) + fiche d'intervention.
                 'pieces_unifiees', 'worksheet']:
-            # ASEC50 / D-ASEC-4 — changer l'``equipe`` au PUT/PATCH est la
-            # même réaffectation que ``reaffecter-equipe`` : ``sav_reassign``.
+            # ASEC50 / D-ASEC-4 — changer l'``equipe`` ou le
+            # ``technicien_responsable`` au PUT/PATCH est la même réaffectation
+            # que ``reaffecter-equipe`` / ``actions-groupees`` op ``technicien`` :
+            # ``sav_reassign``.
             return [HasPermissionOrLegacy('sav_gerer')()] + droits_de_la_grille(
                 self,
-                update=[DroitDeLaGrille('sav_reassign', champ='equipe')],
-                partial_update=[DroitDeLaGrille('sav_reassign', champ='equipe')])
+                update=[DroitDeLaGrille('sav_reassign', champ='equipe'),
+                        DroitDeLaGrille('sav_reassign', champ='technicien_responsable')],
+                partial_update=[DroitDeLaGrille('sav_reassign', champ='equipe'),
+                                DroitDeLaGrille('sav_reassign', champ='technicien_responsable')])
         # destroy, et toute action non listée : palier administrateur.
         return [IsAdminRole()]
 
@@ -1375,7 +1379,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             'nb_echecs': drf_serializers.IntegerField(),
         }))
     @action(detail=False, methods=['post'], url_path='actions-groupees',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'), DroitDeLaGrille(
+                'sav_reassign', operation='technicien', cle='operation')])
     def actions_groupees(self, request):
         """ZSAV10 — Applique UNE opération (statut/technicien/priorite/
         annuler) à un LOT de tickets en une seule requête, atomiquement PAR
