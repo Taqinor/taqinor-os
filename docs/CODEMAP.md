@@ -2,7 +2,7 @@
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
 Structure fingerprint: 21bff2ef2a87e71cd1a3bfb8f6a2800a58764e13ab38f77f1e0f3d6526e0c707
-Plan fingerprint: 3ef7bc9a64c023901c1f0b3efeb3322ed2694fe2bab122a991d5d9ac48b9e3a9
+Plan fingerprint: cad2025ee2ac0e7ab365bd307514eb5abb2639a19d26bbb5dd450f7c48d27d0b
 
 
 
@@ -576,7 +576,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1285)**
+**Done (1286)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1184,6 +1184,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF17` — (already present)
 - `ENF20` — import-linter : `ignore_imports` (52) à zéro
 - `ENF21` — flake8 E501 bloquant
+- `ENF23` — Tests sautés (178) à zéro
 - `ENF24` — Seuil de couverture
 - `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
 - `ENF26` — ENF17 + ENF18, tranche des apps tenues (claims 10/10)
@@ -1864,7 +1865,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (128)**
+**Open — to build (127)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1954,7 +1955,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
 - `ENF19` — Duplicats (1 181) à zéro
 - `ENF22` — [D-ENF22-BLE001 = (a), Reda 11/10/2026 : exception signée pour les except larges qui…
-- `ENF23` — Tests sautés (178) à zéro
 - `ODX18` — App Facturation — étape 2 (vues/urls/recouvrement/frontend)
 - `QAH10` — [GATED: secret `ANTHROPIC_API_KEY` GitHub + URL de staging/démo joignable — fondateur]
 - `CALX44` — Brancher le rattachement d'une affaire AO à un calepinage
@@ -2005,4 +2005,3 @@ Things this map could not fully verify from source — do not over-trust:
 - `S21` — Real-time WebSocket upgrade (Django Channels)
 - `VX203` — Contrat d'erreur UNIQUE : fin du double-toast (35 pages), `getApiError` (@lane…
 - `VX252` — [BACKEND additif léger] Maîtrise personnelle : milestones non comparatifs, KPI
-

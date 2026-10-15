@@ -272,6 +272,10 @@ GARDES = {
         ('Test the broad-except checker itself (ENF22)',
          'python -m unittest scripts.tests.test_check_except_larges -v',
          '.'),
+        # ENF23 — tout saut de test = condition d'environnement signée (ENF14).
+        ('Check tests sautés = environnement signé (ENF23)',
+         'python scripts/check_tests_sautes_environnement.py',
+         '.'),
         # AACQ77 — écrans publicité : pas de liste lue sur la page 1, pas d'échec avalé.
         ('Check écrans publicité (page 1 / échec de chargement avalé, AACQ77)',
          'python scripts/check_adsengine_ecrans.py',
