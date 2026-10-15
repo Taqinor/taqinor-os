@@ -7,20 +7,9 @@ import { areteAuPoint, createEdgesUi, EDGE_PICK_TOL_M, type EdgeMapLike } from '
 import { EDGE_COLOR_BY_TYPE, EDGE_TYPE_LABELS, fusionnerAretesSaisies, type SerializedEdge } from './edges';
 import { serializeLayout } from './prefill';
 import { type Ctx } from './context';
-import { panDeTest, ctxDeBase } from './harnaisAtelier';
+import { panDeTest, ctxDeBase, ptM, TRIANGLE_SUD, TRIANGLE_EST, DIAGONALE_SUD } from './harnaisAtelier';
 import { type AreaRecord } from './types';
 import { type LngLat } from '../../lib/roof';
-
-const DEG2RAD = Math.PI / 180;
-const DEG2M = DEG2RAD * 6378137;
-const LAT0 = 33.59;
-const LNG0 = -7.6;
-
-/** Point donné en MÈTRES autour de (LNG0, LAT0) — x vers l'est, y vers le nord. */
-function ptM(x: number, y: number): LngLat {
-  const cosLat = Math.cos(LAT0 * DEG2RAD);
-  return [LNG0 + x / (DEG2M * cosLat), LAT0 + y / DEG2M];
-}
 
 /** Contour en mètres. */
 function polyM(pts: [number, number][]): LngLat[] {
@@ -36,18 +25,6 @@ const CARRE: [number, number][] = [
   [-5, 5],
 ];
 
-/** Demi-croupe SUD / demi-croupe EST d'un même carré (arête partagée = la diagonale). */
-const TRIANGLE_SUD: [number, number][] = [
-  [0, 0],
-  [-5, -5],
-  [5, -5],
-];
-const TRIANGLE_EST: [number, number][] = [
-  [0, 0],
-  [5, -5],
-  [5, 5],
-];
-const DIAGONALE_SUD = 2;
 
 function zone(id: string, vertices: LngLat[], opts: Partial<AreaRecord> = {}): AreaRecord {
   return panDeTest(id, { vertices, pitchDeg: 30, neededPanels: 10, ...opts });

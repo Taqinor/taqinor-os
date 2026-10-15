@@ -46,8 +46,8 @@ import {
 } from './underlay';
 import { createMapDraw, MAPLIBRE_LAYERS_PAR_CALQUE, ORDRE_RENDU_CALQUES, opacityPropFor } from './mapDraw';
 import { distanceEntreM } from './snap';
-import { type Ctx } from './context';
 import { type LngLat } from '../../lib/roof';
+import { ctxTraceVide } from './harnaisAtelier';
 
 /** `EXEMPLE_PLAN` du contrat CALX86 — un plan calé à deux points, distance SAISIE. */
 const EXEMPLE_PLAN = {
@@ -418,15 +418,7 @@ function harnaisMapDraw() {
   // le constructeur ne crée AUCUN de ses contrôles (comportement voulu en mode capture).
   document.body.innerHTML = '<div id="rp9-barre"><button type="button" id="rp9-finish"></button></div>';
   const { map, sources, couches, pile } = carteFactice();
-  const ctx = {
-    opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true },
-    vertices: [] as LngLat[],
-    obstacles: [],
-    areas: [],
-    activeAreaId: 'a1',
-    closed: false,
-    centroid: [-7.62, 33.58] as LngLat,
-  } as unknown as Ctx;
+  const ctx = ctxTraceVide();
   const setStatus = vi.fn();
   const draw = createMapDraw(ctx, { map: map as never, setStatus, updateAreaReadout: vi.fn() });
   return { draw, ctx, map, sources, couches, pile, setStatus };

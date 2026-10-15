@@ -14,7 +14,7 @@
  * 5. La mesure s'affiche avec SA PRÉCISION — jamais arrondie en silence.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { methodesCarteInertes } from './harnaisAtelier';
+import { methodesCarteInertes, ctxTraceVide } from './harnaisAtelier';
 import {
   aideClavier,
   annoncePourVerdict,
@@ -260,15 +260,7 @@ function carteFactice() {
 function atelier() {
   document.body.innerHTML = '<div id="rp9-barre"><button type="button" id="rp9-finish"></button></div>';
   const map = carteFactice();
-  const ctx = {
-    opts: { maptilerKey: 'K', imagery: { pays: 'ma' }, reducedMotion: true },
-    vertices: [] as LngLat[],
-    obstacles: [],
-    areas: [],
-    activeAreaId: 'a1',
-    closed: false,
-    centroid: [-7.62, 33.58] as LngLat,
-  } as unknown as Ctx;
+  const ctx = ctxTraceVide();
   const setStatus = vi.fn();
   const draw = createMapDraw(ctx, { map: map as never, setStatus, updateAreaReadout: vi.fn() });
   const finish = document.getElementById('rp9-finish') as HTMLButtonElement;
@@ -376,15 +368,7 @@ describe('CALX128 — chaque refus du tracé émet une annonce qui nomme sa rais
   it('le déplacement est refusé, en le disant, quand le zoom n’est pas lisible', () => {
     document.body.innerHTML = '<div id="rp9-barre"><button type="button" id="rp9-finish"></button></div>';
     const map = { ...carteFactice(), getZoom: () => Number.NaN };
-    const ctx = {
-      opts: { maptilerKey: 'K', reducedMotion: true },
-      vertices: [] as LngLat[],
-      obstacles: [],
-      areas: [],
-      activeAreaId: 'a1',
-      closed: false,
-      centroid: [-7.62, 33.58] as LngLat,
-    } as unknown as Ctx;
+    const ctx = ctxTraceVide({ maptilerKey: 'K', reducedMotion: true });
     const draw = createMapDraw(ctx, { map: map as never, setStatus: vi.fn(), updateAreaReadout: vi.fn() });
     const a = draw.clavier.frappe({ key: 'ArrowUp', preventDefault: () => {} });
     expect(a?.nature).toBe('refus');
