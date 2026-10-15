@@ -15,11 +15,13 @@
 # fix (the guard excluded them by path); widening the surface to its full
 # declared shape surfaces these 6, all reviewed foundation/global views —
 # 0 new proven leak, a coverage gap only:
-# RegisterCompanyView: pre-authentication onboarding endpoint (creates the
-# FIRST user/company — no tenant exists yet). (RegisterView left this list at
-# ENF15: its queryset is now bound to request.user.company.) MeView: get_object() always returns self.request.user (scoped to
+# RegisterView/RegisterCompanyView: pre-authentication onboarding endpoints
+# (create the FIRST user/company, or an admin creating a user strictly in
+# their OWN request.user.company via IsAdminRole — no cross-tenant list
+# surface). MeView: get_object() always returns self.request.user (scoped to
 # exactly one row, the caller). LogoutView: no queryset, no data exposure —
 # a token-revocation action endpoint. Reviewed safe 2026-09-06.
+backend/django_core/authentication/views.py::RegisterView
 backend/django_core/authentication/views.py::RegisterCompanyView
 backend/django_core/authentication/views.py::MeView
 backend/django_core/authentication/views.py::LogoutView

@@ -706,14 +706,10 @@ class SwitchCompanyView(APIView):
 @extend_schema(responses={201: RegisterSerializer, 400: REPONSE_400_COMPTE})
 class RegisterView(generics.CreateAPIView):
     """Admin cree un utilisateur dans sa propre entreprise."""
+    queryset = CustomUser.objects.all()
     permission_classes = [IsAdminRole]
     serializer_class = RegisterSerializer
     throttle_classes = [RegisterRateThrottle]
-
-    def get_queryset(self):
-        # ENF15 — jamais un ``CustomUser.objects.all()`` global : la vue ne
-        # lit ni ne liste rien, mais son queryset reste borné à la société.
-        return CustomUser.objects.filter(company=self.request.user.company)
 
     def get_serializer_context(self):
         from apps.roles.models import Role
