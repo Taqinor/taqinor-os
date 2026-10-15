@@ -263,7 +263,6 @@
 516d6810b68a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 517d791b2546|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 51ecf157bb42|apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-520be251b9e5|frontend/src/features/calepinage/CourseSoleil.jsx,frontend/src/features/calepinage/HorizonPanel.jsx
 5276177c451b|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts
 52827303aa80|frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/FleetPage.jsx
 52d63e8c1f6a|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
@@ -418,7 +417,6 @@
 805d62340fba|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 81cd346da135|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 81d2f059523c|frontend/src/features/crm/workspace/sections/CadenceFrise.suivi_blocage.test.jsx,frontend/src/pages/crm/RelancesDuJourWidget.suivi_blocage.test.jsx
-81ee10aaf486|frontend/src/features/calepinage/atelier/PanneauBatterie.jsx,frontend/src/features/calepinage/economie/PanneauEconomie.jsx
 828f9c163aed|apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 832d8fbc2716|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 834d4ed8c44f|apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/marocains-du-monde.astro,apps/web/src/pages/résidentiel.astro
@@ -449,7 +447,6 @@
 8d8e8e7cfcc8|apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/en/équipement.astro
 8dc0e7d956d4|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts
 8e022af54fa3|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
-8e18983b0e2a|frontend/src/features/calepinage/documents/deposerImage.js,frontend/src/features/calepinage/exportImage.js
 8e741b38fa9f|apps/web/src/components/Header.astro,apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 8e8745299bf3|apps/web/src/scripts/roofPro11/entreeMoteur.test.ts,apps/web/src/scripts/roofPro11/mapDraw.ts,frontend/src/features/calepinage/__tests__/panneau_calques.test.jsx
 8ec89c205103|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro

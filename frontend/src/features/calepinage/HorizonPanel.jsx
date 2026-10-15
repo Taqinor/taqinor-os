@@ -6,7 +6,7 @@ import {
   sortedHorizonPoints, horizonMaxHeightDeg, hourlyHorizonFactors, maskedHourCount,
 } from '@rooflib/horizonEngine'
 import SunDiagram from './SunDiagram'
-import { COURBES_REPERE } from './SunDiagram.helpers'
+import { LegendeCourbes } from './LegendeCourbes'
 import RetourAtelier from './atelier/RetourAtelier'
 
 /* ============================================================================
@@ -202,18 +202,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
           ariaLabel="Course du soleil et horizon lointain, par azimut"
           testId="cal-horizon-diagramme"
         />
-        <div className="mt-1 flex flex-wrap gap-3 text-xs text-lune-faint">
-          {COURBES_REPERE.map((c) => (
-            <span key={c.jour} className="inline-flex items-center gap-1">
-              <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 2, background: c.couleur }} />
-              {c.label}
-            </span>
-          ))}
-          <span className="inline-flex items-center gap-1">
-            <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(90,60,30,0.55)' }} />
-            Horizon saisi
-          </span>
-        </div>
+        <LegendeCourbes libelleHorizon="Horizon saisi" />
         {latitudeDeg === null && (
           <p className="mt-1 text-xs text-amber-300">
             Latitude du site inconnue (aucun repère posé) — la course du soleil n’est pas tracée.
