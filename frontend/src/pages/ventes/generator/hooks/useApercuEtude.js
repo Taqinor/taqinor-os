@@ -315,7 +315,7 @@ export function useApercuEtude(ctx) {
       // Une frappe manuelle a gagné : l'attente se referme sans rien appliquer.
       dispatchSizing({ type: 'MOTEUR_A_REPONDU' })
     }
-  }, [actionMoteur, recoMoteur, motifMoteurServeur]) // eslint-disable-line react-hooks/exhaustive-deps -- dispatchSizing : dispatch de useReducer (stable), reçu du ctx
+  }, [actionMoteur, recoMoteur, motifMoteurServeur]) // eslint-disable-line react-hooks/exhaustive-deps -- dispatchSizing : dispatch de useReducer (stable), reçu du ctx (D-ENF22)
   // Le serveur GAGNE dès qu'il a répondu (etude non nul) : `roi` reste le
   // seul chiffre affiché tant que la réponse n'est pas là (ou a échoué).
   const etudeHoraireAnnuel = etudeHoraireDonnees?.etude?.annuel || null

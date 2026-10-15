@@ -28,8 +28,8 @@ from core.events import (
     abonnement_monitoring_resilie, bon_commande_cree, facture_payee,
 )
 
-from apps.compta import receivers  # noqa: F401  (câblage ready())
-from apps.monitoring import receivers as monitoring_receivers  # noqa: F401
+__import__('apps.compta.receivers')  # câblage ready()
+__import__('apps.monitoring.receivers')
 
 User = get_user_model()
 

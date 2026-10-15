@@ -1400,7 +1400,7 @@ def _verifier_delai_acompte_domicile(facture, date_paiement=None):
             return
     except AcompteAvantDelaiLegal:
         raise
-    except Exception:  # noqa: BLE001 — une chaîne incomplète ne bloque rien
+    except Exception:  # noqa: BLE001 — une chaîne incomplète ne bloque rien (D-ENF22-BLE001)
         logger.warning("encaissements._verifier_delai_acompte_domicile : erreur ignorée (mode dégradé)", exc_info=True)
         return
     bon.verifier_encaissement_acompte(a_la_date=date_paiement)
@@ -1410,7 +1410,7 @@ def _verifier_delai_acompte_domicile(facture, date_paiement=None):
 # Import EN BAS DE FICHIER : il s'exécute après toutes les définitions de ce
 # module, donc un import croisé ne peut jamais lire un module à moitié
 # construit, quel que soit celui qui est chargé le premier.
-from apps.ventes.domain.recouvrement import reset_relance_escalation  # noqa: E402
+from apps.ventes.domain.recouvrement import reset_relance_escalation  # noqa: E402 — anti-cycle (D-ENF22)
 
 
 # ── AFAC17 (C-AFAC-013, D-AFAC-C2 a) — corriger un paiement mal saisi ──────

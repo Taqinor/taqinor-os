@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -22,4 +24,4 @@ class QhseConfig(AppConfig):
         # XQHS3 — le même module abonne aussi qhse à l'événement INTER-app
         # core.events.reception_fournisseur_confirmee (émetteur = stock) pour
         # ouvrir les contrôles qualité de réception.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

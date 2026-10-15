@@ -629,7 +629,7 @@ def _batterie_de_l_apercu(devis, batterie_kwh_corps):
             'batterie_rendement': rendement['rendement'],
             'batterie_rendement_source': rendement['source'],
         }
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais : corps seul
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais : corps seul (D-ENF22-BLE001)
         logger.warning('batterie du devis illisible pour l\'aperçu',
                        exc_info=True)
         return {'batterie_kwh_utile': batterie_kwh_corps}
@@ -666,7 +666,7 @@ def _localisation(corps, devis, lead=None):
             ville = ville or loc.get('site_ville')
             lat = lat if lat is not None else loc.get('gps_lat')
             lon = lon if lon is not None else loc.get('gps_lng')
-        except Exception:  # noqa: BLE001 — lead illisible ⇒ pas de localisation
+        except Exception:  # noqa: BLE001 — lead illisible ⇒ pas de localisation (D-ENF22-BLE001)
             logger.warning("etude_horaire_view._localisation : erreur ignorée (mode dégradé)", exc_info=True)
     return ville, lat, lon
 
@@ -706,7 +706,7 @@ def _bloc_enregistre_du_devis(devis, corps, kwc, occupation, batterie):
             return None
         return {cle: valeur for cle, valeur in bloc.items()
                 if not str(cle).startswith('_')}
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais : recalcul
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais : recalcul (D-ENF22-BLE001)
         logger.warning("bloc enregistré illisible pour l'aperçu",
                        exc_info=True)
         return None
@@ -738,7 +738,7 @@ def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,
             # ERR-QJR605 — raccordement « aucun » : kit off-grid.
             hors_reseau=est_site_isole(corps.get('raccordement')),
             tranches=tranches, charges_fixes_mad=charges_fixes_mad)
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais (D-ENF22-BLE001)
         logger.warning('dimensionnement indisponible', exc_info=True)
         avertissements.append(
             'Dimensionnement indisponible (catalogue incomplet ou '

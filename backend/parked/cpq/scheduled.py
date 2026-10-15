@@ -117,7 +117,7 @@ def relancer_approbations_en_attente():
                       f"plus de {delai} jour(s)."),
                 link=f'/ventes/devis?devis={etape.devis_id}',
                 company=etape.company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.exception(
                 'cpq.relancer_approbations_en_attente: notify échoué '
                 '(étape %s)', etape.id)

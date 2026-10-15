@@ -42,7 +42,7 @@ def on_meta_lead_captured(sender, **kwargs):
         try:
             from apps.crm.selectors import normalize_phone_key
             phone_key = normalize_phone_key(telephone) or ''
-        except Exception:  # noqa: BLE001 — la clé n'empêche jamais le miroir
+        except Exception:  # noqa: BLE001 — la clé n'empêche jamais le miroir (D-ENF22-BLE001)
             logger.warning("receivers.on_meta_lead_captured : erreur ignorée (mode dégradé)", exc_info=True)
             phone_key = ''
 
@@ -78,7 +78,7 @@ def on_meta_lead_captured(sender, **kwargs):
     try:
         MetaLeadMirror.objects.update_or_create(
             company=company, leadgen_id=leadgen_id, defaults=defaults)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'adsengine.on_meta_lead_captured: upsert échoué (leadgen %s)',
             leadgen_id, exc_info=True)
@@ -104,7 +104,7 @@ def on_appointment_effectue(sender, **kwargs):
         capi_crm.on_commit_best_effort(
             lambda: capi_crm.emit_appointment_effectue_event(
                 company, lead_id, appointment_pk))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'adsengine.on_appointment_effectue: émission échouée '
             '(appointment %s)', getattr(appointment, 'pk', '?'),
@@ -139,7 +139,7 @@ def on_lead_erased(sender, **kwargs):
         for model in (MetaLeadMirror, CtwaReferral):
             model.objects.filter(company=company).filter(match).update(
                 phone_key='', crm_lead_id=None)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'adsengine.on_lead_erased: anonymisation échouée (lead %s)',
             crm_lead_id, exc_info=True)

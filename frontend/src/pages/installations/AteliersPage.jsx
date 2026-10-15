@@ -919,7 +919,7 @@ function RapportRebutsPanel() {
       .finally(() => setBusy(false))
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { charger('', '') }, [])
 
   return (

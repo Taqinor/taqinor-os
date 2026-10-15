@@ -161,5 +161,5 @@ def _tracer_reservation(request, link):
             token=getattr(link, 'token', ''),
             request=request,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning("tracer reservation : échec ignoré, comportement dégradé", exc_info=True)

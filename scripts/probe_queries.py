@@ -17,17 +17,17 @@ from decimal import Decimal
 from django.conf import settings
 settings.ALLOWED_HOSTS = ['*']  # le shell n'a pas le 'testserver' du test runner
 
-from django.db import connection, transaction  # noqa: E402
-from django.test.utils import CaptureQueriesContext  # noqa: E402
-from django.contrib.auth import get_user_model  # noqa: E402
-from django.utils import timezone  # noqa: E402
-from rest_framework.test import APIClient  # noqa: E402
-from rest_framework_simplejwt.tokens import AccessToken  # noqa: E402
+from django.db import connection, transaction  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from django.test.utils import CaptureQueriesContext  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from django.contrib.auth import get_user_model  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from django.utils import timezone  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from rest_framework.test import APIClient  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from rest_framework_simplejwt.tokens import AccessToken  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
 
-from authentication.models import Company  # noqa: E402
-from apps.crm.models import Client as CrmClient  # noqa: E402
-from apps.stock.models import Produit, Fournisseur, ContactFournisseur  # noqa: E402
-from apps.ventes.models import Devis, LigneDevis  # noqa: E402
+from authentication.models import Company  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from apps.crm.models import Client as CrmClient  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from apps.stock.models import Produit, Fournisseur, ContactFournisseur  # noqa: E402 — après sys.path (D-ENF22)
+from apps.ventes.models import Devis, LigneDevis  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
 
 U = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -64,7 +64,7 @@ def probe(url, seed_fn, n_rows=10):
             raise _Rollback
     except _Rollback:
         pass
-    except Exception as exc:  # noqa: BLE001 — la sonde ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — la sonde ne casse jamais (D-ENF22-BLE001)
         print(f'URL {url} ERROR {type(exc).__name__}: {str(exc)[:200]}')
 
 

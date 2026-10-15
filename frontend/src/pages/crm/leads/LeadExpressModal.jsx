@@ -118,7 +118,7 @@ export default function LeadExpressModal({ onClose, onSaved }) {
       return () => clearTimeout(id)
     }
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début de la vérification de doublon (opération réseau) (D-ENF22)
     setDupState('checking')
     crmApi.checkDuplicates({ phone: telephone })
       .then((r) => {

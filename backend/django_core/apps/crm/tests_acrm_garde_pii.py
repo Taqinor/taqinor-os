@@ -119,7 +119,7 @@ class GardePiiTests(TestCase):
                 raise _Annule
         except _Annule:
             pass
-        except Exception as exc:  # noqa: BLE001 — rapportée, jamais masquée
+        except Exception as exc:  # noqa: BLE001 — rapportée, jamais masquée (D-ENF22-BLE001)
             sortie['erreur'] = repr(exc)[:200]
         return sortie
 

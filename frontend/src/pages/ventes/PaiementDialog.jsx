@@ -123,7 +123,7 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
   // (Ré)initialise le formulaire à chaque nouvelle facture ciblée.
   useEffect(() => {
     if (!facture) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- (ré)init form on facture change
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- (ré)init form on facture change (D-ENF22)
     setPayMontant(facture.montant_du ?? '')
     relireFacture(facture.id).then((fr) => {
       // Prérempli = dû de la facture fraîche, sauf si l'utilisateur a déjà tapé.

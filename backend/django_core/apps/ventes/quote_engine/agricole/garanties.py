@@ -78,7 +78,7 @@ def _est_panneau(it):
         return True
     try:
         from apps.ventes.solar_classification import is_panel
-    except Exception:  # noqa: BLE001 — jamais casser un rendu
+    except Exception:  # noqa: BLE001 — jamais casser un rendu (D-ENF22-BLE001)
         logger.warning("garanties._est_panneau : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     return is_panel(it.get("designation", "") or "",

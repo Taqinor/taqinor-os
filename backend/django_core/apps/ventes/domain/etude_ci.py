@@ -1302,7 +1302,7 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         ecrire(devis, proprietaire=MOTEUR_CI,
                **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production')})
         return bloc
-    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis (D-ENF22-BLE001)
         logger.warning('etude_ci non rafraîchie sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None

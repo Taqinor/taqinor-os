@@ -64,20 +64,20 @@ export default function SanteAgenda() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [date])
 
   // PACT115 — changer le praticien OU la date recharge les créneaux DEPUIS
   // LE SERVEUR (`disponibilites/?praticien=&date=`), jamais un calcul local.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset du créneau choisi au changement de praticien/date
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset du créneau choisi au changement de praticien/date (D-ENF22)
     setCreneauChoisi('')
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- pas de praticien choisi = pas de créneaux
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pas de praticien choisi = pas de créneaux (D-ENF22)
     if (!nouveauPraticien) { setCreneaux([]); return }
     let active = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- indicateur de chargement des créneaux
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- indicateur de chargement des créneaux (D-ENF22)
     setChargementCreneaux(true)
     api.get('/sante/disponibilites/', { params: { praticien: nouveauPraticien, date } })
       .then((res) => { if (active) setCreneaux(res.data?.creneaux ?? []) })

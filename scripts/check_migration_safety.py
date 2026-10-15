@@ -79,7 +79,7 @@ def _labels_parques():
     try:
         spec.loader.exec_module(module)
         return set(getattr(module, "APPS_PARQUEES_SET", ()) or ())
-    except Exception:  # noqa: BLE001 — une garde ne casse jamais sur le registre
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais sur le registre (D-ENF22-BLE001)
         return set()
 
 

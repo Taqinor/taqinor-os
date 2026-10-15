@@ -5,6 +5,9 @@ bornée à une société (multi-tenant) — jamais de lecture cross-société.
 """
 from __future__ import annotations
 
+import logging
+
+
 #: NTGRC4 — un « mois » de rétention vaut 30 jours. Choix DÉLIBÉRÉ : la
 #: rétention se raisonne en ordres de grandeur légaux (24/36/120 mois), et une
 #: arithmétique calendaire exacte ferait dépendre le résultat du mois de
@@ -108,7 +111,8 @@ def _documents_ged_sous_hold(company):
             hold.document_id
             for hold in legal_holds_for_company(company).filter(actif=True)
         }
-    except Exception:  # noqa: BLE001 - GED absente/indisponible
+    except Exception:  # noqa: BLE001 - GED absente/indisponible (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors._documents_ged_sous_hold : erreur ignorée (mode dégradé)", exc_info=True)
         return set()
 
 

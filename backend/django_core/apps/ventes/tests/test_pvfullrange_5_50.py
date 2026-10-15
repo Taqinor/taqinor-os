@@ -358,7 +358,7 @@ class QuoteFullRange5To50Test(TestCase):
             with self.subTest(saveur=label):
                 try:
                     devis = self._devis_layout(kwc=kwc, avec_batterie=True)
-                except Exception as exc:  # noqa: BLE001 — la garantie EST
+                except Exception as exc:  # noqa: BLE001 — la garantie EST (D-ENF22-BLE001)
                     # « ne casse jamais » : une levée ICI est l'échec que ce
                     # test existe pour attraper.
                     self.fail(
@@ -379,7 +379,7 @@ class QuoteFullRange5To50Test(TestCase):
                 try:
                     electrical_service.build_electrical_design(devis)
                     electrical_service.rendre_schema_du_devis(devis)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
                     self.fail(
                         '%s : la conception électrique a LEVÉ %r au lieu de '
                         'dégrader gracieusement' % (label, exc))

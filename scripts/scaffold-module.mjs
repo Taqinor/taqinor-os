@@ -65,10 +65,7 @@ function toCamelCase(kebab) {
 }
 
 function moduleConfigTemplate({ name, pascal, label, icon, camel }) {
-  return `/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (données + composant lazy), pas un module
-   de composants : le fast-refresh ne s'y applique pas (cf. moduleRoutes.jsx). */
-import { lazy } from 'react'
+  return `import { lazy } from 'react'
 import { ${icon} } from 'lucide-react'
 
 /* ============================================================================
@@ -161,7 +158,7 @@ export default function ${pascal}List() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial, setState dans le callback async (D-ENF22)
     load()
   }, [])
 

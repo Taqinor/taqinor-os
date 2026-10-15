@@ -1,6 +1,6 @@
 // ENF28 (ENF19/ENF22) — logique PURE de l'écran des tickets SAV, sortie de
 // TicketsPage.jsx (un fichier de composants n'exporte plus de fonctions, plus
-// de directive eslint-disable) : messages d'erreur DRF lisibles, actions
+// de directive de désactivation ESLint) : messages d'erreur DRF lisibles, actions
 // groupées (ASAV48) et horloge SLA de résolution (APX30). Sans import
 // extensionless : importable tel quel par `node --test` (TicketSla.apx30).
 import { TICKET_OPEN_STATUSES } from '../../features/sav/ticketStatuses.js'

@@ -155,7 +155,7 @@ def _page_asset_probe(company, conn):
         client._request('GET', str(story_id), params={'fields': 'id'})
     except MetaError:
         return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
-    except Exception:  # noqa: BLE001 — jamais casser la santé sur un imprévu
+    except Exception:  # noqa: BLE001 — jamais casser la santé sur un imprévu (D-ENF22-BLE001)
         logger.warning("views._page_asset_probe : erreur ignorée (mode dégradé)", exc_info=True)
         return {'status': 'error', 'message': _PAGE_ASSET_FIX_FR}
     return {'status': 'ok',
@@ -2689,7 +2689,7 @@ class MetaConnectionHealthView(APIView):
             try:
                 from .webhook_leadgen import etat_webhook_leadgen
                 etat = etat_webhook_leadgen(company)
-            except Exception:  # noqa: BLE001 — jamais bloquant
+            except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
                 logger.warning(
                     'adsengine.health: état webhook leadgen indisponible',
                     exc_info=True)
@@ -2932,7 +2932,7 @@ class MetricsDashboardView(APIView):
                     cps = odoo['cost_per_signature']
                     signatures = odoo['signatures']
                     signatures_source = 'odoo'
-        except Exception:  # noqa: BLE001 — le dashboard ne casse jamais sur Odoo
+        except Exception:  # noqa: BLE001 — le dashboard ne casse jamais sur Odoo (D-ENF22-BLE001)
             # CRX40 — le comportement ne change pas (l'exception reste avalée),
             # mais elle cesse d'être INVISIBLE : sans trace, un connecteur Odoo
             # en panne se manifestait uniquement par un héro-chiffre qui
@@ -3043,7 +3043,7 @@ class MetricsLeadsView(APIView):
                             'montant': float(deal.get('amount_mad') or 0),
                             'source': 'odoo',
                         })
-            except Exception:  # noqa: BLE001 — le drill ne casse jamais sur Odoo
+            except Exception:  # noqa: BLE001 — le drill ne casse jamais sur Odoo (D-ENF22-BLE001)
                 # CRX40 — même correctif que ci-dessus : la liste retombe sur
                 # les seuls leads CRM, ce qui ressemble EXACTEMENT à « aucun
                 # deal signé ». Sans cette trace, le symptôme (« Voir les
@@ -4826,7 +4826,7 @@ class VeilleDecouverteViewSet(AdsengineViewSet):
         if dec.background_job_id is None:
             try:
                 vd.lancer(dec, request.user)
-            except Exception:  # noqa: BLE001 — broker injoignable
+            except Exception:  # noqa: BLE001 — broker injoignable (D-ENF22-BLE001)
                 logger.warning('veille: lancement impossible (#%s)', dec.pk,
                                exc_info=True)
                 dec.erreurs = list(dec.erreurs or []) + [{

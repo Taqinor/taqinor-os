@@ -165,7 +165,7 @@ def _launch_name(source_ref, *, identity_fn=None, objective='', audience=''):
         try:
             return identity_fn(objective=objective, audience=audience,
                                variant=str(ref))
-        except Exception:  # noqa: BLE001 - chemin optionnel, on dégrade
+        except Exception:  # noqa: BLE001 — chemin optionnel, on dégrade (D-ENF22-BLE001)
             logger.debug('rotation: identity_fn a échoué — repli')
     try:  # ADSENG23 peut être un lane parallèle non encore fondu
         from . import identity as _identity
@@ -179,7 +179,7 @@ def _launch_name(source_ref, *, identity_fn=None, objective='', audience=''):
                     return name
             elif result:
                 return str(result)
-    except Exception:  # noqa: BLE001 - identity absent/incompatible → repli
+    except Exception:  # noqa: BLE001 — identity absent/incompatible → repli (D-ENF22-BLE001)
         logger.debug('rotation: identity absent/incompatible — repli')
     return f'rotation-{objective or "ad"}-{audience or "aud"}-{ref}'
 

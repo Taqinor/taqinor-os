@@ -194,7 +194,7 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
                         fournisseur, facture.date_facture,
                         paiement.date_paiement):
                     self._escompte_flag = str(fournisseur.escompte_pct)
-            except Exception:  # noqa: BLE001 — informatif, jamais bloquant
+            except Exception:  # noqa: BLE001 — informatif, jamais bloquant (D-ENF22-BLE001)
                 logger.warning(
                     "paiement_fournisseur.PaiementFournisseurViewSet.perform_create "
                     ": erreur ignorée (mode dégradé)", exc_info=True)

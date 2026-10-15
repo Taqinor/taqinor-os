@@ -62,7 +62,7 @@ class Command(BaseCommand):
                     written = check_or_write_baseline(
                         case['name'], pdf_bytes,
                         page_count=case['page_count'], update=True)
-                except Exception as exc:  # noqa: BLE001 — on veut TOUT tenter
+                except Exception as exc:  # noqa: BLE001 — on veut TOUT tenter (D-ENF22-BLE001)
                     logger.warning(
                         "update_pdf_baselines.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                     failures.append((case['name'], exc))

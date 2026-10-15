@@ -63,7 +63,7 @@ export default function PlanComptePage({ clientId, planId }) {
       .finally(() => setLoading(false))
   }, [planId, clientId, loadHistorique])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   // PACT105 — la timeline des revues s'affichait déjà EN LECTURE (`plan.

@@ -143,7 +143,7 @@ class TestCommercialPageCount(SimpleTestCase):
     """Rendu PDF réel — exactement 3 pages A4 (WeasyPrint, CI/Docker)."""
     def test_three_pages(self):
         try:
-            import weasyprint  # noqa: F401
+            __import__('weasyprint')
         except Exception:  # pragma: no cover - skip where native libs absent
             self.skipTest("weasyprint native libs unavailable")
         from weasyprint import HTML

@@ -90,7 +90,7 @@ class PublicApiCallLogMiddleware:
                 return 0
         try:
             return len(response.content)
-        except Exception:  # noqa: BLE001 — statistique, jamais bloquante
+        except Exception:  # noqa: BLE001 — statistique, jamais bloquante (D-ENF22-BLE001)
             logger.warning(
                 "middleware.PublicApiCallLogMiddleware._taille : erreur ignorée (mode dégradé)", exc_info=True)
             return 0

@@ -1,7 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (données + composant lazy), pas un
-   module de composants : le fast-refresh ne s'y applique pas (cf. router/
-   moduleRoutes, même dérogation que tous les autres module.config.jsx). */
 import { lazy } from 'react'
 import { DoorOpen } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'

@@ -71,7 +71,7 @@ export default function AlertCenter() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   useEffect(() => {

@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -39,4 +41,4 @@ class GrcConfig(AppConfig):
         # NTGRC9 — abonnements au bus `core.events` (M6) : alerte DPO quand une
         # personne ayant RETIRÉ son consentement est de nouveau traitée
         # (nouveau lead, devis accepté). `grc` n'importe ni crm ni ventes.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

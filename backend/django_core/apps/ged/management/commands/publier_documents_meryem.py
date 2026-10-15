@@ -469,7 +469,7 @@ def publier_documents(company, *, dry_run=False, force=False, stdout=None):
                 notify_many(
                     recipients, EventType.ANNONCE_PUBLISHED, titre_notif,
                     body=corps, link='/ged', company=company)
-        except Exception as exc:  # noqa: BLE001 — best-effort par entrée
+        except Exception as exc:  # noqa: BLE001 — best-effort par entrée (D-ENF22-BLE001)
             logger.warning("publier documents : échec ignoré, comportement dégradé", exc_info=True)
             counters['echecs'] += 1
             message = f'{fichier or titre or "?"} : {exc}'

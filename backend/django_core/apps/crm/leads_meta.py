@@ -779,13 +779,13 @@ def create_lead_from_meta_lead_ads(
         _flag_possible_duplicates(
             lead, telephone=telephone, email=email, dupes=dupes,
             inherited_owner=inherited_owner, inherited_from=inherited_from)
-    except Exception as _exc:  # noqa: BLE001 — best-effort
+    except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'create_lead_from_meta_lead_ads: note de doublon échouée '
             '(lead #%s) : %s', lead.pk, _exc)
     try:
         notify_new_lead(lead)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'create_lead_from_meta_lead_ads', exc_info=True)
 
     # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
@@ -894,7 +894,7 @@ def create_minimal_lead_from_ctwa(*, company, phone, ad_id='') -> Lead:
         base_legale=BASE_LEGALE_SOLLICITATION)
     try:
         notify_new_lead(lead)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'create_minimal_lead_from_ctwa', exc_info=True)
     # MRY6 — démarrage EXPLICITE de la cadence de contact. Best-effort :
     # une cadence en échec ne fait JAMAIS échouer la création du lead.
@@ -935,7 +935,7 @@ def fetch_meta_lead_node(leadgen_id, access_token):  # pragma: no cover - résea
             and url.startswith(f'{GRAPH_BASE_URL}/')):
         raise ValueError('URL Graph API inattendue')
     # nosec B310 : schéma https et hôte Graph vérifiés juste au-dessus.
-    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310  # nosec B310
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 — # nosec B310 (D-ENF22)
         return json.loads(resp.read().decode('utf-8'))
 
 
@@ -984,7 +984,7 @@ def backfill_meta_lead_attribution(
         stats['scanned'] += 1
         try:
             node = fetch_fn(lead.external_id, access_token) or {}
-        except Exception as exc:  # noqa: BLE001 — un lead ne bloque pas le lot
+        except Exception as exc:  # noqa: BLE001 — un lead ne bloque pas le lot (D-ENF22-BLE001)
             stats['failed'] += 1
             _log.warning(
                 'backfill_meta_lead_attribution: fetch échoué (lead #%s) : %s',

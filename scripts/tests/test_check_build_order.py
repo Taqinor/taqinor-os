@@ -11,8 +11,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_build_order as cbo  # noqa: E402
-import plan_lanes  # noqa: E402
+import check_build_order as cbo  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import plan_lanes  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 VALID_FIXTURE = """\

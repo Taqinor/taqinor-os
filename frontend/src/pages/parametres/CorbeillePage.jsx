@@ -72,7 +72,7 @@ export default function CorbeillePage() {
   }, [buildParams, page])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de filtre
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de filtre (D-ENF22)
     charger()
   }, [charger])
 

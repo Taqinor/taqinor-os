@@ -36,7 +36,7 @@ class Command(BaseCommand):
             from apps.parametres.models import CompanyProfile
             CompanyProfile.objects.get_or_create(
                 company=company, defaults={'nom': company.nom})
-        except Exception as exc:  # noqa: BLE001 — profil optionnel
+        except Exception as exc:  # noqa: BLE001 — profil optionnel (D-ENF22-BLE001)
             self.stderr.write(f"Profil non seedé: {exc}")
 
         resultats = run_signup_hooks(company)

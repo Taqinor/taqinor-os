@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import nightly_alert_gate as gate  # noqa: E402
+import nightly_alert_gate as gate  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 SCRIPT = ROOT / "scripts" / "nightly_alert_gate.py"
 

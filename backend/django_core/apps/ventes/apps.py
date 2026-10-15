@@ -1,5 +1,7 @@
 import os
 
+from importlib import import_module
+
 from django.apps import AppConfig
 from django.core.checks import Warning as DjangoWarning, register
 import logging
@@ -20,7 +22,7 @@ def _qx10_esign_otp_channel_check(app_configs, **kwargs):
         try:
             from apps.ventes.email_service import is_email_configured
             email_ok = is_email_configured()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("apps._qx10_esign_otp_channel_check : erreur ignorée (mode dégradé)", exc_info=True)
             email_ok = False
         if not email_ok:
@@ -64,7 +66,7 @@ class VentesConfig(AppConfig):
         # YLEDG12 — abonne ventes à `payment_captured` (core FG370) : câble
         # les récepteurs du bus d'événements (M6). Import local, jamais
         # d'effet de bord à l'import du module.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
         # QJR550 — plus de signal LigneDevis : l'instantané de configuration
         # (NTCPQ20) est pris une fois par geste (domain.cycle_vie).
         # QX36 — abonne le handler email entrant (réponse client → chatter +

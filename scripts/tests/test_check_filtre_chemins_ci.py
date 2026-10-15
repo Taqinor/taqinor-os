@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "tests"))
 
-import check_filtre_chemins_ci as cf  # noqa: E402
-import ci_guards  # noqa: E402
-import test_ci_guards as tcg  # noqa: E402
+import check_filtre_chemins_ci as cf  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import ci_guards  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import test_ci_guards as tcg  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 CI_YML = """jobs:
   changes:

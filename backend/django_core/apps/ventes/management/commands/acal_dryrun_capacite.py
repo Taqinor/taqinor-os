@@ -86,7 +86,7 @@ class Command(BaseCommand):
                                               contraintes=avant_doc)
                 apres = co.capacite_du_layout(layout, libres,
                                               contraintes=layout)
-            except Exception as exc:  # noqa: BLE001 — signalé, jamais fatal
+            except Exception as exc:  # noqa: BLE001 — signalé, jamais fatal (D-ENF22-BLE001)
                 logger.warning("acal_dryrun_capacite.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 self.stdout.write(f'  {devis.reference} : illisible ({exc})')
                 continue

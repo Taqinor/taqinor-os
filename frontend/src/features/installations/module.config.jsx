@@ -1,7 +1,4 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (données + pages lazy), pas un module de
-   composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
 import { CalendarClock, HardHat, ClipboardList, Wrench, Boxes, BarChart3, MapPin } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -23,8 +20,7 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    d'affichage.
    ========================================================================== */
 
-// eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
-const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
+const navIcon = (Comp) => createElement(Comp, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
 
 // Pages chargées à la demande (code-splitting préservé — <Suspense> côté routeur).
 const InstallationsPage = lazy(() => import('../../pages/installations/InstallationsPage'))

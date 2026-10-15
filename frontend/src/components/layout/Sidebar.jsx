@@ -82,7 +82,7 @@ const navFor = (key) => {
   return cfg && cfg.nav ? { key: cfg.key, ...cfg.nav } : null
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- table de navigation co-localisée, lue par les gardes de parité (D-ENF22)
 export const NAV_SECTIONS = [
   // ODY4 — Les quatre derniers blocs codés EN DUR ici (tête Dashboard/Ma file/
   // Messages, DOCUMENTS, INTELLIGENCE, ADMINISTRATION) ont été RETIRÉS : leurs

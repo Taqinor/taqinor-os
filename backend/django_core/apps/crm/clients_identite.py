@@ -766,7 +766,7 @@ def _journaliser_fusion_client(survivor, absorbed, user):
             'Fiche fusionnée dans le client #%s — conservée en lecture, '
             'bloquée à la vente.' % survivor.pk,
             company=absorbed.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'NTDATA18 : chatter de fusion non écrit (client #%s → #%s)',
             absorbed.pk, survivor.pk)

@@ -28,7 +28,7 @@ export default function LeadDetailPage() {
 
   useEffect(() => {
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- init loading au changement d'id
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- init loading au changement d'id (D-ENF22)
     setLoading(true)
     setNotFound(false)
     setLead(null)

@@ -39,7 +39,7 @@ function OuvrirDialog({ onClose, onSaved }) {
   useEffect(() => {
     comptesAsync().then(setComptes)
     periodesAsync().then(setPeriodes)
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage (D-ENF22)
   }, [])
 
   const submit = async (e) => {

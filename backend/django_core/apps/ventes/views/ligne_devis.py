@@ -23,7 +23,7 @@ def _comptes_avant(devis):
     from ..domain.lignes import comptes_panneaux_du_devis
     try:
         return comptes_panneaux_du_devis(devis)
-    except Exception:  # noqa: BLE001 — best-effort, comme la re-tarification
+    except Exception:  # noqa: BLE001 — best-effort, comme la re-tarification (D-ENF22-BLE001)
         logger.warning("ligne_devis._comptes_avant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -47,7 +47,7 @@ def _retarifer_forfaits(devis, comptes_avant=None):
 
     try:
         retarifer_forfaits_par_panneau(devis, comptes_avant=comptes_avant)
-    except Exception:  # noqa: BLE001 — best-effort, comme les études
+    except Exception:  # noqa: BLE001 — best-effort, comme les études (D-ENF22-BLE001)
         logger.warning("ligne_devis._retarifer_forfaits : erreur ignorée (mode dégradé)", exc_info=True)
 
 

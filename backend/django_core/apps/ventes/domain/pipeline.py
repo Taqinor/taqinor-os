@@ -524,7 +524,7 @@ def _appliquer_preseance_quantite(devis, lignes_in, *, avertissements=None):
                 and not spec.get('optionnelle')]
         dominante, quantite = quantite_ligne_panneau(
             devis, vues, avertissements=avertissements)
-    except Exception:  # noqa: BLE001 — un arbitrage raté n'écrit rien
+    except Exception:  # noqa: BLE001 — un arbitrage raté n'écrit rien (D-ENF22-BLE001)
         logger.warning('préséance R4-A illisible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return
@@ -826,7 +826,7 @@ def consigner_ville_calcul(devis):
             return valeur
         ecrire_etude(devis, proprietaire=PIPELINE, ville_calcul=valeur)
         return valeur
-    except Exception:  # noqa: BLE001 — la consignation ne bloque rien
+    except Exception:  # noqa: BLE001 — la consignation ne bloque rien (D-ENF22-BLE001)
         logger.warning('QJR591 : ville de calcul non consignée',
                        exc_info=True)
         return None
@@ -862,7 +862,7 @@ def _instantane(devis, intention):
     from apps.ventes.domain.historique_config import instantane_de_geste
     try:
         instantane_de_geste(devis, user=intention.user)
-    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant (D-ENF22-BLE001)
         logger.warning('QJR550 : instantané ignoré', exc_info=True)
 
 
@@ -1112,10 +1112,10 @@ def _appliquer_sur_devis_existant(devis, intention, mode):
 
 # ── PONTS M3/M4 : noms hébergés ailleurs ─────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.bordereau import (  # noqa: E402,F401
+from apps.ventes.domain.bordereau import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     concevoir_electrique_du_devis,
 )
-from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _is_battery,
     _is_hybrid_inverter,
     _is_offgrid_inverter,
@@ -1127,29 +1127,29 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     catalogue_de_la_societe,
     ordre_lignes_societe,
 )
-from apps.ventes.domain.composition import (  # noqa: E402,F401
+from apps.ventes.domain.composition import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     CompositionLignes,
     _v_txt,
     composition_deux_optimiseurs,
     composition_residentielle,
 )
-from apps.ventes.domain.entrees import (  # noqa: E402,F401
+from apps.ventes.domain.entrees import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     entrees_depuis_devis,
     entrees_depuis_lead,
 )
-from apps.ventes.domain.etude_schema import CALEPINAGE  # noqa: E402,F401
-from apps.ventes.domain.etude_schema import PIPELINE  # noqa: E402,F401
-from apps.ventes.domain.etude_schema import ecrire as ecrire_etude  # noqa: E402,F401,E501
-from apps.ventes.domain.etudes import (  # noqa: E402,F401
+from apps.ventes.domain.etude_schema import CALEPINAGE  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.etude_schema import PIPELINE  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.etude_schema import ecrire as ecrire_etude  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.etudes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     rafraichir_etudes_du_devis,
     refresh_marge_snapshot,
 )
-from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402,F401
-from apps.ventes.domain.transport import ville_du_lead  # noqa: E402
+from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.transport import ville_du_lead  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 # SPL265 — les étapes 3 et 4 (composer / verifier) vivent dans
 # ``domain/etape_composer.py`` (une feuille qui n'importe rien d'ici) :
 # ``appliquer`` les résout dans les globales de CE module.
-from apps.ventes.domain.etape_composer import (  # noqa: E402
+from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_LES_DEUX,
     SCENARIOS_COMPOSABLES,
     IntentionComposition,
@@ -1159,17 +1159,17 @@ from apps.ventes.domain.etape_composer import (  # noqa: E402
 # QJR243 (a) — TROIS NOMS MORTS RETIRÉS D'ICI : ``SCENARIO_LES_DEUX``,
 # ``_scenario_stocke`` et ``sert_les_deux`` n'étaient utilisés NI par ce module
 # NI par personne à travers lui (grep : aucun ``from …pipeline import`` ne les
-# vise, ils ne sont pas dans ``__all__``). Le ``# noqa: F401`` global les
+# vise, ils ne sont pas dans ``__all__``). Le ``noqa F401`` global les
 # rendait invisibles à flake8 pour toujours — un pont mort qu'aucun linter ne
 # pouvait plus signaler. Les deux noms restants, eux, sont RÉELLEMENT lus par
 # ce module (``scenario_servable`` dans ``ecrire_etude_params``,
 # ``poser_puissance_kwc`` dans ``finaliser``) : ils n'ont donc plus besoin du
 # ``F401`` du tout — seul ``E402`` (import en bas de fichier) reste nécessaire.
-from apps.ventes.domain.scenario import (  # noqa: E402
+from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     poser_puissance_kwc,
     scenario_servable,
 )
-from apps.ventes.domain.taille import (  # noqa: E402,F401
+from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _AUTO_PANEL_WATT,
     AutoDevisError,
     _panneaux_dimensionnement_horaire,
@@ -1178,29 +1178,12 @@ from apps.ventes.domain.taille import (  # noqa: E402,F401
 )
 
 __all__ = [
-    'ETAPES',
-    'ETAPES_PAR_MODE',
-    'MODES',
-    'MODE_COMPOSER',
-    'MODE_ECRIRE',
-    'MODE_RAFRAICHIR',
-    'MODE_RECONCILIER',
-    'ORIGINES',
-    'ORIGINE_AUTO',
-    'ORIGINE_CALEPINAGE',
-    'ORIGINE_ECRAN',
-    'ORIGINE_RESYNCHRONISATION',
-    'ORIGINE_TUNNEL',
-    'CibleDevis',
-    'IntentionDevis',
-    'appliquer',
-    'decider_taille',
-    'ecrire_etude_params',
-    'ecrire_lignes',
-    'estampiller_provenance',
-    'finaliser',
-    'finaliser_caches',
-    'intention_de_composition',
-    'rafraichir_etudes',
-    'resoudre_entrees',
+    'ETAPES', 'ETAPES_PAR_MODE', 'MODES', 'MODE_COMPOSER', 'MODE_ECRIRE', 'MODE_RAFRAICHIR',
+    'MODE_RECONCILIER', 'ORIGINES', 'ORIGINE_AUTO', 'ORIGINE_CALEPINAGE', 'ORIGINE_ECRAN',
+    'ORIGINE_RESYNCHRONISATION', 'ORIGINE_TUNNEL', 'CibleDevis', 'IntentionDevis', 'appliquer',
+    'decider_taille', 'ecrire_etude_params', 'ecrire_lignes', 'estampiller_provenance', 'finaliser',
+    'finaliser_caches', 'intention_de_composition', 'rafraichir_etudes', 'resoudre_entrees',
+    '_pick_batterie', '_pick_product', '_plage_batterie_de_l_onduleur', 'carte_marques_composition',
+    'catalogue_de_la_societe', 'ordre_lignes_societe', 'CompositionLignes', '_v_txt',
+    'composition_deux_optimiseurs', 'composition_residentielle',
 ]

@@ -27,6 +27,9 @@ from .models import (
     ReunionQhse, RevueVeilleReglementaire, RisqueOpportunite,
     RisqueOpportuniteCapa, SignalementPublic, VeilleReglementaire,
 )
+import json
+import os
+import requests
 
 
 @transaction.atomic
@@ -2453,7 +2456,7 @@ def relancer_exercices_urgence(company=None):
 
 # ── XQHS19 — Incidents environnementaux : notification + gate de clôture ──
 
-from .models import Incident  # noqa: E402  (évite un cycle d'import module)
+from .models import Incident  # noqa: E402 — évite un cycle d'import module (D-ENF22)
 
 
 def incidents_notification_en_retard(company, today=None):
@@ -2525,7 +2528,7 @@ def cloturer_incident(incident):
 
 # ── XQHS21 — Relevés de consommation par site → génération bilan carbone ──
 
-from .models import (  # noqa: E402  (évite un cycle d'import)
+from .models import (  # noqa: E402 — évite un cycle d'import (D-ENF22)
     LigneBilanCarbone, ReleveConsommation,
 )
 
@@ -2789,10 +2792,6 @@ def relancer_demandes_changement(company=None):
 # jamais de no-op cassant. TOUJOURS une proposition éditable, jamais appliquée
 # automatiquement (pattern propose→confirm du groupe AG).
 
-import json  # noqa: E402
-import os  # noqa: E402
-
-import requests  # noqa: E402
 
 _GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
 _GROQ_MODEL_DEFAUT = 'llama-3.1-8b-instant'

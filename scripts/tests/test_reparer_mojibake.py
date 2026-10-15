@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import reparer_mojibake as rm  # noqa: E402
+import reparer_mojibake as rm  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 GUIDE = ROOT / "docs" / "GUIDE_UTILISATEUR_ERP.md"
 MOJIBAKE = re.compile("Ã|â€|Â")

@@ -154,7 +154,7 @@ def derniere_verification():
     """Résultat mis en cache du dernier ``debug_token`` (ou ``None``)."""
     try:
         return cache.get(CLE_CACHE_VERIFICATION)
-    except Exception:  # noqa: BLE001 — cache indisponible : pas de verdict
+    except Exception:  # noqa: BLE001 — cache indisponible : pas de verdict (D-ENF22-BLE001)
         logger.warning("veille_acces.derniere_verification : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -253,6 +253,6 @@ def verifier(company, *, http_client=None):
         return etat(company)
     try:
         cache.set(CLE_CACHE_VERIFICATION, resultat, DUREE_CACHE_VERIFICATION)
-    except Exception:  # noqa: BLE001 — cache indisponible : état immédiat
+    except Exception:  # noqa: BLE001 — cache indisponible : état immédiat (D-ENF22-BLE001)
         logger.warning("veille_acces.verifier : erreur ignorée (mode dégradé)", exc_info=True)
     return etat(company, verification=resultat)

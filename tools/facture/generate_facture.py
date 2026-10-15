@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — facture : PDF legacy séparé, hors moteur de devis (règle #4), fichier non réécrit pour le lint.
 """Générateur de FACTURE premium TAQINOR (une page A4).
 
 Réutilise EN LECTURE SEULE le design system du moteur de devis vendored
@@ -28,7 +29,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 ENGINE_DIR = HERE.parent.parent / "backend" / "django_core" / "apps" / "ventes" / "quote_engine"
 sys.path.insert(0, str(ENGINE_DIR))
 
-import generate_devis_premium as g  # noqa: E402  (design system, lecture seule)
+import generate_devis_premium as g  # noqa: E402 — design system, lecture seule (D-ENF22)
 
 CENT = Decimal("0.01")
 

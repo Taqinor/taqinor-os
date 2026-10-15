@@ -356,7 +356,7 @@ def _visite_a_venir(lead):
         aujourdhui = aujourd_hui_local().isoformat()
         return any(ligne['date_prevue'] and ligne['date_prevue'] >= aujourdhui
                    for ligne in visites_pour_lead(lead))
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'VISITE-CADENCE: visites du lead #%s illisibles',
             getattr(lead, 'pk', '?'), exc_info=True)

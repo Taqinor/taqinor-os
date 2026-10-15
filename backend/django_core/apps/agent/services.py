@@ -135,7 +135,7 @@ def log_confirmed_action(
         object_id = str(getattr(resulted_object, 'pk', '') or '')
         try:
             object_repr = str(resulted_object)[:255]
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning("services.log_confirmed_action : erreur ignorée (mode dégradé)", exc_info=True)
             object_repr = ''
 

@@ -22,7 +22,7 @@ export default function EnquetesList() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const startCreate = () => { setEditing(null); setShowBuilder(true) }

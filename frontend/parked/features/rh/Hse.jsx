@@ -114,7 +114,7 @@ export default function Hse() {
     return () => { vivant = false }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
   useEffect(recharger, [])
 
   const validerAnalyse = async (a) => {

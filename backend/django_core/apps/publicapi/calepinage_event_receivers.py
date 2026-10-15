@@ -99,7 +99,7 @@ def variante_pre_save(sender, instance, **kwargs):
     try:
         ancienne = sender.objects.filter(pk=instance.pk).values_list(
             'retenue', flat=True).first()
-    except Exception:  # noqa: BLE001 — jamais bloquant pour la sauvegarde
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la sauvegarde (D-ENF22-BLE001)
         logger.warning("calepinage_event_receivers.variante_pre_save : erreur ignorée (mode dégradé)", exc_info=True)
         ancienne = None
     setattr(instance, _OLD_RETENUE_ATTR, ancienne)
@@ -122,7 +122,7 @@ def _livrer(variante):
     try:
         delivery.dispatch_event(company_id, EVENT_CALEPINAGE_VALIDE,
                                 charge_utile(variante))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception('%s: dispatch webhook échoué (variante %s)',
                          EVENT_CALEPINAGE_VALIDE, getattr(variante, 'pk', None))
 
@@ -229,7 +229,7 @@ def calepinage_simule_recu(sender, calepinage=None, company_id=None,
     try:
         delivery.dispatch_event(company_id, EVENT_CALEPINAGE_SIMULE,
                                 charge_utile_simulation(calepinage))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception('%s: dispatch webhook échoué (calepinage %s)',
                          EVENT_CALEPINAGE_SIMULE,
                          getattr(calepinage, 'pk', None))

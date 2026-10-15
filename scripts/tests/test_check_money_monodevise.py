@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_money_monodevise as cmf  # noqa: E402
+import check_money_monodevise as cmf  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _first_class(src: str) -> ast.ClassDef:

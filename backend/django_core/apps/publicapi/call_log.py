@@ -51,7 +51,7 @@ def enregistrer(*, company_id, api_key_id=None, methode='', chemin='',
             request_id=(request_id or '')[:MAX_REQUEST_ID],
             taille_payload=max(0, int(taille_payload or 0)),
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant pour la requête
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la requête (D-ENF22-BLE001)
         logger.exception(
             "Journal d'appels API : écriture impossible (%s %s)",
             methode, chemin)

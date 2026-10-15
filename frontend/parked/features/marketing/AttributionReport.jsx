@@ -50,7 +50,7 @@ export default function AttributionReport({ devisId: devisIdProp }) {
       })
     }
     return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- charge une seule fois par devisIdProp
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- charge une seule fois par devisIdProp (D-ENF22)
   }, [devisIdProp])
 
   const classement = donnees

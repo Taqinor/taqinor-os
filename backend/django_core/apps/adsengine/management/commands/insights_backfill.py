@@ -205,7 +205,7 @@ class Command(BaseCommand):
                     poll_interval=options['poll_interval'],
                     warn=lambda msg: self.stdout.write(
                         self.style.WARNING(f"  {msg}")))
-            except Exception as exc:  # noqa: BLE001 — isolation société
+            except Exception as exc:  # noqa: BLE001 — isolation société (D-ENF22-BLE001)
                 logger.warning("insights_backfill.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 self.stdout.write(self.style.ERROR(
                     f"  échec : {exc}"))

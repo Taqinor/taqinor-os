@@ -21,11 +21,16 @@ import re
 # Ré-export M3 (revue Fable 15/09) — le VOCABULAIRE de qualification (module
 # pur, zéro modèle) fait partie de la surface de LECTURE de l'app : les
 # autres apps (crm) le consomment d'ICI, jamais du module interne.
-from .qualification import (  # noqa: F401
+from .qualification import (
     conseil, devis_a_reprendre, jours_avant_rappel, phrase, rappel_explicite,
 )
 
 import logging
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'conseil', 'devis_a_reprendre', 'jours_avant_rappel', 'phrase', 'rappel_explicite',
+]
 
 logger = logging.getLogger(__name__)
 

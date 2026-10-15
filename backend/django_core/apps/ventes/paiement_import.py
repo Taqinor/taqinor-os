@@ -669,7 +669,7 @@ def commit(company, user, token, lignes=None):
             skipped += 1
             results.append({'ligne': i + 2, 'statut': 'deja_regle',
                             'facture': facture.reference})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             errors += 1
             logger.warning('Import paiement ligne %d : %s', i + 2, exc,
                            exc_info=True)

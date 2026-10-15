@@ -108,7 +108,7 @@ def _est_vide(instance, champ, valeur):
         try:
             from django.db import models as dj_models
             champ_modele = type(instance)._meta.get_field(champ)
-        except Exception:  # noqa: BLE001 — champ inconnu : jamais « vide »
+        except Exception:  # noqa: BLE001 — champ inconnu : jamais « vide » (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', '_est_vide', exc_info=True)
             return False
         return (isinstance(champ_modele, dj_models.BooleanField)

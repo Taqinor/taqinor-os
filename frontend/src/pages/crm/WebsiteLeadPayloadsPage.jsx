@@ -38,7 +38,7 @@ export default function WebsiteLeadPayloadsPage() {
       .catch(() => setMsg('Chargement impossible.'))
       .finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- chargement au montage + rechargement quand showAll change
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps -- chargement au montage + rechargement quand showAll change (D-ENF22)
   useEffect(() => { load() }, [showAll])
 
   const replay = async (id) => {

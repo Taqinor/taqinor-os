@@ -58,7 +58,7 @@ def bind_company(company_id: Optional[int]) -> None:
     try:
         import sentry_sdk  # paresseux, présent seulement si init
         sentry_sdk.set_tag('company', str(company_id) if company_id else None)
-    except Exception:  # noqa: BLE001 — jamais casser une requête pour un tag
+    except Exception:  # noqa: BLE001 — jamais casser une requête pour un tag (D-ENF22-BLE001)
         logger.warning("bind company : échec ignoré, comportement dégradé", exc_info=True)
 
 
@@ -69,7 +69,7 @@ def _before_send(event, hint):
         if company_id is not None:
             tags = event.setdefault('tags', {})
             tags.setdefault('company', str(company_id))
-    except Exception:  # noqa: BLE001 — un before_send ne doit jamais lever
+    except Exception:  # noqa: BLE001 — un before_send ne doit jamais lever (D-ENF22-BLE001)
         logger.warning("before send : échec ignoré, comportement dégradé", exc_info=True)
     return event
 
@@ -92,7 +92,7 @@ def init_sentry():
         return True
     try:
         import sentry_sdk  # import paresseux, dépendance optionnelle
-    except Exception:  # noqa: BLE001 — paquet absent → no-op silencieux
+    except Exception:  # noqa: BLE001 — paquet absent → no-op silencieux (D-ENF22-BLE001)
         logger.info(
             'SENTRY_DSN défini mais sentry-sdk introuvable — monitoring ignoré.')
         return False

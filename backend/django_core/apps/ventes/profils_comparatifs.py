@@ -219,7 +219,7 @@ def calculer_profils_comparatifs(devis):
     """
     try:
         return _calculer_profils_comparatifs(devis)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('profils_comparatifs indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
@@ -363,7 +363,7 @@ def rafraichir_profils_comparatifs_devis(devis, *, force=False):
         # ``None`` (règle Z2) vivent dans ``domain.etude_schema``, plus ici.
         ecrire(devis, proprietaire=MOTEUR_PROFILS, profils_comparatifs=bloc)
         return bloc
-    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis (D-ENF22-BLE001)
         logger.warning('profils_comparatifs non rafraîchis sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None

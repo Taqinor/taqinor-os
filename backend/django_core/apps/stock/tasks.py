@@ -76,7 +76,7 @@ def recompute_reordering_task():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             besoins = produits_a_reapprovisionner(company)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas (D-ENF22-BLE001)
             logger.warning(
                 'stock.recompute_reordering: échec calcul société %s',
                 company.id, exc_info=True)
@@ -98,7 +98,7 @@ def recompute_reordering_task():
                 body=f'Sous le seuil effectif : {noms}{suffixe}.',
                 link=link, company=company)
             result[company.id] = len(besoins)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'stock.recompute_reordering: notification échouée société %s',
                 company.id, exc_info=True)
@@ -134,7 +134,7 @@ def relancer_bcf_en_retard_task():
             continue
         try:
             en_retard = bcf_en_retard_list(company)
-        except Exception:  # noqa: BLE001 — défensif, société suivante
+        except Exception:  # noqa: BLE001 — défensif, société suivante (D-ENF22-BLE001)
             logger.warning(
                 'stock.relancer_bcf_en_retard: échec calcul société %s',
                 company.id, exc_info=True)
@@ -173,7 +173,7 @@ def relancer_bcf_en_retard_task():
                 type(bc).objects.filter(pk=bc.pk).update(
                     nb_relances=F('nb_relances') + 1)
                 count += 1
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
                 logger.warning(
                     'stock.relancer_bcf_en_retard: échec pour BCF %s',
                     bc.pk, exc_info=True)
@@ -221,7 +221,7 @@ def notifier_documents_conformite_expirants_task():
         try:
             result[company.id] = notify_expiring_conformite_documents(
                 company, jours=30)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête (D-ENF22-BLE001)
             logger.warning(
                 'stock.notifier_documents_conformite_expirants: échec '
                 'société %s', company.id, exc_info=True)
@@ -260,7 +260,7 @@ def notifier_documents_fournisseur_expirants_task():
         try:
             result[company.id] = notify_expiring_documents_fournisseur(
                 company, jours=30, link=link)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête (D-ENF22-BLE001)
             logger.warning(
                 'stock.notifier_documents_fournisseur_expirants: échec '
                 'société %s', company.id, exc_info=True)
@@ -289,7 +289,7 @@ def notifier_bcf_en_retard_buyer_task():
             continue
         try:
             result[company.id] = notify_bcf_en_retard(company)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête (D-ENF22-BLE001)
             logger.warning(
                 'stock.notifier_bcf_en_retard_buyer: échec société %s',
                 company.id, exc_info=True)
@@ -329,7 +329,7 @@ def recompute_scores_risque_task():
                 stock_selectors.score_risque_fournisseur(
                     company, fournisseur_id)
                 count += 1
-            except Exception:  # noqa: BLE001 — fournisseur suivant
+            except Exception:  # noqa: BLE001 — fournisseur suivant (D-ENF22-BLE001)
                 logger.warning(
                     'stock.recompute_scores_risque: échec fournisseur %s '
                     '(société %s)', fournisseur_id, company.id,
@@ -361,7 +361,7 @@ def alerter_surcapacite_zones_task(seuil_pct=None):
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             zones = zones_en_surcapacite(company, seuil_pct=seuil_pct)
-        except Exception:  # noqa: BLE001 — société suivante, jamais bloquant
+        except Exception:  # noqa: BLE001 — société suivante, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'stock.alerter_surcapacite_zones: échec calcul société %s',
                 company.id, exc_info=True)
@@ -389,7 +389,7 @@ def alerter_surcapacite_zones_task(seuil_pct=None):
                 body=f'Seuil de remplissage franchi : {noms}{suffixe}.',
                 link=link, company=company)
             result[company.id] = len(zones)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'stock.alerter_surcapacite_zones: notification échouée '
                 'société %s', company.id, exc_info=True)
@@ -415,7 +415,7 @@ def expiration_alerts_task():
             profile = CompanyProfile.get(company=company)
             jours = profile.jours_alerte_peremption or 30
             expirants = produits_expirant_bientot(company, jours=jours)
-        except Exception:  # noqa: BLE001 — société suivante
+        except Exception:  # noqa: BLE001 — société suivante (D-ENF22-BLE001)
             logger.warning(
                 'stock.expiration_alerts: échec calcul société %s',
                 company.id, exc_info=True)
@@ -440,7 +440,7 @@ def expiration_alerts_task():
                 body=f'Péremption proche : {noms}{suffixe}.',
                 link=link, company=company)
             result[company.id] = len(expirants)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'stock.expiration_alerts: notification échouée société %s',
                 company.id, exc_info=True)
@@ -463,7 +463,7 @@ def generer_comptages_tournants_task():
     from .services_wms import generer_comptages_tournants
     try:
         resultat = generer_comptages_tournants()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('stock.generer_comptages_tournants: échec du balayage',
                        exc_info=True)
         return 0
@@ -480,7 +480,7 @@ def liberer_vagues_planifiees_task():
     from .services_wms import liberer_vagues_planifiees
     try:
         resultat = liberer_vagues_planifiees()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('stock.liberer_vagues_planifiees: échec du balayage',
                        exc_info=True)
         return 0
@@ -522,7 +522,7 @@ def export_mouvements_xlsx_task(job_id=None, company_id=None,
         key = store_export_result(
             data, company_id=company_id, job_id=job.pk, ext='xlsx',
             content_type=XLSX_CONTENT_TYPE)
-    except Exception as exc:  # noqa: BLE001 — le job porte l'échec
+    except Exception as exc:  # noqa: BLE001 — le job porte l'échec (D-ENF22-BLE001)
         logger.exception('stock.export_mouvements_xlsx: échec job %s', job_id)
         job.marquer_echec(f'Export des mouvements impossible : {exc}')
         return None
@@ -544,7 +544,7 @@ def export_mouvements_xlsx_task(job_id=None, company_id=None,
             job.user, EventType.EXPORT_REVERSIBILITE_PRET,
             title='Export des mouvements de stock prêt', body=corps,
             link=url if len(url) <= 512 else '', company=job.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('stock.export_mouvements_xlsx: notification échouée '
                        '(job %s)', job_id, exc_info=True)
     return key

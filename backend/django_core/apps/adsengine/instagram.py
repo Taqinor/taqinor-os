@@ -100,7 +100,7 @@ def publishing_limit(client):
         return None
     try:
         limit = getter() or {}
-    except Exception:  # noqa: BLE001 — le quota n'empêche jamais l'affichage
+    except Exception:  # noqa: BLE001 — le quota n'empêche jamais l'affichage (D-ENF22-BLE001)
         logger.warning("instagram.publishing_limit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     used = limit.get('used')

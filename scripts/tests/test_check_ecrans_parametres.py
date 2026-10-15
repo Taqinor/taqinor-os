@@ -28,9 +28,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_ecrans_atteignables as cea  # noqa: E402
+import check_ecrans_atteignables as cea  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
-from .test_check_ecrans_atteignables import BaseDepot  # noqa: E402
+from .test_check_ecrans_atteignables import BaseDepot  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 # ===========================================================================

@@ -58,7 +58,7 @@ def feature_enabled(company, key: str) -> bool:
         return True
     try:
         avis = _FEATURE_RESOLVER(company, key)
-    except Exception:  # noqa: BLE001 — un réglage illisible ne coupe rien
+    except Exception:  # noqa: BLE001 — un réglage illisible ne coupe rien (D-ENF22-BLE001)
         logger.warning('core.ai: réglage de feature illisible (%s)', key,
                        exc_info=True)
         return True

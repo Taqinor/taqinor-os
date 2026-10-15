@@ -139,8 +139,8 @@ LIGNE_INVENTAIRE = corps('ProduitInventaireLigneCorps',
                          quantite_comptee=QuantiteComptee())
 
 
-from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
-from .negoce import AtpProduitMixin  # noqa: E402
+from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .negoce import AtpProduitMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _texte_champ(valeur):
@@ -182,7 +182,7 @@ def emettre_produit_modifie(produit, champs, company, user):
         produit_modifie.send(
             sender=Produit, produit=produit, company=company, user=user,
             champs=champs)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture (D-ENF22-BLE001)
         logger.warning("produit.emettre_produit_modifie : erreur ignorée (mode dégradé)", exc_info=True)
 
 

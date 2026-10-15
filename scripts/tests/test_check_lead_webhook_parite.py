@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_lead_webhook_parite as parite  # noqa: E402
+import check_lead_webhook_parite as parite  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 # --- une reduction FIDELE de apps/crm/webhooks.py (memes formes AST) -------

@@ -79,7 +79,7 @@ def consume(company_id, famille: str, max_par_min: int = None):
         # avec un TTL = fenêtre → le compteur disparaît tout seul.
         cache.add(key, 0, _WINDOW_SECONDS)
         used = cache.incr(key)
-    except Exception:  # noqa: BLE001 — cache KO → fail-open (autorise)
+    except Exception:  # noqa: BLE001 — cache KO → fail-open (autorise) (D-ENF22-BLE001)
         logger.warning('tenant_ratelimit fail-open: %s/%s', company_id,
                        famille)
         return True, 0

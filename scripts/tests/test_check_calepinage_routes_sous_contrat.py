@@ -8,8 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import _cliquet  # noqa: E402
-import check_calepinage_routes_sous_contrat as guard  # noqa: E402
+import _cliquet  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_calepinage_routes_sous_contrat as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 VUES = '''
 from rest_framework.decorators import action

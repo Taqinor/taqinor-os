@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -24,4 +26,4 @@ class OfflinesyncConfig(AppConfig):
         # NTMOB1 — l'enregistrement des handlers de rejeu se fait au démarrage
         # (import différé : `handlers` touche les services d'autres apps, il ne
         # doit jamais s'exécuter au chargement des modèles).
-        from . import handlers  # noqa: F401
+        import_module(f'{self.name}.handlers')

@@ -460,7 +460,7 @@ def _declarer_fichier_associe(document, nom_fichier):
         document.xref_set_key(document.pdf_catalog(), 'AF',
                               f'[ {xref_fichier} 0 R ]')
         return True
-    except Exception:  # noqa: BLE001 — jamais au prix du PDF lui-même
+    except Exception:  # noqa: BLE001 — jamais au prix du PDF lui-même (D-ENF22-BLE001)
         logger.warning("facturx._declarer_fichier_associe : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
@@ -515,7 +515,7 @@ def pack_pays_de(company) -> str:
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.get(company)
         return str(getattr(profil, 'pack_pays', '') or '').upper()
-    except Exception:  # noqa: BLE001 — jamais bloquant pour une facture
+    except Exception:  # noqa: BLE001 — jamais bloquant pour une facture (D-ENF22-BLE001)
         logger.warning("facturx.pack_pays_de : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 

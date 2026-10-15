@@ -86,7 +86,7 @@ def _calepinage_ouvert_mesure(company, lead_id):
         if calepinage is None:
             return None
         mesure = mesures_du_calepinage(calepinage)
-    except Exception as exc:  # noqa: BLE001 — une pastille ne casse jamais la fiche
+    except Exception as exc:  # noqa: BLE001 — une pastille ne casse jamais la fiche (D-ENF22-BLE001)
         logger.warning('ACAL273 : pastille kWc du lead %s indisponible : %s', lead_id, exc)
         return None
     kwc = (mesure or {}).get('kwc')

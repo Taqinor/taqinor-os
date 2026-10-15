@@ -125,7 +125,7 @@ def main() -> int:
 
     try:
         data = yaml.safe_load(MANIFEST.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as exc:  # noqa: BLE001 — drift = rouge explicite
+    except yaml.YAMLError as exc:
         print(f"check_query_budgets: manifeste illisible: {exc}",
               file=sys.stderr)
         return 1

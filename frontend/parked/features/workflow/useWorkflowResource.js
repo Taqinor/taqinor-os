@@ -40,10 +40,10 @@ export function useWorkflowResource(fetcher, deps = []) {
         if (!cancelled) setLoading(false)
       })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [depsKey])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   return { data, loading, error, reload: load, setData }

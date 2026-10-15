@@ -1,5 +1,5 @@
 """QJR650 — vues ventes sans code mort : plus de ``_resolve_accepted_option``
-(``accept_devis`` résout l'option) ni d'imports ``# noqa: F401`` hérités du
+(``accept_devis`` résout l'option) ni d'imports ``noqa F401`` hérités du
 découpage du monolithe qui masquaient les noms réellement utilisés.
 
 ROUGE AVANT : la méthode existait sans aucune référence ; ``views/devis.py``

@@ -10,7 +10,7 @@ Ce module reste un ré-export bit-identique : les ~53 importeurs existants
 continuent de marcher sans aucune édition. Ne rien ajouter ici — toute évolution
 de l'algorithme se fait dans `core/numbering.py`.
 """
-from core.numbering import (  # noqa: F401  (ré-export public — importeurs existants)
+from core.numbering import (  # ré-export public — importeurs existants
     MAX_ATTEMPTS,
     _SUFFIX_RE,
     _bucket_prefix,
@@ -19,4 +19,7 @@ from core.numbering import (  # noqa: F401  (ré-export public — importeurs ex
     next_reference,
 )
 
-__all__ = ['next_reference', 'create_with_reference']
+__all__ = [
+    'next_reference', 'create_with_reference', 'MAX_ATTEMPTS', '_SUFFIX_RE', '_bucket_prefix',
+    '_period_segment',
+]

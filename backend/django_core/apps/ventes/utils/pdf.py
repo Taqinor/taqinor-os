@@ -151,7 +151,7 @@ def _trim_image_whitespace(raw_bytes):
         out = _BytesIO()
         cropped.save(out, format='PNG')
         return out.getvalue(), 'png'
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash (D-ENF22-BLE001)
         logger.warning('Rognage du logo échoué (image inchangée) : %s', exc)
         return raw_bytes, None
 
@@ -410,7 +410,7 @@ def _emettre_document_produit(source, company, pdf_bytes, reference, *,
                 'client': client_nom or '',
             },
             uploaded_by=uploaded_by)
-    except Exception:  # noqa: BLE001 — émission best-effort
+    except Exception:  # noqa: BLE001 — émission best-effort (D-ENF22-BLE001)
         logger.exception(
             'document_produit (%s) — échec émission pour %s', source, reference)
 
@@ -439,7 +439,7 @@ def generate_facture_pdf(facture_id):
     try:
         from apps.ventes.services import qr_svg_for_facture_pdf
         context['facture_qr_svg'] = qr_svg_for_facture_pdf(facture)
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash PDF
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais de crash PDF (D-ENF22-BLE001)
         logger.warning('QR facture %s indisponible : %s', facture_id, exc)
         context['facture_qr_svg'] = None
 
@@ -895,7 +895,7 @@ def cle_facture_pdf_a_jour(facture) -> str:
     if facture.fichier_pdf and empreinte_stockee:
         try:
             attendue = empreinte_donnees_facture_pdf(facture)
-        except Exception:  # noqa: BLE001 — une facture illisible se re-rend
+        except Exception:  # noqa: BLE001 — une facture illisible se re-rend (D-ENF22-BLE001)
             logger.warning("pdf.cle_facture_pdf_a_jour : erreur ignorée (mode dégradé)", exc_info=True)
             attendue = None
         if attendue and attendue == empreinte_stockee:
@@ -917,7 +917,7 @@ def _contexte_langue(context, client, company, *, traduit):
     )
     try:
         demandee = document_langue(client, company=company) or 'fr'
-    except Exception:  # noqa: BLE001 — jamais de crash PDF sur la langue
+    except Exception:  # noqa: BLE001 — jamais de crash PDF sur la langue (D-ENF22-BLE001)
         logger.warning("pdf._contexte_langue : erreur ignorée (mode dégradé)", exc_info=True)
         demandee = 'fr'
     rendue = 'ar' if (traduit and demandee == 'ar') else 'fr'
@@ -1127,7 +1127,7 @@ def generate_proforma_pdf(devis, reference):
     from apps.ventes.utils.expiry import date_expiration
     try:
         context['date_validite'] = date_expiration(devis)
-    except Exception:  # noqa: BLE001 — une date indéterminable n'imprime rien
+    except Exception:  # noqa: BLE001 — une date indéterminable n'imprime rien (D-ENF22-BLE001)
         logger.warning("pdf.generate_proforma_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         context['date_validite'] = None
     _contexte_langue(context, devis.client, devis.company, traduit=False)

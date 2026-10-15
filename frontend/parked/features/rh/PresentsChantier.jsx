@@ -30,7 +30,7 @@ export default function PresentsChantier() {
   useEffect(() => {
     const id = String(installationId).trim()
     let vivant = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement de chantier ou de jour)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement de chantier ou de jour) (D-ENF22)
     setEtat({ data: null, loading: Boolean(id), error: null })
     if (!id) return undefined
     rhApi.getEffectifChantier({ installation_id: id, date: jour })

@@ -59,7 +59,7 @@ export default function AdDetailScreen() {
     }
   }, [metaId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement d'id
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement d'id (D-ENF22)
   useEffect(() => { load() }, [load])
 
   if (loading) {

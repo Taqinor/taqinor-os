@@ -17,7 +17,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_forme_code as cfc  # noqa: E402
+import check_forme_code as cfc  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 SERVICES = "backend/django_core/apps/crm/services.py"
 PLAN = "docs/plans/PLAN_ZZ.md"

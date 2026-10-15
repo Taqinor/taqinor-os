@@ -180,7 +180,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             from apps.audit.models import AuditLog
             record(AuditLog.Action.WHATSAPP, instance=bc,
                    detail=f'Lien WhatsApp BCF {bc.reference} préparé')
-        except Exception:  # noqa: BLE001 — l'audit ne casse jamais l'action
+        except Exception:  # noqa: BLE001 — l'audit ne casse jamais l'action (D-ENF22-BLE001)
             logger.warning(
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet.whatsapp "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -229,7 +229,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         try:
             attachment = generate_bcf_pdf(bc)
             attachment_name = f'{bc.reference}.pdf'
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning(
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -254,7 +254,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             from apps.audit.models import AuditLog
             record(AuditLog.Action.EMAIL, instance=bc,
                    detail=f'Email BCF {bc.reference} envoyé à {to_email}')
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning(
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet.envoyer_email "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -287,7 +287,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         try:
             from ..services import default_other_information_bcf
             default_other_information_bcf(bc)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning(
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet.perform_create "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -364,7 +364,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 warning = bcf_warning_conformite(bc.fournisseur)
                 if warning:
                     response.data['conformite_warning'] = warning
-            except Exception:  # noqa: BLE001 — le warning ne casse jamais
+            except Exception:  # noqa: BLE001 — le warning ne casse jamais (D-ENF22-BLE001)
                 logger.warning(
                     "bon_commande_fournisseur.BonCommandeFournisseurViewSet.create "
                     ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -453,7 +453,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                     })
             if prix_warnings:
                 response.data['prix_warnings'] = prix_warnings
-        except Exception:  # noqa: BLE001 — le warning ne casse jamais
+        except Exception:  # noqa: BLE001 — le warning ne casse jamais (D-ENF22-BLE001)
             logger.warning(
                 "bon_commande_fournisseur.BonCommandeFournisseurViewSet._attach_prix_warnings "
                 ": erreur ignorée (mode dégradé)", exc_info=True)

@@ -16,7 +16,7 @@ from apps.stock.models import FactureFournisseur, Fournisseur, Produit
 from apps.ventes.models import Facture, LigneFacture
 from core.events import facture_emise, facture_fournisseur_creee
 
-from apps.compta import receivers  # noqa: F401  (câblage ready())
+__import__('apps.compta.receivers')  # câblage ready()
 
 User = get_user_model()
 

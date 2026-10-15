@@ -62,7 +62,7 @@ def _capture_old_statut(model, instance):
     try:
         old = model.objects.filter(pk=instance.pk).values_list(
             'statut', flat=True).first()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("signals._capture_old_statut : erreur ignorée (mode dégradé)", exc_info=True)
         old = None
     setattr(instance, _OLD_STATUT_ATTR, old)
@@ -71,7 +71,7 @@ def _capture_old_statut(model, instance):
 def _safe_dispatch(company_id, event, payload):
     try:
         delivery.dispatch_event(company_id, event, payload)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception('Webhook dispatch failed for %s', event)
 
 
@@ -85,7 +85,7 @@ def lead_pre_save(sender, instance, **kwargs):
     try:
         old = Lead.objects.filter(pk=instance.pk).values_list(
             'stage', 'perdu').first()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("signals.lead_pre_save : erreur ignorée (mode dégradé)", exc_info=True)
         old = None
     setattr(instance, _OLD_STAGE_ATTR, old[0] if old else None)

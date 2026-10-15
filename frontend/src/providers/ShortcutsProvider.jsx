@@ -63,7 +63,7 @@ const SEQUENCE_MS = 1200
 // mais SANS en dépendre — évite une dépendance providers→pages pour 3 lignes.
 // Sert UNIQUEMENT à trier l'affichage de la cheatsheet (« Pour votre rôle »
 // d'abord) — jamais à activer/désactiver un raccourci.
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément (D-ENF22)
 export function roleProfile(roleNom) {
   const n = String(roleNom ?? '').toLowerCase()
   if (/sav|technicien|support|après-vente|apres-vente|maintenance|terrain/.test(n)) return 'sav'

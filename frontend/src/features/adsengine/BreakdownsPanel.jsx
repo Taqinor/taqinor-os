@@ -44,7 +44,7 @@ export default function BreakdownsPanel({ objectType = 'campaign', objectId }) {
       .finally(() => setLoading(false))
   }, [objectType, objectId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const byDimension = useMemo(() => {

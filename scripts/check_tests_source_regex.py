@@ -257,7 +257,7 @@ def uses_pattern(path: Path) -> bool:
     sans assertion regex derriere, n'est PAS ce patron)."""
     try:
         src = path.read_text(encoding="utf-8")
-    except Exception:  # noqa: BLE001
+    except (OSError, UnicodeDecodeError):
         return False
     return bool(RE_READFILESYNC.search(src) and RE_REGEX_ASSERT.search(src))
 

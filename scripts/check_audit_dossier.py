@@ -19,8 +19,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-import check_taches_cablage as ctc  # noqa: E402
-from plan_lanes import _MiniYamlParser  # noqa: E402
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from plan_lanes import _MiniYamlParser  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ROOT = HERE.parent
 GABARIT = "docs/audits/GABARIT_DOSSIER.md"

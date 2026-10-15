@@ -438,7 +438,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       target?.focus()
       row.scrollIntoView({ block: 'nearest' })
     }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX240(g), même patron VX90)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset one-shot du focus (VX240(g), même patron VX90) (D-ENF22)
     setPendingFocusKey(null)
   }, [pendingFocusKey, lignes])
 

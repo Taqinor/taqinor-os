@@ -12,7 +12,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-import check_test_package_shadow as guard  # noqa: E402
+import check_test_package_shadow as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _make_app(apps_dir, name, has_tests_module=False, has_tests_package=False):

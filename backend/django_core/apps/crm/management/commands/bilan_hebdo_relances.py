@@ -79,7 +79,7 @@ def bilan_hebdo_relances(*, jours=7, dry_run=False):
             continue  # aucune direction résolvable — on ne fabrique personne
         try:
             kpi = kpi_cadences(company, jours=jours)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête rien
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête rien (D-ENF22-BLE001)
             logger.warning(
                 'bilan_hebdo_relances: KPI illisible (société %s)',
                 company.pk, exc_info=True)
@@ -93,7 +93,7 @@ def bilan_hebdo_relances(*, jours=7, dry_run=False):
                 title='Bilan relances de la semaine',
                 body=formater_bilan(kpi), link='/crm/cockpit',
                 company=company)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'bilan_hebdo_relances: envoi échoué (société %s)',
                 company.pk, exc_info=True)

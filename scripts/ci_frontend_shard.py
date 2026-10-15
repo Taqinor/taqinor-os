@@ -49,7 +49,7 @@ import sys
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ci_shard import assign  # noqa: E402  (shared LPT — never reimplemented here)
+from ci_shard import assign  # noqa: E402 — shared LPT — never reimplemented here (D-ENF22)
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FRONTEND = os.path.join(REPO_ROOT, "frontend")

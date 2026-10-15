@@ -79,7 +79,7 @@ export default function Layout({ children }) {
   useEffect(() => {
     if (!isAuthenticated) dispatch(fetchMe())
     if (!profile) dispatch(fetchProfile())
-  }, [dispatch]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dispatch]) // eslint-disable-line react-hooks/exhaustive-deps -- monté à chaque navigation de module : ne refetch session/profil que s'ils manquent au montage (D-ENF22)
 
   // SCA24 — thème white-label (TenantTheme) : posé une fois au montage du shell.
   // Résilient par construction : un échec réseau/permission ne doit JAMAIS

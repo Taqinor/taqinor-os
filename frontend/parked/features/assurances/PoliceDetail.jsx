@@ -36,7 +36,7 @@ function useLoader(fn, deps) {
   }
   // reload() sets the loading flag synchronously on mount/deps change — the
   // load-on-mount loading state, same pattern as the sibling assurances lists.
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- dossier parqué, hors lint (D-ENF22)
   useEffect(() => { reload() }, deps)
   return { data, loading, reload }
 }
@@ -153,7 +153,7 @@ export default function PoliceDetail() {
       .then((res) => setPolice(res.data))
       .catch(() => setError('Police introuvable.'))
   }
-  useEffect(() => { loadPolice() /* eslint-disable-line */ }, [id])
+  useEffect(() => { loadPolice() /* eslint-disable-line */ }, [id]) -- dossier parqué, hors lint (D-ENF22)
 
   const garanties = useLoader(() => assurancesApi.getGaranties(id), [id])
   const actifs = useLoader(() => assurancesApi.getActifsCouverts(id), [id])

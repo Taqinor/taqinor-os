@@ -18,9 +18,6 @@ CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 """
 from django.utils import timezone
 
-# ENF20 — `droits_restants` vit dans la feuille pure `droits_contrat` (lue par
-# Ticket.couverture sans tirer selectors) ; ré-export pour les appelants.
-from .droits_contrat import droits_restants  # noqa: F401
 from .models import (
     Equipement, EquipeMaintenance, KbArticle, Ticket, TicketActivity,
     TicketSatisfaction,
@@ -525,7 +522,7 @@ def pareto_pannes(company, *, group_by='produit', date_debut=None,
                 from apps.stock.selectors import get_fournisseur_by_id
                 f = get_fournisseur_by_id(company, fid)
                 nom = getattr(f, 'nom', None) if f else None
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except ImportError:  # best-effort : app stock absente
                 nom = None
         fournisseur_cache[pid] = (fid, nom)
         return fid, nom
@@ -689,7 +686,7 @@ def _revenu_contrat_maintenance(contrat):
     from decimal import Decimal
     try:
         from apps.ventes.models import Facture
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except ImportError:  # best-effort : app ventes absente
         return Decimal('0')
 
     marqueur = f'contrat #{contrat.pk}'
@@ -1484,7 +1481,7 @@ def _jour_ouvre(jour, horaires, extra_holidays=None):
     try:
         from core.calendar import is_holiday
         return not is_holiday(jour, extra_holidays)
-    except Exception:  # noqa: BLE001 — calendrier indisponible : jour ouvré.
+    except (ImportError, TypeError, ValueError):  # calendrier indisponible : jour ouvré
         return True
 
 

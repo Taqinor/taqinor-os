@@ -8,7 +8,7 @@ import json
 import sys
 
 sys.path.insert(0, '.')
-from apps.ventes.quote_engine import pricing  # noqa: E402
+from apps.ventes.quote_engine import pricing  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ECO_SANS, ECO_AVEC = 5400.0, 7200.0
 mois = [{'economie_sans_mad': ECO_SANS / 12, 'economie_avec_mad': ECO_AVEC / 12,

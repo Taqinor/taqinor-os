@@ -48,7 +48,7 @@ function DossierChatter({ dossierId }) {
       .finally(() => setLoading(false))
   }, [dossierId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const submit = async (e) => {
@@ -309,7 +309,7 @@ export default function DossierDetail() {
 
   const [dossier, setDossier] = useState(null)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète la dernière réponse serveur
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète la dernière réponse serveur (D-ENF22)
     if (data) setDossier(data)
   }, [data])
 

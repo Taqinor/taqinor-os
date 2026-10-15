@@ -186,7 +186,7 @@ def variant_attribution(company, *, qualifying_stage=None, ad_ids=None):
             from .odoo_metrics import odoo_signatures_by_ad
             odoo_res = odoo_signatures_by_ad(company)
             odoo_by_ad = {a['ad_id']: a for a in odoo_res.get('ads', [])}
-    except Exception:  # noqa: BLE001 — l'attribution CRM ne dépend jamais d'Odoo
+    except Exception:  # noqa: BLE001 — l'attribution CRM ne dépend jamais d'Odoo (D-ENF22-BLE001)
         logger.warning("attribution.variant_attribution : erreur ignorée (mode dégradé)", exc_info=True)
         odoo_by_ad = {}
 

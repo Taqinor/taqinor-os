@@ -215,7 +215,7 @@ def _emettre_maintenance_window_announced(fenetre, user):
         maintenance_window_announced.send(
             sender=MaintenanceWindow, fenetre=fenetre,
             company=fenetre.company, user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre maintenance window announced : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
@@ -233,7 +233,7 @@ def _emettre_maintenance_window_created(fenetre, user):
         maintenance_window_created.send(
             sender=MaintenanceWindow, fenetre=fenetre,
             company=fenetre.company, user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre maintenance window created : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(

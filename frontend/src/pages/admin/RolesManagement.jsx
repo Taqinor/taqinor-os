@@ -298,7 +298,7 @@ export default function RolesManagement() {
   }
 
   // Chargement initial — le setState a lieu dans le callback async, pas en sync
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial : setState dans le callback async, jamais synchrone (D-ENF22)
   useEffect(() => { load() }, [])
 
   const openCreate = () => {

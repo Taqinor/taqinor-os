@@ -210,7 +210,7 @@ def _placement_devis_du_lot(company, lead_ids):
             dernier_devis_envoye_par_lead, leads_avec_devis_accepte)
         return (leads_avec_devis_accepte(company, lead_ids),
                 dernier_devis_envoye_par_lead(company, lead_ids))
-    except Exception as exc:  # noqa: BLE001 — journalisé puis échec fermé
+    except Exception as exc:
         logger.warning(
             'MRY30: devis illisibles (société %s)',
             getattr(company, 'pk', '?'), exc_info=True)
@@ -350,7 +350,7 @@ def _echeances_best_effort(lead, cadence, depart, gabarits):
     try:
         return calculer_echeances_cadence(lead, cadence, depart,
                                           gabarits=gabarits(cadence))
-    except Exception:  # noqa: BLE001 — un dossier bancal n'arrête rien
+    except Exception:  # noqa: BLE001 — un dossier bancal n'arrête rien (D-ENF22-BLE001)
         logger.warning('MRY30: échéances illisibles (lead #%s, cadence %s)',
                        getattr(lead, 'pk', '?'), cadence, exc_info=True)
         return []
@@ -403,7 +403,7 @@ def _placement_gabarits(company):
                 from apps.parametres.models_relance import CadenceRelanceEtape
                 cache[cadence] = CadenceRelanceEtape.cadence_pour(
                     company, cadence)
-            except Exception:  # noqa: BLE001 — jamais bloquant
+            except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
                 logger.warning('MRY30: gabarit « %s » illisible', cadence,
                                exc_info=True)
                 cache[cadence] = []
@@ -712,7 +712,7 @@ def _executer_placements(entrees, *, user, maintenant):
         try:
             with transaction.atomic():
                 _placer_un(entree, user=user, maintenant=maintenant)
-        except Exception:  # noqa: BLE001 — un dossier bancal n'arrête rien
+        except Exception:  # noqa: BLE001 — un dossier bancal n'arrête rien (D-ENF22-BLE001)
             logger.warning(
                 'MRY30: placement échoué (lead #%s, code %s)',
                 entree['lead'].pk, entree['code'], exc_info=True)

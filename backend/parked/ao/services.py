@@ -308,7 +308,7 @@ def emettre_changement_statut_automation(appel_offre, *, ancien_statut,
                 'old_value': ancien_statut, 'new_value': appel_offre.statut,
             },
             user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         pass
 
 

@@ -357,7 +357,7 @@ class Contrat(SoftDeleteModel):
     # prouve que ``Contrat.TRANSITIONS`` == le graphe de ``machine_etats`` pour
     # CHAQUE statut, statut par statut.
     @property
-    def TRANSITIONS(self):  # noqa: N802 — nom du contrat kit (majuscules voulues)
+    def TRANSITIONS(self):  # noqa: N802 — nom du contrat kit (majuscules voulues) (D-ENF22)
         """Graphe de transitions au format du kit (``core.documents``).
 
         Miroir en LECTURE SEULE de ``machine_etats._transitions()`` — la machine

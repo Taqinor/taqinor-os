@@ -4922,7 +4922,7 @@ def extraire_justificatif_note_frais(file_bytes, *, mime='', user=None):
         if resp.status_code != 200:
             return {}
         payload = resp.json() or {}
-    except Exception:  # noqa: BLE001 — l'OCR ne casse jamais la saisie
+    except Exception:  # noqa: BLE001 — l'OCR ne casse jamais la saisie (D-ENF22-BLE001)
         return {}
 
     structurees = payload.get('donnees_structurees') or {}
@@ -5186,7 +5186,7 @@ def _notifier_escalade_direction_note_frais(note):
                   'le seuil configuré et exige une validation direction.'),
             link='/comptabilite/notes-de-frais',
             company=note.company, reason='manager')
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P45: notification escalade direction échouée (note %s)',
@@ -10149,7 +10149,7 @@ def comparer_cash_vs_financement(montant, duree_mois, taux_annuel,
 # imports historiques ``from apps.compta.services import echeances_ao_dues``.
 # ODX22 (RETRAIT des shims transitoires) reste ouvert et aura celui-ci à
 # retirer, dans le sens inverse d'avant.
-from apps.ao.services import (  # noqa: E402,F401
+from apps.ao.services import (  # noqa: E402,F401 — après sys.path/setup() (D-ENF22)
     echeances_ao_dues,
     taux_reussite_ao,
 )

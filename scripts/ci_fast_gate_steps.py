@@ -84,7 +84,7 @@ def _expand_runner(job: str, workdir: str):
     celui de l'etape runner — c'est ce que le runner applique lui-meme.
     """
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
-    import ci_guards  # noqa: E402 — import tardif : ce module est optionnel ailleurs
+    import ci_guards
     if job not in ci_guards.GARDES:
         raise SystemExit(
             f"ci_fast_gate_steps: ci.yml appelle `ci_guards.py {job}` mais "

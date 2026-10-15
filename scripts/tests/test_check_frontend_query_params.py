@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_frontend_query_params as fqp  # noqa: E402
+import check_frontend_query_params as fqp  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 CONTRAT = """operations:
 - get /api/django/crm/leads/ -> crm_leads_list

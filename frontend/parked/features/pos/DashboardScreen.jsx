@@ -44,7 +44,7 @@ export default function DashboardScreen() {
   }
   const charger = () => { setLoading(true); return load() }
 
-  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const handleExport = () => {
     // Export xlsx : ouverture directe (cookie httpOnly envoyé par le navigateur).

@@ -75,7 +75,7 @@ def mesurer_talon(pdf_bytes: bytes) -> dict:
     est alors servi tel quel)."""
     try:
         import fitz
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("renderer.mesurer_talon : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     sortie = {}
@@ -97,7 +97,7 @@ def mesurer_talon(pdf_bytes: bytes) -> dict:
             if vide >= 4.0:
                 sortie[i + 1] = round(min(vide, VIDE_MAX_MM), 1)
         doc.close()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("renderer.mesurer_talon : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     return sortie
@@ -111,7 +111,7 @@ def debordement(pdf_bytes: bytes, nb_pages: int, attendu: int) -> bool:
         return True
     try:
         import fitz
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("renderer.debordement : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     try:
@@ -124,7 +124,7 @@ def debordement(pdf_bytes: bytes, nb_pages: int, attendu: int) -> bool:
                     doc.close()
                     return True
         doc.close()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("renderer.debordement : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     return False

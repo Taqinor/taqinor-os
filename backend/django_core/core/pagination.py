@@ -106,7 +106,7 @@ def _decode_cursor(cursor: str):
         raw = base64.urlsafe_b64decode(cursor.encode('ascii'))
         data = json.loads(raw.decode('utf-8'))
         return data.get('ca'), data.get('id')
-    except Exception:  # noqa: BLE001 — curseur corrompu → ignoré (1re page)
+    except Exception:  # noqa: BLE001 — curseur corrompu → ignoré (1re page) (D-ENF22-BLE001)
         logger.warning("decode cursor : échec ignoré, comportement dégradé", exc_info=True)
         return None
 

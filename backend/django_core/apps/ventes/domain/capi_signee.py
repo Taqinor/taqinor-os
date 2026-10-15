@@ -84,7 +84,7 @@ def _fire_capi_signed_quote(*, devis, ip=None, user_agent=''):
     try:
         from apps.ventes.utils.options import option_totaux
         value = float(option_totaux(devis)['ttc'])
-    except Exception:  # noqa: BLE001 — CAPI ne casse jamais l'acceptation
+    except Exception:  # noqa: BLE001 — CAPI ne casse jamais l'acceptation (D-ENF22-BLE001)
         logger.warning(
             'QJR136: CAPI SignedQuote NON envoyé pour devis %s — la valeur de '
             "conversion canonique est indisponible (aucun montant n'est "
@@ -244,4 +244,4 @@ def _donnees_utilisateur(devis, attribution, ip, user_agent):
 
 
 # ── PONT M3 : nom hébergé dans ``cycle_vie`` (import en bas de fichier) ──────
-from apps.ventes.domain.cycle_vie import _ATTRIBUTION_FIELDS  # noqa: E402
+from apps.ventes.domain.cycle_vie import _ATTRIBUTION_FIELDS  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

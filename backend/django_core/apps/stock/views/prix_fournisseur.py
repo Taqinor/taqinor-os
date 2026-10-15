@@ -34,7 +34,7 @@ def _classeur_lisible(contenu):
     from openpyxl import load_workbook
     try:
         load_workbook(io.BytesIO(contenu), read_only=True).close()
-    except Exception:  # noqa: BLE001 — tout échec d'ouverture = fichier illisible
+    except Exception:  # noqa: BLE001 — tout échec d'ouverture = fichier illisible (D-ENF22-BLE001)
         logger.warning("prix_fournisseur._classeur_lisible : classeur illisible", exc_info=True)
         return False
     return True

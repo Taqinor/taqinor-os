@@ -158,7 +158,7 @@ def run_weekly_decay(company, *, now=None):
         try:
             decay_node(node, save=True)
             decayed += 1
-        except Exception:  # noqa: BLE001 — un nœud en échec n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — un nœud en échec n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning(
                 'assumption_decay: échec oubli nœud=%s société=%s',
                 node.pk, company.pk, exc_info=True)

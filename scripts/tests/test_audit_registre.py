@@ -17,8 +17,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import audit_registre as ar  # noqa: E402
-import check_taches_cablage as ctc  # noqa: E402
+import audit_registre as ar  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 UNITES = """version: 1
 unites:

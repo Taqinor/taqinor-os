@@ -124,7 +124,7 @@ def _instrumenter(methode, nom_methode):
 
             if redaction_enabled(cle):
                 kwargs, mapping = _masquer_kwargs(nom_methode, kwargs)
-        except Exception:  # noqa: BLE001 — un masquage en panne ne doit pas
+        except Exception:  # noqa: BLE001 — un masquage en panne ne doit pas (D-ENF22-BLE001)
             # laisser filer la donnée : on refuse plutôt de transformer, et on
             # le dit dans les logs (le prompt d'origine part alors tel quel,
             # comme avant NTAI3 — jamais de perte de service silencieuse).
@@ -134,21 +134,21 @@ def _instrumenter(methode, nom_methode):
         debut = time.monotonic()
         try:
             resultat = methode(self, *args, **kwargs)
-        except Exception as exc:  # noqa: BLE001 — on journalise PUIS on relance
+        except Exception as exc:
             try:
                 record_usage(
                     capability=getattr(self, 'capability', 'llm'),
                     provider=getattr(self, 'key', 'noop'),
                     latency_ms=int((time.monotonic() - debut) * 1000),
                     success=False, error=str(exc))
-            except Exception:  # noqa: BLE001 — le journal ne masque rien
+            except Exception:  # noqa: BLE001 — le journal ne masque rien (D-ENF22-BLE001)
                 logger.warning('core.ai: usage non journalisé', exc_info=True)
             raise
 
         if mapping:
             try:
                 resultat = _demasquer_resultat(resultat, mapping)
-            except Exception:  # noqa: BLE001 — jetons visibles > texte perdu
+            except Exception:  # noqa: BLE001 — jetons visibles > texte perdu (D-ENF22-BLE001)
                 logger.warning('core.ai: re-substitution PII impossible',
                                exc_info=True)
 
@@ -162,7 +162,7 @@ def _instrumenter(methode, nom_methode):
                 latency_ms=int((time.monotonic() - debut) * 1000),
                 success=bool(getattr(resultat, 'ok', False)),
                 error=str(getattr(resultat, 'error', '') or ''))
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('core.ai: usage non journalisé', exc_info=True)
         return resultat
 

@@ -252,7 +252,7 @@ export default function PilotageStock({ onBcfGenere }) {
 
   // Le 1er chargement des 4 rapports ne peut arriver que dans un effet ; les
   // setState initiaux (remise à « loading ») sont volontaires.
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- premier chargement des 4 rapports, au montage seulement ; chargerTout est recréé à chaque rendu (D-ENF22)
   useEffect(() => { chargerTout() }, [])
 
   // WR3 — auto-PO : génère un BCF BROUILLON pour tous les produits sous seuil

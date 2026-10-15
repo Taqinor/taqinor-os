@@ -63,6 +63,16 @@ export default defineConfig([
       'react-refresh/only-export-components': 'off',
     },
   },
+  // ENF22 — `module.config.jsx` et `router/index.jsx` : fichiers de CONFIGURATION (données +
+  // pages lazy + loaders, lus par router/moduleRoutes), pas des modules de composants — le fast-refresh
+  // (HMR de dev uniquement) ne s'y applique pas. Remplace le bloc
+  // `eslint-disable` qui ouvrait chacun des 19 fichiers (D-ENF22).
+  {
+    files: ['src/features/*/module.config.jsx', 'src/router/index.jsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
   // Config Vitest + setup RTL : contexte Node/Vitest (pas l'app navigateur).
   {
     files: ['vitest.config.js', 'src/test/**/*.js'],

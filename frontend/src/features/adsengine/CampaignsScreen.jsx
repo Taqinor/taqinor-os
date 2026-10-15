@@ -152,7 +152,7 @@ export default function CampaignsScreen() {
     }
   }, [range])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   // ADSDEEP60 — ouvre la hiérarchie d'une campagne (Ad sets → Ads).

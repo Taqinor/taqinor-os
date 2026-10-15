@@ -244,7 +244,7 @@ def odoo_signatures_by_ad(company, since=None, client=None):
     try:
         deals = odoo_signed_deals(
             since=since, client=client, company=company)  # ASEC40
-    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
+    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500) (D-ENF22-BLE001)
         logger.warning("odoo_metrics.odoo_signatures_by_ad : erreur ignorée (mode dégradé)", exc_info=True)
         deals = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]
@@ -330,7 +330,7 @@ def odoo_cost_per_signature(company, since=None, client=None):
     try:
         deals = odoo_signed_deals(
             since=since, client=client, company=company)  # ASEC40
-    except Exception as exc:  # noqa: BLE001 — dégradation propre voulue (jamais un 500)
+    except Exception as exc:  # noqa: BLE001 — dégradation propre voulue (jamais un 500) (D-ENF22-BLE001)
         logger.warning("odoo_metrics.odoo_cost_per_signature : erreur ignorée (mode dégradé)", exc_info=True)
         deals = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]

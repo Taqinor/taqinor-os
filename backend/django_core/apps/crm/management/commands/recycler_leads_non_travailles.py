@@ -140,7 +140,7 @@ def _escalate(lead, seuil, now):
                 link=f'/crm/leads?lead={lead.pk}',
                 company=lead.company,
             )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("escalate : échec ignoré, comportement dégradé", exc_info=True)
 
 

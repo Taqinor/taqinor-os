@@ -7,7 +7,7 @@
    uploadAttachment / deleteAttachment. Le téléchargement passe TOUJOURS par
    `a.url` (= le proxy Django /records/attachments/<id>/download/ renvoyé par le
    sérialiseur) — jamais une URL MinIO brute. */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useIsAdmin } from '../hooks/useHasPermission'
 import { Paperclip, FileText, ImageOff, Trash2 } from 'lucide-react'
 import recordsApi from '../api/recordsApi'
@@ -36,11 +36,11 @@ export default function AttachmentsPanel({ model, id, onChange }) {
   // L866 — pièces dont l'aperçu image a échoué (objet MinIO supprimé/404).
   const [brokenThumbs, setBrokenThumbs] = useState({})
 
-  const load = () => {
+  const load = useCallback(() => {
     recordsApi.getAttachments(model, id)
       .then((r) => setItems(r.data.results ?? r.data)).catch(() => {})
-  }
-  useEffect(() => { load() }, [model, id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [model, id])
+  useEffect(() => { load() }, [load])
 
   // Envoi d'UN fichier — inchangé (compression + endpoint + progression).
   const uploadOne = async (file) => {

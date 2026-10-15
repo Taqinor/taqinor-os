@@ -50,7 +50,7 @@ export default function ChatPage() {
     const params = new URLSearchParams(location.search)
     const c = params.get('c')
     if (c && Number(c) !== activeId) dispatch(setActiveConversation(Number(c)))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [location.search])
 
   // À l'ouverture d'une conversation : charge le fil + épingles, marque lu.
@@ -69,7 +69,7 @@ export default function ChatPage() {
   // comportement historique) : jamais affichée — pas de défaut inventé.
   const [retention, setRetention] = useState(null)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset au changement de conversation
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset au changement de conversation (D-ENF22)
     setRetention(null)
     if (activeId == null) return
     let active = true

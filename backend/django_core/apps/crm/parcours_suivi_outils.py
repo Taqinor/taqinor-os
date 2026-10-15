@@ -493,7 +493,7 @@ class ParcoursBase(TestCase):
                 resp = self.api.get(url)
             else:
                 resp = getattr(self.api, methode)(url, corps or {}, format='json')
-        except Exception:  # noqa: BLE001 — I1 : le client de test RELÈVE l'erreur serveur
+        except Exception:  # noqa: BLE001 — I1 : le client de test RELÈVE l'erreur serveur (D-ENF22-BLE001)
             logger.warning("appel : échec ignoré, comportement dégradé", exc_info=True)
             self.fail(self.msg(f'I1 — {methode.upper()} {url} {corps or ""} : erreur serveur\n'
                                f'{traceback.format_exc()}'))

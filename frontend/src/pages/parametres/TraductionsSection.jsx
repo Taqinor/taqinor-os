@@ -94,7 +94,7 @@ export default function TraductionsSection() {
       || LOCALES.some(loc => String(cellValue(loc, k)).toLowerCase().includes(needle)))
     return groupByNamespace(keys)
     // cellValue dépend de drafts/overrides ; on recalcule quand ils changent.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `cellValue` dépend de drafts/overrides, recalcul quand ils changent (D-ENF22)
   }, [q, drafts, overrides])
 
   const dirtyCount = Object.keys(drafts).length

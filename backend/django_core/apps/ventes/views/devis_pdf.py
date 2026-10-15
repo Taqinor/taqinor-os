@@ -45,7 +45,7 @@ def _signaler_pdf_devis_genere(devis):
     from core.events import document_pdf_generated
     try:
         document_pdf_generated.send(sender=Devis, instance=devis, kind='devis')
-    except Exception:  # noqa: BLE001 — un journal raté ne casse pas le rendu
+    except Exception:  # noqa: BLE001 — un journal raté ne casse pas le rendu (D-ENF22-BLE001)
         logger.warning("devis_pdf._signaler_pdf_devis_genere : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
@@ -270,7 +270,7 @@ class DevisPdfActionsMixin:
             from ..quote_engine import cle_pdf_a_jour
             try:
                 cle = cle_pdf_a_jour(devis)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 logger.warning(
                     "devis_pdf.DevisPdfActionsMixin.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
                 import logging as _logging

@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_parite_image_ci as cp  # noqa: E402
+import check_parite_image_ci as cp  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 PROD = ("FROM python:3.11\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n"
         "    libcairo2 fonts-noto-core libxml2-dev \\\n    && rm -rf /var/lib/apt/lists/*\n")

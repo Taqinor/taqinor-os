@@ -8,6 +8,7 @@ risque de correction ET d'idempotence).
 Autodécouvert par ``erp_agentique.celery`` (``autodiscover_tasks()``).
 """
 import logging
+from importlib import import_module
 
 from celery import shared_task
 
@@ -268,7 +269,7 @@ def produire_rentabilite_xlsx_task(job_id=None, company_id=None,
         tampon = io.BytesIO()
         ecrire_classeur(donnees, tampon, reference_dossier=reference)
         octets = tampon.getvalue()
-    except Exception as erreur:  # noqa: BLE001 — le job porte le motif.
+    except Exception as erreur:  # noqa: BLE001 — le job porte le motif (D-ENF22-BLE001)
         message = str(erreur) or erreur.__class__.__name__
         logger.warning('ao.produire_rentabilite_xlsx : %s', message)
         if job is not None:
@@ -295,9 +296,9 @@ def produire_rentabilite_xlsx_task(job_id=None, company_id=None,
 # pour ne pas grossir ce fichier partagé par trois lanes. L'autodécouverte
 # Celery n'importe QUE ``<app>.tasks`` : ce ré-export est ce qui enregistre la
 # tâche ``ao.calculer_calepinage`` auprès du worker.
-from .calepinage_tasks import calculer_calepinage  # noqa: E402,F401
+import_module('.calepinage_tasks', __package__)
 
 # AOF71 — même raison pour l'ingestion d'un support de plan (rastérisation PDF
 # / normalisation d'image) : le corps vit dans ``ingestion_tasks``, ce
 # ré-export enregistre ``ao.ingerer_plan`` auprès du worker.
-from .ingestion_tasks import ingerer_plan  # noqa: E402,F401
+import_module('.ingestion_tasks', __package__)

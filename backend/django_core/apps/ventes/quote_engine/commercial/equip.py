@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """quote_engine commercial — PAGE 2 (équipements + totaux + bloc catégorie).
 
 ``build(ctx) -> str`` returns the INNER HTML of one A4 page (no wrapper/footer).

@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Rendu des catégories commerciales (QX46) — pictogramme + RENDU du contenu
 servi par ``ci/categories.py`` (CIQ330).
 

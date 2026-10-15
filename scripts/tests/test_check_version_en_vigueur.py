@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_version_en_vigueur as guard  # noqa: E402
+import check_version_en_vigueur as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 SANS_PREDICAT = '''
 def ca_signe(lead):

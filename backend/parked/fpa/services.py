@@ -1,4 +1,5 @@
 """Services (écritures/orchestration) de l'app FP&A (apps.fpa)."""
+import logging
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -44,7 +45,8 @@ def notifier_ouverture_cycle(cycle):
                    title=f'Saisie budgétaire ouverte — {cycle.nom}',
                    body='Vous pouvez saisir le budget de votre département.',
                    company=company)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("services.notifier_ouverture_cycle : erreur ignorée (mode dégradé)", exc_info=True)
             continue
 
 
@@ -106,7 +108,8 @@ def soumettre_budget_departement(company, cycle, departement, user):
                    body=f'Le budget de {departement.nom} ({cycle.nom}) '
                         'est soumis pour validation.',
                    company=company)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("services.soumettre_budget_departement : erreur ignorée (mode dégradé)", exc_info=True)
             continue
 
     return soumission

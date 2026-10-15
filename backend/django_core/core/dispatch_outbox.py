@@ -69,7 +69,7 @@ def deliver_one(event) -> bool:
         try:
             handler(event)
             _mark_processed(event.event_id, handler_name)
-        except Exception:  # noqa: BLE001 — un handler KO n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — un handler KO n'arrête pas les autres (D-ENF22-BLE001)
             logger.exception(
                 'dispatch_outbox: handler %s a échoué sur %s',
                 handler_name, event.event_id)
@@ -179,7 +179,7 @@ def replay_one_to_handler(event, handler_name: str) -> bool:
         event_id=event.event_id, handler_name=hname).delete()
     try:
         handler(event)
-    except Exception:  # noqa: BLE001 — remonté au caller (la commande logge)
+    except Exception:  # noqa: BLE001 — remonté au caller (la commande logge) (D-ENF22-BLE001)
         logger.exception(
             'replay_events: handler %s a échoué sur %s',
             hname, event.event_id)

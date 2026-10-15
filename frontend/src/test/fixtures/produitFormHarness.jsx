@@ -8,10 +8,10 @@ import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-// eslint-disable-next-line react-refresh/only-export-components -- fixture de test, pas de HMR
+// eslint-disable-next-line react-refresh/only-export-components -- fixture de test, pas de HMR (D-ENF22)
 const Passthrough = ({ children }) => <>{children}</>
 
-// eslint-disable-next-line react-refresh/only-export-components -- fixture de test, pas de HMR
+// eslint-disable-next-line react-refresh/only-export-components -- fixture de test, pas de HMR (D-ENF22)
 const SelectNatif = ({ value, onValueChange, children }) => {
   const kids = Array.isArray(children) ? children : [children]
   const trigger = kids.find((k) => k?.props?.id)

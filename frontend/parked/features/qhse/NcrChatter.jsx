@@ -57,7 +57,7 @@ function ChatterCard({ resourceId, fetchHistorique, postNote, title = 'Historiqu
     }
   }, [resourceId, fetchHistorique])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
   useEffect(() => { load() }, [load])
 
   async function submit(e) {

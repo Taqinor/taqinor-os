@@ -341,7 +341,7 @@ def analyser_page(html, url_base=''):
             extraction.ignorees.append((indice, str(motif)))
             logger.warning(
                 'veille_ao.portail : ligne %s ignorée — %s', indice, motif)
-        except Exception as erreur:  # noqa: BLE001 — une ligne ne tue pas la page
+        except Exception as erreur:  # noqa: BLE001 — une ligne ne tue pas la page (D-ENF22-BLE001)
             extraction.ignorees.append((indice, f'erreur inattendue : {erreur}'))
             logger.exception(
                 'veille_ao.portail : ligne %s illisible', indice)

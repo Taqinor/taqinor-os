@@ -27,7 +27,7 @@ def generer_seances_semaine_task():
         try:
             creees = generer_seances_semaine(company)
             total += len(creees)
-        except Exception:  # noqa: BLE001 - défensif, best-effort
+        except Exception:  # noqa: BLE001 — défensif, best-effort (D-ENF22-BLE001)
             logger.exception(
                 'education.generer_seances_semaine: échec société %s',
                 company.id)
@@ -48,7 +48,7 @@ def relancer_reinscriptions_task():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += relancer_reinscriptions_dues(company)
-        except Exception:  # noqa: BLE001 - défensif, best-effort
+        except Exception:  # noqa: BLE001 — défensif, best-effort (D-ENF22-BLE001)
             logger.exception(
                 'education.relancer_reinscriptions: échec société %s',
                 company.id)

@@ -16,7 +16,7 @@ export default function useLectureSeule(charger, initial, vide, messageErreur) {
       .catch(() => { if (active) setErreur(messageErreur) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement (D-ENF22)
   }, [])
 
   return { data, loading, erreur }

@@ -64,10 +64,10 @@ function ResourceTab({ fetcher, columns, emptyLabel }) {
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   if (loading) return (

@@ -126,7 +126,7 @@ def purger_tenant(company, user=None, now=None):
         # subject_identifier vide → on efface au niveau société entière : chaque
         # fournisseur DSR est déjà scopé société. On journalise le décompte.
         resultats = dsr.effacer(company, subject_identifier='*')
-    except Exception as exc:  # noqa: BLE001 — un fournisseur KO n'arrête pas tout
+    except Exception as exc:  # noqa: BLE001 — un fournisseur KO n'arrête pas tout (D-ENF22-BLE001)
         logger.warning('purge tenant %s: DSR effacer a échoué: %s',
                        company_id, exc)
     _journaliser(company, user,

@@ -21,9 +21,9 @@ from django.db import transaction
 
 T0 = time.time()
 
-from apps.ventes.models import Devis  # noqa: E402
-from apps.ventes.quote_engine import builder as B  # noqa: E402
-from apps.ventes.quote_engine.residential import renderer as R  # noqa: E402
+from apps.ventes.models import Devis  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from apps.ventes.quote_engine import builder as B  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
+from apps.ventes.quote_engine.residential import renderer as R  # noqa: E402 — après la configuration Django (réglages/setup) (D-ENF22)
 
 # Audit never needs the roof photo (MinIO GET per devis) — patched in THIS
 # shell process only; nothing on disk changes.
@@ -132,7 +132,7 @@ def tariff_ctx(company):
                 c = float(e[0])
                 if c < 1e6:
                     ceils.append(c)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — prototype d'audit : un échec vaut donnée absente (D-ENF22-BLE001)
                 continue
         if ceils:
             ctx["top_start"] = max(ceils)
@@ -140,9 +140,9 @@ def tariff_ctx(company):
         try:
             ctx["fixed_mois"] = float(
                 part_non_solarisable(cf)["montant_mad_mois"])
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — prototype d'audit : un échec vaut donnée absente (D-ENF22-BLE001)
             pass
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — prototype d'audit : un échec vaut donnée absente (D-ENF22-BLE001)
         pass
     _TARIF_CACHE[key] = ctx
     return ctx
@@ -164,7 +164,7 @@ def real_bills(devis, ep):
                                     b.get("ete_differente"))
         if serie:
             return [float(v) for v in serie], "lead_hiver_ete"
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — prototype d'audit : un échec vaut donnée absente (D-ENF22-BLE001)
         pass
     return None, None
 
@@ -177,7 +177,7 @@ def py_conso_from_bills(bills, ctx):
             charges_fixes_mad=ctx["charges_fixes"])
         if kwh:
             return float(sum(kwh))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — prototype d'audit : un échec vaut donnée absente (D-ENF22-BLE001)
         return None
     return None
 
@@ -188,7 +188,7 @@ def printed_layer(data):
         d = R._augment(data)
     except R.Unsupported:
         return None, "legacy_renderer"
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return None, f"augment_error:{type(e).__name__}"
     if d.get("masquer_synthese") or d.get("masquer_economies"):
         return None, "economic_layer_omitted"
@@ -233,7 +233,7 @@ def safe_build(devis, opts=None, tag="build"):
     try:
         with transaction.atomic():
             return B.build_quote_data(devis, opts)
-    except Exception as e:  # noqa: BLE001
+    except Exception as e:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         exceptions[f"{tag}:{type(e).__name__}"] += 1
         if len(exc_examples[tag]) < 3:
             exc_examples[tag].append(
@@ -271,7 +271,7 @@ def audit_one(devis):
     if resid:
         try:
             synth = R.synthese_economies(data)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
             exceptions[f"synthese:{type(e).__name__}"] += 1
         printed, why = printed_layer(data)
     stats[f"page1:{why}"] += 1
@@ -507,7 +507,7 @@ with transaction.atomic():
             try:
                 with transaction.atomic():
                     audit_one(devis)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
                 exceptions[f"audit:{type(e).__name__}"] += 1
                 if len(exc_examples["audit"]) < 5:
                     exc_examples["audit"].append(

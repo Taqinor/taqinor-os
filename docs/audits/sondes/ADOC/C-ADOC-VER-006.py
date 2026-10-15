@@ -16,7 +16,7 @@ def sonde(ctx):
         doc2, c2 = services.generer_document(modele, {'nom': 'A'}, company=co)
         refuse = False
         print(f"regénération acceptée : meme_doc={doc2.pk == doc.pk} cree={c2}")
-    except Exception as exc:  # noqa: BLE001 — on veut voir le refus
+    except Exception as exc:  # noqa: BLE001 — on veut voir le refus (D-ENF22-BLE001)
         refuse = True
         print(f"refus : {type(exc).__name__} : {exc}")
     n = DocumentVersion.objects.filter(document=doc).count()

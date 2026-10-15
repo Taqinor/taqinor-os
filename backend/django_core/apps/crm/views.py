@@ -519,7 +519,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         for nom, valeur in vd.items():
             try:
                 champ = Lead._meta.get_field(nom)
-            except Exception:  # noqa: BLE001 — champ non modèle
+            except Exception:  # noqa: BLE001 — champ non modèle (D-ENF22-BLE001)
                 return True
             if getattr(champ, 'many_to_many', False):
                 actuel = set(getattr(old, nom).values_list('pk', flat=True))
@@ -666,7 +666,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                     reporter_prochaine_touche(
                         new_lead, self.request.user,
                         quand_rappel or new_lead.relance_date)
-                except Exception as exc:  # noqa: BLE001 — tout est annulé
+                except Exception as exc:
                     logger.warning(
                         'ALEA30: report de touche échoué sur le lead #%s — '
                         'PATCH annulé', new_lead.pk, exc_info=True)
@@ -686,7 +686,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             from .cadence_filet import poser_rappel_subvention
             try:
                 poser_rappel_subvention(new_lead, self.request.user)
-            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead (D-ENF22-BLE001)
                 logger.warning('AGR522: rappel FDA non posé (lead #%s)',
                                new_lead.pk, exc_info=True)
         # CIQ513 — « Qui décide » noté au téléphone (conjoint/famille,
@@ -698,7 +698,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             try:
                 poser_decision_a_plusieurs_depuis_decideur(
                     new_lead, self.request.user)
-            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead (D-ENF22-BLE001)
                 logger.warning('CIQ513: étiquette non posée (lead #%s)',
                                new_lead.pk, exc_info=True)
         # AGR525 — la pompe passe au butane sur un agricole déjà contacté :
@@ -708,7 +708,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             from .fiche_funnel import rattraper_playbooks_pompe
             try:
                 rattraper_playbooks_pompe(new_lead)
-            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead (D-ENF22-BLE001)
                 logger.warning('AGR525: tâche FDA non générée (lead #%s)',
                                new_lead.pk, exc_info=True)
         # CIQ517 — un commercial/industriel déjà contacté passe en MT, en
@@ -720,7 +720,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             from .fiche_funnel import rattraper_playbooks_8221
             try:
                 rattraper_playbooks_8221(new_lead)
-            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead (D-ENF22-BLE001)
                 logger.warning('CIQ517: tâche 82-21 non générée (lead #%s)',
                                new_lead.pk, exc_info=True)
         # QJR590 — une correction d'identité du lead suit sur SA fiche Client
@@ -732,7 +732,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             from .clients_identite import synchroniser_identite_client
             try:
                 synchroniser_identite_client(new_lead, old, self.request.user)
-            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+            except Exception:  # noqa: BLE001 — jamais bloquant pour le lead (D-ENF22-BLE001)
                 logger.warning(
                     'QJR590: synchronisation client échouée (lead #%s)',
                     new_lead.pk, exc_info=True)
@@ -762,7 +762,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 annuler_rendez_vous_sur_arret(
                     new_lead, self.request.user,
                     cause=CAUSE_RDV_NE_PLUS_CONTACTER)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'MRY9: arrêt de cadence échoué sur le lead #%s',
                 new_lead.pk, exc_info=True)
@@ -792,7 +792,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             if old.perdu and not new_lead.perdu:
                 reprendre_cadence_apres_reouverture(
                     new_lead, self.request.user, origine='fiche rouverte')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'CAD107: reprise non posée sur le lead #%s',
                 new_lead.pk, exc_info=True)
@@ -1491,7 +1491,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             if quand is not None:
                 try:
                     reporter_prochaine_touche(lead, request.user, quand)
-                except Exception as exc:  # noqa: BLE001 — tout est annulé
+                except Exception as exc:
                     logger.warning(
                         'ALEA30: report de touche échoué sur le lead #%s — '
                         'interaction annulée', lead.pk, exc_info=True)

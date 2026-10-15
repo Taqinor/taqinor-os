@@ -56,7 +56,7 @@ def lead_pre_save(sender, instance, **kwargs):
         try:
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'owner_id', flat=True).first()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("lead pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_OWNER_ATTR, old)
@@ -80,7 +80,7 @@ def lead_post_save(sender, instance, created, **kwargs):
             link=f'/crm/leads?lead={instance.pk}',
             reason='assigne_a_vous',  # VX212(a)
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception('notify LEAD_ASSIGNED failed (lead %s)', instance.pk)
 
 
@@ -91,7 +91,7 @@ def devis_pre_save(sender, instance, **kwargs):
         try:
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'statut', flat=True).first()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("devis pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_STATUT_ATTR, old)
@@ -119,7 +119,7 @@ def devis_post_save(sender, instance, created, **kwargs):
             # front ; DevisList consomme le param ?devis=<pk>.
             link=f'/ventes/devis?devis={instance.pk}',
         )
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception('notify DEVIS_ACCEPTED failed (devis %s)', instance.pk)
 
 
@@ -143,7 +143,7 @@ def devis_expired_receiver(sender, devis, ancien_statut, **kwargs):
             # QX12be — deep-link qui atterrit (voir devis_post_save).
             link=f'/ventes/devis?devis={devis.pk}',
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception('notify DEVIS_EXPIRED failed (devis %s)', devis.pk)
 
 
@@ -205,7 +205,7 @@ def bon_commande_cree_receiver(sender, instance, company, **kwargs):
             company=company,
             reason=reason,
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify BON_COMMANDE_CREE failed (bc %s)', instance.pk)
 
@@ -248,7 +248,7 @@ def ticket_resolu_receiver(sender, ticket, company, user, ancien_statut,
             # TicketsPage (`/sav`) consomme `?id=<pk>`.
             link=f'/sav?id={ticket.pk}',
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify SAV_TICKET_RESOLU failed (ticket %s)', ticket.pk)
 
@@ -273,7 +273,7 @@ def equipement_remplace_receiver(sender, equipement, ticket, company, user,
                 link=f'/sav?id={ticket.pk}',
                 company=company,
             )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify SAV_EQUIPEMENT_REMPLACE failed (equipement %s)',
             getattr(equipement, 'pk', '?'))
@@ -299,7 +299,7 @@ def sav_ticket_post_save(sender, instance, created, **kwargs):
         client_nom = ''
         try:
             client_nom = getattr(instance.client, 'nom', '') or ''
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("sav ticket post save : échec ignoré, comportement dégradé", exc_info=True)
             client_nom = ''
         title = 'Ticket SAV ouvert'
@@ -315,7 +315,7 @@ def sav_ticket_post_save(sender, instance, created, **kwargs):
         # `technicien` est None — un seul appel couvre les deux cas.
         _notify_user_or_managers(
             technicien, company, EventType.SAV_TICKET_OPENED, title, body, link)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify SAV_TICKET_OPENED failed (ticket %s)', instance.pk)
 
@@ -329,7 +329,7 @@ def automation_approval_pre_save(sender, instance, **kwargs):
         try:
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'status', flat=True).first()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("automation approval pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_STATUT_ATTR, old)
@@ -368,7 +368,7 @@ def automation_approval_post_save(sender, instance, created, **kwargs):
         notify(
             requester, EventType.APPROVAL_DECIDED, 'Approbation décidée',
             body=body, link=link, company=company)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify APPROVAL_* failed (automation approval %s)', instance.pk)
 
@@ -389,7 +389,7 @@ def demande_achat_pre_save(sender, instance, **kwargs):
         try:
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'statut', flat=True).first()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("demande achat pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_DA_STATUT_ATTR, old)
@@ -443,7 +443,7 @@ def demande_achat_post_save(sender, instance, created, **kwargs):
         notify(
             requester, EventType.APPROVAL_DECIDED, 'Approbation décidée',
             body=body, link=link, company=company)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify APPROVAL_* failed (demande achat %s)', instance.pk)
 
@@ -464,7 +464,7 @@ def ged_demande_approbation_pre_save(sender, instance, **kwargs):
         try:
             old = sender.objects.filter(pk=instance.pk).values_list(
                 'statut', flat=True).first()
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("ged demande approbation pre save : échec ignoré, comportement dégradé", exc_info=True)
             old = None
     setattr(instance, _OLD_GED_DEMANDE_STATUT_ATTR, old)
@@ -513,7 +513,7 @@ def ged_demande_approbation_post_save(sender, instance, created, **kwargs):
         _notify_user_or_managers(
             requester, company, EventType.APPROVAL_DECIDED,
             'Approbation décidée', body, link)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify APPROVAL_* failed (ged demande approbation %s)',
             instance.pk)
@@ -543,7 +543,7 @@ def dossier_echeance_depassee_receiver(
                   f'du {dossier.echeance:%d/%m/%Y}.'),
             company=company,
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'notify DOSSIER_ECHEANCE_DEPASSEE failed (dossier %s)',
             getattr(dossier, 'pk', '?'))

@@ -31,7 +31,7 @@ function useEconomiePompageCarte(corps) {
   const [erreur, setErreur] = useState(null)
   useEffect(() => {
     if (!debouncedKey || typeof ventesApi.economiePompagePreview !== 'function') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps (D-ENF22)
       setDonnees(null)
       setErreur(null)
       return undefined

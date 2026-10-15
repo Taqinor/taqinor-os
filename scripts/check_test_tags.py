@@ -36,7 +36,7 @@ def main() -> int:
             continue
         try:
             src = p.read_text(encoding='utf-8')
-        except Exception:  # noqa: BLE001
+        except (OSError, UnicodeDecodeError):
             continue
         if HEAVY.search(src) and not HAS_TAG.search(src):
             offenders.append(p.relative_to(ROOT))

@@ -1146,7 +1146,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # contrat = illimité : aucun avertissement possible dans ce cas.
         if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
             from .models import ContratMaintenance
-            from .selectors import droits_restants
+            from .droits_contrat import droits_restants
             # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
             contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None:

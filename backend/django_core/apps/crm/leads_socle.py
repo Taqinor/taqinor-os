@@ -26,7 +26,7 @@ def _company_fallback_managers(company):
             company=company, is_active=True,
             role__nom__in=('Commercial responsable', 'Directeur'),
         ).order_by('id'))
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_company_fallback_managers', exc_info=True)
         return []
 

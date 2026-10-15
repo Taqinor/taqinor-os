@@ -631,10 +631,10 @@ def _nudge_suppressed(devis, today, engagement_days=3):
                     try:
                         if fn(devis.company, lead_id):
                             return True
-                    except Exception:  # noqa: BLE001
+                    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                         logger.warning(
                             "recouvrement._nudge_suppressed : erreur ignorée (mode dégradé)", exc_info=True)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("recouvrement._nudge_suppressed : erreur ignorée (mode dégradé)", exc_info=True)
     # Engagement proposition récent (ShareLink — in-lane).
     try:
@@ -648,7 +648,7 @@ def _nudge_suppressed(devis, today, engagement_days=3):
             seen_date = seen.date() if hasattr(seen, 'date') else seen
             if seen_date >= today - timedelta(days=engagement_days):
                 return True
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("recouvrement._nudge_suppressed : erreur ignorée (mode dégradé)", exc_info=True)
     return False
 
@@ -810,7 +810,7 @@ def send_devis_followup_nudges():
                                      if wa_url else '')),
                             link=f'/ventes/devis?devis={devis.id}',
                             company=devis.company)
-                    except Exception as exc:  # noqa: BLE001 — best-effort
+                    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
                         logger.warning(
                             'QX13: notification relance échec devis %s : %s',
                             devis.reference, exc)
@@ -849,7 +849,7 @@ def _send_nudge_email(*, to_email, devis_ref, subject_fr, body_fr):
         from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
         send_mail(subject_fr, body_fr, from_email, [to_email], fail_silently=False)
         logger.info('QJ4: email relance envoyé à %s (devis %s)', to_email, devis_ref)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('QJ4: email relance échec pour %s: %s', devis_ref, exc)
 
 
@@ -932,7 +932,7 @@ def expire_stale_devis():
             _act.log_devis_note(
                 devis, None,
                 'Devis expiré automatiquement (date de validité dépassée).')
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('QJ5: log chatter échec devis %s : %s',
                            devis.reference, exc)
 
@@ -950,7 +950,7 @@ def expire_stale_devis():
             from core.events import devis_expired
             devis_expired.send(
                 sender=Devis, devis=devis, ancien_statut='envoye')
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('YEVNT2: devis_expired échoué pour devis %s : %s',
                            devis.reference, exc)
 
@@ -965,7 +965,7 @@ def expire_stale_devis():
             fup, cold = _advance_lead_on_expiry(lead, today=today)
             funnel_followup += int(fup)
             funnel_cold += int(cold)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('QJ5: avance funnel échec lead %s : %s',
                            getattr(lead, 'pk', '?'), exc)
 

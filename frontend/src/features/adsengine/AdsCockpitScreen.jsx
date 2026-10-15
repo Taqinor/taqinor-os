@@ -113,7 +113,7 @@ function AdThumbnail({ mediaRef, kind }) {
   const [url, setUrl] = useState('')
   useEffect(() => {
     let alive = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement de mediaRef/kind)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement de mediaRef/kind) (D-ENF22)
     setUrl('')
     if (mediaRef && kind === 'image') {
       adsengineApi.media.resolve(mediaRef, 'image')
@@ -161,7 +161,7 @@ function AdRetentionCurve({ adMetaId, kind }) {
 
   useEffect(() => {
     let alive = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement d'ad)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise avant résolution (changement d'ad) (D-ENF22)
     setPoint(null)
     setRetentionError(false)
     if (kind !== 'video' || !adMetaId) return undefined
@@ -277,7 +277,7 @@ export default function AdsCockpitScreen() {
     }
   }, [range])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   // PUB43 — mémorise le dernier onglet/tri choisi (localStorage) à chaque

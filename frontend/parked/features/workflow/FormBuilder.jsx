@@ -223,7 +223,7 @@ export default function FormBuilder() {
     try {
       const payload = {
         nom,
-        // eslint-disable-next-line no-unused-vars -- `_visibleSi` extrait pour l'exclure du payload (rest sibling, cf. NTWFL12 plus haut)
+        // eslint-disable-next-line no-unused-vars -- `_visibleSi` extrait pour l'exclure du payload (rest sibling, cf. NTWFL12 plus haut) (D-ENF22)
         schema: schema.map(({ _visibleSi, ...c }) => c),
         champs_conditionnels: champsConditionnelsApercu,
       }

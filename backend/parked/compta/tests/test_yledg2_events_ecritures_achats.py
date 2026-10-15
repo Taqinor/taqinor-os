@@ -15,7 +15,7 @@ from apps.compta.models import EcritureComptable
 from apps.stock.models import FactureFournisseur, Fournisseur, PaiementFournisseur
 from core.events import facture_fournisseur_creee, paiement_fournisseur_enregistre
 
-from apps.compta import receivers  # noqa: F401  (câblage ready())
+__import__('apps.compta.receivers')  # câblage ready()
 
 
 def make_company(slug='yledg2-co', nom='YLEDG2 Co'):

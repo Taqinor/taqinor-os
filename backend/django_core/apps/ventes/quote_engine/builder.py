@@ -171,7 +171,7 @@ def _roof_render_data_uri(devis) -> str:
         mime = "image/jpeg" if key.lower().endswith(
             (".jpg", ".jpeg")) else "image/png"
         return f"data:{mime};base64," + base64.b64encode(data).decode()
-    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus (D-ENF22-BLE001)
         logger.warning("CALEPDF: rendu de calepinage illisible pour le devis %s",
                        getattr(devis, "pk", None))
         return ""
@@ -206,7 +206,7 @@ def _sld_svg(devis) -> str:
     try:
         from apps.ventes.electrical_service import rendre_schema_du_devis
         return rendre_schema_du_devis(devis) or ""
-    except Exception:  # noqa: BLE001 — un schéma absent ne casse jamais un devis
+    except Exception:  # noqa: BLE001 — un schéma absent ne casse jamais un devis (D-ENF22-BLE001)
         logger.warning("PV46: schéma unifilaire indisponible pour le devis %s",
                        getattr(devis, "pk", None))
         return ""
@@ -262,7 +262,7 @@ def _conception_divergente_du_devis(devis) -> bool:
             return False
         return bool(peremption_layout_devis(
             devis, calepinage=calepinage).get('conception_divergente'))
-    except Exception:  # noqa: BLE001 — une lecture ratée ne casse pas un PDF
+    except Exception:  # noqa: BLE001 — une lecture ratée ne casse pas un PDF (D-ENF22-BLE001)
         logger.warning("ACAL46: divergence de conception illisible pour le "
                        "devis %s", getattr(devis, "pk", None))
         return False
@@ -324,7 +324,7 @@ def _planche_calepinage(devis):
         svg = _calepinage_services.rendre_planche_svg(
             calepinage, pied=empreinte) or ""
         return _svg_planche_inline(svg), empreinte
-    except Exception:  # noqa: BLE001 — une planche absente ne casse pas un PDF
+    except Exception:  # noqa: BLE001 — une planche absente ne casse pas un PDF (D-ENF22-BLE001)
         logger.warning("CAL182: planche de calepinage indisponible pour le "
                        "devis %s", getattr(devis, "pk", None))
         return "", ""
@@ -513,7 +513,7 @@ def tranches_echeancier_en_montant(devis):
         from apps.ventes.utils.echeancier import (UNITE_MONTANT,
                                                   tranches_normalisees)
         tranches = tranches_normalisees(devis)
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.warning("builder.tranches_echeancier_en_montant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if len(tranches) in (2, 3) and any(
@@ -559,7 +559,7 @@ def reference_remplacee(devis) -> str:
     try:
         ref = (devis.remplace.order_by("-id")
                .values_list("reference", flat=True).first())
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.warning("builder.reference_remplacee : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
     return ref or ""
@@ -874,7 +874,7 @@ def _kwc_du_registre_origine(devis):
         _kwc_impose, _source_kwc = _effectif(devis, 'taille.kwc', None)
         if _source_kwc != 'auto' and _kwc_impose:
             return round(float(_kwc_impose), 2)
-    except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge.
+    except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge (D-ENF22-BLE001)
         logger.warning("builder._kwc_du_registre_origine : erreur ignorée (mode dégradé)", exc_info=True)
         pass
     return None
@@ -905,7 +905,7 @@ def _kwc_du_registre(devis):
         _kwc = puissance_kwc_du_devis(devis)
         if _kwc:
             return round(float(_kwc), 2)
-    except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge.
+    except Exception:  # noqa: BLE001 — registre illisible : pas de surcharge (D-ENF22-BLE001)
         logger.warning("builder._kwc_du_registre : erreur ignorée (mode dégradé)", exc_info=True)
         pass
     return None
@@ -1203,7 +1203,7 @@ def _ville_du_devis(devis, etude):
         from apps.crm.selectors import ville_effective
         reference = ville_effective(_lead)
         return reference, _libelle_ville(getattr(_lead, "ville", ""), reference)
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.warning("builder._ville_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return "", ""
 
@@ -1228,7 +1228,7 @@ def _marqueurs_cgv_ci(devis, tva_note, langue=None):
     jalons = []
     try:
         tranches = tranches_normalisees(devis)
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un texte
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un texte (D-ENF22-BLE001)
         logger.warning("builder._marqueurs_cgv_ci : erreur ignorée (mode dégradé)", exc_info=True)
         tranches = []
     for t in tranches:
@@ -1341,7 +1341,7 @@ def _entreprise_avec_logo(devis, entreprise, pdf_options):
             _rogne, _ext = _pdf._trim_image_whitespace(_brut)
             entreprise = dict(entreprise, logo_uri=_pdf._to_data_uri(
                 _rogne, _ext or _cle_logo))
-    except Exception:  # noqa: BLE001 — un logo illisible ne casse rien
+    except Exception:  # noqa: BLE001 — un logo illisible ne casse rien (D-ENF22-BLE001)
         logger.warning("builder._entreprise_avec_logo : erreur ignorée (mode dégradé)", exc_info=True)
         pass
     return entreprise
@@ -1637,7 +1637,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             _langue = resolve_langue_sortie(
                 client=getattr(devis, 'client', None),
                 company=getattr(devis, 'company', None))
-        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
             logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             _langue = None
         if _langue in LANGUES_SORTIE_PDF and _langue != 'fr':
@@ -2450,7 +2450,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from apps.ventes.etude_horaire import _reglages_tarifaires
         _co_tranches, _co_charges_fixes = _reglages_tarifaires(
             getattr(devis, "company", None))
-    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         _co_tranches = None
     # COUV-HOR/CAD167 — Q7 : TOUT distributeur (ONEE, Lydec, Redal, SRM,
@@ -2482,7 +2482,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     try:
         from apps.parametres.selectors import tariff_for
         _tariff = tariff_for(getattr(devis, "company", None))
-    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici (D-ENF22-BLE001)
         # QJR158 (d) — CET ÉCHEC PARLE. Muet, il faisait retomber le document
         # sur le productible de repli SANS que rien, nulle part, n'indique que
         # le repère de la société n'avait pas pu être lu : une production
@@ -2503,7 +2503,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         from .productible import productible_for_city
         _productible = productible_for_city(
             _client_city, override=_co_productible)
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         # QJR158 (d) — MÊME RAISON : sans société pour le surcharger,
         # ``_co_productible`` vaut ``None`` et c'est le repli de ``pricing``
         # qui sert. Il vaut désormais le repli CANONIQUE du dépôt (1651), et
@@ -2773,7 +2773,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 economie_ci_pour_devis, economie_ci_publique)
             _economie_ci = economie_ci_publique(economie_ci_pour_devis(
                 devis, getattr(devis, "company", None)))
-        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
             logger.exception("economie_ci: échec (devis %s)",
                              getattr(devis, "reference", "?"))
             _economie_ci = None
@@ -2787,7 +2787,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         try:
             from .constants_82_21 import MENTION_MT
             tarif_mt_mention = MENTION_MT
-        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
             logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             tarif_mt_mention = ""
 
@@ -3255,7 +3255,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "installation": (
                 getattr(_prof, "delai_installation", "") or "").strip(),
         }
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un réglage
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur un réglage (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         _delais = {"visite_technique": "", "installation": ""}
 
@@ -3271,7 +3271,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             if _jours > 0:
                 _valid_until_txt = _exp.strftime("%d/%m/%Y")
                 _validity_days = _jours
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur une date
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais sur une date (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         _valid_until_txt = _validity_days = None
 
@@ -3587,7 +3587,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         try:
             from apps.parametres.models_documents import DocumentTemplates
             return DocumentTemplates.get(company=_company).as_doc_texts()
-        except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus (D-ENF22-BLE001)
             logger.warning("builder.build_quote_data._load_doc_texts : erreur ignorée (mode dégradé)", exc_info=True)
             return {}
 
@@ -3609,7 +3609,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     try:
         from apps.parametres.selectors import company_identity
         entreprise = company_identity(getattr(devis, "company", None))
-    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         entreprise = {}
     # APDF4 — logo TÉLÉVERSÉ de la société, sur le seul chemin de RENDU.
@@ -3699,7 +3699,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             links["signer"] = f"{_signer_base}{chemin_proposition(devis, _share.token)}"
     except _PasDeLienSigner:
         links = {}
-    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         links = {}
 
@@ -3720,7 +3720,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 seller["nom"] = _full
             # Repli sur le téléphone société quand l'utilisateur n'en a pas.
             seller["telephone"] = _tel or (entreprise.get("telephone") or "")
-    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus (D-ENF22-BLE001)
         logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
         seller = {"nom": "", "telephone": ""}
 
@@ -4254,7 +4254,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                     for g in _mv["groupes"]],
                 "grand_total": _f(_mv["grand_total"]),
             }
-    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici (D-ENF22-BLE001)
         logger.exception("QJ29 multi-propriétés: ignoré (devis %s)",
                          getattr(devis, "reference", "?"))
 
@@ -4434,7 +4434,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 dict(j, pct=_pct_simple(j["pct"]),
                      montant_ttc=float(j["montant_ttc"]))
                 for j in jalons_paiement_devis(devis, lignes)]
-        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+        except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
             logger.exception("jalons_paiement: échec (devis %s)",
                              getattr(devis, "reference", "?"))
         # CIQ309 — identité de l'entreprise cliente (contrat client
@@ -4469,7 +4469,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             from apps.parametres.selectors import regle_fda_pompage_pour
             _regle_fda = regle_fda_pompage_pour(
                 getattr(devis, "company", None))
-        except Exception:  # noqa: BLE001 — repli daté du module
+        except Exception:  # noqa: BLE001 — repli daté du module (D-ENF22-BLE001)
             logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             _regle_fda = {}
         if _regle_fda:
@@ -4492,7 +4492,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 )
                 _eco_pompage = economie_pompage_publique_pour_devis(
                     devis.pk, getattr(devis, "company", None))
-            except Exception:  # noqa: BLE001 — la synthèse omet, motivée
+            except Exception:  # noqa: BLE001 — la synthèse omet, motivée (D-ENF22-BLE001)
                 logger.exception("economie_pompage: échec (devis %s)",
                                  getattr(devis, "reference", "?"))
                 _eco_pompage = None
@@ -4521,7 +4521,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         try:
             from apps.crm.selectors import entrees_ci_du_lead
             _entrees_ci = entrees_ci_du_lead(getattr(devis, "lead", None))
-        except Exception:  # noqa: BLE001 — la synthèse omet, jamais ne casse
+        except Exception:  # noqa: BLE001 — la synthèse omet, jamais ne casse (D-ENF22-BLE001)
             logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             _entrees_ci = None
         if _entrees_ci:
@@ -4546,7 +4546,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 from apps.ventes.domain.argent import totaux as _totaux_noyau
                 _ttc_noyau = float(_totaux_noyau(
                     devis, vue=_Vue.NET, unitaire=True).ttc)
-            except Exception:  # noqa: BLE001 — une garde ne casse jamais
+            except Exception:  # noqa: BLE001 — une garde ne casse jamais (D-ENF22-BLE001)
                 logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
                 _ttc_noyau = None
         for _e in ecarts_totaux_imprimes(data, _ttc_noyau):
@@ -4625,7 +4625,7 @@ def _references_pompage(devis):
         refs = realisations_proches(
             _LeadVuAgricole(getattr(devis, "lead", None),
                             getattr(devis, "company", None)), limite=5)
-    except Exception:  # noqa: BLE001 — l'annexe dit « aucune référence »
+    except Exception:  # noqa: BLE001 — l'annexe dit « aucune référence » (D-ENF22-BLE001)
         logger.exception("references_pompage: échec (devis %s)",
                          getattr(devis, "reference", "?"))
         return []
@@ -4690,7 +4690,7 @@ def services_ci_du_devis(devis):
                "optionnelle": bool(li.get("optionnelle"))}
               for li in lignes_pour_economie_ci(devis)
               if li.get("role_ci") == "om_ci"]
-    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus
+    except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.exception("services_ci: lignes O&M illisibles (devis %s)",
                          getattr(devis, "reference", "?"))
     delai = None
@@ -4701,7 +4701,7 @@ def services_ci_du_devis(devis):
             delai = (CompanyProfile.objects.filter(company=company)
                      .values_list("delai_intervention_suivi_heures",
                                   flat=True).first())
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("builder.services_ci_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
             delai = None
     return om, delai
@@ -4879,7 +4879,7 @@ def display_totals(devis, *, lignes_prechargees=False, donnees=None) -> dict:
         if total is None:
             total = data["display_total"]
         return {"total": total, "nb_options": data["nb_options"]}
-    except Exception:  # noqa: BLE001 — une liste ne doit jamais casser
+    except Exception:  # noqa: BLE001 — une liste ne doit jamais casser (D-ENF22-BLE001)
         logger.exception("display_totals: moteur en échec (devis %s)",
                          getattr(devis, "reference", "?"))
         # PVAB (incident DEV-202608-0015) — le repli n'affiche JAMAIS la somme
@@ -4889,7 +4889,7 @@ def display_totals(devis, *, lignes_prechargees=False, donnees=None) -> dict:
         try:
             from apps.ventes.utils.options import totaux_affichage_repli
             return totaux_affichage_repli(devis)
-        except Exception:  # noqa: BLE001 — dernier filet : total stocké
+        except Exception:  # noqa: BLE001 — dernier filet : total stocké (D-ENF22-BLE001)
             logger.exception("display_totals: repli léger en échec (devis %s)",
                              getattr(devis, "reference", "?"))
             return {"total": float(devis.total_ttc), "nb_options": 1}
@@ -4921,7 +4921,7 @@ def _compte_du_layout(roof_layout) -> int:
     from apps.ventes.domain.geometrie import lire_layout
     try:
         return int(lire_layout(roof_layout).compte or 0)
-    except Exception:  # noqa: BLE001 — un layout illisible n'éteint pas un PDF
+    except Exception:  # noqa: BLE001 — un layout illisible n'éteint pas un PDF (D-ENF22-BLE001)
         logger.warning("ACAL60: layout illisible pour le compte de panneaux")
         return 0
 
@@ -5297,7 +5297,7 @@ def cle_pdf_a_jour(devis, pdf_options=None) -> str:
             _opts_empreinte["_embed_calepinage_planche"] = True
             attendue = empreinte_donnees_pdf(
                 build_quote_data(devis, _opts_empreinte))
-        except Exception:  # noqa: BLE001 — un devis illisible se re-rend
+        except Exception:  # noqa: BLE001 — un devis illisible se re-rend (D-ENF22-BLE001)
             logger.warning("builder.cle_pdf_a_jour : erreur ignorée (mode dégradé)", exc_info=True)
             attendue = None
         if attendue and attendue == empreinte_stockee:

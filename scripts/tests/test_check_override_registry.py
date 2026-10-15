@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_override_registry as cor  # noqa: E402
+import check_override_registry as cor  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 @functools.lru_cache(maxsize=1)

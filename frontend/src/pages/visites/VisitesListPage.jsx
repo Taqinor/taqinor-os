@@ -27,7 +27,7 @@ export default function VisitesListPage() {
       .finally(() => setLoading(false))
   }, [scope])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial + à chaque bascule de portée
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial + à chaque bascule de portée (D-ENF22)
   useEffect(() => { load() }, [load])
 
   return (

@@ -193,7 +193,7 @@ def _item_payload(item):
             # du tout »).
             try:
                 payload['proposal_path'] = url_proposition(devis)
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
                 logger.warning("item payload : échec ignoré, comportement dégradé", exc_info=True)
         else:
             payload['reference'] = None
@@ -252,7 +252,7 @@ def public_salle_vente(request, token):
         # NTCRM27 — best-effort : ne doit jamais faire échouer la vue publique.
         from .clients_pilotage import detecter_signal_interet_salle_vente
         detecter_signal_interet_salle_vente(salle)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("public salle vente : échec ignoré, comportement dégradé", exc_info=True)
 
     items = salle.items.all().order_by('ordre', 'id')

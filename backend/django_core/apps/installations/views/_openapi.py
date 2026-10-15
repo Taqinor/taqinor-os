@@ -15,7 +15,7 @@ from collections.abc import Mapping
 from datetime import date, timedelta
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import (  # noqa: F401  (ré-exportés)
+from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from drf_spectacular.utils import extend_schema_field

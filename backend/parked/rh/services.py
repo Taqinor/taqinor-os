@@ -1787,7 +1787,7 @@ def envoyer_email_transition(candidature, *, date_entretien=None):
         send_mail(
             objet, corps, from_email, [candidature.email],
             fail_silently=True)
-    except Exception:  # noqa: BLE001 — best-effort, jamais d'exception.
+    except Exception:  # noqa: BLE001 — best-effort, jamais d'exception. (D-ENF22-BLE001)
         return False
 
     CandidatureActivity.objects.create(
@@ -2143,7 +2143,7 @@ def traiter_issue_evaluation(evaluation):
                     f'Une augmentation a été proposée pour {employe_nom} '
                     "suite à son entretien d'évaluation."),
             )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant. (D-ENF22-BLE001)
             pass
 
 
@@ -3318,7 +3318,7 @@ def _notifier_revision_appliquee(proposition):
             body=("Votre révision salariale a été appliquée. Le détail est "
                   "consultable auprès des Ressources humaines."),
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant. (D-ENF22-BLE001)
         pass
 
 

@@ -210,19 +210,19 @@ export default function ReportsScreen() {
       .finally(() => setCreativeLoading(false))
   }, [dimension, periodDays, setZoneError])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de dimension/période
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de dimension/période (D-ENF22)
   useEffect(() => { loadCreative() }, [loadCreative])
   // DATAPUB2 — charge le bilan la première fois que l'onglet est ouvert.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet (D-ENF22)
   useEffect(() => { if (tab === 'attribution' && bilan === null) loadBilan() }, [tab, bilan, loadBilan])
   // DATAPUB3 — (re)charge la série leads à l'ouverture de l'onglet et au
   // changement de granularité.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet (D-ENF22)
   useEffect(() => { if (tab === 'leads') loadLeads() }, [tab, loadLeads])
   // DATAPUB4 — charge l'audience la première fois que l'onglet est ouvert.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture de l'onglet (D-ENF22)
   useEffect(() => { if (tab === 'audience' && audienceData === null) loadAudience() }, [tab, audienceData, loadAudience])
 
   // Export CSV : SERVI PAR LE BACKEND (PUB12). On télécharge le blob authentifié

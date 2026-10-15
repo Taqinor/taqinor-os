@@ -127,7 +127,7 @@ def _empreinte_lignes(devis):
     try:
         rangs = list(
             lignes.all().order_by('pk').values_list(*_COLONNES_LIGNE))
-    except Exception:  # noqa: BLE001 — devis détaché, base indisponible
+    except Exception:  # noqa: BLE001 — devis détaché, base indisponible (D-ENF22-BLE001)
         logger.warning("taille_detail._empreinte_lignes : erreur ignorée (mode dégradé)", exc_info=True)
         return _LIGNES_ILLISIBLES
     graine = json.dumps(rangs, sort_keys=True, default=str)
@@ -305,6 +305,6 @@ def detail_publique(devis, data, bloc_tailles, cle, variante):
     """
     try:
         return deriver_detail(devis, data, bloc_tailles, cle, variante)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('taille_detail indisponible', exc_info=True)
         return None

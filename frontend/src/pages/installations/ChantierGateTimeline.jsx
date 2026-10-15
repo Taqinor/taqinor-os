@@ -827,7 +827,7 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   // après chaque avancement, comme le fait déjà `checkDevisDivergence` plus
   // haut sur cette même page (même repli d'effet).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de chantier (D-ENF22)
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [installationId])

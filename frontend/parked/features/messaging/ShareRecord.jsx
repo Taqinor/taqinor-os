@@ -36,7 +36,7 @@ export default function ShareRecord({ conversationId, onShared, disabled = false
   // Débounce : recherche ~250 ms après la dernière frappe, comme la barre globale.
   useEffect(() => {
     if (!open) return undefined
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- piloter l'état de recherche débouncée depuis la saisie
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- piloter l'état de recherche débouncée depuis la saisie (D-ENF22)
     if (term.length < 2) { setGroups([]); setLoading(false); setFailed(false); return undefined }
     setLoading(true); setFailed(false)
     const t = setTimeout(() => {
@@ -49,12 +49,12 @@ export default function ShareRecord({ conversationId, onShared, disabled = false
         .finally(() => setLoading(false))
     }, 250)
     return () => clearTimeout(t)
-  }, [q, open]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, open]) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   // Réinitialise à l'ouverture et focalise le champ.
   useEffect(() => {
     if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le sélecteur à l'ouverture du Dialog
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le sélecteur à l'ouverture du Dialog (D-ENF22)
       setQ(''); setGroups([]); setFailed(false)
       requestAnimationFrame(() => inputRef.current?.focus())
     }

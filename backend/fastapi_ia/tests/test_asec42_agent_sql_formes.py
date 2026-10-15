@@ -19,7 +19,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 try:  # pragma: no cover - dépend des dépendances installées
     from app.services import sql_agent_service as svc

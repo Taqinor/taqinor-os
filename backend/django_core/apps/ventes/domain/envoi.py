@@ -369,7 +369,7 @@ def _prolonger_liens(devis):
     try:
         from apps.ventes.models import ShareLink
         ShareLink.prolonger_pour_devis(devis)
-    except Exception:  # noqa: BLE001 — best-effort, journalisé
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
         logger.warning(
             'CIQ511 : liens non prolongés (devis #%s)',
             getattr(devis, 'pk', '?'), exc_info=True)
@@ -456,4 +456,4 @@ def prolonger_validite_devis(devis, date_cible):
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Import EN BAS DE FICHIER (règle de ``domain/__init__.py``), vers le module qui
 # PORTE le corps — jamais la façade.
-from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402
+from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

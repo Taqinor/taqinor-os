@@ -8005,7 +8005,7 @@ def _resoudre_compte_portail(token):
             from apps.portail.services import enregistrer_connexion_portail
             enregistrer_connexion_portail(
                 compte.id, compte.derniere_connexion)
-        except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
+        except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès (D-ENF22-BLE001)
             pass
     return compte
 
@@ -8535,7 +8535,7 @@ class ComparateurCashFinancementViewSet(viewsets.ViewSet):
 # ``/api/django/compta/…`` et tous les imports ``from apps.compta.views import
 # AppelOffreViewSet`` déjà écrits. ODX22 (RETRAIT des shims transitoires) reste
 # ouvert : il aura ce shim-ci à retirer, dans le sens inverse d'avant.
-from apps.ao.views import (  # noqa: E402,F401
+from apps.ao.views import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     AppelOffreViewSet,
     BordereauPrixViewSet,
     CautionSoumissionViewSet,

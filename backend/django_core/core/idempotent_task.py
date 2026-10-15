@@ -73,11 +73,11 @@ def acquire(key: str, ttl: int) -> bool:
     """
     try:
         return _acquire_cache(key, ttl)
-    except Exception:  # noqa: BLE001 — Redis down → repli DB
+    except Exception:  # noqa: BLE001 — Redis down → repli DB (D-ENF22-BLE001)
         logger.warning('idempotent_task: cache KO, repli DB pour %s', key)
         try:
             return _acquire_db(key, ttl)
-        except Exception:  # noqa: BLE001 — DB KO aussi → fail-open (exécute)
+        except Exception:  # noqa: BLE001 — DB KO aussi → fail-open (exécute) (D-ENF22-BLE001)
             logger.exception('idempotent_task: repli DB KO pour %s', key)
             return True
 

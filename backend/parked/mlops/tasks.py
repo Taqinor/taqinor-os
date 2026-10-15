@@ -25,7 +25,7 @@ def recompute_features_all_companies():
     for company in active_companies():
         try:
             nb = recompute_features(company, user=None)
-        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres (D-ENF22-BLE001)
             logger.exception(
                 'NTAI30 : recalcul des features échoué pour la société %s',
                 company.pk)

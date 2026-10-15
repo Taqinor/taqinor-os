@@ -57,7 +57,7 @@ class FactureDocumentsActionsMixin:
         from ..utils.pdf import cle_facture_pdf_a_jour, download_pdf
         try:
             cle = cle_facture_pdf_a_jour(facture)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("facture.FactureViewSet.telecharger_pdf : erreur ignorée (mode dégradé)", exc_info=True)
             cle = facture.fichier_pdf
         if not cle:

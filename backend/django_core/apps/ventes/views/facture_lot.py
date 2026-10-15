@@ -231,7 +231,7 @@ class FactureLotActionsMixin:
                         'task_id': task.id,
                         'reference': facture.reference}
 
-            except Exception as exc:  # noqa: BLE001 — batch: no single failure kills all
+            except Exception as exc:  # noqa: BLE001 — batch: no single failure kills all (D-ENF22-BLE001)
                 logger.warning("facture.FactureViewSet.bulk : erreur ignorée (mode dégradé)", exc_info=True)
                 results[fid_int] = {'ok': False, 'detail': str(exc)}
 

@@ -88,7 +88,7 @@ def factures_reelles(devis, ep):
                                     b.get('ete_differente'))
         if serie:
             return [float(v) for v in serie], 'lead_hiver_ete'
-    except Exception:  # noqa: BLE001 — pas de factures lisibles = pas de règle
+    except Exception:  # noqa: BLE001 — pas de factures lisibles = pas de règle (D-ENF22-BLE001)
         logger.warning("regles_etude.factures_reelles : erreur ignorée (mode dégradé)", exc_info=True)
     return None, None
 

@@ -54,7 +54,11 @@ describe('CatalogueAchatPicker (NTP2P3)', () => {
   })
 
   it('ERR-ASTK12 — sans prix_achat_dernier (rôle sans prix_achat_voir) : aucun faux « 0,00 DH »', async () => {
-    const sansPrix = ARTICLES.map(({ prix_achat_dernier, ...reste }) => reste) // eslint-disable-line no-unused-vars
+    const sansPrix = ARTICLES.map((article) => {
+      const reste = { ...article }
+      delete reste.prix_achat_dernier
+      return reste
+    })
     renderPicker({ items: sansPrix })
     fireEvent.click(screen.getByTestId('catalogue-achat-trigger'))
     await waitFor(() => expect(screen.getByRole('listbox')).toBeTruthy())

@@ -194,7 +194,7 @@ export default function ApplicationsSection() {
     .finally(() => setLoading(false))
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- court-circuite le chargement pour un utilisateur non-admin
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- court-circuite le chargement pour un utilisateur non-admin (D-ENF22)
     if (!canManage) { setLoading(false); return }
     load()
   }, [canManage])

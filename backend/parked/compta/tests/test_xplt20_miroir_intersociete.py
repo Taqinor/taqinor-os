@@ -17,14 +17,15 @@ from decimal import Decimal
 from django.test import TestCase
 
 from authentication.models import Company
-from apps.compta import receivers  # noqa: F401 (câblage ready())
 from apps.compta.models import EcritureLiaisonInterSociete, RegleInterSociete
 from apps.crm.models import Client
 from apps.parametres.models_company import CompanyProfile
 from apps.stock.models import FactureFournisseur, Fournisseur, Produit
 from apps.ventes.models import Facture, LigneFacture
-from apps.ventes import receivers as ventes_receivers  # noqa: F401
 from core.events import facture_emise
+
+__import__('apps.compta.receivers')  # câblage ready()
+__import__('apps.ventes.receivers')
 
 
 def make_company(slug, nom):

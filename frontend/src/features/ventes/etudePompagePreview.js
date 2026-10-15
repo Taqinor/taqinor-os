@@ -42,7 +42,7 @@ export function useEconomiePompagePreview(corps) {
   const [donnees, setDonnees] = useState(null)
   useEffect(() => {
     if (!debouncedKey) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps (D-ENF22)
       setDonnees(null)
       return undefined
     }

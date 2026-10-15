@@ -16,7 +16,7 @@ import { Segmented } from '../../../ui'
 
 // LB47 — exportée : le menu ⋯ mobile de LeadsPage rend ces MÊMES vues en
 // items (jamais une 2e liste déclarée ailleurs).
-// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (même motif que STAGE_PROBABILITY, KanbanView.jsx)
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (même motif que STAGE_PROBABILITY, KanbanView.jsx) (D-ENF22)
 export const VIEWS = [
   { value: 'kanban', label: 'Vue kanban', icon: LayoutGrid },
   // APX5 — `hint` : complément d'infobulle OPTIONNEL. Le nom accessible

@@ -122,7 +122,7 @@ def norm(v):
             _chemin, args, kwargs = v.deconstruct()[-3:]
             return {'objet': type(v).__qualname__, 'args': norm(args),
                     'kwargs': norm(kwargs)}
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — objet non déconstructible : retombe sur sa représentation (D-ENF22-BLE001)
             pass
     if hasattr(v, '_proxy____cast'):          # chaîne paresseuse
         return str(v)
@@ -217,7 +217,7 @@ def _permissions(cls, user):
         vue.request = requete
         try:
             perms = [_rendre_permission(p) for p in vue.get_permissions()]
-        except Exception as exc:  # noqa: BLE001 — l'erreur EST la valeur
+        except Exception as exc:  # noqa: BLE001 — l'erreur EST la valeur (D-ENF22-BLE001)
             perms = [{'erreur': type(exc).__name__}]
         lignes.append({'action': action, 'methode': methode,
                        'permissions': perms})
@@ -245,7 +245,7 @@ def _serialiseurs():
 def _champs_serialiseur(cls, requete):
     try:
         champs = cls(context={'request': requete}).fields
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'erreur': type(exc).__name__}
     return {'champs': [{'nom': n, 'classe': type(f).__name__,
                         'read_only': bool(f.read_only),

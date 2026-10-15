@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState, useCallback } from 'react'
 
 const ActivityFeedWidget = lazy(() => import('../components/ActivityFeedWidget'))
 const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
@@ -138,7 +138,7 @@ const num = (v) => {
 // historique). Fonctions PURES exportées → testées sans monter le composant.
 
 // Renvoie 'commercial' | 'sav' | 'directeur' d'après le nom de rôle + le palier.
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function cockpitProfile({ roleNom, roleTier } = {}) {
   const n = String(roleNom ?? '').toLowerCase()
   // Les rôles direction/admin gardent la vue macro même si leur libellé
@@ -165,7 +165,7 @@ function isoToday(now = new Date()) {
 // Leads « à relancer » : relance planifiée aujourd'hui ou déjà dépassée, lead
 // non perdu/archivé. Si `ownerId` est fourni, on scope à « mes » leads (le
 // backend restreint déjà la visibilité ; ce filtre affine à l'assigné courant).
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function leadsARelancer(leads, { ownerId, now = new Date() } = {}) {
   const today = isoToday(now)
   return (leads ?? []).filter((l) => {
@@ -178,7 +178,7 @@ export function leadsARelancer(leads, { ownerId, now = new Date() } = {}) {
 
 // Devis qui expirent bientôt : encore ouverts (brouillon/envoyé), date de
 // validité comprise entre aujourd'hui et +N jours (défaut 7).
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function devisQuiExpirent(devis, { days = 7, now = new Date() } = {}) {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   const end = new Date(start)
@@ -195,7 +195,7 @@ export function devisQuiExpirent(devis, { days = 7, now = new Date() } = {}) {
 // Tickets SAV « à faire aujourd'hui » côté terrain : ouverts (nouveau/planifié/
 // en cours), non annulés. Proxy honnête de la charge du jour sans nouvel
 // endpoint (les interventions planifiées vivent dans les tickets ouverts).
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function ticketsAujourdhui(tickets) {
   return (tickets ?? []).filter(
     (t) => t && !t.annule && TICKET_OPEN_STATUSES.includes(t.statut),
@@ -203,7 +203,7 @@ export function ticketsAujourdhui(tickets) {
 }
 
 // Tickets urgents : priorité haute/urgente, ouverts, non annulés.
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function ticketsUrgents(tickets) {
   return (tickets ?? []).filter(
     (t) => t && !t.annule && TICKET_OPEN_STATUSES.includes(t.statut)
@@ -215,7 +215,7 @@ export function ticketsUrgents(tickets) {
 // (même source que la liste SAV) ; plus d'âge codé en dur 2/5/10 jours. Un ticket
 // d'une société au SLA désactivé n'a jamais `sla_breach` (rendu juste par ASAV17).
 // `now` est conservé pour compatibilité des appelants (ignoré).
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function ticketsSlaEnRetard(tickets) {
   return (tickets ?? []).filter((t) => t && t.sla_breach === true)
 }
@@ -225,7 +225,7 @@ export function ticketsSlaEnRetard(tickets) {
 // que caMensuel/devisSpark ci-dessus (`date_creation`). Fonction PURE, testée
 // sans monter le composant ni le store (`userId` absent → aucun scope, utile
 // en repli si l'utilisateur courant n'est pas encore chargé).
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function mesChiffresDuMois(devis, { userId, now = new Date() } = {}) {
   const y = now.getFullYear()
   const m = now.getMonth()
@@ -250,7 +250,7 @@ export function mesChiffresDuMois(devis, { userId, now = new Date() } = {}) {
 // archivés, triés par score décroissant (score absent → 0), plafonnés à
 // `limit`. Réutilise `Lead.score` déjà exposé (ScoreBadge/VX221) — zéro calcul
 // dupliqué.
-// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper cockpit co-localisé (D-ENF22)
 export function leadsChauds(leads, { userId, limit = 3 } = {}) {
   return (leads ?? [])
     .filter((l) => l && !l.perdu && !l.is_archived && (userId == null || l.owner === userId))
@@ -514,7 +514,7 @@ export function Component() {
   // VX27 — on ajoute les fetchs frontend qui manquaient (leads + tickets SAV) :
   // le Dashboard ne chargeait ni leads ni tickets alors que les endpoints
   // existent — c'est ce qui empêchait le cockpit commercial/SAV d'exister.
-  const reload = () => {
+  const reload = useCallback(() => {
     dispatch(fetchProduits())
     dispatch(fetchClients())
     dispatch(fetchDevis())
@@ -522,11 +522,10 @@ export function Component() {
     dispatch(fetchInstallations())
     dispatch(fetchLeads())
     dispatch(fetchTickets())
-  }
+  }, [dispatch])
   useEffect(() => {
     reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch])
+  }, [reload])
 
   const devisAcceptes = devis.filter((d) => d.statut === 'accepte')
   const facturesEnRetard = factures.filter((f) => f.statut === 'en_retard')

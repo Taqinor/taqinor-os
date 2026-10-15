@@ -127,7 +127,7 @@ def notify_new_lead(lead, *, sous_seuil=False) -> None:
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         import logging
         logging.getLogger(__name__).warning(
             'QJ2: notify_new_lead échoué pour lead #%s : %s',
@@ -257,7 +257,7 @@ def notify_devis_opened(devis_reference: str, lead, *, ip='',
             link=f'/crm/visiteurs?lead={lead.pk}',
             company=lead.company,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         import logging
         logging.getLogger(__name__).warning(
             'QJ2: notify_devis_opened échoué pour lead #%s devis %s : %s',

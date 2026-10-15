@@ -98,7 +98,7 @@ def _alerter(client, entry, now):
     if owner is None:
         try:
             owner = leads_attribution.default_responsable_for(client.company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning("alerter : échec ignoré, comportement dégradé", exc_info=True)
             owner = None
 
@@ -123,5 +123,5 @@ def _alerter(client, entry, now):
             link=f'/crm?client={client.pk}',
             company=client.company,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("alerter : échec ignoré, comportement dégradé", exc_info=True)

@@ -24,10 +24,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import audit_tache as at  # noqa: E402
-import check_forme_code as cfc  # noqa: E402
-import check_taches_cablage as ctc  # noqa: E402
-from forme_code.socle import Echec  # noqa: E402
+import audit_tache as at  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_forme_code as cfc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from forme_code.socle import Echec  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 _EXT = r"(?:py|jsx?|tsx?|ya?ml|json|md|ps1|sh)"
 ANCRE = re.compile(r"`([\w./-]+\.%s)::([A-Za-z_][\w.]*)`" % _EXT)
@@ -40,7 +40,7 @@ def fichier_de(rel: str, racine: Path) -> str:
         return rel
     try:
         suivis = at.git("ls-files", racine=racine).splitlines()
-    except Exception:  # noqa: BLE001 — hors depot git : l'ancre reste telle quelle
+    except (RuntimeError, OSError):  # hors dépôt git : l'ancre reste telle quelle
         return rel
     trouves = [f for f in suivis if f == rel or f.endswith("/" + rel)]
     return trouves[0] if len(trouves) == 1 else rel

@@ -21,9 +21,9 @@ from apps.ventes.tests._quote_engine_common import (
 )
 
 try:
-    import weasyprint  # noqa: F401
+    __import__('weasyprint')
     _WEASY = True
-except Exception:  # noqa: BLE001
+except (ImportError, OSError):  # bibliothèques natives absentes
     _WEASY = False
 
 

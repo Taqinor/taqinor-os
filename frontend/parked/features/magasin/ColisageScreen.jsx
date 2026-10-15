@@ -173,9 +173,9 @@ export default function ColisageScreen() {
     // `lignes`) : un vrai refactor "render-time" perdrait les `lignes` déjà
     // chargées, donc on garde l'effect + un disable ciblé plutôt que de
     // changer ce comportement.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dossier parqué, hors lint (D-ENF22)
     if (fresh) setSelected(fresh)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [data])
 
   const openDetail = async (row) => {

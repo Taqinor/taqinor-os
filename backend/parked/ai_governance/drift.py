@@ -156,6 +156,6 @@ def _alerter_drift(*, company, snapshot, seuil):
             company=company)
         snapshot.alerte_emise = True
         snapshot.save(update_fields=['alerte_emise', 'updated_at'])
-    except Exception:  # noqa: BLE001 — l'alerte ne doit jamais casser le calcul
+    except Exception:  # noqa: BLE001 — l'alerte ne doit jamais casser le calcul (D-ENF22-BLE001)
         logger.warning('ai_governance: alerte de dérive non émise (société %s)',
                        getattr(company, 'id', None), exc_info=True)

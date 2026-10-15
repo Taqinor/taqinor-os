@@ -353,7 +353,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
             try:
                 from apps.visites.selectors import visites_recentes_par_lead
                 lignes = visites_recentes_par_lead(lead.company, candidats)
-            except Exception:  # noqa: BLE001 — jamais bloquant
+            except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
                 logger.warning('%s : échec ignoré (dégradé)', '_visite_du_lead', exc_info=True)
                 lignes = {}
             for lid in candidats:

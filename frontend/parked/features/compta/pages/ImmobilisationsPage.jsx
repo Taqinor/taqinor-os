@@ -46,7 +46,7 @@ function PlanAmortissementDialog({ immo, onClose }) {
       .finally(() => setLoading(false))
   }, [immo.id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   const dotations = plan?.dotations || []
@@ -108,7 +108,7 @@ function PlanFiscalDialog({ immo, onClose }) {
       .finally(() => setLoading(false))
   }, [immo.id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   const generer = async () => {

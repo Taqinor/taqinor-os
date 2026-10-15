@@ -1625,7 +1625,7 @@ def structure_produit_id_du_devis(devis):
     """
     try:
         lignes = _lignes_produit(devis)
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran (D-ENF22-BLE001)
         logger.warning("composition.structure_produit_id_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     for ligne in lignes:
@@ -1985,7 +1985,7 @@ def _refuser_couple_panneau_onduleur_impossible(devis, lignes, lignes_panneau,
 # ce module, et ils visent le module qui PORTE le corps — jamais la façade
 # `services.py`, dont les ré-exports s'exécutent dans l'ordre des tâches et
 # ne portent donc pas encore les noms des tâches suivantes.
-from apps.ventes.domain.catalogue import (  # noqa: E402
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _arrondi_js,
     _batterie_compatible,
     _batterie_en_stock,
@@ -2012,7 +2012,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402
     plafond_panneaux,
     prix_forfait_ht,
 )
-from apps.ventes.domain.lignes import (  # noqa: E402
+from apps.ventes.domain.lignes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _classe_ligne,
     _lignes_produit,
     cible_depuis_lignes,
@@ -2020,10 +2020,10 @@ from apps.ventes.domain.lignes import (  # noqa: E402
     lignes_de_variante,
     prix_negocie,
 )
-from apps.ventes.domain.etape_composer import (  # noqa: E402
+from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
     COMPOSITION_SANS,
     IntentionComposition,
     composer,
 )
-from apps.ventes.domain.resynchronisation import SyncLayoutError  # noqa: E402
+from apps.ventes.domain.resynchronisation import SyncLayoutError  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

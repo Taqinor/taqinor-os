@@ -78,7 +78,7 @@ export default function PublicSignaturePage({ mode = 'signature' }) {
   useEffect(() => {
     // `consulter` pilote lui-même `status` (valid/done/invalid) ; l'état initial
     // est déjà « loading », inutile de le réappliquer ici.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- consultation au montage
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- consultation au montage (D-ENF22)
     consulter()
   }, [consulter])
 

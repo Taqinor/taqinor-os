@@ -58,7 +58,7 @@ function useList(fetcher) {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
   return { rows, loading, error, reload: load }
 }
@@ -343,7 +343,7 @@ function HistoriquePresenceTab() {
       .finally(() => setLoading(false))
   }, [chantierId, typeFiltre])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useList` ci-dessus)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useList` ci-dessus) (D-ENF22)
   useEffect(() => { chargerEvenements() }, [chargerEvenements])
 
   return (

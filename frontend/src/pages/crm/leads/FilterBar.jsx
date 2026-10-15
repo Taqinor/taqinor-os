@@ -81,7 +81,7 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
     if (searchLocal === filters.q) return undefined
     const t = setTimeout(() => setFilters((f) => ({ ...f, q: searchLocal })), 250)
     return () => clearTimeout(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'à la frappe locale, `filters`/`setFilters` lus au déclenchement
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'à la frappe locale, `filters`/`setFilters` lus au déclenchement (D-ENF22)
   }, [searchLocal])
 
   // Libellés de canaux depuis le référentiel géré (Paramètres → CRM) + statiques.

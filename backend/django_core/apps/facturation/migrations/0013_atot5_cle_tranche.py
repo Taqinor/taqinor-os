@@ -9,6 +9,8 @@ vide (repli positionnel à l'exécution, comportement d'hier). Chaque devis est
 traité sous un savepoint : un échec n'interrompt jamais la migration.
 Réversible : ``python manage.py migrate facturation 0012`` (la colonne part).
 """
+import logging
+
 from django.db import migrations, models, transaction
 
 
@@ -34,7 +36,9 @@ def remplir_cles(apps, schema_editor):
                 for facture, cle in zip(par_devis[devis.pk], cles):
                     facture.cle_tranche = cle
                     facture.save(update_fields=['cle_tranche'])
-        except Exception:  # noqa: BLE001 — best-effort, repli positionnel
+        except Exception:  # noqa: BLE001 — best-effort, repli positionnel (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning(
+                'ATOT5 : clé de tranche non posée pour le devis %s (repli positionnel)', devis.pk, exc_info=True)
             continue
 
 

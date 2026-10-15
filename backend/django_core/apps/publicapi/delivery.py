@@ -150,7 +150,7 @@ def _record(webhook, event, payload, *, status, response_status, error):
             response_status=response_status,
             error=(error or '')[:1000],
         )
-    except Exception:  # noqa: BLE001 — ne jamais propager
+    except Exception:  # noqa: BLE001 — ne jamais propager (D-ENF22-BLE001)
         logger.exception('Could not log webhook delivery')
         return None
     # NTAPI11 — la tentative est journalisée : c'est le SEUL endroit où toutes
@@ -207,7 +207,7 @@ def _send(webhook, event, payload, extra_headers=None):
         resp = httpx.post(
             webhook.target_url, content=body_bytes,
             headers=headers, timeout=DELIVERY_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('Webhook delivery failed (%s): %s',
                        webhook.target_url, exc)
         return 'failed', None, str(exc)
@@ -240,7 +240,7 @@ def _journaliser_flux(company_id, event, payload):
             company_id, event, payload,
             event_id=(payload.get(EVENT_ID_KEY, '')
                       if isinstance(payload, dict) else ''))
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception('Could not append event %s to the public feed', event)
 
 
@@ -269,7 +269,7 @@ def dispatch_event(company_id, event, payload):
     try:
         transaction.on_commit(
             lambda: _mettre_en_file(company_id, event, payload))
-    except Exception:  # noqa: BLE001 — jamais bloquant pour l'appelant
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'appelant (D-ENF22-BLE001)
         logger.exception('Could not schedule webhook delivery %s', event)
 
 
@@ -281,7 +281,7 @@ def _mettre_en_file(company_id, event, payload):
     try:
         webhooks = list(
             Webhook.objects.filter(company_id=company_id, enabled=True))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception('Could not load webhooks for company %s', company_id)
         return
     from .tasks import deliver_webhook
@@ -296,5 +296,5 @@ def _mettre_en_file(company_id, event, payload):
             continue
         try:
             deliver_webhook.delay(webhook.id, event, payload)
-        except Exception:  # noqa: BLE001 — broker indisponible ne bloque jamais
+        except Exception:  # noqa: BLE001 — broker indisponible ne bloque jamais (D-ENF22-BLE001)
             logger.exception('Could not enqueue webhook delivery %s', webhook.id)

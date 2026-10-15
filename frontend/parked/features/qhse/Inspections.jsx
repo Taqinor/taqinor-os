@@ -339,7 +339,7 @@ function useSelectOptions(fetcher, mapRow) {
       })
       .catch(() => { if (!cancelled) setOptions([]) })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [])
   return options
 }
@@ -650,7 +650,7 @@ function MoyenneRetoursWidget({ deps = [] }) {
       .then((r) => { if (!cancelled) setData(r?.data ?? null) })
       .catch(() => { if (!cancelled) setData(null) })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, deps)
   if (!data) return null
   return (

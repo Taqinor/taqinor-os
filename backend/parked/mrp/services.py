@@ -1,4 +1,5 @@
 """Services (écritures/orchestration) de l'app `mrp` (Groupe NTMFG)."""
+import logging
 from datetime import timedelta
 from decimal import Decimal
 
@@ -10,7 +11,8 @@ from django.utils import timezone
 def _dec(value):
     try:
         return Decimal(str(value))
-    except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash.
+    except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash. (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services._dec : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('0')
 
 
@@ -630,8 +632,8 @@ def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
             detail=(f'Coût standard figé — produit {produit.id} : '
                     f'{ancien} -> v{nouveau.version} (matière '
                     f'{nouveau.cout_matiere}, MO {nouveau.cout_main_oeuvre}).'))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
-        pass
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant. (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services.figer_cout_standard : erreur ignorée (mode dégradé)", exc_info=True)
     return nouveau
 
 
@@ -767,7 +769,8 @@ def notifier_echeances_j7(company, *, today=None):
                 body=(f'{echeance.plan.description} : échéance prévue le '
                       f'{echeance.date_prevue.isoformat()} (J-7).'),
                 link='/mrp/oee', company=company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("services.notifier_echeances_j7 : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         EcheanceEntretienPoste.objects.filter(pk=echeance.pk).update(notifie=True)
         notifiees.append(echeance)
@@ -864,8 +867,8 @@ def approuver_eco(eco, user=None):
                     f'{ancien_statut} -> {nouveau_statut}.'),
             changes=[{'field': 'statut', 'old': ancien_statut,
                       'new': nouveau_statut}])
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
-        pass
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant. (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services.approuver_eco : erreur ignorée (mode dégradé)", exc_info=True)
     return eco
 
 
@@ -1118,7 +1121,7 @@ def importer_gammes_csv(company, rows, *, user=None, filename=''):
                     temps_prepa_min=temps_prepa,
                     temps_unitaire_min=temps_unitaire)
                 created_count += 1
-        except Exception as exc:  # noqa: BLE001 — une ligne KO n'arrête pas les autres.
+        except Exception as exc:  # noqa: BLE001 — une ligne KO n'arrête pas les autres (D-ENF22-BLE001)
             erreurs.append({'ligne': i, 'motif': f'Erreur inattendue : {exc}'})
 
     job = ImportJob.objects.create(

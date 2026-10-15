@@ -24,8 +24,8 @@ from apps.paie.services import ensure_defaults, generer_bulletin, valider_bullet
 from apps.rh.models import DossierEmploye
 
 try:
-    import weasyprint  # noqa: F401
-    import fitz  # noqa: F401
+    __import__('weasyprint')
+    import fitz
     _PDF_LIBS_DISPONIBLES = True
 except ImportError:
     _PDF_LIBS_DISPONIBLES = False

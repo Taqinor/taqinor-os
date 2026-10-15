@@ -102,7 +102,7 @@ class NetworkPolicyMiddleware:
         try:
             from authentication.cookie_auth import CookieJWTAuthentication
             result = CookieJWTAuthentication().authenticate(request)
-        except Exception:  # noqa: BLE001 - jeton invalide ⇒ pas de blocage
+        except Exception:  # noqa: BLE001 — jeton invalide ⇒ pas de blocage (D-ENF22-BLE001)
             logger.debug("middleware.NetworkPolicyMiddleware._resolve : jeton refusé", exc_info=True)
             return None, None
         if result is None:
@@ -119,7 +119,7 @@ class NetworkPolicyMiddleware:
                 .prefetch_related('rules')
                 .first()
             )
-        except Exception:  # noqa: BLE001 - jamais casser le pipeline HTTP
+        except Exception:  # noqa: BLE001 — jamais casser le pipeline HTTP (D-ENF22-BLE001)
             logger.debug('identity: lecture NetworkPolicy échouée',
                          exc_info=True)
             return None
@@ -136,7 +136,7 @@ class NetworkPolicyMiddleware:
                 detail=(f'Allowlist IP : requête {verbe} depuis {ip} '
                         f'(hors plage autorisée) sur {path}.'),
             )
-        except Exception:  # noqa: BLE001 - journalisation best-effort
+        except Exception:  # noqa: BLE001 — journalisation best-effort (D-ENF22-BLE001)
             logger.debug('identity: audit allowlist indisponible',
                          exc_info=True)
 

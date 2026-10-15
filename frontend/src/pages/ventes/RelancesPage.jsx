@@ -128,7 +128,7 @@ export default function RelancesPage() {
     })
     .catch(() => { /* file lisible même sans paramétrage */ })
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- chargement initial de la file et des paramétrages, au montage seulement (D-ENF22)
   useEffect(() => { load(); loadParametrages() }, [])
 
   const changerFile = (v) => { setFileFilter(v); load(v) }

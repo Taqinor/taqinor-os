@@ -204,5 +204,5 @@ def _conditions_echappees(data):
 # Fin de module (cycle d'import avec ``generate_devis_premium``, qui importe
 # cette famille APRÈS avoir défini ces noms) : chargé en premier ou en
 # second, chaque module trouve chez l'autre des noms DÉJÀ définis.
-from .generate_devis_premium import (  # noqa: E402
+from .generate_devis_premium import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     DEFAULT_DOC_TEXTS, _esc, _pct_echeance, _tva_note_par_defaut)

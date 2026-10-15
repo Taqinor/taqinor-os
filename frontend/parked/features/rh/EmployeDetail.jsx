@@ -124,7 +124,7 @@ export default function EmployeDetail() {
 
   useEffect(() => {
     let vivant = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     setLoading(true)
     setError(null)
     Promise.resolve(rhApi.getEmploye?.(id))
@@ -140,7 +140,7 @@ export default function EmployeDetail() {
 
   useEffect(() => {
     let vivant = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     setSubLoading(true)
     const calls = [
       rhApi.getDocuments({ employe: id }),

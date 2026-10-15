@@ -44,7 +44,7 @@ def rappeler_echeances():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             dues = echeances_ao_dues(company)
-        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning(
                 'ao.rappeler_echeances : sélection échouée pour la société #%s',
                 getattr(company, 'pk', '?'), exc_info=True)
@@ -53,7 +53,7 @@ def rappeler_echeances():
             try:
                 _poser_rappel(echeance)
                 total += 1
-            except Exception:  # noqa: BLE001 — best-effort par échéance
+            except Exception:  # noqa: BLE001 — best-effort par échéance (D-ENF22-BLE001)
                 logger.warning(
                     'ao.rappeler_echeances : rappel échoué pour '
                     "l'échéance #%s", getattr(echeance, 'pk', '?'),
@@ -115,7 +115,7 @@ def generer_echeanciers():
         for affaire in affaires:
             try:
                 rapport = generer_echeancier_ao(affaire)
-            except Exception:  # noqa: BLE001 — un AO ne bloque pas les autres
+            except Exception:  # noqa: BLE001 — un AO ne bloque pas les autres (D-ENF22-BLE001)
                 logger.warning(
                     'ao.generer_echeanciers : AO #%s en échec',
                     getattr(affaire, 'pk', '?'), exc_info=True)
@@ -160,7 +160,7 @@ def relancer_pieces_administratives():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             pieces = pieces_administratives_a_renouveler(company)
-        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning(
                 'ao.relancer_pieces_administratives : sélection échouée pour '
                 'la société #%s', getattr(company, 'pk', '?'), exc_info=True)
@@ -168,7 +168,7 @@ def relancer_pieces_administratives():
         for piece in pieces:
             try:
                 total += _relancer_piece(piece, aujourdhui)
-            except Exception:  # noqa: BLE001 — best-effort par pièce
+            except Exception:  # noqa: BLE001 — best-effort par pièce (D-ENF22-BLE001)
                 logger.warning(
                     'ao.relancer_pieces_administratives : relance échouée '
                     'pour la pièce #%s', getattr(piece, 'pk', '?'),

@@ -162,7 +162,7 @@ export default function PutAwayScreen() {
         onClick: () => ouvrirChoixCasier(row),
       },
     ]
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [busyId])
 
   const filters = (

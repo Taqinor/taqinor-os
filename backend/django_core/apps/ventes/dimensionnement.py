@@ -533,7 +533,7 @@ def config_vendue_du_devis(devis):
         panneaux = _entier_publiable(nb_panneaux)
         if panneaux is not None and panneaux <= 0:
             panneaux = None
-    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page (D-ENF22-BLE001)
         logger.warning('QJR104 : panneaux vendus illisibles (devis %s)',
                        getattr(devis, 'pk', None), exc_info=True)
     try:
@@ -541,7 +541,7 @@ def config_vendue_du_devis(devis):
         # de bas de fichier, QJR77) : on l'appelle par ce nom, sans le
         # ré-importer localement — un second import masquerait le ré-export.
         batterie = _flottant_publiable(capacite_batterie_des_lignes(devis))
-    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page
+    except Exception:  # noqa: BLE001 — une garde ne casse jamais la page (D-ENF22-BLE001)
         logger.warning('QJR104 : capacité batterie vendue illisible '
                        '(devis %s)', getattr(devis, 'pk', None),
                        exc_info=True)
@@ -697,7 +697,7 @@ def capacite_utile_batterie(produit, designation):
             dod = specs.get('dod_pct')
             if nominal and dod:
                 return float(nominal) * float(dod) / 100.0
-        except Exception:  # noqa: BLE001 — fiche absente ⇒ repli sur le nom
+        except Exception:  # noqa: BLE001 — fiche absente ⇒ repli sur le nom (D-ENF22-BLE001)
             logger.warning("dimensionnement.capacite_utile_batterie : erreur ignorée (mode dégradé)", exc_info=True)
     from apps.ventes.services import _parse_kwh
     return _parse_kwh(designation)
@@ -1088,7 +1088,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             return composer_sonde(
                 sonde_ctx, panneaux, avec_batterie=avec_batterie,
                 cible_kwh=cible_kwh, avertissements=journal)
-        except Exception:  # noqa: BLE001 — une taille impossible ne stoppe rien
+        except Exception:  # noqa: BLE001 — une taille impossible ne stoppe rien (D-ENF22-BLE001)
             logger.warning('composition impossible à %s panneaux', panneaux,
                            exc_info=True)
             return None
@@ -2161,7 +2161,7 @@ def recommander_taille(*, company, conso_kwh_mensuelles, tranches,
 # EN BAS À DESSEIN : les deux moitiés se citent, et cette position (après
 # toutes les définitions, des deux côtés) rend le cycle inoffensif quel que
 # soit le module chargé le premier. Ne pas le remonter.
-from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402
+from apps.ventes.domain.dimensionnement_devis import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     MAX_PALIERS_ECHELLE,
     MAX_SONDES_ECHELLE,
     _MEMO_PLAFOND_PHYSIQUE,

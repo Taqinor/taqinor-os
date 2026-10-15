@@ -8,8 +8,23 @@ from core.models import TenantModel
 # plus bas : le nom historique reste, la copie a disparu.
 from core.product_roles import ROLES_DEVIS
 import logging
+import secrets
+from datetime import timedelta
+from django.utils import timezone
+import hashlib
 
-logger = logging.getLogger(__name__)
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'AbandonCreance', 'AcompteAvantDelaiLegal', 'AffectationPaiement', 'AsBuiltPack',
+    'AttestationConformite', 'AttestationRE', 'Avoir', 'BonCommande', 'CommissioningTest',
+    'DELAI_RETRACTATION_DOMICILE_JOURS', 'DossierChecklistItem', 'DossierExchange', 'Facture',
+    'FactureActivity', 'FacturePenalite', 'FactureSource', 'FollowupLevel', 'IVCurveCapture',
+    'LigneAvoir', 'LigneFacture', 'LigneLivraisonBC', 'LigneNoteDebit', 'LigneRemiseEncaissement',
+    'LivraisonBC', 'MandatPaiement', 'NoteDebit', 'Paiement', 'ParametrageRelanceClient',
+    'PaymentLink', 'ProformaDocument', 'PromessePaiement', 'Regularisation8221',
+    'RegulatoryDossier', 'RelanceLog', 'ReleveImportSession', 'RemiseEncaissement', 'RetenueSubie',
+    'SubventionDossier', 'TentativeDebitMandat', 'TestPerformanceReception', 'ViolationCoherence',
+]
 
 # M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
 # imports no sibling app's models at load time (breaks the crm⇄ventes /
@@ -1068,9 +1083,6 @@ class EmailLog(models.Model):
 
 
 # ── Liens publics tokenisés (Envoyer par WhatsApp) ───────────────────────────
-import secrets  # noqa: E402
-from datetime import timedelta  # noqa: E402
-from django.utils import timezone  # noqa: E402
 
 SHARE_LINK_TTL_DAYS = 30
 
@@ -1392,8 +1404,9 @@ class ShareLink(models.Model):
             return base
         try:
             fin = date_expiration(devis)
-        except Exception:  # noqa: BLE001 — jamais une date inventée
-            logger.warning("models.ShareLink.expiration_pour_devis : erreur ignorée (mode dégradé)", exc_info=True)
+        except Exception:  # noqa: BLE001 — jamais une date inventée (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning(
+                "models.ShareLink.expiration_pour_devis : erreur ignorée (mode dégradé)", exc_info=True)
             fin = None
         if fin is None:
             return base
@@ -1451,9 +1464,6 @@ def _default_payment_token():
 
 def _default_payment_expiry():
     return timezone.now() + timedelta(days=PAYMENT_LINK_TTL_DAYS)
-
-
-import hashlib  # noqa: E402
 
 
 class DevisSignature(models.Model):
@@ -2023,7 +2033,7 @@ class FicheTechnique(models.Model):
 # FG268-FG271 — dossier réglementaire de raccordement (modèles déportés dans
 # models_regulatory.py pour garder ce module lisible ; ré-exportés ici pour que
 # Django les découvre et que `from apps.ventes.models import …` fonctionne).
-from .models_regulatory import (  # noqa: E402,F401
+from .models_regulatory import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     RegulatoryDossier,
     DossierChecklistItem,
     DossierExchange,
@@ -2033,15 +2043,15 @@ from .models_regulatory import (  # noqa: E402,F401
 
 # AUD121 — session d'import de relevé bancaire jetonnée (modèle déporté dans
 # models_releve.py ; ré-exporté ici pour la découverte Django).
-from .models_releve import ReleveImportSession  # noqa: E402,F401
+from .models_releve import ReleveImportSession  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 # QA-COHERENCE — mémoire des violations de l'auditeur nocturne (modèle déporté
 # dans models_coherence.py ; ré-exporté ici pour la découverte Django).
-from .models_coherence import ViolationCoherence  # noqa: E402,F401
+from .models_coherence import ViolationCoherence  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 # FG274-FG275 — mise en service & recette IEC 62446 (modèles déportés dans
 # models_commissioning.py).
-from .models_commissioning import (  # noqa: E402,F401
+from .models_commissioning import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     CommissioningTest,
     IVCurveCapture,
     AsBuiltPack,                # FG276
@@ -2523,7 +2533,7 @@ class ParametresGammes(TenantModel):
 # (``from apps.ventes.models import Facture``, admin, tests, générer-facture,
 # échéanciers, reporting, compta, publicapi…) fonctionnels ; à retirer en
 # ODX22 une fois tous les appelants re-pointés sur ``apps.facturation``.
-from apps.facturation.models import (  # noqa: E402,F401
+from apps.facturation.models import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     Avoir,
     Facture,
     FollowupLevel,
@@ -2540,7 +2550,7 @@ from apps.facturation.models import (  # noqa: E402,F401
 # ``from apps.ventes.models import BonCommande`` (admin, migrations, tests…)
 # fonctionne ; importés EN FIN de module car models_facturation lit
 # ``Devis``/``LigneDevis`` définis plus haut.
-from .models_facturation import (  # noqa: E402,F401
+from .models_facturation import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     DELAI_RETRACTATION_DOMICILE_JOURS,
     AbandonCreance,
     AcompteAvantDelaiLegal,

@@ -501,7 +501,7 @@ export default function FacturesFournisseur() {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- rechargement quand les filtres changent ; reload() est recréé à chaque rendu, relance voulue sur les filtres seuls (D-ENF22)
   useEffect(() => { reload() }, [aPayerSeul, enExceptionSeul])
 
   useEffect(() => {

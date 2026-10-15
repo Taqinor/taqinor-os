@@ -15,8 +15,8 @@ import unittest
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tests.eval import generative_runner as gr  # noqa: E402
-from tests.eval.generative_cases import (  # noqa: E402
+from tests.eval import generative_runner as gr  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from tests.eval.generative_cases import (  # noqa: E402 — après sys.path/setup() (D-ENF22)
     BROUILLON_CASES, EXTRACTION_CASES, FAMILLES_REQUISES, GENERATIVE_CASES,
     RESUME_CASES, SEUIL_DEFAUT)
 

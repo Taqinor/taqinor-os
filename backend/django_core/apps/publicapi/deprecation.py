@@ -65,10 +65,10 @@ class ApiDeprecationHeadersMixin:
                     response['X-Taqinor-Deprecation-Message'] = (
                         annonce.message[:300].encode('latin-1', 'replace')
                         .decode('latin-1'))
-                except Exception:  # noqa: BLE001 — jamais bloquant
+                except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
                     logger.warning(
                         "deprecation.ApiDeprecationHeadersMixin.poser_entetes_deprecation"
                         " : erreur ignorée (mode dégradé)", exc_info=True)
-        except Exception:  # noqa: BLE001 — jamais bloquant
+        except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
             logger.exception('Résolution de dépréciation API échouée')
         return response

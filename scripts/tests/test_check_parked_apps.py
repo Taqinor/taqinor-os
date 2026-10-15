@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_parked_apps as cpa  # noqa: E402
+import check_parked_apps as cpa  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 REGISTRE = '''import ast
 APPS_PARQUEES = ('rh', 'kb')

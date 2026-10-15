@@ -28,9 +28,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from forme_code import (baseline_grossit, deplacement, exception, facade, fichier_mur,  # noqa: E402
+from forme_code import (baseline_grossit, deplacement, exception, facade, fichier_mur,  # noqa: E402 — après sys.path (D-ENF22)
                         fonction_mur, fonction_neuve, garde_neuve, reglage)
-from forme_code.socle import Contexte, Echec, git  # noqa: E402
+from forme_code.socle import Contexte, Echec, git  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 REGLES = (fichier_mur, fonction_neuve, fonction_mur, facade, reglage, garde_neuve, baseline_grossit)
 INOPERANTE = "clone superficiel : garde inopérante"

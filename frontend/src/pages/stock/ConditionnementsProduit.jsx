@@ -146,7 +146,7 @@ export default function ConditionnementsProduit() {
         ) : null
       ) },
   // canWrite stable au sein d'une session ; reload via closure stable.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `canWrite` stable au sein d'une session ; reload via closure stable (D-ENF22)
   ], [canWrite])
 
   return (

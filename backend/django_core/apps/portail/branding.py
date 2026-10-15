@@ -37,7 +37,7 @@ def _tenant_theme(company):
     try:
         from core.models import TenantTheme
         return TenantTheme.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 - le branding ne casse jamais un écran
+    except Exception:  # noqa: BLE001 — le branding ne casse jamais un écran (D-ENF22-BLE001)
         logger.warning("_tenant_theme : erreur absorbée, repli dégradé", exc_info=True)
         return None
 
@@ -46,7 +46,7 @@ def _profil(company):
     try:
         from apps.parametres.selectors import company_identity
         return company_identity(company)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("_profil : erreur absorbée, repli dégradé", exc_info=True)
         return {}
 
@@ -95,7 +95,7 @@ def company_pour_hote(host):
                  .exclude(domaine='')
                  .select_related('company')
                  .first())
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("company_pour_hote : erreur absorbée, repli dégradé", exc_info=True)
         return None
     return getattr(theme, 'company', None) if theme is not None else None

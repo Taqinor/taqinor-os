@@ -39,7 +39,7 @@ from core.models import TenantModel
 
 # AOF19 — géométrie PURE (repère local métrique, ordre des axes contractuel).
 # Ré-exports : l'implémentation n'existe qu'une fois, dans ``geometrie.py``.
-from .geometrie import (  # noqa: F401
+from .geometrie import (  # noqa: F401 — ré-export de façade voulu (mur FICHIER_MUR : pas de __all__) (D-ENF22)
     aire_polygone_m2,
     normaliser_orientation,
     perimetre_polygone_m,

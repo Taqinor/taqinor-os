@@ -61,7 +61,7 @@ def _graph_get(path, params):
     """``GET {GRAPH_BASE_URL}/{path}`` → dict. Lève ``OSError``/``ValueError``
     sur panne (l'appelant les capte) — jamais de token journalisé."""
     url = f'{GRAPH_BASE_URL}/{path}?{urllib.parse.urlencode(params)}'
-    with urllib.request.urlopen(url, timeout=_TIMEOUT) as resp:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=_TIMEOUT) as resp:  # noqa: S310 (D-ENF22)
         return json.loads(resp.read().decode('utf-8'))
 
 
@@ -70,7 +70,7 @@ def _graph_post(path, params):
     url = f'{GRAPH_BASE_URL}/{path}'
     data = urllib.parse.urlencode(params).encode('utf-8')
     req = urllib.request.Request(url, data=data, method='POST')
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310 (D-ENF22)
         return json.loads(resp.read().decode('utf-8'))
 
 
@@ -83,7 +83,7 @@ def _erreur_graph(exc):
             message = err.get('message') or str(exc)
             code = err.get('code')
             return f'{message} (code {code})' if code else str(message)
-        except Exception:  # noqa: BLE001 — corps illisible
+        except Exception:  # noqa: BLE001 — corps illisible (D-ENF22-BLE001)
             logger.warning("webhook_leadgen._erreur_graph : erreur ignorée (mode dégradé)", exc_info=True)
             return f'HTTP {exc.code}'
     return str(exc)
@@ -164,7 +164,7 @@ def etat_webhook_leadgen(company):
         etat['token_valide'] = bool(data.get('is_valid'))
         etat['has_pages_manage_metadata'] = (
             'pages_manage_metadata' in etat['scopes'])
-    except Exception as exc:  # noqa: BLE001 — jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("webhook_leadgen.etat_webhook_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
         etat['erreur'] = _erreur_graph(exc)
         etat['detail'] = f'Meta injoignable ({etat["erreur"]}).'
@@ -192,7 +192,7 @@ def etat_webhook_leadgen(company):
                         CALLBACK_PATH.rstrip('/')):
                     etat['app_subscribed'] = True
                     break
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("webhook_leadgen.etat_webhook_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
             etat['erreur'] = _erreur_graph(exc)
     else:
@@ -218,7 +218,7 @@ def etat_webhook_leadgen(company):
             if not etat['page_subscribed']:
                 etat['page_subscribed_raison'] = (
                     "l'app n'est pas abonnée au champ leadgen de la Page")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("webhook_leadgen.etat_webhook_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
             etat['page_subscribed'] = None
             message = _erreur_graph(exc)
@@ -249,7 +249,7 @@ def _page_access_token(page_id, user_token):
         payload = _graph_get(page_id, {
             'fields': 'access_token', 'access_token': user_token})
         return str((payload or {}).get('access_token') or '') or user_token
-    except Exception:  # noqa: BLE001 — repli assumé, l'appel suivant tranchera
+    except Exception:  # noqa: BLE001 — repli assumé, l'appel suivant tranchera (D-ENF22-BLE001)
         logger.warning("webhook_leadgen._page_access_token : erreur ignorée (mode dégradé)", exc_info=True)
         return user_token
 
@@ -304,7 +304,7 @@ def abonner_page_leadgen(company):
         page_token = _page_access_token(page_id, token)
         payload = _graph_post(f'{page_id}/subscribed_apps', {
             'subscribed_fields': CHAMP_LEADGEN, 'access_token': page_token})
-    except Exception as exc:  # noqa: BLE001 — l'erreur Meta remonte en texte
+    except Exception as exc:  # noqa: BLE001 — l'erreur Meta remonte en texte (D-ENF22-BLE001)
         logger.warning("webhook_leadgen.abonner_page_leadgen : erreur ignorée (mode dégradé)", exc_info=True)
         return {'ok': False, 'detail': _erreur_graph(exc)}
     if (payload or {}).get('success'):

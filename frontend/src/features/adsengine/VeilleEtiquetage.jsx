@@ -59,7 +59,7 @@ export default function VeilleEtiquetage({ decouverteId = null }) {
     }
   }, [decouverteId, jeu])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { charger() }, [charger])
 
   const tirer = async () => {

@@ -22,8 +22,8 @@ OUT = REPO / "docs" / "samples" / "agricole_4p"
 # Import the agricole package standalone (no Django needed for company=None).
 sys.path.insert(0, str(ENGINE))
 
-import agricole  # noqa: E402
-from agricole import render, renderer, sample_data  # noqa: E402
+import agricole  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from agricole import render, renderer, sample_data  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _find_browser() -> str | None:

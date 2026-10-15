@@ -120,7 +120,7 @@ _is_battery = _sc.is_battery
 
 # QJR609 / ENF20 — UN lecteur de kWh : feuille pure ``domain.kwh_lecture`` (SPL162 :
 # aucun ``def`` ici ni dans builder.py ; ``domain.catalogue`` lit la même feuille).
-from apps.ventes.domain.kwh_lecture import _KWH_RE as _KWH_RE_LECTURE, _parse_kwh  # noqa: E402
+from apps.ventes.domain.kwh_lecture import _KWH_RE as _KWH_RE_LECTURE, _parse_kwh  # noqa: E402 — anti-cycle (D-ENF22)
 _KWH_RE = _KWH_RE_LECTURE  # SPL162 : nom DÉFINI ici (même objet que la feuille pure)
 
 

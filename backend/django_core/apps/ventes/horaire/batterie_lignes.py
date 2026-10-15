@@ -70,7 +70,7 @@ def capacite_batterie_du_devis(devis, option='avec'):
             if kwh:
                 total += float(kwh) * float(getattr(ligne, 'quantite', 0) or 0)
         return total if total > 0 else None
-    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ pas de stockage
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ pas de stockage (D-ENF22-BLE001)
         logger.warning('capacité batterie illisible', exc_info=True)
         return None
 
@@ -155,7 +155,7 @@ def banque_batterie_du_devis(devis, option='avec'):
             'ond_charge_kw': (float(puissances['ond_charge_kw'])
                               if puissances.get('ond_charge_kw') else None),
         }
-    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ pas de banque
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ pas de banque (D-ENF22-BLE001)
         logger.warning('banque batterie illisible', exc_info=True)
         return None
 
@@ -281,7 +281,7 @@ def puissances_batterie_des_lignes(lignes, roles=None):
             resultat['charge_source'] = _source_borne(
                 resultat['packs_charge_kw'], resultat['ond_charge_kw'],
                 'fiche:max_charge_kw', 'fiche:ond_bat_max_charge_kw')
-    except Exception:  # noqa: BLE001 — fiche illisible ⇒ règle conservatrice
+    except Exception:  # noqa: BLE001 — fiche illisible ⇒ règle conservatrice (D-ENF22-BLE001)
         logger.warning('puissances batterie illisibles', exc_info=True)
     return resultat
 
@@ -360,7 +360,7 @@ def rendement_batterie_des_lignes(lignes, roles=None):
         if lignes_batterie and len(publies) == lignes_batterie:
             resultat['rendement'] = min(publies)
             resultat['source'] = RENDEMENT_SOURCE_FICHE
-    except Exception:  # noqa: BLE001 — fiche illisible ⇒ hypothèse déclarée
+    except Exception:  # noqa: BLE001 — fiche illisible ⇒ hypothèse déclarée (D-ENF22-BLE001)
         logger.warning('rendement batterie illisible', exc_info=True)
         return {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
     return resultat
@@ -370,7 +370,7 @@ def rendement_batterie_du_devis(devis):
     """:func:`rendement_batterie_des_lignes` sur les lignes d'un devis."""
     try:
         return rendement_batterie_des_lignes(devis.lignes.all())
-    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ hypothèse déclarée
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ hypothèse déclarée (D-ENF22-BLE001)
         logger.warning('lignes du devis illisibles', exc_info=True)
         return {'rendement': None, 'source': RENDEMENT_SOURCE_HYPOTHESE}
 
@@ -379,7 +379,7 @@ def puissance_batterie_du_devis(devis):
     """:func:`puissances_batterie_des_lignes` sur les lignes d'un devis."""
     try:
         return puissances_batterie_des_lignes(devis.lignes.all())
-    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ règle conservatrice
+    except Exception:  # noqa: BLE001 — lignes illisibles ⇒ règle conservatrice (D-ENF22-BLE001)
         logger.warning('lignes du devis illisibles', exc_info=True)
         return {'decharge_kw': None, 'charge_kw': None,
                 'packs_decharge_kw': None, 'packs_charge_kw': None,

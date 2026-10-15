@@ -61,7 +61,7 @@ def acces_module_autorise(company, module):
         try:
             if not fn(company, module):
                 return False
-        except Exception as exc:  # noqa: BLE001 — jamais enfermer un tenant
+        except Exception as exc:  # noqa: BLE001 — jamais enfermer un tenant (D-ENF22-BLE001)
             logger.warning(
                 'vérificateur d\'accès module %s a échoué (%s) : accès '
                 'accordé par défaut', nom, exc)
@@ -171,7 +171,7 @@ def _modules_hors_perimetre(company):
     from . import modules as modules_infra
     try:
         manifests = modules_infra.collect_manifests()
-    except Exception:  # noqa: BLE001 — jamais casser /auth/me
+    except Exception:  # noqa: BLE001 — jamais casser /auth/me (D-ENF22-BLE001)
         logger.warning("modules hors perimetre : échec ignoré, comportement dégradé", exc_info=True)
         return set()
     installables = {
@@ -185,7 +185,7 @@ def _modules_hors_perimetre(company):
                 hors |= {k for k in (exclus(company) or ()) if k in installables}
             else:
                 hors |= {k for k in installables if not fn(company, k)}
-        except Exception as exc:  # noqa: BLE001 — jamais enfermer un tenant
+        except Exception as exc:  # noqa: BLE001 — jamais enfermer un tenant (D-ENF22-BLE001)
             logger.warning(
                 'vérificateur d\'accès module %s (groupé) a échoué (%s) : '
                 'aucun module exclu par lui', nom, exc)

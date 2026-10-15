@@ -35,7 +35,7 @@ from .views.parametres import RecalculerSimulationsView  # ACAL134
 # EN FIN de ``views/rattachements.py``, jamais ici : ce fichier n'est plus
 # rouvert par aucune tâche, ce qui évite que ``scripts/plan_lanes.py`` fonde
 # tout le groupe en une seule lane (décision D-CALX 13).
-from .views import rattachements as _rattachements  # noqa: F401
+from .views import rattachements as _rattachements  # noqa: F401 — import d'enregistrement (D-ENF22)
 
 # ``SimpleRouter`` et non ``DefaultRouter`` (même choix qu'``apps/ai_governance``)
 # : ``DefaultRouter`` ajoute une vue « api-root » que personne n'appelle ET un

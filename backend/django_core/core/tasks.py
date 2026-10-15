@@ -376,7 +376,7 @@ def _marquer_run(run_id, **champs):
     try:
         from .export_registry import ExportReversibiliteRun
         ExportReversibiliteRun.objects.filter(pk=run_id).update(**champs)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.exception(
             'core._marquer_run: échec mise à jour run %s.', run_id)
 
@@ -445,15 +445,15 @@ def export_reversibilite_tenant(
         client = _minio_client()
         try:
             client.head_bucket(Bucket=REVERSIBILITE_BUCKET)
-        except Exception:  # noqa: BLE001 — best-effort, bucket peut-être absent
+        except Exception:  # noqa: BLE001 — best-effort, bucket peut-être absent (D-ENF22-BLE001)
             logger.warning("export reversibilite tenant : échec ignoré, comportement dégradé", exc_info=True)
             try:
                 client.create_bucket(Bucket=REVERSIBILITE_BUCKET)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 logger.warning("export reversibilite tenant : échec ignoré, comportement dégradé", exc_info=True)
         client.put_object(
             Bucket=REVERSIBILITE_BUCKET, Key=object_key, Body=buf.getvalue())
-    except Exception:  # noqa: BLE001 — jamais bloquant, journalisé
+    except Exception:  # noqa: BLE001 — jamais bloquant, journalisé (D-ENF22-BLE001)
         logger.exception(
             'core.export_reversibilite_tenant: échec upload MinIO '
             '(société %s).', company.id)
@@ -487,7 +487,7 @@ def export_reversibilite_tenant(
                          f'telecharger/{lien.token}/',
                     company=company,
                 )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.exception(
                 'core.export_reversibilite_tenant: notification échouée '
                 '(société %s).', company.id)
@@ -564,7 +564,7 @@ def _purger_exports_reversibilite_expires(now):
                 client = _minio_client()
             client.delete_object(
                 Bucket=REVERSIBILITE_BUCKET, Key=run.fichier_key)
-        except Exception:  # noqa: BLE001 — best-effort, une clé KO n'en bloque pas d'autres
+        except Exception:  # noqa: BLE001 — best-effort, une clé KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.exception(
                 'core.purger_donnees_fiabilite: échec suppression MinIO '
                 '%s.', run.fichier_key)
@@ -602,19 +602,19 @@ def purger_donnees_fiabilite_task():
     }
     try:
         resultat['incidents'] = _purger_incidents_resolus_perimes(now)
-    except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres
+    except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge IncidentPublic.')
     try:
         resultat['exports_reversibilite'] = (
             _purger_exports_reversibilite_expires(now))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge '
             'ExportReversibiliteRun.')
     try:
         resultat['uptime_buckets'] = _purger_uptime_buckets_perimes(now)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception(
             'core.purger_donnees_fiabilite: échec purge UptimeDayBucket.')
 
@@ -688,7 +688,7 @@ def assurer_alertes_fiabilite_kpi_task():
                     operateur=KpiAlerte.Operateur.SUP_EGAL, seuil=seuil_quota,
                     nom='Quota saturé'):
                 crees += 1
-        except Exception:  # noqa: BLE001 — best-effort, une société KO n'en bloque pas d'autres
+        except Exception:  # noqa: BLE001 — best-effort, une société KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.exception(
                 'core.assurer_alertes_fiabilite_kpi: échec société %s.',
                 company.pk)

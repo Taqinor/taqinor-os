@@ -33,7 +33,7 @@ def _leads_mapping():
         }
 
 
-from . import Kit, cle_kit  # noqa: E402  (après _leads_mapping : évite tout cycle)
+from . import Kit, cle_kit  # noqa: E402 — après _leads_mapping : évite tout cycle (D-ENF22)
 
 KIT_REGISTRY = {
     # crm.lead → leads. `id` (identifiant technique Odoo) sert de clé de

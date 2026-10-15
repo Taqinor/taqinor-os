@@ -26,7 +26,7 @@ def _deposer_guide(apps, schema_editor):
         logger.info(
             'guide visite : %s déposé(s), %s déjà présent(s), %s échec(s)',
             crees, existants, echecs)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'guide visite : seed impossible pendant migrate — relancer '
             '`manage.py seed_guide_visite` une fois le stockage disponible.',
@@ -50,7 +50,7 @@ def _retirer_guide(apps, schema_editor):
                 source_id=GUIDE_VISITE_SOURCE_ID)
             if document is not None:
                 document.delete()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('guide visite : reverse best-effort échoué',
                        exc_info=True)
 

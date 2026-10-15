@@ -67,7 +67,7 @@ class IdempotenceSureTest(TransactionTestCase):
                 depart.wait(timeout=10)
                 statuts.append(
                     self._post({'nom': 'Concurrent'}, 'meme-cle').status_code)
-            except Exception as exc:  # noqa: BLE001 — remonté au test
+            except Exception as exc:  # noqa: BLE001 — remonté au test (D-ENF22-BLE001)
                 erreurs.append(exc)
             finally:
                 connection.close()

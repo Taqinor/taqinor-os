@@ -18,7 +18,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import ci_shard  # noqa: E402
+import ci_shard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 REPO_ROOT = ci_shard.REPO_ROOT
 DJANGO_ROOT = os.path.join(REPO_ROOT, "backend", "django_core")

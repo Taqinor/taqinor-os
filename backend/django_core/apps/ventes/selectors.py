@@ -10,11 +10,37 @@ inline d'origine.
 # ``domain/noyau_totaux`` : ``facturation.totaux`` et ``domain.argent`` le
 # lisent sans tirer ce module ni ses lectures inter-domaines. Ré-export.
 from .domain.noyau_totaux import _canonical_totaux
-from .domain.noyau_totaux import (  # noqa: F401 — ré-export (ENF20)
+from .domain.noyau_totaux import (  # ré-export (ENF20)
     _absorber_arrondi, ligne_compte_dans_totaux, totaux_multi_proprietes,
     tva_buckets,
 )
 import logging
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'DECLENCHEUR_PEREMPTION_JOURS', '_absorber_arrondi', 'acompte_paye_pour_devis',
+    'analyse_facturation', 'annotations_engagement_proposition', 'ca_devis_factures_par_clients',
+    'calepinage_du_devis', 'carnet_commande_par_mois', 'classer_produit_nom',
+    'comparaison_calepinage_devis', 'compatibilites_du_produit', 'comportement_paiement',
+    'compter_factures', 'contexte_conception_devis', 'date_encaissement_prevue',
+    'dates_declencheurs', 'declencheurs_actifs', 'devis_a_facturer',
+    'devis_accepted_totals_by_lead', 'devis_action_requise', 'devis_brouillon_pour_layout',
+    'devis_concevables', 'devis_deja_facture', 'devis_du_client_portail',
+    'devis_du_client_portail_obj', 'devis_envoyes_du_client', 'devis_utilisant_produit',
+    'devis_value_for_lead', 'devis_view_tracking_segments', 'dossier_8221_resume',
+    'encours_clients_par_tiers', 'encours_ouvert_par_tiers', 'engagement_proposition_du_lead',
+    'etat_recouvrement_client', 'etat_vente', 'etat_vente_map', 'expired_devis_contacts',
+    'facture_du_client_portail', 'facture_est_payable_portail', 'factures_du_client_portail',
+    'factures_du_devis', 'factures_echues', 'factures_via_bon_commande', 'faits_temoignage_devis',
+    'frequence_co_achat', 'get_facture_scoped', 'jours_impaye_facture', 'kpis_factures',
+    'ligne_compte_dans_totaux', 'lignes_produits_calepinage', 'marquer_declencheur',
+    'nombre_proprietes', 'paiements_des_factures', 'paiements_totaux_par_mode',
+    'peremption_layout_devis', 'puissance_kwc_projet', 'references_avoirs', 'references_factures',
+    'releve_client_pdf_bytes', 'releve_client_portail', 'resume_dossier_8221',
+    'resume_portail_client', 'schema_unifilaire_svg', 'signature_velocity_by_month_and_mode',
+    'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee',
+    'tva_buckets', 'verdict_batterie_onduleur', 'verdict_panneau_onduleur',
+]
 
 logger = logging.getLogger(__name__)
 
@@ -449,7 +475,7 @@ def multi_villa_totaux(devis):
     return {'groupes': groupes, 'grand_total': grand_total}
 
 
-from .multivilla import nombre_proprietes, puissance_kwc_projet  # noqa: E402,F401 — ré-export
+from .multivilla import nombre_proprietes, puissance_kwc_projet  # noqa: E402 — ré-export (D-ENF22)
 
 
 def montants_devis(devis_ids, company):
@@ -475,7 +501,7 @@ def montants_devis(devis_ids, company):
         try:
             ht = Decimal(str(devis.total_ht or 0))
             ttc = Decimal(str(devis.total_ttc or 0))
-        except Exception:  # noqa: BLE001 — jamais casser l'appelant
+        except Exception:  # noqa: BLE001 — jamais casser l'appelant (D-ENF22-BLE001)
             logger.warning("selectors.montants_devis : erreur ignorée (mode dégradé)", exc_info=True)
             ht = ttc = Decimal('0')
         out[devis.id] = {'ht': ht, 'ttc': ttc}
@@ -594,7 +620,7 @@ def devis_milestones(token):
     try:
         from apps.installations.selectors import installation_for_devis
         chantier = installation_for_devis(devis, company=devis.company)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("selectors.devis_milestones : erreur ignorée (mode dégradé)", exc_info=True)
         chantier = None
     jalons_phase = {}
@@ -604,7 +630,7 @@ def devis_milestones(token):
             for j in jalons_du_chantier(devis.company, chantier.id):
                 if j.cle_phase in ('appro', 'pose') and j.atteint:
                     jalons_phase.setdefault(j.cle_phase, j)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning("selectors.devis_milestones : erreur ignorée (mode dégradé)", exc_info=True)
             jalons_phase = {}
     j_appro = jalons_phase.get('appro')
@@ -813,7 +839,7 @@ def ca_par_entite(company, entite_ids):
         entry = out.setdefault(devis.entite_id, _vide())
         try:
             entry['ca_devis'] += Decimal(str(devis.total_ttc or 0))
-        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation (D-ENF22-BLE001)
             logger.warning("selectors.ca_par_entite : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_devis'] += 1
 
@@ -824,7 +850,7 @@ def ca_par_entite(company, entite_ids):
         entry = out.setdefault(facture.entite_id, _vide())
         try:
             entry['ca_factures'] += Decimal(str(facture.total_ttc or 0))
-        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation (D-ENF22-BLE001)
             logger.warning("selectors.ca_par_entite : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_factures'] += 1
     return out
@@ -1364,7 +1390,7 @@ def date_validite_effective(devis):
         return None
     try:
         return date_expiration(devis)
-    except Exception:  # noqa: BLE001 — jamais une date inventée en repli
+    except Exception:  # noqa: BLE001 — jamais une date inventée en repli (D-ENF22-BLE001)
         logger.warning("selectors.date_validite_effective : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -1674,11 +1700,11 @@ def promesse_pompage_devis(devis_id, company):
     }
 
 
-from .selectors_reglementaire import (  # noqa: E402,F401 — ré-export (CIQ617)
+from .selectors_reglementaire import (  # noqa: E402 — ré-export (CIQ617) (D-ENF22)
     dossier_8221_resume,
     resume_dossier_8221,
 )
-from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
+from .selectors_facturation import (  # noqa: E402 — ré-export (SPL143) (D-ENF22)
     compter_factures,
     factures_echues,
     get_facture_scoped,
@@ -1707,7 +1733,7 @@ from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
 )
 
 
-from .selectors_calepinage import (  # noqa: E402,F401 — ré-export (SPL144)
+from .selectors_calepinage import (  # noqa: E402 — ré-export (SPL144) (D-ENF22)
     conception_pour_lead,
     calepinage_du_devis,
     schema_unifilaire_svg,
@@ -1720,7 +1746,7 @@ from .selectors_calepinage import (  # noqa: E402,F401 — ré-export (SPL144)
 )
 
 
-from .selectors_cadence import (  # noqa: E402,F401 — ré-export (SPL145)
+from .selectors_cadence import (  # noqa: E402 — ré-export (SPL145) (D-ENF22)
     devis_action_requise,
     DECLENCHEUR_PEREMPTION_JOURS,
     dates_declencheurs,
@@ -1731,7 +1757,7 @@ from .selectors_cadence import (  # noqa: E402,F401 — ré-export (SPL145)
 )
 
 
-from .selectors_publicite import (  # noqa: E402,F401 — ré-export (SPL146)
+from .selectors_publicite import (  # noqa: E402 — ré-export (SPL146) (D-ENF22)
     devis_value_for_lead,
     devis_view_tracking_segments,
     expired_devis_contacts,
@@ -1742,7 +1768,7 @@ from .selectors_publicite import (  # noqa: E402,F401 — ré-export (SPL146)
 )
 
 
-from .selectors_portail import (  # noqa: E402,F401 — ré-export (SPL147)
+from .selectors_portail import (  # noqa: E402 — ré-export (SPL147) (D-ENF22)
     devis_envoyes_du_client,
     devis_du_client_portail,
     devis_du_client_portail_obj,
@@ -1753,7 +1779,7 @@ from .selectors_portail import (  # noqa: E402,F401 — ré-export (SPL147)
 )
 
 
-from .selectors_stock import (  # noqa: E402,F401 — ré-export (SPL147)
+from .selectors_stock import (  # noqa: E402 — ré-export (SPL147) (D-ENF22)
     frequence_co_achat,
     compatibilites_du_produit,
     verdict_panneau_onduleur,
@@ -1766,7 +1792,7 @@ from .selectors_stock import (  # noqa: E402,F401 — ré-export (SPL147)
 # ``vente-lue-par-la-facade``) ; défini UNE fois dans ``vente_facturation``.
 # Exception C20 : FACADE backend/django_core/apps/ventes/selectors.py car :
 # frontière M3, lecture cross-app par `selectors`.
-from .vente_facturation import (  # noqa: E402,F401 — ré-export (VNT23)
+from .vente_facturation import (  # noqa: E402 — ré-export (VNT23) (D-ENF22)
     etat_vente,
     etat_vente_map,
 )

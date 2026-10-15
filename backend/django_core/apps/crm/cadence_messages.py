@@ -133,7 +133,7 @@ def _contexte_preuve(lead):
     try:
         from apps.parametres.selectors import realisation_pour_lead
         realisation = realisation_pour_lead(lead)
-    except Exception:  # noqa: BLE001 — une preuve absente n'est jamais inventée
+    except Exception:  # noqa: BLE001 — une preuve absente n'est jamais inventée (D-ENF22-BLE001)
         logger.warning('Preuve J4 : catalogue illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return vide
@@ -214,7 +214,7 @@ def _nom_affiche_marque(lead):
     try:
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais l'envoi
+    except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais l'envoi (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_nom_affiche_marque', exc_info=True)
         profile = None
     nom = (getattr(profile, 'nom', '') or '').strip()
@@ -677,7 +677,7 @@ def message_pour_etape(etape, *, request=None, user=None, cle=None,
                 if validite:
                     contexte['date_validite'] = validite.strftime('%d/%m/%Y')
                 contexte['lien'] = url_proposition(devis) or ''
-        except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé
+        except Exception:  # noqa: BLE001 — un lien absent n'est jamais inventé (D-ENF22-BLE001)
             logger.warning(
                 'MRY13: contexte devis illisible (étape #%s)',
                 getattr(etape, 'pk', '?'), exc_info=True)
@@ -906,7 +906,7 @@ def _validite_selon_financement(lead, devis, date_fin_de_suivi):
     try:
         from apps.ventes.services import date_validite_credit
         candidate = date_validite_credit(devis)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD57 : validité crédit illisible (devis #%s)',
             getattr(devis, 'pk', '?'), exc_info=True)
@@ -943,7 +943,7 @@ def _date_validite_comme_le_pdf(devis):
     try:
         from apps.ventes.selectors import date_validite_effective
         return date_validite_effective(devis)
-    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé (D-ENF22-BLE001)
         logger.warning(
             'CAD59 : validité illisible (devis #%s)',
             getattr(devis, 'pk', '?'), exc_info=True)
@@ -1184,7 +1184,7 @@ def _corps_pour_segment(corps, cle, lead, langue):
         if corps.strip() != (defauts.get(cle, '') or '').strip():
             return corps
         return variante
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD126 : variante de segment illisible (clé %s)', cle,
             exc_info=True)
@@ -1226,7 +1226,7 @@ def _nom_prescripteur(lead):
                 .filter(company=lead.company, filleul_lead=lead)
                 .select_related('parrain')
                 .order_by('-date_creation', '-id').first())
-    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé (D-ENF22-BLE001)
         logger.warning('CAD127 : prescripteur illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return ''
@@ -1253,7 +1253,7 @@ def _prenom_du_locataire_prescripteur(lead):
             return ''
         locataire = Lead.objects.filter(
             company=lead.company, pk=int(brut)).first()
-    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé
+    except Exception:  # noqa: BLE001 — jamais bloquant, jamais inventé (D-ENF22-BLE001)
         logger.warning('CAD164 : locataire prescripteur illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return ''

@@ -57,7 +57,7 @@ export default function QuestionnaireDialog({ lead, onClose }) {
     let cancelled = false
     // Même patron que LeadWorkspace.jsx (leadLoading) : le vrai début d'une
     // opération réseau déclenchée PAR cet effet, pas un dérivé de props/state.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début réel d'une opération réseau déclenchée par l'effet (D-ENF22)
     setLoading(true)
     setError(null)
     crmApi.mintQuestionnaireLien(leadId)

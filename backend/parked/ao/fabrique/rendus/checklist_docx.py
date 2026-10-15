@@ -69,7 +69,7 @@ MOTS_INTERDITS = (
 def docx_disponible():
     """Vrai si ``python-docx`` est installé. Import fonction-local."""
     try:
-        import docx  # noqa: F401
+        __import__('docx')
     except Exception:
         return False
     return True

@@ -218,7 +218,7 @@ def resolve_email_signature(company, nom_societe='', **context) -> str:
                     code=EMAIL_SIGNATURE_CODE, actif=True)
             .first()
         )
-    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning("resolve email signature : échec ignoré, comportement dégradé", exc_info=True)
         tpl = None
     if tpl is None or not (tpl.corps or '').strip():
@@ -260,7 +260,7 @@ def wrap_email_html(
             'company_email': company_email or '',
             'couleur_principale': couleur_principale or '',
         })
-    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning("wrap email html : échec ignoré, comportement dégradé", exc_info=True)
         return corps_texte or ''
 

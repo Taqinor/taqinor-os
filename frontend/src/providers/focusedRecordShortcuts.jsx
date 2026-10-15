@@ -31,7 +31,7 @@ import { isTypingTarget } from './shortcuts'
 // LeadForm.handleSubmit) ; COLD est un abandon délibéré. Ni l'un ni l'autre
 // ne reçoit de raccourci à une touche. Labels dérivés de STAGE_LABELS —
 // JAMAIS un libellé en dur (règle #2 — les clés viennent de STAGES.py).
-// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée, pas un composant
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée, pas un composant (D-ENF22)
 export const LEAD_STAGE_SHORTCUTS = PIPELINE_STAGES.slice(0, 4).map((stage, i) => ({
   key: String(i + 1),
   stage,
@@ -43,7 +43,7 @@ export const LEAD_STAGE_SHORTCUTS = PIPELINE_STAGES.slice(0, 4).map((stage, i) =
 // Dashboard.jsx `cockpitProfile` (commercial/sav/directeur) SANS en dépendre
 // (évite une dépendance providers→pages) — voir `roleProfile` dans
 // ShortcutsProvider.jsx.
-// eslint-disable-next-line react-refresh/only-export-components -- registre co-localisé, pas un composant
+// eslint-disable-next-line react-refresh/only-export-components -- registre co-localisé, pas un composant (D-ENF22)
 export const FOCUSED_RECORD_SHORTCUTS = {
   leadForm: {
     title: 'Fiche lead',
@@ -94,7 +94,7 @@ export const FOCUSED_RECORD_SHORTCUTS = {
  * par-dessus) : une frappe destinée à l'écran du dessus n'agit jamais sur la
  * fiche du dessous (incident 02/10/2026 — voir `dialogueParDessus`).
  */
-// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé, pas un composant
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé, pas un composant (D-ENF22)
 export function useFocusedRecordShortcuts(screenId, handlers, enabled = true, { scopeRef } = {}) {
   const { setActiveScreen } = useActiveScreen()
 
@@ -144,7 +144,7 @@ export function useFocusedRecordShortcuts(screenId, handlers, enabled = true, { 
    Popover) : une bannière permanente non modale (`role="dialog"` de
    l'invite PWA) ne doit pas faire taire la fiche. Exporté pour J/K
    (LeadWorkspace) — même garde, même règle. */
-// eslint-disable-next-line react-refresh/only-export-components -- garde co-localisée, pas un composant
+// eslint-disable-next-line react-refresh/only-export-components -- garde co-localisée, pas un composant (D-ENF22)
 export function dialogueParDessus(scopeEl) {
   if (!scopeEl || typeof document === 'undefined') return false
   const ouvertes = document.querySelectorAll(
@@ -174,7 +174,7 @@ export function ActiveScreenProvider({ children }) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé, pas un composant
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé, pas un composant (D-ENF22)
 export function useActiveScreen() {
   return useContext(ActiveScreenContext)
 }

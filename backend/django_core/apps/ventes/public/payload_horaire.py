@@ -199,7 +199,7 @@ def _estimation_conso_publique(devis):
         _kwc, conso, _v, _lat, _lon, _occ, equipements = (
             _profil_horaire_pour_devis(devis))
         return estimation_conso_mensuelle(conso, equipements)
-    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques (D-ENF22-BLE001)
         logger.warning('estimation_conso indisponible', exc_info=True)
         return None
 
@@ -228,7 +228,7 @@ def _jour_reference_publique(devis):
     try:
         from ..domain.entrees import jour_reference_du_devis
         return jour_reference_du_devis(devis)
-    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques (D-ENF22-BLE001)
         logger.warning('jour_reference indisponible', exc_info=True)
         return None
 
@@ -249,7 +249,7 @@ def _jours_types_publique(devis):
             kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
             lon=lon, occupation=occupation, equipements=equipements,
             jour_reference=_jour_reference_publique(devis))
-    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques (D-ENF22-BLE001)
         logger.warning('jours_types indisponible', exc_info=True)
         return None
 
@@ -264,7 +264,7 @@ def _localisation_pour_moteur_horaire(devis, data):
     try:
         _kwc, _conso, ville_lead, lat, lon, _occ, _equip = (
             _profil_horaire_pour_devis(devis))
-    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_localisation_pour_moteur_horaire', exc_info=True)
         ville_lead, lat, lon = None, None, None
     ville = data.get('client_city') or ville_lead
@@ -358,7 +358,7 @@ def _dimensionnement_options_publique(devis, data):
             avec['production_annuelle_kwh'] = production_annuelle_pour_kwc(
                 avec['puissance_kwc'], ville=ville, lat=lat, lon=lon)
         return out
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('dimensionnement_options indisponible', exc_info=True)
         return None
 
@@ -391,6 +391,6 @@ def _production_par_option_publique(devis, data, dimensionnement_options):
             resultat['avec'] = production_journaliere_par_saison(
                 avec_kwc, ville=ville, lat=lat, lon=lon) or None
         return resultat
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('production_par_option indisponible', exc_info=True)
         return {'sans': None, 'avec': None}

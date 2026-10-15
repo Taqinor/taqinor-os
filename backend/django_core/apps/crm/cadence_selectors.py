@@ -166,7 +166,7 @@ def kpi_cadences(company, *, jours=30):
         from apps.ventes.selectors import devis_envoyes_periode
         devis_envoyes = devis_envoyes_periode(
             company, date_debut=depuis.date()).count()
-    except Exception:  # noqa: BLE001 — un KPI ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un KPI ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'kpi_cadences', exc_info=True)
         devis_envoyes = 0
 
@@ -557,7 +557,7 @@ def _assigne_de_la_visite(lead):
         jour = lead.visite_prevue_le.isoformat()
         lignes = [ligne for ligne in visites_pour_lead(lead)
                   if (ligne.get('date_prevue') or '') >= jour]
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_assigne_de_la_visite', exc_info=True)
         return ''
     if not lignes:

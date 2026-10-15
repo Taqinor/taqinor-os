@@ -57,7 +57,7 @@ def _enfiler_transcription(appel_id):
         from .tasks import transcrire_appel_task
 
         transcrire_appel_task.delay(appel_id)
-    except Exception:  # noqa: BLE001 - l'appel reste « non transcrit ».
+    except Exception:  # noqa: BLE001 — l'appel reste « non transcrit » (D-ENF22-BLE001)
         logger.warning(
             'conversation_ai: mise en file de la transcription impossible '
             '(appel %s)', appel_id, exc_info=True)

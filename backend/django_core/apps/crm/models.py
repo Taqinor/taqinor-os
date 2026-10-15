@@ -3,7 +3,7 @@ import uuid
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.db.models.functions import Lower  # noqa: F401 — façade crm.models (golden SPL70)
+from django.db.models.functions import Lower  # noqa: F401 — façade crm.models (golden SPL70) (D-ENF22)
 
 from core.models import SoftDeleteModel, TenantModel
 
@@ -3067,7 +3067,7 @@ class EmpreinteOpposition(TenantModel):
 # ── Ré-export (SPL91-SPL93) — UN SEUL bloc, TOUT EN BAS : les modèles déplacés vers
 # `models_<x>.py` restent enregistrés par Django (qui charge ce module) et
 # importables depuis `apps.crm.models`. Rien ne doit être défini après.
-from .models_clients import (  # noqa: E402,F401,F811
+from .models_clients import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     _lead_identity_keys, AppareilEquipe, Apporteur, Client,
     CommissionPartenaire, ConcurrentPerte, DealEnregistre, Defi,
     EquipeCommerciale, EtapePlanActivite, ForecastEntry, ForecastSnapshot,
@@ -3075,5 +3075,5 @@ from .models_clients import (  # noqa: E402,F401,F811
     PlanActivite, PlanCompte, Playbook, PlaybookEtape, PlaybookTache,
     RevueCompte, SalleVente, SalleVenteItem, SalleVenteVue,
     SoumissionLeadPartenaire, VisiteExterne)
-from .models_cadence import (  # noqa: E402,F401
+from .models_cadence import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     GesteRelanceAppareil, MessageTemplate, PeriodeAbsence, RelanceEtape)

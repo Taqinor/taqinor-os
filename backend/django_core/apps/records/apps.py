@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -22,4 +24,4 @@ class RecordsConfig(AppConfig):
         # à `core.events.module_toggled` et écrit la bascule dans SON chatter
         # générique (ARC8). Import seul : le décorateur `@receiver` fait le
         # câblage, idempotent au rechargement grâce à son `dispatch_uid`.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

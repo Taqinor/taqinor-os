@@ -228,7 +228,7 @@ def _junk_rows(company):
 
     try:
         report = attribution.variant_attribution(company)
-    except Exception:  # noqa: BLE001 — section optionnelle, jamais bloquante
+    except Exception:  # noqa: BLE001 — section optionnelle, jamais bloquante (D-ENF22-BLE001)
         logger.warning('brief: attribution par ad indisponible société=%s',
                        getattr(company, 'pk', company), exc_info=True)
         return []

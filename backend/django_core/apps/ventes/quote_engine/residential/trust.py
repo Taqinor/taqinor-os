@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Page 3 — CONFIANCE & ENGAGEMENT (trust + close).
 
 v2 PROTOTYPE page module. Renders the INNER HTML of one A4 page (no .page

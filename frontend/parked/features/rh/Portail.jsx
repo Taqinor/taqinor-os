@@ -75,7 +75,7 @@ export default function Portail() {
 
   useEffect(() => {
     let vivant = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     setLoading(true)
     setSansDossier(false)
     Promise.resolve(rhApi.getMesInfos?.())

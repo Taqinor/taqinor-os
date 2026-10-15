@@ -22,6 +22,8 @@ bien qu'aucune seconde surface d'écriture n'apparaît sur la même table.
 """
 from __future__ import annotations
 
+
+import logging
 import json
 
 from django.http import Http404
@@ -393,9 +395,9 @@ class IdempotentActionMixin:
                           # d'idempotence du tout.
                           'response_body': json.loads(
                               json.dumps(reponse.data, default=str))})
-        except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT : elle
+        except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT : elle (D-ENF22-BLE001)
             # ne doit jamais faire échouer une action qui a déjà réussi.
-            pass
+            logging.getLogger(__name__).warning("calepinage_views.IdempotentActionMixin.executer_idempotent : erreur ignorée (mode dégradé)", exc_info=True)
         return reponse
 
 

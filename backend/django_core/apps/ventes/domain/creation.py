@@ -32,6 +32,13 @@ NOM DU LOGGER FIGÉ sur ``apps.ventes.services`` : des tests capturent ce nom.
 from decimal import Decimal
 import logging
 
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    '_is_battery', '_is_hybrid_inverter', '_is_reseau_inverter', 'carte_marques_composition',
+    'composition_deux_optimiseurs', 'composition_residentielle', 'concevoir_electrique_du_devis',
+    'ordre_lignes_societe', 'poser_puissance_kwc', 'refresh_marge_snapshot',
+]
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -198,7 +205,7 @@ def devise_par_defaut(company):
     from apps.parametres.models import CompanyProfile
     try:
         profil = CompanyProfile.get(company=company)
-    except Exception:  # noqa: BLE001 — jamais bloquant : repli MAD
+    except Exception:  # noqa: BLE001 — jamais bloquant : repli MAD (D-ENF22-BLE001)
         logger.warning("creation.devise_par_defaut : erreur ignorée (mode dégradé)", exc_info=True)
         return 'MAD'
     return getattr(profil, 'devise_defaut', '') or 'MAD'
@@ -315,24 +322,24 @@ def create_devis_upsell_from_intervention(*, intervention, user):
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402,F401
-from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402 — anti-cycle (D-ENF22)
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _is_battery,
     _is_hybrid_inverter,
     _is_reseau_inverter,
     carte_marques_composition,
     ordre_lignes_societe,
 )
-from apps.ventes.domain.composition import (  # noqa: E402,F401
+from apps.ventes.domain.composition import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     composition_deux_optimiseurs,
     composition_residentielle,
 )
-from apps.ventes.domain.etudes import (  # noqa: E402,F401
+from apps.ventes.domain.etudes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     refresh_marge_snapshot,
 )
-from apps.ventes.domain.lignes import (  # noqa: E402,F401
+from apps.ventes.domain.lignes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     creer_ligne,
 )
-from apps.ventes.domain.scenario import (  # noqa: E402,F401
+from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     poser_puissance_kwc,
 )

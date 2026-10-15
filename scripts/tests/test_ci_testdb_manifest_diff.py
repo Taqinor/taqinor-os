@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import ci_testdb_manifest_diff as guard  # noqa: E402
+import ci_testdb_manifest_diff as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def h(seed):

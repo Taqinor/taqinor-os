@@ -1,6 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (données + pages lazy), pas un module de
-   composants : le fast-refresh ne s'y applique pas (cf. router/moduleRoutes). */
 import { lazy } from 'react'
 import {
   ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,

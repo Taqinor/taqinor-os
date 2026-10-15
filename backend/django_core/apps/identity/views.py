@@ -159,7 +159,7 @@ def _banner_profile(request):
     try:
         from apps.portail.branding import company_pour_hote
         company = company_pour_hote(request.get_host())
-    except Exception:  # noqa: BLE001 — hôte refusé/illisible → neutre
+    except Exception:  # noqa: BLE001 — hôte refusé/illisible → neutre (D-ENF22-BLE001)
         logger.warning("views._banner_profile : erreur ignorée (mode dégradé)", exc_info=True)
         company = None
     if company is None:
@@ -219,7 +219,7 @@ class LoginBannerView(APIView):
                f'{timezone.now().strftime("%Y%m%d%H")}')
         try:
             premiere = cache.add(cle, 1, timeout=3600)
-        except Exception:  # noqa: BLE001 - cache indisponible
+        except Exception:  # noqa: BLE001 — cache indisponible (D-ENF22-BLE001)
             logger.warning("views.LoginBannerView.post : erreur ignorée (mode dégradé)", exc_info=True)
             premiere = None
         if premiere is False:
@@ -236,7 +236,7 @@ class LoginBannerView(APIView):
                 detail=('Bannière de connexion acquittée depuis '
                         f'{_client_ip(request)} (UA: {ua}).'),
             )
-        except Exception:  # noqa: BLE001 - journalisation best-effort
+        except Exception:  # noqa: BLE001 — journalisation best-effort (D-ENF22-BLE001)
             logger.warning("views.LoginBannerView.post : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({'acknowledged': True})
 

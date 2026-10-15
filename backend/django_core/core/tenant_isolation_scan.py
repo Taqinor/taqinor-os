@@ -290,7 +290,7 @@ def build_minimal_instance(model, company):
 def _model_has_company(model) -> bool:
     try:
         return any(f.name == "company" for f in model._meta.get_fields())
-    except Exception:  # noqa: BLE001 — modèle exotique : hors périmètre
+    except Exception:  # noqa: BLE001 — modèle exotique : hors périmètre (D-ENF22-BLE001)
         _logger.warning("model has company : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
@@ -364,7 +364,7 @@ def build_foreign_relation_payload(view_class, company):
         raise SkipModel("pas de serializer_class de classe")
     try:
         fields = serializer_class().fields
-    except Exception as exc:  # noqa: BLE001 — dette explicite, pas un crash
+    except Exception as exc:
         raise SkipModel(f"sérialiseur non instanciable : {exc}")
 
     payload = {}
@@ -413,7 +413,7 @@ def detail_get_actions(view_class, limit=3) -> list[str]:
     """
     try:
         extra = view_class.get_extra_actions()
-    except Exception:  # noqa: BLE001 — vue exotique : aucune action exercée
+    except Exception:  # noqa: BLE001 — vue exotique : aucune action exercée (D-ENF22-BLE001)
         _logger.warning("detail get actions : échec ignoré, comportement dégradé", exc_info=True)
         return []
     chemins = []
@@ -511,7 +511,7 @@ def scan_live_isolation() -> dict:
                     f'WHERE t."{col}" IS NOT NULL AND NOT EXISTS ('
                     f'SELECT 1 FROM "authentication_company" c '
                     f'WHERE c.id = t."{col}") LIMIT {_ANOMALY_MAX}) s', [])
-            except Exception:  # noqa: BLE001 — table KO ne bloque pas le reste
+            except Exception:  # noqa: BLE001 — table KO ne bloque pas le reste (D-ENF22-BLE001)
                 _logger.warning('scan_live_isolation: échec sur %s',
                                 entry.table)
                 continue
@@ -540,5 +540,5 @@ def _report_anomalies(report: dict) -> None:
         return
     try:
         _SCAN_REPORTER(report)
-    except Exception:  # noqa: BLE001 — un reporteur KO ne casse pas le scan
+    except Exception:  # noqa: BLE001 — un reporteur KO ne casse pas le scan (D-ENF22-BLE001)
         _logger.exception('scan_live_isolation: reporteur en échec')

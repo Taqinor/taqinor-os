@@ -80,7 +80,7 @@ function EcheancesSousNJoursCard({ titre, fetchFn, exportBase, dateField, dateLa
       .finally(() => setLoading(false))
   }, [fetchFn, jours])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { charger() }, [charger])
 
   const exporterCsv = async () => {

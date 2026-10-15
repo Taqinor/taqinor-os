@@ -98,13 +98,13 @@ def _from_periodic_tasks():
     """
     try:
         from django_celery_beat.models import PeriodicTask
-    except Exception:  # noqa: BLE001 — app non installée : dégradation propre.
+    except Exception:  # noqa: BLE001 — app non installée : dégradation propre (D-ENF22-BLE001)
         logger.warning("from periodic tasks : échec ignoré, comportement dégradé", exc_info=True)
         return []
     out = []
     try:
         rows = list(PeriodicTask.objects.all())
-    except Exception:  # noqa: BLE001 — table absente / non migrée.
+    except Exception:  # noqa: BLE001 — table absente / non migrée (D-ENF22-BLE001)
         logger.warning("from periodic tasks : échec ignoré, comportement dégradé", exc_info=True)
         return []
     for pt in rows:
@@ -155,7 +155,7 @@ def run_job(task_name):
         raise ValueError(f"Tâche inconnue ou non planifiée : {task_name!r}")
     try:
         result = current_app.send_task(task_name)
-    except Exception as exc:  # noqa: BLE001 — broker down / erreur transport.
+    except Exception as exc:
         raise RuntimeError(
             f"Impossible d'envoyer la tâche {task_name!r} : {exc}"
         ) from exc
@@ -190,7 +190,7 @@ def submit(kind, task, *, company, user, **kwargs):
             current_app.send_task(task, kwargs=payload)
         else:
             task.delay(**payload)
-    except Exception as exc:  # noqa: BLE001 — broker down : job en échec propre
+    except Exception as exc:
         job.marquer_echec(f'Envoi de la tâche impossible : {exc}')
         raise
     return job

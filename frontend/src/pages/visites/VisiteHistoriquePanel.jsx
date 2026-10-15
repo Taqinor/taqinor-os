@@ -34,7 +34,7 @@ export default function VisiteHistoriquePanel({ leadId, visiteCouranteId }) {
       .finally(() => setLoading(false))
   }, [leadId, visiteCouranteId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   if (loading) return <Spinner />

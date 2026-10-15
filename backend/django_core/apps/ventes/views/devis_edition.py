@@ -341,7 +341,7 @@ class DevisEditionActionsMixin:
             # CI #997 fuzz : contenu de ligne refusé = 409.
             return Response({'detail': f'Enregistrement échoué : {exc}'},
                             status=status.HTTP_409_CONFLICT)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
             logger.warning(
                 "devis_edition.DevisEditionActionsMixin._creer_atomique : erreur ignorée (mode dégradé)", exc_info=True)
@@ -500,7 +500,7 @@ class DevisEditionActionsMixin:
             # Messages FRANÇAIS de l'écrivain unique (produit inconnu…).
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)
-        except Exception:  # noqa: BLE001 — rollback : lignes d'origine
+        except Exception:  # noqa: BLE001 — rollback : lignes d'origine (D-ENF22-BLE001)
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
             logger.warning(
                 "devis_edition.DevisEditionActionsMixin.replace_lines : erreur ignorée (mode dégradé)", exc_info=True)

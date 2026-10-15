@@ -99,6 +99,6 @@ def _build_acceptance_wa_url(*, devis):
             f'confirmée. Merci pour votre confiance !'
         )
         return f'https://wa.me/{digits}?text={text}'
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QJ2: _build_acceptance_wa_url échoué : %s', exc)
         return None

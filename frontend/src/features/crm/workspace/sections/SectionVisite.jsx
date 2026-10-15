@@ -58,7 +58,7 @@ export default function SectionVisite({ state, setField, errors = {}, mode, refD
       .finally(() => setLoading(false))
   }, [leadId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage, même patron que VisiteTab.jsx
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage, même patron que VisiteTab.jsx (D-ENF22)
   useEffect(() => { charger() }, [charger])
 
   return (

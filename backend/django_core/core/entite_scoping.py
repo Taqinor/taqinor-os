@@ -206,7 +206,7 @@ class EntiteScopeMixin:
             return
         try:
             data = request.data
-        except Exception:  # noqa: BLE001 — corps illisible : le parseur DRF
+        except Exception:  # noqa: BLE001 — corps illisible : le parseur DRF (D-ENF22-BLE001)
             logger.warning("initial : échec ignoré, comportement dégradé", exc_info=True)
             return           # de la vue tranchera (400/415), jamais un 500 ici
         if not hasattr(data, 'get') or self.entite_field not in data:

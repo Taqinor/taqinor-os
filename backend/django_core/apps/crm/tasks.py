@@ -198,7 +198,7 @@ def poser_reveils_saisonniers_task(
     for company in active_companies():
         try:
             posees += len(poser_reveils_saisonniers(company, limite=limite))
-        except Exception:  # noqa: BLE001 — une société n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — une société n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning('ALEA1 : réveil saisonnier en échec (société #%s)',
                            company.pk, exc_info=True)
     return {'posees': posees}

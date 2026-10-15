@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_decisions as cd  # noqa: E402
+import check_decisions as cd  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ENTETE = re.compile(
     r"^(?P<tete>- \[[^\]]*\]\s*[A-Z][A-Za-z0-9]*\s*—\s*)\*\*(?P<corps>.*?)\*\*(?P<suite> :.*)$")

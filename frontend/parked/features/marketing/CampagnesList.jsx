@@ -54,7 +54,7 @@ export default function CampagnesList() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   // WIR257 — le reporting n'est chargé QUE sur son onglet (aucun appel réseau
@@ -68,7 +68,7 @@ export default function CampagnesList() {
   }, [groupby])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement paresseux de l'onglet
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement paresseux de l'onglet (D-ENF22)
     if (vue === 'reporting') loadRapport()
   }, [vue, loadRapport])
 

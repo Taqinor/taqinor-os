@@ -194,7 +194,7 @@ class ActivitySerializer(ChampsStrictsSansDecimalMixin,
                     company, obj.object_id)
                 if client is not None:
                     return (getattr(client, 'telephone', '') or None)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 "serializers.ActivitySerializer.get_target_phone : erreur ignorée (mode dégradé)",
                 exc_info=True)

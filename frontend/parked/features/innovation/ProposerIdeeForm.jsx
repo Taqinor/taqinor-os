@@ -55,7 +55,7 @@ export default function ProposerIdeeForm({ onCreated, onCancel, compact = false 
   // NTIDE20 — recherche debouncée dès 3 caractères, annulée à chaque frappe.
   useEffect(() => {
     const t = titre.trim()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset synchrone quand la recherche est trop courte
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset synchrone quand la recherche est trop courte (D-ENF22)
     if (t.length < 3) { setSimilaires([]); return undefined }
     const handle = setTimeout(() => {
       innovationApi.similaires(t)

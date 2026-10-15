@@ -81,7 +81,7 @@ def set_current_company(company_id: Optional[int]) -> bool:
     try:
         from . import monitoring
         monitoring.bind_company(company_id)
-    except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête
+    except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête (D-ENF22-BLE001)
         logger.warning("set current company : échec ignoré, comportement dégradé", exc_info=True)
     if connection.vendor != 'postgresql':
         return False
@@ -125,7 +125,7 @@ def _company_id_from_request(request) -> Optional[int]:
     try:
         from authentication.cookie_auth import CookieJWTAuthentication
         result = CookieJWTAuthentication().authenticate(request)
-    except Exception:  # noqa: BLE001 - jeton invalide ⇒ pas de blocage
+    except Exception:  # noqa: BLE001 — jeton invalide ⇒ pas de blocage (D-ENF22-BLE001)
         logger.warning("company id from request : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if result is None:
@@ -228,7 +228,7 @@ class TenantContextMiddleware:
         try:
             from . import monitoring
             monitoring.bind_company(company_id)
-        except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête
+        except Exception:  # noqa: BLE001 — un tag ne doit jamais casser une requête (D-ENF22-BLE001)
             logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
         if connection.vendor != 'postgresql':
             return self.get_response(request)

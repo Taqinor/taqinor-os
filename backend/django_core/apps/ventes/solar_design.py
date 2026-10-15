@@ -2357,7 +2357,7 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
 # (partagé par ventes et calepinage, sans base de données). Ce module garde des
 # RÉ-EXPORTS pour que ses appelants restent inchangés (comportement
 # octet-identique).
-from core.pompage.volumes import (  # noqa: E402
+from core.pompage.volumes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _CLEARSKY_HOURLY_SHAPE,
     _DAYS_IN_MONTH,
     _PUMP_START_IRRADIANCE_FRACTION,

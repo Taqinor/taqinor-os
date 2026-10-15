@@ -94,7 +94,7 @@ function CorpsFacturer({ devis, onOpenChange, onDone }) {
   }, [devis.id])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture serveur au montage
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture serveur au montage (D-ENF22)
     charger()
   }, [charger])
 

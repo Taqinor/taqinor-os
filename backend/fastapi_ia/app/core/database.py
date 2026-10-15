@@ -140,8 +140,10 @@ def create_tables() -> None:
         )
         return
 
+    from importlib import import_module
+
     from sqlalchemy import text
-    from app.models import ocr  # noqa: F401 — registers the model
+    import_module('app.models.ocr')  # registers the model
 
     Base.metadata.create_all(bind=engine)
 

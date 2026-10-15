@@ -12,8 +12,8 @@ from unittest import mock
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services import action_tools as at  # noqa: E402
-from app.services.action_tools import ActionContext  # noqa: E402
+from app.services import action_tools as at  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from app.services.action_tools import ActionContext  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 _ENV_KEYS = ("DJANGO_ALLOWED_HOSTS", "DJANGO_INTERNAL_HOST")
 

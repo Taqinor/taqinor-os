@@ -3,7 +3,7 @@ Production-specific settings.
 """
 import os
 
-from .base import *  # noqa: F401, F403
+from .base import *  # noqa: F403 — réglages hérités de base.py, patron Django (D-ENF22)
 
 DEBUG = False
 
@@ -72,7 +72,7 @@ CORS_ALLOWED_ORIGINS = _liste_env('CORS_ALLOWED_ORIGINS') or [
 # les deux hôtes de l'ERP sur le serveur) est CONSERVÉE puis complétée des
 # origines CORS ; avant, cette ligne l'écrasait et la variable était morte.
 CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(
-    list(CSRF_TRUSTED_ORIGINS) + list(CORS_ALLOWED_ORIGINS)))  # noqa: F405
+    list(CSRF_TRUSTED_ORIGINS) + list(CORS_ALLOWED_ORIGINS)))  # noqa: F405 — hérité de base.py (D-ENF22)
 
 # ASEC48 — `NUM_PROXIES` (base.py, CRX30 ; primitive ASEC15
 # `core.throttling.ip_de_requete`) : derrière Caddy → nginx, nginx réécrit
@@ -81,7 +81,7 @@ CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(
 # illisible mettrait tout Internet dans UN seau de limitation (REMOTE_ADDR =
 # nginx) : refusé au démarrage, la variable nommée. Sous le test runner
 # (TESTING), base.py laisse délibérément NUM_PROXIES à None : pas de garde.
-if not NUM_PROXIES and not TESTING:  # noqa: F405
+if not NUM_PROXIES and not TESTING:  # noqa: F405 — hérité de base.py (D-ENF22)
     raise RuntimeError(
         "NUM_PROXIES doit valoir au moins 1 en production (chaîne Caddy → "
         "nginx → Django : 1). Retirez NUM_PROXIES du .env du serveur ou posez "
@@ -92,7 +92,7 @@ if not NUM_PROXIES and not TESTING:  # noqa: F405
 # de documentation (W001/W002) qui noient les contrôles de sécurité. Le schéma
 # est déjà gardé en CI (scripts/check_openapi_schema.py, job backend-openapi).
 SPECTACULAR_SETTINGS = {
-    **SPECTACULAR_SETTINGS,  # noqa: F405
+    **SPECTACULAR_SETTINGS,  # noqa: F405 — hérité de base.py (D-ENF22)
     'ENABLE_DJANGO_DEPLOY_CHECK': False,
 }
 

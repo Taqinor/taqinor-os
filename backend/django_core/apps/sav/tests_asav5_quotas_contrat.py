@@ -15,7 +15,7 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
 from apps.sav.models import ContratMaintenance, Ticket
-from apps.sav.selectors import droits_restants
+from apps.sav.droits_contrat import droits_restants
 
 User = get_user_model()
 ANNEE = 2026

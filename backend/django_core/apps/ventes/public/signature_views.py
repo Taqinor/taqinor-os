@@ -152,7 +152,7 @@ def proposal_contact_request(request, token):
         from django.core.cache import cache
         cache_key = f'qj27-contact:{link.pk}:{canal or "default"}'
         already = not cache.add(cache_key, True, 3600)
-    except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien
+    except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'proposal_contact_request', exc_info=True)
         already = False
     if already:
@@ -194,7 +194,7 @@ def proposal_contact_request(request, token):
                     link='/ventes/devis',
                     company=devis.company,
                 )
-    except Exception:  # noqa: BLE001 — jamais d'erreur interne exposée
+    except Exception:  # noqa: BLE001 — jamais d'erreur interne exposée (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'proposal_contact_request', exc_info=True)
 
     return _noindex(Response({

@@ -2,9 +2,9 @@
 golden SPL1, `tests_services_split_golden.py`, n'est jamais édité).
 
 Après la scission SPL3-SPL25, `services.py` ne contient plus que son
-docstring, `logger`, le bloc de réexport T-TRACE (`from .visites import`) et
-les lignes de façade `from .<module> import (...)  # noqa: F401 — façade`
-gardées pour les appelants d'un AUTRE propriétaire. Surface append-only
+docstring, `logger`, le bloc de réexport T-TRACE (`from .visites import`), les lignes de
+façade `from .<module> import (...)  # façade` gardées pour les appelants d'un
+AUTRE propriétaire, et le `__all__` qui les liste (ENF22 : plus aucun noqa F401). Surface append-only
 (`docs/ownership.yml`) : on y ajoute une ligne de façade, jamais un corps.
 
 Lecture AST uniquement (aucune regex sur le code, aucun mock) : DB-free.
@@ -82,7 +82,8 @@ class FacadePureTests(SimpleTestCase):
             if isinstance(n, (ast.Import, ast.ImportFrom)):
                 continue
             if isinstance(n, ast.Assign) and [
-                    getattr(t, 'id', None) for t in n.targets] == ['logger']:
+                    getattr(t, 'id', None) for t in n.targets] in (
+                        ['logger'], ['__all__']):
                 continue
             intrus.append(f'l.{n.lineno} {type(n).__name__}')
         self.assertEqual(intrus, [])
@@ -94,20 +95,20 @@ class FacadePureTests(SimpleTestCase):
                    or (isinstance(n, ast.ImportFrom) and n.level == 0)]
         self.assertEqual(absolus, ['import logging'])
 
-    def test_chaque_import_relatif_nomme_un_module_et_porte_noqa_motif(self):
-        lignes = _source().splitlines()
+    def test_chaque_import_relatif_nomme_un_module_et_est_liste_dans_all(self):
+        arbre = ast.parse(_source())
+        listes = [n for n in arbre.body if isinstance(n, ast.Assign) and [
+            getattr(t, 'id', None) for t in n.targets] == ['__all__']]
+        self.assertEqual(len(listes), 1, 'un seul __all__ attendu')
+        dans_all = {e.value for e in listes[0].value.elts}
         fautes = []
-        for n in _imports_relatifs(ast.parse(_source())):
+        for n in _imports_relatifs(arbre):
             if not n.module:
                 fautes.append(f'l.{n.lineno} : « from . import » (nommer le module)')
                 continue
-            texte = ' '.join(lignes[n.lineno - 1:n.end_lineno])
-            if '# noqa: F401' not in texte:
-                fautes.append(f'l.{n.lineno} : sans « # noqa: F401 »')
-                continue
-            motif = texte.split('# noqa: F401', 1)[1].split(')')[0].strip(' —-')
-            if not motif:
-                fautes.append(f'l.{n.lineno} : # noqa: F401 sans motif')
+            for a in n.names:
+                if (a.asname or a.name) not in dans_all:
+                    fautes.append(f'l.{n.lineno} : {a.asname or a.name} absent de __all__')
         self.assertEqual(fautes, [])
 
     def test_t_trace_identique_au_golden(self):

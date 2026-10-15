@@ -35,7 +35,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import audit_tache as at  # noqa: E402
+import audit_tache as at  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 GOLDEN = ROOT / "scripts" / "tests" / "golden" / "audit_tache"
 REEL = os.environ.get("AUDIT_TACHE_REEL") == "1"

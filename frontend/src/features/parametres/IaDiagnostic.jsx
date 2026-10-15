@@ -27,7 +27,7 @@ export default function IaDiagnostic() {
       .catch(() => setLoadError(true))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const tables = schema?.tables || []

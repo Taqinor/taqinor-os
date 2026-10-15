@@ -223,7 +223,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             from ..utils.pdf import generate_bordereau_remise_pdf
             generate_bordereau_remise_pdf(remise.id)
             remise.refresh_from_db()
-        except Exception:  # noqa: BLE001 — best-effort, la clôture reste valide
+        except Exception:  # noqa: BLE001 — best-effort, la clôture reste valide (D-ENF22-BLE001)
             logger.warning(
                 "remise_encaissement.RemiseEncaissementViewSet.cloturer : erreur ignorée (mode dégradé)", exc_info=True)
         return Response({

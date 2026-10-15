@@ -855,7 +855,7 @@ export default function ListView({
   // Remise au 1er palier quand le tri/filtre/groupe change : reinitialisation
   // ponctuelle d'un plafond d'affichage, jamais une cascade (la valeur posee
   // est une constante, elle ne peut pas re-declencher l'effet).
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- remise du plafond d'affichage au 1er palier (constante, pas de cascade) (D-ENF22)
   useEffect(() => { setLimiteRendu(LIST_RENDER_CAP) }, [sort, tri, listGroup, leads])
   const rendus = useMemo(() => sorted.slice(0, limiteRendu), [sorted, limiteRendu])
   const restants = Math.max(0, sorted.length - limiteRendu)

@@ -1,5 +1,6 @@
 """Vues du vertical BTP/EPC (Groupe NTCON) — scopées société (TenantMixin) +
 lecture/écriture fine-grainée (``WriteScopedPermissionMixin``)."""
+import logging
 from django.contrib.contenttypes.models import ContentType
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -58,7 +59,8 @@ class BtpPublicLinkRateThrottle(SimpleRateThrottle):
             rates = (settings.REST_FRAMEWORK or {}).get(
                 'DEFAULT_THROTTLE_RATES', {})
             return rates.get(self.scope) or self.rate
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("views.BtpPublicLinkRateThrottle.get_rate : erreur ignorée (mode dégradé)", exc_info=True)
             return self.rate
 
     def get_cache_key(self, request, view):

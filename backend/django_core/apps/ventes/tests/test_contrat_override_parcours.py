@@ -962,8 +962,8 @@ class RenduPdfReelTests(_ParcoursBase):
 
     def test_le_pdf_est_rendu_avec_le_scenario_surcharge(self):
         try:
-            import weasyprint  # noqa: F401
-        except Exception:  # noqa: BLE001 — libs natives absentes
+            __import__('weasyprint')
+        except (ImportError, OSError):  # libs natives absentes
             self.skipTest('weasyprint natif indisponible')
         from apps.ventes.quote_engine.builder import generate_premium_devis_pdf
 

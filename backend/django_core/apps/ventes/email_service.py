@@ -51,7 +51,7 @@ def _branded_html(company, sujet, corps):
             company_email=identite.get('email', ''),
             couleur_principale=identite.get('couleur_principale', ''),
         )
-    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning("email_service._branded_html : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
@@ -114,13 +114,13 @@ def _signature(company, **context):
     try:
         from apps.parametres.selectors import company_identity
         nom = (company_identity(company).get('nom') or '').strip()
-    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning("email_service._signature : erreur ignorée (mode dégradé)", exc_info=True)
         nom = ''
     try:
         from core.selectors import resolve_email_signature
         return resolve_email_signature(company, nom, **context)
-    except Exception:  # noqa: BLE001 — repli ultime, jamais d'échec d'envoi
+    except Exception:  # noqa: BLE001 — repli ultime, jamais d'échec d'envoi (D-ENF22-BLE001)
         logger.warning("email_service._signature : erreur ignorée (mode dégradé)", exc_info=True)
         return f"L'équipe {nom}" if nom else "L'équipe"
 
@@ -179,7 +179,7 @@ def _document_pdf(document):
         sig = getattr(document, 'signature', None)
         if sig is not None:
             signed_key = getattr(sig, 'signed_pdf_key', None) or None
-    except Exception:  # noqa: BLE001 — pas de signature liée → ignore
+    except Exception:  # noqa: BLE001 — pas de signature liée → ignore (D-ENF22-BLE001)
         logger.warning("email_service._document_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         signed_key = None
     chosen = signed_key or key
@@ -209,7 +209,7 @@ def _document_pdf(document):
             from .utils.pdf import cle_facture_pdf_a_jour, download_pdf
             cle = cle_facture_pdf_a_jour(document)
             data = download_pdf(cle) if cle else None
-        except Exception as exc:  # noqa: BLE001 — l'appelant refuse l'envoi
+        except Exception as exc:  # noqa: BLE001 — l'appelant refuse l'envoi (D-ENF22-BLE001)
             logger.warning(
                 'AFAC42: PDF facture indisponible pour %s (%s) — envoi refusé',
                 ref, exc)
@@ -223,7 +223,7 @@ def _document_pdf(document):
             if isinstance(document, Devis):
                 from .quote_engine import cle_pdf_a_jour
                 chosen = cle_pdf_a_jour(document)
-        except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'PVFRESH: rafraîchissement du PDF impossible pour %s (%s) — '
                 'pièce jointe servie depuis le fichier stocké', ref, exc)
@@ -300,7 +300,7 @@ def _modele_email_personnalise(company, cle, client, reference, **contexte):
             company, cle, civilite=civilite, nom=nom_client,
             reference=reference, **contexte)
         return {champ: rendu[champ] for champ in personnalise if rendu[champ]}
-    except Exception as exc:  # noqa: BLE001 — repli sur le texte codé
+    except Exception as exc:  # noqa: BLE001 — repli sur le texte codé (D-ENF22-BLE001)
         logger.warning('APAR59: modèle e-mail %s illisible (%s)', cle, exc)
         return {}
 

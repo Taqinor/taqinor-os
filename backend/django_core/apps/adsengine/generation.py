@@ -281,7 +281,7 @@ def call_llm_variants(context, *, api_key=None, timeout=GEN_TIMEOUT_SECONDS):
             timeout=timeout)
         resp.raise_for_status()
         data = resp.json()
-    except Exception as exc:  # noqa: BLE001 — traduit en erreur de backend
+    except Exception as exc:
         raise GenerationBackendError(
             f'Appel au backend de génération échoué : {exc}') from exc
     try:

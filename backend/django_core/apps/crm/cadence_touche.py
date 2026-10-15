@@ -259,7 +259,7 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         try:
             suivante, raison_suite = materialiser_touche_suivante(
                 etape, user, avec_raison=True)
-        except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
+        except Exception:  # noqa: BLE001 — jamais bloquant pour le geste (D-ENF22-BLE001)
             # ACRM12 — une panne n'est JAMAIS une fin de cadence : raison
             # INDÉTERMINÉE, le filet plus bas pose la suite (jamais le Froid).
             raison_suite = RaisonSuite.INDETERMINE
@@ -275,7 +275,7 @@ def marquer_etape_relance(etape, user, statut, note='', outcome='',
         try:
             poser_filet_visite_a_planifier(
                 lead, user, devis_id=etape.devis_id)
-        except Exception:  # noqa: BLE001 — jamais bloquant pour le geste
+        except Exception:  # noqa: BLE001 — jamais bloquant pour le geste (D-ENF22-BLE001)
             logger.warning(
                 'VISITE-CADENCE: filet « planifier la visite » non posé '
                 '(étape #%s)', getattr(etape, 'pk', '?'), exc_info=True)

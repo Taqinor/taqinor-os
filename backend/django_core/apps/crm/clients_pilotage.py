@@ -89,12 +89,12 @@ def detecter_signal_interet_salle_vente(salle):
             from core.events import salle_vente_signal_interet
             salle_vente_signal_interet.send(
                 sender=type(salle), lead=lead, salle=salle, company=lead.company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'NTCRM27: émission salle_vente_signal_interet échouée pour le lead #%s',
                 lead.pk, exc_info=True)
         return note
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'NTCRM27: détection signal intérêt échouée pour la salle #%s',
             getattr(salle, 'pk', '?'), exc_info=True)
@@ -113,7 +113,7 @@ def _format_date_fr(valeur):
     casse jamais le flux qui l'écrit)."""
     try:
         return timezone.localtime(valeur).strftime('%d/%m/%Y')
-    except Exception:  # noqa: BLE001 — jamais bloquant pour une note
+    except Exception:  # noqa: BLE001 — jamais bloquant pour une note (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_format_date_fr', exc_info=True)
         return str(valeur)
 
@@ -247,7 +247,7 @@ def handle_parrainage_signup(lead) -> None:
                 link=f'/crm/parrainage?parrain={parrain.pk}',
                 company=lead.company,
             )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         import logging
         logging.getLogger(__name__).warning(
             'QX35: handle_parrainage_signup échoué pour lead #%s : %s',

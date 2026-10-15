@@ -64,7 +64,7 @@ def _emettre_incident_opened(incident):
         from core.events import incident_opened
         incident_opened.send(
             sender=IncidentPublic, incident=incident, company=incident.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'NTOBS26 : émission incident_opened échouée (incident %s)',
             incident.pk)
@@ -76,7 +76,7 @@ def _emettre_incident_resolved(incident):
         from core.events import incident_resolved
         incident_resolved.send(
             sender=IncidentPublic, incident=incident, company=incident.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'NTOBS26 : émission incident_resolved échouée (incident %s)',
             incident.pk)
@@ -110,7 +110,7 @@ def _envoyer_notification_abonnes(incident, evenement):
                 [abonne.email],
                 fail_silently=True,
             )
-        except Exception:  # noqa: BLE001 — un envoi KO n'affecte pas les autres
+        except Exception:  # noqa: BLE001 — un envoi KO n'affecte pas les autres (D-ENF22-BLE001)
             logger.exception(
                 'statuspage._envoyer_notification_abonnes: échec pour %s',
                 abonne.email)

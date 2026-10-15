@@ -169,7 +169,7 @@ class DisabledModuleMiddleware:
             from . import modules as modules_infra
             try:
                 manifests = modules_infra.collect_manifests()
-            except Exception:  # noqa: BLE001 - jamais casser le pipeline HTTP
+            except Exception:  # noqa: BLE001 — jamais casser le pipeline HTTP (D-ENF22-BLE001)
                 logger.warning("installable : échec ignoré, comportement dégradé", exc_info=True)
                 manifests = {}
             self._installable_keys = {
@@ -193,7 +193,7 @@ class DisabledModuleMiddleware:
         try:
             from authentication.cookie_auth import CookieJWTAuthentication
             result = CookieJWTAuthentication().authenticate(request)
-        except Exception:  # noqa: BLE001 - jeton invalide ⇒ pas de blocage
+        except Exception:  # noqa: BLE001 — jeton invalide ⇒ pas de blocage (D-ENF22-BLE001)
             logger.warning("company : échec ignoré, comportement dégradé", exc_info=True)
             return None
         if result is None:

@@ -6,7 +6,7 @@ module expose ``apps.marketing.serializers`` pour les ViewSets marketing et les
 nouvelles routes ``/api/django/marketing/…`` ; ODX22 re-logera leur corps ici.
 """
 
-from apps.compta.serializers import (  # noqa: F401
+from apps.compta.serializers import (
     AbonnementListeSerializer,
     AppelTelephoniqueSerializer,
     ApprobationEnvoiCampagneSerializer,
@@ -45,6 +45,21 @@ from .models import (
     ArcJourney, BlocContenu, ModeleJourney, NoeudJourney, ParametresMarketing,
     VersionFormulaireIntake,
 )
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'AbonnementListeSerializer', 'AppelTelephoniqueSerializer',
+    'ApprobationEnvoiCampagneSerializer', 'AvisClientSerializer', 'BilletEvenementSerializer',
+    'CampagneSerializer', 'CommunicationEvenementSerializer', 'CompteFideliteSerializer',
+    'DomaineEnvoiSerializer', 'EnqueteNPSSerializer', 'EnqueteSerializer',
+    'EnvoiCampagneSerializer', 'EtapeSequenceSerializer', 'EvenementMarketingSerializer',
+    'ExecutionEtapeSequenceSerializer', 'FormulaireIntakeSerializer',
+    'InscriptionEvenementSerializer', 'InscriptionSequenceSerializer', 'ListeDiffusionSerializer',
+    'MessageWhatsAppEntrantSerializer', 'MouvementFideliteSerializer', 'OuverturePartageSerializer',
+    'QuestionEvenementSerializer', 'RegleUpsellSerializer', 'RelanceDevisAbandonneSerializer',
+    'ReponseEnqueteSerializer', 'SegmentMarketingSerializer', 'SequenceRelanceSerializer',
+    'SupportOfflineSerializer', 'TypeEvenementSerializer',
+]
 
 
 # ── NTMKT12 — Journey en graphe ─────────────────────────────────────────────

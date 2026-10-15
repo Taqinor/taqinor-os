@@ -50,9 +50,9 @@ export default function FacturationScreen() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount, sans filtre
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount, sans filtre (D-ENF22)
     chargerStatistiques({ date_debut: '', date_fin: '' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage (D-ENF22)
   }, [])
 
   const filtrerStatistiques = (e) => {
@@ -79,7 +79,7 @@ export default function FacturationScreen() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
     load()
   }, [])
 

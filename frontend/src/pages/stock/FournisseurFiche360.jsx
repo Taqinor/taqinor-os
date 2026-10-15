@@ -657,7 +657,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
   }
 
   // `reload` est recréé à chaque rendu ; ne rejouer qu'au changement de fournisseur.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload recréé par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload recréé par rendu (D-ENF22)
   useEffect(() => { reload() }, [fournisseurId])
 
   const supprimer = async (c) => {

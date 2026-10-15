@@ -8,7 +8,7 @@
 // puis ses métadonnées (étape + géoloc/horodatage serveur) via
 // installationsApi.ajouterChecklistPhotoMeta.
 // J43 — portée sur le système de design (Progress, Checkbox, Input, Spinner).
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { Camera } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
@@ -53,13 +53,13 @@ export default function ChantierChecklist({
     return !!t && seriesSet.has(t)
   }
 
-  const load = () => {
+  const load = useCallback(() => {
     installationsApi.getChecklist(installationId)
       .then((r) => { setItems(r.data.items ?? []); setCompletion(r.data.completion); setLoadError(false) })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [installationId])
+  useEffect(() => { load() }, [load])
 
   const toggle = async (item, fait) => {
     const payload = { cle: item.cle, fait }

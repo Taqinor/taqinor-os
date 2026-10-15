@@ -200,7 +200,7 @@ def construire_economies_periodes(data, economies_mensuelles, etude_params):
     """
     try:
         return _construire(data, economies_mensuelles, etude_params)
-    except Exception:  # noqa: BLE001 — un bandeau d'affichage additif ne fait
+    except Exception:  # noqa: BLE001 — un bandeau d'affichage additif ne fait (D-ENF22-BLE001)
         # JAMAIS tomber la proposition entière (prix, composition, signature).
         # Même discipline que ``_economies_mensuelles_publiques``.
         logger.warning('economies_periodes indisponibles', exc_info=True)

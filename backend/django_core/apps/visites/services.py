@@ -163,7 +163,7 @@ def notifier_valideurs_visite(visite, acteur=None):
             body=(f'La visite chez « {visite.lead} » est terminée : elle '
                   "attend le feu vert du bureau d'études."),
             link=f'/visites/{visite.pk}', company=visite.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("notifier valideurs visite : échec ignoré, comportement dégradé", exc_info=True)
         return []
 
@@ -198,7 +198,7 @@ def emettre_visite_planifiee(visite, user):
             sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
             user=user, date_prevue=visite.date_prevue,
             commercial_nom=_commercial_nom(visite))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre visite planifiee : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return visite
@@ -230,7 +230,7 @@ def emettre_visite_terminee(visite, user):
             sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
             user=user, retour=selectors.retour_visite(visite),
             qualification=visite.qualification)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre visite terminee : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return visite

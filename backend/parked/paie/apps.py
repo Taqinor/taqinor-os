@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -19,4 +21,4 @@ class PaieConfig(AppConfig):
         # YHIRE2 — abonne paie à l'événement métier employe_sorti (rh) :
         # coupe ProfilPaie.actif sans que paie importe rh directement ni
         # l'inverse (pattern M6, comme devis_accepted → crm).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

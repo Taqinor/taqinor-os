@@ -265,7 +265,7 @@ function MesRapports() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const handleCreate = async (payload) => {

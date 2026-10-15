@@ -74,7 +74,7 @@ class Command(BaseCommand):
             for devis in qs.iterator():
                 try:
                     ecarts = ecarts_du_devis(devis)
-                except Exception as exc:  # noqa: BLE001 — devis illisible signalé
+                except Exception as exc:  # noqa: BLE001 — devis illisible signalé (D-ENF22-BLE001)
                     logger.warning(
                         "regles_calcul_ecarts_dryrun.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                     erreurs.append((devis.reference, type(exc).__name__))

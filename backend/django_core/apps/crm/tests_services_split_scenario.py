@@ -185,7 +185,7 @@ class ScenarioServicesGoldenTests(TestCase):
         try:
             retour = self.n.valeur(fn(*args, **kwargs))
             erreur = None
-        except Exception as exc:  # noqa: BLE001 — l'exception EST la valeur
+        except Exception as exc:  # noqa: BLE001 — l'exception EST la valeur (D-ENF22-BLE001)
             retour = None
             erreur = f'{type(exc).__name__}: {exc}'
         self.etapes[cle] = {

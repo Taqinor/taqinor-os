@@ -863,7 +863,7 @@ def _executer(garde: tuple[str, str, str], repo_root: str = REPO_ROOT) -> dict:
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         )
         code, sortie = proc.returncode, proc.stdout.decode("utf-8", errors="replace")
-    except Exception as exc:  # noqa: BLE001 — un runner qui plante est un rouge, pas un vert
+    except Exception as exc:  # noqa: BLE001 — un runner qui plante est un rouge, pas un vert (D-ENF22-BLE001)
         code, sortie = 99, f"ci_guards: impossible de lancer la garde ({exc!r})\n"
     return {"nom": nom, "commande": commande, "wd": wd, "code": code,
             "sortie": sortie, "duree": time.monotonic() - debut}

@@ -108,7 +108,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from check_api_contract import (  # noqa: E402
+from check_api_contract import (  # noqa: E402 — après sys.path/setup() (D-ENF22)
     ANY, HOLE, FrontendCalls, frontend_files, normalise_call, resolve_template,
 )
 

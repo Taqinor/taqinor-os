@@ -24,9 +24,9 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-from .qualite_reception import ControleReceptionActionsMixin  # noqa: E402
-from .catch_weight import PeseeLigneActionsMixin  # noqa: E402
-from .document_fige import DocumentFigeMixin  # noqa: E402
+from .qualite_reception import ControleReceptionActionsMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .catch_weight import PeseeLigneActionsMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .document_fige import DocumentFigeMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT, False, 'BCF (id)'), P('statut', STR, False,

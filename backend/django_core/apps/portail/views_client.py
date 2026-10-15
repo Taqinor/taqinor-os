@@ -81,7 +81,7 @@ def _noter_connexion(company, client_id):
             getattr(company, 'id', None), client_id)
         if etat is not None:
             services.enregistrer_connexion_portail(etat[0], etat[2])
-    except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
+    except Exception:  # noqa: BLE001 — la trace ne casse jamais l'accès (D-ENF22-BLE001)
         logger.warning("_noter_connexion : erreur absorbée, repli dégradé", exc_info=True)
 
 
@@ -300,7 +300,7 @@ def contenu_diffusable(doc, company):
             from apps.ged import services as ged_services
             label = ged_services.watermark_label(company=company)
             data, _marque = ged_services.apply_watermark(data, mime, label)
-        except Exception:  # noqa: BLE001 - dégrade à l'original, jamais 500
+        except Exception:  # noqa: BLE001 — dégrade à l'original, jamais 500 (D-ENF22-BLE001)
             logger.warning("contenu_diffusable : erreur absorbée, repli dégradé", exc_info=True)
     return version, data, mime, None
 

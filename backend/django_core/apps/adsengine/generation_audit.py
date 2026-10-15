@@ -54,7 +54,7 @@ def quarantine_template(company, template_key):
     from django.core.cache import cache
     try:
         cache.set(_quarantine_key(company, template_key), True, None)  # sans TTL
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('generation_audit: quarantaine non posée', exc_info=True)
         return False
     return True
@@ -67,7 +67,7 @@ def lift_quarantine(company, template_key):
     from django.core.cache import cache
     try:
         cache.delete(_quarantine_key(company, template_key))
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("generation_audit.lift_quarantine : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     return True
@@ -81,7 +81,7 @@ def is_template_quarantined(company, template_key):
     from django.core.cache import cache
     try:
         return bool(cache.get(_quarantine_key(company, template_key)))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquer une génération
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquer une génération (D-ENF22-BLE001)
         logger.warning("generation_audit.is_template_quarantined : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 

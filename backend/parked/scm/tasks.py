@@ -64,7 +64,7 @@ def generer_previsions_mensuelles_task(horizon_mois=None):
                     .values_list('periode', 'quantite_prevue'))
                 previsions = services.generer_previsions(
                     produit, horizon_effectif, company)
-            except Exception:  # noqa: BLE001 — best-effort par produit
+            except Exception:  # noqa: BLE001 — best-effort par produit (D-ENF22-BLE001)
                 logger.warning(
                     'scm.generer_previsions_mensuelles: échec produit %s '
                     '(société %s)', produit.id, company.id, exc_info=True)
@@ -89,7 +89,7 @@ def generer_previsions_mensuelles_task(horizon_mois=None):
                     resolve_recipients(company, EventType.SCM_PREVISIONS_GENEREES),
                     EventType.SCM_PREVISIONS_GENEREES, titre, body=corps,
                     company=company)
-            except Exception:  # noqa: BLE001 — notification best-effort
+            except Exception:  # noqa: BLE001 — notification best-effort (D-ENF22-BLE001)
                 logger.warning(
                     'scm.generer_previsions_mensuelles: notification échouée '
                     '(société %s)', company.id, exc_info=True)
@@ -127,7 +127,7 @@ def recalculer_politiques_stock_hebdo():
     for company in _companies_by_ids(company_ids):
         try:
             politiques = services.recalculer_politiques_stock(company)
-        except Exception:  # noqa: BLE001 — best-effort par société
+        except Exception:  # noqa: BLE001 — best-effort par société (D-ENF22-BLE001)
             logger.warning(
                 'scm.recalculer_politiques_stock_hebdo: échec société %s',
                 company.id, exc_info=True)
@@ -137,7 +137,7 @@ def recalculer_politiques_stock_hebdo():
         try:
             nb_ruptures_notifiees = services.detecter_ruptures_imminentes_et_notifier(
                 company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'scm.recalculer_politiques_stock_hebdo: détection ruptures '
                 'imminentes échouée (société %s)', company.id, exc_info=True)
@@ -219,7 +219,7 @@ def ouvrir_cycle_sop_mensuel_task(*, today=None):
                         f'Le cycle S&OP {periode_cible} a été créé '
                         'automatiquement (brouillon) — à animer.'),
                     company=company)
-            except Exception:  # noqa: BLE001 — notification best-effort
+            except Exception:  # noqa: BLE001 — notification best-effort (D-ENF22-BLE001)
                 logger.warning(
                     'scm.ouvrir_cycle_sop_mensuel: notification échouée '
                     '(société %s)', company.id, exc_info=True)
@@ -272,7 +272,7 @@ def purger_donnees_scm_anciennes():
                 if (p.produit_id, p.periode) not in proteges
             ]
             PrevisionDemande.objects.filter(id__in=ids_a_supprimer).delete()
-        except Exception:  # noqa: BLE001 — best-effort par société
+        except Exception:  # noqa: BLE001 — best-effort par société (D-ENF22-BLE001)
             logger.warning(
                 'scm.purger_donnees_scm_anciennes: échec société %s',
                 company.id, exc_info=True)
@@ -323,7 +323,7 @@ def notifier_ecarts_prevision_importants():
         try:
             seuil = selectors.parametres(company).seuil_alerte_mape_pct
             precision = selectors.precision_prevision(company, fenetre_mois=1)
-        except Exception:  # noqa: BLE001 — best-effort par société
+        except Exception:  # noqa: BLE001 — best-effort par société (D-ENF22-BLE001)
             logger.warning(
                 'scm.notifier_ecarts_prevision_importants: échec société %s',
                 company.id, exc_info=True)
@@ -378,7 +378,7 @@ def notifier_ecarts_prevision_importants():
                             f'{produit.nom} (seuil {seuil}%).'),
                         link=lien, company=company)
                     nb_notifications += 1
-            except Exception:  # noqa: BLE001 — best-effort par produit
+            except Exception:  # noqa: BLE001 — best-effort par produit (D-ENF22-BLE001)
                 logger.warning(
                     'scm.notifier_ecarts_prevision_importants: échec produit '
                     '%s (société %s)', ligne.get('produit_id'), company.id,

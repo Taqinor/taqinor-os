@@ -32,7 +32,7 @@ def _fetch_ad_lineage(ad_id, access_token):  # pragma: no cover - réseau
     fields = 'name,adset{id,name},campaign{id,name}'
     qs = urllib.parse.urlencode({'fields': fields, 'access_token': access_token})
     url = f'https://graph.facebook.com/{_GRAPH_VERSION}/{ad_id}?{qs}'
-    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 — URL contrôlée par la configuration (D-ENF22)
         return json.loads(resp.read().decode('utf-8'))
 
 
@@ -86,7 +86,7 @@ def resolve_meta_ad_names(company, *, ad_id='', adgroup_id='', access_token=''):
     if not result['campaign_name'] and ad_id and access_token:
         try:
             data = _fetch_ad_lineage(ad_id, access_token)
-        except Exception:  # noqa: BLE001 — la résolution ne casse jamais la
+        except Exception:  # noqa: BLE001 — la résolution ne casse jamais la (D-ENF22-BLE001)
             # création du lead ; sans nom résolu, seuls les ids stables restent.
             logger.warning("selectors.resolve_meta_ad_names : erreur ignorée (mode dégradé)", exc_info=True)
             data = None

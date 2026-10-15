@@ -24,7 +24,7 @@ def alertes_rfi_retard_task():
     from .services import alerter_rfi_en_retard
     try:
         return alerter_rfi_en_retard()['alertes_envoyees']
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('btp_chantier.alertes_rfi_retard: échec du balayage',
                        exc_info=True)
         return 0
@@ -39,7 +39,7 @@ def archiver_reserves_levees_task():
     from .services import archiver_reserves_levees
     try:
         return archiver_reserves_levees()['archivees']
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'btp_chantier.archiver_reserves_levees: échec du balayage',
             exc_info=True)
@@ -54,7 +54,7 @@ def recalculer_penalites_lots_task():
     from .services import recalculer_penalites_lots
     try:
         return recalculer_penalites_lots()['lots']
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'btp_chantier.recalculer_penalites_lots: échec du balayage',
             exc_info=True)
@@ -70,7 +70,7 @@ def alertes_visas_en_attente_task():
     from .services import alerter_visas_en_attente
     try:
         return alerter_visas_en_attente()['alertes_envoyees']
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'btp_chantier.alertes_visas_en_attente: échec du balayage',
             exc_info=True)
@@ -85,7 +85,7 @@ def rapport_photo_hebdo_task():
     from .services import envoyer_rapports_photo_hebdo
     try:
         return envoyer_rapports_photo_hebdo()['envoyes']
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('btp_chantier.rapport_photo_hebdo: échec du balayage',
                        exc_info=True)
         return 0

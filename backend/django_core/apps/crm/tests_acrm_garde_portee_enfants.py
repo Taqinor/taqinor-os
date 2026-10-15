@@ -240,7 +240,7 @@ class GardePorteeEnfantsTests(TestCase):
                                   CLIENT_EMAIL_HORS) if mot in texte]
         try:
             donnee = resp.json()
-        except Exception:  # noqa: BLE001 — binaire ou vide
+        except ValueError:  # binaire ou vide
             donnee = None
         if isinstance(donnee, (dict, list)):
             if _fiches_lead(donnee, self.l1.pk):
@@ -262,7 +262,7 @@ class GardePorteeEnfantsTests(TestCase):
                     return self.api.get(url, charge or {})
                 return getattr(self.api, verbe)(url, charge or {},
                                                 format='json')
-        except Exception as exc:  # noqa: BLE001 — rapporté, jamais masqué
+        except Exception as exc:  # noqa: BLE001 — rapporté, jamais masqué (D-ENF22-BLE001)
             self.erreurs.append(f'{verbe.upper()} {url} → {exc!r}'[:200])
             return None
 
@@ -312,7 +312,7 @@ class GardePorteeEnfantsTests(TestCase):
         try:
             with transaction.atomic():
                 return model._base_manager.create(**valeurs)
-        except Exception:  # noqa: BLE001 — modèle non fabricable génériquement
+        except Exception:  # noqa: BLE001 — sonde de test : l'échec vaut « non fabricable » (D-ENF22-BLE001)
             return None
 
     # ── découverte ──────────────────────────────────────────────────────

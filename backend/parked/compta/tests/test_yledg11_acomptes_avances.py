@@ -14,7 +14,7 @@ from apps.stock.models import Produit
 from apps.ventes.models import Devis, Facture, LigneFacture
 from core.events import facture_emise
 
-from apps.compta import receivers  # noqa: F401  (câblage ready())
+__import__('apps.compta.receivers')  # câblage ready()
 
 
 def make_company(slug='yledg11-co', nom='YLEDG11 Co'):

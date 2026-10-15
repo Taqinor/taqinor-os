@@ -353,7 +353,7 @@ def _envoyer_email_confirmation(abonne, request):
             [abonne.email],
             fail_silently=True,
         )
-    except Exception:  # noqa: BLE001 — no-op silencieux, jamais bloquant
+    except Exception:  # noqa: BLE001 — no-op silencieux, jamais bloquant (D-ENF22-BLE001)
         logger.warning("views._envoyer_email_confirmation : erreur ignorée (mode dégradé)", exc_info=True)
 
 

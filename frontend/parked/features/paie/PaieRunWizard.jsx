@@ -833,7 +833,7 @@ function StepCloturer({ gate, periode, onCloturer, busy }) {
 
   useEffect(() => {
     if (!periodeId || cloturee) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
     chargerChecklist(periodeId)
   }, [periodeId, cloturee])
 

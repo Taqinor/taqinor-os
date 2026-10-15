@@ -121,7 +121,7 @@ export default function useResource(fetcher, params, options = {}) {
         setLoading(false)
       })
   // `key` capture le changement de params ; `enabled` (re)active le chargement.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` capture le changement de params ; `enabled` (ré)active le chargement (D-ENF22)
   }, [key, enabled])
 
   // Chargement au montage + à chaque changement de params (via `refetch`).
@@ -130,7 +130,7 @@ export default function useResource(fetcher, params, options = {}) {
   // params changent (ou au démontage).
   useEffect(() => {
     if (!enabled) return undefined
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de params
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de params (D-ENF22)
     refetch()
     const runIdSnapshot = runIdRef
     return () => { runIdSnapshot.current++ }

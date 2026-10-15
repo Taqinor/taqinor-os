@@ -327,7 +327,7 @@ def _alerter_budget(*, budget, depense, pourcentage, periode):
                 company=budget.company)
         budget.alerte_periode = periode
         budget.save(update_fields=['alerte_periode', 'updated_at'])
-    except Exception:  # noqa: BLE001 — l'alerte ne casse jamais l'appel IA
+    except Exception:  # noqa: BLE001 — l'alerte ne casse jamais l'appel IA (D-ENF22-BLE001)
         logger.warning('ai_governance: alerte de budget non émise (société %s)',
                        getattr(budget, 'company_id', None), exc_info=True)
 

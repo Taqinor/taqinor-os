@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_date_jour_utc as g  # noqa: E402
+import check_date_jour_utc as g  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 UTC = "const d = new Date().toISOString().slice(0, 10)\n"
 

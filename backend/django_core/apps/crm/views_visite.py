@@ -44,9 +44,9 @@ def lead_photo_toit(request, lead_id):
     déjà le commercial ET l'atelier ; exiger ``visites_voir`` fermerait la
     porte aux écrans qui ne font que peindre le toit.
     """
-    from apps.visites import selectors  # noqa: PLC0415 - frontière M3
+    from apps.visites import selectors  # noqa: PLC0415 — frontière M3 (D-ENF22)
 
-    from .models import Lead  # noqa: PLC0415
+    from .models import Lead  # noqa: PLC0415 — import différé (cycle/coût de démarrage) (D-ENF22)
 
     lead = Lead.objects.filter(pk=lead_id,
                                company=request.user.company).first()

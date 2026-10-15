@@ -361,7 +361,7 @@ def _safe(fonction, *args, **kwargs):
     parfaitement légitime en 500 (et surtout pas fermer l'API publique)."""
     try:
         return fonction(*args, **kwargs)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("auth._safe : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(

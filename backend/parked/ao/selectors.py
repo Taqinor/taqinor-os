@@ -18,6 +18,8 @@ et ``ao`` lit le lead par ``crm.selectors`` (jamais ``crm.models``).
 """
 from __future__ import annotations
 
+import logging
+
 
 def ao_par_lead(company, lead_id):
     """Les appels d'offres d'un lead, bornés à la société (lecture seule).
@@ -796,7 +798,7 @@ def _analyser_pdf_vectoriel(contenu, *, nom_fichier=''):
 
     try:
         document = fitz.open(stream=contenu, filetype='pdf')
-    except Exception as erreur:  # noqa: BLE001 — fichier hostile : jamais un 500
+    except Exception as erreur:
         raise dxf.DxfInvalide(
             "Ce fichier n'a pas pu être lu comme un PDF (export corrompu ou "
             'protégé par mot de passe).') from erreur
@@ -807,7 +809,8 @@ def _analyser_pdf_vectoriel(contenu, *, nom_fichier=''):
             page = document.load_page(numero)
             try:
                 traces = page.get_drawings()
-            except Exception:  # noqa: BLE001 — page corrompue : pas un 500
+            except Exception:  # noqa: BLE001 — page corrompue : pas un 500 (D-ENF22-BLE001)
+                logging.getLogger(__name__).warning("selectors._analyser_pdf_vectoriel : erreur ignorée (mode dégradé)", exc_info=True)
                 traces = []
             sommets, entites = _sommets_des_traces(traces)
             if entites:

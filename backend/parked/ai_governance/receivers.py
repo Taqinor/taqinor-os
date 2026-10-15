@@ -32,7 +32,7 @@ def _enfiler(job_id):
         from .tasks import traiter_document_ai_job_task
 
         traiter_document_ai_job_task.delay(job_id)
-    except Exception:  # noqa: BLE001 - best-effort : le job reste « en attente ».
+    except Exception:  # noqa: BLE001 — best-effort : le job reste « en attente » (D-ENF22-BLE001)
         logger.warning(
             'ai_governance: mise en file du job document %s impossible',
             job_id, exc_info=True)
@@ -46,7 +46,7 @@ def on_document_cree(sender, instance, created, **kwargs):
         from .services import creer_document_ai_job
 
         job = creer_document_ai_job(instance)
-    except Exception:  # noqa: BLE001 - ne casse jamais l'écriture documentaire.
+    except Exception:  # noqa: BLE001 — ne casse jamais l'écriture documentaire (D-ENF22-BLE001)
         logger.warning('ai_governance: job document non créé', exc_info=True)
         return
     if job is None:

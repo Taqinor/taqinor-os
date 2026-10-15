@@ -85,7 +85,7 @@ class ContexteAudit:
                 with transaction.atomic():
                     self._rendus[cle] = ('ok', self._constructeur(
                         devis, options))
-            except Exception as exc:  # noqa: BLE001 — isolé par devis
+            except Exception as exc:  # noqa: BLE001 — isolé par devis (D-ENF22-BLE001)
                 logger.warning("contexte.ContexteAudit.donnees_devis : erreur ignorée (mode dégradé)", exc_info=True)
                 self._rendus[cle] = (
                     'erreur', f'{type(exc).__name__}: {str(exc)[:200]}')
@@ -121,7 +121,7 @@ class ContexteAudit:
             for entree in (table or []):
                 try:
                     c = float(entree[0])
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                     logger.warning("contexte.ContexteAudit.tarif : erreur ignorée (mode dégradé)", exc_info=True)
                     continue
                 if c < 1e6:
@@ -132,9 +132,9 @@ class ContexteAudit:
             try:
                 ctx['fixed_mois'] = float(
                     part_non_solarisable(cf)['montant_mad_mois'])
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 logger.warning("contexte.ContexteAudit.tarif : erreur ignorée (mode dégradé)", exc_info=True)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("contexte.ContexteAudit.tarif : erreur ignorée (mode dégradé)", exc_info=True)
         self._tarif = ctx
         return ctx

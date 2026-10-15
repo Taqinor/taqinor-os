@@ -15,7 +15,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import ci_frontend_shard as fs  # noqa: E402
+import ci_frontend_shard as fs  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 REPO_ROOT = fs.REPO_ROOT
 

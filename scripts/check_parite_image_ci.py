@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_binaires_image import paquets_apt  # noqa: E402
+from check_binaires_image import paquets_apt  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 PROD = 'backend/django_core/Dockerfile'
 COPIES_CI = (
