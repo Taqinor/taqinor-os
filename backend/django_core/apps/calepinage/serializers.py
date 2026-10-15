@@ -554,6 +554,15 @@ class CalepinageSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
     #: la société est forcée côté serveur, l'id est celui de l'URL.
     CLES_IGNOREES = frozenset({'company', 'id'})
 
+    @classmethod
+    def cles_patch(cls):
+        """ENF11 — clés qu'un PATCH peut porter sans refus ACAL179 (champs
+        inscriptibles + clés ignorées) : publiées au corps du ``partial_update``
+        (``additionalProperties: false``), même liste que la garde."""
+        champs = cls().get_fields()
+        return sorted({nom for nom, champ in champs.items() if not champ.read_only}
+                      | cls.CLES_IGNOREES)
+
     def validate(self, attrs):
         """Au moins un rattachement, un client COHÉRENT avec le lead (règle
         appliquée aux seuls champs écrits), un lead qui existe VRAIMENT dans

@@ -20,6 +20,8 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.parseurs import ObjetJSON
+
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import forme_reponse
 from ..services.io_layout import (
@@ -50,7 +52,7 @@ def export_layout(self, request, pk=None):
 
 @extend_schema(
     request=inline_serializer('CalepinageImportLayoutCorps', {
-        'roof_layout': drf_serializers.JSONField()}),
+        'roof_layout': ObjetJSON()}),  # ENF11 : un OBJET (null refusé, comme le service)
     responses=forme_reponse(
         'CalepinageImportLayout', calepinage=drf_serializers.IntegerField(),
         layout_hash=drf_serializers.CharField(allow_blank=True,

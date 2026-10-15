@@ -30,6 +30,8 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import REPONSE_REFUS_ETAT
 from .calepinages import CalepinageViewSet
@@ -201,8 +203,10 @@ CalepinageViewSet.documents = documents
     responses={(200, 'text/html'): OpenApiTypes.STR,
                409: REPONSE_REFUS_ETAT},
     parameters=[
+        # ENF11 (nocturne 15/10) — « code » vide = 400 : le motif publié exige
+        # un caractère non blanc (``?code=`` était « conforme » puis refusé).
         OpenApiParameter(
-            name='code', type=OpenApiTypes.STR, required=True,
+            name='code', type={'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}, required=True,
             description='Code du document (inventaire GET documents/).'),
         OpenApiParameter(
             name='langue', type=OpenApiTypes.STR, required=False,
