@@ -54,9 +54,11 @@ beforeEach(() => {
     id: 3, reference: 'CH-3', statut: 'installe', annule: false, notes: '',
     puissance_installee_kwc: 6.5, cloture_verrouillee: true,
   }
+  db[4] = { id: 4, reference: 'CH-4', statut: 'installe', annule: false, notes: '' }
   fakeServer.advance = (id) => {
     if (id === 1) Object.assign(db[1], { statut: 'planifie', date_pose_prevue: '2026-10-20' })
     if (id === 2) Object.assign(db[2], { statut: 'installe', date_pose_reelle: '2026-10-09' })
+    if (id === 4) Object.assign(db[4], { date_mise_en_service: '2026-10-10', mes_tension: 400 })
   }
 })
 afterEach(() => { cleanup() })
@@ -87,5 +89,17 @@ describe('InstallationDetail — ACHT57 diff + resynchronisation', () => {
     await waitFor(() => expect(db[3].notes).toBe('Clos'))
     expect(db[3].puissance_installee_kwc).toBe(6.5)
     expect(screen.queryByText(/Champ gelé/)).toBeNull()
+  })
+
+  // ACHT102 — le formulaire « mise en service » suit le serveur comme `fields`.
+  it('le formulaire mes suit le serveur après refresh et garde la saisie en cours', async () => {
+    const user = userEvent.setup()
+    renderDetail(db[4])
+    await user.click(await screen.findByRole('tab', { name: /Jalons/ }))
+    await user.type(await screen.findByLabelText('Production test'), '12')
+    await user.click(await screen.findByRole('button', { name: 'Avancer (stepper)' }))
+    await waitFor(() => expect(screen.getByLabelText('Date de mise en service')).toHaveValue('2026-10-10'))
+    expect(screen.getByLabelText('Tension')).toHaveValue(400)
+    expect(screen.getByLabelText('Production test')).toHaveValue(12)
   })
 })

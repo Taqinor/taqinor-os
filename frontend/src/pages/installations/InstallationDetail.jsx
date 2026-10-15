@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -14,6 +14,7 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
+import { useResyncForm } from '../../features/installations/useResyncForm'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
@@ -249,16 +250,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // champ NON touché suit la nouvelle valeur serveur, un champ édité par
   // l'utilisateur garde sa saisie. Le diff envoyé à « Mettre à jour » se
   // calcule contre `initialFields`, donc un champ périmé n'est jamais renvoyé.
-  const initialKey = JSON.stringify(initialFields)
-  const baseRef = useRef(initialKey)
-  useEffect(() => {
-    if (baseRef.current === initialKey) return
-    const ancien = JSON.parse(baseRef.current)
-    baseRef.current = initialKey
-    setFields(f => Object.fromEntries(Object.keys(initialFields).map(
-      k => [k, JSON.stringify(f[k]) === JSON.stringify(ancien[k]) ? initialFields[k] : f[k]])))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialKey])
+  useResyncForm(initialFields, setFields)
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
   const dirty = JSON.stringify(fields) !== JSON.stringify(initialFields)
   useDirtyGuard(dirty)
@@ -352,12 +344,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   // Mise en service
-  const [mes, setMes] = useState({
+  const initialMes = {
     date_mise_en_service: F('date_mise_en_service'),
     mes_pv_notes: F('mes_pv_notes'),
     mes_production_test: F('mes_production_test'),
     mes_tension: F('mes_tension'),
-  })
+  }
+  const [mes, setMes] = useState(initialMes)
+  // ACHT102 — même resynchronisation que `fields` (une seule implémentation).
+  useResyncForm(initialMes, setMes)
   const [mesBusy, setMesBusy] = useState(false)
 
   // Parc d'équipements & tickets SAV du chantier
