@@ -123,6 +123,22 @@ class TestBinAffectation(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 404, resp.content)
 
+    def test_casier_absent_404_meme_corps_que_l_etranger(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — un identifiant bien formé sans ligne
+        # répond 404 (et non 400), corps nommant le champ.
+        resp = self.api.post(f'{BASE}/bin-affectations/', {
+            'bin': 2147483647, 'produit': self.produit.id}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('bin', resp.data)
+
+    def test_affectation_en_double_409(self):
+        corps = {'bin': self.bin.id, 'produit': self.produit.id, 'quantite': 1}
+        self.assertEqual(self.api.post(
+            f'{BASE}/bin-affectations/', corps, format='json').status_code, 201)
+        resp = self.api.post(f'{BASE}/bin-affectations/', corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(BinAffectation.objects.filter(bin=self.bin).count(), 1)
+
 
 class TestScopingAndRoles(TestCase):
     def setUp(self):

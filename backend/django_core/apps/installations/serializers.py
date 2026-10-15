@@ -1237,8 +1237,8 @@ class BudgetProjetSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFK
 
     def validate_seuil_alerte_pct(self, value):
         if value is not None and (value < 0 or value > 100):
-            raise serializers.ValidationError(
-                'Le seuil d\'alerte doit être compris entre 0 et 100 %.')
+            raise ConflitEtat({'seuil_alerte_pct': [
+                'Le seuil d\'alerte doit être compris entre 0 et 100 %.']})
         return value
 
 

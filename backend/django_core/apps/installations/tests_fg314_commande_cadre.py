@@ -127,6 +127,15 @@ class TestLignesEtAppels(TestCase):
         })
         self.assertEqual(r.status_code, 409, r.data)
 
+    def test_appel_quantite_nulle_409(self):
+        # La quantité strictement positive ne se dit pas sur une chaîne
+        # décimale : règle d'ensemble = 409 (jamais un 400 sur corps conforme).
+        r = self.api.post(f'{BASE}/appels-commande/', {
+            'ligne': self.ligne.id, 'quantite': '0',
+        })
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('quantite', r.data)
+
     def test_ligne_requires_product_or_designation(self):
         r = self.api.post(f'{BASE}/commandes-cadre-lignes/', {
             'commande_cadre': self.cc.id,

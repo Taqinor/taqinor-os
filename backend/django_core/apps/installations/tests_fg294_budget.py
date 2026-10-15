@@ -175,7 +175,7 @@ class TestFG294BudgetCreation(TestCase):
             f'{BASE}/programme-budgets/',
             {'projet': self.projet.id, 'seuil_alerte_pct': '150'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
 
 # ── Rattachement d'un coût fournisseur ────────────────────────────────────────

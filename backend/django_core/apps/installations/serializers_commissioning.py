@@ -1,4 +1,5 @@
 """CH3/CH4 — Sérialiseurs recette IEC 62446-1 + pack de remise (installations)."""
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound
@@ -27,6 +28,32 @@ class CommissioningIVReadingSerializer(serializers.ModelSerializer):
         read_only_fields = ['record', 'ecart_pmax_pct', 'defaut_detecte']
 
 
+class InstrumentsParEssai(serializers.DictField):
+    """CIQ626 — ``{essai: identifiant d'instrument}`` en ÉCRITURE (objet
+    d'entiers, ``null`` = aucun instrument) ; servi en LECTURE sous la forme
+    ``{essai: {instrument_id, etalonnage_expire}}`` (voir ``to_representation``)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(child=EntierStrict(allow_null=True), required=False,
+                         allow_null=True, **kwargs)
+
+
+class _InstrumentsParEssaiSchema(OpenApiSerializerFieldExtension):
+    """La requête publie un objet d'entiers, la réponse l'objet détaillé."""
+    target_class = 'apps.installations.serializers_commissioning.InstrumentsParEssai'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'response':
+            return schema
+        detail = {'type': 'object', 'properties': {
+            'instrument_id': {'type': 'integer'},
+            'etalonnage_expire': {'type': 'boolean', 'nullable': True}},
+            'required': ['instrument_id', 'etalonnage_expire']}
+        return {'type': 'object', 'additionalProperties': detail}
+
+
 class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin,
                                     serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
@@ -34,8 +61,7 @@ class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCo
     # CIQ626 — ``{essai: identifiant d'instrument}`` : un objet d'entiers (ou
     # null = aucun instrument), publié tel quel ; l'existence de l'instrument
     # dans la société reste jugée par ``validate_instruments_par_essai`` (404).
-    instruments_par_essai = serializers.DictField(
-        child=EntierStrict(allow_null=True), required=False, allow_null=True)
+    instruments_par_essai = InstrumentsParEssai()
     iv_readings = CommissioningIVReadingSerializer(many=True, read_only=True)
     resultat_display = serializers.CharField(
         source='get_resultat_display', read_only=True)
