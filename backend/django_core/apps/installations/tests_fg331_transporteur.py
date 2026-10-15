@@ -104,7 +104,7 @@ class TestTransporteur(TestCase):
         resp = self.api.patch(f'{BASE}/livraisons/{liv.id}/', {
             'transporteur': t_other.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
 
 class TestScopingAndRoles(TestCase):

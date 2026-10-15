@@ -87,7 +87,7 @@ class TestProvisionCreation(TestCase):
         r = self.api.post(f'{BASE}/receptions-non-facturees/', {
             'bon_commande': bcf_o.id, 'montant_provision': '1',
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 class TestLettrer(TestCase):

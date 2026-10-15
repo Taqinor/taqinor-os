@@ -86,7 +86,7 @@ class TestBinCreation(TestCase):
         resp = self.api.post(f'{BASE}/bin-locations/', {
             'emplacement': emp_other.id, 'code': 'X-1-1',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
         self.assertIn('emplacement', resp.data)
 
     def test_blank_code_rejected(self):
@@ -121,7 +121,7 @@ class TestBinAffectation(TestCase):
         resp = self.api.post(f'{BASE}/bin-affectations/', {
             'bin': self.bin.id, 'produit': p_other.id, 'quantite': 1,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
 
 class TestScopingAndRoles(TestCase):

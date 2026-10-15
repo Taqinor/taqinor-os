@@ -100,7 +100,7 @@ class TestFicheInterventionTemplateCRUD(TestCase):
             {'template': other_template.id, 'cle': 'x', 'libelle': 'X',
              'type_champ': 'texte'},
             format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
 
     def test_protected_template_cannot_be_deleted(self):
         template = make_template(self.company)

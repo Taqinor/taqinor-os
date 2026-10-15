@@ -277,4 +277,4 @@ class ArbitrageRegleApprobationAchatTests(TestCase):
             'libelle': 'Incohérente', 'montant_min': '5000.00',
             'montant_max': '100.00',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)

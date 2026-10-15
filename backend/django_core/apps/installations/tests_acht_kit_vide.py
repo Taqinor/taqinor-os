@@ -1,7 +1,7 @@
 """ACHT25 (C-ACHT-023) — aucun composite n'entre en stock sans consommation :
 création / clôture d'un ordre sur un kit sans composant exploitable
 (produit catalogue et quantité > 0) et activation d'un tel kit refusées
-(400 « Nomenclature vide »).
+(409 « Nomenclature vide »).
 
 Rejoue CKIT-10 : Fantome +7 et Fantome2 +2 entrés sans aucune consommation.
 
@@ -52,7 +52,7 @@ class KitVideTests(TestCase):
         kit = self._kit('Kit vide')
         r = self.api.post(f'{BASE}/ordres-assemblage/',
                           {'kit': kit.id, 'quantite': 7}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(MSG, str(r.data))
         # Ordre hérité (créé avant la garde) : la clôture est refusée aussi.
         ordre = OrdreAssemblage.objects.create(
@@ -60,7 +60,7 @@ class KitVideTests(TestCase):
             quantite=7)
         r = self.api.post(f'{BASE}/ordres-assemblage/{ordre.id}/terminer/',
                           {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(MSG, str(r.data))
         self._assert_rien_entre()
 
@@ -70,18 +70,18 @@ class KitVideTests(TestCase):
                                     designation='Câble libre', quantite=4)
         r = self.api.post(f'{BASE}/ordres-assemblage/',
                           {'kit': kit.id, 'quantite': 2}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(MSG, str(r.data))
         r = self.api.post(f'{BASE}/ordres-demontage/',
                           {'kit': kit.id, 'quantite': 1}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self._assert_rien_entre()
 
     def test_activation_kit_vide_refusee(self):
         kit = self._kit('Kit inactif', active=False)
         r = self.api.patch(f'{BASE}/kits/{kit.id}/', {'active': True},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(MSG, str(r.data))
         kit.refresh_from_db()
         self.assertFalse(kit.active)

@@ -1,6 +1,6 @@
 """ACHT12 (C-ACHT-010) — une demande d'achat se FIGE dès sa soumission :
 création / modification / suppression de ligne, import CSV et PATCH
-d'en-tête refusés (400) hors brouillon ; seul `epinglee` reste libre.
+d'en-tête refusés (409) hors brouillon ; seul `epinglee` reste libre.
 
 Rejoue CACH-4 : ligne de 90 000 MAD ajoutée à une DA soumise de 100 MAD
 (201, `montant_estime` 90 100) ; sur une DA commandée POST 201, PATCH 200,
@@ -60,7 +60,7 @@ class DaFigeeTests(TestCase):
         r = self.api.post(f'{BASE}/demandes-achat-lignes/', {
             'demande': da.id, 'designation': 'Gros lot',
             'quantite': '1', 'prix_estime': '90000'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Demande soumise : ' + MSG, str(r.data))
         self.assertEqual(da.lignes.count(), 1)
         self.assertEqual(self._montant(da), Decimal('100'))
@@ -69,7 +69,7 @@ class DaFigeeTests(TestCase):
         da = self._da(DemandeAchat.Statut.APPROUVEE)
         r = self.api.patch(f'{BASE}/demandes-achat/{da.id}/',
                            {'objet': 'Autre objet'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(MSG, str(r.data))
         da.refresh_from_db()
         self.assertEqual(da.objet, 'Test')
@@ -80,12 +80,12 @@ class DaFigeeTests(TestCase):
         r = self.api.post(f'{BASE}/demandes-achat-lignes/', {
             'demande': da.id, 'designation': 'X', 'quantite': '1',
             'prix_estime': '1'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         r = self.api.patch(f'{BASE}/demandes-achat-lignes/{ligne.id}/',
                            {'quantite': '50'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         r = self.api.delete(f'{BASE}/demandes-achat-lignes/{ligne.id}/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.quantite, Decimal('1'))
         self.assertEqual(da.lignes.count(), 1)
@@ -97,7 +97,7 @@ class DaFigeeTests(TestCase):
             content_type='text/csv')
         r = self.api.post(f'{BASE}/demandes-achat/{da.id}/importer-lignes-csv/',
                           {'fichier': fichier}, format='multipart')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(da.lignes.count(), 1)
 
     def test_epinglee_libre(self):

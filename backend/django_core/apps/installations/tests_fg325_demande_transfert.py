@@ -89,7 +89,7 @@ class TestDemandeTransfert(TestCase):
         resp = self.api.post(f'{BASE}/demandes-transfert/',
                              self._payload(destination=self.src.id),
                              format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_zero_quantite_rejected(self):
         resp = self.api.post(f'{BASE}/demandes-transfert/',
@@ -102,7 +102,7 @@ class TestDemandeTransfert(TestCase):
         resp = self.api.post(f'{BASE}/demandes-transfert/',
                              self._payload(destination=dst_other.id),
                              format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_workflow_approuver_executer(self):
         # YSTCK2 — `executer` ventile RÉELLEMENT le stock : le produit doit

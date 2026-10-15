@@ -60,7 +60,7 @@ class DaLignesTests(TestCase):
     def test_quantite_negative_refusee(self):
         for q in ('0', '-3'):
             r = self._post_ligne(quantite=q)
-            self.assertEqual(r.status_code, 400, r.data)
+            self.assertEqual(r.status_code, 409, r.data)
             self.assertIn('quantite', r.data)
         self.assertEqual(self.da.lignes.count(), 0)
 

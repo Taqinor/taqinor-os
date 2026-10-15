@@ -167,7 +167,7 @@ class TestFG294BudgetCreation(TestCase):
         r = self.api.post(
             f'{BASE}/programme-budgets/',
             {'projet': projet_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_seuil_alerte_bounded(self):
         """FG294 — le seuil d'alerte est borné [0, 100] %."""
@@ -209,7 +209,7 @@ class TestFG294Engagement(TestCase):
         r = self.api.post(f'{BASE}/programme-engagements/', {
             'budget': self.budget.id, 'source': 'bon_commande',
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_facture_source_rejects_bcf(self):
         """FG294 — un engagement « facture » ne doit pas porter un BCF."""
@@ -219,7 +219,7 @@ class TestFG294Engagement(TestCase):
             'budget': self.budget.id, 'source': 'facture',
             'facture': facture.id, 'bon_commande': bcf.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_cross_company_bcf_rejected(self):
         """FG294 — un BCF d'une autre société ne peut pas être rattaché."""
@@ -230,7 +230,7 @@ class TestFG294Engagement(TestCase):
             'budget': self.budget.id, 'source': 'bon_commande',
             'bon_commande': bcf_b.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 # ── Agrégation du réel (sélecteur) ────────────────────────────────────────────

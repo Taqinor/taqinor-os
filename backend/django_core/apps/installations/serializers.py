@@ -11,7 +11,9 @@ from core.champs_stricts import (  # ENF11
     ListesStrictesMixin,
     TexteLie,
 )
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
+from core.unicite import UniciteEn409Mixin
 
 from .serializers_stage import refus_protege, valider_unicite_societe
 
@@ -90,7 +92,7 @@ from .models import (
 )
 
 
-class ChecklistEtapeModeleSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class ChecklistEtapeModeleSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                      serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('template',)
@@ -148,7 +150,7 @@ class ChecklistTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.Mod
         return value or None
 
 
-class FicheInterventionChampSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class FicheInterventionChampSerializer(IdInconnu404Mixin, UniciteEn409Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('template',)
 
@@ -271,7 +273,7 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InterventionSerializer(SameCompanyFKSerializerMixin,
+class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC32 — un technicien / une équipe d'une autre société reçoit la
     # réponse d'un id absent (400), à la création comme au PATCH.
@@ -1025,7 +1027,7 @@ class TypeInterventionPlanSerializer(serializers.ModelSerializer):
 
 # ── FG291 — Programme / Projet multi-chantiers ───────────────────────────────
 
-class ProjetChantierSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetChantierSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG291 — rattachement d'un chantier à un programme. La société est posée
     côté serveur ; le chantier est validé tenant côté vue."""
     # ACHT53 — FK inscriptibles bornées à la société.
@@ -1044,7 +1046,7 @@ class ProjetChantierSerializer(SameCompanyFKSerializerMixin, serializers.ModelSe
         read_only_fields = ['date_creation']
 
 
-class ProjetDevisSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetDevisSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG291 — rattachement d'un devis à un programme (string-FK, statut intact)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('projet', 'devis')
@@ -1062,7 +1064,7 @@ class ProjetDevisSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeria
         read_only_fields = ['date_creation']
 
 
-class ProjetTicketSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetTicketSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG291 — rattachement d'un ticket SAV à un programme (string-FK, statut
     intact)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -1124,7 +1126,7 @@ class ProjetSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMix
 
 # ── FG292 — Tâches & sous-tâches de projet avec dépendances ───────────────────
 
-class ProjetTacheSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetTacheSerializer(ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG292 — tâche/sous-tâche de programme avec dépendances. La société est
     posée côté serveur ; `projet`, `parent`, `predecesseur` et `assigne` sont
     validés tenant côté vue. Le statut est PROPRE à la tâche (jamais
@@ -1159,7 +1161,7 @@ class ProjetTacheSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeria
 
 # ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
 
-class BudgetEngagementSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BudgetEngagementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
     à un budget de programme, par string-FK (jamais d'import des modèles stock).
     `source`/`categorie` ventilent la dépense ; la société est posée côté
@@ -1191,23 +1193,23 @@ class BudgetEngagementSerializer(SameCompanyFKSerializerMixin, serializers.Model
             'facture', getattr(self.instance, 'facture', None))
         if source == BudgetEngagement.Source.BON_COMMANDE:
             if bon is None:
-                raise serializers.ValidationError(
-                    {'bon_commande': 'Requis pour un engagement « bon de '
-                                     'commande ».'})
+                raise ConflitEtat(
+                    {'bon_commande': ['Requis pour un engagement « bon de '
+                                      'commande ».']})
             if facture is not None:
-                raise serializers.ValidationError(
-                    {'facture': 'À laisser vide pour un bon de commande.'})
+                raise ConflitEtat(
+                    {'facture': ['À laisser vide pour un bon de commande.']})
         elif source == BudgetEngagement.Source.FACTURE:
             if facture is None:
-                raise serializers.ValidationError(
-                    {'facture': 'Requis pour un engagement « facture ».'})
+                raise ConflitEtat(
+                    {'facture': ['Requis pour un engagement « facture ».']})
             if bon is not None:
-                raise serializers.ValidationError(
-                    {'bon_commande': 'À laisser vide pour une facture.'})
+                raise ConflitEtat(
+                    {'bon_commande': ['À laisser vide pour une facture.']})
         return attrs
 
 
-class BudgetProjetSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BudgetProjetSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG294 — budget d'un programme (enveloppes par catégorie + seuil d'alerte).
     La société et `created_by` sont posés côté serveur ; le `projet` est validé
     tenant côté vue. Ne touche aucun statut. La synthèse vs réel (engagé/dépensé,
@@ -1391,7 +1393,7 @@ def _retirer_estimations_achat(serializer, fields):
     return fields
 
 
-class DemandeAchatLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DemandeAchatLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG310 — ligne d'une demande d'achat (produit catalogue OU désignation
     libre, quantité, prix estimé INTERNE)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -1414,8 +1416,7 @@ class DemandeAchatLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
     def validate_quantite(self, value):
         # ACHT11 — quantité finie et strictement positive.
         if value is None or not value.is_finite() or value <= 0:
-            raise serializers.ValidationError(
-                'La quantité doit être supérieure à 0.')
+            raise ConflitEtat({'quantite': ['La quantité doit être supérieure à 0.']})
         return value
 
     def validate_prix_estime(self, value):
@@ -1431,12 +1432,12 @@ class DemandeAchatLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une désignation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une désignation.']})
         return attrs
 
 
-class DemandeAchatSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DemandeAchatSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG310 — réquisition d'achat soumise à approbation. La référence, la
     société et `created_by` sont posés CÔTÉ SERVEUR ; `reference` est
     anti-collision (`DA-YYYYMM-NNNN`). Le `statut`, l'approbateur et la date de
@@ -1489,7 +1490,7 @@ class DemandeAchatSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin, s
         return value
 
 
-class RegleApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RegleApprobationAchatSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """NTP2P2 — règle d'approbation des demandes d'achat (seuil de montant +
     périmètre chantier/programme optionnel). La société est posée CÔTÉ
     SERVEUR (jamais lue du corps)."""
@@ -1500,6 +1501,7 @@ class RegleApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.
 
     class Meta:
         model = RegleApprobationAchat
+        extra_kwargs = {'nombre_approbateurs': {'min_value': 1}}
         fields = [
             'id', 'libelle', 'montant_min', 'montant_max', 'chantier',
             'programme', 'niveau_approbation', 'niveau_approbation_display',
@@ -1514,20 +1516,13 @@ class RegleApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.
             raise serializers.ValidationError('Le libellé est obligatoire.')
         return value
 
-    def validate_nombre_approbateurs(self, value):
-        if value is not None and value < 1:
-            raise serializers.ValidationError(
-                'Une règle exige au moins un approbateur.')
-        return value
-
     def validate(self, attrs):
         mini = attrs.get('montant_min', getattr(
             self.instance, 'montant_min', None))
         maxi = attrs.get('montant_max', getattr(
             self.instance, 'montant_max', None))
         if mini is not None and maxi is not None and mini > maxi:
-            raise serializers.ValidationError(
-                {'montant_max': 'Le montant maximum doit être ≥ au minimum.'})
+            raise ConflitEtat({'montant_max': ['Le montant maximum doit être ≥ au minimum.']})
         return attrs
 
 
@@ -1592,7 +1587,7 @@ class ApprobationBCFSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class CommandeCadreLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class CommandeCadreLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG314 — ligne d'un contrat-cadre (SKU, prix négocié INTERNE, volume
     engagé). `volume_consomme`/`volume_restant` sont dérivés (lecture seule)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -1618,8 +1613,8 @@ class CommandeCadreLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mod
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une désignation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une désignation.']})
         return attrs
 
 
@@ -1657,7 +1652,7 @@ class CommandeCadreSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerial
         return value
 
 
-class AppelCommandeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class AppelCommandeSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG314 — commande d'appel sur une ligne de contrat-cadre. La société et
     `created_by` sont posés CÔTÉ SERVEUR. `montant` est dérivé (quantité × prix
     négocié, INTERNE)."""
@@ -1676,8 +1671,7 @@ class AppelCommandeSerializer(SameCompanyFKSerializerMixin, serializers.ModelSer
 
     def validate_quantite(self, value):
         if value is None or value <= 0:
-            raise serializers.ValidationError(
-                'La quantité appelée doit être strictement positive.')
+            raise ConflitEtat({'quantite': ['La quantité appelée doit être strictement positive.']})
         return value
 
 
@@ -1717,7 +1711,7 @@ class DossierImportSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompany
         return value
 
 
-class FraisImportSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class FraisImportSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG316 — frais imputé à un dossier d'import (fret/douane/TVA import/
     transit…). La société et `created_by` sont posés CÔTÉ SERVEUR. Montant
     INTERNE."""
@@ -1741,7 +1735,7 @@ class FraisImportSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMi
         return value
 
 
-class LandedCostLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LandedCostLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
     est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
     frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""
@@ -1766,12 +1760,12 @@ class LandedCostLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une désignation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une désignation.']})
         return attrs
 
 
-class ReceptionNonFactureeSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class ReceptionNonFactureeSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                      serializers.ModelSerializer):
     """FG317 — provision de dette latente (réceptionné-non-facturé). La société
     et `created_by` sont posés CÔTÉ SERVEUR ; `lettre`/`date_lettrage`/`facture`
@@ -1803,7 +1797,7 @@ class ReceptionNonFactureeSerializer(ChampsStrictsMixin, SameCompanyFKSerializer
         return value
 
 
-class ContratPrixLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ContratPrixLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG318 — ligne de prix convenu d'un contrat fournisseur (SKU + prix
     négocié INTERNE + remise % optionnelle)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -1824,8 +1818,8 @@ class ContratPrixLigneSerializer(SameCompanyFKSerializerMixin, serializers.Model
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une désignation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une désignation.']})
         return attrs
 
 
@@ -1863,7 +1857,7 @@ class ContratPrixFournisseurSerializer(ChampsStrictsSansDecimalMixin, SameCompan
         return value
 
 
-class BinAffectationSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BinAffectationSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG319 — affectation produit ↔ casier (quantité indicative)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('bin', 'produit')
@@ -1879,7 +1873,7 @@ class BinAffectationSerializer(SameCompanyFKSerializerMixin, serializers.ModelSe
         read_only_fields = ['date_creation', 'date_modification']
 
 
-class BinLocationSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BinLocationSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG319 — casier de rangement adressable sous un `EmplacementStock`. La
     societe et `created_by` sont poses COTE SERVEUR. Les affectations produit
     sont imbriquees en lecture."""
@@ -1965,7 +1959,7 @@ class PickListLigneSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['pick_list', 'ordre']
 
 
-class PickListSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class PickListSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG321 - bon de prelevement d'un chantier. La reference, la societe et
     `created_by` sont poses COTE SERVEUR ; les lignes sont generees serveur
     depuis les reservations (action `generer`) et imbriquees en lecture."""
@@ -1987,7 +1981,7 @@ class PickListSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerM
         ]
 
 
-class ColisLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ColisLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG322 - article emballe dans un colis (SKU + quantite + controle OK)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('colis', 'produit')
@@ -2007,12 +2001,12 @@ class ColisLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerial
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une designation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une designation.']})
         return attrs
 
 
-class ColisSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ColisSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG322 - colis de preparation d'un chantier. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `controler`/`expedier` (qui posent
     `controle_par`/date). Lignes imbriquees en lecture."""
@@ -2086,7 +2080,7 @@ class ComptageLigneSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['session', 'quantite_theorique']
 
 
-class SessionComptageSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class SessionComptageSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
     """FG324 - session de comptage tournant. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer` ; les
@@ -2113,7 +2107,7 @@ class SessionComptageSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSeri
         ]
 
 
-class DemandeTransfertSerializer(SameCompanyFKSerializerMixin,
+class DemandeTransfertSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG325 - demande de transfert inter-emplacements. Reference/societe/
     `created_by` poses COTE SERVEUR ; le statut et les champs d'approbation/
@@ -2132,6 +2126,7 @@ class DemandeTransfertSerializer(SameCompanyFKSerializerMixin,
 
     class Meta:
         model = DemandeTransfert
+        extra_kwargs = {'quantite': {'min_value': 1}}
         fields = [
             'id', 'reference', 'produit', 'produit_nom', 'source', 'source_nom',
             'destination', 'destination_nom', 'quantite', 'statut',
@@ -2145,12 +2140,6 @@ class DemandeTransfertSerializer(SameCompanyFKSerializerMixin,
             'date_creation', 'date_modification',
         ]
 
-    def validate_quantite(self, value):
-        if value is None or value <= 0:
-            raise serializers.ValidationError(
-                'La quantite demandee doit etre strictement positive.')
-        return value
-
     def validate(self, attrs):
         source = attrs.get('source') if 'source' in attrs else getattr(
             self.instance, 'source', None)
@@ -2158,12 +2147,11 @@ class DemandeTransfertSerializer(SameCompanyFKSerializerMixin,
             getattr(self.instance, 'destination', None))
         if source is not None and destination is not None and (
                 source == destination):
-            raise serializers.ValidationError(
-                {'destination': 'La destination doit differer de la source.'})
+            raise ConflitEtat({'destination': ['La destination doit differer de la source.']})
         return attrs
 
 
-class RegleReapproSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class RegleReapproSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     """FG326 - regle min/max de reapprovisionnement. La societe et `created_by`
     sont poses COTE SERVEUR. `seuil_max` doit etre >= `seuil_min`."""
@@ -2196,8 +2184,7 @@ class RegleReapproSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSeriali
         seuil_max = attrs.get('seuil_max') if 'seuil_max' in attrs else getattr(
             self.instance, 'seuil_max', 0)
         if seuil_max < seuil_min:
-            raise serializers.ValidationError(
-                {'seuil_max': 'Le seuil max doit etre >= au seuil min.'})
+            raise ConflitEtat({'seuil_max': ['Le seuil max doit etre >= au seuil min.']})
         return attrs
 
 
@@ -2238,7 +2225,7 @@ class MaterielConsigneSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixi
         return value
 
 
-class KitComposantSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class KitComposantSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG328 - composant de la nomenclature d'un kit."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('kit', 'produit')
@@ -2258,8 +2245,8 @@ class KitComposantSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeri
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une designation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une designation.']})
         return attrs
 
 
@@ -2313,7 +2300,7 @@ class RevisionKitSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeria
         return (f'{u.first_name} {u.last_name}'.strip() or u.username)
 
 
-class OrdreAssemblageLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class OrdreAssemblageLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG6 - ligne de composant PERSONNALISABLE d'un ordre. `origine` posee
     cote serveur (kit vs ajout) ; l'editabilite (planifie uniquement) est
     controlee par la vue."""
@@ -2336,12 +2323,12 @@ class OrdreAssemblageLigneSerializer(SameCompanyFKSerializerMixin, serializers.M
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une designation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une designation.']})
         return attrs
 
 
-class OrdreAssemblageSerializer(SameCompanyFKSerializerMixin,
+class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
@@ -2364,6 +2351,7 @@ class OrdreAssemblageSerializer(SameCompanyFKSerializerMixin,
 
     class Meta:
         model = OrdreAssemblage
+        extra_kwargs = {'quantite': {'min_value': 1}}
         fields = [
             'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
             'statut_display', 'note', 'date_terminaison',
@@ -2385,12 +2373,6 @@ class OrdreAssemblageSerializer(SameCompanyFKSerializerMixin,
             'revision_kit_numero',
             'date_creation', 'date_modification',
         ]
-
-    def validate_quantite(self, value):
-        if value is None or value <= 0:
-            raise serializers.ValidationError(
-                'La quantite a assembler doit etre strictement positive.')
-        return value
 
     @extend_schema_field(serializers.CharField())
     def get_cout_prevu(self, obj):
@@ -2446,7 +2428,7 @@ class SerieAssemblageSerializer(SameCompanyFKSerializerMixin, serializers.ModelS
         return value
 
 
-class OrdreDemontageLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class OrdreDemontageLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG12 - ligne de démontage : quantité attendue (BOM) vs récupérée
     (éditable ligne à ligne avant clôture)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -2476,7 +2458,7 @@ class ControleQualiteItemModeleSerializer(SameCompanyFKSerializerMixin, serializ
         ]
 
 
-class ControleQualiteModeleSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ControleQualiteModeleSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG13 - modèle de checklist QC par kit. Société posée COTE SERVEUR."""
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('kit',)
@@ -2512,7 +2494,7 @@ class ControleQualiteOrdreSerializer(SameCompanyFKSerializerMixin, serializers.M
         read_only_fields = ['controle_par', 'date_controle']
 
 
-class OrdreDemontageSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class OrdreDemontageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG12 - ordre de démontage (unbuild) : composite → composants.
     Référence/société/`created_by` posés COTE SERVEUR."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -2526,6 +2508,7 @@ class OrdreDemontageSerializer(SameCompanyFKSerializerMixin, serializers.ModelSe
 
     class Meta:
         model = OrdreDemontage
+        extra_kwargs = {'quantite': {'min_value': 1}}
         fields = [
             'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
             'statut_display', 'note', 'date_terminaison',
@@ -2538,14 +2521,8 @@ class OrdreDemontageSerializer(SameCompanyFKSerializerMixin, serializers.ModelSe
             'created_by', 'date_creation', 'date_modification',
         ]
 
-    def validate_quantite(self, value):
-        if value is None or value <= 0:
-            raise serializers.ValidationError(
-                'La quantite a demonter doit etre strictement positive.')
-        return value
 
-
-class EtapeAssemblageSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class EtapeAssemblageSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XMFG14 - étape de la gamme (mode opératoire) d'un kit."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('kit', 'piece_jointe')
@@ -2589,7 +2566,7 @@ class EtapeOrdreSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerial
         read_only_fields = ['fait_par', 'fait_le']
 
 
-class LivraisonLigneSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LivraisonLigneSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG329 - article d'une livraison (SKU + quantite)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('livraison', 'produit')
@@ -2609,12 +2586,12 @@ class LivraisonLigneSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerialize
         designation = attrs.get('designation') if 'designation' in attrs else (
             getattr(self.instance, 'designation', None))
         if produit is None and not (designation or '').strip():
-            raise serializers.ValidationError(
-                {'designation': 'Indiquez un produit ou une designation.'})
+            raise ConflitEtat(
+                {'designation': ['Indiquez un produit ou une designation.']})
         return attrs
 
 
-class LivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LivraisonSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG329 - livraison planifiee depot -> site. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via les actions
     `expedier`/`livrer`/`annuler`. Lignes imbriquees en lecture."""
@@ -2649,7 +2626,7 @@ class LivraisonSerializer(SameCompanyFKSerializerMixin, serializers.ModelSeriali
         ]
 
 
-class PreuveLivraisonSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class PreuveLivraisonSerializer(IdInconnu404Mixin, UniciteEn409Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG330 - preuve de livraison (signature + photo + GPS horodate). La
     societe et `created_by` sont poses COTE SERVEUR. Une seule preuve par
     livraison (OneToOne)."""
@@ -2692,7 +2669,7 @@ class TransporteurSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         return value
 
 
-class RetourMaterielLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourMaterielLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """YSTCK4 - ligne d'un retour de materiel chantier (SKU + quantite)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('retour', 'produit')
@@ -2708,7 +2685,7 @@ class RetourMaterielLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         read_only_fields = ['stock_applique']
 
 
-class RetourMaterielSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourMaterielSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """YSTCK4 - retour de materiel non pose, d'un chantier vers le depot.
     Societe/`created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture."""
@@ -2733,7 +2710,7 @@ class RetourMaterielSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSeria
         ]
 
 
-class RetourLivraisonLigneSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourLivraisonLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK8 - ligne d'un retour de livraison (SKU, livre vs retourne)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('retour', 'produit')
@@ -2773,7 +2750,7 @@ class RetourLivraisonLigneSerializer(SameCompanyFKSerializerMixin, serializers.M
         return attrs
 
 
-class RetourLivraisonSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourLivraisonSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK8 - retour client genere depuis une Livraison livree. Societe/
     `created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture, pre-remplies a la generation."""
@@ -2818,7 +2795,7 @@ class CategorieStockageSerializer(ChampsStrictsMixin, serializers.ModelSerialize
         return value
 
 
-class RegleRangementSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RegleRangementSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZSTK9 - regle de rangement configurable (produit ou categorie produit
     -> casier cible, par priorite). Societe posee COTE SERVEUR."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -2845,8 +2822,7 @@ class RegleRangementSerializer(ChampsStrictsEntiersMixin, SameCompanyFKSerialize
             if 'categorie_produit' in attrs
             else getattr(self.instance, 'categorie_produit', None))
         if produit is None and not (categorie_produit or '').strip():
-            raise serializers.ValidationError(
-                'Indiquez un produit ou une categorie produit.')
+            raise ConflitEtat({'categorie_produit': ['Indiquez un produit ou une categorie produit.']})
         return attrs
 
 

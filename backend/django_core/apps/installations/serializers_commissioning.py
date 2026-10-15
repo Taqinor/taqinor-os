@@ -3,7 +3,10 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound
 
+from core.champs_stricts import EntierStrict, IdInconnu404Mixin
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
+from core.unicite import UniciteEn409Mixin
 
 from .models import (
     CommissioningRecord, CommissioningIVReading, HandoverPack, RecettePompage,
@@ -24,9 +27,15 @@ class CommissioningIVReadingSerializer(serializers.ModelSerializer):
         read_only_fields = ['record', 'ecart_pmax_pct', 'defaut_detecte']
 
 
-class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin,
+                                    serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('installation',)
+    # CIQ626 — ``{essai: identifiant d'instrument}`` : un objet d'entiers (ou
+    # null = aucun instrument), publié tel quel ; l'existence de l'instrument
+    # dans la société reste jugée par ``validate_instruments_par_essai`` (404).
+    instruments_par_essai = serializers.DictField(
+        child=EntierStrict(allow_null=True), required=False, allow_null=True)
     iv_readings = CommissioningIVReadingSerializer(many=True, read_only=True)
     resultat_display = serializers.CharField(
         source='get_resultat_display', read_only=True)
@@ -50,7 +59,6 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
 
     class Meta:
         model = CommissioningRecord
-        extra_kwargs = {'instruments_par_essai': {'allow_null': True}}
         fields = [
             'id', 'installation', 'date_essai', 'technicien',
             'instrument_id', 'instrument_nom', 'instrument_numero_serie',
@@ -86,7 +94,7 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
         ⇒ conforme, sinon en cours) : un ``resultat`` envoyé par le client est
         IGNORÉ, sauf le seul choix humain « conforme avec réserves »
         (``reserves``), admis seulement quand TOUS les essais sont vrais —
-        sinon 400 FR nommant ``resultat``."""
+        sinon 409 (règle d'ensemble) nommant ``resultat``."""
         from core.recette.resultat import RESERVES, ReservesRefusees
 
         from .services import resultat_recette_fiche
@@ -102,7 +110,7 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
             attrs['resultat'] = resultat_recette_fiche(
                 fiche, attrs, choix=RESERVES if demande == RESERVES else None)
         except ReservesRefusees as exc:
-            raise serializers.ValidationError({'resultat': str(exc)})
+            raise ConflitEtat({'resultat': [str(exc)]})
         # CIQ628 — « conforme avec réserves » exige au moins une réserve
         # d'origine recette OUVERTE sur le chantier.
         if demande == RESERVES:
@@ -112,8 +120,7 @@ class CommissioningRecordSerializer(SameCompanyFKSerializerMixin, serializers.Mo
             chantier = getattr(fiche, 'installation', None) \
                 if fiche.installation_id else attrs.get('installation')
             if chantier is None or not recette_a_reserve_ouverte(chantier):
-                raise serializers.ValidationError(
-                    {'resultat': RAISON_RESERVES_SANS_LISTE})
+                raise ConflitEtat({'resultat': [RAISON_RESERVES_SANS_LISTE]})
         return attrs
 
     def validate_instrument_id(self, value):
