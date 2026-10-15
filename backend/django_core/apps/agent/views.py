@@ -210,8 +210,21 @@ class AgentActionConfirmerView(APIView):
         })})
     def post(self, request):
         data = request.data or {}
-        action_key = (data.get('action_key') or '').strip()
+        # CI #1003 (fuzz) — les TYPES publiés par ``ConfirmationActionSerializer``
+        # sont vérifiés avant tout usage : un ``action_key`` liste (``[null]``)
+        # levait AttributeError sur ``.strip()`` (500) ; un corps non-objet ou
+        # un ``object_id`` non entier est un 400, jamais une erreur serveur.
+        if not isinstance(data, dict):
+            raise ParseError('Un objet JSON est attendu.')
+        action_key = data.get('action_key') or ''
         risk_level = data.get('risk_level') or ''
+        object_id = data.get('object_id')
+        if (not isinstance(action_key, str) or not isinstance(risk_level, str)
+                or (object_id is not None and (isinstance(object_id, bool)
+                                               or not isinstance(object_id, int)))):
+            raise ParseError(
+                'action_key et risk_level sont des chaînes, object_id un entier.')
+        action_key = action_key.strip()
         # AANA18 — les refus sont LEVES (corps DRF `{detail}`, statut
         # inchange) : la seule forme RENVOYEE est le journal, que le contrat
         # `logs_confirmer.json` declare complet (`forme_serveur: complete`).
@@ -236,7 +249,6 @@ class AgentActionConfirmerView(APIView):
                     action.required_permission)):
             raise PermissionDenied("Action non autorisée pour ce compte.")
         inputs = data.get('inputs') or {}
-        object_id = data.get('object_id')
         preuve = data.get('preuve')
         if not isinstance(inputs, dict) or not preuve_confirmation_valide(
                 preuve, action_key=action_key, company_id=company.pk,
