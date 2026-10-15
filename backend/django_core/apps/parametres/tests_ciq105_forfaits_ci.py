@@ -79,37 +79,39 @@ class ForfaitsCiTests(TestCase):
         # aucune autre prestation inventée : « prix à renseigner »
         self.assertEqual(set(resp.data['forfaits_ci']), {'pose_modules'})
 
-    def test_saisie_sans_source_400_fr_nommant_le_champ(self):
+    def test_saisie_sans_source_409_fr_nommant_le_champ(self):
+        # ENF11 — champ JSON libre au schéma : la règle « source obligatoire »
+        # est une règle métier (409), le champ fautif nommé dans le message.
         resp = self.api.patch(
             URL_PATCH,
             {'forfaits_ci': {'pose_modules': {'fixe_ht': '5000'}}},
             format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('forfaits_ci', resp.data)
-        self.assertIn('source', str(resp.data['forfaits_ci']))
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('forfaits_ci', resp.data['detail'])
+        self.assertIn('source', resp.data['detail'])
         resp = self.api.patch(
             URL_PATCH, {'bande_prix_kwc_ci': {'min_ht': 4000, 'max_ht': 6000}},
             format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('bande_prix_kwc_ci', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('bande_prix_kwc_ci', resp.data['detail'])
 
     def test_prestation_inconnue_et_montant_negatif_refuses(self):
         resp = self.api.patch(
             URL_PATCH, {'forfaits_ci': {'installation': FORFAIT_POSE}},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         resp = self.api.patch(
             URL_PATCH,
             {'forfaits_ci': {'pose_modules': {**FORFAIT_POSE,
                                               'fixe_ht': '-1'}}},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_bande_min_superieur_max_refusee(self):
         resp = self.api.patch(URL_PATCH, {'bande_prix_kwc_ci': {
             'min_ht': 7000, 'max_ht': 6000, 'source': 'Trois offres',
             'date': None}}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_ligne_videe_retiree(self):
         self.api.patch(URL_PATCH, {'forfaits_ci': {'pose_modules':

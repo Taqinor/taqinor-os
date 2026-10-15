@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
+from .erreurs_metier import valider_ou_conflit
 from .models import CompanyProfile, SettingsAuditLog
 from .serializers import CompanyProfileSerializer
 from .views_common import _audit_company, _profile
@@ -195,10 +196,12 @@ def get_profile(request):
     return Response(CompanyProfileSerializer(profile).data)
 
 
+# ENF11 — deux 409 : le verrou optimiste (``code`` + ``updated_at``) ET le refus
+# d'une règle métier (``detail`` seul, enveloppe ``ConflitEtat``).
 _CONFLIT_PROFIL = inline_serializer('ProfilConflit', {
     'detail': serializers.CharField(),
-    'code': serializers.CharField(),
-    'updated_at': serializers.DateTimeField(allow_null=True),
+    'code': serializers.CharField(required=False),
+    'updated_at': serializers.DateTimeField(allow_null=True, required=False),
 })
 
 
@@ -229,7 +232,9 @@ def update_profile(request):
         profile, data=request.data, partial=partial,
         context={'request': request},
     )
-    serializer.is_valid(raise_exception=True)
+    # ENF11 — les refus de règle métier (ICE, échéancier, commission…) sur un
+    # corps conforme au schéma répondent 409, pas 400.
+    valider_ou_conflit(serializer)
     updated = serializer.save()
     _audit_profile_changes(request, updated, before)
     # SCA46 — consentement au benchmarking anonymisé : le champ vit sur

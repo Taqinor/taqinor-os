@@ -3,13 +3,18 @@
 Domaine « Société & identité / Devis & logique métier ». Extrait de l'ancien
 ``serializers.py`` sans aucun changement de champ, de validation ni de
 comportement (mêmes URLs présignées, mêmes contrôles de société)."""
+import zoneinfo
 from decimal import Decimal, InvalidOperation
 
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from .champs_url import UrlHttp
+from .erreurs_metier import regle_metier
 from .models import CompanyProfile
+from .requetes_strictes import TypageStrictReglages
 import logging
 
 logger = logging.getLogger(__name__)
@@ -130,7 +135,43 @@ DRAPEAUX_PARCOURS = (
 )
 
 
-class CompanyProfileSerializer(serializers.ModelSerializer):
+def _borne_pct(message):
+    """Kwargs d'un pourcentage borné à [0, 100] : la borne est PUBLIÉE au schéma
+    (branche « nombre » des décimaux souples) ET tenue par le champ, avec le
+    message français du réglage (ENF11 — le schéma annonçait ±999,99). Le
+    message ne porte AUCUN signe « % » : DRF le formate (``message % params``),
+    un « % » isolé lèverait ``ValueError`` (500)."""
+    return {'min_value': Decimal('0'), 'max_value': Decimal('100'),
+            'error_messages': {'min_value': message, 'max_value': message}}
+
+
+def _borne_positive(message):
+    """Kwargs d'un seuil qui ne peut pas être négatif (borne basse publiée)."""
+    return {'min_value': Decimal('0'),
+            'error_messages': {'min_value': message}}
+
+
+class FuseauHoraireField(serializers.CharField):
+    """Fuseau IANA (``validate_fuseau_horaire`` : registre ``zoneinfo``)."""
+
+
+class _FuseauHoraireField(OpenApiSerializerFieldExtension):
+    """ENF11 (api-fuzz « rejected schema-compliant request ») — le schéma de
+    REQUÊTE énumère les fuseaux IANA que ``validate_fuseau_horaire`` accepte
+    (MÊME registre) : « 0 » était conforme à une chaîne libre puis refusé (400).
+    La RÉPONSE reste une chaîne libre (un ancien fuseau n'est jamais « hors
+    schéma »)."""
+    target_class = 'apps.parametres.serializers_company.FuseauHoraireField'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction == 'request':
+            schema = {**schema, 'enum': sorted(zoneinfo.available_timezones())}
+        return schema
+
+
+class CompanyProfileSerializer(TypageStrictReglages, serializers.ModelSerializer):
     # AMET16 — drapeaux de parcours : lecture seule, l'écriture reste le PATCH
     # de chaque champ.
     drapeaux_parcours = serializers.SerializerMethodField()
@@ -159,12 +200,27 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     payment_terms_effectifs = serializers.SerializerMethodField()
     # AGNR11 — barème résidentiel EFFECTIF (contrat bareme_effectif.json).
     bareme_effectif = serializers.SerializerMethodField()
-    # CIQ622 — délais déclarés sans le MinValueValidator du modèle : le refus
-    # (≤ 0) est rendu par ``validate_<champ>`` avec un message français.
+    # CIQ622 — délais déclarés sans le MinValueValidator du modèle (qui admet 0) :
+    # strictement positifs, minimum PUBLIÉ au schéma (ENF11 — api-fuzz « rejected
+    # schema-compliant request » : le schéma annonçait 0, le serveur le refusait)
+    # et refus en français nommant le réglage.
     delai_intervention_suivi_heures = serializers.IntegerField(
-        required=False, allow_null=True)
+        required=False, allow_null=True, min_value=1, max_value=2147483647,
+        error_messages={'min_value': (
+            "Le délai d'intervention (heures) doit être strictement positif.")})
     delai_reception_definitive_mois = serializers.IntegerField(
-        required=False, allow_null=True)
+        required=False, allow_null=True, min_value=1, max_value=2147483647,
+        error_messages={'min_value': (
+            'Le délai de réception définitive (mois) doit être strictement '
+            'positif.')})
+    fuseau_horaire = FuseauHoraireField(
+        max_length=64, required=False,
+        help_text=CompanyProfile._meta.get_field('fuseau_horaire').help_text)
+    # ENF11 — URL http(s) dont le schéma et le serveur partagent le même
+    # prédicat (``champs_url``) ; ``""`` = pas de lien.
+    lien_avis_google = UrlHttp(
+        max_length=500, required=False, allow_blank=True,
+        help_text=CompanyProfile._meta.get_field('lien_avis_google').help_text)
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_drapeaux_parcours(self, obj):
@@ -243,7 +299,35 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             'forfaits_ci': {'allow_null': True},
             'reperes_energie_agricole': {'allow_null': True},
+            # ENF11 — ``null`` = « aucune action » ([]), comme ``forfaits_ci`` :
+            # DRF le refusait alors que le schéma libre l'admet.
+            'step_up_actions': {'allow_null': True},
+            # ENF11 (api-fuzz « rejected schema-compliant request ») — bornes
+            # des taux et seuils PUBLIÉES au schéma : le contrat annonçait
+            # ±999,99 pour un taux de TVA que ``validate_*`` limite à 0-100 %.
+            'tva_standard': _borne_pct(
+                'Le taux de TVA standard doit être compris entre 0 et 100 '
+                'pour cent.'),
+            'tva_panneaux': _borne_pct(
+                'Le taux de TVA panneaux doit être compris entre 0 et 100 '
+                'pour cent.'),
+            'remise_max_pct': _borne_pct(
+                'La limite de remise doit être comprise entre 0 et 100 pour '
+                'cent.'),
+            'discount_approval_threshold': _borne_pct(
+                "Le seuil d'approbation de remise doit être compris entre 0 et "
+                '100 pour cent.'),
+            'overage_seuil_pct': _borne_pct(
+                'Le seuil de dépassement doit être compris entre 0 et 100 pour '
+                'cent.'),
+            'seuil_regime_declaration_kwc': _borne_positive(
+                'Le seuil de déclaration (kWc) ne peut pas être négatif.'),
+            'seuil_regime_anre_kwc': _borne_positive(
+                'Le seuil ANRE (kWc) ne peut pas être négatif.'),
         }
+
+    def validate_step_up_actions(self, value):
+        return [] if value is None else value
 
     def validate_responsable_defaut_leads(self, value):
         # Le responsable par défaut doit appartenir à la même société.
@@ -321,6 +405,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
 
     # AGR606 — écart de recette pompage toléré : vide accepté (« écart affiché
     # sans verdict »), sinon strictement positif et au plus 100 %.
+    @regle_metier
     def validate_recette_pompage_ecart_max_pct(self, value):
         if value is not None and (value <= 0 or value > 100):
             raise serializers.ValidationError(
@@ -337,35 +422,25 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 f'{label} doit être compris entre 0 (exclu) et 100 %.')
         return value
 
-    def _validate_strict_positif(self, value, label):
-        if value is not None and value <= 0:
-            raise serializers.ValidationError(
-                f'{label} doit être strictement positif.')
-        return value
-
+    @regle_metier
     def validate_recette_ecart_pmax_pct(self, value):
         return self._validate_pct_strict(
             value, "L'écart de recette toléré sur la puissance crête")
 
+    @regle_metier
     def validate_recette_echantillon_iv_pct(self, value):
         return self._validate_pct_strict(
             value, "L'échantillon de courbes I-V")
 
+    @regle_metier
     def validate_recette_pr_seuil_interne(self, value):
         return self._validate_pct_strict(
             value, 'Le seuil interne de performance ratio')
 
-    def validate_delai_intervention_suivi_heures(self, value):
-        return self._validate_strict_positif(
-            value, "Le délai d'intervention (heures)")
-
-    def validate_delai_reception_definitive_mois(self, value):
-        return self._validate_strict_positif(
-            value, 'Le délai de réception définitive (mois)')
-
     # ── CIQ105 — forfaits des prestations C&I et bande interne prix/kWc. Une
     # valeur saisie SANS source est refusée (400 FR nommant le champ) ; une
     # prestation entièrement vide est retirée (= « prix à renseigner »).
+    @regle_metier
     def validate_forfaits_ci(self, value):
         if value in (None, ''):
             return {}
@@ -389,6 +464,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                 propre[prestation] = entree
         return propre
 
+    @regle_metier
     def validate_bande_prix_kwc_ci(self, value):
         if value in (None, '', {}):
             return None
@@ -412,6 +488,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # (NTI18N16) n'existe pas encore (GATED-founder) : 'MA' est passé en dur
     # en attendant — comportement historique, puisque toute société
     # actuelle EST marocaine. Jamais bloquant pour un champ vide.
+    @regle_metier
     def validate_ice(self, value):
         # APAR31 — normalisé AVANT validation puis stocké sous sa forme
         # canonique (15 chiffres) : « 001 234 567 000 089 » est accepté.
@@ -423,7 +500,6 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         return value
 
     def validate_fuseau_horaire(self, value):
-        import zoneinfo
         if value not in zoneinfo.available_timezones():
             raise serializers.ValidationError(
                 f'Fuseau horaire inconnu : « {value} ».')
@@ -439,6 +515,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
     # Aucune valeur imposée : un repère peut rester vide ; une clé inconnue,
     # une valeur négative ou une date illisible est refusée (400 nommant le
     # champ). Jamais de repli numérique.
+    @regle_metier
     def validate_reperes_energie_agricole(self, value):
         import datetime
 
@@ -492,6 +569,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                            'releve_le': releve}
         return propre
 
+    @regle_metier
     def validate_doc_prefixes(self, value):
         if value is None:
             return value
@@ -507,6 +585,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                     f'Le préfixe « {key} » doit être une chaîne.')
         return value
 
+    @regle_metier
     def validate_doc_numbering(self, value):
         if value is None:
             return value
@@ -534,6 +613,7 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                     'monthly, yearly ou none.')
         return value
 
+    @regle_metier
     def validate_payment_terms(self, value):
         if value is None:
             return value
@@ -567,7 +647,10 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
                     f'(total {total}).')
         return value
 
+    @regle_metier
     def validate(self, attrs):
+        # ENF11 — règles métier inter-champs (mode de commission sans valeur,
+        # garantie de production sans validation) : 409, pas 400.
         # Commission (L788) : dès qu'un mode actif est choisi (pct_devis /
         # par_kwc), la valeur de commission devient obligatoire — sinon on
         # aurait un mode actif sans barème (commission silencieusement nulle).

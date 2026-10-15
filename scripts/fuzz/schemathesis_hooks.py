@@ -513,6 +513,11 @@ _FICHIERS_VALIDES = (
     # (PDF, PNG, JPEG, WebP) ; un part sans octets valides est « Format non supporté ».
     (re.compile(r'^/api/django/stock/produits/\{[^}]+\}/photo/$'), {'POST'},
      {'file': _PNG_MINIMAL}),
+    # ENF11 (parametres) — logo et signature de la société : le serveur lit les
+    # octets magiques (PNG, JPEG ou WebP), inexprimable dans le schéma ; sans
+    # image lisible, un part « conforme » répond « Format non supporté » (400).
+    (re.compile(r'^/api/django/parametres/upload-(logo|signature)/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
 )
 
 

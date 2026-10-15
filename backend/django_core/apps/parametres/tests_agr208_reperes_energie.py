@@ -205,5 +205,6 @@ class ApiReperesTests(TestCase):
             resp = self.api.patch(
                 '/api/django/parametres/update/',
                 {'reperes_energie_agricole': faute}, format='json')
-            self.assertEqual(resp.status_code, 400, faute)
-            self.assertIn('reperes_energie_agricole', resp.data)
+            # ENF11 — champ JSON libre au schéma : règle métier, 409.
+            self.assertEqual(resp.status_code, 409, faute)
+            self.assertIn('reperes_energie_agricole', resp.data['detail'])

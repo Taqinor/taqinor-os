@@ -90,8 +90,9 @@ FETES_MOBILES_ENREGISTRER_REQUEST = inline_serializer(
 @permission_classes([IsAdminOrResponsableTier, PeutGererLocalisation])
 def fetes_mobiles_enregistrer(request):
     """POST /parametres/fetes-mobiles/ — ``{"annee": 2027, "dates":
-    {"aid_el_fitr": "2027-03-09", ...}}``. Bloque (400) tant qu'au moins
-    une des 4 dates est vide/incohérente (hors année cible)."""
+    {"aid_el_fitr": "2027-03-09", ...}}``. Bloque tant qu'au moins une des 4
+    dates est vide/illisible (400) ou incohérente — passé, hors année cible
+    (409)."""
     company = _audit_company(request)
     if company is None:
         return Response(
@@ -119,8 +120,11 @@ def fetes_mobiles_enregistrer(request):
     except SaisieFetesInvalide as exc:
         # APAR14 — erreurs aussi rangées SOUS leur champ (« erreurs »), en plus
         # du « detail » à plat historique.
+        # ENF11 — saisie bien formée mais refusée par la règle (passé, hors
+        # année cible) : conflit d'ÉTAT, 409 ; une forme illisible reste 400.
         return Response({'detail': str(exc), 'erreurs': exc.erreurs},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_409_CONFLICT if exc.conflit_etat
+                                else status.HTTP_400_BAD_REQUEST))
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(fetes_mobiles_saisies(company, annee))

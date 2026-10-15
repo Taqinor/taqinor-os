@@ -552,6 +552,17 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertEqual(self._corps('POST', chemin, {'file': b''}, mode='NEGATIVE')['file'], b'')
         self.assertEqual(self._corps('DELETE', chemin, {'file': b''})['file'], b'')
 
+    def test_logo_et_signature_recoivent_une_image_lisible(self):
+        # ENF11 (parametres) — le serveur lit les octets magiques de l'image
+        # (PNG/JPEG/WebP) : un positif porte un PNG, un négatif reste intact.
+        for chemin in ('/api/django/parametres/upload-logo/',
+                       '/api/django/parametres/upload-signature/'):
+            corps = self._corps(chemin=chemin, corps={'file': b''})
+            self.assertTrue(corps['file'].startswith(b'\x89PNG\r\n\x1a\n'), chemin)
+        negatif = self._corps(chemin='/api/django/parametres/upload-logo/',
+                              corps={'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(

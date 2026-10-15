@@ -21,7 +21,6 @@ API accepted schema-violating request|POST /api/django/adminops/config-packages/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
-API rejected schema-compliant request|PATCH /api/django/parametres/cadence-relance/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
@@ -51,14 +50,9 @@ API rejected schema-compliant request|POST /api/django/facturation/paiements/fac
 API rejected schema-compliant request|POST /api/django/imports/commit/
 API rejected schema-compliant request|POST /api/django/imports/dry-run/
 API rejected schema-compliant request|POST /api/django/imports/mapping/
-API rejected schema-compliant request|POST /api/django/parametres/cadence-relance/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
-API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/
 API rejected schema-compliant request|POST /api/django/parametres/onboarding-localisation/
-API rejected schema-compliant request|POST /api/django/parametres/realisations/
 API rejected schema-compliant request|POST /api/django/parametres/taux-tva/
-API rejected schema-compliant request|POST /api/django/parametres/upload-logo/
-API rejected schema-compliant request|POST /api/django/parametres/upload-signature/
 API rejected schema-compliant request|POST /api/django/public/portail/invitations/accepter/
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
@@ -90,8 +84,6 @@ API rejected schema-compliant request|POST /api/django/ventes/plans-commission/
 API rejected schema-compliant request|POST /api/django/ventes/promesses-paiement/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
-API rejected schema-compliant request|PATCH /api/django/parametres/update/
-API rejected schema-compliant request|PUT /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
 Response violates schema|GET /api/django/adminops/settings/
 Response violates schema|GET /api/django/onboarding/progress/
@@ -138,9 +130,7 @@ API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/ajouter
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
 # Groupe de merge #985 (13/10/2026) — 2 constats PRÉ-EXISTANTS sur des routes NON modifiées (règles métier tarification ; corps formulaire etude-horaire/preview, app ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
-API rejected schema-compliant request|PUT /api/django/parametres/tarification/update/
 # Groupe de merge #985, 2e tour (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH tarification/update, règles métier, jumeau du PUT déjà gelé, route non modifiée).
-API rejected schema-compliant request|PATCH /api/django/parametres/tarification/update/
 # PR #985, 5e tirage (13/10/2026) — 3 constats PRÉ-EXISTANTS sav (coercition DRF sur PUT categories-equipement / equipes-maintenance, variante actions-groupees) — ERR-ENF11-FUZZ-SAV reste ouverte.
 # PR #987 (13/10/2026) : constats core PRÉ-EXISTANTS rendus visibles par le seed stock du harnais (scope core) — portés par ERR-ENF11-FUZZ-CORE (session dev-all-laptop), à corriger à la cause
 # PR #987, 2e tirage (13/10/2026) : constats PRÉ-EXISTANTS sur des routes non modifiées par la PR (core : ERR-ENF11-FUZZ-CORE ; stock blocages-qualite ; achats depuis-ocr, motif `fields` non publié au schéma multipart) — à corriger à la cause
@@ -149,10 +139,8 @@ API rejected schema-compliant request|PATCH /api/django/parametres/tarification/
 # PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
 API accepted schema-violating request|GET /api/django/parametres/audit/
 # PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.
-API rejected schema-compliant request|PATCH /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
 API rejected schema-compliant request|POST /api/django/portail/demandes-ticket-portail/
-API rejected schema-compliant request|PUT /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/
 # Groupe de merge #991 (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH portail/documents-client-portail, route non modifiée), porté par ERR-ENF11-FUZZ-PORTAIL (suite).
 API rejected schema-compliant request|PATCH /api/django/portail/documents-client-portail/{id}/
