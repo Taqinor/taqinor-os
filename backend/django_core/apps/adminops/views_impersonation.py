@@ -60,7 +60,7 @@ def _journaliser(demande, user, action, detail):
         from apps.audit.recorder import record
         record(action, instance=demande, company=demande.company, user=user,
                detail=detail)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.debug('adminops: audit impersonation échoué', exc_info=True)
 
 

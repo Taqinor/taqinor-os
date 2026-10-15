@@ -68,7 +68,7 @@ def diffuser_annonce(annonce):
                    body=annonce.corps, link=lien,
                    company=getattr(user, 'company', None))
             envoyees += 1
-        except Exception:  # noqa: BLE001 — un destinataire KO n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — un destinataire KO n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning('adminops: notification annonce produit échouée '
                            '(user %s)', getattr(user, 'pk', None))
     return envoyees

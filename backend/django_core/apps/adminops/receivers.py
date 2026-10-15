@@ -76,7 +76,7 @@ def _alerter_administrateurs(company, utilises, max_sieges):
             body=(f'Vous avez atteint votre quota de {max_sieges} sièges — '
                   'contactez-nous pour l\'augmenter.'),
             company=company)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("receivers._alerter_administrateurs : erreur ignorée (mode dégradé)", exc_info=True)
 
 
@@ -92,7 +92,7 @@ def _dispatch_webhook_quota(company, utilises, max_sieges):
             'sieges_utilises': utilises,
             'sieges_max': max_sieges,
         })
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("receivers._dispatch_webhook_quota : erreur ignorée (mode dégradé)", exc_info=True)
 
 
@@ -104,7 +104,7 @@ def user_post_save_quota_sieges(sender, instance, created, **kwargs):
         return
     try:
         resultat = _statut_sieges(company)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("receivers.user_post_save_quota_sieges : erreur ignorée (mode dégradé)", exc_info=True)
         return
     if resultat is None:
@@ -147,7 +147,7 @@ def marquer_ligne_audit_impersonation(sender, instance, **kwargs):
         marque = (f'{MARQUEUR_IMPERSONATION} session={session.pk} '
                   f'support={support}]')
         instance.detail = f'{detail} {marque}'.strip()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.debug('adminops: marquage impersonation échoué', exc_info=True)
 
 
@@ -165,6 +165,6 @@ def connect():
             sender=AuditLog,
             dispatch_uid='adminops.marquer_ligne_audit_impersonation',
         )
-    except Exception:  # noqa: BLE001 — une app d'audit absente ne casse rien
+    except Exception:  # noqa: BLE001 — une app d'audit absente ne casse rien (D-ENF22-BLE001)
         logger.debug('adminops: câblage du marquage audit impossible',
                      exc_info=True)
