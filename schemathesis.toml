@@ -82,3 +82,16 @@ checks.missing_required_header.expected-statuses = [400, 401, 403, 406, 415, 422
 [[operations]]
 include-name = 'POST /api/django/sav/portail/tickets/'
 checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 410, 429, "5xx"]
+
+# ── 5. Clé OCR absente : la 503 « douce » est la réponse VOULUE (XSAL8) ─────
+# `POST /api/django/crm/leads/scan-carte/` lit une photo valide puis, sans
+# fournisseur OCR configuré (`ZHIPU_API_KEY` absent — l'état du serveur de fuzz),
+# répond 503 `{detail}` sans appel réseau : le front en dépend (il retire le
+# bouton « Scanner »). La 503 est déclarée au schéma ; pour `not_a_server_error`
+# elle n'est pourtant pas dans les statuts attendus par défaut
+# (`["2xx", "3xx", "4xx"]`, Schemathesis 4.28). On AJOUTE 503 aux statuts
+# attendus de CE check pour CETTE seule opération (un seul filtre
+# `include-name`) ; le check reste actif partout ailleurs.
+[[operations]]
+include-name = 'POST /api/django/crm/leads/scan-carte/'
+checks.not_a_server_error.expected-statuses = ["2xx", "3xx", "4xx", 503]
