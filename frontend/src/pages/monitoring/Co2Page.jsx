@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { DataTable, EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
@@ -198,7 +199,8 @@ function Co2SystemDetail({ installationId }) {
       executer: async (actif) => {
         setError(null)
         const [configRes, instRes] = await Promise.all([
-          monitoringApi.getConfigForInstallation(installationId),
+          fetchAllPages((page, { page_size: pageSize } = {}) =>
+            monitoringApi.getConfigForInstallation(installationId, { page, page_size: pageSize }).then((r) => r.data)),
           installationsApi.getInstallation(installationId).catch(() => null),
         ])
         if (!actif()) return
@@ -208,7 +210,7 @@ function Co2SystemDetail({ installationId }) {
         } else {
           setLabel(`#${installationId}`)
         }
-        const rows = configRes.data?.results ?? configRes.data ?? []
+        const rows = Array.isArray(configRes) ? configRes : (configRes?.results ?? [])
         const config = rows[0]
         if (!config?.id) {
           setError("Ce système n'a pas de configuration de supervision.")
