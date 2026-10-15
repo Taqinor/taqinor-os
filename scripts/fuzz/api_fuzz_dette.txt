@@ -16,7 +16,6 @@ API accepted schema-violating request|GET /api/django/companies/
 API accepted schema-violating request|GET /api/django/offlinesync/operations/
 API accepted schema-violating request|GET /api/django/statuspage/public/incidents/
 API accepted schema-violating request|GET /api/django/trash/corbeille/
-API accepted schema-violating request|GET /api/django/users/
 API accepted schema-violating request|POST /api/django/adminops/config-packages/exporter/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
@@ -84,7 +83,6 @@ API rejected schema-compliant request|POST /api/django/stock/taches-reappro-inte
 API rejected schema-compliant request|POST /api/django/stock/transferts/
 API rejected schema-compliant request|POST /api/django/stock/transferts/demander/
 API rejected schema-compliant request|POST /api/django/stock/vagues-picking/
-API rejected schema-compliant request|POST /api/django/users/
 API rejected schema-compliant request|POST /api/django/ventes/bons-commande/{id}/creer-facture/
 API rejected schema-compliant request|POST /api/django/ventes/courbes-iv/
 API rejected schema-compliant request|POST /api/django/ventes/devis-lignes/
