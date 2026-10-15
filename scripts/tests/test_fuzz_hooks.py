@@ -387,6 +387,48 @@ class FichiersPdfTests(unittest.TestCase):
         # Idempotent : un second habillage ne s'empile pas.
         self.assertIs(self.hooks._avec_noms_de_fichier(prepare), prepare)
 
+    def test_champs_structures_resout_les_ref_du_corps_regroupe(self):
+        # CI #997 (4) — ``champs`` (tableau d'objets) de gabarits-dossiers : le
+        # corps regroupé cache ses propriétés ; seuls tableaux/objets sortent,
+        # ni le texte, ni le fichier, ni la liste de fichiers.
+        propres = {
+            'fichier': {'type': 'string', 'format': 'binary'},
+            'pieces': {'type': 'array',
+                       'items': {'type': 'string', 'format': 'binary'}},
+            'code': {'type': 'string'},
+            'champs': {'type': 'array', 'items': {'$ref': '#/x-bundled/s2'}},
+            'options': {'$ref': '#/x-bundled/s3'},
+            'genre': {'$ref': '#/x-bundled/s4'}}
+        regroupe = {'$ref': '#/x-bundled/s1', 'x-bundled': {
+            's1': {'type': 'object', 'properties': propres},
+            's2': {'type': 'object', 'properties': {}},
+            's3': {'type': 'object'},
+            's4': {'type': 'string', 'enum': ['a', 'b']}}}
+        self.assertEqual(
+            self.hooks._champs_structures(self._operation_multipart(regroupe)),
+            {'champs', 'options'})
+        self.assertEqual(self.hooks._champs_structures(
+            types.SimpleNamespace(body=[types.SimpleNamespace(
+                media_type='application/json',
+                definition={'schema': regroupe})])), set())
+
+    def test_collecte_json_complete_sans_ecraser(self):
+        regroupe = {'$ref': '#/x-bundled/s1', 'x-bundled': {'s1': {
+            'type': 'object', 'properties': {
+                'champs': {'type': 'array', 'items': {'type': 'object'}},
+                'deja': {'type': 'object'}}}}}
+        contexte = types.SimpleNamespace(case=types.SimpleNamespace(
+            operation=self._operation_multipart(regroupe)))
+
+        def original(ctx):
+            return {'deja': 'application/vnd.test+json'}
+
+        collecte = self.hooks._avec_parts_json(original)
+        self.assertEqual(collecte(contexte), {
+            'deja': 'application/vnd.test+json',   # déjà vu : intact
+            'champs': 'application/json'})         # ajouté
+        self.assertIs(self.hooks._avec_parts_json(collecte), collecte)
+
     def test_binaire_schemathesis_garde_son_type(self):
         # ``Binary`` (str + ``.data``) : des octets nus feraient basculer le cas
         # positif en négatif à la revalidation de Schemathesis.
