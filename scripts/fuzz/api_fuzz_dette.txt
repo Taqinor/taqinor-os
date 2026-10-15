@@ -19,8 +19,6 @@ API accepted schema-violating request|GET /api/django/trash/corbeille/
 API accepted schema-violating request|GET /api/django/users/
 API accepted schema-violating request|POST /api/django/adminops/config-packages/exporter/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
-API rejected schema-compliant request|GET /api/django/crm/relance-etapes/controle/
-API rejected schema-compliant request|GET /api/django/crm/relance-etapes/suivi/
 API rejected schema-compliant request|GET /api/django/installations/interventions/conflits-affectation/
 API rejected schema-compliant request|GET /api/django/installations/interventions/nivellement-charge/
 API rejected schema-compliant request|GET /api/django/installations/interventions/plan-de-charge/
@@ -53,12 +51,7 @@ API rejected schema-compliant request|POST /api/django/calepinage/moteur/calcule
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/pose/
 API rejected schema-compliant request|POST /api/django/calepinage/parametres/suggestion-pente/
 API rejected schema-compliant request|POST /api/django/crm/leads/
-API rejected schema-compliant request|POST /api/django/crm/leads/scan-carte/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/relance/initialiser/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/resume-associe/
-API rejected schema-compliant request|POST /api/django/crm/partenaires/{id}/provisionner-acces/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/fait/
-API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/piece-recue/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
 API rejected schema-compliant request|POST /api/django/facturation/factures/encaissement-groupe/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/

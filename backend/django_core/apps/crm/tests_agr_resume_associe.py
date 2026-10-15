@@ -85,9 +85,20 @@ class ResumeAssocieTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.data, CONTRAT['exemple_400_telephone'])
 
-    def test_c_devis_brouillon_400(self):
+    def test_c_devis_brouillon_409(self):
+        # ERR-ENF11-FUZZ-CRM — un devis jamais envoyé est un ÉTAT : 409.
         resp = self._post()
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data, CONTRAT['exemple_400_devis'])
+
+    def test_c2_devis_d_un_autre_lead_404(self):
+        autre = Lead.objects.create(company=self.company, nom='Autre lead')
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-AGR534-2', lead=autre,
+            client=self.devis.client, statut='brouillon',
+            taux_tva=Decimal('20.00'))
+        resp = self._post(devis_id=devis.pk)
+        self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.data, CONTRAT['exemple_400_devis'])
 
     def test_d_cas_valide_wa_url_historique_devis_inchange(self):

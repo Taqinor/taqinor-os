@@ -111,7 +111,8 @@ class GardeCadenceUniqueTests(CadxBase):
         reponse = api.post(
             f'/api/django/crm/leads/{self.lead.id}/relance/initialiser/',
             {'cadence': 'contact'}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # ERR-ENF11-FUZZ-CRM — une autre cadence déjà active : état du plan, 409.
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('cadence', reponse.data.get('erreurs', {}))
 
 

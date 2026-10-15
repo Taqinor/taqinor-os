@@ -470,7 +470,8 @@ class ApiRelanceEtapeTests(TestCase):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.pk}/relance/initialiser/',
             {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-CRM — état de la fiche : 409.
+        self.assertEqual(resp.status_code, 409)
 
     def test_filtre_lead_rend_la_frise_complete(self):
         etapes = initialiser_plan_relance(
