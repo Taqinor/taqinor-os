@@ -16,9 +16,9 @@ from .models import Tiers
 class EmailTiers(ChaineStricte, serializers.EmailField):
     """E-mail facultatif d'une fiche : ``""`` quand il n'est pas renseigné.
 
-    ENF11 — le schéma de RÉPONSE ne peut pas déclarer ``format: email`` (la
-    valeur servie est ``""`` pour une fiche sans e-mail) ; celui de la REQUÊTE
-    déclare « e-mail valide OU chaîne vide » (le formulaire envoie ``""``).
+    ENF11 — le schéma déclare « e-mail valide OU chaîne vide » dans les deux
+    sens (la valeur servie est ``""`` pour une fiche sans e-mail, et le
+    formulaire envoie ``""``).
     """
 
 
@@ -31,12 +31,17 @@ class EmailTiersExtension(OpenApiSerializerFieldExtension):
     priority = 1
 
     def map_serializer_field(self, auto_schema, direction):
-        if direction == 'response':
-            return {'type': 'string', 'maxLength': 254,
-                    'description': "Vide quand l'e-mail n'est pas renseigné."}
-        return {'anyOf': [
+        # « e-mail valide OU chaîne vide », dans les DEUX sens (CI #1001 fuzz :
+        # la réponse ``{'type': 'string'}`` recevait ``format: email`` de
+        # drf-spectacular, qui rejoue les validateurs du champ sur tout schéma
+        # de type ``string`` — l'e-mail vide servi violait alors le schéma). Un
+        # ``anyOf`` n'a pas de ``type`` : la rejouée ne s'y applique plus.
+        schema = {'anyOf': [
             {'type': 'string', 'format': 'email', 'maxLength': 254},
             {'type': 'string', 'maxLength': 0}]}
+        if direction == 'response':
+            schema['description'] = "Vide quand l'e-mail n'est pas renseigné."
+        return schema
 
 
 class TiersSerializer(serializers.ModelSerializer):
