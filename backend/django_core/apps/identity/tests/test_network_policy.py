@@ -154,6 +154,32 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
             {'policy': pol.id, 'cidr': 'not-a-cidr'}, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_cidr_un_seul_predicat_schema_et_serveur(self):
+        # CI #1000 — le motif publié au schéma est le prédicat appliqué : « 0 »,
+        # un octet > 255, un préfixe hors borne, des blancs de bord ou un
+        # ``\n`` final = 400 ; IPv4/IPv6 canoniques passent ; un id de
+        # politique inconnu avec une plage valide = 404 (plus 400).
+        import re
+        from apps.identity.serializers import MOTIF_CIDR
+        motif = re.compile(MOTIF_CIDR)
+        pol = NetworkPolicy.objects.create(
+            company=self.company, mode=NetworkPolicy.Mode.OFF)
+        for mauvais in ('0', '256.0.0.0', '10.0.0.0/33', ' 10.0.0.0/8',
+                        '10.0.0.0/8\n', '::1/129', '01.2.3.4', 'x'):
+            self.assertIsNone(motif.fullmatch(mauvais), mauvais)
+            r = self._admin().post(
+                self.RULES, {'policy': pol.id, 'cidr': mauvais},
+                format='json')
+            self.assertEqual(r.status_code, 400, (mauvais, r.content))
+        for bon in ('10.0.0.0/8', '41.92.0.10/32', '2001:db8::/32', '::1'):
+            self.assertIsNotNone(motif.fullmatch(bon), bon)
+            r = self._admin().post(
+                self.RULES, {'policy': pol.id, 'cidr': bon}, format='json')
+            self.assertEqual(r.status_code, 201, (bon, r.content))
+        r = self._admin().post(
+            self.RULES, {'policy': 0, 'cidr': '10.0.0.0/8'}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+
     # ── AUD406 — le contrôle cross-société vaut AUSSI à la mise à jour ─────
     def _regle_a_moi(self):
         pol = NetworkPolicy.objects.create(
