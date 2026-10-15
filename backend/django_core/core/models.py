@@ -1,4 +1,3 @@
-import logging
 import secrets
 import uuid
 
@@ -9,13 +8,6 @@ from django.utils import timezone
 # NTAI24 — magasin vectoriel pgvector (déjà dans la stack Postgres du dépôt,
 # utilisé par la GED/KB) : aucune dépendance nouvelle, aucun service externe.
 from pgvector.django import VectorField
-
-# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
-__all__ = [
-    'ExportReversibiliteRun', 'FieldPermissionRule', 'IdempotencyRecord', 'MaintenanceWindow',
-    'ProcessedWebhookEvent', 'SharingRule', 'SignedDownload', 'SlaCreditPolicy', 'SlaSnapshot',
-    'TrustCenterEntry', 'UiActionBouton', 'UiOngletCustom',
-]
 
 
 class TimestampedModel(models.Model):
@@ -3205,18 +3197,16 @@ class MaintenanceMode(TimestampedModel):
             cached = cache.get(cls.CACHE_KEY)
             if cached is not None:
                 return bool(cached)
-        except Exception:  # noqa: BLE001 — cache KO → lit la DB (D-ENF22-BLE001)
-            logging.getLogger(__name__).warning('maintenance : cache illisible, lecture DB', exc_info=True)
+        except Exception:  # noqa: BLE001 — cache KO → lit la DB
             cached = None
         try:
             actif = cls.get_solo().actif
-        except Exception:  # noqa: BLE001 — DB KO → service ouvert (fail-open) (D-ENF22-BLE001)
-            logging.getLogger(__name__).warning('maintenance : DB illisible, service ouvert', exc_info=True)
+        except Exception:  # noqa: BLE001 — DB KO → service ouvert (fail-open)
             return False
         try:
             cache.set(cls.CACHE_KEY, actif, cls.CACHE_TTL)
-        except Exception:  # noqa: BLE001 — cache KO → tant pis (D-ENF22-BLE001)
-            logging.getLogger(__name__).warning('maintenance : cache non écrit', exc_info=True)
+        except Exception:  # noqa: BLE001 — cache KO → tant pis
+            pass
         return bool(actif)
 
     @classmethod
@@ -3230,8 +3220,8 @@ class MaintenanceMode(TimestampedModel):
         obj.save(update_fields=['actif', 'message', 'updated_at'])
         try:
             cache.set(cls.CACHE_KEY, obj.actif, cls.CACHE_TTL)
-        except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB (D-ENF22-BLE001)
-            logging.getLogger(__name__).warning('maintenance : cache non invalidé', exc_info=True)
+        except Exception:  # noqa: BLE001 — cache KO → prochaine lecture relit DB
+            pass
         return obj
 
 
@@ -3390,7 +3380,7 @@ class ProcessedEvent(TimestampedModel):
 # (même pattern que apps/installations/models.py avec ses fichiers
 # models_*.py éclatés) pour que la découverte Django (app_label,
 # migrations) les voie normalement.
-from core.idempotency import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.idempotency import (  # noqa: E402,F401
     IdempotencyRecord, ProcessedWebhookEvent,
 )
 
@@ -3688,44 +3678,44 @@ class I18nCoverageSnapshot(TenantModel):
 # ``core/sharing.py`` (même pattern d'éclatement que ``core/idempotency.py``),
 # réexporté ici en tout dernier pour que la découverte Django (app_label 'core',
 # migrations) le voie normalement.
-from core.sharing import SharingRule  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.sharing import SharingRule  # noqa: E402,F401
 
 # NTSEC23 — Permissions niveau champ : ``FieldPermissionRule`` défini dans
 # ``core/field_permissions.py`` (même pattern d'éclatement), réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
-from core.field_permissions import FieldPermissionRule  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.field_permissions import FieldPermissionRule  # noqa: E402,F401
 
 # NTEXT20/NTEXT21 — Points d'extension UI (boutons + onglets custom) :
 # ``UiActionBouton``/``UiOngletCustom`` définis dans ``core/ui_extensions.py``
 # (même pattern d'éclatement), réexportés ici en tout dernier pour la
 # découverte Django (app_label 'core', migrations).
-from core.ui_extensions import UiActionBouton, UiOngletCustom  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.ui_extensions import UiActionBouton, UiOngletCustom  # noqa: E402,F401
 
 # NTOBS3/NTOBS4 — Rapport SLA mensuel + barème de crédits : ``SlaSnapshot``/
 # ``SlaCreditPolicy`` définis dans ``core/sla.py`` (même pattern
 # d'éclatement), réexportés ici en tout dernier pour la découverte Django
 # (app_label 'core', migrations).
-from core.sla import SlaCreditPolicy, SlaSnapshot  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.sla import SlaCreditPolicy, SlaSnapshot  # noqa: E402,F401
 
 # NTOBS6 — liens de téléchargement tokenisés : ``SignedDownload`` défini dans
 # ``core/signed_download.py`` (même pattern d'éclatement), réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
-from core.signed_download import SignedDownload  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.signed_download import SignedDownload  # noqa: E402,F401
 
 # NTOBS7 — historique des exports de réversibilité : ``ExportReversibiliteRun``
 # défini dans ``core/export_registry.py`` (même pattern d'éclatement),
 # réexporté ici en tout dernier pour la découverte Django (app_label 'core',
 # migrations).
-from core.export_registry import ExportReversibiliteRun  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.export_registry import ExportReversibiliteRun  # noqa: E402,F401
 
 # NTOBS9 — fenêtres de maintenance planifiées : ``MaintenanceWindow`` défini
 # dans ``core/maintenance_windows.py`` (nommage distinct de ``core/
 # maintenance.py``, NTPLT55, une fonctionnalité totalement différente — le
 # mode lecture-seule global) — même pattern d'éclatement, réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
-from core.maintenance_windows import MaintenanceWindow  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.maintenance_windows import MaintenanceWindow  # noqa: E402,F401
 
 # NTOBS10 — page « Confiance » (trust center) : ``TrustCenterEntry`` défini
 # dans ``core/trust_center.py`` (même pattern d'éclatement), réexporté ici en
 # tout dernier pour la découverte Django (app_label 'core', migrations).
-from core.trust_center import TrustCenterEntry  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from core.trust_center import TrustCenterEntry  # noqa: E402,F401

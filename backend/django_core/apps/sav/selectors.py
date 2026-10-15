@@ -16,10 +16,11 @@ le stock passe l'``id`` de produit et la liste de séries reçues en arguments
 bruts ; ce module lit uniquement `sav.Equipement` (règle de modularité
 CLAUDE.md — les lectures cross-app passent par les selectors de l'app cible).
 """
-import logging
-
 from django.utils import timezone
 
+# ENF20 — `droits_restants` vit dans la feuille pure `droits_contrat` (lue par
+# Ticket.couverture sans tirer selectors) ; ré-export pour les appelants.
+from .droits_contrat import droits_restants  # noqa: F401
 from .models import (
     Equipement, EquipeMaintenance, KbArticle, Ticket, TicketActivity,
     TicketSatisfaction,
@@ -524,9 +525,7 @@ def pareto_pannes(company, *, group_by='produit', date_debut=None,
                 from apps.stock.selectors import get_fournisseur_by_id
                 f = get_fournisseur_by_id(company, fid)
                 nom = getattr(f, 'nom', None) if f else None
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-                logging.getLogger(__name__).warning(
-                    'sav.selectors : fournisseur illisible, nom omis', exc_info=True)
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
                 nom = None
         fournisseur_cache[pid] = (fid, nom)
         return fid, nom
@@ -690,9 +689,7 @@ def _revenu_contrat_maintenance(contrat):
     from decimal import Decimal
     try:
         from apps.ventes.models import Facture
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-        logging.getLogger(__name__).warning(
-            'sav.selectors : modèle Facture indisponible, coût nul', exc_info=True)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
         return Decimal('0')
 
     marqueur = f'contrat #{contrat.pk}'
@@ -1487,9 +1484,7 @@ def _jour_ouvre(jour, horaires, extra_holidays=None):
     try:
         from core.calendar import is_holiday
         return not is_holiday(jour, extra_holidays)
-    except Exception:  # noqa: BLE001 — calendrier indisponible : jour ouvré (D-ENF22-BLE001)
-        logging.getLogger(__name__).warning(
-            'sav.selectors : calendrier des fériés indisponible, jour ouvré par défaut', exc_info=True)
+    except Exception:  # noqa: BLE001 — calendrier indisponible : jour ouvré.
         return True
 
 

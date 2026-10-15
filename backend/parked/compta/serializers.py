@@ -4,7 +4,6 @@
 le ``TenantMixin`` (``perform_create``). Tous les FK reçus sont validés comme
 appartenant à la société de l'utilisateur.
 """
-import logging
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -2663,8 +2662,7 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
         try:
             from apps.ged.selectors import latest_version
             version = latest_version(obj.document_ged)
-        except Exception:  # noqa: BLE001 - une GED indisponible = pas de lien (D-ENF22-BLE001)
-            logging.getLogger(__name__).warning("serializers.DocumentClientPortailSerializer.get_lien_ged : erreur ignorée (mode dégradé)", exc_info=True)
+        except Exception:  # noqa: BLE001 - une GED indisponible = pas de lien
             return None
         if version is None:
             return None

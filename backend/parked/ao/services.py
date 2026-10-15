@@ -8,7 +8,6 @@ dans ``apps.compta.services`` malgré la sortie ODX11 des modèles).
 ``ao`` ne lit crm/ventes QUE via leurs selectors/services ou par référence
 opaque — jamais leurs ``models`` (le lead reste un ``lead_id`` opaque).
 """
-import logging
 import hashlib
 from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -309,8 +308,8 @@ def emettre_changement_statut_automation(appel_offre, *, ancien_statut,
                 'old_value': ancien_statut, 'new_value': appel_offre.statut,
             },
             user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
-        logging.getLogger(__name__).warning("services.emettre_changement_statut_automation : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
 
 
 # ── AOF15 — Échéancier DÉRIVÉ du projet et du CPS ──────────────────────────

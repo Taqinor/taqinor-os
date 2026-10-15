@@ -1784,16 +1784,14 @@ def _reglages_tarifaires(company):
                 surcharge['pairs'],
                 selective_threshold=surcharge['selective_threshold'],
                 boundary_tolerance=surcharge['boundary_tolerance'])
-    except Exception:  # noqa: BLE001 — surcharge absente ⇒ grille nationale (D-ENF22-BLE001)
-        logger.warning('etude_horaire : surcharge tarifaire illisible, grille nationale', exc_info=True)
+    except Exception:  # noqa: BLE001 — surcharge absente ⇒ grille nationale
         tranches = None
     try:
         from apps.parametres.models_tariff import TariffSettings
         reglages = TariffSettings.get(company=company)
         brut = getattr(reglages, 'redevance_compteur_mad_mois', None)
         charges_fixes = float(brut) if brut is not None else None
-    except Exception:  # noqa: BLE001 — réglage absent ⇒ défaut sourcé (D-ENF22-BLE001)
-        logger.warning('etude_horaire : réglage tarifaire illisible, défaut sourcé', exc_info=True)
+    except Exception:  # noqa: BLE001 — réglage absent ⇒ défaut sourcé
         charges_fixes = None
     return tranches, charges_fixes
 
@@ -1831,7 +1829,7 @@ def etude_horaire_pour_devis(devis, *, kwc=None, batterie_kwh_utile=None,
             devis, kwc=kwc, batterie_kwh_utile=batterie_kwh_utile,
             data=data or {}, occupation=occupation,
             jour_reference=jour_reference)
-    except Exception:  # noqa: BLE001 — l'étude ne casse jamais un devis (D-ENF22-BLE001)
+    except Exception:  # noqa: BLE001 — l'étude ne casse jamais un devis
         logger.warning('etude_horaire indisponible', exc_info=True)
         return None
 

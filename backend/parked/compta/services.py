@@ -20,7 +20,6 @@ Trois blocs :
 * ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
   report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
-import logging
 import csv
 import hashlib
 import io
@@ -101,11 +100,6 @@ from .models import (
     EtapeAuditConsolidation,
     AcompteIS,
 )
-
-# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
-__all__ = [
-    'echeances_ao_dues', 'taux_reussite_ao',
-]
 
 
 # ── FG107 / COMPTA1 — Seed du plan comptable CGNC ──────────────────────────
@@ -4928,8 +4922,7 @@ def extraire_justificatif_note_frais(file_bytes, *, mime='', user=None):
         if resp.status_code != 200:
             return {}
         payload = resp.json() or {}
-    except Exception:  # noqa: BLE001 — l'OCR ne casse jamais la saisie (D-ENF22-BLE001)
-        logging.getLogger(__name__).warning("services.extraire_justificatif_note_frais : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception:  # noqa: BLE001 — l'OCR ne casse jamais la saisie
         return {}
 
     structurees = payload.get('donnees_structurees') or {}
@@ -5193,7 +5186,7 @@ def _notifier_escalade_direction_note_frais(note):
                   'le seuil configuré et exige une validation direction.'),
             link='/comptabilite/notes-de-frais',
             company=note.company, reason='manager')
-    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
+    except Exception:  # noqa: BLE001 — jamais bloquant
         import logging
         logging.getLogger(__name__).warning(
             'NTP2P45: notification escalade direction échouée (note %s)',
@@ -10156,7 +10149,7 @@ def comparer_cash_vs_financement(montant, duree_mois, taux_annuel,
 # imports historiques ``from apps.compta.services import echeances_ao_dues``.
 # ODX22 (RETRAIT des shims transitoires) reste ouvert et aura celui-ci à
 # retirer, dans le sens inverse d'avant.
-from apps.ao.services import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ao.services import (  # noqa: E402,F401
     echeances_ao_dues,
     taux_reussite_ao,
 )

@@ -39,17 +39,12 @@ from core.models import TenantModel
 
 # AOF19 — géométrie PURE (repère local métrique, ordre des axes contractuel).
 # Ré-exports : l'implémentation n'existe qu'une fois, dans ``geometrie.py``.
-from .geometrie import (
+from .geometrie import (  # noqa: F401
     aire_polygone_m2,
     normaliser_orientation,
     perimetre_polygone_m,
     polygone_est_simple,
 )
-
-# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
-__all__ = [
-    'normaliser_orientation', 'perimetre_polygone_m',
-]
 
 
 # ── FG222 — Gestion des appels d'offres (public/privé) ─────────────────────

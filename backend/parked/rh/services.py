@@ -14,7 +14,6 @@ Centralise la LOGIQUE métier testable des congés :
 Tout est cadré société : les fonctions reçoivent des objets déjà scopés par la
 vue ; elles ne lisent jamais la société du corps de requête.
 """
-import logging
 from decimal import Decimal
 
 from django.db import transaction
@@ -1788,8 +1787,7 @@ def envoyer_email_transition(candidature, *, date_entretien=None):
         send_mail(
             objet, corps, from_email, [candidature.email],
             fail_silently=True)
-    except Exception:  # noqa: BLE001 — best-effort, jamais d'exception. (D-ENF22-BLE001)
-        logging.getLogger(__name__).warning("services.envoyer_email_transition : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception:  # noqa: BLE001 — best-effort, jamais d'exception.
         return False
 
     CandidatureActivity.objects.create(
@@ -2145,8 +2143,8 @@ def traiter_issue_evaluation(evaluation):
                     f'Une augmentation a été proposée pour {employe_nom} '
                     "suite à son entretien d'évaluation."),
             )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant. (D-ENF22-BLE001)
-            logging.getLogger(__name__).warning("services.traiter_issue_evaluation : erreur ignorée (mode dégradé)", exc_info=True)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+            pass
 
 
 # ── XRH32 — baromètre interne eNPS anonyme (pulse) ──────────────────────────
@@ -3320,8 +3318,8 @@ def _notifier_revision_appliquee(proposition):
             body=("Votre révision salariale a été appliquée. Le détail est "
                   "consultable auprès des Ressources humaines."),
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant. (D-ENF22-BLE001)
-        logging.getLogger(__name__).warning("services._notifier_revision_appliquee : erreur ignorée (mode dégradé)", exc_info=True)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        pass
 
 
 @transaction.atomic
