@@ -209,7 +209,8 @@ MSG_ECRITURE_REFUSEE = ('Enregistrement refusé : une quantité, un prix ou une 
 class DevisEditionActionsMixin:
     """SPL135 — actions d'édition de ``DevisViewSet`` (mixin, aucune base)."""
 
-    @extend_schema(request=D.DevisAtomic, responses={201: DevisSerializer})
+    @extend_schema(request=D.DevisAtomic, responses={201: DevisSerializer},
+                   extensions=D.CORPS_LEAD_OU_CLIENT)
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
     def atomic(self, request):
@@ -268,8 +269,18 @@ class DevisEditionActionsMixin:
         # sous la MÊME transaction. Validés AVANT : un refus pointe le champ
         # ``etude_params`` et ne crée rien. Absents ⇒ comportement d'hier.
         from ..domain.etude_schema import ECRAN, ecrire
+        from core.conflit_etat import ConflitEtat
         etude_in = head.pop('etude_params', None)
-        _valider_etude_ecran(etude_in)
+        # CI #997 fuzz — ``etude_params`` est publié « objet libre » : un
+        # non-objet reste 400, une CLÉ refusée par le schéma d'étude (règle
+        # que l'OpenAPI ne porte pas) répond 409, même corps {etude_params}.
+        if isinstance(etude_in, dict):
+            try:
+                _valider_etude_ecran(etude_in)
+            except ValidationError as refus:
+                raise ConflitEtat(refus.detail)
+        else:
+            _valider_etude_ecran(etude_in)
         # ENF17 — la requête en contexte : le mixin borne ``entite`` (et
         # ``client``/``lead``) à la société, ``TiersPayeurValidationMixin``
         # lit sa société, ``create`` pose ``updated_by`` (parité POST /devis/).
@@ -319,18 +330,23 @@ class DevisEditionActionsMixin:
                         composition=lignes_in))
                     return devis
                 create_numbered(Devis, company, 'devis', _save)
-        except ValidationError:
-            raise
+        except ValidationError as refus:
+            # CI #997 fuzz — l'en-tête est déjà validé : un refus SOUS la
+            # transaction juge le CONTENU des lignes (publiées en objets
+            # libres) ou l'état du dossier (kWh déclaré contredit) — 409,
+            # même corps ({detail, code} / {detail, champ}).
+            raise ConflitEtat(refus.detail)
         except ValueError as exc:
-            # Messages FRANÇAIS de l'écrivain unique (produit inconnu…).
+            # Messages FRANÇAIS de l'écrivain unique (produit inconnu…) ;
+            # CI #997 fuzz : contenu de ligne refusé = 409.
             return Response({'detail': f'Enregistrement échoué : {exc}'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         except Exception:  # noqa: BLE001
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
             logger.warning(
                 "devis_edition.DevisEditionActionsMixin._creer_atomique : erreur ignorée (mode dégradé)", exc_info=True)
             return Response({'detail': MSG_ECRITURE_REFUSEE},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
 
         devis = serializer.instance
         # QJR554 — la marge interne (QX23be) et le kWc sont posés par le mode

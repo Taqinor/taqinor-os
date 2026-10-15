@@ -105,7 +105,7 @@ class GardeServeurTests(TestCase):
         lead = self._lead(Decimal('46'), Decimal('15000'))
         avant = Devis.objects.filter(company=self.company).count()
         r = self._creer(lead)
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # CI #997 fuzz : atomic, refus d'état / de contenu, 409
         self.assertEqual(r.data['detail'], MESSAGE_KWH_INCOHERENT)
         self.assertEqual(r.data['code'], CODE_KWH_INCOHERENT)
         self.assertEqual(

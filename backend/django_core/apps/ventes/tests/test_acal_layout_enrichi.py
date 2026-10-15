@@ -194,8 +194,9 @@ class LayoutEnrichiTest(TestCase):
     def test_sync_layout_passe_par_les_portes_de_publication(self):
         """Lot 2 critique #28 — ``sync-layout`` / ``POST layout`` du devis
         resynchronisent par LA porte du module : approbation exigée et non à
-        jour ⇒ 400 ``{approbation}``, verdict électrique bloquant ⇒ 422
-        ``{detail, electrique}`` — lignes du devis inchangées."""
+        jour ⇒ ``{approbation}``, verdict électrique bloquant ⇒
+        ``{detail, electrique}`` (409 sur ces routes ventes depuis CI #997,
+        mêmes corps) — lignes du devis inchangées."""
         from unittest import mock
 
         from apps.calepinage.services.electrique import PublicationBloquee
@@ -207,7 +208,9 @@ class LayoutEnrichiTest(TestCase):
         for route in ('sync-layout', 'layout'):
             with self.subTest(route=route):
                 r = self._post(devis, route, _layout(8, 6))
-                self.assertEqual(r.status_code, 400, r.content)
+                # CI #997 fuzz — corps conforme, refus d'état : 409 (corps
+                # du module inchangé ; la route calepinage garde ses codes).
+                self.assertEqual(r.status_code, 409, r.content)
                 self.assertIn('approbation', r.data)
                 self.assertEqual(
                     int(devis.lignes.get(produit=self.panneau).quantite), 12)
@@ -222,7 +225,7 @@ class LayoutEnrichiTest(TestCase):
                 'apps.calepinage.services.electrique.garde_publication',
                 side_effect=bloque):
             r = self._post(devis, 'sync-layout', _layout(9, 6))
-        self.assertEqual(r.status_code, 422, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('detail', r.data)
         self.assertEqual(r.data['electrique']['verdict'], 'bloquant')
         self.assertEqual(

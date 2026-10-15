@@ -92,7 +92,7 @@ class AutoQuoteAtomiqueEtudeTests(TestCase):
             'etude_params': {'mode_pompe': 'neuve', 'm3_jour': 86.8},
             'lignes': [self._ligne(self.commun, '1000', 0)],
         }, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.status_code, 409, rep.content)  # CI #997 fuzz : atomic, refus d'état / de contenu, 409
         self.assertIn('m3_jour', str(rep.data))
         self.assertEqual(Devis.objects.count(), avant)
 
@@ -136,6 +136,6 @@ class AutoQuoteAtomiqueEtudeTests(TestCase):
             'etude_params': {'scenario': 'Sans batterie', 'prix_kwc': 7000},
             'lignes': [self._ligne(self.commun, '1000', 0)],
         }, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.status_code, 409, rep.content)  # CI #997 fuzz : atomic, refus d'état / de contenu, 409
         self.assertIn('etude_params', rep.data)
         self.assertFalse(Devis.objects.filter(lead=lead).exists())

@@ -30,7 +30,6 @@ API rejected schema-compliant request|POST /api/django/public/portail/invitation
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
 API rejected schema-compliant request|POST /api/django/register/
-API rejected schema-compliant request|POST /api/django/ventes/devis/atomic/
 API rejected schema-compliant request|POST /api/django/ventes/devis/from-layout/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
@@ -41,8 +40,6 @@ Undocumented Content-Type|POST /api/public/v1/jobs/{id}/relancer/
 Undocumented Content-Type|POST /api/public/v1/leads-write/{id}/activites/
 Undocumented HTTP status code|POST /api/public/v1/oauth/token/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/layout/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/sync-layout/
 API accepted schema-violating request|GET /api/django/tiers/tiers/
 Server error|POST /api/django/agent/actions/automation-draft/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats

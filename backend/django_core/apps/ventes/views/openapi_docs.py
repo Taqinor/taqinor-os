@@ -579,7 +579,9 @@ ErreurFromLayout = _ser('DevisErreurFromLayout', {
 #: ``roof_layout`` : document de conception 3D (AreaRecord[] + result +
 #: renderPlan) — objet libre à clés non préfixées ``_`` (cf.
 #: ``resynchronisation._sans_cles_privees``).
-LayoutRequest = {'application/json': {'type': 'object',
+#: CI #997 fuzz — un layout VIDE (``{}``) n'est pas un layout (« Layout
+#: manquant ») : au moins une clé, publiée.
+LayoutRequest = {'application/json': {'type': 'object', 'minProperties': 1,
                                       'additionalProperties': True}}
 LayoutResponse = _ser('DevisLayoutResponse', {
     'roof_layout': s.JSONField(allow_null=True),
