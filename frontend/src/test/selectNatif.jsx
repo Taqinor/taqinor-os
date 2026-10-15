@@ -39,6 +39,47 @@ export function avecSelectNatif(actual) {
   }
 }
 
+// Remplace les primitives Radix par un <select> natif : `Select` est fourni
+// par l'appelant (les variantes d'attributs diffèrent d'un écran à l'autre).
+export function primitivesSelectNatif(actual, Select) {
+  const Passthrough = ({ children }) => <>{children}</>
+  return {
+    ...actual,
+    Select,
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: Passthrough,
+    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
+  }
+}
+
+// Variantes simples du <select> natif (écrans Monitoring / CRM / SAV /
+// Ventes / fiche chantier). `role`, `label` (aria-label fixe), `labelDeProp`
+// (aria-label du Select, repli « select »), `optionVide` (option vide en tête),
+// `idDuTrigger` (id du SelectTrigger reporté + `disabled` + valeur ?? '').
+export function avecSelectNatifSimple(actual, {
+  role, label, labelDeProp = false, optionVide = true, idDuTrigger = false,
+} = {}) {
+  const Select = ({ value, onValueChange, children, disabled, 'aria-label': ariaLabel }) => {
+    const kids = Array.isArray(children) ? children : [children]
+    const id = idDuTrigger ? kids.find((c) => c && c.props && c.props.id)?.props?.id : undefined
+    return (
+      <select
+        role={role}
+        id={id}
+        aria-label={labelDeProp ? (ariaLabel || 'select') : label}
+        value={idDuTrigger ? (value ?? '') : value}
+        disabled={idDuTrigger ? disabled : undefined}
+        onChange={(e) => onValueChange(e.target.value)}
+      >
+        {optionVide && <option value="" />}
+        {children}
+      </select>
+    )
+  }
+  return primitivesSelectNatif(actual, Select)
+}
+
 const vide = () => Promise.resolve({ data: [] })
 
 export const savApiMock = {

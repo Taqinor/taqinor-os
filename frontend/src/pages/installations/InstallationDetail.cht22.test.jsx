@@ -35,28 +35,8 @@ beforeAll(() => {
   }
 })
 
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children, disabled }) => {
-      const kids = Array.isArray(children) ? children : [children]
-      const id = kids.find((c) => c && c.props && c.props.id)?.props?.id
-      return (
-        <select role="combobox" id={id} value={value ?? ''} disabled={disabled}
-                onChange={(e) => onValueChange(e.target.value)}>
-          <option value="" />
-          {children}
-        </select>
-      )
-    },
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../ui', async (importActual) => (await import('../../test/selectNatif'))
+  .avecSelectNatifSimple(await importActual(), { role: 'combobox', idDuTrigger: true }))
 
 const RAISON = "Le pack de remise client n'est pas complet."
 

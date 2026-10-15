@@ -15,25 +15,8 @@ const CADENCES_VIDE = exempleContrat('crm', 'kpi_cadences', 'exemple_vide')
 // events) — pattern établi (ventes/ListesPrixPage.test.jsx) : remplacer les
 // primitives Select par un <select> natif pour piloter le choix en test, le
 // reste de `../../ui` reste réel.
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children }) => (
-      <select
-        aria-label="Période" role="combobox" value={value}
-        onChange={(e) => onValueChange(e.target.value)}
-      >
-        {children}
-      </select>
-    ),
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../ui', async (importActual) => (await import('../../test/selectNatif'))
+  .avecSelectNatifSimple(await importActual(), { role: 'combobox', label: 'Période', optionVide: false }))
 
 vi.mock('../../api/crmApi', () => ({
   default: {

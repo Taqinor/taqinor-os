@@ -167,11 +167,9 @@
 2bed36e966fe|frontend/src/pages/interventions/InterventionsPage.jsx,frontend/src/pages/interventions/MaJourneePage.jsx
 2c13cded5657|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/professionnel.astro
 2cd6822e9f8e|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro
-2dcdf497e432|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx,frontend/src/pages/monitoring/ClientPortalPage.test.jsx,frontend/src/pages/monitoring/ProductionPage.test.jsx,frontend/src/pages/sav/TicketWorksheetPanel.test.jsx,frontend/src/pages/ventes/ListesPrixPage.test.jsx
 2e9f7caa05ab|apps/web/src/lib/proposition.ts,apps/web/src/scripts/roofPro11/viewerFullModel.ts
 2ebe988fecdd|frontend/src/features/uxviews/quickcreate/TicketQuickCreateModal.jsx,frontend/src/pages/ventes/ClientQuickCreateModal.jsx
 2ece50c5eee4|frontend/src/features/crm/relances/PanneauScriptAppel.jsx,frontend/src/features/crm/relances/RelanceEtapeRow.jsx
-2ef779101675|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx,frontend/src/pages/monitoring/ClientPortalPage.test.jsx,frontend/src/pages/monitoring/ProductionPage.test.jsx,frontend/src/pages/sav/TicketWorksheetPanel.test.jsx,frontend/src/pages/ventes/ListesPrixPage.test.jsx
 2ef8f92a3a80|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 2f216ac58b6e|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 2f22564e3b11|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
@@ -279,7 +277,6 @@
 4c8d9efb2ddd|frontend/src/pages/sav/SavActionBoardPage.jsx,frontend/src/pages/ventes/DevisActionBoardPage.jsx
 4ce85e0ccfb8|backend/django_core/apps/ventes/quote_engine/commercial/cover.py,backend/django_core/apps/ventes/quote_engine/industriel/cover.py
 4d29ab0dc171|frontend/src/features/calepinage/__tests__/mode_terrain.test.jsx,frontend/src/features/calepinage/__tests__/ombriere.test.jsx
-4d35e86910d7|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/src/pages/sav/TicketWorksheetPanel.test.jsx,frontend/src/pages/ventes/ListesPrixPage.test.jsx
 4d3a06027d89|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 4d73bcf3e5fb|apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/en/realisations/index.astro
 4dd31cadc215|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
@@ -306,7 +303,6 @@
 517d791b2546|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 51ecf157bb42|apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 520be251b9e5|frontend/src/features/calepinage/CourseSoleil.jsx,frontend/src/features/calepinage/HorizonPanel.jsx
-5218d59f2f1f|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx,frontend/src/pages/monitoring/ClientPortalPage.test.jsx,frontend/src/pages/monitoring/ProductionPage.test.jsx,frontend/src/pages/sav/TicketWorksheetPanel.test.jsx,frontend/src/pages/ventes/ListesPrixPage.test.jsx
 5276177c451b|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts
 52827303aa80|frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/FleetPage.jsx
 52d63e8c1f6a|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
@@ -519,7 +515,6 @@
 8d7df5c9b070|frontend/src/features/offlinesync/mobile/CockpitHome.test.jsx,frontend/src/features/offlinesync/mobile/CommercialHome.test.jsx,frontend/src/features/offlinesync/mobile/EquipeTerrainHome.test.jsx
 8d8e8e7cfcc8|apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/en/équipement.astro
 8dc0e7d956d4|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts
-8dec1ecfc518|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/src/pages/installations/InstallationDetail.cht22.test.jsx,frontend/src/pages/monitoring/ClientPortalPage.test.jsx,frontend/src/pages/monitoring/ProductionPage.test.jsx,frontend/src/pages/sav/TicketWorksheetPanel.test.jsx,frontend/src/pages/ventes/ListesPrixPage.test.jsx
 8e022af54fa3|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 8e18983b0e2a|frontend/src/features/calepinage/documents/deposerImage.js,frontend/src/features/calepinage/exportImage.js
 8e1fce6f3982|frontend/src/features/crm/workspace/LeadWorkspace.nestedShortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.paletteActions.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx
@@ -704,7 +699,6 @@ c4582886d975|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/
 c45fdc202aa7|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/ensoleillement-maroc.astro,frontend/src/pages/admin/ImpersonationConsentement.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ProduitForm.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/ventes/PaiementsPage.jsx,frontend/src/pages/ventes/devisList/DevisRow.jsx,frontend/src/pages/ventes/factureList/DialoguesFacture.jsx
 c596a4e0f891|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 c5fa99611f02|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/ensoleillement-maroc.astro,frontend/src/pages/admin/ImpersonationConsentement.jsx,frontend/src/pages/parametres/RestaurationMasseDialog.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/ventes/PaiementsPage.jsx,frontend/src/pages/ventes/devisList/DevisRow.jsx,frontend/src/pages/ventes/factureList/DialoguesFacture.jsx
-c608ee3dc4db|frontend/src/pages/crm/KpiRelancesPanel.mry21f.test.jsx,frontend/src/pages/sav/TicketWorksheetPanel.test.jsx,frontend/src/pages/ventes/ListesPrixPage.test.jsx
 c63eb488f9d7|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/ventes/BonCommandeList.jsx
 c6c701ca35c2|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/impact-taqinor.astro
 c742d1dcce83|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
