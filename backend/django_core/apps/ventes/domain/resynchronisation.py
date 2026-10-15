@@ -1173,7 +1173,7 @@ def reconcilier(devis, intention):
         # CHANGÉES : une clé héritée d'un devis ancien (et pas encore déclarée
         # au schéma) ne doit pas faire échouer une resynchro qui ne la touche
         # même pas.
-        from apps.ventes.domain.etude_schema import CALEPINAGE, fusionner
+        from apps.ventes.domain.etude_schema import CALEPINAGE, appliquer
         _avant = dict(verrou.etude_params or {})
         _modifiees = {cle: valeur for cle, valeur in etude.items()
                       if cle not in _avant or _avant[cle] != valeur}
@@ -1184,8 +1184,7 @@ def reconcilier(devis, intention):
         # retrait (``None`` = retirer la clé) ; sans cette ligne, le pop
         # d'amont était silencieusement perdu et la valeur périmée reconduite.
         _modifiees.update({cle: None for cle in _avant if cle not in etude})
-        verrou.etude_params = fusionner(
-            _avant, proprietaire=CALEPINAGE, **_modifiees)
+        appliquer(verrou, proprietaire=CALEPINAGE, **_modifiees)
         # `update_fields` EXCLUT `statut` : le statut ne peut pas partir d'ici,
         # même par accident (règle #4).
         verrou.save(update_fields=[

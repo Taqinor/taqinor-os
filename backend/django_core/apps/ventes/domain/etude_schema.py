@@ -643,6 +643,22 @@ def fusionner(bloc, *, proprietaire=None, **cles):
     return resultat
 
 
+def appliquer(devis, *, proprietaire=None, **cles):
+    """ENF15 — fusionne ``cles`` dans ``devis.etude_params`` EN MÉMOIRE, sans
+    persister : l'UNIQUE affectation du bloc (famille C du registre
+    d'override, ``scripts/check_override_registry.py``).
+
+    Pour les appelants qui persistent eux-mêmes ``etude_params`` avec leurs
+    propres ``update_fields`` (resynchro calepinage : ``roof_layout`` +
+    ``layout_hash`` ; tâche de simulation : jeton d'édition inchangé). Mêmes
+    refus et même sémantique du ``None`` que :func:`fusionner`. Rend le bloc.
+    """
+    bloc = fusionner(getattr(devis, 'etude_params', None) or {},
+                     proprietaire=proprietaire, **cles)
+    devis.etude_params = bloc
+    return bloc
+
+
 def ecrire(devis, *, proprietaire=None, **cles):
     """L'UNIQUE écrivain d'``etude_params`` — il FUSIONNE, il ne remplace pas.
 
@@ -663,9 +679,7 @@ def ecrire(devis, *, proprietaire=None, **cles):
     Persiste en ``update_fields=['etude_params']`` : ni statut, ni ligne, ni
     total ne sont touchés (règle #4). Rend le bloc résultant.
     """
-    bloc = fusionner(getattr(devis, 'etude_params', None) or {},
-                     proprietaire=proprietaire, **cles)
-    devis.etude_params = bloc
+    bloc = appliquer(devis, proprietaire=proprietaire, **cles)
     if getattr(devis, 'pk', None) is not None:
         devis.save(update_fields=['etude_params'])
         # QJR545 — ``update_fields`` n'écrit pas ``updated_at`` : le jeton
