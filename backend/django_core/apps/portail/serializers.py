@@ -16,6 +16,7 @@ from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte
 from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import EntierNullableEnLecture
 from core.champs_stricts import EntierStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
@@ -188,8 +189,9 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
     client_id = serializers.IntegerField(min_value=0)
     # CI #997 (3) — idem ``fichier`` : formulaire multipart, pas de ``null``
-    # (écrit « None » → « entier valide requis ») ; sans lead = champ OMIS.
-    lead_id = serializers.IntegerField(min_value=0, required=False)
+    # (écrit « None » → « entier valide requis ») ; sans lead = champ OMIS à
+    # l'écriture, mais ``null`` servi à la lecture (schéma de RÉPONSE nullable).
+    lead_id = EntierNullableEnLecture(min_value=0)
     # AUD148 (b) — le ``FileField`` était sérialisé tel quel et rendu en lien
     # DIRECT par l'écran, alors que ``settings/base.py`` ne définit NI
     # ``MEDIA_URL`` NI ``MEDIA_ROOT`` (seules des constantes MinIO), qu'aucune
