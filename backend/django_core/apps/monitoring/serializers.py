@@ -6,6 +6,8 @@ from apps.records.champs_stricts import (
     ChampsStrictsBornesMixin, ChampsStrictsLitterauxMixin, DecimalLitteral,
 )
 
+from core.champs_stricts import DecimalStricte, IdInconnu404Mixin
+from core.serializers import CompanyScopedRelationsMixin
 from core.conflit_etat import ConflitEtat
 from core.unicite import UniciteEn409Mixin
 
@@ -17,7 +19,8 @@ from .models import (
 from .providers import available_providers
 
 
-class MonitoringConfigSerializer(UniciteEn409Mixin, ChampsStrictsBornesMixin,
+class MonitoringConfigSerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanyScopedRelationsMixin,
+                                 ChampsStrictsBornesMixin,
                                  serializers.ModelSerializer):
     provider_label = serializers.SerializerMethodField()
     is_auto = serializers.BooleanField(read_only=True)
@@ -29,6 +32,9 @@ class MonitoringConfigSerializer(UniciteEn409Mixin, ChampsStrictsBornesMixin,
     # — un OBJET (le connecteur lit un dict) : ``null`` ou une liste, publiés
     # valides par un JSON libre, étaient refusés (« Ce champ ne peut être nul »).
     credentials = serializers.DictField(write_only=True, required=False)
+    # ENF11 (nocturne 15/10) — « » vaut « non renseigné » : le schéma le publie
+    # (anyOf motif | chaîne vide), le champ l'applique (DecimalStricte nullable).
+    expected_annual_kwh = DecimalStricte(max_digits=12, decimal_places=2, allow_null=True, required=False)
 
     class Meta:
         model = MonitoringConfig
@@ -69,7 +75,7 @@ class _EnergieKwh(DecimalLitteral):
     JSON est refusé, comme le schéma le dit)."""
 
 
-class ProductionReadingSerializer(ChampsStrictsBornesMixin,
+class ProductionReadingSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, ChampsStrictsBornesMixin,
                                   serializers.ModelSerializer):
     source_display = serializers.CharField(
         source='get_source_display', read_only=True)
@@ -133,7 +139,7 @@ class ProductionReadingSerializer(ChampsStrictsBornesMixin,
         return attrs
 
 
-class CleaningEventSerializer(ChampsStrictsBornesMixin,
+class CleaningEventSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, ChampsStrictsBornesMixin,
                               serializers.ModelSerializer):
     class Meta:
         model = CleaningEvent
@@ -149,7 +155,7 @@ class CleaningEventSerializer(ChampsStrictsBornesMixin,
         return value
 
 
-class ProductionWarrantySerializer(UniciteEn409Mixin,
+class ProductionWarrantySerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanyScopedRelationsMixin,
                                    ChampsStrictsLitterauxMixin,
                                    serializers.ModelSerializer):
     class Meta:
@@ -262,7 +268,8 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         return value
 
 
-class SlaDisponibiliteSerializer(UniciteEn409Mixin, ChampsStrictsBornesMixin,
+class SlaDisponibiliteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanyScopedRelationsMixin,
+                                 ChampsStrictsBornesMixin,
                                  serializers.ModelSerializer):
     """ASAV101 — SLA de disponibilité d'un système. Le taux garanti est SAISI
     (aucun défaut, CIQ644) ; la compensation par jour vient de la saisie

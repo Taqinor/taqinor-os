@@ -970,6 +970,10 @@ class AbonnementMonitoringViewSet(CompanyScopedModelViewSet):
                 date_debut=data.get('date_debut'),
                 user=self.request.user)
         except AbonnementMonitoringError as exc:
+            if exc.etat:
+                raise ConflitEtat(exc.message)
+            if exc.introuvable:
+                raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))
 
     @extend_schema(
