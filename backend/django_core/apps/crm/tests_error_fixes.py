@@ -646,6 +646,15 @@ class TestFuzzCrmCi997(TestCase):
             [None, None], format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_whatsapp_devis_corps_tableau_400_jamais_500(self):
+        # CI #1001 (fuzz) — ``[null, null]`` n'a pas de ``.get`` : aperçu ET
+        # commit répondent 400, rien n'est écrit.
+        for chemin in ('whatsapp-devis-apercu', 'whatsapp-devis'):
+            resp = self.api.post(
+                f'/api/django/crm/leads/{self.lead.id}/{chemin}/',
+                [None, None], format='json')
+            self.assertEqual(resp.status_code, 400, (chemin, resp.content))
+
     def test_types_stricts_400_nomme_le_champ(self):
         defi = {'nom': 'D', 'periode_debut': '2026-01-01',
                 'periode_fin': '2026-02-01', 'metrique': 'nb_leads',
