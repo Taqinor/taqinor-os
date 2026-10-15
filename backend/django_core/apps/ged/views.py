@@ -1127,7 +1127,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     @extend_schema(
         parameters=[oa.Q_Q, oa.Q_K],
         responses=oa.DOCQA_REPONSE)
-    @action(detail=False, methods=['get'], url_path='docqa')
+    @action(detail=False, methods=['get'], url_path='docqa',
+            pagination_class=None)  # ENF15 : top-k plafonné à 50, pas une liste paginée
     def docqa(self, request):
         """FG352 — Récupération RAG / DocQA : top-k fragments pour une
         question, sur les documents de la GED.

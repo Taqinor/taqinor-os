@@ -1502,6 +1502,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=_sch('SavSimilairesReponse', {
             'results': drf_serializers.ListField(child=drf_serializers.DictField())}))
     @action(detail=True, methods=['get'], url_path='similaires',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def similaires(self, request, pk=None):
         """XSAV21 — Tickets RÉSOLUS similaires (même produit > même cause >
