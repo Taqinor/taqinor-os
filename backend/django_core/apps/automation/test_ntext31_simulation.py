@@ -169,6 +169,48 @@ class SimulationTests(TestCase):
             set(props['action_type']['enum']) & set(ACTIONS_INDISPONIBLES))
         self.assertIn('lead_stage_change', props['trigger_type']['enum'])
 
+    def test_corps_creation_publie_les_regles_conditionnelles(self):
+        # ERR-ENF11-FUZZ-AUTOMATION : ``record_state_change`` exige un couple
+        # (model, field) du registre, ``set_field`` un champ assignable — le
+        # corps de CRÉATION le publie (un seul prédicat, celui du serializer).
+        from apps.automation.actions import set_field_champs_autorises
+        from apps.automation.models import record_state_change_targets
+        from apps.automation.serializers import AutomationRuleSerializer
+        from apps.automation.views import (
+            REGLE_CORPS_CREATION, REGLE_CORPS_RESSERRE)
+        self.assertNotIn('allOf', REGLE_CORPS_RESSERRE)
+        etat, assignable = REGLE_CORPS_CREATION['allOf']
+        couples = {
+            (b['properties']['trigger_config']['properties']['model']['enum'][0],
+             b['properties']['trigger_config']['properties']['field']['enum'][0])
+            for b in etat['anyOf'] if 'not' not in b}
+        attendus = {(m, f) for m, champs in record_state_change_targets().items()
+                    for f in champs}
+        self.assertEqual(couples, attendus)
+        champs = assignable['anyOf'][1]['properties']['action_config'][
+            'properties']['field']['enum']
+        self.assertEqual(set(champs), set_field_champs_autorises())
+        base = {'nom': 'R', 'action_type': 'wait'}
+        for modele, champ in sorted(attendus)[:3]:
+            serializer = AutomationRuleSerializer(data={
+                **base, 'trigger_type': 'record_state_change',
+                'trigger_config': {'model': modele, 'field': champ}})
+            self.assertTrue(serializer.is_valid(), serializer.errors)
+        for config in ({}, {'model': 'crm.lead', 'field': 'inconnu'}):
+            serializer = AutomationRuleSerializer(data={
+                **base, 'trigger_type': 'record_state_change',
+                'trigger_config': config})
+            self.assertFalse(serializer.is_valid())
+        serializer = AutomationRuleSerializer(data={
+            'nom': 'R', 'trigger_type': 'lead_stage_change',
+            'action_type': 'set_field',
+            'action_config': {'field': champs[0]}})
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer = AutomationRuleSerializer(data={
+            'nom': 'R', 'trigger_type': 'lead_stage_change',
+            'action_type': 'set_field'})
+        self.assertFalse(serializer.is_valid())
+
     def test_filtre_rule_illisible_400_pas_500(self):
         # ENF11 : ?rule=abc levait une erreur de base (500).
         for url in ('/api/django/automation/runs/',

@@ -278,6 +278,34 @@ class EnfSchemaValidationTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIsNone(resp.data['date_modification'])
 
+    def test_listes_paginees_refusent_page_size_non_entier(self):
+        # ERR-ENF11-FUZZ-ADMINOPS — ``page_size`` est UN entier au schéma :
+        # ``null`` ou un paramètre répété ne retombent plus sur la taille par
+        # défaut (200 « accepté » hors schéma) mais répondent 400.
+        for liste in ('sandbox', 'config-packages'):
+            url = f'/api/django/adminops/{liste}/'
+            for requete in ('?page_size=null', '?page_size=AAA',
+                            '?page_size=null&page_size=null'):
+                resp = self.client_api.get(url + requete)
+                self.assertEqual(resp.status_code, 400, (url, resp.content))
+            self.assertEqual(self.client_api.get(url).status_code, 200)
+
+    def test_schema_exporter_nom_sans_nul_et_reglages_date_nullable(self):
+        # ERR-ENF11-FUZZ-ADMINOPS — le corps publié de l'export refuse le
+        # caractère nul (que DRF refuse) ; la date des réglages par défaut est
+        # publiée nullable (la réponse est ``null`` avant tout enregistrement).
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/adminops/', include('apps.adminops.urls'))]
+        ).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        nom = composants['ExporterConfigRequest']['properties']['nom']
+        self.assertIn('\\u0000', nom['pattern'])
+        self.assertTrue(
+            composants['AdminOpsSettings']['properties'][
+                'date_modification']['nullable'])
+
     def test_tracker_usage_module_requis(self):
         resp = self.client_api.post(
             '/api/django/adminops/tracker-usage/', {}, format='json')

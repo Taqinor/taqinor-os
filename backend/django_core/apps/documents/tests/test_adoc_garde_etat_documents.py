@@ -117,3 +117,23 @@ class GardeEtatDocumentsTests(TestCase):
         encours = self._chantier(Installation.Statut.POSE_EN_COURS)
         self.assertEqual(
             self._get(encours, 'pv-reception').status_code, 409)
+
+    def test_schema_declare_le_refus_409_des_quatre_documents(self):
+        # ERR-ENF11-FUZZ-DOCUMENTS — le refus d'état (409 ``{detail}``) est une
+        # réponse DÉCLARÉE des quatre routes (api-fuzz « Undocumented HTTP
+        # status code »), à côté du PDF, des erreurs de plateforme et — pour
+        # l'attestation seulement — du 400 « type inconnu ».
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/documents/', include('apps.documents.urls'))]
+        ).get_schema(request=None, public=True)
+        for route in DOCS:
+            reponses = schema['paths'][
+                f'/api/django/documents/chantiers/{{id}}/{route}/'][
+                    'get']['responses']
+            self.assertIn('application/pdf', reponses['200']['content'], route)
+            for code in ('404', '409'):
+                self.assertIn(code, reponses, (route, code))
+            self.assertIn('detail', schema['components']['schemas'][
+                'DocumentChantierRefusEtat']['properties'])

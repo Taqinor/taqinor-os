@@ -353,6 +353,17 @@ class FichiersPdfTests(unittest.TestCase):
                               {'file': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['file'], b'')
 
+    def test_demande_d_approbation_recoit_un_pdf(self):
+        # ERR-ENF11-FUZZ-AUTOMATION — le part ``file`` d'une demande reçoit un
+        # PDF ; le type de demande et le payload restent intacts, un cas
+        # NÉGATIF garde son fichier vide.
+        chemin = '/api/django/automation/approval-requests/'
+        corps = self._corps('POST', chemin, {'file': b'', 'request_type': 3})
+        self.assertTrue(corps['file'].startswith(b'%PDF-'))
+        self.assertEqual(corps['request_type'], 3)
+        negatif = self._corps('POST', chemin, {'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def _operation_multipart(self, schema):
         corps = types.SimpleNamespace(
             media_type='multipart/form-data', definition={'schema': schema})
@@ -673,6 +684,33 @@ class IdsFkParCheminTests(unittest.TestCase):
         self.assertEqual(cas.body['lot'], 40)
         autre = self._appel('/api/django/ventes/x/', {'lot': 0})
         self.assertIn(autre.body['lot'], (900, 901))
+
+    def test_regles_portail_client_lead_chantier_du_bon_modele(self):
+        # ERR-ENF11-FUZZ-PORTAIL — le client, le lead et le chantier d'une
+        # demande / d'un dépôt du portail viennent de LEUR modèle (le nom
+        # ``chantier_id`` vise l'union de plusieurs modèles dans la table par
+        # nom : un id réel d'un autre modèle donnait « Chantier inconnu(e) »).
+        import importlib.util
+        import re
+        spec = importlib.util.spec_from_file_location(
+            'prepare_fuzz_env_portail',
+            ROOT / 'scripts' / 'fuzz' / 'prepare_fuzz_env.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        portail = {}
+        for motif, champs, modele, _filtre, _maxi in module.REGLES_PAR_CHEMIN:
+            if re.match(motif, '/api/django/portail/demandes-ticket-portail/'):
+                for champ in champs:
+                    portail[champ] = modele
+        self.assertEqual(portail, {
+            'client': 'crm.Client', 'client_id': 'crm.Client',
+            'lead': 'crm.Lead', 'lead_id': 'crm.Lead',
+            'chantier': 'installations.Installation',
+            'chantier_id': 'installations.Installation'})
+        self.assertFalse(any(
+            re.match(motif, '/api/django/ventes/devis/')
+            and 'chantier_id' in champs
+            for motif, champs, *_ in module.REGLES_PAR_CHEMIN))
 
     def test_query_remplacee_entier_et_texte(self):
         cas = self._appel('/api/django/stock/x/', None,

@@ -1,7 +1,9 @@
 import datetime
 
 from drf_spectacular.utils import extend_schema_field
-from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
+from core.champs_stricts import (
+    ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+)
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -21,7 +23,11 @@ WEBHOOK_REGLE_INCOMPATIBLE = (
     "« Webhook entrant ».")
 
 
-class AutomationRuleSerializer(serializers.ModelSerializer):
+class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
+                               serializers.ModelSerializer):
+    # ERR-ENF11-FUZZ-AUTOMATION — texte et booléens STRICTS (nom sans caractère
+    # nul publié ; ``enabled: 0`` n'est plus lu « faux »). Le seuil décimal garde
+    # son transport historique (nombre ou chaîne).
     trigger_type_display = serializers.CharField(
         source='get_trigger_type_display', read_only=True)
     action_type_display = serializers.CharField(
