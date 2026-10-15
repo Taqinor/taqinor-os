@@ -1,3 +1,5 @@
+import copy
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view,
@@ -9,6 +11,7 @@ from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
+from apps.dataimport.schema_fields import BooleenFormulaire
 from authentication.permissions import IsAnyRole
 from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
@@ -20,24 +23,14 @@ from .permissions import IsAdministrateur
 from .serializers import EntiteSerializer
 from rest_framework import serializers as drf_serializers
 
-# Jetons acceptés comme booléen "vrai" dans un corps de requête (form-data ou
-# JSON) : parse STRICTE — seul un jeton explicite active le mode, jamais une
-# troncature implicite d'une chaîne quelconque (une valeur absente, `'0'`,
-# `'false'`, etc. restent "faux").
-_JETONS_VRAI = ('1', 'true', 'True', 'oui', 'Oui', True)
 
-
-_JETONS_FAUX = (None, '', '0', 'false', 'False', 'non', 'Non', False)
-
-
-def _est_vrai(valeur, nom='parametre'):
-    """Booléen de corps STRICT (ENF11) : jeton vrai/faux connu, sinon 400 —
-    `ecraser={}` n'est plus pris pour « faux » en silence."""
-    if valeur in _JETONS_VRAI:
-        return True
-    if valeur in _JETONS_FAUX:
-        return False
-    raise serializers.ValidationError({nom: ['Booléen attendu.']})
+class _OptionsImportEntites(serializers.Serializer):
+    """Drapeaux du formulaire d'import : LE prédicat, publié au schéma et
+    appliqué par la vue. Seuls ``true``/``false`` sont des booléens (CI fuzz :
+    ``ecraser=0`` ou ``{}`` était lu « faux » en silence) ; l'écran d'import
+    envoie ``commit=true``."""
+    commit = BooleenFormulaire(required=False)
+    ecraser = BooleenFormulaire(required=False)
 
 
 class ConflitCycleEntite(APIException):
@@ -267,23 +260,22 @@ class EntiteViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         request={'multipart/form-data': inline_serializer('EntiteImportRequete', {
             'fichier': serializers.FileField(),
-            'commit': serializers.BooleanField(required=False),
-            'ecraser': serializers.BooleanField(required=False),
+            **copy.deepcopy(_OptionsImportEntites._declared_fields),
         })},
         responses=_VIEWS_ENTITE_VIEW_SET_IMPORTER_REPONSE)
     @action(detail=False, methods=['post'], permission_classes=[IsAdministrateur],
             parser_classes=[MultiPartParser])
     def importer(self, request):
-        """NTADM43 — import CSV en masse (dry-run par défaut ; `commit=1` écrit).
+        """NTADM43 — import CSV en masse (dry-run par défaut ; `commit=true` écrit).
 
         Colonnes CSV : code, nom, code_parent (optionnel). Résolution des
         parents par code en 2 passes.
 
-        GARDE-FOU ÉCRASEMENT — `commit=0`/absent reste l'APERÇU : il ne
+        GARDE-FOU ÉCRASEMENT — `commit=false`/absent reste l'APERÇU : il ne
         touche jamais la base et signale (`conflits`) ce qu'un commit
-        écraserait sur des fiches existantes. `commit=1` écrit en mode
+        écraserait sur des fiches existantes. `commit=true` écrit en mode
         REMPLISSAGE SEUL par défaut (un champ déjà rempli n'est jamais
-        remplacé) ; `ecraser=1` est l'opt-in explicite qui autorise aussi les
+        remplacé) ; `ecraser=true` est l'opt-in explicite qui autorise aussi les
         remplacements. `company` vient TOUJOURS de `request.user.company` —
         jamais du corps de la requête (isolation multi-tenant).
         """
@@ -292,8 +284,10 @@ class EntiteViewSet(CompanyScopedModelViewSet):
             return Response({'detail': 'Fichier requis.'}, status=400)
         file_bytes = fichier.read()
         filename = fichier.name
-        commit = _est_vrai(request.data.get('commit'), 'commit')
-        ecraser = _est_vrai(request.data.get('ecraser'), 'ecraser')
+        options = _OptionsImportEntites(data=request.data.dict())
+        options.is_valid(raise_exception=True)
+        commit = options.validated_data.get('commit', False)
+        ecraser = options.validated_data.get('ecraser', False)
         try:
             if commit:
                 result = import_service.commit(

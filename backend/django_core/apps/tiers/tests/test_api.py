@@ -150,9 +150,14 @@ class TiersEnf11Tests(TenantAPITestCase):
         self.assertEqual(self._post(email=5).status_code, 400)
 
     def test_schema_email_reponse_sans_format_requete_avec(self):
-        from apps.tiers.serializers import EmailTiersExtension
-        ext = EmailTiersExtension(target=None)
-        rep = ext.map_serializer_field(None, 'response')
-        req = ext.map_serializer_field(None, 'request')
+        """Le schéma RÉELLEMENT généré (extensions résolues par priorité),
+        pas l'extension appelée à part : l'extension générique des chaînes
+        strictes la masquait à priorité égale (CI api-fuzz : « "" is not a
+        "email" » sur GET tiers/)."""
+        from drf_spectacular.openapi import AutoSchema
+        from apps.tiers.serializers import TiersSerializer
+        champ = TiersSerializer().fields['email']
+        rep = AutoSchema()._map_serializer_field(champ, 'response')
+        req = AutoSchema()._map_serializer_field(champ, 'request')
         self.assertNotIn('format', rep)
         self.assertEqual(req['anyOf'][0]['format'], 'email')

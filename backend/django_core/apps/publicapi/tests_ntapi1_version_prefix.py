@@ -126,6 +126,23 @@ class Ntapi1VersionedPrefixTests(TestCase):
         resp = _key_client(self.raw).get('/api/public/v1/nexiste-pas/')
         self.assertEqual(resp.status_code, 404)
 
+    def test_identifiant_de_chemin_mal_forme_est_un_404_json_enveloppe(self):
+        """CI api-fuzz : ``…/calepinages/0.5/resultat/``, ``…/leads-write/a,b/``,
+        ``…/jobs/0.5/relancer/`` ne passent pas le motif du routeur ; la
+        réponse est l'enveloppe JSON publique (jamais la page HTML de Django,
+        « Undocumented Content-Type » — le schéma déclare ``application/json``)."""
+        client = _key_client(self.raw)
+        for methode, chemin in (
+                ('get', '/api/public/v1/calepinages/0.5/resultat/'),
+                ('patch', '/api/public/v1/leads-write/null%2Cnull/'),
+                ('post', '/api/public/v1/jobs/0.5/relancer/'),
+                ('post', '/api/public/v1/leads-write/abc/activites/')):
+            resp = getattr(client, methode)(chemin)
+            self.assertEqual(resp.status_code, 404, chemin)
+            self.assertTrue(
+                resp['Content-Type'].startswith('application/json'), chemin)
+            self.assertEqual(resp.json()['error']['code'], 'not_found', chemin)
+
     def test_endpoints_deja_versionnes_inchanges(self):
         """NTADM42/NTSCM38 écrivaient `v1/` en dur dans l'urlconf : le segment
         vient désormais du mont, le chemin servi est le MÊME qu'avant."""

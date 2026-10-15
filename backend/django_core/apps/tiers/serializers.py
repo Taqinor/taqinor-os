@@ -24,6 +24,11 @@ class EmailTiers(ChaineStricte, serializers.EmailField):
 
 class EmailTiersExtension(OpenApiSerializerFieldExtension):
     target_class = 'apps.tiers.serializers.EmailTiers'
+    # Priorité > 0 : sans elle, l'extension générique des chaînes strictes
+    # (``core.champs_stricts._ChaineSansNul``, ``match_subclasses``, enregistrée
+    # avant celle-ci) gagnait à égalité et publiait ``format: email`` aussi en
+    # réponse — l'e-mail vide servi violait alors le schéma.
+    priority = 1
 
     def map_serializer_field(self, auto_schema, direction):
         if direction == 'response':

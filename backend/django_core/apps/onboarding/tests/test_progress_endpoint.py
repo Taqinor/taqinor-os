@@ -96,3 +96,16 @@ class OnboardingProgressEndpointTest(TestCase):
         self.assertEqual(r.status_code, 200)
         done = [it for it in r.data['items'] if it['key'] == 'inviter_coequipier']
         self.assertTrue(done and done[0]['fait'])
+
+    def test_schema_du_resume_est_un_objet_pas_un_tableau(self):
+        """api-fuzz « Response violates schema » : ``list`` rend le résumé
+        (UN objet) ; drf-spectacular l'enveloppait dans un tableau."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/onboarding/', include('apps.onboarding.urls'))]
+        ).get_schema(request=None, public=True)
+        reponse = schema['paths']['/api/django/onboarding/progress/']['get'][
+            'responses']['200']['content']['application/json']['schema']
+        self.assertEqual(reponse['$ref'].rsplit('/', 1)[-1],
+                         'ViewsOnboardingProgressViewSetListReponse')

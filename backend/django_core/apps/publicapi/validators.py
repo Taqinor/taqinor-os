@@ -45,10 +45,16 @@ def validate_webhook_target_url(url):
     Renvoie l'URL inchangée si elle est sûre (https + hôte public résolvable)."""
     if not url:
         raise UnsafeWebhookURL("L'URL du webhook est obligatoire.")
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        # IPv6 mal fermé, port hors 0-65535 ou non numérique : refus nommé
+        # (c'étaient des ``ValueError`` nus -> 500).
+        raise UnsafeWebhookURL("L'URL du webhook est invalide.") from exc
     if parsed.scheme.lower() != 'https':
         raise UnsafeWebhookURL("L'URL du webhook doit utiliser https.")
-    host = parsed.hostname
     if not host:
         raise UnsafeWebhookURL("L'URL du webhook est invalide (hôte absent).")
 
@@ -59,9 +65,9 @@ def validate_webhook_target_url(url):
     except ValueError:
         # …sinon on résout le nom et on teste TOUTES les adresses obtenues.
         try:
-            infos = socket.getaddrinfo(host, parsed.port or 443,
+            infos = socket.getaddrinfo(host, port or 443,
                                        proto=socket.IPPROTO_TCP)
-        except socket.gaierror as exc:
+        except (socket.gaierror, ValueError) as exc:
             raise UnsafeWebhookURL(
                 "L'hôte du webhook est introuvable (DNS).") from exc
         candidates = [info[4][0] for info in infos]

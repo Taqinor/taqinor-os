@@ -7,18 +7,11 @@
 # de dette (zéro constat exigé). Jamais d'ajout à la main : on retire une ligne quand sa
 # cause est corrigée (re-mesure : rapport JSON du nocturne, script api_fuzz_scope.py).
 # Format : <titre du check Schemathesis>|<MÉTHODE> <gabarit de chemin>
-API accepted schema-violating request|GET /api/django/audit/entries/
-API accepted schema-violating request|GET /api/django/companies/
-API accepted schema-violating request|GET /api/django/offlinesync/operations/
-API accepted schema-violating request|GET /api/django/statuspage/public/incidents/
-API accepted schema-violating request|GET /api/django/trash/corbeille/
-API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
-API rejected schema-compliant request|POST /api/django/agent/actions/automation-draft/
 API rejected schema-compliant request|POST /api/django/crm/leads/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/fait/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
@@ -28,10 +21,7 @@ API rejected schema-compliant request|POST /api/django/facturation/paiements/fac
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/onboarding-localisation/
 API rejected schema-compliant request|POST /api/django/parametres/taux-tva/
-API rejected schema-compliant request|POST /api/django/public/portail/invitations/accepter/
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
-API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
-API rejected schema-compliant request|POST /api/django/register/
 API rejected schema-compliant request|POST /api/django/ventes/bons-commande/{id}/creer-facture/
 API rejected schema-compliant request|POST /api/django/ventes/courbes-iv/
 API rejected schema-compliant request|POST /api/django/ventes/devis-lignes/
@@ -59,20 +49,11 @@ API rejected schema-compliant request|POST /api/django/ventes/promesses-paiement
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
-Response violates schema|GET /api/django/onboarding/progress/
-Undocumented Content-Type|GET /api/public/v1/calepinages/{id}/resultat/
-Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
-Undocumented Content-Type|POST /api/public/v1/jobs/{id}/relancer/
-Undocumented Content-Type|POST /api/public/v1/leads-write/{id}/activites/
-Undocumented HTTP status code|POST /api/public/v1/oauth/token/
-API accepted schema-violating request|POST /api/django/entites/entites/importer/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
 API rejected schema-compliant request|POST /api/django/ventes/attestations-conformite/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/layout/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/sync-layout/
-API accepted schema-violating request|GET /api/django/tiers/tiers/
-Server error|POST /api/django/agent/actions/automation-draft/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
