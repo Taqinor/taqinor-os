@@ -84,7 +84,7 @@ class GuardTests(XGed18Base):
             company=self.co_a, folder=self.folder_a, nom='Fichier normal')
         services.assert_not_document_lien(doc, action='version')  # no raise
 
-    def test_ajout_version_refuse_400(self):
+    def test_ajout_version_refuse_409(self):
         doc = services.creer_document_lien(
             company=self.co_a, folder=self.folder_a, nom='Lien',
             url_externe='https://example.com')
@@ -96,9 +96,21 @@ class GuardTests(XGed18Base):
             'file': SimpleUploadedFile(
                 'x.pdf', b'%PDF-1.4 lien', content_type='application/pdf'),
         }, format='multipart')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # ENF11 : état du document
 
-    def test_demander_signature_refuse_400(self):
+    def test_nouvelle_version_action_refuse_409(self):
+        # ENF11 (nocturne 15/10) — l'action documents/{id}/nouvelle-version/.
+        doc = services.creer_document_lien(
+            company=self.co_a, folder=self.folder_a, nom='Lien action',
+            url_externe='https://example.com')
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = auth(self.admin_a).post(
+            f'/api/django/ged/documents/{doc.pk}/nouvelle-version/',
+            {'file': SimpleUploadedFile('x.pdf', b'%PDF-1.4', content_type='application/pdf')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_demander_signature_refuse_409(self):
         doc = services.creer_document_lien(
             company=self.co_a, folder=self.folder_a, nom='Lien',
             url_externe='https://example.com')
@@ -107,4 +119,4 @@ class GuardTests(XGed18Base):
             'document': doc.pk, 'signataire_nom': 'Karim',
             'signataire_email': 'k@x.com',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # ENF11 : état du document

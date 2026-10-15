@@ -27,7 +27,7 @@ from .corps_requete import (
     GroupeConditionsField, SectionsModeleField, erreurs_groupe_conditions)
 
 
-class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
+class DocumentTagSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                             SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """GED9 — Tag de la taxonomie documentaire (hiérarchique).
 
@@ -187,6 +187,13 @@ class CoffreSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         try:
             services.validate_coffre_owner(proprietaire, client)
         except ValueError as exc:
+            if self.instance is not None:
+                # ENF11 (nocturne 15/10) — en MODIFICATION, la règle porte sur
+                # le coffre EN PLACE combiné au corps (inexprimable au schéma) :
+                # refus d'état, 409. La création garde le 400 publié
+                # (COFFRE_PROPRIETAIRE_UNIQUE).
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat({'proprietaire': str(exc)})
             raise serializers.ValidationError({'proprietaire': str(exc)})
         if request is not None:
             cid = request.user.company_id
@@ -207,7 +214,7 @@ class CabinetSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_at', 'updated_at']
 
 
-class FolderSerializer(ChampsStrictsSansDecimalMixin,
+class FolderSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     cabinet_nom = serializers.CharField(source='cabinet.nom', read_only=True, allow_null=True)
     parent_nom = serializers.CharField(
@@ -1052,7 +1059,7 @@ class TypeChampSignatureSerializer(ChampsStrictsSansDecimalMixin,
         return value
 
 
-class RoutageDocumentaireSerializer(ChampsStrictsSansDecimalMixin,
+class RoutageDocumentaireSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                     SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """ZGED6 — Réglage de centralisation des fichiers d'un autre module.
 
