@@ -667,7 +667,7 @@ GARDES = {
          'python -m compileall -q backend/django_core/apps backend/django_core/erp_agentique backend/fastapi_ia',
          '.'),
         ('Lint backend (flake8)',
-         'flake8 backend --max-line-length=120 --extend-ignore=E501 --exclude=migrations,parked',
+         'flake8 backend --max-line-length=120 --exclude=migrations,parked',
          '.'),
         ('Lint imports (import-linter contracts — M3)',
          'lint-imports',

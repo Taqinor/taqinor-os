@@ -88,8 +88,8 @@ class EngagementBudgetSerializer(CompanyScopedRelationsMixin,
         read_only_fields = fields
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('annee', INT, mini=0, maxi=2147483647), P('mois', INT, mini=0, maxi=12),
-                                                   P('actif', BOOL)]))
+@extend_schema_view(list=extend_schema(parameters=[P('annee', INT, mini=0,
+                    maxi=2147483647), P('mois', INT, mini=0, maxi=12), P('actif', BOOL)]))
 class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     """NTP2P4 — enveloppe budgétaire d'achat de la société.
 

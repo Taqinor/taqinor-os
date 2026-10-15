@@ -43,13 +43,13 @@ with no rate column at all — mono-MAD in practice.
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2322` | quota_total |
 | crm | Lead | `apps/crm/models.py:241` | carburant_prix_declare_le, carburant_prix_unitaire_mad, montant_estime, tva_recuperable |
-| crm | PointContact | `apps/crm/models.py:2394` | cout |
+| crm | PointContact | `apps/crm/models.py:2398` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:214` | total |
-| crm | CommissionPartenaire | `apps/crm/models_clients.py:276` | base_ht, montant |
-| crm | DealEnregistre | `apps/crm/models_clients.py:549` | montant_commission_du, montant_commission_estime |
-| crm | Client | `apps/crm/models_clients.py:782` | tva_recuperable |
-| crm | ForecastEntry | `apps/crm/models_clients.py:1421` | montant_prevu |
-| crm | ForecastSnapshot | `apps/crm/models_clients.py:1482` | montant_total |
+| crm | CommissionPartenaire | `apps/crm/models_clients.py:277` | base_ht, montant |
+| crm | DealEnregistre | `apps/crm/models_clients.py:555` | montant_commission_du, montant_commission_estime |
+| crm | Client | `apps/crm/models_clients.py:790` | tva_recuperable |
+| crm | ForecastEntry | `apps/crm/models_clients.py:1437` | montant_prevu |
+| crm | ForecastSnapshot | `apps/crm/models_clients.py:1498` | montant_total |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
 | facturation | LigneFacture | `apps/facturation/models.py:776` | prix_unitaire, remise, taux_tva |
 | facturation | Paiement | `apps/facturation/models.py:843` | escompte_montant, montant |
@@ -115,7 +115,7 @@ with no rate column at all — mono-MAD in practice.
 | App | Model | File | Money fields | Has exchange rate? |
 | --- | --- | --- | --- | --- |
 | achats | FactureFournisseur | `apps/achats/models.py:477` | montant_ht, montant_ttc, montant_ttc_devise, montant_tva | yes |
-| crm | ConcurrentPerte | `apps/crm/models_clients.py:1248` | concurrent_prix | no |
+| crm | ConcurrentPerte | `apps/crm/models_clients.py:1258` | concurrent_prix | no |
 | facturation | Facture | `apps/facturation/models.py:33` | abandon_montant, montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva | yes |
 | parametres | CompanyProfile | `apps/parametres/models_company.py:14` | bande_prix_kwc_ci, exiger_acompte_avant_planification, prix_cible_kwc_defaut, remise_max_pct, tva_intra, tva_panneaux, tva_standard | no |
 | ventes | Devis | `apps/ventes/models.py:19` | acompte_montant, acompte_pct, penalites_retard_livraison, prix_cible_kwc, prix_par_kwc, remise_approuvee, remise_approuvee_pct, remise_globale, taux_tva | yes |

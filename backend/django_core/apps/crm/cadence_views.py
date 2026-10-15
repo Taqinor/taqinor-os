@@ -958,7 +958,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return self._reponse_fait(etape)
 
     @extend_schema(request=sd.corps('CrmRelanceFaitRequest',
-                                    outcome=ChoixDocumente(choices=[k for k, _ in LeadActivity.OUTCOMES], required=False),
+                                    outcome=ChoixDocumente(choices=[k for k, _ in LeadActivity.OUTCOMES],
+                                                           required=False),
                                     reponse=ChoixDocumente(choices=['', *REPONSES_TOUCHE], required=False),
                                     langue=ChoixDocumente(choices=['', *Lead.LanguePreferee.values], required=False),
                                     note=ChaineStricte(required=False, allow_blank=True)),

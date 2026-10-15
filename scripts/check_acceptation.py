@@ -51,7 +51,8 @@ ligne) : `groupe: <G>`, `amorce: <sha9>`, `ids:` en liste de blocs. Amorcée UNE
 fois par `--amorcer` (à la bascule = l'arrivée de cette garde) ; ne fait que
 rétrécir : un id absent du même fichier à la base git (`--base`, défaut
 origin/main ; en CI la base absente est récupérée par un fetch complet — jamais
-`--depth=1`, qui rendrait le clone shallow pour check_forme_code —, sinon la comparaison est sautée avec un avis) ⇒ ÉCHEC ; un
+`--depth=1`, qui rendrait le clone shallow pour check_forme_code —, sinon la comparaison est sautée avec un avis) ⇒
+ÉCHEC ; un
 `_dette.yml` absent de la base n'est admis que si la base n'a encore AUCUNE
 dette (la bascule) ; un id couvert ou plus coché à preuve ⇒ ÉCHEC jusqu'à
 `--write-baseline` (la mécanique de cliquet de taches_cablage_allow.txt). Un id

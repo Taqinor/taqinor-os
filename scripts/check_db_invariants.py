@@ -249,7 +249,8 @@ def render_doc(rows):
         "Python `clean()`/`save()` guard, so the DB constraint is the real",
         "backstop.",
         "",
-        "| Model | App | Python invariant fields (clean/save) | CheckConstraint fields | Canonical invariants still un-constrained |",
+        "| Model | App | Python invariant fields (clean/save) | CheckConstraint fields | Canonical invariants still "
+        "un-constrained |",
         "| --- | --- | --- | --- | --- |",
     ]
     for model, app, py_fields, cc_fields, canonical in rows:

@@ -42,7 +42,8 @@ class ProfilSaisonnierSerializer(ChampsTexteBooleenStricts, CompanyScopedRelatio
                         'mois_fin': {'min_value': 1, 'max_value': 12}}
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('produit', ID_OU_VIDE), P('categorie', ID_OU_VIDE), P('actif', BOOL)]))
+@extend_schema_view(list=extend_schema(parameters=[P('produit',
+                    ID_OU_VIDE), P('categorie', ID_OU_VIDE), P('actif', BOOL)]))
 class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
     """XSTK17 — profils saisonniers de seuils min/max/cible (produit XOR
     catégorie). Lecture tout rôle (un Acheteur doit voir la saison en

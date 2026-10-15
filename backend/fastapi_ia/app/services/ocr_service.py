@@ -123,7 +123,8 @@ Regles importantes :
 - mouvement_suggere est toujours "entree" (marchandises recues du fournisseur vers nous).
 - Les documents "bon de sortie" (TD/OUT, BS, BL) d'un fournisseur sont traites comme bon_livraison.
 - fournisseur = la societe qui EMET la facture (le vendeur), pas le client destinataire.
-  Sur une facture : le fournisseur est en haut a gauche (logo, nom societe emettrice) ou en bas (mentions legales RC/ICE).
+  Sur une facture : le fournisseur est en haut a gauche (logo, nom societe emettrice) ou en bas (mentions legales \
+RC/ICE).
   Le nom dans le cadre adresse (ex: "TAQINOR SOLUTIONS", "Vendu a", "Client :") est le CLIENT, pas le fournisseur.
   Ne jamais mettre le nom du client/acheteur comme fournisseur.
 - reference = code article interne ou SKU alphanumérique du fournisseur (ex: "REF-001", "CS-715W").
@@ -194,7 +195,8 @@ Regles :
 - mouvement_suggere est toujours "entree".
 - Les "bon de sortie" (TD/OUT, BS) d'un fournisseur sont traites comme bon_livraison.
 - fournisseur = la societe qui EMET le document (le vendeur/expediteur), pas le destinataire.
-  Le destinataire (zone "Vendu a", "Client", "A l'attention de", cadre adresse central) est notre propre entreprise : NE PAS le mettre comme fournisseur.
+  Le destinataire (zone "Vendu a", "Client", "A l'attention de", cadre adresse central) est notre propre entreprise : \
+NE PAS le mettre comme fournisseur.
   Le fournisseur est l'entite avec logo en haut a gauche, ou avec RC/ICE/IF en bas de page.
 - Si une designation commence par un code_article alphanumérique (ex: "Canadian_Solar_715w_n_type_Bifacial"),
   utilise-le comme reference et le reste comme nom.

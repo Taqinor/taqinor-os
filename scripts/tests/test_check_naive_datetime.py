@@ -10,7 +10,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_naive_datetime as cnd  # noqa: E402
 
-MODELE = "from django.db import models\n\n\nclass Devis(models.Model):\n{pad}    cree_le = models.DateField(auto_now_add=True)\n"
+MODELE = (
+    "from django.db import models\n\n\nclass Devis(models.Model):\n"
+    "{pad}    cree_le = models.DateField(auto_now_add=True)\n"
+)
 
 
 def _arbre(tmp, pad_lignes):

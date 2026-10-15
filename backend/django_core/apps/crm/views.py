@@ -1499,7 +1499,11 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)), ids=sd.ids_requis()), responses=sd.OBJ, extensions=sd.corps_bulk(BULK_ACTIONS))
+    @extend_schema(request=sd.corps('CrmBulkLeadsRequest',
+                                    action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)),
+                                    ids=sd.ids_requis()),
+                   responses=sd.OBJ,
+                   extensions=sd.corps_bulk(BULK_ACTIONS))
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
     def bulk(self, request):

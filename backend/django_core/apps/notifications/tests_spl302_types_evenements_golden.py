@@ -5,7 +5,8 @@ Capture seule : aucun code de production n'est modifié. Le golden
 dans l'ordre) a été écrit UNE fois, sur le code ACTUEL, par ``capturer()`` ;
 le test ne le réécrit JAMAIS. Régénération explicite uniquement :
 
-    python manage.py shell -c "from apps.notifications.tests_spl302_types_evenements_golden import ecrire_golden; ecrire_golden()"
+    python manage.py shell -c "from apps.notifications.tests_spl302_types_evenements_golden \
+import ecrire_golden; ecrire_golden()"
 
 Plancher : le golden doit rester une sous-suite ORDONNÉE de l'énum vivante
 (ajout en fin toléré ; jamais retrait, réordonnancement ni renommage).
