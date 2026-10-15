@@ -1,4 +1,4 @@
-import { todayLocalIso } from '../../../lib/dateLocale'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 // NTMOB19 — logique PURE (aucun React) du widget « À faire aujourd'hui ».
 // Agrège en UNE liste triée par urgence ce que quatre sources EXISTANTES
 // exposent déjà, sans aucun nouveau modèle ni endpoint :
