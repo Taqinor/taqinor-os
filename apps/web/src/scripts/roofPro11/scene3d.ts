@@ -45,7 +45,7 @@ import {
   DEG2RAD,
   DEG2M,
 } from './constants';
-import { type AreaRecord, type ZoneRenderPlan } from './types';
+import { type AreaRecord, type ZoneRenderPlan, type RenderSceneFn } from './types';
 import { makeCanadianPanelTexture } from './panelTexture';
 import { type Ctx } from './context';
 import { poserEtiquettesNumeros } from './numerotation'; // CALX111
@@ -111,15 +111,7 @@ export interface Scene3d {
   /** Re-dessine les AUTRES zones (subduées) ; renvoie leurs anneaux translatés. */
   appendOtherZones: (activeOrigin: LngLat) => [number, number][][];
   /** Rendu complet de la zone ACTIVE (bâtiment + dalle + panneaux + obstacles + soleil). */
-  renderScene: (
-    pack: PackResult,
-    grid: PanelGrid,
-    tiltDeg: number,
-    family: ConfigFamily,
-    maxCount: number,
-    flush?: boolean,
-    occupiedSet?: Set<number>,
-  ) => void;
+  renderScene: RenderSceneFn;
   /** Réinitialise la photo de toit + la matrice modèle (appelé par clearEditorState). */
   resetTextures: () => void;
   /**

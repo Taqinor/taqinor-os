@@ -3,8 +3,9 @@ import { useParams } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { formatDateTime } from '../../lib/format'
-import { Button, Card, Spinner } from '../../ui'
+import { Button, Card } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
+import EtatEcranAtelier from './atelier/EtatEcranAtelier'
 
 /* ============================================================================
    CAL196 — L'ÉCRAN « DOSSIERS RÉGLEMENTAIRES » DU CALEPINAGE.
@@ -543,21 +544,8 @@ export default function DossiersReglementaires({ calepinageId }) {
 
   const regenere = () => { setSurcharge(null); refetch() }
 
-  if (loading) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <Spinner />
-      </>
-    )
-  }
-  if (error) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <p className="text-sm text-destructive" data-testid="cal196-erreur">{error}</p>
-      </>
-    )
+  if (loading || error) {
+    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal196-erreur" />
   }
 
   const dossiers = donnees?.dossiers || []

@@ -67,6 +67,8 @@ import { formatDate, formatDateTime } from '../../lib/format'
 import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 import { SelecteurVue } from '../../ui/SelecteurVue'
 import { ColonneStatut, ItemsUtilisateurs, SelectReaffectation } from '../../ui/kanbanAffectation'
+import { TableauLignes } from '../../ui/TableauDefilant'
+import IndicateurTirerPourActualiser from '../../ui/IndicateurTirerPourActualiser'
 
 // VX43 — repli « changer le statut au menu » sans drag, sous 768px : le
 // glisser-déposer @dnd-kit (TouchSensor delay 150ms) reste utilisable au
@@ -210,8 +212,8 @@ function ListView({ items, onOpen }) {
     )
   }
   return (
-    <div className="table-scroll">
-      <table className="data-table">
+    <TableauLignes enveloppe="table-scroll" className="data-table"
+      tete={(
         <thead>
           <tr>
             <th>Chantier</th>
@@ -223,23 +225,21 @@ function ListView({ items, onOpen }) {
             <th>Statut</th>
           </tr>
         </thead>
-        <tbody>
-          {items.map((it) => (
-            <tr key={it.id} className="lv-row" onClick={() => onOpen(it)} style={{ cursor: 'pointer' }}>
-              <td data-label="Chantier">{it.installation_reference ?? `#${it.id}`}</td>
-              <td data-label="Client">{it.client_nom ?? '—'}</td>
-              <td data-label="Ville" className="m-hide">{it.site_ville ?? '—'}</td>
-              <td data-label="Type">{typeLabel(it.type_intervention)}</td>
-              <td data-label="Date prévue" className="m-hide">{formatDate(it.date_prevue)}</td>
-              <td data-label="Équipe" className="m-hide">{(it.equipe_noms ?? []).join(', ') || '—'}</td>
-              <td data-label="Statut">
-                <StatusPill status={it.statut} label={interventionStatusLabel(it.statut)} dot={false} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+      )}>
+      {items.map((it) => (
+        <tr key={it.id} className="lv-row" onClick={() => onOpen(it)} style={{ cursor: 'pointer' }}>
+          <td data-label="Chantier">{it.installation_reference ?? `#${it.id}`}</td>
+          <td data-label="Client">{it.client_nom ?? '—'}</td>
+          <td data-label="Ville" className="m-hide">{it.site_ville ?? '—'}</td>
+          <td data-label="Type">{typeLabel(it.type_intervention)}</td>
+          <td data-label="Date prévue" className="m-hide">{formatDate(it.date_prevue)}</td>
+          <td data-label="Équipe" className="m-hide">{(it.equipe_noms ?? []).join(', ') || '—'}</td>
+          <td data-label="Statut">
+            <StatusPill status={it.statut} label={interventionStatusLabel(it.statut)} dot={false} />
+          </td>
+        </tr>
+      ))}
+    </TableauLignes>
   )
 }
 
@@ -622,16 +622,7 @@ export default function InterventionsPage() {
 
   return (
     <div className="page lp-page overflow-y-auto" {...containerProps}>
-      {(pullDistance > 0 || refreshing) && (
-        <div
-          className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
-          style={{ height: `${Math.max(pullDistance, refreshing ? 32 : 0)}px`, overflow: 'hidden', transition: refreshing ? 'height 150ms ease' : 'none' }}
-          role="status"
-        >
-          {refreshing ? <Spinner className="size-4" /> : null}
-          {refreshing ? 'Actualisation…' : 'Tirer pour actualiser'}
-        </div>
-      )}
+      <IndicateurTirerPourActualiser pullDistance={pullDistance} refreshing={refreshing} />
       <div className="page-header lp-header">
         <h2 className="flex items-center gap-2">
           Interventions

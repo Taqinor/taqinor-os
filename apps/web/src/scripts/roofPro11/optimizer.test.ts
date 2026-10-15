@@ -15,19 +15,7 @@ import {
   PRIORITES_REMPLISSAGE,
   type EntreeDepartage,
 } from './optimizer';
-import { type LngLat } from '../../lib/roof';
-
-/** Contour RECTANGULAIRE large (assez pour plusieurs rangées/colonnes de panneaux). */
-function rectRing(widthM: number, depthM: number, lng0 = -7.6, lat0 = 33.5): LngLat[] {
-  const dLat = depthM / 2 / 111320;
-  const dLng = widthM / 2 / (111320 * Math.cos((lat0 * Math.PI) / 180));
-  return [
-    [lng0 - dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 + dLat],
-    [lng0 - dLng, lat0 + dLat],
-  ];
-}
+import { rectRing } from './harnaisAtelier';
 
 const ring = rectRing(20, 15);
 const baseOpts: PackOptions = { family: 'south', tiltDeg: 13 };

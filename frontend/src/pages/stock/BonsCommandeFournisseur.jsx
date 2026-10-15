@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
-  Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate, ClipboardList,
+  Plus, FileText, Undo2, Package, Copy, RotateCcw, Receipt, LayoutTemplate, ClipboardList,
   Pencil, BadgeCheck, History, AlertTriangle, BarChart3,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
@@ -20,7 +20,7 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
-import { SelectFournisseur } from './ComposantsStock'
+import { SelectFournisseur, CelluleRetirerLigne } from './ComposantsStock'
 import { EnteteStock } from './EnteteStock'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import {
@@ -39,6 +39,9 @@ import {
 // ASTK231 — confirmations par l'AlertDialog commune (aucune boîte native).
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { AlerteErreurStock, MessagesStock } from './BandeauxListeStock'
+import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
+import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 // Page de gestion des bons de commande FOURNISSEUR (achats — N11).
 // Le prix d'ACHAT est INTERNE : cette page n'est jamais un document client.
@@ -136,8 +139,8 @@ function RetourModal({ bcf, onClose, onDone }) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[34rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[34rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Produit</th>
@@ -146,44 +149,33 @@ function RetourModal({ bcf, onClose, onDone }) {
                 <th className="px-3 py-2 text-left font-semibold">Motif</th>
               </tr>
             </thead>
-            <tbody>
-              {lignes.map((l) => (
-                <tr key={l.id} className="border-t border-border">
-                  <td className="px-3 py-2">{l.produit_nom}</td>
-                  <td className="px-3 py-2 tabular-nums">{l.quantite_recue}</td>
-                  <td className="px-3 py-2">
-                    <Input type="number" min="0" max={l.quantite_recue ?? 0} inputMode="numeric" className="h-9 w-24"
-                           value={saisies[l.id]?.qte ?? ''}
-                           onChange={(e) => setLigne(l.id, { qte: e.target.value })} />
-                    {Number(saisies[l.id]?.qte) > (Number(l.quantite_recue) || 0) && (
-                      <p className="mt-1 text-xs text-warning">
-                        Max {l.quantite_recue ?? 0} (quantité reçue)
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <Input className="h-9"
-                           value={saisies[l.id]?.motif ?? ''}
-                           placeholder="ex. cassé à la livraison"
-                           onChange={(e) => setLigne(l.id, { motif: e.target.value })} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
-          <Button type="button" loading={busy} onClick={submit}>
-            {busy ? 'Enregistrement…' : 'Valider le retour'}
-          </Button>
-        </DialogFooter>
+          )}>
+          {lignes.map((l) => (
+            <tr key={l.id} className="border-t border-border">
+              <td className="px-3 py-2">{l.produit_nom}</td>
+              <td className="px-3 py-2 tabular-nums">{l.quantite_recue}</td>
+              <td className="px-3 py-2">
+                <Input type="number" min="0" max={l.quantite_recue ?? 0} inputMode="numeric" className="h-9 w-24"
+                       value={saisies[l.id]?.qte ?? ''}
+                       onChange={(e) => setLigne(l.id, { qte: e.target.value })} />
+                {Number(saisies[l.id]?.qte) > (Number(l.quantite_recue) || 0) && (
+                  <p className="mt-1 text-xs text-warning">
+                    Max {l.quantite_recue ?? 0} (quantité reçue)
+                  </p>
+                )}
+              </td>
+              <td className="px-3 py-2">
+                <Input className="h-9"
+                       value={saisies[l.id]?.motif ?? ''}
+                       placeholder="ex. cassé à la livraison"
+                       onChange={(e) => setLigne(l.id, { motif: e.target.value })} />
+              </td>
+            </tr>
+          ))}
+        </TableauLignes>
+        <PiedDialogueFormulaire error={error} busy={busy} onCancel={onClose} onSubmit={submit}
+                                libelle="Valider le retour" libelleEnCours="Enregistrement…"
+                                annulerActifPendantEnvoi />
       </DialogContent>
     </Dialog>
   )
@@ -892,8 +884,8 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
               )}
             </div>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm" ref={linesTableRef}>
+          <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full text-sm" ref={linesTableRef}
+            tete={(
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold" style={{ minWidth: 220 }}>Article</th>
@@ -905,119 +897,112 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                   {editableLignes && <th className="w-10 px-3 py-2" />}
                 </tr>
               </thead>
-              <tbody>
-                {lignes.length === 0 && (
-                  <tr><td colSpan={7} className="px-3 py-3 text-sm text-muted-foreground">Aucune ligne.</td></tr>
-                )}
-                {lignes.map((l, idx) => {
-                  const lineTotal = (Number(l.quantite) || 0) * (Number(l.prix_achat_unitaire) || 0)
-                  const restante = quantiteRestante(l)
-                  return (
-                    <tr key={l.id ?? l._key ?? `new-${idx}`} data-line-key={l._key ?? l.id ?? `new-${idx}`}
-                        className="border-t border-border">
-                      <td className="px-3 py-2">
-                        {editableLignes ? (
-                          (l.sans_stock || (!l.produit && l.designation != null)) ? (
-                            <div className="flex-1">
-                              <Input className="h-9" placeholder="Désignation libre (ex. Transport Casablanca)"
-                                     value={l.designation ?? ''}
-                                     onChange={(e) => setLigne(idx, { designation: e.target.value })} />
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Ligne libre — aucun mouvement de stock à la réception.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <div className="flex-1">
-                                <BcfProduitPicker produits={allProduits} value={l.produit}
-                                                  onChange={(v) => pickProduit(idx, v)} />
-                              </div>
-                              {canCreateProduit && (
-                                <IconButton type="button" label="Nouveau produit" size="sm"
-                                            className="size-8 text-primary hover:bg-accent"
-                                            onClick={() => setQuickCreateIdx(idx)}>
-                                  <Plus />
-                                </IconButton>
-                              )}
-                            </div>
-                          )
-                        ) : revising && (l.sans_stock || (!l.produit && l.designation != null)) ? (
-                          // WIR191 — reviser() ne touche jamais au produit d'une
-                          // ligne (seule quantité/prix/désignation sont suivis) :
-                          // la désignation d'une ligne LIBRE reste éditable, le
-                          // picker produit d'une ligne catalogue reste figé.
+            )}>
+            {lignes.length === 0 && (
+              <tr><td colSpan={7} className="px-3 py-3 text-sm text-muted-foreground">Aucune ligne.</td></tr>
+            )}
+            {lignes.map((l, idx) => {
+              const lineTotal = (Number(l.quantite) || 0) * (Number(l.prix_achat_unitaire) || 0)
+              const restante = quantiteRestante(l)
+              return (
+                <tr key={l.id ?? l._key ?? `new-${idx}`} data-line-key={l._key ?? l.id ?? `new-${idx}`}
+                    className="border-t border-border">
+                  <td className="px-3 py-2">
+                    {editableLignes ? (
+                      (l.sans_stock || (!l.produit && l.designation != null)) ? (
+                        <div className="flex-1">
                           <Input className="h-9" placeholder="Désignation libre (ex. Transport Casablanca)"
                                  value={l.designation ?? ''}
                                  onChange={(e) => setLigne(idx, { designation: e.target.value })} />
-                        ) : (
-                          <span>
-                            {l.produit_nom ?? l.designation ?? '—'}
-                            {l.produit_sku ? ` (${l.produit_sku})` : ''}
-                            {l.sans_stock && !l.produit_nom && (
-                              <span className="ml-1 text-xs text-muted-foreground">(ligne libre)</span>
-                            )}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {lignesEditable ? (
-                          <Input type="number" step="any" inputMode="decimal" className="h-9 w-24"
-                                 value={l.quantite ?? ''}
-                                 onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
-                        ) : l.quantite}
-                      </td>
-                      <td className="px-3 py-2">
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Ligne libre — aucun mouvement de stock à la réception.
+                          </p>
+                        </div>
+                      ) : (
                         <div className="flex items-center gap-1">
-                          {!voitPrix ? (
-                            <span className="text-muted-foreground">—</span>
-                          ) : lignesEditable ? (
-                            <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
-                                   value={l.prix_achat_unitaire ?? ''}
-                                   onChange={(e) => setLigne(idx, { prix_achat_unitaire: e.target.value })} />
-                          ) : fmtMad(l.prix_achat_unitaire)}
-                          {/* WIR220/XPUR13 — popover historique des prix (lecture seule). */}
-                          {voitPrix && l.produit && (
-                            <IconButton type="button" label="Historique des prix" size="sm"
-                                        className="size-8 text-muted-foreground"
-                                        onClick={() => voirHistoriquePrix(idx, l)}>
-                              <History />
+                          <div className="flex-1">
+                            <BcfProduitPicker produits={allProduits} value={l.produit}
+                                              onChange={(v) => pickProduit(idx, v)} />
+                          </div>
+                          {canCreateProduit && (
+                            <IconButton type="button" label="Nouveau produit" size="sm"
+                                        className="size-8 text-primary hover:bg-accent"
+                                        onClick={() => setQuickCreateIdx(idx)}>
+                              <Plus />
                             </IconButton>
                           )}
                         </div>
-                        {voitPrix && lignesEditable && l.produit && !(Number(l.prix_achat_unitaire) > 0) && (
-                          <p className="mt-1 text-xs text-warning">
-                            Sans prix d&apos;achat — commande possible (BCF interne).
-                          </p>
+                      )
+                    ) : revising && (l.sans_stock || (!l.produit && l.designation != null)) ? (
+                      // WIR191 — reviser() ne touche jamais au produit d'une
+                      // ligne (seule quantité/prix/désignation sont suivis) :
+                      // la désignation d'une ligne LIBRE reste éditable, le
+                      // picker produit d'une ligne catalogue reste figé.
+                      <Input className="h-9" placeholder="Désignation libre (ex. Transport Casablanca)"
+                             value={l.designation ?? ''}
+                             onChange={(e) => setLigne(idx, { designation: e.target.value })} />
+                    ) : (
+                      <span>
+                        {l.produit_nom ?? l.designation ?? '—'}
+                        {l.produit_sku ? ` (${l.produit_sku})` : ''}
+                        {l.sans_stock && !l.produit_nom && (
+                          <span className="ml-1 text-xs text-muted-foreground">(ligne libre)</span>
                         )}
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {voitPrix && l.prix_achat_unitaire !== undefined ? fmtMad(lineTotal) : '—'}
-                      </td>
-                      {!isNew && <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>}
-                      {!isNew && statut === 'envoye' && (
-                        <td className="px-3 py-2">
-                          {restante > 0 ? (
-                            <Input type="number" min="0" max={restante} inputMode="numeric" className="h-9 w-24"
-                                   placeholder={`/${restante}`}
-                                   value={receptions[l.id] ?? ''}
-                                   onChange={(e) => setReceptions((r) => ({ ...r, [l.id]: e.target.value }))} />
-                          ) : <span className="text-xs text-muted-foreground">soldée</span>}
-                        </td>
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    {lignesEditable ? (
+                      <Input type="number" step="any" inputMode="decimal" className="h-9 w-24"
+                             value={l.quantite ?? ''}
+                             onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
+                    ) : l.quantite}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1">
+                      {!voitPrix ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : lignesEditable ? (
+                        <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
+                               value={l.prix_achat_unitaire ?? ''}
+                               onChange={(e) => setLigne(idx, { prix_achat_unitaire: e.target.value })} />
+                      ) : fmtMad(l.prix_achat_unitaire)}
+                      {/* WIR220/XPUR13 — popover historique des prix (lecture seule). */}
+                      {voitPrix && l.produit && (
+                        <IconButton type="button" label="Historique des prix" size="sm"
+                                    className="size-8 text-muted-foreground"
+                                    onClick={() => voirHistoriquePrix(idx, l)}>
+                          <History />
+                        </IconButton>
                       )}
-                      {editableLignes && (
-                        <td className="px-3 py-2">
-                          <IconButton label="Retirer la ligne" variant="ghost" size="icon" className="size-8"
-                                      onClick={() => removeLigne(idx)}>
-                            <Trash2 className="text-destructive" />
-                          </IconButton>
-                        </td>
-                      )}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                    {voitPrix && lignesEditable && l.produit && !(Number(l.prix_achat_unitaire) > 0) && (
+                      <p className="mt-1 text-xs text-warning">
+                        Sans prix d&apos;achat — commande possible (BCF interne).
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {voitPrix && l.prix_achat_unitaire !== undefined ? fmtMad(lineTotal) : '—'}
+                  </td>
+                  {!isNew && <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>}
+                  {!isNew && statut === 'envoye' && (
+                    <td className="px-3 py-2">
+                      {restante > 0 ? (
+                        <Input type="number" min="0" max={restante} inputMode="numeric" className="h-9 w-24"
+                               placeholder={`/${restante}`}
+                               value={receptions[l.id] ?? ''}
+                               onChange={(e) => setReceptions((r) => ({ ...r, [l.id]: e.target.value }))} />
+                      ) : <span className="text-xs text-muted-foreground">soldée</span>}
+                    </td>
+                  )}
+                  {editableLignes && (
+                    <CelluleRetirerLigne onRetirer={() => removeLigne(idx)} />
+                  )}
+                </tr>
+              )
+            })}
+          </TableauLignes>
           <div className="text-right text-sm font-bold">
             Total achat HT (interne) : {voitPrix ? fmtMad(total) : '—'}
           </div>
@@ -1034,16 +1019,8 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                     onChange={(e) => setNote(e.target.value)} />
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-        {info && (
-          <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-            {info}
-          </div>
-        )}
+        <AlerteErreur error={error} />
+        <InfoSucces info={info} />
 
         <DialogFooter className="flex-wrap">
           {voitPrix && !isNew && statut !== 'annule' && (
@@ -1259,8 +1236,8 @@ function AchatsHorsContratModal({ fournisseurs, onClose }) {
           rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucun achat hors contrat sur cette période.</p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[36rem] text-sm">
+            <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[36rem] text-sm"
+              tete={(
                 <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">BCF</th>
@@ -1271,20 +1248,18 @@ function AchatsHorsContratModal({ fournisseurs, onClose }) {
                     <th className="px-3 py-2 text-right font-semibold">Écart</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.ligne_id} className="border-t border-border">
-                      <td className="px-3 py-2">{r.reference}</td>
-                      <td className="px-3 py-2">{r.fournisseur_nom ?? '—'}</td>
-                      <td className="px-3 py-2">{r.produit_nom ?? '—'}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtMad(r.prix_convenu)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtMad(r.prix_saisi)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-warning">{fmtMad(r.ecart)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {rows.map((r) => (
+                <tr key={r.ligne_id} className="border-t border-border">
+                  <td className="px-3 py-2">{r.reference}</td>
+                  <td className="px-3 py-2">{r.fournisseur_nom ?? '—'}</td>
+                  <td className="px-3 py-2">{r.produit_nom ?? '—'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMad(r.prix_convenu)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMad(r.prix_saisi)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-warning">{fmtMad(r.ecart)}</td>
+                </tr>
+              ))}
+            </TableauLignes>
           )
         )}
 

@@ -7,6 +7,7 @@ import { formatDateTime } from '../../../lib/format'
 import {
   messageServeur, messageServeurBlob, ouvrirBlob,
 } from '../../../features/stock/api/erreurs'
+import TableauDefilant from '../../../ui/TableauDefilant'
 
 /* ASTK215 — Casiers de l'entrepôt : seuils de réappro par casier, tâches de
    réappro (« Exécuter »), casiers sous seuil, historique d'un casier,
@@ -166,28 +167,26 @@ export default function CasiersPage() {
           <Button onClick={generer} disabled={enCours === 'gen'}>Générer les tâches</Button>
         </div>
         {sousSeuil.length === 0 ? <Vide>Aucun casier sous son seuil.</Vide> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[40rem]">
-              <thead><tr>
-                <TH>Casier</TH><TH>Produit</TH><TH>Présent</TH><TH>Seuil</TH>
-                <TH>À transférer</TH><TH>Depuis</TH><TH><span className="sr-only">Actions</span></TH>
-              </tr></thead>
-              <tbody>
-                {sousSeuil.map((c) => (
-                  <tr key={c.seuil_id} className="border-t border-[var(--border)]">
-                    <TD>{c.bin_code}</TD><TD>{c.produit_nom}</TD>
-                    <TD>{c.quantite_presente}</TD><TD>{c.seuil}</TD>
-                    <TD>{c.quantite_a_transferer}</TD><TD>{c.bin_source_code ?? '—'}</TD>
-                    <TD>
-                      <Button size="sm" variant="outline" onClick={() => ouvrirHistorique(c.bin)}>
-                        Historique
-                      </Button>
-                    </TD>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[40rem]">
+            <thead><tr>
+              <TH>Casier</TH><TH>Produit</TH><TH>Présent</TH><TH>Seuil</TH>
+              <TH>À transférer</TH><TH>Depuis</TH><TH><span className="sr-only">Actions</span></TH>
+            </tr></thead>
+            <tbody>
+              {sousSeuil.map((c) => (
+                <tr key={c.seuil_id} className="border-t border-[var(--border)]">
+                  <TD>{c.bin_code}</TD><TD>{c.produit_nom}</TD>
+                  <TD>{c.quantite_presente}</TD><TD>{c.seuil}</TD>
+                  <TD>{c.quantite_a_transferer}</TD><TD>{c.bin_source_code ?? '—'}</TD>
+                  <TD>
+                    <Button size="sm" variant="outline" onClick={() => ouvrirHistorique(c.bin)}>
+                      Historique
+                    </Button>
+                  </TD>
+                </tr>
+              ))}
+            </tbody>
+          </TableauDefilant>
         )}
         {historique && (
           <div className="mt-3 rounded-md border border-[var(--border)] p-3">
@@ -212,31 +211,29 @@ export default function CasiersPage() {
 
       <Section id="taches-reappro" titre="Tâches de réappro">
         {taches.length === 0 ? <Vide>Aucune tâche à faire.</Vide> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[36rem]">
-              <thead><tr>
-                <TH>Produit</TH><TH>De</TH><TH>Vers</TH><TH>Quantité</TH><TH>Statut</TH>
-                <TH><span className="sr-only">Actions</span></TH>
-              </tr></thead>
-              <tbody>
-                {taches.map((t) => (
-                  <tr key={t.id} className="border-t border-[var(--border)]">
-                    <TD>{nomProduit(t.produit)}</TD>
-                    <TD>{t.bin_source_code ?? '—'}</TD><TD>{t.bin_cible_code}</TD>
-                    <TD>{t.quantite}</TD><TD>{STATUTS_TACHE[t.statut] ?? t.statut}</TD>
-                    <TD>
-                      {t.statut === 'a_faire' && (
-                        <Button size="sm" disabled={enCours === `exec-${t.id}`}
-                          onClick={() => executer(t.id)}>
-                          Exécuter
-                        </Button>
-                      )}
-                    </TD>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[36rem]">
+            <thead><tr>
+              <TH>Produit</TH><TH>De</TH><TH>Vers</TH><TH>Quantité</TH><TH>Statut</TH>
+              <TH><span className="sr-only">Actions</span></TH>
+            </tr></thead>
+            <tbody>
+              {taches.map((t) => (
+                <tr key={t.id} className="border-t border-[var(--border)]">
+                  <TD>{nomProduit(t.produit)}</TD>
+                  <TD>{t.bin_source_code ?? '—'}</TD><TD>{t.bin_cible_code}</TD>
+                  <TD>{t.quantite}</TD><TD>{STATUTS_TACHE[t.statut] ?? t.statut}</TD>
+                  <TD>
+                    {t.statut === 'a_faire' && (
+                      <Button size="sm" disabled={enCours === `exec-${t.id}`}
+                        onClick={() => executer(t.id)}>
+                        Exécuter
+                      </Button>
+                    )}
+                  </TD>
+                </tr>
+              ))}
+            </tbody>
+          </TableauDefilant>
         )}
       </Section>
 
@@ -267,47 +264,45 @@ export default function CasiersPage() {
           <Button type="submit" disabled={enCours === 'seuil'}>Ajouter le seuil</Button>
         </form>
         {seuils.length === 0 ? <Vide>Aucun seuil défini.</Vide> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[32rem]">
-              <thead><tr>
-                <TH>Casier</TH><TH>Produit</TH><TH>Seuil</TH><TH>Cible</TH><TH>Actif</TH>
-                <TH><span className="sr-only">Actions</span></TH>
-              </tr></thead>
-              <tbody>
-                {seuils.map((s) => (
-                  <tr key={s.id} className="border-t border-[var(--border)]">
-                    <TD>{s.bin_code}</TD><TD>{nomProduit(s.produit)}</TD>
-                    <TD>{s.seuil}</TD><TD>{s.quantite_cible ?? '—'}</TD>
-                    <TD>{s.actif ? 'Oui' : 'Non'}</TD>
-                    <TD>
-                      {confirmeSeuil === s.id ? (
-                        <span className="flex gap-1">
-                          <Button size="sm" variant="destructive" onClick={() => supprimerSeuil(s.id)}>
-                            Confirmer
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setConfirmeSeuil(null)}>
-                            Annuler
-                          </Button>
-                        </span>
-                      ) : (
-                        <span className="flex gap-1">
-                          <Button size="sm" variant="outline"
-                            onClick={() => geste(`act-${s.id}`,
-                              () => entrepotCasiersApi.updateSeuil(s.id, { actif: !s.actif }),
-                              'Modification impossible.')}>
-                            {s.actif ? 'Désactiver' : 'Activer'}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setConfirmeSeuil(s.id)}>
-                            Supprimer
-                          </Button>
-                        </span>
-                      )}
-                    </TD>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[32rem]">
+            <thead><tr>
+              <TH>Casier</TH><TH>Produit</TH><TH>Seuil</TH><TH>Cible</TH><TH>Actif</TH>
+              <TH><span className="sr-only">Actions</span></TH>
+            </tr></thead>
+            <tbody>
+              {seuils.map((s) => (
+                <tr key={s.id} className="border-t border-[var(--border)]">
+                  <TD>{s.bin_code}</TD><TD>{nomProduit(s.produit)}</TD>
+                  <TD>{s.seuil}</TD><TD>{s.quantite_cible ?? '—'}</TD>
+                  <TD>{s.actif ? 'Oui' : 'Non'}</TD>
+                  <TD>
+                    {confirmeSeuil === s.id ? (
+                      <span className="flex gap-1">
+                        <Button size="sm" variant="destructive" onClick={() => supprimerSeuil(s.id)}>
+                          Confirmer
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmeSeuil(null)}>
+                          Annuler
+                        </Button>
+                      </span>
+                    ) : (
+                      <span className="flex gap-1">
+                        <Button size="sm" variant="outline"
+                          onClick={() => geste(`act-${s.id}`,
+                            () => entrepotCasiersApi.updateSeuil(s.id, { actif: !s.actif }),
+                            'Modification impossible.')}>
+                          {s.actif ? 'Désactiver' : 'Activer'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setConfirmeSeuil(s.id)}>
+                          Supprimer
+                        </Button>
+                      </span>
+                    )}
+                  </TD>
+                </tr>
+              ))}
+            </tbody>
+          </TableauDefilant>
         )}
       </Section>
 
@@ -326,21 +321,19 @@ export default function CasiersPage() {
 
       <Section id="reslotting" titre="Suggestions de reslotting">
         {reslotting.length === 0 ? <Vide>Aucune suggestion.</Vide> : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[32rem]">
-              <thead><tr>
-                <TH>Produit</TH><TH>Classe</TH><TH>Casier actuel</TH><TH>Casier suggéré</TH><TH>Quantité</TH>
-              </tr></thead>
-              <tbody>
-                {reslotting.map((r) => (
-                  <tr key={r.produit_id} className="border-t border-[var(--border)]">
-                    <TD>{r.produit_nom}</TD><TD>{r.classe_abc}</TD>
-                    <TD>{r.bin_actuel_code}</TD><TD>{r.bin_suggere_code}</TD><TD>{r.quantite}</TD>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[32rem]">
+            <thead><tr>
+              <TH>Produit</TH><TH>Classe</TH><TH>Casier actuel</TH><TH>Casier suggéré</TH><TH>Quantité</TH>
+            </tr></thead>
+            <tbody>
+              {reslotting.map((r) => (
+                <tr key={r.produit_id} className="border-t border-[var(--border)]">
+                  <TD>{r.produit_nom}</TD><TD>{r.classe_abc}</TD>
+                  <TD>{r.bin_actuel_code}</TD><TD>{r.bin_suggere_code}</TD><TD>{r.quantite}</TD>
+                </tr>
+              ))}
+            </tbody>
+          </TableauDefilant>
         )}
       </Section>
     </div>

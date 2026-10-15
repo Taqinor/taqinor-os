@@ -30,6 +30,7 @@ import { frenchError } from '../../lib/frenchError'
 import { useServerFieldErrors } from '../../hooks/useServerFieldErrors'
 import { parsePastedAmount } from '../../hooks/usePasteClean'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 let _keyCounter = 0
 const newKey = () => ++_keyCounter
@@ -597,8 +598,8 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
             {/* VX184 — même comportement mobile que le générateur : `.lines-table`
                 bascule en cartes empilées sous 768px via `data-label`
                 (index.css ~2264-2296), au lieu du scroll horizontal permanent. */}
-            <div className="lines-table-wrap">
-              <table className="lines-table" ref={linesTableRef}>
+            <TableauLignes enveloppe="lines-table-wrap" className="lines-table" ref={linesTableRef}
+              tete={(
                 <thead>
                   <tr>
                     <th style={{ minWidth: 160 }}>Produit</th>
@@ -611,103 +612,101 @@ export default function FactureForm({ facture = null, onClose, onSaved }) {
                     <th className="col-del" />
                   </tr>
                 </thead>
-                <tbody>
-                  {lines.map(l => {
-                    const lineTotal =
-                      (parseFloat(l.quantite)      || 0) *
-                      (parseFloat(l.prix_unitaire) || 0) *
-                      (1 - (parseFloat(l.remise)   || 0) / 100)
-                    return (
-                      <tr key={l._key} data-line-key={l._key}>
-                        <td data-label="Produit">
-                          {/* VX91 — picker partagé (recherche + prix), même
-                              composant que DevisForm/DevisGenerator : fin du
-                              <Select> natif non filtrable sur 50+ SKU. */}
-                          {horsBrouillon ? (
-                            <span className="text-xs">
-                              {produits.find(p => String(p.id) === String(l.produit))?.nom ?? l.designation}
-                            </span>
-                          ) : (
-                          <ProduitPicker
-                            produits={produits}
-                            value={l.produit ? String(l.produit) : ''}
-                            onChange={v => onProduitChange(l._key, v)}
-                            // VX238(c) — choisir un produit avance directement
-                            // le focus sur la Qté de CETTE ligne (réutilise
-                            // data-line-key, VX90) au lieu de rendre le focus
-                            // au bouton déclencheur.
-                            onPicked={() => {
-                              document
-                                .querySelector(`tr[data-line-key="${l._key}"] [data-role="line-qty"]`)
-                                ?.focus()
-                            }}
-                          />
-                          )}
-                        </td>
-                        <td data-label="Désignation">
-                          <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
-                                 disabled={horsBrouillon}
-                                 onChange={e => setLine(l._key, 'designation', e.target.value)}
-                                 placeholder="Désignation" />
-                          {/* AFAC70 — motif serveur de l'échec de CETTE ligne. */}
-                          {lineErrors[l._key] && (
-                            <p role="alert" data-line-error={l._key}
-                               className="m-0 mt-1 text-xs text-destructive">
-                              {lineErrors[l._key]}
-                            </p>
-                          )}
-                        </td>
-                        <td data-label="Qté">
-                          <Input type="number" min="0.01" step="0.01" data-role="line-qty" disabled={horsBrouillon}
-                                 className="h-[var(--control-h-sm)] text-right text-xs"
-                                 value={l.quantite}
-                                 onChange={e => setLine(l._key, 'quantite', e.target.value)} />
-                        </td>
-                        <td data-label="Prix HT (DH)">
-                          <Input type="number" min="0" step="0.01" disabled={horsBrouillon}
-                                 className="h-[var(--control-h-sm)] text-right text-xs"
-                                 value={l.prix_unitaire}
-                                 onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)}
-                                 // VX237 — montant collé d'Excel ("12 500,00",
-                                 // "3 200 DH"...) nettoyé au lieu de tomber
-                                 // brut dans le champ number.
-                                 onPaste={e => {
-                                   const clean = parsePastedAmount(e.clipboardData?.getData('text'))
-                                   if (clean == null) return
-                                   e.preventDefault()
-                                   setLine(l._key, 'prix_unitaire', clean)
-                                 }} />
-                        </td>
-                        <td data-label="Rem. %">
-                          <Input type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
-                                 className="h-[var(--control-h-sm)] text-right text-xs"
-                                 value={l.remise}
-                                 onChange={e => setLine(l._key, 'remise', e.target.value)} />
-                        </td>
-                        <td data-label="TVA %">
-                          <Input type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
-                                 className="h-[var(--control-h-sm)] text-right text-xs"
-                                 value={l.taux_tva}
-                                 placeholder={String(tva)}
-                                 title="Vide = taux global de la facture"
-                                 onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
-                        </td>
-                        <td className="line-total" data-label="Total HT">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
-                        <td>
-                          {!horsBrouillon && lines.length > 1 && (
-                            <IconButton type="button" label="Supprimer la ligne" size="sm"
-                                        className="text-destructive hover:bg-destructive/10"
-                                        onClick={() => removeLine(l._key)}>
-                              <Trash2 />
-                            </IconButton>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {lines.map(l => {
+                const lineTotal =
+                  (parseFloat(l.quantite)      || 0) *
+                  (parseFloat(l.prix_unitaire) || 0) *
+                  (1 - (parseFloat(l.remise)   || 0) / 100)
+                return (
+                  <tr key={l._key} data-line-key={l._key}>
+                    <td data-label="Produit">
+                      {/* VX91 — picker partagé (recherche + prix), même
+                          composant que DevisForm/DevisGenerator : fin du
+                          <Select> natif non filtrable sur 50+ SKU. */}
+                      {horsBrouillon ? (
+                        <span className="text-xs">
+                          {produits.find(p => String(p.id) === String(l.produit))?.nom ?? l.designation}
+                        </span>
+                      ) : (
+                      <ProduitPicker
+                        produits={produits}
+                        value={l.produit ? String(l.produit) : ''}
+                        onChange={v => onProduitChange(l._key, v)}
+                        // VX238(c) — choisir un produit avance directement
+                        // le focus sur la Qté de CETTE ligne (réutilise
+                        // data-line-key, VX90) au lieu de rendre le focus
+                        // au bouton déclencheur.
+                        onPicked={() => {
+                          document
+                            .querySelector(`tr[data-line-key="${l._key}"] [data-role="line-qty"]`)
+                            ?.focus()
+                        }}
+                      />
+                      )}
+                    </td>
+                    <td data-label="Désignation">
+                      <Input className="h-[var(--control-h-sm)] text-xs" value={l.designation}
+                             disabled={horsBrouillon}
+                             onChange={e => setLine(l._key, 'designation', e.target.value)}
+                             placeholder="Désignation" />
+                      {/* AFAC70 — motif serveur de l'échec de CETTE ligne. */}
+                      {lineErrors[l._key] && (
+                        <p role="alert" data-line-error={l._key}
+                           className="m-0 mt-1 text-xs text-destructive">
+                          {lineErrors[l._key]}
+                        </p>
+                      )}
+                    </td>
+                    <td data-label="Qté">
+                      <Input type="number" min="0.01" step="0.01" data-role="line-qty" disabled={horsBrouillon}
+                             className="h-[var(--control-h-sm)] text-right text-xs"
+                             value={l.quantite}
+                             onChange={e => setLine(l._key, 'quantite', e.target.value)} />
+                    </td>
+                    <td data-label="Prix HT (DH)">
+                      <Input type="number" min="0" step="0.01" disabled={horsBrouillon}
+                             className="h-[var(--control-h-sm)] text-right text-xs"
+                             value={l.prix_unitaire}
+                             onChange={e => setLine(l._key, 'prix_unitaire', e.target.value)}
+                             // VX237 — montant collé d'Excel ("12 500,00",
+                             // "3 200 DH"...) nettoyé au lieu de tomber
+                             // brut dans le champ number.
+                             onPaste={e => {
+                               const clean = parsePastedAmount(e.clipboardData?.getData('text'))
+                               if (clean == null) return
+                               e.preventDefault()
+                               setLine(l._key, 'prix_unitaire', clean)
+                             }} />
+                    </td>
+                    <td data-label="Rem. %">
+                      <Input type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
+                             className="h-[var(--control-h-sm)] text-right text-xs"
+                             value={l.remise}
+                             onChange={e => setLine(l._key, 'remise', e.target.value)} />
+                    </td>
+                    <td data-label="TVA %">
+                      <Input type="number" min="0" max="100" step="0.01" disabled={horsBrouillon}
+                             className="h-[var(--control-h-sm)] text-right text-xs"
+                             value={l.taux_tva}
+                             placeholder={String(tva)}
+                             title="Vide = taux global de la facture"
+                             onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
+                    </td>
+                    <td className="line-total" data-label="Total HT">{formatMAD(lineTotal, { withSymbol: false })} DH</td>
+                    <td>
+                      {!horsBrouillon && lines.length > 1 && (
+                        <IconButton type="button" label="Supprimer la ligne" size="sm"
+                                    className="text-destructive hover:bg-destructive/10"
+                                    onClick={() => removeLine(l._key)}>
+                          <Trash2 />
+                        </IconButton>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </TableauLignes>
           </section>
 
           {/* ── Totaux ── */}

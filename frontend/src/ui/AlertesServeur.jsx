@@ -11,6 +11,12 @@ export function AlerteErreur({ error }) {
   )
 }
 
+/** Ligne d'erreur serveur en texte simple (sans cadre), rendue seulement si `error` est non vide. */
+export function ErreurTexte({ error }) {
+  if (!error) return null
+  return <p className="text-sm text-destructive">{error}</p>
+}
+
 /** Bandeau d'information (succès), rendu seulement si `info` est non vide. */
 export function InfoSucces({ info }) {
   if (!info) return null

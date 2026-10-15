@@ -29,19 +29,7 @@ import {
 } from './scene3d';
 import { buildAreasFromShape } from './zones';
 import { geodesicAreaM2, type LngLat } from '../../lib/roof';
-
-/** Contour RECTANGULAIRE (même convention que ctx.vertices : anneau ouvert, sans point de
- *  fermeture dupliqué), côtés widthM (E-O) × depthM (N-S), centré sur (lng0, lat0). */
-function rectRing(widthM: number, depthM: number, lng0 = -7.6, lat0 = 33.5): LngLat[] {
-  const dLat = depthM / 2 / 111320;
-  const dLng = widthM / 2 / (111320 * Math.cos((lat0 * Math.PI) / 180));
-  return [
-    [lng0 - dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 + dLat],
-    [lng0 - dLng, lat0 + dLat],
-  ];
-}
+import { rectRing } from './harnaisAtelier';
 
 const sumAreaM2 = (pans: RoofShapePan[]): number => pans.reduce((s, p) => s + geodesicAreaM2(p.vertices), 0);
 

@@ -68,6 +68,7 @@ import ModelesBrandesSection from './ModelesBrandesSection'
 import ExportsPlanifiesSection from './ExportsPlanifiesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
+import { slugifyCode, erreurServeurLisible } from '../../lib/champsPerso'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
@@ -267,18 +268,6 @@ export default function ParametresEntreprise() {
   const [cfEdit, setCfEdit] = useState(null)
   const loadCfDefs = (mod) => toutesLesPages((params) => customFieldsApi.getDefs(mod, params))
     .then(setCfDefs).catch(() => {})
-  const slugifyCode = (s) => s.trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
-  // Message d'erreur serveur lisible (detail, ou première erreur de champ FR).
-  const cfErr = (e, fallback) => {
-    const d = e?.response?.data
-    if (!d) return fallback
-    if (typeof d === 'string') return d
-    if (d.detail) return d.detail
-    const first = Object.values(d)[0]
-    return Array.isArray(first) ? first[0] : (first || fallback)
-  }
   const addCf = async () => {
     const libelle = newCf.libelle.trim()
     if (!libelle) return
@@ -294,7 +283,7 @@ export default function ParametresEntreprise() {
         visible_liste: false,
       })
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(cfErr(e, 'Ajout impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Ajout impossible.')) }
   }
   // L809/L811/L812 — ouvre/ferme l'éditeur inline d'un champ existant.
   const openCfEdit = (d) => {
@@ -319,14 +308,14 @@ export default function ParametresEntreprise() {
       })
       cancelCfEdit()
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Modification impossible.')) }
   }
   // L810 — bascule actif/inactif sans perdre custom_data.
   const toggleCfActif = async (d) => {
     try {
       await customFieldsApi.saveDef(d.id, { actif: !d.actif })
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Modification impossible.')) }
   }
   // L813 — réordonne le champ d'un cran (haut/bas) et persiste l'ordre.
   const moveCf = async (d, dir) => {
@@ -339,7 +328,7 @@ export default function ParametresEntreprise() {
     try {
       await customFieldsApi.reorder(ordered.map(x => x.id))
       loadCfDefs(cfModule)
-    } catch (e) { toast.error(cfErr(e, 'Réordonnancement impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Réordonnancement impossible.')) }
   }
   const delCf = async (d) => {
     if (!(await confirmerSuppression({ title: `Supprimer le champ « ${d.libelle} » ?` }))) return

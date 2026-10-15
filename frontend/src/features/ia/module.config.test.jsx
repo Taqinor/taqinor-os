@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { verifierEntreeMenu } from '../../test/navItemModule'
 
 /* ODY23 — nouveau module.config « Intelligence » (`key: 'ia'`, absent
    jusqu'ici). Vérifie : la clé, le cockpit `/ia` déclaré en route ET en
@@ -25,11 +26,7 @@ describe('ia — module.config (ODY23)', () => {
     ['/ia/actions', 'Actions IA', ['normal', 'responsable', 'admin']],
   ])('déclare %s en entrée de menu "%s" gatée %j (route déjà enregistrée ailleurs)', async (path, label, roles) => {
     const { default: config } = await import('./module.config.jsx')
-    const navItem = config.nav.items.find((i) => i.to === path)
-    expect(navItem).toBeTruthy()
-    expect(navItem.label).toBe(label)
-    expect(navItem.roles).toEqual(roles)
-    expect(navItem.icon).toBeTruthy()
+    verifierEntreeMenu(config, path, label, roles)
   })
 
   it('ne redéclare PAS de route pour /ia/ocr, /ia/agent, /ia/actions (déjà dans router/index.jsx)', async () => {

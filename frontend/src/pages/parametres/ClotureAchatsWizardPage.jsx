@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CalendarClock, FileWarning } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import { Button, Card, CardContent } from '../../ui'
+import { Button, CarteContenu } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement } from './EtatsSection'
@@ -44,79 +44,73 @@ export default function ClotureAchatsWizardPage() {
       </div>
 
       <div className="flex flex-col gap-4">
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
-              Factures en exception 3-voies non résolues ({data.nb_factures_en_exception})
-            </h2>
-            {data.nb_factures_en_exception === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune facture en exception ce mois-ci.</p>
-            ) : (
-              <ul className="flex flex-col gap-1 text-sm">
-                {data.factures_en_exception.map((f) => (
-                  <li key={f.id} className="flex items-center justify-between gap-2">
-                    <span>{f.reference} — {f.fournisseur_nom || '—'} ({f.montant_ttc} MAD)</span>
-                    <Button variant="outline" size="sm"
-                            onClick={() => navigate('/stock/factures-fournisseur', { state: { ouvrirFactureId: f.id } })}>
-                      Résoudre
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <CarteContenu contenu="flex flex-col gap-3 pt-4 sm:pt-5">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
+            Factures en exception 3-voies non résolues ({data.nb_factures_en_exception})
+          </h2>
+          {data.nb_factures_en_exception === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune facture en exception ce mois-ci.</p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-sm">
+              {data.factures_en_exception.map((f) => (
+                <li key={f.id} className="flex items-center justify-between gap-2">
+                  <span>{f.reference} — {f.fournisseur_nom || '—'} ({f.montant_ttc} MAD)</span>
+                  <Button variant="outline" size="sm"
+                          onClick={() => navigate('/stock/factures-fournisseur', { state: { ouvrirFactureId: f.id } })}>
+                    Résoudre
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CarteContenu>
 
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <CalendarClock className="size-4 text-muted-foreground" aria-hidden="true" />
-              Demandes d&apos;achat en attente trop anciennes ({data.nb_demandes_en_attente_anciennes})
-            </h2>
-            {data.nb_demandes_en_attente_anciennes === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aucune demande en attente depuis plus de {data.seuil_jours} jours.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1 text-sm">
-                {data.demandes_en_attente_anciennes.map((d) => (
-                  <li key={d.id} className="flex items-center justify-between gap-2">
-                    <span>{d.reference} — {d.objet} ({d.jours_en_attente} j)</span>
-                    <Button variant="outline" size="sm"
-                            onClick={() => navigate('/chantiers/demandes-achat', { state: { ouvrirDemandeId: d.id } })}>
-                      Traiter
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <CarteContenu contenu="flex flex-col gap-3 pt-4 sm:pt-5">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            <CalendarClock className="size-4 text-muted-foreground" aria-hidden="true" />
+            Demandes d&apos;achat en attente trop anciennes ({data.nb_demandes_en_attente_anciennes})
+          </h2>
+          {data.nb_demandes_en_attente_anciennes === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aucune demande en attente depuis plus de {data.seuil_jours} jours.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-sm">
+              {data.demandes_en_attente_anciennes.map((d) => (
+                <li key={d.id} className="flex items-center justify-between gap-2">
+                  <span>{d.reference} — {d.objet} ({d.jours_en_attente} j)</span>
+                  <Button variant="outline" size="sm"
+                          onClick={() => navigate('/chantiers/demandes-achat', { state: { ouvrirDemandeId: d.id } })}>
+                    Traiter
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CarteContenu>
 
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <FileWarning className="size-4 text-muted-foreground" aria-hidden="true" />
-              Documents fournisseur expirés ({data.nb_documents_expires})
-            </h2>
-            {data.nb_documents_expires === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun document fournisseur expiré.</p>
-            ) : (
-              <ul className="flex flex-col gap-1 text-sm">
-                {data.documents_expires.map((doc) => (
-                  <li key={doc.document_id} className="flex items-center justify-between gap-2">
-                    <span>{doc.fournisseur_nom} — {doc.type_document_display}</span>
-                    <Button variant="outline" size="sm"
-                            onClick={() => navigate('/stock/fournisseurs', { state: { ouvrirFournisseurId: doc.fournisseur_id } })}>
-                      Voir
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        <CarteContenu contenu="flex flex-col gap-3 pt-4 sm:pt-5">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            <FileWarning className="size-4 text-muted-foreground" aria-hidden="true" />
+            Documents fournisseur expirés ({data.nb_documents_expires})
+          </h2>
+          {data.nb_documents_expires === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun document fournisseur expiré.</p>
+          ) : (
+            <ul className="flex flex-col gap-1 text-sm">
+              {data.documents_expires.map((doc) => (
+                <li key={doc.document_id} className="flex items-center justify-between gap-2">
+                  <span>{doc.fournisseur_nom} — {doc.type_document_display}</span>
+                  <Button variant="outline" size="sm"
+                          onClick={() => navigate('/stock/fournisseurs', { state: { ouvrirFournisseurId: doc.fournisseur_id } })}>
+                    Voir
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CarteContenu>
       </div>
     </div>
   )

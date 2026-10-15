@@ -5,6 +5,7 @@ import { FileText } from 'lucide-react'
 import { Button, Card, CardContent, Input } from '../../../ui'
 import { GenCardHeader } from './CarteMetrique'
 import { CHEMINS_AUTORISES, cheminNonLu } from '../../../features/ventes/quote/overrides'
+import { TableauLignes } from '../../../ui/TableauDefilant'
 
 export default function PanneauSurcharges({
   editDevis, estAdmin, ovChemin, setOvChemin, ovValeur, setOvValeur, overridesBusy,
@@ -66,8 +67,8 @@ export default function PanneauSurcharges({
             {/* Bloc `effectif` : valeur AUTO vs valeur MANUELLE, côte à
                 côte — la déclaration devient visible, jamais tacite. */}
             {overridesReg?.effectif && Object.keys(overridesReg.effectif).length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs" data-testid="overrides-effectif-table">
+              <TableauLignes enveloppe="overflow-x-auto" className="w-full text-xs" data-testid="overrides-effectif-table"
+                tete={(
                   <thead>
                     <tr className="text-left text-muted-foreground">
                       <th className="pr-3 py-1">Chemin</th>
@@ -78,38 +79,36 @@ export default function PanneauSurcharges({
                       <th className="py-1" />
                     </tr>
                   </thead>
-                  <tbody>
-                    {Object.entries(overridesReg.effectif).map(([chemin, v]) => (
-                      <tr key={chemin} className="border-t border-border"
-                          data-testid={`overrides-effectif-row-${chemin}`}>
-                        <td className="pr-3 py-1 font-mono">
-                          {chemin}
-                          {v.non_lu && (
-                            <span className="ml-1 font-sans text-muted-foreground"
-                                  data-testid={`overrides-non-lu-${chemin}`}>
-                              — sans effet sur le document
-                            </span>
-                          )}
-                        </td>
-                        <td className="pr-3 py-1">{v.auto == null ? '—' : JSON.stringify(v.auto)}</td>
-                        <td className="pr-3 py-1">{v.manuel == null ? '—' : JSON.stringify(v.manuel)}</td>
-                        <td className="pr-3 py-1 font-medium">{v.effectif == null ? '—' : JSON.stringify(v.effectif)}</td>
-                        <td className="pr-3 py-1">{v.source}</td>
-                        <td className="py-1">
-                          {v.source === 'manuel' && (
-                            <Button type="button" size="sm" variant="ghost"
-                                    data-testid={`overrides-regenerer-${chemin}`}
-                                    disabled={overridesBusy}
-                                    onClick={() => regenererOverride(chemin)}>
-                              Régénérer
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                )}>
+                {Object.entries(overridesReg.effectif).map(([chemin, v]) => (
+                  <tr key={chemin} className="border-t border-border"
+                      data-testid={`overrides-effectif-row-${chemin}`}>
+                    <td className="pr-3 py-1 font-mono">
+                      {chemin}
+                      {v.non_lu && (
+                        <span className="ml-1 font-sans text-muted-foreground"
+                              data-testid={`overrides-non-lu-${chemin}`}>
+                          — sans effet sur le document
+                        </span>
+                      )}
+                    </td>
+                    <td className="pr-3 py-1">{v.auto == null ? '—' : JSON.stringify(v.auto)}</td>
+                    <td className="pr-3 py-1">{v.manuel == null ? '—' : JSON.stringify(v.manuel)}</td>
+                    <td className="pr-3 py-1 font-medium">{v.effectif == null ? '—' : JSON.stringify(v.effectif)}</td>
+                    <td className="pr-3 py-1">{v.source}</td>
+                    <td className="py-1">
+                      {v.source === 'manuel' && (
+                        <Button type="button" size="sm" variant="ghost"
+                                data-testid={`overrides-regenerer-${chemin}`}
+                                disabled={overridesBusy}
+                                onClick={() => regenererOverride(chemin)}>
+                          Régénérer
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </TableauLignes>
             )}
           </CardContent>
         </Card>

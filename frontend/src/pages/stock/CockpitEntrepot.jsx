@@ -6,6 +6,7 @@ import { EnteteStock } from './EnteteStock'
 // NTI18N1 — rollout i18n : premier écran Stock migré (titre/sous-titre du cockpit).
 import { useT } from '../../i18n'
 import { frErrDetail as frErr } from '../../lib/frErr'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* NTWMS29 — Tableau de bord entrepôt (cockpit WMS).
 
@@ -140,8 +141,8 @@ export default function CockpitEntrepot() {
         <div className="grid gap-4 md:grid-cols-2">
           <Section icon={Boxes} titre="Remplissage par zone" compteur={zones.length}>
             {zones.length === 0 ? <Vide>Aucun casier déclaré.</Vide> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm"
+                tete={(
                   <thead>
                     <tr className="text-left text-[var(--muted-foreground)]">
                       <th className="py-1">Zone</th>
@@ -151,25 +152,23 @@ export default function CockpitEntrepot() {
                       <th>Taux</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {zones.map((z) => (
-                      <tr key={z.zone} className="border-t border-[var(--border)]">
-                        <td className="py-1">{z.zone}</td>
-                        <td>{z.nb_casiers}</td>
-                        <td>{z.occupe}</td>
-                        <td>{z.capacite ?? '—'}</td>
-                        <td>
-                          {z.taux_pct == null ? '—' : (
-                            <Badge tone={Number(z.taux_pct) >= 95 ? 'danger' : 'neutral'}>
-                              {z.taux_pct} %
-                            </Badge>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                )}>
+                {zones.map((z) => (
+                  <tr key={z.zone} className="border-t border-[var(--border)]">
+                    <td className="py-1">{z.zone}</td>
+                    <td>{z.nb_casiers}</td>
+                    <td>{z.occupe}</td>
+                    <td>{z.capacite ?? '—'}</td>
+                    <td>
+                      {z.taux_pct == null ? '—' : (
+                        <Badge tone={Number(z.taux_pct) >= 95 ? 'danger' : 'neutral'}>
+                          {z.taux_pct} %
+                        </Badge>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </TableauLignes>
             )}
             <div className="mt-3 border-t border-[var(--border)] pt-3">
               <p className="mb-2 text-xs text-[var(--muted-foreground)]">

@@ -3,6 +3,7 @@ import { Scale, Search } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { unwrapList } from '../../api/resource'
 import { formatMAD, formatNumber, formatRatio } from './adsengine'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    PUB52 — Comparateur côte-à-côte (« je coupe A ou B ? » sur un seul écran).
@@ -183,8 +184,8 @@ export default function ComparatorScreen() {
             ? <p data-testid="ae-comparator-need-more" style={{ color: '#64748b' }}>
                 Sélectionnez au moins {MIN_SELECTION} {source.label.toLowerCase()} pour comparer.</p>
             : (
-              <div style={{ overflowX: 'auto' }}>
-                <table className="data-table" data-testid="ae-comparator-table">
+              <TableauLignes enveloppeStyle={{ overflowX: 'auto' }} className="data-table" data-testid="ae-comparator-table"
+                tete={(
                   <thead>
                     <tr>
                       <th>Métrique</th>
@@ -195,36 +196,34 @@ export default function ComparatorScreen() {
                       ))}
                     </tr>
                   </thead>
-                  <tbody>
-                    {source.metrics.map(metric => {
-                      const { best, worst } = rowExtremes(metric, selected)
-                      return (
-                        <tr key={metric.key} data-testid={`ae-comparator-row-${metric.key}`}>
-                          <td>{metric.label}</td>
-                          {selected.map(e => {
-                            const raw = e[metric.key]
-                            const num = Number(raw)
-                            const isBest = best !== null && Number.isFinite(num) && num === best
-                            const isWorst = worst !== null && Number.isFinite(num) && num === worst
-                            return (
-                              <td key={e.id}
-                                data-testid={isBest ? `ae-comparator-best-${metric.key}-${e.id}`
-                                  : isWorst ? `ae-comparator-worst-${metric.key}-${e.id}` : undefined}
-                                style={{
-                                  background: isBest ? '#dcfce7' : isWorst ? '#fee2e2' : 'transparent',
-                                  color: isBest ? '#166534' : isWorst ? '#991b1b' : 'inherit',
-                                  fontWeight: (isBest || isWorst) ? 600 : 400,
-                                }}>
-                                {fmtValue(metric.fmt, raw)}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                )}>
+                {source.metrics.map(metric => {
+                  const { best, worst } = rowExtremes(metric, selected)
+                  return (
+                    <tr key={metric.key} data-testid={`ae-comparator-row-${metric.key}`}>
+                      <td>{metric.label}</td>
+                      {selected.map(e => {
+                        const raw = e[metric.key]
+                        const num = Number(raw)
+                        const isBest = best !== null && Number.isFinite(num) && num === best
+                        const isWorst = worst !== null && Number.isFinite(num) && num === worst
+                        return (
+                          <td key={e.id}
+                            data-testid={isBest ? `ae-comparator-best-${metric.key}-${e.id}`
+                              : isWorst ? `ae-comparator-worst-${metric.key}-${e.id}` : undefined}
+                            style={{
+                              background: isBest ? '#dcfce7' : isWorst ? '#fee2e2' : 'transparent',
+                              color: isBest ? '#166534' : isWorst ? '#991b1b' : 'inherit',
+                              fontWeight: (isBest || isWorst) ? 600 : 400,
+                            }}>
+                            {fmtValue(metric.fmt, raw)}
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  )
+                })}
+              </TableauLignes>
             )}
         </>
       )}

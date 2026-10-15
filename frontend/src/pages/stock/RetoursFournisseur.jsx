@@ -16,6 +16,8 @@ import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { AlerteErreurStock } from './BandeauxListeStock'
 import CellulesProduitQuantite from './CellulesProduitQuantite'
+import { AlerteErreur } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 // L744 — Liste consultable des RETOURS FOURNISSEUR (RetourFournisseurViewSet
 // existait sans écran). Référence RF, fournisseur, statut, date + consultation
@@ -81,8 +83,8 @@ export function RetourDetail({ retour, onClose, onAvoirGenere, peutPayer = true 
           </p>
         )}
 
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[28rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[28rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Produit</th>
@@ -90,19 +92,17 @@ export function RetourDetail({ retour, onClose, onAvoirGenere, peutPayer = true 
                 <th className="px-3 py-2 text-left font-semibold">Motif</th>
               </tr>
             </thead>
-            <tbody>
-              {lignes.length === 0 && (
-                <tr><td colSpan={3} className="px-3 py-3 text-muted-foreground">Aucune ligne.</td></tr>
-              )}
-              {lignes.map((l) => (
-                <tr key={l.id} className="border-t border-border">
-                  <CellulesProduitQuantite l={l} />
-                  <td className="px-3 py-2">{l.motif || <span className="text-muted-foreground">—</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {lignes.length === 0 && (
+            <tr><td colSpan={3} className="px-3 py-3 text-muted-foreground">Aucune ligne.</td></tr>
+          )}
+          {lignes.map((l) => (
+            <tr key={l.id} className="border-t border-border">
+              <CellulesProduitQuantite l={l} />
+              <td className="px-3 py-2">{l.motif || <span className="text-muted-foreground">—</span>}</td>
+            </tr>
+          ))}
+        </TableauLignes>
 
         {/* WIR222/XPUR9 — génère un AvoirFournisseur brouillon pré-rempli. */}
         {avoirGenere && (
@@ -110,11 +110,7 @@ export function RetourDetail({ retour, onClose, onAvoirGenere, peutPayer = true 
             Avoir {avoirGenere.reference} généré ({avoirGenere.montant_ttc} TTC).
           </div>
         )}
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreur error={error} />
 
         <DialogFooter>
           {peutPayer && retour.statut === 'valide' && !avoirGenere && (

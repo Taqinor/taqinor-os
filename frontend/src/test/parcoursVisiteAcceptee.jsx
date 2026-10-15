@@ -8,16 +8,22 @@ import RelanceEtapeRow from '../features/crm/relances/RelanceEtapeRow'
    envoi ; « Date pas encore fixée » envoie l'issue serveur exacte. */
 const noop = () => {}
 
+/** « Fait » → « Visite acceptée » → « Confirmer » : la fenêtre de planification
+ *  s'affiche AVANT tout envoi (l'appelant vérifie qu'aucune API n'a été appelée). */
+export async function ouvrirPlanificationVisite() {
+  fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
+  expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+}
+
 export async function parcoursVisiteAcceptee(etape, onFait) {
   render(
     <RelanceEtapeRow
       etape={etape} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop}
     />,
   )
-  fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-  fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-  expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+  await ouvrirPlanificationVisite()
   expect(onFait).not.toHaveBeenCalled()
   fireEvent.click(screen.getByRole('button', { name: 'Date pas encore fixée' }))
   await waitFor(() => expect(onFait).toHaveBeenCalledWith(

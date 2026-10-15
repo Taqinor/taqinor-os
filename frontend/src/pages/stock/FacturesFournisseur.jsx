@@ -19,6 +19,8 @@ import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlo
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
 import { frErrForm } from '../../lib/frErr'
+import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
@@ -171,11 +173,7 @@ function NouvelleFacture({ fournisseurs, bons, onClose, onSaved }) {
                     onChange={(e) => setNote(e.target.value)} />
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreur error={error} />
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
@@ -337,8 +335,8 @@ export function FactureDetail({
         {/* Paiements existants */}
         <div className="flex flex-col gap-2">
           <span className="text-sm font-semibold">Paiements</span>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[24rem] text-sm">
+          <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[24rem] text-sm"
+            tete={(
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold">Date</th>
@@ -346,20 +344,18 @@ export function FactureDetail({
                   <th className="px-3 py-2 text-right font-semibold">Montant</th>
                 </tr>
               </thead>
-              <tbody>
-                {paiements.length === 0 && (
-                  <tr><td colSpan={3} className="px-3 py-3 text-muted-foreground">Aucun paiement.</td></tr>
-                )}
-                {paiements.map((p) => (
-                  <tr key={p.id} className="border-t border-border">
-                    <td className="px-3 py-2">{fmtDateFR(p.date_paiement || p.date_creation)}</td>
-                    <td className="px-3 py-2">{MODES[p.mode] || p.mode}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtMad(p.montant)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            )}>
+            {paiements.length === 0 && (
+              <tr><td colSpan={3} className="px-3 py-3 text-muted-foreground">Aucun paiement.</td></tr>
+            )}
+            {paiements.map((p) => (
+              <tr key={p.id} className="border-t border-border">
+                <td className="px-3 py-2">{fmtDateFR(p.date_paiement || p.date_creation)}</td>
+                <td className="px-3 py-2">{MODES[p.mode] || p.mode}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtMad(p.montant)}</td>
+              </tr>
+            ))}
+          </TableauLignes>
         </div>
 
         {/* AUDV04 (DRAFT165-112, XPUR6) — échéancier de la facture (tranches
@@ -370,8 +366,8 @@ export function FactureDetail({
             <span className="flex items-center gap-1.5 text-sm font-semibold">
               <CalendarClock className="size-4 text-muted-foreground" aria-hidden="true" /> Échéancier
             </span>
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[24rem] text-sm">
+            <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[24rem] text-sm"
+              tete={(
                 <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Échéance</th>
@@ -379,19 +375,17 @@ export function FactureDetail({
                     <th className="px-3 py-2 text-right font-semibold">Montant</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {facture.echeances.map((e) => (
-                    <tr key={e.id} className="border-t border-border">
-                      <td className="px-3 py-2">{fmtDateFR(e.date_echeance)}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {e.pourcentage != null ? `${e.pourcentage}%` : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{fmtMad(e.montant)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {facture.echeances.map((e) => (
+                <tr key={e.id} className="border-t border-border">
+                  <td className="px-3 py-2">{fmtDateFR(e.date_echeance)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {e.pourcentage != null ? `${e.pourcentage}%` : '—'}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtMad(e.montant)}</td>
+                </tr>
+              ))}
+            </TableauLignes>
           </div>
         )}
 
@@ -431,11 +425,7 @@ export function FactureDetail({
           </div>
         )}
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreur error={error} />
 
         <DialogFooter className="flex-wrap">
           {voitPrix && (
@@ -599,8 +589,8 @@ export default function FacturesFournisseur() {
       </div>
 
       {showAcomptes && acomptesOuverts.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[32rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[32rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">BCF</th>
@@ -610,33 +600,23 @@ export default function FacturesFournisseur() {
                 <th className="px-3 py-2 text-right font-semibold">Non consommé</th>
               </tr>
             </thead>
-            <tbody>
-              {acomptesOuverts.map((a) => (
-                <tr key={a.id} className="border-t border-border">
-                  <td className="px-3 py-2">{a.bon_commande_reference ?? '—'}</td>
-                  <td className="px-3 py-2">{a.fournisseur_nom ?? '—'}</td>
-                  <td className="px-3 py-2">{fmtDateFR(a.date_versement)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{fmtMad(a.montant)}</td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-warning">
-                    {fmtMad(a.montant_non_consomme)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {acomptesOuverts.map((a) => (
+            <tr key={a.id} className="border-t border-border">
+              <td className="px-3 py-2">{a.bon_commande_reference ?? '—'}</td>
+              <td className="px-3 py-2">{a.fournisseur_nom ?? '—'}</td>
+              <td className="px-3 py-2">{fmtDateFR(a.date_versement)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{fmtMad(a.montant)}</td>
+              <td className="px-3 py-2 text-right font-semibold tabular-nums text-warning">
+                {fmtMad(a.montant_non_consomme)}
+              </td>
+            </tr>
+          ))}
+        </TableauLignes>
       )}
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-      {info && (
-        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-          {info}
-        </div>
-      )}
+      <AlerteErreur error={error} />
+      <InfoSucces info={info} />
 
       <TableauStock items={items} columns={columns} loading={loading}
         searchPlaceholder="Rechercher (référence, fournisseur)…"

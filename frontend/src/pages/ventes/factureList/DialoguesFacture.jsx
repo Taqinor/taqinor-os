@@ -2,7 +2,6 @@
 // annulation, abandon du solde, retour client, consolidation, encaissement
 // groupé, aperçu WhatsApp) : JSX déplacé tel quel (move only) depuis
 // FactureList.jsx, qui le monte au même endroit — DOM inchangé.
-import { MessageCircle } from 'lucide-react'
 import {
   Button, Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -11,6 +10,8 @@ import {
 } from '../../../ui'
 import { formatMAD, toNumber } from '../../../lib/format'
 import { AnnulationFactureDialog } from './AnnulationFactureDialog'
+import { TableauLignes } from '../../../ui/TableauDefilant'
+import ApercuWhatsAppDialog from '../../../components/ApercuWhatsAppDialog'
 
 // ATOT36 — types d'avoir choisis à l'émission (contrat `avoir.json`) ; le
 // « retour » est posé par l'action retour-client, jamais ici.
@@ -63,8 +64,8 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
               ))}
             </fieldset>
             {(avoirTarget?.lignes?.length ?? 0) > 0 && (
-              <div className="overflow-x-auto">
-                <table className="data-table text-sm">
+              <TableauLignes enveloppe="overflow-x-auto" className="data-table text-sm"
+                tete={(
                   <thead>
                     <tr>
                       <th>Désignation</th>
@@ -72,25 +73,23 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                       <th className="ta-right">Qté à créditer</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {avoirTarget.lignes.map(l => (
-                      <tr key={l.id}>
-                        <td data-label="Désignation">{l.designation}</td>
-                        <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
-                        <td className="ta-right" data-label="Qté à créditer">
-                          <Input
-                            type="number" min="0" step="any"
-                            className="w-24"
-                            value={avoirQtes[l.id] ?? ''}
-                            max={l.quantite}
-                            onChange={e => setAvoirQtes(q => ({ ...q, [l.id]: e.target.value }))}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                )}>
+                {avoirTarget.lignes.map(l => (
+                  <tr key={l.id}>
+                    <td data-label="Désignation">{l.designation}</td>
+                    <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
+                    <td className="ta-right" data-label="Qté à créditer">
+                      <Input
+                        type="number" min="0" step="any"
+                        className="w-24"
+                        value={avoirQtes[l.id] ?? ''}
+                        max={l.quantite}
+                        onChange={e => setAvoirQtes(q => ({ ...q, [l.id]: e.target.value }))}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </TableauLignes>
             )}
           </div>
           <FormActions sticky={false}>
@@ -175,8 +174,8 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                 n’est possible ici (utilisez un avoir).
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="data-table text-sm">
+              <TableauLignes enveloppe="overflow-x-auto" className="data-table text-sm"
+                tete={(
                   <thead>
                     <tr>
                       <th>Désignation</th>
@@ -184,24 +183,22 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                       <th className="ta-right">Qté retournée</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {lignesRetournables.map(l => (
-                      <tr key={l.id}>
-                        <td data-label="Désignation">{l.designation}</td>
-                        <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
-                        <td className="ta-right" data-label="Qté retournée">
-                          <Input
-                            type="number" min="0" step="any" className="w-24"
-                            max={l.quantite}
-                            value={retourQtes[l.id] ?? ''}
-                            onChange={e => setRetourQtes(q => ({ ...q, [l.id]: e.target.value }))}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                )}>
+                {lignesRetournables.map(l => (
+                  <tr key={l.id}>
+                    <td data-label="Désignation">{l.designation}</td>
+                    <td className="ta-right tabular-nums" data-label="Qté facturée">{l.quantite}</td>
+                    <td className="ta-right" data-label="Qté retournée">
+                      <Input
+                        type="number" min="0" step="any" className="w-24"
+                        max={l.quantite}
+                        value={retourQtes[l.id] ?? ''}
+                        onChange={e => setRetourQtes(q => ({ ...q, [l.id]: e.target.value }))}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </TableauLignes>
             )}
           </div>
           <FormActions sticky={false}>
@@ -230,8 +227,8 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
           {consoliderDevis.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucun devis accepté disponible.</p>
           ) : (
-            <div className="max-h-72 overflow-y-auto">
-              <table className="data-table text-sm">
+            <TableauLignes enveloppe="max-h-72 overflow-y-auto" className="data-table text-sm"
+              tete={(
                 <thead>
                   <tr>
                     <th aria-label="Sélection" />
@@ -240,27 +237,25 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                     <th className="ta-right">Total TTC</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {consoliderDevis.map(d => (
-                    <tr key={d.id}>
-                      <td>
-                        <Checkbox
-                          checked={consoliderSel.includes(d.id)}
-                          aria-label={`Sélectionner le devis ${d.reference}`}
-                          onCheckedChange={(v) => setConsoliderSel(sel => (
-                            v ? [...sel, d.id] : sel.filter(x => x !== d.id)))}
-                        />
-                      </td>
-                      <td data-label="Référence">{d.reference}</td>
-                      <td data-label="Client">{d.client_nom ?? d.client}</td>
-                      <td className="ta-right tabular-nums" data-label="Total TTC">
-                        {formatMAD(toNumber(d.total_ttc ?? 0))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {consoliderDevis.map(d => (
+                <tr key={d.id}>
+                  <td>
+                    <Checkbox
+                      checked={consoliderSel.includes(d.id)}
+                      aria-label={`Sélectionner le devis ${d.reference}`}
+                      onCheckedChange={(v) => setConsoliderSel(sel => (
+                        v ? [...sel, d.id] : sel.filter(x => x !== d.id)))}
+                    />
+                  </td>
+                  <td data-label="Référence">{d.reference}</td>
+                  <td data-label="Client">{d.client_nom ?? d.client}</td>
+                  <td className="ta-right tabular-nums" data-label="Total TTC">
+                    {formatMAD(toNumber(d.total_ttc ?? 0))}
+                  </td>
+                </tr>
+              ))}
+            </TableauLignes>
           )}
           <FormActions sticky={false}>
             <Button type="button" variant="ghost" onClick={() => setConsoliderOpen(false)}>
@@ -317,8 +312,8 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                        onChange={e => setEncaissementForm(f => ({ ...f, reference: e.target.value }))} />
               </FormField>
             </div>
-            <div className="overflow-x-auto">
-              <table className="data-table text-sm">
+            <TableauLignes enveloppe="overflow-x-auto" className="data-table text-sm"
+              tete={(
                 <thead>
                   <tr>
                     <th>Facture</th>
@@ -326,26 +321,24 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
                     <th className="ta-right">Montant affecté</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {facturesEncaissables.map(f => (
-                    <tr key={f.id}>
-                      <td data-label="Facture">{f.reference}</td>
-                      <td className="ta-right tabular-nums" data-label="Reste dû">
-                        {formatMAD(toNumber(f.montant_du ?? 0))}
-                      </td>
-                      <td className="ta-right" data-label="Montant affecté">
-                        <Input
-                          type="number" min="0" step="any" className="w-28"
-                          aria-label={`Montant affecté à ${f.reference}`}
-                          value={encaissementRepartition[f.id] ?? ''}
-                          onChange={e => setEncaissementRepartition(r => ({ ...r, [f.id]: e.target.value }))}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {facturesEncaissables.map(f => (
+                <tr key={f.id}>
+                  <td data-label="Facture">{f.reference}</td>
+                  <td className="ta-right tabular-nums" data-label="Reste dû">
+                    {formatMAD(toNumber(f.montant_du ?? 0))}
+                  </td>
+                  <td className="ta-right" data-label="Montant affecté">
+                    <Input
+                      type="number" min="0" step="any" className="w-28"
+                      aria-label={`Montant affecté à ${f.reference}`}
+                      value={encaissementRepartition[f.id] ?? ''}
+                      onChange={e => setEncaissementRepartition(r => ({ ...r, [f.id]: e.target.value }))}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </TableauLignes>
           </div>
           <FormActions sticky={false}>
             <Button type="button" variant="ghost" onClick={() => setEncaissementOpen(false)}>
@@ -361,33 +354,14 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
       </Dialog>
 
       {/* ── L852 — Aperçu du message WhatsApp avant ouverture de wa.me ── */}
-      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Aperçu du message WhatsApp — {waPreview?.reference}</DialogTitle>
-            <DialogDescription>
-              {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
-              {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
-            </DialogDescription>
-          </DialogHeader>
-          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
-               style={{ fontFamily: 'inherit' }}>
-            {waPreview?.message}
-          </pre>
-          {waPreview?.url && (
-            <p className="mt-2 break-words text-xs text-muted-foreground">
-              Lien public : {waPreview.url}
-            </p>
-          )}
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
-            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
-                    onClick={ouvrirWhatsApp}>
-              <MessageCircle /> Ouvrir WhatsApp
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
+      <ApercuWhatsAppDialog apercu={waPreview}
+        titre={<>Aperçu du message WhatsApp — {waPreview?.reference}</>}
+        description={<>
+          {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
+          {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
+        </>}
+        onFermer={() => setWaPreview(null)} onOuvrir={ouvrirWhatsApp}
+        pied={FormActions} piedProps={{ sticky: false }} />
     </>
   )
 }

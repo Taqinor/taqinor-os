@@ -67,6 +67,7 @@ export { PANEL2_WATT };
 
 const DEG2RAD = Math.PI / 180;
 import { WGS84_RADIUS } from './geo';
+import type { EvalProduction } from './estimatorBrainCommun';
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000;
 const PANEL_SIDE_GAP_M = 0.02;
@@ -94,22 +95,10 @@ export interface FlatConfig {
 }
 
 /** Évaluation PLAFONNÉE d'une config toit-plat sur ce toit (physique = V2). */
-export interface FlatConfigEval extends FlatConfig {
+export interface FlatConfigEval extends FlatConfig, EvalProduction {
   /** Azimut de visée résolu (180 = plein sud ; sinon aligné sur les arêtes). */
   azimuthDeg: number;
   setbackM: number;
-  /** Panneaux qui TIENNENT réellement à cette config (avant plafond besoin). */
-  fitCount: number;
-  /** Posés = min(besoin, fit) si besoin>0, sinon fit. */
-  placedCount: number;
-  kwc: number;
-  /** Production annuelle (kWh, face avant) des panneaux POSÉS. */
-  annualKwh: number;
-  pctOfTarget: number;
-  savingsLow: number;
-  savingsHigh: number;
-  /** Rendement par panneau (kWh/kWc/an) — départage à énergie égale. */
-  perPanelYield: number;
 }
 
 /** Épingles utilisateur pour la ré-optimisation contrainte. Axe absent = libre. */

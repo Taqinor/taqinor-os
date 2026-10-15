@@ -15,7 +15,8 @@ import { useEffect, useState } from 'react'
 import crmApi from '../../../api/crmApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
 import { Button, Spinner } from '../../../ui'
-import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
+import ModaleLead from './ModaleLead'
+import { nomLeadModale } from './nomLeadModale'
 
 export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
   const [loading, setLoading] = useState(true)
@@ -60,16 +61,11 @@ export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
     }
   }
 
-  const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
+  const leadNom = nomLeadModale(lead)
 
   return (
-    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
-    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique.
-    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
-      <div className="modal-header">
-        <h3 className="modal-title">Appliquer un plan d'activité</h3>
-        <button type="button" className="modal-close" onClick={onClose}>✕</button>
-      </div>
+    // VX182 — shell ResponsiveDialog (Escape + focus-trap + bottom-sheet mobile).
+    <ModaleLead titre="Appliquer un plan d'activité" onClose={onClose}>
 
         <div className="modal-body">
           {loading && (
@@ -139,6 +135,6 @@ export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
             <Button type="button" onClick={onClose}>Fermer</Button>
           )}
         </div>
-    </ResponsiveDialog>
+    </ModaleLead>
   )
 }

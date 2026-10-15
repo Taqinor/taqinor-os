@@ -18,6 +18,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const PAIEMENT_DIALOG_SRC = readFileSync(join(HERE, 'PaiementDialog.jsx'), 'utf8')
 const PRODUIT_FORM_SRC = readFileSync(join(HERE, '../stock/ProduitForm.jsx'), 'utf8')
 const CLIENT_FORM_SRC = readFileSync(join(HERE, '../crm/ClientForm.jsx'), 'utf8')
+// ENF19 — lecture/écriture du toggle extraites dans le hook partagé.
+const CREER_UN_AUTRE_HOOK_SRC = readFileSync(join(HERE, '../../hooks/useCreerUnAutre.js'), 'utf8')
 
 test('VX92 : le window.alert("Paiement enregistré.") est mort — remplacé par toast.success', () => {
   assert.doesNotMatch(PAIEMENT_DIALOG_SRC, /alert\('Paiement enregistré\.'\)/)
@@ -51,7 +53,9 @@ test('VX92 : paiement — ON garde le dialog ouvert (reset + refocus), OFF ferme
 
 test('VX92 : ProduitForm — toggle persisté, OFF par défaut, jamais affiché en édition', () => {
   assert.match(PRODUIT_FORM_SRC, /CREER_UN_AUTRE_KEY = 'taqinor\.produitForm\.creerUnAutre'/)
-  assert.match(PRODUIT_FORM_SRC, /useState\(\(\) => !isEdit && lireCreerUnAutre\(\)\)/)
+  assert.match(PRODUIT_FORM_SRC, /useCreerUnAutre\(CREER_UN_AUTRE_KEY, !isEdit/)
+  assert.match(CREER_UN_AUTRE_HOOK_SRC, /useState\(\(\) => actif && lireCreerUnAutre\(cle\)\)/)
+  assert.match(CREER_UN_AUTRE_HOOK_SRC, /window\.localStorage\.getItem\(cle\) === '1'/)
   assert.match(PRODUIT_FORM_SRC, /\{!isEdit && \(/)
 })
 
@@ -73,7 +77,7 @@ test('VX92 : ProduitForm — succès + toggle ON = reset formulaire + refocus no
 
 test('VX92 : ClientForm — toggle persisté, OFF par défaut, jamais affiché en édition', () => {
   assert.match(CLIENT_FORM_SRC, /CREER_UN_AUTRE_KEY = 'taqinor\.clientForm\.creerUnAutre'/)
-  assert.match(CLIENT_FORM_SRC, /useState\(\(\) => !isEdit && lireCreerUnAutre\(\)\)/)
+  assert.match(CLIENT_FORM_SRC, /useCreerUnAutre\(CREER_UN_AUTRE_KEY, !isEdit\)/)
 })
 
 test('VX92 : ClientForm — succès création + toggle ON = reset + refocus nom (pas onClose)', () => {

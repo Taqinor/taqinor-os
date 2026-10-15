@@ -3,10 +3,11 @@ import useFormulaireReglages from './useFormulaireReglages'
 import { Layers, Tags } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { PRODUCT_CATEGORIES } from '../../features/ventes/solar'
-import { Card, CardContent, Input, Label, Switch } from '../../ui'
+import { Input, Label, Switch, CarteContenu } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { frErrDetail as frErr } from '../../lib/frErr'
 import { PageChargement, PageReglages, FormulaireReglages } from './EtatsSection'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    PVMRQ (fondateur 18/08/2026) — Paramètres → Gammes & marques
@@ -116,105 +117,99 @@ export default function GammesMarquesPage() {
       }>
 
       <FormulaireReglages onSubmit={submit} saving={saving}>
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <Layers className="size-4 text-muted-foreground" aria-hidden="true" />
-              Offre à deux gammes
-            </h2>
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <Switch
-                id="gm-deux-gammes"
-                aria-label="Activer l'offre à deux gammes"
-                checked={form.deux_gammes}
-                onCheckedChange={(v) => setField('deux_gammes', v)}
-              />
-              Proposer systématiquement DEUX gammes de devis (une paire de
-              devis frères) plutôt qu'une seule
-            </label>
-            <p className="text-xs text-muted-foreground">
-              Désactivé par défaut — comportement historique (une seule
-              gamme, aucun choix affiché au client).
-            </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="gm-nom-essentielle">Libellé de la gamme Essentielle</Label>
-                <Input id="gm-nom-essentielle" value={form.nom_essentielle}
-                       onChange={(e) => setField('nom_essentielle', e.target.value)} />
-              </div>
-              <div>
-                <Label htmlFor="gm-nom-premium">Libellé de la gamme Premium</Label>
-                <Input id="gm-nom-premium" value={form.nom_premium}
-                       onChange={(e) => setField('nom_premium', e.target.value)} />
-              </div>
+        <CarteContenu contenu="flex flex-col gap-3 pt-4 sm:pt-5">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            <Layers className="size-4 text-muted-foreground" aria-hidden="true" />
+            Offre à deux gammes
+          </h2>
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <Switch
+              id="gm-deux-gammes"
+              aria-label="Activer l'offre à deux gammes"
+              checked={form.deux_gammes}
+              onCheckedChange={(v) => setField('deux_gammes', v)}
+            />
+            Proposer systématiquement DEUX gammes de devis (une paire de
+            devis frères) plutôt qu'une seule
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Désactivé par défaut — comportement historique (une seule
+            gamme, aucun choix affiché au client).
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="gm-nom-essentielle">Libellé de la gamme Essentielle</Label>
+              <Input id="gm-nom-essentielle" value={form.nom_essentielle}
+                     onChange={(e) => setField('nom_essentielle', e.target.value)} />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Renommer un libellé (ex. « Premium » → « Luxe ») ne touche à
-              aucune marque déjà réglée ci-dessous — les préférences restent
-              attachées à la gamme, pas à son nom affiché.
-            </p>
-          </CardContent>
-        </Card>
+            <div>
+              <Label htmlFor="gm-nom-premium">Libellé de la gamme Premium</Label>
+              <Input id="gm-nom-premium" value={form.nom_premium}
+                     onChange={(e) => setField('nom_premium', e.target.value)} />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Renommer un libellé (ex. « Premium » → « Luxe ») ne touche à
+            aucune marque déjà réglée ci-dessous — les préférences restent
+            attachées à la gamme, pas à son nom affiché.
+          </p>
+        </CarteContenu>
 
-        <Card>
-          <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
-            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-              <Tags className="size-4 text-muted-foreground" aria-hidden="true" />
-              Marques préférées par rôle
-            </h2>
+        <CarteContenu contenu="flex flex-col gap-3 pt-4 sm:pt-5">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            <Tags className="size-4 text-muted-foreground" aria-hidden="true" />
+            Marques préférées par rôle
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Un champ vide = aucune préférence (le générateur choisit comme
+            aujourd'hui). Une marque saisie GAGNE TOUJOURS : si aucun produit
+            de cette marque n'est en stock pour ce rôle, la ligne reste SANS
+            produit — jamais une autre marque à la place.
+          </p>
+          {!form.deux_gammes && (
             <p className="text-xs text-muted-foreground">
-              Un champ vide = aucune préférence (le générateur choisit comme
-              aujourd'hui). Une marque saisie GAGNE TOUJOURS : si aucun produit
-              de cette marque n'est en stock pour ce rôle, la ligne reste SANS
-              produit — jamais une autre marque à la place.
+              Offre à une seule gamme : seule la colonne « {form.nom_essentielle} »
+              est active. La colonne « {form.nom_premium} » reste enregistrée
+              mais inactive tant que « Offre à deux gammes » est désactivé.
             </p>
-            {!form.deux_gammes && (
-              <p className="text-xs text-muted-foreground">
-                Offre à une seule gamme : seule la colonne « {form.nom_essentielle} »
-                est active. La colonne « {form.nom_premium} » reste enregistrée
-                mais inactive tant que « Offre à deux gammes » est désactivé.
-              </p>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted-foreground">
-                    <th className="py-1 pr-3 font-medium">Rôle</th>
-                    <th className="py-1 pr-3 font-medium">{form.nom_essentielle}</th>
-                    {form.deux_gammes && (
-                      <th className="py-1 pr-3 font-medium">{form.nom_premium}</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {PRODUCT_CATEGORIES.map(([role, label]) => (
-                    <tr key={role} className="border-t border-border/60">
-                      <td className="py-1.5 pr-3 text-foreground">{label}</td>
-                      <td className="py-1.5 pr-3">
-                        <Input
-                          aria-label={`Marque ${form.nom_essentielle} — ${label}`}
-                          placeholder="Pas de préférence"
-                          value={form.marques[SLOT_ESSENTIELLE]?.[role] ?? ''}
-                          onChange={(e) => setMarque(SLOT_ESSENTIELLE, role, e.target.value)}
-                        />
-                      </td>
-                      {form.deux_gammes && (
-                        <td className="py-1.5 pr-3">
-                          <Input
-                            aria-label={`Marque ${form.nom_premium} — ${label}`}
-                            placeholder="Pas de préférence"
-                            value={form.marques[SLOT_PREMIUM]?.[role] ?? ''}
-                            onChange={(e) => setMarque(SLOT_PREMIUM, role, e.target.value)}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+          )}
+          <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm"
+            tete={(
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="py-1 pr-3 font-medium">Rôle</th>
+                  <th className="py-1 pr-3 font-medium">{form.nom_essentielle}</th>
+                  {form.deux_gammes && (
+                    <th className="py-1 pr-3 font-medium">{form.nom_premium}</th>
+                  )}
+                </tr>
+              </thead>
+            )}>
+            {PRODUCT_CATEGORIES.map(([role, label]) => (
+              <tr key={role} className="border-t border-border/60">
+                <td className="py-1.5 pr-3 text-foreground">{label}</td>
+                <td className="py-1.5 pr-3">
+                  <Input
+                    aria-label={`Marque ${form.nom_essentielle} — ${label}`}
+                    placeholder="Pas de préférence"
+                    value={form.marques[SLOT_ESSENTIELLE]?.[role] ?? ''}
+                    onChange={(e) => setMarque(SLOT_ESSENTIELLE, role, e.target.value)}
+                  />
+                </td>
+                {form.deux_gammes && (
+                  <td className="py-1.5 pr-3">
+                    <Input
+                      aria-label={`Marque ${form.nom_premium} — ${label}`}
+                      placeholder="Pas de préférence"
+                      value={form.marques[SLOT_PREMIUM]?.[role] ?? ''}
+                      onChange={(e) => setMarque(SLOT_PREMIUM, role, e.target.value)}
+                    />
+                  </td>
+                )}
+              </tr>
+            ))}
+          </TableauLignes>
+        </CarteContenu>
 
       </FormulaireReglages>
     </PageReglages>

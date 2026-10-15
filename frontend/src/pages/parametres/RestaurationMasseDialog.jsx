@@ -13,6 +13,7 @@ import {
   Button,
 } from '../../ui'
 import trashApi from '../../api/trashApi'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 export default function RestaurationMasseDialog({ open, onOpenChange, elements = [], onDone }) {
   const [busy, setBusy] = useState(false)
@@ -62,8 +63,8 @@ export default function RestaurationMasseDialog({ open, onOpenChange, elements =
         </DialogHeader>
 
         {!result && (
-          <div className="max-h-72 overflow-y-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
+          <TableauLignes enveloppe="max-h-72 overflow-y-auto rounded-lg border border-border" className="w-full text-sm"
+            tete={(
               <thead className="sticky top-0 bg-muted text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left">Type</th>
@@ -71,24 +72,22 @@ export default function RestaurationMasseDialog({ open, onOpenChange, elements =
                   <th className="px-3 py-2 text-left">Avertissement</th>
                 </tr>
               </thead>
-              <tbody>
-                {elements.map((el) => (
-                  <tr key={el.id} className="border-t border-border" data-testid="rmd-preview-row">
-                    <td className="px-3 py-2 font-medium">{el.type_libelle || '—'}</td>
-                    <td className="px-3 py-2">{el.libelle_snapshot || '—'}</td>
-                    <td className="px-3 py-2">
-                      {el.avertissement_restauration ? (
-                        <span className="flex items-center gap-1 text-warning">
-                          <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
-                          {el.avertissement_restauration}
-                        </span>
-                      ) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            )}>
+            {elements.map((el) => (
+              <tr key={el.id} className="border-t border-border" data-testid="rmd-preview-row">
+                <td className="px-3 py-2 font-medium">{el.type_libelle || '—'}</td>
+                <td className="px-3 py-2">{el.libelle_snapshot || '—'}</td>
+                <td className="px-3 py-2">
+                  {el.avertissement_restauration ? (
+                    <span className="flex items-center gap-1 text-warning">
+                      <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+                      {el.avertissement_restauration}
+                    </span>
+                  ) : '—'}
+                </td>
+              </tr>
+            ))}
+          </TableauLignes>
         )}
 
         {result && (

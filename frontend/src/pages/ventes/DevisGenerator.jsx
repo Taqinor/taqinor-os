@@ -59,8 +59,6 @@ import DevisOffresTailles from './DevisOffresTailles'
 // APX17 — confirmation maison + toasts (jamais une popup du système).
 import { useConfirmDialog } from '../../ui/confirm'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { searchCompanies } from '../../features/crm/companyLookup'
 import {
   // QJR100 — `IconButton` est parti avec la table de lignes (suppression d'une
@@ -137,6 +135,7 @@ import {
 import {
   CHEMINS_AUTORISES, valeursImposees,
 } from '../../features/ventes/quote/overrides'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 import { deuxValeursDim as selecteurDeuxValeursDim }
   from '../../features/ventes/quote/paireDimensionnement'
 // QJR426 (DR5) — les 13 cartes de métrique du générateur (bloc Aperçu de la
@@ -1770,9 +1769,7 @@ export default function DevisGenerator({
       {/* APX11 — en-tête unique VX28 + accent Ventes (le `<h2>` est conservé :
           les ancres e2e `getByRole('heading')` ne bougent pas). */}
       {!embedded && (
-        <PageHeader
-          style={VENTES_ACCENT_STYLE}
-          className="app-accent-rail"
+        <EnteteVentes
           icon={FileText}
           title="Générateur de Devis Solaire"
           subtitle={editDevis ? `Édition — ${editDevis.reference ?? 'devis existant'}` : 'Nouveau devis · tout est en TTC'}

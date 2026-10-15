@@ -15,18 +15,7 @@ import {
 } from './mesureUi';
 import { geodesicAreaM2, geodesicPerimeterM, type LngLat } from '../../lib/roof';
 import { type Ctx } from './context';
-
-/** Contour RECTANGULAIRE (même convention que le tracé du toit), côtés widthM × depthM. */
-function rectRing(widthM: number, depthM: number, lng0 = -7.6, lat0 = 33.5): LngLat[] {
-  const dLat = depthM / 2 / 111320;
-  const dLng = widthM / 2 / (111320 * Math.cos((lat0 * Math.PI) / 180));
-  return [
-    [lng0 - dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 + dLat],
-    [lng0 - dLng, lat0 + dLat],
-  ];
-}
+import { rectRing } from './harnaisAtelier';
 
 describe('CAL102 — segmentDistanceM / cumulativeDistanceM', () => {
   it('une mesure posée sur un côté du bâtiment donne la MÊME longueur que le tracé du toit, à 1 % près', () => {

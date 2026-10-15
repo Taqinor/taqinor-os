@@ -26,6 +26,7 @@ vi.mock('../../../lib/toast', () => ({ toastSuccess: vi.fn() }))
 import crmApi from '../../../api/crmApi'
 import { toastSuccess } from '../../../lib/toast'
 import PlanifierVisiteModal from './PlanifierVisiteModal'
+import { mockMatchMedia } from '../../../test/matchMedia'
 
 // jsdom n'implémente ni ResizeObserver (utilisé par Radix Dialog/Sheet) ni
 // scrollIntoView, et le Dialog responsive lit matchMedia : stubs minimaux —
@@ -44,18 +45,7 @@ if (typeof window.HTMLElement !== 'undefined'
     && !window.HTMLElement.prototype.scrollIntoView) {
   window.HTMLElement.prototype.scrollIntoView = () => {}
 }
-if (typeof window.matchMedia === 'undefined') {
-  window.matchMedia = (query) => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  })
-}
+if (typeof window.matchMedia === 'undefined') mockMatchMedia(false)
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

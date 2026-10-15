@@ -16,6 +16,7 @@ import { traiterGesteTouche } from '../../features/crm/relances/refusGeste'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toastError } from '../../lib/toast'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    MRY31 — Écran « Suivi des relances » (`/crm/relances`) : Meryem et sa
@@ -182,8 +183,8 @@ function MesureCadencePanel() {
           {creneaux.length === 0 ? (
             <p className="text-xs text-muted-foreground">—</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs" data-testid="mesure-taux-joint">
+            <TableauLignes enveloppe="overflow-x-auto" className="w-full text-xs" data-testid="mesure-taux-joint"
+              tete={(
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="py-1 pr-2">Touche</th>
@@ -195,26 +196,24 @@ function MesureCadencePanel() {
                     <th className="py-1 text-right">Taux de joint</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {creneaux.map((c) => (
-                    <tr
-                      key={`${c.ordre}-${c.canal}-${c.jour_semaine}-${c.heure}`}
-                      className="border-b border-border/50"
-                    >
-                      <td className="py-1 pr-2">{c.ordre}</td>
-                      <td className="py-1 pr-2">{CANAL_LABELS_MESURE[c.canal] ?? c.canal}</td>
-                      <td className="py-1 pr-2">{JOURS_SEMAINE_LABELS[c.jour_semaine] ?? c.jour_semaine}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums">{c.heure}h</td>
-                      <td className="py-1 pr-2 text-right tabular-nums">{c.closes}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums">{c.joints}</td>
-                      <td className="py-1 text-right tabular-nums">
-                        {c.taux_joint_pct == null ? '—' : `${c.taux_joint_pct} %`}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {creneaux.map((c) => (
+                <tr
+                  key={`${c.ordre}-${c.canal}-${c.jour_semaine}-${c.heure}`}
+                  className="border-b border-border/50"
+                >
+                  <td className="py-1 pr-2">{c.ordre}</td>
+                  <td className="py-1 pr-2">{CANAL_LABELS_MESURE[c.canal] ?? c.canal}</td>
+                  <td className="py-1 pr-2">{JOURS_SEMAINE_LABELS[c.jour_semaine] ?? c.jour_semaine}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{c.heure}h</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{c.closes}</td>
+                  <td className="py-1 pr-2 text-right tabular-nums">{c.joints}</td>
+                  <td className="py-1 text-right tabular-nums">
+                    {c.taux_joint_pct == null ? '—' : `${c.taux_joint_pct} %`}
+                  </td>
+                </tr>
+              ))}
+            </TableauLignes>
           )}
         </section>
         <section>
@@ -329,8 +328,8 @@ function MesureParSegment({ lignes }) {
     <Card className="mt-3" data-testid="mesure-par-segment">
       <CardContent className="flex flex-col gap-2 pt-4">
         <h3 className="text-sm font-semibold">Par segment</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+        <TableauLignes enveloppe="overflow-x-auto" className="w-full text-xs"
+          tete={(
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="py-1 pr-2">Segment</th>
@@ -351,56 +350,54 @@ function MesureParSegment({ lignes }) {
                 <th className="py-1">Délais devis → signature (jours)</th>
               </tr>
             </thead>
-            <tbody>
-              {lignes.map((l) => {
-                const parMois = Array.isArray(l.signatures_par_mois)
-                  ? l.signatures_par_mois : []
-                const dossiers = Object.entries(l.dossiers_subvention || {})
-                return (
-                  <tr
-                    key={l.segment} className="border-b border-border/50"
-                    data-testid={`mesure-segment-${l.segment}`}
-                  >
-                    <td className="py-1 pr-2">{SEGMENT_LABELS_MESURE[l.segment] ?? l.segment}</td>
-                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.nb_leads)}</td>
-                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.devis_envoyes)}</td>
-                    <td className="py-1 pr-2 text-right tabular-nums">
-                      {valeur(l.delai_median_premier_devis_jours)}
-                    </td>
-                    <td className="py-1 pr-2 text-right tabular-nums">
-                      {valeur(l.delai_median_signature_jours)}
-                    </td>
-                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.signatures)}</td>
-                    <td className="py-1 pr-2">
-                      {parMois.length === 0 ? TIRET
-                        : parMois.map((m) => `${m.mois} : ${m.signatures}`).join(' · ')}
-                    </td>
-                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.taux_froid_pct, ' %')}</td>
-                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.taux_joint_pct, ' %')}</td>
-                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.en_attente_accord)}</td>
-                    <td className="py-1 pr-2">
-                      {dossiers.length === 0 ? TIRET
-                        : dossiers.map(([etat, n]) => `${etat} : ${n}`).join(' · ')}
-                    </td>
-                    <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.incoherents)}</td>
-                    <td className="py-1 pr-2" data-testid="mesure-attentes-par-raison">
-                      {comptes(l.attente_accord_par_raison, LIBELLES_RAISON, { sansZero: true })}
-                    </td>
-                    <td className="py-1 pr-2" data-testid="mesure-touches-converties">
-                      {comptes(l.touches_converties, LIBELLES_CANAL_CONVERTI)}
-                    </td>
-                    <td className="py-1 pr-2" data-testid="mesure-joints-par-creneau">
-                      {comptes(l.joints_par_creneau, LIBELLES_CRENEAU)}
-                    </td>
-                    <td className="py-1" data-testid="mesure-delais-signature">
-                      {listeJours(l.delais_signature_jours)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {lignes.map((l) => {
+            const parMois = Array.isArray(l.signatures_par_mois)
+              ? l.signatures_par_mois : []
+            const dossiers = Object.entries(l.dossiers_subvention || {})
+            return (
+              <tr
+                key={l.segment} className="border-b border-border/50"
+                data-testid={`mesure-segment-${l.segment}`}
+              >
+                <td className="py-1 pr-2">{SEGMENT_LABELS_MESURE[l.segment] ?? l.segment}</td>
+                <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.nb_leads)}</td>
+                <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.devis_envoyes)}</td>
+                <td className="py-1 pr-2 text-right tabular-nums">
+                  {valeur(l.delai_median_premier_devis_jours)}
+                </td>
+                <td className="py-1 pr-2 text-right tabular-nums">
+                  {valeur(l.delai_median_signature_jours)}
+                </td>
+                <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.signatures)}</td>
+                <td className="py-1 pr-2">
+                  {parMois.length === 0 ? TIRET
+                    : parMois.map((m) => `${m.mois} : ${m.signatures}`).join(' · ')}
+                </td>
+                <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.taux_froid_pct, ' %')}</td>
+                <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.taux_joint_pct, ' %')}</td>
+                <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.en_attente_accord)}</td>
+                <td className="py-1 pr-2">
+                  {dossiers.length === 0 ? TIRET
+                    : dossiers.map(([etat, n]) => `${etat} : ${n}`).join(' · ')}
+                </td>
+                <td className="py-1 pr-2 text-right tabular-nums">{valeur(l.incoherents)}</td>
+                <td className="py-1 pr-2" data-testid="mesure-attentes-par-raison">
+                  {comptes(l.attente_accord_par_raison, LIBELLES_RAISON, { sansZero: true })}
+                </td>
+                <td className="py-1 pr-2" data-testid="mesure-touches-converties">
+                  {comptes(l.touches_converties, LIBELLES_CANAL_CONVERTI)}
+                </td>
+                <td className="py-1 pr-2" data-testid="mesure-joints-par-creneau">
+                  {comptes(l.joints_par_creneau, LIBELLES_CRENEAU)}
+                </td>
+                <td className="py-1" data-testid="mesure-delais-signature">
+                  {listeJours(l.delais_signature_jours)}
+                </td>
+              </tr>
+            )
+          })}
+        </TableauLignes>
         <p className="text-xs text-muted-foreground" data-testid="aide-incoherents">
           Incohérents : {AIDE_INCOHERENTS}.
         </p>

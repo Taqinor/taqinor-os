@@ -19,8 +19,9 @@ import useCanaux from '../../../../features/crm/useCanaux'
 import CrmInsightsPanel from '../CrmInsightsPanel'
 import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent, EmptyState, Button,
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
 } from '../../../../ui'
+import EtatVideVueLeads from './EtatVideVueLeads'
 
 // VX26 — navy/or dérivés des tokens de marque unifiés (VX1, tokens.css)
 // plutôt que du hex local recharts.
@@ -97,30 +98,14 @@ export default function ChartsView({
 
   if (!leads || leads.length === 0) {
     // Distingue « aucun lead du tout » de « aucun résultat pour ces filtres ».
-    const aucunDuTout = totalLeads != null && totalLeads === 0
-    if (aucunDuTout) {
-      // VX40 — pictogramme solaire illustré (l'un des 4-5 écrans les plus
-      // vus) : réservé au vrai « aucun lead du tout », jamais au cas
-      // « filtres sans résultat » ci-dessous (routine, pas de délice).
-      return (
-        <EmptyState
-          illustrated
-          title="Aucune donnée à représenter"
-          description="Aucun lead — créez votre premier lead"
-        />
-      )
-    }
+    // VX40 — pictogramme solaire illustré réservé au vrai « aucun lead du
+    // tout », jamais au cas « filtres sans résultat » (routine, pas de délice).
     return (
-      <EmptyState
-        icon={BarChart3}
+      <EtatVideVueLeads
+        totalLeads={totalLeads} onClearFilters={onClearFilters} icon={BarChart3}
         title="Aucune donnée à représenter"
-        description="Aucun résultat pour ces filtres"
-        action={onClearFilters ? (
-          <Button type="button" variant="outline" size="sm" onClick={onClearFilters}>
-            Effacer les filtres
-          </Button>
-        ) : null}
-      />
+        descriptionAucun="Aucun lead — créez votre premier lead"
+        descriptionFiltre="Aucun résultat pour ces filtres" />
     )
   }
 

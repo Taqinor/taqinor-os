@@ -10,6 +10,7 @@ import DataWindowNotice from './DataWindowNotice'
 import ActionsConsole from './ActionsConsole'
 import MetricHelp from './MetricHelp'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import { TableauNu } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    ENG45 — Drill-downs reporting (consomme ENG33).
@@ -329,25 +330,25 @@ export default function ReportsScreen() {
                 ? <p data-testid="ae-reports-variants-empty" style={{ color: '#64748b' }}>
                     Aucune variante.</p>
                 : (
-                  <table className="data-table" data-testid="ae-reports-variants-table">
-                    <thead>
-                      <tr>
-                        <th>Variante</th><th>Impressions</th><th>Réponses WhatsApp</th>
-                        <th>Coût</th><th>Coût / réponse</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {variants.map(v => (
-                        <tr key={v.id} data-testid="ae-reports-variant-row">
-                          <td data-label="Variante">{v.nom}</td>
-                          <td data-label="Impressions">{formatNumber(v.impressions)}</td>
-                          <td data-label="Réponses WhatsApp">{formatNumber(v.reponses_whatsapp)}</td>
-                          <td data-label="Coût">{formatMAD(v.cout_mad)}</td>
-                          <td data-label="Coût / réponse">{formatMAD(v.cout_par_reponse)}</td>
+                  <TableauNu className="data-table" data-testid="ae-reports-variants-table"
+                    tete={(
+                      <thead>
+                        <tr>
+                          <th>Variante</th><th>Impressions</th><th>Réponses WhatsApp</th>
+                          <th>Coût</th><th>Coût / réponse</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                    )}>
+                    {variants.map(v => (
+                      <tr key={v.id} data-testid="ae-reports-variant-row">
+                        <td data-label="Variante">{v.nom}</td>
+                        <td data-label="Impressions">{formatNumber(v.impressions)}</td>
+                        <td data-label="Réponses WhatsApp">{formatNumber(v.reponses_whatsapp)}</td>
+                        <td data-label="Coût">{formatMAD(v.cout_mad)}</td>
+                        <td data-label="Coût / réponse">{formatMAD(v.cout_par_reponse)}</td>
+                      </tr>
+                    ))}
+                  </TableauNu>
                 )}
             </section>
 
@@ -383,21 +384,21 @@ export default function ReportsScreen() {
                 ? <p data-testid="ae-reports-cohorts-empty" style={{ color: '#64748b' }}>
                     Aucune cohorte.</p>
                 : (
-                  <table className="data-table" data-testid="ae-reports-cohorts-table">
-                    <thead>
-                      <tr><th>Cohorte</th><th>Taille</th><th>Lag médian (jours)</th><th>Signatures</th></tr>
-                    </thead>
-                    <tbody>
-                      {cohorts.map(c => (
-                        <tr key={c.id} data-testid="ae-reports-cohort-row">
-                          <td data-label="Cohorte">{c.cohorte}</td>
-                          <td data-label="Taille">{formatNumber(c.taille)}</td>
-                          <td data-label="Lag médian (jours)">{formatNumber(c.lag_jours_median)}</td>
-                          <td data-label="Signatures">{formatNumber(c.signatures)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <TableauNu className="data-table" data-testid="ae-reports-cohorts-table"
+                    tete={(
+                      <thead>
+                        <tr><th>Cohorte</th><th>Taille</th><th>Lag médian (jours)</th><th>Signatures</th></tr>
+                      </thead>
+                    )}>
+                    {cohorts.map(c => (
+                      <tr key={c.id} data-testid="ae-reports-cohort-row">
+                        <td data-label="Cohorte">{c.cohorte}</td>
+                        <td data-label="Taille">{formatNumber(c.taille)}</td>
+                        <td data-label="Lag médian (jours)">{formatNumber(c.lag_jours_median)}</td>
+                        <td data-label="Signatures">{formatNumber(c.signatures)}</td>
+                      </tr>
+                    ))}
+                  </TableauNu>
                 )}
             </section>
           </div>
@@ -438,28 +439,28 @@ export default function ReportsScreen() {
                   ? <p data-testid="ae-creatifs-leaderboard-empty" style={{ color: '#64748b' }}>
                       Aucun créatif tagué pour cette dimension.</p>
                   : (
-                    <table className="data-table" data-testid="ae-creatifs-leaderboard-table">
-                      <thead>
-                        <tr>
-                          <th>Tag</th><th>Dépense</th><th>Résultats</th>
-                          <th>Coût / résultat<MetricHelp metric="cost_per_result" label="Coût / résultat" /></th>
-                          <th>Hook rate (pondéré)<MetricHelp metric="hook_rate" label="Hook rate" /></th>
-                          <th>Ads</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {leaderboard.classement.map(row => (
-                          <tr key={row.id} data-testid="ae-creatifs-leaderboard-row">
-                            <td data-label="Tag">{row.tag}</td>
-                            <td data-label="Dépense">{formatMAD(row.spend)}</td>
-                            <td data-label="Résultats">{formatNumber(row.results)}</td>
-                            <td data-label="Coût / résultat">{formatMAD(row.costPerResult)}</td>
-                            <td data-label="Hook rate (pondéré)">{formatPercent(row.hookRateWeighted, 1)}</td>
-                            <td data-label="Ads">{formatNumber(row.adCount)}</td>
+                    <TableauNu className="data-table" data-testid="ae-creatifs-leaderboard-table"
+                      tete={(
+                        <thead>
+                          <tr>
+                            <th>Tag</th><th>Dépense</th><th>Résultats</th>
+                            <th>Coût / résultat<MetricHelp metric="cost_per_result" label="Coût / résultat" /></th>
+                            <th>Hook rate (pondéré)<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                            <th>Ads</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                      )}>
+                      {leaderboard.classement.map(row => (
+                        <tr key={row.id} data-testid="ae-creatifs-leaderboard-row">
+                          <td data-label="Tag">{row.tag}</td>
+                          <td data-label="Dépense">{formatMAD(row.spend)}</td>
+                          <td data-label="Résultats">{formatNumber(row.results)}</td>
+                          <td data-label="Coût / résultat">{formatMAD(row.costPerResult)}</td>
+                          <td data-label="Hook rate (pondéré)">{formatPercent(row.hookRateWeighted, 1)}</td>
+                          <td data-label="Ads">{formatNumber(row.adCount)}</td>
+                        </tr>
+                      ))}
+                    </TableauNu>
                   )}
                 {leaderboard.untaggedCount > 0 && (
                   <p data-testid="ae-creatifs-untagged" style={{ color: '#64748b', fontSize: '0.85rem' }}>
@@ -475,33 +476,33 @@ export default function ReportsScreen() {
                   ? <p data-testid="ae-creatifs-scatter-empty" style={{ color: '#64748b' }}>
                       Pas assez de données vidéo pour classer les ads.</p>
                   : (
-                    <table className="data-table" data-testid="ae-creatifs-scatter-table">
-                      <thead>
-                        <tr><th>Ad</th><th>Dépense</th>
-                          <th>Hook rate<MetricHelp metric="hook_rate" label="Hook rate" /></th>
-                          <th>Quadrant</th>
-                          {/* PUB8 — courbe de rétention par ad vidéo (25/50/75/100 %
-                              des lectures qui atteignent chaque quartile). */}
-                          <th>Rétention (25/50/75/100 %)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {scatter.points.map(p => (
-                          <tr key={p.id} data-testid="ae-creatifs-scatter-row">
-                            <td data-label="Ad">{p.nom}</td>
-                            <td data-label="Dépense">{formatMAD(p.spend)}</td>
-                            <td data-label="Hook rate">{formatPercent(p.hookRate, 1)}</td>
-                            <td data-label="Quadrant" data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
-                            <td data-label="Rétention (25/50/75/100 %)" data-testid="ae-creatifs-scatter-retention">
-                              {hasRetentionData(p)
-                                ? [p.retention.p25, p.retention.p50, p.retention.p75, p.retention.p100]
-                                    .map(v => formatPercent(v, 0)).join(' · ')
-                                : '—'}
-                            </td>
+                    <TableauNu className="data-table" data-testid="ae-creatifs-scatter-table"
+                      tete={(
+                        <thead>
+                          <tr><th>Ad</th><th>Dépense</th>
+                            <th>Hook rate<MetricHelp metric="hook_rate" label="Hook rate" /></th>
+                            <th>Quadrant</th>
+                            {/* PUB8 — courbe de rétention par ad vidéo (25/50/75/100 %
+                                des lectures qui atteignent chaque quartile). */}
+                            <th>Rétention (25/50/75/100 %)</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                      )}>
+                      {scatter.points.map(p => (
+                        <tr key={p.id} data-testid="ae-creatifs-scatter-row">
+                          <td data-label="Ad">{p.nom}</td>
+                          <td data-label="Dépense">{formatMAD(p.spend)}</td>
+                          <td data-label="Hook rate">{formatPercent(p.hookRate, 1)}</td>
+                          <td data-label="Quadrant" data-testid="ae-creatifs-scatter-quadrant">{p.quadrantLabel}</td>
+                          <td data-label="Rétention (25/50/75/100 %)" data-testid="ae-creatifs-scatter-retention">
+                            {hasRetentionData(p)
+                              ? [p.retention.p25, p.retention.p50, p.retention.p75, p.retention.p100]
+                                  .map(v => formatPercent(v, 0)).join(' · ')
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </TableauNu>
                   )}
               </section>
             </>
@@ -554,19 +555,19 @@ export default function ReportsScreen() {
               {/* Répartition par palier. */}
               <section data-testid="ae-attribution-tiers">
                 <h3 style={{ margin: '0 0 0.6rem' }}>Attribution par palier</h3>
-                <table className="data-table" data-testid="ae-attribution-tiers-table">
-                  <thead>
-                    <tr><th>Palier</th><th>Leads</th></tr>
-                  </thead>
-                  <tbody>
-                    {bilan.tiers.map(t => (
-                      <tr key={t.key} data-testid="ae-attribution-tier-row">
-                        <td data-label="Palier">{t.label}</td>
-                        <td data-label="Leads">{formatNumber(t.count)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <TableauNu className="data-table" data-testid="ae-attribution-tiers-table"
+                  tete={(
+                    <thead>
+                      <tr><th>Palier</th><th>Leads</th></tr>
+                    </thead>
+                  )}>
+                  {bilan.tiers.map(t => (
+                    <tr key={t.key} data-testid="ae-attribution-tier-row">
+                      <td data-label="Palier">{t.label}</td>
+                      <td data-label="Leads">{formatNumber(t.count)}</td>
+                    </tr>
+                  ))}
+                </TableauNu>
               </section>
 
               {/* Non attribués PAR nom de source (le fondateur voit où ça coince). */}
@@ -578,19 +579,19 @@ export default function ReportsScreen() {
                   ? <p data-testid="ae-attribution-sources-empty" style={{ color: '#64748b' }}>
                       Aucun lead non attribué.</p>
                   : (
-                    <table className="data-table" data-testid="ae-attribution-sources-table">
-                      <thead>
-                        <tr><th>Nom de source</th><th>Leads</th></tr>
-                      </thead>
-                      <tbody>
-                        {bilan.unattributed_by_source.map((s, i) => (
-                          <tr key={i} data-testid="ae-attribution-source-row">
-                            <td data-label="Nom de source">{s.source_name || '(vide)'}</td>
-                            <td data-label="Leads">{formatNumber(s.count)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableauNu className="data-table" data-testid="ae-attribution-sources-table"
+                      tete={(
+                        <thead>
+                          <tr><th>Nom de source</th><th>Leads</th></tr>
+                        </thead>
+                      )}>
+                      {bilan.unattributed_by_source.map((s, i) => (
+                        <tr key={i} data-testid="ae-attribution-source-row">
+                          <td data-label="Nom de source">{s.source_name || '(vide)'}</td>
+                          <td data-label="Leads">{formatNumber(s.count)}</td>
+                        </tr>
+                      ))}
+                    </TableauNu>
                   )}
               </section>
             </>
@@ -630,21 +631,21 @@ export default function ReportsScreen() {
                 <span><span style={{ display: 'inline-block', width: 10, height: 2, background: '#f59e0b', marginRight: 4, verticalAlign: 'middle' }} />Dépense</span>
               </div>
               <LeadsTimeseriesChart points={leadsSeries.points} />
-              <table className="data-table" data-testid="ae-leads-table">
-                <thead>
-                  <tr><th>Période</th><th>Leads</th><th>Attribués</th><th>Dépense</th></tr>
-                </thead>
-                <tbody>
-                  {leadsSeries.points.map(p => (
-                    <tr key={p.period} data-testid="ae-leads-row">
-                      <td data-label="Période">{p.period}</td>
-                      <td data-label="Leads">{formatNumber(p.leads_total)}</td>
-                      <td data-label="Attribués">{formatNumber(p.leads_attributed)}</td>
-                      <td data-label="Dépense">{formatMAD(p.spend)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <TableauNu className="data-table" data-testid="ae-leads-table"
+                tete={(
+                  <thead>
+                    <tr><th>Période</th><th>Leads</th><th>Attribués</th><th>Dépense</th></tr>
+                  </thead>
+                )}>
+                {leadsSeries.points.map(p => (
+                  <tr key={p.period} data-testid="ae-leads-row">
+                    <td data-label="Période">{p.period}</td>
+                    <td data-label="Leads">{formatNumber(p.leads_total)}</td>
+                    <td data-label="Attribués">{formatNumber(p.leads_attributed)}</td>
+                    <td data-label="Dépense">{formatMAD(p.spend)}</td>
+                  </tr>
+                ))}
+              </TableauNu>
             </>
           )}
         </div>
@@ -682,48 +683,48 @@ export default function ReportsScreen() {
                 <>
                   <section data-testid="ae-audience-gender">
                     <h3 style={{ margin: '0 0 0.6rem' }}>Par genre</h3>
-                    <table className="data-table" data-testid="ae-audience-gender-table">
-                      <thead>
-                        <tr><th>Genre</th><th>Portée</th><th>Impressions</th><th>Clics</th>
-                          <th>Résultats (leads)</th><th>Conversations</th><th>Dépense</th></tr>
-                      </thead>
-                      <tbody>
-                        {audienceData.by_gender.map(g => (
-                          <tr key={g.key} data-testid="ae-audience-gender-row">
-                            <td data-label="Genre">{g.label}</td>
-                            <td data-label="Portée">{dashNum(g.reach)}</td>
-                            <td data-label="Impressions">{dashNum(g.impressions)}</td>
-                            <td data-label="Clics">{dashNum(g.clicks)}</td>
-                            <td data-label="Résultats (leads)">{dashNum(g.results)}</td>
-                            <td data-label="Conversations">{dashNum(g.conversations)}</td>
-                            <td data-label="Dépense">{dashMad(g.spend)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableauNu className="data-table" data-testid="ae-audience-gender-table"
+                      tete={(
+                        <thead>
+                          <tr><th>Genre</th><th>Portée</th><th>Impressions</th><th>Clics</th>
+                            <th>Résultats (leads)</th><th>Conversations</th><th>Dépense</th></tr>
+                        </thead>
+                      )}>
+                      {audienceData.by_gender.map(g => (
+                        <tr key={g.key} data-testid="ae-audience-gender-row">
+                          <td data-label="Genre">{g.label}</td>
+                          <td data-label="Portée">{dashNum(g.reach)}</td>
+                          <td data-label="Impressions">{dashNum(g.impressions)}</td>
+                          <td data-label="Clics">{dashNum(g.clicks)}</td>
+                          <td data-label="Résultats (leads)">{dashNum(g.results)}</td>
+                          <td data-label="Conversations">{dashNum(g.conversations)}</td>
+                          <td data-label="Dépense">{dashMad(g.spend)}</td>
+                        </tr>
+                      ))}
+                    </TableauNu>
                   </section>
 
                   <section data-testid="ae-audience-age">
                     <h3 style={{ margin: '0 0 0.6rem' }}>Par âge</h3>
-                    <table className="data-table" data-testid="ae-audience-age-table">
-                      <thead>
-                        <tr><th>Âge</th><th>Portée</th><th>Impressions</th><th>Clics</th>
-                          <th>Résultats (leads)</th><th>Conversations</th><th>Dépense</th></tr>
-                      </thead>
-                      <tbody>
-                        {audienceData.by_age.map(a => (
-                          <tr key={a.age} data-testid="ae-audience-age-row">
-                            <td data-label="Âge">{a.age}</td>
-                            <td data-label="Portée">{dashNum(a.reach)}</td>
-                            <td data-label="Impressions">{dashNum(a.impressions)}</td>
-                            <td data-label="Clics">{dashNum(a.clicks)}</td>
-                            <td data-label="Résultats (leads)">{dashNum(a.results)}</td>
-                            <td data-label="Conversations">{dashNum(a.conversations)}</td>
-                            <td data-label="Dépense">{dashMad(a.spend)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableauNu className="data-table" data-testid="ae-audience-age-table"
+                      tete={(
+                        <thead>
+                          <tr><th>Âge</th><th>Portée</th><th>Impressions</th><th>Clics</th>
+                            <th>Résultats (leads)</th><th>Conversations</th><th>Dépense</th></tr>
+                        </thead>
+                      )}>
+                      {audienceData.by_age.map(a => (
+                        <tr key={a.age} data-testid="ae-audience-age-row">
+                          <td data-label="Âge">{a.age}</td>
+                          <td data-label="Portée">{dashNum(a.reach)}</td>
+                          <td data-label="Impressions">{dashNum(a.impressions)}</td>
+                          <td data-label="Clics">{dashNum(a.clicks)}</td>
+                          <td data-label="Résultats (leads)">{dashNum(a.results)}</td>
+                          <td data-label="Conversations">{dashNum(a.conversations)}</td>
+                          <td data-label="Dépense">{dashMad(a.spend)}</td>
+                        </tr>
+                      ))}
+                    </TableauNu>
                   </section>
                 </>
               )}

@@ -17,6 +17,7 @@ import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
 import { ChargementPage } from '../../ui/ChargementPage'
+import PiedModaleFormulaire from '../../ui/PiedModaleFormulaire'
 
 /* WR6 — Garanties de production (FG282/FG284) : CRUD des garanties par
    système + statut annuel (réel vs garanti dégradé → manque / compensation)
@@ -396,12 +397,8 @@ export default function WarrantiesPage() {
             <Label htmlFor="w-note">Note</Label>
             <Textarea id="w-note" rows={2} value={form.note} onChange={setField('note')} />
           </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button type="submit" loading={saving} disabled={!form.installation}>
-              {editing ? 'Enregistrer' : 'Créer'}
-            </Button>
-          </div>
+          <PiedModaleFormulaire onAnnuler={() => setDialogOpen(false)} saving={saving}
+                                desactive={!form.installation} enEdition={editing} />
         </form>
       </ResponsiveDialog>
     </div>

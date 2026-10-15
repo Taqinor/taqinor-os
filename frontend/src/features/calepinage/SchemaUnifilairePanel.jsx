@@ -4,10 +4,11 @@ import { AlertCircle } from 'lucide-react'
 import calepinageApi from '../../api/calepinageApi'
 import useResource from '../../hooks/useResource'
 import { renderTrustedSvg } from '../../lib/trustedSvg'
-import { Button, Card, Input, Label, Spinner } from '../../ui'
+import { Button, Card, Input, Label } from '../../ui'
 import RetourAtelier from './atelier/RetourAtelier'
 import { telechargerBlob } from './exportImage'
 import { corpsEdition, exporterSchemaPng, exporterSchemaSvg, motifDuRefusDxf, nomFichierSchema } from './SchemaUnifilairePanel.helpers'
+import EtatEcranAtelier from './atelier/EtatEcranAtelier'
 
 /* ACAL44 — le motif d'un bouton d'écriture en lecture seule (devis lié figé). */
 const MOTIF_LECTURE_SEULE = 'Conception figée : révisez le devis (nouvelle version) pour la modifier.'
@@ -156,21 +157,8 @@ export default function SchemaUnifilairePanel({ calepinageId, lectureSeule = fal
       .finally(() => setDxfEnCours(false))
   }
 
-  if (loading) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <Spinner />
-      </>
-    )
-  }
-  if (error) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <p className="text-sm text-destructive" data-testid="cal195-erreur">{error}</p>
-      </>
-    )
+  if (loading || error) {
+    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal195-erreur" />
   }
 
   return (

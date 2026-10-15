@@ -9,6 +9,7 @@ import {
 } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { ChargementPage } from '../../ui/ChargementPage'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    XFSM17 — Scorecard technicien (coaching), `reporting/insights/
@@ -101,8 +102,8 @@ export default function TechnicienScorecardPage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm" aria-label="Scorecard technicien vs moyenne équipe">
+            <TableauLignes enveloppe="overflow-x-auto" className="w-full border-collapse text-sm" aria-label="Scorecard technicien vs moyenne équipe"
+              tete={(
                 <thead>
                   <tr className="border-b border-border">
                     <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Indicateur</th>
@@ -110,39 +111,37 @@ export default function TechnicienScorecardPage() {
                     <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Moyenne équipe</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <ScoreRow
-                    label="Interventions terminées"
-                    techValue={data.scorecard?.interventions_terminees}
-                    equipeValue={data.moyenne_equipe?.interventions_terminees}
-                  />
-                  <ScoreRow
-                    label="Durée réelle moyenne"
-                    techValue={data.scorecard?.duree_reelle_moyenne_jours}
-                    equipeValue={data.moyenne_equipe?.duree_reelle_moyenne_jours}
-                    format={jours}
-                  />
-                  <ScoreRow
-                    label="% récidive"
-                    techValue={data.scorecard?.taux_recidive_pct}
-                    equipeValue={data.moyenne_equipe?.taux_recidive_pct}
-                    format={pct}
-                  />
-                  <ScoreRow
-                    label="% ponctualité"
-                    techValue={data.scorecard?.ponctualite_pct}
-                    equipeValue={data.moyenne_equipe?.ponctualite_pct}
-                    format={pct}
-                  />
-                  <ScoreRow
-                    label="% utilisation"
-                    techValue={data.scorecard?.utilisation_pct}
-                    equipeValue={data.moyenne_equipe?.utilisation_pct}
-                    format={pct}
-                  />
-                </tbody>
-              </table>
-            </div>
+              )}>
+              <ScoreRow
+                label="Interventions terminées"
+                techValue={data.scorecard?.interventions_terminees}
+                equipeValue={data.moyenne_equipe?.interventions_terminees}
+              />
+              <ScoreRow
+                label="Durée réelle moyenne"
+                techValue={data.scorecard?.duree_reelle_moyenne_jours}
+                equipeValue={data.moyenne_equipe?.duree_reelle_moyenne_jours}
+                format={jours}
+              />
+              <ScoreRow
+                label="% récidive"
+                techValue={data.scorecard?.taux_recidive_pct}
+                equipeValue={data.moyenne_equipe?.taux_recidive_pct}
+                format={pct}
+              />
+              <ScoreRow
+                label="% ponctualité"
+                techValue={data.scorecard?.ponctualite_pct}
+                equipeValue={data.moyenne_equipe?.ponctualite_pct}
+                format={pct}
+              />
+              <ScoreRow
+                label="% utilisation"
+                techValue={data.scorecard?.utilisation_pct}
+                equipeValue={data.moyenne_equipe?.utilisation_pct}
+                format={pct}
+              />
+            </TableauLignes>
           </CardContent>
         </Card>
       )}

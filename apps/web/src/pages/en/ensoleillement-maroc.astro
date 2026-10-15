@@ -22,6 +22,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
 import { YIELD_TABLE } from '../../lib/yieldTable';
+import EnsoleillementVille from '../../components/blocs/EnsoleillementVille.astro';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -42,6 +43,17 @@ const CITY_LABELS: Record<string, string> = {
   casablanca: 'Casablanca',
   rabat: 'Rabat',
   tanger: 'Tangier',
+};
+
+// Libellés / locale / direction de la table par ville (voir EnsoleillementVille).
+const VILLE_CFG = {
+  locale: 'en-US',
+  latLabel: 'latitude',
+  captionPrefix: 'Solar yield (kWh/kWc/year) in ',
+  tiltLabel: 'Tilt',
+  startClass: 'text-left',
+  endClass: 'text-right',
+  captionSuffix: ', by tilt and orientation',
 };
 
 // Ordered by ascending latitude (South → North), same as estimatorBrain.ts.
@@ -143,34 +155,7 @@ const jsonLd = {
         </p>
 
         {cities.map((c) => (
-          <div class="mt-12">
-            <h3 class="display text-xl text-azur-900">{c.label} <span class="text-base font-normal text-encre-faint">— latitude {c.lat.toLocaleString('en-US')}°</span></h3>
-            <div class="mt-4 overflow-x-auto">
-              <table class="w-full min-w-[560px] border-collapse text-sm">
-                <caption class="sr-only">Solar yield (kWh/kWc/year) in {c.label}, by tilt and orientation</caption>
-                <thead>
-                  <tr class="border-b-2 border-azur-900">
-                    <th scope="col" class="px-3 py-2 text-left font-semibold text-encre">Tilt</th>
-                    {AZIMUTHS.map((az) => (
-                      <th scope="col" class="px-3 py-2 text-right font-semibold text-encre">{AZIMUTH_LABELS[az]}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tilts.map((tilt) => (
-                    <tr class="border-b border-azur-900/15">
-                      <th scope="row" class="px-3 py-2 text-left font-medium text-encre-soft">{tilt}°</th>
-                      {AZIMUTHS.map((az) => (
-                        <td class="fig px-3 py-2 text-right text-azur-600">
-                          {c.grid[az]?.[String(tilt)] != null ? c.grid[az][String(tilt)].toLocaleString('en-US') : '—'}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <EnsoleillementVille city={c} tilts={tilts} azimuths={AZIMUTHS} azimuthLabels={AZIMUTH_LABELS} {...VILLE_CFG} />
         ))}
 
         <p class="mx-auto mt-10 max-w-3xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">

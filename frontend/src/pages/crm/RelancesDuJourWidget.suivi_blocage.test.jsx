@@ -30,6 +30,7 @@ vi.mock('../../lib/toast', () => ({
 
 import crmApi from '../../api/crmApi'
 import { toastError } from '../../lib/toast'
+import { ouvrirPlanificationVisite } from '../../test/parcoursVisiteAcceptee'
 
 const jourCasa = (decalage) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -47,10 +48,7 @@ describe('SUIVI-BLOCAGE — cockpit « Relances du jour »', () => {
   it('« Visite acceptée » confirmée → la fenêtre de planification est à l’écran, rien n’est encore envoyé', async () => {
     mount()
     await waitFor(() => expect(screen.getByTestId('relance-etape-row')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+    await ouvrirPlanificationVisite()
     expect(crmApi.marquerRelanceEtapeFait).not.toHaveBeenCalled()
     // La date saisie : UNE requête de planification, qui porte la touche
     // (`etape`) — le serveur la clôt « visite acceptée » lui-même.

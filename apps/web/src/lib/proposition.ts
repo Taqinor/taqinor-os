@@ -3196,6 +3196,7 @@ export const VIEWER_MAX_PANELS = 600;
 
 const VIEWER_DEG2RAD = Math.PI / 180;
 import { DEG2M_GEO as VIEWER_DEG2M } from './geo';
+import type { JourTypeMonth } from './jourTypeData';
 
 /** Point-dans-polygone (ray casting) en coordonnées planes. */
 export function viewerPointInRing(pt: [number, number], ring: Array<[number, number]>): boolean {
@@ -5564,16 +5565,7 @@ export function estimationConsoAffichable(
 
 export type ProposalJourTypeMonthId = 1 | 4 | 7 | 11;
 
-export interface ProposalJourTypeMonth {
-  /** 24 valeurs — puissance PRODUITE moyenne de chaque heure du jour moyen (kW). */
-  prodKw: number[];
-  /** 24 valeurs — puissance CONSOMMÉE moyenne de chaque heure du jour moyen (kW). */
-  consoKw: number[];
-  consoJourKwh: number;
-  prodJourKwh: number;
-  autoconsommeKwh: number;
-  surplusKwh: number;
-}
+export type ProposalJourTypeMonth = JourTypeMonth;
 
 export const PROPOSAL_JOUR_TYPE_MONTH_IDS: readonly ProposalJourTypeMonthId[] = [1, 4, 7, 11];
 

@@ -7,7 +7,9 @@ import { DEG2M_GEO, WGS84_RADIUS, metresParDegre } from './geo';
 import { metresParDegre as viaRoof } from './roof';
 
 const SRC = resolve(__dirname, '..');
-const AUTORISES = ['lib/geo.ts', 'lib/roof.ts', 'scripts/roofPro11/constants.ts'];
+// Le harnais de tests de l'atelier (jamais importé par la production) porte `rectRing`, le
+// contour rectangulaire des tests (111320 m/° historique, conservé à l'identique).
+const AUTORISES = ['lib/geo.ts', 'lib/roof.ts', 'scripts/roofPro11/constants.ts', 'scripts/roofPro11/harnaisAtelier.ts'];
 
 function sources(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {

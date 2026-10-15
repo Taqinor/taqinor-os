@@ -64,6 +64,7 @@ import { formatDate } from '../../lib/format'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useWakeLock from '../../hooks/useWakeLock'
 import { todayLocalIso } from '../../lib/dateLocale'
+import IndicateurTirerPourActualiser from '../../ui/IndicateurTirerPourActualiser'
 
 // VX105 — clés de persistance de session (survit à un backgrounding suivi d'un
 // rechargement — appel entrant en chantier) : fiche ouverte + onglet visité.
@@ -336,16 +337,7 @@ export default function MaJourneePage() {
       className="mx-auto flex max-w-2xl flex-col gap-3 overflow-y-auto p-3 sm:p-4"
       {...containerProps}
     >
-      {(pullDistance > 0 || refreshing) && (
-        <div
-          className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
-          style={{ height: `${Math.max(pullDistance, refreshing ? 32 : 0)}px`, overflow: 'hidden', transition: refreshing ? 'height 150ms ease' : 'none' }}
-          role="status"
-        >
-          {refreshing ? <Spinner className="size-4" /> : null}
-          {refreshing ? 'Actualisation…' : 'Tirer pour actualiser'}
-        </div>
-      )}
+      <IndicateurTirerPourActualiser pullDistance={pullDistance} refreshing={refreshing} />
       <header className="flex items-center gap-2">
         <CalendarDays className="size-5 text-primary" aria-hidden="true" />
         <h1 className="text-lg font-semibold">Ma journée</h1>

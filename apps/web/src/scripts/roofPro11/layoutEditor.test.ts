@@ -13,11 +13,12 @@
 // fichier, et SEULEMENT ici : coordonnée u ≡ −(x ENU), coordonnée v ≡ y ENU. Un panneau
 // « posé à l'abscisse u » a donc son centre ENU en `cx = -u, cy = v`.
 import { describe, expect, it, vi } from 'vitest';
-import { createLayoutEditor, type LayoutEditorDeps } from './layoutEditor';
+import { createLayoutEditor } from './layoutEditor';
 import { type Ctx } from './context';
 import { type LayoutPlan } from './types';
 import { createLayoutState } from '../../lib/layoutVariability';
 import { type FreePanel } from '../../lib/freeLayout';
+import { carteEditeurFactice, depsEditeur } from './harnaisAtelier';
 
 /** Un contour CARRÉ centré sur l'origine ENU, de demi-côté `halfWidthM`. */
 function squareRingENU(halfWidthM: number): [number, number][] {
@@ -58,32 +59,11 @@ function makeMap() {
   document.body.appendChild(container);
   const boxZoomDisable = vi.fn();
   const boxZoomEnable = vi.fn();
-  const map = {
-    getContainer: () => container,
-    boxZoom: { disable: boxZoomDisable, enable: boxZoomEnable },
-    dragPan: { enable: vi.fn(), disable: vi.fn() },
-    getCanvas: () => ({ style: {} }) as unknown as HTMLCanvasElement,
-    on: vi.fn(),
-    unproject: () => ({ lng: 0, lat: 0 }),
-    easeTo: vi.fn(),
-    jumpTo: vi.fn(),
-  };
-  return { map: map as unknown as Parameters<typeof createLayoutEditor>[1]['map'], boxZoomDisable, boxZoomEnable };
+  const map = carteEditeurFactice(container, { disable: boxZoomDisable, enable: boxZoomEnable });
+  return { map, boxZoomDisable, boxZoomEnable };
 }
 
-function makeDeps(map: LayoutEditorDeps['map']): LayoutEditorDeps {
-  return {
-    map,
-    renderScene: vi.fn(),
-    prodConfigFromState: () => null,
-    updateProductionWindow: vi.fn(),
-    snapshotActiveAreaResult: vi.fn(),
-    renderAreasPanel: vi.fn(),
-    renderActive: vi.fn(),
-    isObstacleMode: () => false,
-    setPanelHighlight: vi.fn(),
-  };
-}
+const makeDeps = depsEditeur;
 
 /** `ctx` PLACEMENT LIBRE minimal : mode libre actif d'entrée, un plan de pavage et les
  *  panneaux fournis déjà posés. Les tableaux (vertices/obstacles/areas) sont des refs

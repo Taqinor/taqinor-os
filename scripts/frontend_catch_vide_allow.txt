@@ -22,7 +22,6 @@ frontend/src/features/crm/relances/ToucheMessageDialog.jsx::ouvrirWhatsApp  1
 frontend/src/features/crm/workspace/ContextRail.jsx::writeTab  1
 frontend/src/features/crm/workspace/DevisTab.jsx::copierApercuInterne  1
 frontend/src/features/crm/workspace/DevisTab.jsx::copierPageClient  1
-frontend/src/features/crm/workspace/LeadWorkspace.jsx::ecrireCreerUnAutre  1
 frontend/src/features/crm/workspace/LeadWorkspace.jsx::relay  1
 frontend/src/features/crm/workspace/QuestionnaireDialog.jsx::copier  1
 frontend/src/features/crm/workspace/SectionsPane.jsx::calculerRepliAuto  1
@@ -48,7 +47,6 @@ frontend/src/features/onboarding/onboardingHelpers.js::replayCoachmarks  1
 frontend/src/features/onboarding/onboardingHelpers.js::resetCoachmarks  1
 frontend/src/features/queue/queueViews.js::safeRemove  1
 frontend/src/features/queue/queueViews.js::safeSet  1
-frontend/src/pages/crm/ClientForm.jsx::ecrireCreerUnAutre  1
 frontend/src/pages/crm/ClientList.jsx::bulkDelete  1
 frontend/src/pages/crm/DormantAccountsWidget.jsx::relancer  1
 frontend/src/pages/crm/ParrainagePage.jsx::setStatut  1

@@ -11,7 +11,7 @@ import {
   createLead, archiveLead, restoreLead,
 } from '../store/crmSlice'
 import {
-  Button, IconButton, Switch, FormActions,
+  Button, IconButton, FormActions,
   Dialog, DialogContent, DialogTitle,
   Sheet, SheetContent, SheetTitle,
   SkeletonAvatar, SkeletonLine, SkeletonText, SkeletonCard, FadeSwap,
@@ -49,6 +49,8 @@ import ConvertirClientDialog from '../../../pages/crm/leads/ConvertirClientDialo
 // PV22 — les deux seuls moments où « Concevoir la toiture (3D) » a besoin d'une
 // décision humaine (plusieurs brouillons / refus de dimensionnement serveur).
 import ChoisirDevisPourDesign, { DevisAutoImpossibleDialog } from '../../ventes/ChoisirDevisPourDesign'
+import { useCreerUnAutre } from '../../../hooks/useCreerUnAutre'
+import SwitchCreerUnAutre from '../../../ui/SwitchCreerUnAutre'
 
 // LW10 — Le shell `LeadWorkspace` : UNE fenêtre, deux enveloppes (Dialog quasi
 // plein écran depuis la liste/kanban ; pleine page à /crm/leads/:id), le scroll
@@ -62,12 +64,6 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // VX224/VX92 — « Créer un autre » : persisté par utilisateur (localStorage),
 // défaut OFF. Une session de qualification en rafale = 20-40 leads/j.
 const CREER_UN_AUTRE_KEY = 'taqinor.leadForm.creerUnAutre'
-const lireCreerUnAutre = () => {
-  try { return localStorage.getItem(CREER_UN_AUTRE_KEY) === '1' } catch { return false }
-}
-const ecrireCreerUnAutre = (v) => {
-  try { localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0') } catch { /* best-effort */ }
-}
 
 // LW26 — registre MINIMAL « Aller à la section … » de la palette ⌘K : miroir
 // des id/label STABLES du registre de SectionsPane.jsx (id/label seulement —
@@ -657,7 +653,7 @@ export default function LeadWorkspace({
 
   // ── Création : le formulaire rapide (défauts VX93, « créer un autre ») ────
   const [saving, setSaving] = useState(false)
-  const [creerUnAutre, setCreerUnAutre] = useState(() => mode === 'create' && lireCreerUnAutre())
+  const [creerUnAutre, changerCreerUnAutre] = useCreerUnAutre(CREER_UN_AUTRE_KEY, mode === 'create')
   const [savedConfirm, setSavedConfirm] = useState(false)
   const savedConfirmTimer = useRef(null)
   useEffect(() => () => { if (savedConfirmTimer.current) clearTimeout(savedConfirmTimer.current) }, [])
@@ -957,14 +953,8 @@ export default function LeadWorkspace({
       {mode === 'create' && (
         <FormActions className="lw-footer-create">
           {/* VX224/VX92 — « Créer un autre » : création uniquement, persisté. */}
-          <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
-            <Switch
-              checked={creerUnAutre}
-              onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
-              aria-label="Créer un autre"
-            />
-            Créer un autre
-          </label>
+          <SwitchCreerUnAutre checked={creerUnAutre} onChange={changerCreerUnAutre}
+                              className="mr-auto flex items-center gap-2 text-sm text-muted-foreground" />
           {savedConfirm && (
             <span className="lw-savechip lw-savechip--saved" role="status" aria-live="polite">
               ✓ Enregistré

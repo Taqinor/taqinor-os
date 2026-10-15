@@ -47,6 +47,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '../../ui'
 import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsChantier, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
+import SelectStatutEquipement from '../../features/sav/SelectStatutEquipement'
 
 const formatDateFR = (iso) => {
   if (!iso) return '—'
@@ -341,14 +342,7 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
                      onChange={(e) => set('date_pose', e.target.value)} />
             </FormField>
             <FormField label="Statut">
-              <Select value={fields.statut} onValueChange={(v) => set('statut', v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {EQUIP_STATUTS.map((s) => (
-                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SelectStatutEquipement value={fields.statut} onValueChange={(v) => set('statut', v)} />
             </FormField>
             <FormField label="Note" fullWidth>
               <Textarea rows={2} value={fields.note ?? ''}

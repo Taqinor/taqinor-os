@@ -5,7 +5,7 @@ import {
 import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Card, Spinner } from '../../../ui'
+import { Card } from '../../../ui'
 import RetourAtelier from '../atelier/RetourAtelier'
 import { BandeauPerime, BoutonCalculer } from './PanneauProduction'
 import { BandeauBorneHaute, ReglagesUtilises } from './BandeauProvenanceProduction'
@@ -14,6 +14,7 @@ import {
   CHART_TOKENS, CHART_GRID_STYLE, BAR_RADIUS, animationDuration, CHART_ANIM_EASING,
 } from '../../../ui/charts/chart-theme.js'
 import { CASCADE_ARRIVEE, CASCADE_DEPART, construireCascadeDetaillee } from './DiagrammePertes.helpers'
+import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 
 /* ============================================================================
    CAL143 — LE DIAGRAMME DE PERTES (Sankey/cascade) DU MODULE.
@@ -124,21 +125,8 @@ export default function DiagrammePertes({ calepinageId }) {
     { select: (r) => r.data, errorMessage: 'Diagramme de pertes indisponible.' },
   )
 
-  if (loading) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <Spinner />
-      </>
-    )
-  }
-  if (error) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <p className="text-sm text-destructive" data-testid="cal143-erreur">{error}</p>
-      </>
-    )
+  if (loading || error) {
+    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal143-erreur" />
   }
 
   const pertes = data?.pertes ?? []

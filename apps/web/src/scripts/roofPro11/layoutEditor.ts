@@ -42,7 +42,6 @@ import {
 } from '../../lib/panelSelection';
 import { PANEL2_LONG_M } from '../../lib/roofPro2';
 import { PANEL_KWC } from '../../lib/productionEngine';
-import { type PackResult, type PanelGrid, type ConfigFamily } from '../../lib/estimatorBrainV2';
 import {
   PITCH_VIEW,
   LAYOUT_GRAB_PX,
@@ -52,7 +51,7 @@ import {
 import { $, fmt } from './dom';
 import { type Ctx } from './context';
 import { type LngLat, pointInPolygon } from '../../lib/roof';
-import { type ProdConfig } from './types';
+import { type ProdConfig, type RenderSceneFn } from './types';
 import { createLayoutHistory, createValueHistory, createWorkshopHistory, type WorkshopSnapshot } from './layoutHistory';
 // PV30 — placement libre : géométrie PURE + pont vers le pavage gagnant.
 import {
@@ -97,15 +96,7 @@ export interface LayoutEditorDeps {
   /** La carte MapLibre (déprojection écran→toit, vue de dessus, pan). */
   map: maplibregl.Map;
   /** Re-rend la 3D avec une occupation personnalisée (mêmes pack/grid/tilt/family). */
-  renderScene: (
-    pack: PackResult,
-    grid: PanelGrid,
-    tiltDeg: number,
-    family: ConfigFamily,
-    maxCount: number,
-    flush?: boolean,
-    occupiedSet?: Set<number>,
-  ) => void;
+  renderScene: RenderSceneFn;
   /** Config de production du plan courant (pour le recompute par comptage) ou null. */
   prodConfigFromState: () => ProdConfig | null;
   /** Met à jour la fenêtre de production au comptage demandé. */

@@ -25,11 +25,13 @@ import { useConfirmerRecul } from '../../../../features/crm/confirmRecul'
 // EZ14 — undo universel : appliquer tout de suite, inverser à l'annulation.
 // Un board se démonte au moindre changement de vue : aucun commit différé ici.
 import { mutateWithUndo } from '../../../../lib/mutateWithUndo'
-import { EmptyState, Button } from '../../../../ui'
+import { Button } from '../../../../ui'
 // Hook média CANONIQUE (le même que LeadsPage) : ici interrogé sur
 // `(pointer: coarse)` — c'est le POINTEUR qui décide, jamais une largeur.
 import { useIsMobile } from '../../../../ui/ResponsiveDialog'
 import LeadCard from './LeadCard'
+import EtatVideVueLeads from './EtatVideVueLeads'
+import BoutonChargerPlus from './BoutonChargerPlus'
 
 // VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
 // mouvement de l'app ; alignée --motion-*/--ease-out (tokens.css). Sous
@@ -430,39 +432,24 @@ export default function KanbanView({
   // + CTA création/import ; « filtré à 0 » garde le message générique + un
   // CTA « Effacer les filtres » réel quand le parent le fournit.
   if (!leads || leads.length === 0) {
-    const aucunDuTout = totalLeads != null && totalLeads === 0
-    if (aucunDuTout) {
-      return (
-        <EmptyState
-          illustrated
-          title="Aucun lead"
-          description="Créez votre premier lead ou importez votre liste pour démarrer le pipeline."
-          action={(onNewLead || onImportLeads) ? (
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {onNewLead && (
-                <Button type="button" size="sm" onClick={onNewLead}>+ Nouveau lead</Button>
-              )}
-              {onImportLeads && (
-                <Button type="button" variant="outline" size="sm" onClick={onImportLeads}>
-                  Importer
-                </Button>
-              )}
-            </div>
-          ) : null}
-        />
-      )
-    }
     return (
-      <EmptyState
-        icon={LayoutGrid}
+      <EtatVideVueLeads
+        totalLeads={totalLeads} onClearFilters={onClearFilters} icon={LayoutGrid}
         title="Aucun lead"
-        description="Aucun lead ne correspond à ces filtres."
-        action={onClearFilters ? (
-          <Button type="button" variant="outline" size="sm" onClick={onClearFilters}>
-            Effacer les filtres
-          </Button>
-        ) : null}
-      />
+        descriptionAucun="Créez votre premier lead ou importez votre liste pour démarrer le pipeline."
+        descriptionFiltre="Aucun lead ne correspond à ces filtres."
+        actionAucun={(onNewLead || onImportLeads) ? (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {onNewLead && (
+              <Button type="button" size="sm" onClick={onNewLead}>+ Nouveau lead</Button>
+            )}
+            {onImportLeads && (
+              <Button type="button" variant="outline" size="sm" onClick={onImportLeads}>
+                Importer
+              </Button>
+            )}
+          </div>
+        ) : null} />
     )
   }
 
@@ -543,15 +530,7 @@ export default function KanbanView({
                       onMarkPerdu={onMarkPerdu}
                     />
                   ))}
-                  {restants > 0 && (
-                    <button
-                      type="button"
-                      className="kb-charger-plus"
-                      onClick={() => chargerPlus(col.key)}
-                    >
-                      Charger plus ({restants} restant{restants > 1 ? 's' : ''})
-                    </button>
-                  )}
+                  <BoutonChargerPlus restants={restants} onClick={() => chargerPlus(col.key)} />
                 </>
               )
             })()}

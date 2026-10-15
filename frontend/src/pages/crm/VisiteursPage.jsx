@@ -10,6 +10,7 @@ import {
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { frenchError } from '../../lib/frenchError'
 import { formatDateTime } from '../../lib/format'
+import { TableauNu } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    VIS1 (fondateur 14/09/2026) — écran « Visiteurs & alertes » (`/crm/
@@ -281,62 +282,62 @@ export default function VisiteursPage() {
             ) : visitesLeadTriees.length === 0 ? (
               <p className="text-sm text-muted-foreground">Aucun accès enregistré pour ce lead.</p>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left' }}>Date</th>
-                    <th style={{ textAlign: 'left' }}>Quoi</th>
-                    <th style={{ textAlign: 'right' }}>Durée</th>
-                    <th style={{ textAlign: 'left' }}>Appareil</th>
-                    <th style={{ textAlign: 'left' }}>IP</th>
-                    <th style={{ textAlign: 'left' }}>Navigateur</th>
-                    {isResponsableOuAdmin && <th />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {visitesLeadTriees.map((v) => {
-                    const estEquipe = !!v.appareil_id && equipeParAppareil.has(v.appareil_id)
-                    return (
-                      <tr key={v.id}>
-                        <td>{formatDateTime(v.created_at)}</td>
+              <TableauNu style={{ width: '100%', borderCollapse: 'collapse' }}
+                tete={(
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Date</th>
+                      <th style={{ textAlign: 'left' }}>Quoi</th>
+                      <th style={{ textAlign: 'right' }}>Durée</th>
+                      <th style={{ textAlign: 'left' }}>Appareil</th>
+                      <th style={{ textAlign: 'left' }}>IP</th>
+                      <th style={{ textAlign: 'left' }}>Navigateur</th>
+                      {isResponsableOuAdmin && <th />}
+                    </tr>
+                  </thead>
+                )}>
+                {visitesLeadTriees.map((v) => {
+                  const estEquipe = !!v.appareil_id && equipeParAppareil.has(v.appareil_id)
+                  return (
+                    <tr key={v.id}>
+                      <td>{formatDateTime(v.created_at)}</td>
+                      <td>
+                        {v.point_display || v.point}
+                        {v.contexte ? ` — ${v.contexte}` : ''}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{humaniserDuree(v.duree_s)}</td>
+                      <td title={v.appareil_id || undefined}>
+                        {raccourcirAppareil(v.appareil_id)}{' '}
+                        {estEquipe && <Badge tone="success">Équipe</Badge>}
+                      </td>
+                      <td>{v.ip || '—'}</td>
+                      <td title={v.user_agent || ''}>{tronquerNavigateur(v.user_agent)}</td>
+                      {isResponsableOuAdmin && (
                         <td>
-                          {v.point_display || v.point}
-                          {v.contexte ? ` — ${v.contexte}` : ''}
+                          {v.appareil_id && (
+                            estEquipe ? (
+                              <Button
+                                variant="outline" size="sm"
+                                disabled={busyAppareil === v.appareil_id}
+                                onClick={() => retirerDeLEquipe(v.appareil_id)}
+                              >
+                                Retirer
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline" size="sm"
+                                onClick={() => ouvrirDialogueEquipe(v.appareil_id)}
+                              >
+                                Marquer équipe
+                              </Button>
+                            )
+                          )}
                         </td>
-                        <td style={{ textAlign: 'right' }}>{humaniserDuree(v.duree_s)}</td>
-                        <td title={v.appareil_id || undefined}>
-                          {raccourcirAppareil(v.appareil_id)}{' '}
-                          {estEquipe && <Badge tone="success">Équipe</Badge>}
-                        </td>
-                        <td>{v.ip || '—'}</td>
-                        <td title={v.user_agent || ''}>{tronquerNavigateur(v.user_agent)}</td>
-                        {isResponsableOuAdmin && (
-                          <td>
-                            {v.appareil_id && (
-                              estEquipe ? (
-                                <Button
-                                  variant="outline" size="sm"
-                                  disabled={busyAppareil === v.appareil_id}
-                                  onClick={() => retirerDeLEquipe(v.appareil_id)}
-                                >
-                                  Retirer
-                                </Button>
-                              ) : (
-                                <Button
-                                  variant="outline" size="sm"
-                                  onClick={() => ouvrirDialogueEquipe(v.appareil_id)}
-                                >
-                                  Marquer équipe
-                                </Button>
-                              )
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+                      )}
+                    </tr>
+                  )
+                })}
+              </TableauNu>
             )}
           </CardContent>
         </Card>
@@ -403,127 +404,127 @@ export default function VisiteursPage() {
           ) : appareils.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucun appareil observé pour le moment.</p>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left' }}>Appareil</th>
-                  <th style={{ textAlign: 'right' }}>Visites</th>
-                  <th style={{ textAlign: 'right' }}>Propositions ouvertes</th>
-                  <th style={{ textAlign: 'right' }}>Durée totale</th>
-                  <th style={{ textAlign: 'left' }}>Leads touchés</th>
-                  <th style={{ textAlign: 'left' }}>Première</th>
-                  <th style={{ textAlign: 'left' }}>Dernière</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {appareils.map((a) => {
-                  const suspect = !a.equipe && (a.leads?.length ?? 0) >= 2
-                  const leadsAffiches = (a.leads || []).slice(0, MAX_LEADS_AFFICHES)
-                  const leadsRestants = (a.leads?.length ?? 0) - leadsAffiches.length
-                  return (
-                    <Fragment key={a.appareil_id}>
-                      <tr>
-                        <td title={a.appareil_id}>
-                          <button
-                            type="button"
-                            onClick={() => toggleDetail(a.appareil_id)}
-                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', textDecoration: 'underline' }}
+            <TableauNu style={{ width: '100%', borderCollapse: 'collapse' }}
+              tete={(
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left' }}>Appareil</th>
+                    <th style={{ textAlign: 'right' }}>Visites</th>
+                    <th style={{ textAlign: 'right' }}>Propositions ouvertes</th>
+                    <th style={{ textAlign: 'right' }}>Durée totale</th>
+                    <th style={{ textAlign: 'left' }}>Leads touchés</th>
+                    <th style={{ textAlign: 'left' }}>Première</th>
+                    <th style={{ textAlign: 'left' }}>Dernière</th>
+                    <th />
+                  </tr>
+                </thead>
+              )}>
+              {appareils.map((a) => {
+                const suspect = !a.equipe && (a.leads?.length ?? 0) >= 2
+                const leadsAffiches = (a.leads || []).slice(0, MAX_LEADS_AFFICHES)
+                const leadsRestants = (a.leads?.length ?? 0) - leadsAffiches.length
+                return (
+                  <Fragment key={a.appareil_id}>
+                    <tr>
+                      <td title={a.appareil_id}>
+                        <button
+                          type="button"
+                          onClick={() => toggleDetail(a.appareil_id)}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', textDecoration: 'underline' }}
+                        >
+                          {raccourcirAppareil(a.appareil_id)}
+                        </button>{' '}
+                        {a.equipe && <Badge tone="success">Équipe</Badge>}{' '}
+                        {suspect && (
+                          <Badge tone="danger">
+                            <ShieldAlert className="mr-1 inline size-3" aria-hidden="true" />
+                            Multi-prospects
+                          </Badge>
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{a.visites ?? 0}</td>
+                      <td style={{ textAlign: 'right' }}>{a.propositions ?? 0}</td>
+                      <td style={{ textAlign: 'right' }}>{humaniserDuree(a.duree_totale_s)}</td>
+                      <td>
+                        {leadsAffiches.map((l) => (
+                          <Link
+                            key={l.id}
+                            to={`/crm/leads/${l.id}`}
+                            style={{ marginRight: 6, whiteSpace: 'nowrap' }}
                           >
-                            {raccourcirAppareil(a.appareil_id)}
-                          </button>{' '}
-                          {a.equipe && <Badge tone="success">Équipe</Badge>}{' '}
-                          {suspect && (
-                            <Badge tone="danger">
-                              <ShieldAlert className="mr-1 inline size-3" aria-hidden="true" />
-                              Multi-prospects
-                            </Badge>
-                          )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>{a.visites ?? 0}</td>
-                        <td style={{ textAlign: 'right' }}>{a.propositions ?? 0}</td>
-                        <td style={{ textAlign: 'right' }}>{humaniserDuree(a.duree_totale_s)}</td>
-                        <td>
-                          {leadsAffiches.map((l) => (
-                            <Link
-                              key={l.id}
-                              to={`/crm/leads/${l.id}`}
-                              style={{ marginRight: 6, whiteSpace: 'nowrap' }}
+                            {l.nom}
+                          </Link>
+                        ))}
+                        {leadsRestants > 0 && <span> +{leadsRestants}</span>}
+                        {(a.leads?.length ?? 0) === 0 && '—'}
+                      </td>
+                      <td>{formatDateTime(a.premiere)}</td>
+                      <td>{formatDateTime(a.derniere)}</td>
+                      <td>
+                        {isResponsableOuAdmin && (
+                          a.equipe ? (
+                            <Button
+                              variant="outline" size="sm"
+                              disabled={busyAppareil === a.appareil_id}
+                              onClick={() => retirerDeLEquipe(a.appareil_id)}
                             >
-                              {l.nom}
-                            </Link>
-                          ))}
-                          {leadsRestants > 0 && <span> +{leadsRestants}</span>}
-                          {(a.leads?.length ?? 0) === 0 && '—'}
-                        </td>
-                        <td>{formatDateTime(a.premiere)}</td>
-                        <td>{formatDateTime(a.derniere)}</td>
-                        <td>
-                          {isResponsableOuAdmin && (
-                            a.equipe ? (
-                              <Button
-                                variant="outline" size="sm"
-                                disabled={busyAppareil === a.appareil_id}
-                                onClick={() => retirerDeLEquipe(a.appareil_id)}
-                              >
-                                Retirer de l’équipe
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline" size="sm"
-                                onClick={() => ouvrirDialogueEquipe(a.appareil_id)}
-                              >
-                                Marquer appareil équipe
-                              </Button>
-                            )
+                              Retirer de l’équipe
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline" size="sm"
+                              onClick={() => ouvrirDialogueEquipe(a.appareil_id)}
+                            >
+                              Marquer appareil équipe
+                            </Button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                    {ouvertId === a.appareil_id && (
+                      <tr>
+                        <td colSpan={8} style={{ background: 'var(--muted, #f8fafc)', padding: 12 }}>
+                          {loadingDetail ? (
+                            <Spinner />
+                          ) : visitesDetail.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">Aucune visite détaillée.</p>
+                          ) : (
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ textAlign: 'left' }}>Date</th>
+                                  <th style={{ textAlign: 'left' }}>Écran</th>
+                                  <th style={{ textAlign: 'left' }}>Contexte</th>
+                                  <th style={{ textAlign: 'left' }}>Lead</th>
+                                  <th style={{ textAlign: 'right' }}>Durée</th>
+                                  <th style={{ textAlign: 'left' }}>IP</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {visitesDetail.map((v) => (
+                                  <tr key={v.id}>
+                                    <td>{formatDateTime(v.created_at)}</td>
+                                    <td>{v.point_display || v.point}</td>
+                                    <td>{v.contexte || '—'}</td>
+                                    <td>
+                                      {v.lead
+                                        ? <Link to={`/crm/leads/${v.lead}`}>{v.lead_nom || `#${v.lead}`}</Link>
+                                        : '—'}
+                                    </td>
+                                    <td style={{ textAlign: 'right' }}>{humaniserDuree(v.duree_s)}</td>
+                                    <td>{v.ip || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           )}
                         </td>
                       </tr>
-                      {ouvertId === a.appareil_id && (
-                        <tr>
-                          <td colSpan={8} style={{ background: 'var(--muted, #f8fafc)', padding: 12 }}>
-                            {loadingDetail ? (
-                              <Spinner />
-                            ) : visitesDetail.length === 0 ? (
-                              <p className="text-sm text-muted-foreground">Aucune visite détaillée.</p>
-                            ) : (
-                              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                  <tr>
-                                    <th style={{ textAlign: 'left' }}>Date</th>
-                                    <th style={{ textAlign: 'left' }}>Écran</th>
-                                    <th style={{ textAlign: 'left' }}>Contexte</th>
-                                    <th style={{ textAlign: 'left' }}>Lead</th>
-                                    <th style={{ textAlign: 'right' }}>Durée</th>
-                                    <th style={{ textAlign: 'left' }}>IP</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {visitesDetail.map((v) => (
-                                    <tr key={v.id}>
-                                      <td>{formatDateTime(v.created_at)}</td>
-                                      <td>{v.point_display || v.point}</td>
-                                      <td>{v.contexte || '—'}</td>
-                                      <td>
-                                        {v.lead
-                                          ? <Link to={`/crm/leads/${v.lead}`}>{v.lead_nom || `#${v.lead}`}</Link>
-                                          : '—'}
-                                      </td>
-                                      <td style={{ textAlign: 'right' }}>{humaniserDuree(v.duree_s)}</td>
-                                      <td>{v.ip || '—'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            )}
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  )
-                })}
-              </tbody>
-            </table>
+                    )}
+                  </Fragment>
+                )
+              })}
+            </TableauNu>
           )}
         </CardContent>
       </Card>
@@ -537,34 +538,34 @@ export default function VisiteursPage() {
             ) : equipe.length === 0 ? (
               <p className="text-sm text-muted-foreground">Aucun appareil équipe enregistré.</p>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: 'left' }}>Libellé</th>
-                    <th style={{ textAlign: 'left' }}>Appareil</th>
-                    <th style={{ textAlign: 'left' }}>Ajouté le</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {equipe.map((e) => (
-                    <tr key={e.id}>
-                      <td>{e.libelle || '—'}</td>
-                      <td title={e.appareil_id}>{raccourcirAppareil(e.appareil_id)}</td>
-                      <td>{formatDateTime(e.created_at)}</td>
-                      <td>
-                        <Button
-                          variant="ghost" size="sm"
-                          disabled={busyAppareil === e.appareil_id}
-                          onClick={() => retirerDeLEquipe(e.appareil_id)}
-                        >
-                          Retirer
-                        </Button>
-                      </td>
+              <TableauNu style={{ width: '100%', borderCollapse: 'collapse' }}
+                tete={(
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left' }}>Libellé</th>
+                      <th style={{ textAlign: 'left' }}>Appareil</th>
+                      <th style={{ textAlign: 'left' }}>Ajouté le</th>
+                      <th />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                )}>
+                {equipe.map((e) => (
+                  <tr key={e.id}>
+                    <td>{e.libelle || '—'}</td>
+                    <td title={e.appareil_id}>{raccourcirAppareil(e.appareil_id)}</td>
+                    <td>{formatDateTime(e.created_at)}</td>
+                    <td>
+                      <Button
+                        variant="ghost" size="sm"
+                        disabled={busyAppareil === e.appareil_id}
+                        onClick={() => retirerDeLEquipe(e.appareil_id)}
+                      >
+                        Retirer
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </TableauNu>
             )}
           </CardContent>
         </Card>

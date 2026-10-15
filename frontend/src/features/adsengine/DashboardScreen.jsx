@@ -18,6 +18,7 @@ import UpdateBanner from './UpdateBanner'
 import { normalizeSyncStatus, syncStatusFor, formatAge } from './syncStatus'
 import LoadErrorNotice from './LoadErrorNotice'
 import { markLoadError } from './loadErrors'
+import { TableauNu } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    ENG23 — Dashboard « un chiffre » du moteur publicitaire.
@@ -522,30 +523,30 @@ export default function DashboardScreen() {
                 : leads.length === 0
                   ? <p style={{ color: '#64748b' }} data-testid="ae-drill-empty">Aucun lead pour ce chiffre.</p>
                   : (
-                    <table className="data-table" data-testid="ae-drill-table" style={{ marginTop: '0.5rem' }}>
-                      <thead>
-                        <tr><th>Lead</th><th>Ville</th><th>Étape</th><th>Devis</th><th /></tr>
-                      </thead>
-                      <tbody>
-                        {leads.map((l, i) => (
-                          <tr key={l.id ?? i} data-testid="ae-drill-lead">
-                            <td data-label="Lead">{l.nom || l.name || '—'}</td>
-                            <td data-label="Ville">{l.ville || l.city || '—'}</td>
-                            <td data-label="Étape">{l.stage_label || l.etape || '—'}</td>
-                            <td data-label="Devis">{l.devis_ref || '—'}{l.montant != null ? ` (${formatMAD(l.montant)})` : ''}</td>
-                            <td>
-                              {l.id != null && (
-                                <Link to={`/crm/leads/${l.id}`} className="btn btn-light"
-                                  data-testid="ae-drill-lead-link"
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                                  <ExternalLink size={14} aria-hidden="true" /> Ouvrir
-                                </Link>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableauNu className="data-table" data-testid="ae-drill-table" style={{ marginTop: '0.5rem' }}
+                      tete={(
+                        <thead>
+                          <tr><th>Lead</th><th>Ville</th><th>Étape</th><th>Devis</th><th /></tr>
+                        </thead>
+                      )}>
+                      {leads.map((l, i) => (
+                        <tr key={l.id ?? i} data-testid="ae-drill-lead">
+                          <td data-label="Lead">{l.nom || l.name || '—'}</td>
+                          <td data-label="Ville">{l.ville || l.city || '—'}</td>
+                          <td data-label="Étape">{l.stage_label || l.etape || '—'}</td>
+                          <td data-label="Devis">{l.devis_ref || '—'}{l.montant != null ? ` (${formatMAD(l.montant)})` : ''}</td>
+                          <td>
+                            {l.id != null && (
+                              <Link to={`/crm/leads/${l.id}`} className="btn btn-light"
+                                data-testid="ae-drill-lead-link"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <ExternalLink size={14} aria-hidden="true" /> Ouvrir
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </TableauNu>
                   )}
             </section>
           )}
@@ -620,17 +621,17 @@ export default function DashboardScreen() {
                     {pacing.lignes.length === 0
                       ? <p style={{ color: '#64748b' }} data-testid="ae-pacing-detail-empty">Aucun détail disponible.</p>
                       : (
-                        <table className="data-table" style={{ marginTop: '0.5rem' }}>
-                          <thead><tr><th>Poste</th><th>Montant</th></tr></thead>
-                          <tbody>
-                            {pacing.lignes.map(l => (
-                              <tr key={l.id} data-testid="ae-pacing-detail-row">
-                                <td data-label="Poste">{l.label}</td>
-                                <td data-label="Montant">{formatMAD(l.montant_mad)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <TableauNu className="data-table" style={{ marginTop: '0.5rem' }}
+                          tete={(
+                            <thead><tr><th>Poste</th><th>Montant</th></tr></thead>
+                          )}>
+                          {pacing.lignes.map(l => (
+                            <tr key={l.id} data-testid="ae-pacing-detail-row">
+                              <td data-label="Poste">{l.label}</td>
+                              <td data-label="Montant">{formatMAD(l.montant_mad)}</td>
+                            </tr>
+                          ))}
+                        </TableauNu>
                       )}
                   </section>
                 )}
@@ -662,37 +663,37 @@ export default function DashboardScreen() {
                 {reconExportErr && (
                   <p data-testid="ae-recon-export-err" style={{ color: '#dc2626' }}>Export impossible.</p>
                 )}
-              <table className="data-table" data-testid="ae-recon-table">
-                <thead>
-                  <tr><th>Campagne</th><th>Meta</th><th>ERP</th><th>Écart</th><th>Statut</th><th /></tr>
-                </thead>
-                <tbody>
-                  {recon.map(r => {
-                    const tone = reconStatusTone(r.statut)
-                    return (
-                      <tr key={r.id} data-testid="ae-recon-row">
-                        <td data-label="Campagne">{r.campagne}</td>
-                        <td data-label="Meta">{formatMAD(r.meta_mad)}</td>
-                        <td data-label="ERP">{formatMAD(r.erp_mad)}</td>
-                        <td data-label="Écart" data-testid={`ae-recon-ecart-${r.id}`}>
-                          {formatMAD(r.ecart_mad)}
-                          {r.ecart_pct != null ? ` (${formatPercent(r.ecart_pct)})` : ''}
-                        </td>
-                        <td data-label="Statut">
-                          <span className="badge" style={{ background: tone.bg, color: tone.color }}>
-                            {r.statut_display}</span>
-                        </td>
-                        <td>
-                          <button type="button" className="btn btn-light" data-testid={`ae-recon-open-${r.id}`}
-                            onClick={() => setReconDetailId(id => id === r.id ? null : r.id)}
-                            style={{ minHeight: 44, minWidth: 44 }}>
-                            Détail</button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+              <TableauNu className="data-table" data-testid="ae-recon-table"
+                tete={(
+                  <thead>
+                    <tr><th>Campagne</th><th>Meta</th><th>ERP</th><th>Écart</th><th>Statut</th><th /></tr>
+                  </thead>
+                )}>
+                {recon.map(r => {
+                  const tone = reconStatusTone(r.statut)
+                  return (
+                    <tr key={r.id} data-testid="ae-recon-row">
+                      <td data-label="Campagne">{r.campagne}</td>
+                      <td data-label="Meta">{formatMAD(r.meta_mad)}</td>
+                      <td data-label="ERP">{formatMAD(r.erp_mad)}</td>
+                      <td data-label="Écart" data-testid={`ae-recon-ecart-${r.id}`}>
+                        {formatMAD(r.ecart_mad)}
+                        {r.ecart_pct != null ? ` (${formatPercent(r.ecart_pct)})` : ''}
+                      </td>
+                      <td data-label="Statut">
+                        <span className="badge" style={{ background: tone.bg, color: tone.color }}>
+                          {r.statut_display}</span>
+                      </td>
+                      <td>
+                        <button type="button" className="btn btn-light" data-testid={`ae-recon-open-${r.id}`}
+                          onClick={() => setReconDetailId(id => id === r.id ? null : r.id)}
+                          style={{ minHeight: 44, minWidth: 44 }}>
+                          Détail</button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </TableauNu>
               </>
             )}
 
@@ -711,18 +712,18 @@ export default function DashboardScreen() {
                 {row.lignes.length === 0
                   ? <p style={{ color: '#64748b' }} data-testid="ae-recon-detail-empty">Aucun détail disponible.</p>
                   : (
-                    <table className="data-table" style={{ marginTop: '0.5rem' }}>
-                      <thead><tr><th>Poste</th><th>Meta</th><th>ERP</th></tr></thead>
-                      <tbody>
-                        {row.lignes.map(l => (
-                          <tr key={l.id} data-testid="ae-recon-detail-row">
-                            <td data-label="Poste">{l.label}</td>
-                            <td data-label="Meta">{formatMAD(l.meta_mad)}</td>
-                            <td data-label="ERP">{formatMAD(l.erp_mad)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <TableauNu className="data-table" style={{ marginTop: '0.5rem' }}
+                      tete={(
+                        <thead><tr><th>Poste</th><th>Meta</th><th>ERP</th></tr></thead>
+                      )}>
+                      {row.lignes.map(l => (
+                        <tr key={l.id} data-testid="ae-recon-detail-row">
+                          <td data-label="Poste">{l.label}</td>
+                          <td data-label="Meta">{formatMAD(l.meta_mad)}</td>
+                          <td data-label="ERP">{formatMAD(l.erp_mad)}</td>
+                        </tr>
+                      ))}
+                    </TableauNu>
                   )}
               </section>
             )
@@ -809,18 +810,18 @@ export default function DashboardScreen() {
                         ? <p style={{ color: '#64748b' }} data-testid="ae-signal-drill-empty">
                             Aucune cohorte pour ce signal.</p>
                         : (
-                          <table className="data-table" data-testid="ae-signal-drill-table" style={{ marginTop: '0.5rem' }}>
-                            <thead><tr><th>Fenêtre</th><th>Valeur</th><th>Maturité</th></tr></thead>
-                            <tbody>
-                              {cohorts.map(c => (
-                                <tr key={c.id} data-testid="ae-signal-drill-row">
-                                  <td data-label="Fenêtre">{c.fenetre}</td>
-                                  <td data-label="Valeur">{formatRatio(c.valeur)}</td>
-                                  <td data-label="Maturité">{c.maturite_display}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                          <TableauNu className="data-table" data-testid="ae-signal-drill-table" style={{ marginTop: '0.5rem' }}
+                            tete={(
+                              <thead><tr><th>Fenêtre</th><th>Valeur</th><th>Maturité</th></tr></thead>
+                            )}>
+                            {cohorts.map(c => (
+                              <tr key={c.id} data-testid="ae-signal-drill-row">
+                                <td data-label="Fenêtre">{c.fenetre}</td>
+                                <td data-label="Valeur">{formatRatio(c.valeur)}</td>
+                                <td data-label="Maturité">{c.maturite_display}</td>
+                              </tr>
+                            ))}
+                          </TableauNu>
                         )}
                   </section>
                 )}

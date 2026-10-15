@@ -22,13 +22,17 @@
 // d'atteindre les enregistrements construits par ObjetsPersonnalisesPage.jsx.
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Boxes, Plus, Trash2, ArrowLeft } from 'lucide-react'
+import { Boxes, Plus, ArrowLeft } from 'lucide-react'
 import api from '../../api/axios'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
-  Button, IconButton, Input, Spinner, EmptyState, Card, CardContent,
+  Button, Input, EmptyState,
+  CarteContenu,
 } from '../../ui'
+import BoutonSupprimerIcone from '../../ui/BoutonSupprimerIcone'
+import { TableauLignes } from '../../ui/TableauDefilant'
+import { ChargementPageCentree } from '../../ui/ChargementPage'
 
 // Rendu d'une valeur de cellule selon le formatage annoncé par le serveur.
 function afficherValeur(valeur, formatage) {
@@ -132,15 +136,7 @@ export default function CustomObjectRecordsPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-[1100px] p-6">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4 text-primary" /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <ChargementPageCentree />
 
   if (introuvable) {
     return (
@@ -182,110 +178,101 @@ export default function CustomObjectRecordsPage() {
       {champs.length > 0 && (
         <>
           {/* ── Liste, colonnes issues du schéma serveur ─────────────────── */}
-          <Card>
-            <CardContent className="pt-4 sm:pt-5">
-              {lignes.length === 0 ? (
-                <EmptyState icon={Boxes} title="Aucun enregistrement"
-                  description="Saisissez le premier enregistrement ci-dessous."
-                  className="py-6" />
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm" data-testid="table-enregistrements">
-                    <thead>
-                      <tr className="border-b border-border text-left">
-                        {colonnes.map((col) => (
-                          <th key={col.code} scope="col"
-                            className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                            {col.libelle}
-                          </th>
-                        ))}
-                        <th scope="col" className="px-2 py-1.5" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lignes.map((ligne) => (
-                        <tr key={ligne.id} data-testid={`enregistrement-${ligne.id}`}
-                          className="border-b border-border last:border-0">
-                          {colonnes.map((col) => (
-                            <td key={col.code} className="px-2 py-1.5">
-                              {afficherValeur((ligne.data || {})[col.code], col.formatage)}
-                            </td>
-                          ))}
-                          <td className="px-2 py-1.5">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button type="button" size="sm" variant="outline"
-                                onClick={() => editer(ligne)}>
-                                Modifier
-                              </Button>
-                              <IconButton size="sm" variant="outline"
-                                label="Supprimer l'enregistrement"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => supprimer(ligne)}>
-                                <Trash2 className="size-4" aria-hidden="true" />
-                              </IconButton>
-                            </div>
-                          </td>
-                        </tr>
+          <CarteContenu contenu="pt-4 sm:pt-5">
+            {lignes.length === 0 ? (
+              <EmptyState icon={Boxes} title="Aucun enregistrement"
+                description="Saisissez le premier enregistrement ci-dessous."
+                className="py-6" />
+            ) : (
+              <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm" data-testid="table-enregistrements"
+                tete={(
+                  <thead>
+                    <tr className="border-b border-border text-left">
+                      {colonnes.map((col) => (
+                        <th key={col.code} scope="col"
+                          className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                          {col.libelle}
+                        </th>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                      <th scope="col" className="px-2 py-1.5" />
+                    </tr>
+                  </thead>
+                )}>
+                {lignes.map((ligne) => (
+                  <tr key={ligne.id} data-testid={`enregistrement-${ligne.id}`}
+                    className="border-b border-border last:border-0">
+                    {colonnes.map((col) => (
+                      <td key={col.code} className="px-2 py-1.5">
+                        {afficherValeur((ligne.data || {})[col.code], col.formatage)}
+                      </td>
+                    ))}
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button type="button" size="sm" variant="outline"
+                          onClick={() => editer(ligne)}>
+                          Modifier
+                        </Button>
+                        <BoutonSupprimerIcone size="sm" variant="outline"
+                          label="Supprimer l'enregistrement"
+                          onClick={() => supprimer(ligne)} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </TableauLignes>
+            )}
+          </CarteContenu>
 
           {/* ── Formulaire, champs issus du schéma serveur ───────────────── */}
-          <Card>
-            <CardContent className="pt-4 sm:pt-5">
-              <h3 className="mb-3 text-sm font-semibold tracking-tight text-foreground">
-                {editionId ? "Modifier l'enregistrement" : 'Nouvel enregistrement'}
-              </h3>
-              <div className="flex flex-col gap-2">
-                {champs.map((champ) => (
-                  <div key={champ.code} className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-foreground"
-                      htmlFor={`champ-${champ.code}`}>
-                      {champ.libelle}{champ.obligatoire ? ' *' : ''}
-                    </label>
-                    {champ.type === 'boolean' ? (
-                      <input id={`champ-${champ.code}`} type="checkbox"
-                        className="size-4"
-                        checked={Boolean(draft[champ.code])}
-                        onChange={(e) => majDraft(champ.code, e.target.checked)} />
-                    ) : champ.type === 'choice' ? (
-                      <select id={`champ-${champ.code}`}
-                        className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
-                        value={draft[champ.code] ?? ''}
-                        onChange={(e) => majDraft(champ.code, e.target.value)}>
-                        <option value="">—</option>
-                        {(champ.options || []).map((o) => (
-                          <option key={o} value={o}>{o}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <Input id={`champ-${champ.code}`}
-                        type={champ.type === 'number' ? 'number'
-                          : champ.type === 'date' ? 'date' : 'text'}
-                        step={champ.type === 'number' ? 'any' : undefined}
-                        value={draft[champ.code] ?? ''}
-                        onChange={(e) => majDraft(champ.code, e.target.value)} />
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <Button type="button" onClick={enregistrer} disabled={busy}>
-                  <Plus className="size-4" aria-hidden="true" />
-                  {editionId ? 'Enregistrer' : "Ajouter l'enregistrement"}
+          <CarteContenu contenu="pt-4 sm:pt-5">
+            <h3 className="mb-3 text-sm font-semibold tracking-tight text-foreground">
+              {editionId ? "Modifier l'enregistrement" : 'Nouvel enregistrement'}
+            </h3>
+            <div className="flex flex-col gap-2">
+              {champs.map((champ) => (
+                <div key={champ.code} className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-foreground"
+                    htmlFor={`champ-${champ.code}`}>
+                    {champ.libelle}{champ.obligatoire ? ' *' : ''}
+                  </label>
+                  {champ.type === 'boolean' ? (
+                    <input id={`champ-${champ.code}`} type="checkbox"
+                      className="size-4"
+                      checked={Boolean(draft[champ.code])}
+                      onChange={(e) => majDraft(champ.code, e.target.checked)} />
+                  ) : champ.type === 'choice' ? (
+                    <select id={`champ-${champ.code}`}
+                      className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+                      value={draft[champ.code] ?? ''}
+                      onChange={(e) => majDraft(champ.code, e.target.value)}>
+                      <option value="">—</option>
+                      {(champ.options || []).map((o) => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input id={`champ-${champ.code}`}
+                      type={champ.type === 'number' ? 'number'
+                        : champ.type === 'date' ? 'date' : 'text'}
+                      step={champ.type === 'number' ? 'any' : undefined}
+                      value={draft[champ.code] ?? ''}
+                      onChange={(e) => majDraft(champ.code, e.target.value)} />
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <Button type="button" onClick={enregistrer} disabled={busy}>
+                <Plus className="size-4" aria-hidden="true" />
+                {editionId ? 'Enregistrer' : "Ajouter l'enregistrement"}
+              </Button>
+              {editionId && (
+                <Button type="button" variant="outline" onClick={annulerEdition}>
+                  Annuler
                 </Button>
-                {editionId && (
-                  <Button type="button" variant="outline" onClick={annulerEdition}>
-                    Annuler
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+              )}
+            </div>
+          </CarteContenu>
         </>
       )}
     </div>

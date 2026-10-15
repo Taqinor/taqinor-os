@@ -57,6 +57,9 @@ import {
 } from './pvondFicheTechnique.js'
 import { TYPES_EQUIPEMENT } from './typesEquipement'
 import { AlerteErreurStock } from './BandeauxListeStock'
+import { TableauLignes } from '../../ui/TableauDefilant'
+import { useCreerUnAutre } from '../../hooks/useCreerUnAutre'
+import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
    point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
@@ -134,21 +137,6 @@ const TYPE_LABEL_PAR_VALEUR = Object.fromEntries(
 // créés d'affilée ; sans ce toggle chaque création coûte un cycle
 // fermer/rouvrir (~10-30 s).
 const CREER_UN_AUTRE_KEY = 'taqinor.produitForm.creerUnAutre'
-function lireCreerUnAutre() {
-  try {
-    return window.localStorage.getItem(CREER_UN_AUTRE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-function ecrireCreerUnAutre(v) {
-  try {
-    window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
-  } catch {
-    // localStorage indisponible (navigation privée, quota) : confort non mémorisé.
-    console.warn('Préférence « créer un autre » non mémorisée : stockage indisponible.')
-  }
-}
 
 // VX93 — défaut intelligent : dernier taux de TVA saisi (création seulement),
 // mémorisé par localStorage. Repli sur '20' (cas le plus courant) si absent.
@@ -266,8 +254,8 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
         </p>
       </div>
       {sorted.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[30rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[30rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Fournisseur</th>
@@ -276,58 +264,56 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                 <th className="w-10 px-3 py-2" />
               </tr>
             </thead>
-            <tbody>
-              {sorted.map((r, i) => {
-                const ecart = (i > 0 && moinsCher > 0)
-                  ? ((Number(r.prix_achat) - moinsCher) / moinsCher) * 100
-                  : null
-                return (
-                  <tr key={r.id} className="border-t border-border">
-                    <td className="px-3 py-2">
-                      <span className="inline-flex items-center gap-1">
-                        {r.fournisseur_nom}
-                        {i === 0 && <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" />}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {editId === r.id ? (
-                        <Input type="number" min="0" step="any" inputMode="decimal" className="h-8 w-28"
-                               value={editPrix} onChange={(e) => setEditPrix(e.target.value)} />
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5">
-                          {formatMAD(r.prix_achat, { withSymbol: false })} DH
-                          {ecart != null && ecart > 0 && (
-                            <span className="text-xs text-warning">+{formatPercent(ecart, { decimals: 0 })} vs le moins cher</span>
-                          )}
-                        </span>
+          )}>
+          {sorted.map((r, i) => {
+            const ecart = (i > 0 && moinsCher > 0)
+              ? ((Number(r.prix_achat) - moinsCher) / moinsCher) * 100
+              : null
+            return (
+              <tr key={r.id} className="border-t border-border">
+                <td className="px-3 py-2">
+                  <span className="inline-flex items-center gap-1">
+                    {r.fournisseur_nom}
+                    {i === 0 && <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" />}
+                  </span>
+                </td>
+                <td className="px-3 py-2 tabular-nums">
+                  {editId === r.id ? (
+                    <Input type="number" min="0" step="any" inputMode="decimal" className="h-8 w-28"
+                           value={editPrix} onChange={(e) => setEditPrix(e.target.value)} />
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5">
+                      {formatMAD(r.prix_achat, { withSymbol: false })} DH
+                      {ecart != null && ecart > 0 && (
+                        <span className="text-xs text-warning">+{formatPercent(ecart, { decimals: 0 })} vs le moins cher</span>
                       )}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{fmtAchatDate(r.date_dernier_achat)}</td>
-                    <td className="px-3 py-2">
-                      {editId === r.id ? (
-                        <span className="flex gap-1">
-                          <Button type="button" variant="outline" size="sm" onClick={() => saveEdit(r.id)}>OK</Button>
-                          <Button type="button" variant="ghost" size="sm" onClick={cancelEdit}>×</Button>
-                        </span>
-                      ) : (
-                        <span className="flex gap-0.5">
-                          <Button type="button" variant="ghost" size="icon" className="size-7"
-                                  aria-label="Modifier le prix" onClick={() => startEdit(r)}>
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button type="button" variant="ghost" size="icon" className="size-7"
-                                  aria-label="Supprimer" onClick={() => remove(r.id)}>
-                            <Trash2 className="text-destructive" />
-                          </Button>
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">{fmtAchatDate(r.date_dernier_achat)}</td>
+                <td className="px-3 py-2">
+                  {editId === r.id ? (
+                    <span className="flex gap-1">
+                      <Button type="button" variant="outline" size="sm" onClick={() => saveEdit(r.id)}>OK</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={cancelEdit}>×</Button>
+                    </span>
+                  ) : (
+                    <span className="flex gap-0.5">
+                      <Button type="button" variant="ghost" size="icon" className="size-7"
+                              aria-label="Modifier le prix" onClick={() => startEdit(r)}>
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button type="button" variant="ghost" size="icon" className="size-7"
+                              aria-label="Supprimer" onClick={() => remove(r.id)}>
+                        <Trash2 className="text-destructive" />
+                      </Button>
+                    </span>
+                  )}
+                </td>
+              </tr>
+            )
+          })}
+        </TableauLignes>
       )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-48 flex-1">
@@ -353,8 +339,8 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
         comparaison.length === 0 ? (
           <p className="text-xs text-muted-foreground">Aucun prix fournisseur à comparer.</p>
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[24rem] text-sm">
+          <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[24rem] text-sm"
+            tete={(
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold">Rang</th>
@@ -365,30 +351,26 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                   <th className="px-3 py-2 text-left font-semibold">Dernier achat</th>
                 </tr>
               </thead>
-              <tbody>
-                {comparaison.map((c, i) => (
-                  <tr key={c.fournisseur_id} className="border-t border-border">
-                    <td className="px-3 py-2 tabular-nums">
-                      {i === 0 ? <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" /> : i + 1}
-                    </td>
-                    <td className="px-3 py-2">{c.fournisseur_nom}</td>
-                    <td className="px-3 py-2 tabular-nums">{formatMAD(c.prix_achat, { withSymbol: false })} DH</td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {(() => {
-                        const t = tco.find((x) => x.fournisseur_id === c.fournisseur_id)
-                        return t ? `${formatMAD(t.tco, { withSymbol: false })} DH` : '—'
-                      })()}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">
-                      {c.date_dernier_achat
-                        ? new Date(c.date_dernier_achat).toLocaleDateString('fr-FR')
-                        : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            )}>
+            {comparaison.map((c, i) => (
+              <tr key={c.fournisseur_id} className="border-t border-border">
+                <td className="px-3 py-2 tabular-nums">
+                  {i === 0 ? <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" /> : i + 1}
+                </td>
+                <td className="px-3 py-2">{c.fournisseur_nom}</td>
+                <td className="px-3 py-2 tabular-nums">{formatMAD(c.prix_achat, { withSymbol: false })} DH</td>
+                <td className="px-3 py-2 tabular-nums">
+                  {(() => {
+                    const t = tco.find((x) => x.fournisseur_id === c.fournisseur_id)
+                    return t ? `${formatMAD(t.tco, { withSymbol: false })} DH` : '—'
+                  })()}
+                </td>
+                <td className="px-3 py-2 text-muted-foreground">
+                  {c.date_dernier_achat ? new Date(c.date_dernier_achat).toLocaleDateString('fr-FR') : '—'}
+                </td>
+              </tr>
+            ))}
+          </TableauLignes>
         )
       )}
       {error && (
@@ -459,7 +441,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
 
   // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
   // édition), persisté (localStorage), défaut OFF.
-  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const [creerUnAutre, changerCreerUnAutre] = useCreerUnAutre(CREER_UN_AUTRE_KEY, !isEdit, { avertir: true })
   const nomRef = useRef(null)
 
   // VX249(b) — tva : 1 des 4 champs VX93 exactement (avec owner/ville sur
@@ -2332,14 +2314,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               {dirty && <span className="text-xs text-warning">Modifications non enregistrées</span>}
               {/* VX92 — « Créer un autre » : seulement à la création. */}
               {!isEdit && (
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Switch
-                    checked={creerUnAutre}
-                    onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
-                    aria-label="Créer un autre"
-                  />
-                  Créer un autre
-                </label>
+                <SwitchCreerUnAutre checked={creerUnAutre} onChange={changerCreerUnAutre}
+                                    className="flex items-center gap-2 text-sm text-muted-foreground" />
               )}
             </div>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>

@@ -24,6 +24,8 @@ import { useConfirmation } from '../../features/stock/useConfirmation'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 import { frErrForm } from '../../lib/frErr'
 import CellulesProduitQuantite from './CellulesProduitQuantite'
+import { AlerteErreur } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
@@ -178,8 +180,8 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                 Tout recevoir
               </Button>
             </div>
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[34rem] text-sm">
+            <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[34rem] text-sm"
+              tete={(
                 <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Article</th>
@@ -189,28 +191,26 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                     <th className="px-3 py-2 text-left font-semibold">À recevoir</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {lignes.map((l) => {
-                    const reste = resteLigne(l)
-                    return (
-                      <tr key={l.id} className="border-t border-border">
-                        <CellulesProduitQuantite l={l} />
-                        <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>
-                        <td className="px-3 py-2 tabular-nums">{reste}</td>
-                        <td className="px-3 py-2">
-                          {reste > 0 ? (
-                            <Input type="number" min="0" max={reste} inputMode="numeric" className="h-9 w-24"
-                                   placeholder={`/${reste}`}
-                                   value={saisies[l.id] ?? ''}
-                                   onChange={(e) => setSaisies((s) => ({ ...s, [l.id]: e.target.value }))} />
-                          ) : <span className="text-xs text-muted-foreground">soldée</span>}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {lignes.map((l) => {
+                const reste = resteLigne(l)
+                return (
+                  <tr key={l.id} className="border-t border-border">
+                    <CellulesProduitQuantite l={l} />
+                    <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>
+                    <td className="px-3 py-2 tabular-nums">{reste}</td>
+                    <td className="px-3 py-2">
+                      {reste > 0 ? (
+                        <Input type="number" min="0" max={reste} inputMode="numeric" className="h-9 w-24"
+                               placeholder={`/${reste}`}
+                               value={saisies[l.id] ?? ''}
+                               onChange={(e) => setSaisies((s) => ({ ...s, [l.id]: e.target.value }))} />
+                      ) : <span className="text-xs text-muted-foreground">soldée</span>}
+                    </td>
+                  </tr>
+                )
+              })}
+            </TableauLignes>
           </div>
         )}
 
@@ -220,11 +220,7 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                     onChange={(e) => setNote(e.target.value)} />
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreur error={error} />
 
         <DialogFooter className="flex-wrap">
           <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
@@ -335,32 +331,26 @@ export function ReceptionDetail({ reception, onClose, onSaved, peutReceptionner 
           </p>
         )}
 
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[24rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[24rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Produit</th>
                 <th className="px-3 py-2 text-left font-semibold">Quantité reçue</th>
               </tr>
             </thead>
-            <tbody>
-              {lignes.length === 0 && (
-                <tr><td colSpan={2} className="px-3 py-3 text-muted-foreground">Aucune ligne.</td></tr>
-              )}
-              {lignes.map((l) => (
-                <tr key={l.id} className="border-t border-border">
-                  <CellulesProduitQuantite l={l} />
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {lignes.length === 0 && (
+            <tr><td colSpan={2} className="px-3 py-3 text-muted-foreground">Aucune ligne.</td></tr>
+          )}
+          {lignes.map((l) => (
+            <tr key={l.id} className="border-t border-border">
+              <CellulesProduitQuantite l={l} />
+            </tr>
+          ))}
+        </TableauLignes>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreur error={error} />
         {factureInfo && (
           <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
             {factureInfo}
@@ -480,11 +470,7 @@ export default function ReceptionsFournisseur() {
         )}
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
+      <AlerteErreur error={error} />
       {info && (
         <div
           role="status"

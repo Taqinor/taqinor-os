@@ -15,6 +15,8 @@ import {
   Input, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { AlerteErreur } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 // FG310 — statuts de la demande d'achat. Les codes ne figurent pas dans le
 // STATUS_TONES générique de StatusPill (propres à ce cycle), donc on passe une
@@ -525,11 +527,7 @@ export default function DemandesAchatList() {
               />
             </div>
 
-            {formError && (
-              <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                {formError}
-              </div>
-            )}
+            <AlerteErreur error={formError} />
           </div>
 
           <DialogFooter>
@@ -570,8 +568,8 @@ export default function DemandesAchatList() {
                   <div>Montant estimé : <span className="text-foreground">{detail.montant_estime == null ? '—' : formatMAD(detail.montant_estime)}</span></div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm"
+                  tete={(
                     <thead>
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="py-1.5 pr-2 font-medium">Article</th>
@@ -580,21 +578,19 @@ export default function DemandesAchatList() {
                         <th className="py-1.5 text-right font-medium">Total est.</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {(detail.lignes || []).map((l) => (
-                        <tr key={l.id} className="border-b border-border/60">
-                          <td className="py-1.5 pr-2">{l.designation || l.produit_nom || '—'}</td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">{l.quantite}</td>
-                          <td className="py-1.5 pr-2 text-right tabular-nums">{l.prix_estime == null ? '—' : formatMAD(l.prix_estime)}</td>
-                          <td className="py-1.5 text-right tabular-nums">{l.total_estime == null ? '—' : formatMAD(l.total_estime)}</td>
-                        </tr>
-                      ))}
-                      {(!detail.lignes || detail.lignes.length === 0) && (
-                        <tr><td colSpan={4} className="py-2 text-muted-foreground">Aucun article.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                  )}>
+                  {(detail.lignes || []).map((l) => (
+                    <tr key={l.id} className="border-b border-border/60">
+                      <td className="py-1.5 pr-2">{l.designation || l.produit_nom || '—'}</td>
+                      <td className="py-1.5 pr-2 text-right tabular-nums">{l.quantite}</td>
+                      <td className="py-1.5 pr-2 text-right tabular-nums">{l.prix_estime == null ? '—' : formatMAD(l.prix_estime)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{l.total_estime == null ? '—' : formatMAD(l.total_estime)}</td>
+                    </tr>
+                  ))}
+                  {(!detail.lignes || detail.lignes.length === 0) && (
+                    <tr><td colSpan={4} className="py-2 text-muted-foreground">Aucun article.</td></tr>
+                  )}
+                </TableauLignes>
 
                 {detail.note && (
                   <div className="rounded-lg bg-muted/40 p-2 text-muted-foreground">{detail.note}</div>

@@ -8,6 +8,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { formatDate } from '../../lib/format'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    WIR135 — Écran d'administration « Gouvernance des accès ».
@@ -217,24 +218,22 @@ function RapportTab() {
       </CardHeader>
       <CardContent data-testid="rapport">
         {rows.length === 0 ? <EmptyState title="Aucune ligne" className="py-4" /> : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm"
+            tete={(
               <thead>
                 <tr className="text-left text-muted-foreground">
                   <th className="py-1">Compte</th><th>Rôle</th><th>Dernière connexion</th>
                 </tr>
               </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i} className="border-t">
-                    <td className="py-1">{r.username ?? '—'}</td>
-                    <td>{r.role ?? '—'}</td>
-                    <td>{r.last_login ? formatDate(r.last_login) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            )}>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-t">
+                <td className="py-1">{r.username ?? '—'}</td>
+                <td>{r.role ?? '—'}</td>
+                <td>{r.last_login ? formatDate(r.last_login) : '—'}</td>
+              </tr>
+            ))}
+          </TableauLignes>
         )}
       </CardContent>
     </Card>

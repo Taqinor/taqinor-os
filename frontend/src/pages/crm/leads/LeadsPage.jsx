@@ -71,6 +71,8 @@ import {
 // (CarteView embarque leaflet, ChartsView embarque recharts) alors qu'une
 // seule vue à la fois est visible.
 import KanbanView from './views/KanbanView'
+import { useOuvrirNouveauParUrl } from '../../../hooks/useOuvrirNouveauParUrl'
+import FacetteFiltre from './FacetteFiltre'
 const ListView = lazy(() => import('./views/ListView'))
 const CalendarView = lazy(() => import('./views/CalendarView'))
 const ChartsView = lazy(() => import('./views/ChartsView'))
@@ -597,17 +599,7 @@ export default function LeadsPage() {
   // (NTUX possède la palette générique, périmètre réduit ici aux raccourcis
   // clavier directs, @coord NTUX9/10). Le paramètre est retiré une fois lu
   // pour ne pas rouvrir le formulaire à chaque re-render.
-  useEffect(() => {
-    if (searchParams.get('new') !== '1') return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1 (D-ENF22)
-    openNew()
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.delete('new')
-      return next
-    }, { replace: true })
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- ouverture one-shot de la liste leads pilotée par ?new=1; setSearchParams ne doit pas la rejouer (D-ENF22)
-  }, [searchParams])
+  useOuvrirNouveauParUrl(searchParams, setSearchParams, openNew)
 
   // Ouvrir un doublon depuis l'avertissement du formulaire : on charge la fiche
   // complète puis on bascule le formulaire dessus (même panneau, autre lead).
@@ -995,16 +987,8 @@ export default function LeadsPage() {
       {!isMobile && facets.length > 0 && (
         <div className="lp-facet-row">
           {facets.map((f) => (
-            <span key={f.key} className="fb-facet">
-              <span className="fb-facet-dim">{f.dim}</span>
-              <span className="fb-facet-val">{f.label}</span>
-              <button
-                type="button"
-                className="fb-facet-x"
-                aria-label={`Retirer le filtre ${f.dim} : ${f.label}`}
-                onClick={() => setFilters((prev) => ({ ...prev, [f.key]: EMPTY_FILTERS[f.key] }))}
-              ><X aria-hidden="true" /></button>
-            </span>
+            <FacetteFiltre key={f.key} facette={f}
+              onRetirer={() => setFilters((prev) => ({ ...prev, [f.key]: EMPTY_FILTERS[f.key] }))} />
           ))}
           <Button
             type="button"

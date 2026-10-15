@@ -5,16 +5,17 @@ import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
-  Card, CardContent, Skeleton, EmptyState, Button, Input, Label,
+  Card, CardContent, EmptyState, Button, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Table } from '../reporting/Table'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
+import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
 import PiedDialogueFermer from '../stock/PiedDialogueFermer'
+import SqueletteLignesCarte from '../../ui/SqueletteLignesCarte'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -63,9 +64,7 @@ export default function ListesPrixPage() {
   return (
     <div className="ui-root page">
       {/* APX11 — en-tête unique VX28 + accent Ventes. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={Tags}
         title="Listes de prix"
         subtitle="Tarifs négociés par client"
@@ -83,9 +82,7 @@ export default function ListesPrixPage() {
       )}
 
       {loading ? (
-        <Card><CardContent className="space-y-2 pt-5">
-          {Array.from({ length: 4 }).map((unused, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </CardContent></Card>
+        <SqueletteLignesCarte lignes={4} />
       ) : (
         <Card>
           <CardContent className="p-0 sm:p-0">
@@ -480,11 +477,8 @@ function AddLigneDialog({ liste, produits, onClose, onSaved }) {
                    value={prixUnitaire} onChange={(e) => setPrixUnitaire(e.target.value)} placeholder="0" />
             <p className="text-xs text-muted-foreground">Le générateur le convertit au taux de chaque ligne.</p>
           </div>
-          <AlerteErreur error={error} />
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
-            <Button type="submit" loading={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
+          <PiedDialogueFormulaire error={error} busy={busy} onCancel={onClose}
+                                  libelle="Enregistrer" libelleEnCours="Enregistrement…" />
         </form>
       </DialogContent>
     </Dialog>
@@ -590,15 +584,8 @@ function AddRegleDialog({ liste, produits, onClose, onSaved }) {
                      value={quantiteMin} onChange={(e) => setQuantiteMin(e.target.value)} />
             </div>
           </div>
-          {error && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
-            <Button type="submit" loading={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
+          <PiedDialogueFormulaire error={error} busy={busy} onCancel={onClose}
+                                  libelle="Enregistrer" libelleEnCours="Enregistrement…" />
         </form>
       </DialogContent>
     </Dialog>

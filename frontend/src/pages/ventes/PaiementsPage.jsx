@@ -8,7 +8,7 @@ import api from '../../api/axios'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
-  Card, CardContent, Skeleton, EmptyState, Input, Button, Badge, Label,
+  Card, CardContent, EmptyState, Input, Button, Badge, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -17,9 +17,10 @@ import { Table } from '../reporting/Table'
 // (même garde que le serveur : `get_permissions` → IsResponsableOrAdmin).
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
+import SqueletteLignesCarte from '../../ui/SqueletteLignesCarte'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -315,9 +316,7 @@ export default function PaiementsPage() {
   return (
     <div className="ui-root page">
       {/* APX11 — en-tête unique VX28 + accent Ventes. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={Wallet}
         title="Encaissements"
         subtitle="Tous les paiements reçus, par facture et par mode"
@@ -389,8 +388,9 @@ export default function PaiementsPage() {
                   )}
                 </div>
                 {(apercu.preview || []).length > 0 && (
-                  <div className="overflow-x-auto">
-                    {apercu.preview.length > LIGNES_PAR_PAGE && (
+                  <TableauLignes enveloppe="overflow-x-auto" className="w-full border-collapse text-sm"
+                                   aria-label="Aperçu du relevé bancaire"
+                                   avant={apercu.preview.length > LIGNES_PAR_PAGE && (
                       <div className="mt-2 flex items-center gap-2 text-sm">
                         <Button type="button" size="sm" variant="outline"
                                 disabled={pageApercu <= 1}
@@ -401,8 +401,7 @@ export default function PaiementsPage() {
                                 onClick={() => setPageApercu((p) => p + 1)}>Suivant</Button>
                       </div>
                     )}
-                    <table className="w-full border-collapse text-sm"
-                           aria-label="Aperçu du relevé bancaire">
+                    tete={(
                       <thead>
                         <tr className="border-b border-border">
                           <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Ligne</th>
@@ -415,46 +414,44 @@ export default function PaiementsPage() {
                           <th className="px-2 py-1 text-left text-xs uppercase text-muted-foreground">Statut</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {apercu.preview
-                          .slice((pageApercu - 1) * LIGNES_PAR_PAGE, pageApercu * LIGNES_PAR_PAGE)
-                          .map((l) => (
-                          <tr key={l.ligne} className="border-b border-border/60 last:border-b-0">
-                            <td className="px-2 py-1 tabular-nums">{l.ligne}</td>
-                            <td className="px-2 py-1">{l.date || '—'}</td>
-                            <td className="px-2 py-1">{l.reference || '—'}</td>
-                            <td className="px-2 py-1 text-right tabular-nums">
-                              {l.montant != null ? dh(l.montant) : '—'}
-                            </td>
-                            <td className="px-2 py-1">{l.facture_reference || '—'}</td>
-                            <td className="px-2 py-1">
-                              <input type="checkbox"
-                                     aria-label={`Importer la ligne ${l.ligne}`}
-                                     checked={cochees.has(l.ligne)}
-                                     disabled={l.statut === 'ambigu' ? !choix[l.ligne] : l.statut !== 'a_importer'}
-                                     onChange={() => basculerLigne(l.ligne)} />
-                            </td>
-                            <td className="px-2 py-1">
-                              {l.statut === 'ambigu' && (l.candidats || []).length > 0 ? (
-                                <select aria-label={`Facture de la ligne ${l.ligne}`}
-                                        className="rounded border border-border bg-background px-1 py-0.5 text-sm"
-                                        value={choix[l.ligne] || ''}
-                                        onChange={(e) => choisirCandidat(l.ligne, e.target.value)}>
-                                  <option value="">Choisir la facture…</option>
-                                  {l.candidats.map((c) => <option key={c} value={c}>{c}</option>)}
-                                </select>
-                              ) : null}
-                            </td>
-                            <td className="px-2 py-1">
-                              <Badge tone={STATUTS_RELEVE[l.statut]?.tone ?? 'neutral'}>
-                                {STATUTS_RELEVE[l.statut]?.label ?? l.statut}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                    )}>
+                    {apercu.preview
+                      .slice((pageApercu - 1) * LIGNES_PAR_PAGE, pageApercu * LIGNES_PAR_PAGE)
+                      .map((l) => (
+                      <tr key={l.ligne} className="border-b border-border/60 last:border-b-0">
+                        <td className="px-2 py-1 tabular-nums">{l.ligne}</td>
+                        <td className="px-2 py-1">{l.date || '—'}</td>
+                        <td className="px-2 py-1">{l.reference || '—'}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">
+                          {l.montant != null ? dh(l.montant) : '—'}
+                        </td>
+                        <td className="px-2 py-1">{l.facture_reference || '—'}</td>
+                        <td className="px-2 py-1">
+                          <input type="checkbox"
+                                 aria-label={`Importer la ligne ${l.ligne}`}
+                                 checked={cochees.has(l.ligne)}
+                                 disabled={l.statut === 'ambigu' ? !choix[l.ligne] : l.statut !== 'a_importer'}
+                                 onChange={() => basculerLigne(l.ligne)} />
+                        </td>
+                        <td className="px-2 py-1">
+                          {l.statut === 'ambigu' && (l.candidats || []).length > 0 ? (
+                            <select aria-label={`Facture de la ligne ${l.ligne}`}
+                                    className="rounded border border-border bg-background px-1 py-0.5 text-sm"
+                                    value={choix[l.ligne] || ''}
+                                    onChange={(e) => choisirCandidat(l.ligne, e.target.value)}>
+                              <option value="">Choisir la facture…</option>
+                              {l.candidats.map((c) => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          ) : null}
+                        </td>
+                        <td className="px-2 py-1">
+                          <Badge tone={STATUTS_RELEVE[l.statut]?.tone ?? 'neutral'}>
+                            {STATUTS_RELEVE[l.statut]?.label ?? l.statut}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </TableauLignes>
                 )}
               </div>
             )}
@@ -561,13 +558,7 @@ export default function PaiementsPage() {
       )}
 
       {loading ? (
-        <Card>
-          <CardContent className="space-y-2 pt-5">
-            {Array.from({ length: 5 }).map((unused, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </CardContent>
-        </Card>
+        <SqueletteLignesCarte />
       ) : (
         <Card>
           <CardContent className="p-0 sm:p-0">
