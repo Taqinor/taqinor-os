@@ -13,6 +13,7 @@ fondateur du 21/09/2026, SOLMVP16b).
 """
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
+from rest_framework.exceptions import NotFound
 
 from core.champs_stricts import ChaineStricte
 from core.champs_stricts import ChampsStrictsMixin
@@ -43,13 +44,18 @@ logger = logging.getLogger(__name__)
 # frontière cross-app CLAUDE.md).
 
 
-def _valider_id_cross_app(serializer, valeur, resolveur, libelle):
-    """Résout ``valeur`` dans la société de l'appelant, ou lève une 400 FR.
+def _valider_id_cross_app(serializer, valeur, resolveur, libelle, champ):
+    """Résout ``valeur`` dans la société de l'appelant, ou lève une 404 FR.
 
     ``None``/vide/0 traversent (champs optionnels). Hors contexte API (aucune
     ``request`` : usage programmatique interne), on ne bloque pas — la porte
     réellement exposée est le ViewSet, et un service interne a déjà résolu ses
     objets.
+
+    ERR-ENF11-FUZZ-PORTAIL — un entier BIEN FORMÉ qui ne désigne aucune ligne
+    de la société est une ressource introuvable (404), pas un corps invalide :
+    le corps reste identique pour un id inexistant et un id d'une autre société
+    (aucun oracle).
     """
     if valeur in (None, '', 0):
         return valeur
@@ -58,8 +64,7 @@ def _valider_id_cross_app(serializer, valeur, resolveur, libelle):
         return valeur
     company = getattr(getattr(request, 'user', None), 'company', None)
     if company is None or resolveur(company, valeur) is None:
-        raise serializers.ValidationError(
-            f'{libelle} inconnu(e) pour cette société.')
+        raise NotFound({champ: [f'{libelle} inconnu(e) pour cette société.']})
     return valeur
 
 
@@ -154,7 +159,8 @@ class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
 
     def validate_devis_id(self, value):
         """AUD142 — le devis DOIT appartenir à la société de l'appelant."""
-        return _valider_id_cross_app(self, value, _resoudre_devis, 'Devis')
+        return _valider_id_cross_app(
+            self, value, _resoudre_devis, 'Devis', 'devis_id')
 
 
 class PaiementFacturePortailSerializer(serializers.ModelSerializer):
@@ -174,11 +180,15 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
     def validate_facture_id(self, value):
         """AUD142 — la facture DOIT appartenir à la société de l'appelant."""
         return _valider_id_cross_app(
-            self, value, _resoudre_facture, 'Facture')
+            self, value, _resoudre_facture, 'Facture', 'facture_id')
 
 
 class DocumentClientPortailSerializer(AttachmentSerializerMixin,
+                                      ChampsStrictsMixin,
                                       serializers.ModelSerializer):
+    # ERR-ENF11-FUZZ-PORTAIL — ``libelle`` est un texte STRICT (sans caractère
+    # nul, publié tel quel) : le ``CharField`` par défaut refusait un libellé
+    # « conforme » portant ``U+0000`` sur PATCH/POST (400 sur requête valide).
     # AUD835 — l'upload part dans MinIO (``records.storage``) au lieu du
     # ``FileField`` irrécupérable ; le dépôt GED canonique (WIR94) relit les
     # octets par la clé (``apps/portail/receivers.py``). Le champ reste
@@ -256,11 +266,13 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
 
     def validate_client_id(self, value):
         """AUD142 — le client DOIT appartenir à la société de l'appelant."""
-        return _valider_id_cross_app(self, value, _resoudre_client, 'Client')
+        return _valider_id_cross_app(
+            self, value, _resoudre_client, 'Client', 'client_id')
 
     def validate_lead_id(self, value):
         """AUD142 — le lead DOIT appartenir à la société de l'appelant."""
-        return _valider_id_cross_app(self, value, _resoudre_lead, 'Lead')
+        return _valider_id_cross_app(
+            self, value, _resoudre_lead, 'Lead', 'lead_id')
 
 
 class JalonChantierPortailSerializer(serializers.ModelSerializer):
@@ -300,12 +312,13 @@ class DemandeTicketPortailSerializer(serializers.ModelSerializer):
 
     def validate_client_id(self, value):
         """AUD142 — le client DOIT appartenir à la société de l'appelant."""
-        return _valider_id_cross_app(self, value, _resoudre_client, 'Client')
+        return _valider_id_cross_app(
+            self, value, _resoudre_client, 'Client', 'client_id')
 
     def validate_chantier_id(self, value):
         """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
         return _valider_id_cross_app(
-            self, value, _resoudre_chantier, 'Chantier')
+            self, value, _resoudre_chantier, 'Chantier', 'chantier_id')
 
 
 # ── ENF11 — formes de SCHÉMA des ViewSets self-service « Mes devis » et
