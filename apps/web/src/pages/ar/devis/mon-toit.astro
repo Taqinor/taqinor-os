@@ -103,6 +103,20 @@ const noscriptWaHref = whatsappLink(
   'مرحباً، أرغب في استلام تقديري الشمسي من taqinor.ma (متصفحي لا يفعّل جافاسكريبت).',
 );
 const noscriptTelHref = `tel:${NAP.phone}`;
+import DevisMonToitFieldset60A5 from '../../../components/blocs/DevisMonToitFieldset60A5.astro';
+import DevisMonToitLegend2097 from '../../../components/blocs/DevisMonToitLegend2097.astro';
+import DevisMonToitDetails955C from '../../../components/blocs/DevisMonToitDetails955C.astro';
+import DevisMonToitPE62C from '../../../components/blocs/DevisMonToitPE62C.astro';
+import DevisMonToitDiv2129 from '../../../components/blocs/DevisMonToitDiv2129.astro';
+import DevisMonToitP680B from '../../../components/blocs/DevisMonToitP680B.astro';
+import DevisMonToitDiv3598 from '../../../components/blocs/DevisMonToitDiv3598.astro';
+import DevisMonToitPB974 from '../../../components/blocs/DevisMonToitPB974.astro';
+import DevisMonToitDiv6C75 from '../../../components/blocs/DevisMonToitDiv6C75.astro';
+import DevisMonToitDiv6985 from '../../../components/blocs/DevisMonToitDiv6985.astro';
+import DevisMonToitDivFEAA from '../../../components/blocs/DevisMonToitDivFEAA.astro';
+import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.astro';
+import DevisMonToitLi1880 from '../../../components/blocs/DevisMonToitLi1880.astro';
+import DevisMonToitTransitionOpacity10D0 from '../../../components/blocs/DevisMonToitTransitionOpacity10D0.astro';
 ---
 
 <Layout
@@ -144,29 +158,12 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       </noscript>
 
       <!-- WJ45 — bandeau hors-ligne (navigator.onLine + écouteurs online/offline). -->
-      <div id="mt-offline-banner" hidden role="status" aria-live="polite"
-        class="mb-4 flex items-start gap-2 border border-brass-400/40 bg-brass-400/10 p-3 text-sm text-white">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="mt-0.5 flex-none text-brass-300">
-          <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
-        </svg>
-        <span data-i18n
-          data-fr="Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau."
-          data-ar="لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.">
-          Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.
-        </span>
-      </div>
+      <DevisMonToitDiv2129 />
 
       <!-- En-tête + bascule de langue FR/عربي (WJ6/WJ38). Sur /ar/, l'arabe est
            affiché par défaut ; le toggle reste câblé pour un retour ponctuel au FR. -->
       <div class="flex items-start justify-between gap-3">
-        <div>
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Estimation solaire · gratuit · sans engagement" data-ar="تقدير شمسي · مجاني · بدون التزام">
-            Estimation solaire · gratuit · sans engagement
-          </p>
-          <h1 class="display mt-4 text-2xl text-white sm:text-3xl" data-i18n data-fr="Recevez votre estimation solaire" data-ar="استلم تقديرك الشمسي">
-            Recevez votre estimation solaire
-          </h1>
-        </div>
+        <DevisMonToitDiv6985 />
         <div class="flex flex-none gap-1 rounded-sm border border-white/15 p-0.5" role="group" aria-label="اللغة">
           <button type="button" id="mt-lang-fr" aria-pressed="true"
             class="px-3 py-1.5 text-sm font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
@@ -184,12 +181,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- WJ6 — barre de progression étiquetée -->
       <ol id="mt-progress" class="mt-6 grid grid-cols-2 gap-2" aria-label="التقدم">
-        {STEPS.map((s, i) => (
-          <li class="mt-step flex flex-col gap-1.5" data-step={i}>
-            <span class="h-1.5 w-full rounded-full bg-white/10 mt-step-bar transition-colors"></span>
-            <span class="text-xs text-lune-faint mt-step-label" data-i18n data-fr={s.fr} data-ar={s.ar}>{s.fr}</span>
-          </li>
-        ))}
+        <DevisMonToitLi1880 STEPS={STEPS} />
       </ol>
 
       <!-- ============ ÉTAPE 0/1 — VOTRE TOIT (mode + carte/repère) ============ -->
@@ -217,29 +209,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <!-- WJ68/QX — les champs entreprise (raison sociale / type de site / nb de
              sites) ont DÉMÉNAGÉ dans le sous-panneau PROFESSIONNEL de l'étape 2. -->
 
-        <p id="mt-step0-intro" class="mt-5 text-lune-soft" data-i18n
-          data-fr="Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
-          data-ar="ابحث عن عنوانك وضع علامة على سطحك. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
-          Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif —
-          vous pouvez aussi continuer avec votre adresse seule.
-        </p>
-        <!-- AGW401 — variante agricole de l'étape 0 (affichée par syncStep2Panels). -->
-        <p id="mt-step0-intro-agri" hidden class="mt-5 text-lune-soft" data-i18n
-          data-fr="Cherchez votre adresse et posez un repère sur votre forage ou votre parcelle. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
-          data-ar="ابحث عن عنوانك وضع علامة على بئرك أو قطعتك الأرضية. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
-          Cherchez votre adresse et posez un repère sur votre forage ou votre parcelle. C'est facultatif —
-          vous pouvez aussi continuer avec votre adresse seule.
-        </p>
+        <DevisMonToitPE62C />
 
         <!-- Repli sans JavaScript / sans clé carte (WJ4). -->
         <div id="mt-fallback" hidden class="cine-card mt-5 border-s-4 border-alert-300 p-5">
-          <p class="font-semibold text-white" data-i18n data-fr="Carte momentanément indisponible" data-ar="الخريطة غير متوفرة مؤقتاً">Carte momentanément indisponible</p>
-          <p class="mt-2 text-sm text-lune-soft" data-i18n
-            data-fr="Pas de souci : indiquez votre adresse complète ci-dessous et continuez. Nous localiserons votre toit pour vous."
-            data-ar="لا مشكلة: أدخل عنوانك الكامل أدناه وتابع. سنحدد موقع سطحك من أجلك.">
-            Pas de souci : indiquez votre adresse complète ci-dessous et continuez. Nous
-            localiserons votre toit pour vous.
-          </p>
+          <DevisMonToitP680B />
           <label class="mt-3 block text-sm text-lune-soft">
             <span data-i18n data-fr="Adresse complète" data-ar="العنوان الكامل">Adresse complète</span>
             <input id="mt-fallback-address" type="text" autocomplete="street-address"
@@ -390,17 +364,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
               aria-describedby="mt-facture-hiver-err" placeholder="مثال: 1 200" dir="ltr" class={`${inputClass} mt-1`} />
             <span id="mt-facture-hiver-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             <!-- WJ67 — micro-transparence « pourquoi on vous demande ça » (native <details>). -->
-            <details class="mt-1.5">
-              <summary class="cursor-pointer select-none text-xs text-lune-faint hover:text-lune-soft" data-i18n
-                data-fr="Pourquoi on vous demande ça ?" data-ar="لماذا نطلب منكم هذا؟">
-                Pourquoi on vous demande ça&nbsp;?
-              </summary>
-              <p class="mt-1 text-xs text-lune-faint" data-i18n
-                data-fr="Le montant exact permet un calcul juste — jamais partagé."
-                data-ar="المبلغ الدقيق يتيح حساباً صحيحاً — لا يُشارَك أبداً.">
-                Le montant exact permet un calcul juste — jamais partagé.
-              </p>
-            </details>
+            <DevisMonToitDetails955C />
           </label>
 
           <!-- QX — FIX « tranche redondante » : un montant exact VALIDE dérive la
@@ -567,15 +531,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <!-- (a) فئة النشاط -->
             <fieldset>
               <legend class="text-sm text-lune-soft">نشاطكم</legend>
-              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {COMMERCIAL_CATEGORIES.map((c) => (
-                  <button type="button" class="mt-commercial-cat cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
-                    data-value={c.value} aria-pressed="false">
-                    <span aria-hidden="true" class="text-2xl leading-none">{c.icon}</span>
-                    <span class="text-xs font-semibold text-white">{CC_CAT_LABEL[c.value] ?? c.label}</span>
-                  </button>
-                ))}
-              </div>
+              <DevisMonToitDiv3598 CC_CAT_LABEL={CC_CAT_LABEL} />
             </fieldset>
 
             <!-- (b) الفاتورة الشهرية — تبديل درهم ⇄ كيلوواط·ساعة -->
@@ -622,15 +578,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
             <fieldset>
               <legend class="text-sm text-lune-soft">زراعتكم الرئيسية</legend>
-              <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {CROP_KEYS.map((k) => (
-                  <button type="button" class="mt-culture-card cine-card flex flex-col items-center gap-1 border border-white/15 p-2.5 text-center transition-colors"
-                    data-value={k} aria-pressed="false">
-                    <span aria-hidden="true" class="text-xl leading-none">{CROP_META[k]?.icon ?? '🌱'}</span>
-                    <span class="text-xs font-semibold text-white">{CROP_META[k]?.label ?? k}</span>
-                  </button>
-                ))}
-              </div>
+              <DevisMonToitDivFEAA CROP_META={CROP_META} />
               <select id="mt-culture" name="culture" class="sr-only" tabindex="-1" aria-hidden="true">
                 <option value="">اختر…</option>
                 {CROP_KEYS.map((k) => <option value={k}>{CROP_META[k]?.label ?? k}</option>)}
@@ -639,12 +587,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
             <fieldset>
               <legend class="text-sm text-lune-soft">جهتكم</legend>
-              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {REGION_KEYS.map((k) => (
-                  <button type="button" class="mt-region-card cine-card border p-2.5 text-center text-sm text-white transition-colors"
-                    data-value={k} aria-pressed="false">{REGION_LABEL[k] ?? k}</button>
-                ))}
-              </div>
+              <DevisMonToitDiv7D9F REGION_LABEL={REGION_LABEL} />
             </fieldset>
 
             <label class="block text-sm text-lune-soft">
@@ -1183,19 +1126,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
           <!-- WJ51 — préférence de contact EXPLICITE. -->
           <fieldset class="mt-1">
-            <legend class="text-sm text-lune-soft" data-i18n data-fr="Comment préférez-vous qu'on vous recontacte ?" data-ar="كيف تفضّلون أن نتواصل معكم؟">Comment préférez-vous qu'on vous recontacte&nbsp;?</legend>
-            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-ok-600">
-                <input id="mt-contact-whatsapp" name="contactPreference" type="radio" value="whatsapp_only" checked
-                  class="h-4 w-4 flex-none accent-ok-600" />
-                <span data-i18n data-fr="Uniquement sur WhatsApp" data-ar="فقط عبر واتساب">Uniquement sur WhatsApp</span>
-              </label>
-              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-brass-400">
-                <input id="mt-contact-phone" name="contactPreference" type="radio" value="phone_ok"
-                  class="h-4 w-4 flex-none accent-brass-400" />
-                <span data-i18n data-fr="Un conseiller peut m'appeler" data-ar="يمكن لمستشار الاتصال بي">Un conseiller peut m'appeler</span>
-              </label>
-            </div>
+            <DevisMonToitLegend2097 />
             <!-- WJ105 — SLA concret, affiché UNIQUEMENT quand « Un conseiller peut m'appeler » est choisi. -->
             <p id="mt-callback-sla" hidden class="mt-2 flex items-center gap-1.5 text-xs text-brass-300" data-i18n
               data-fr="Un conseiller vous rappelle sous ~1 h ouvrée. Choisissez aussi un créneau préféré ci-dessous."
@@ -1206,26 +1137,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
           <!-- W353/WJ105 — « Réserver un créneau de visite technique » v1 : préférence
                STATIQUE et FACULTATIVE (moment + semaine), forwardée telle quelle. -->
-          <fieldset class="mt-1">
-            <legend id="mt-visit-legend" class="text-sm text-lune-soft" data-i18n
-              data-fr="Créneau de visite technique préféré (facultatif)"
-              data-ar="الوقت المفضل للزيارة التقنية (اختياري)">
-              Créneau de visite technique préféré (facultatif)
-            </legend>
-            <p id="mt-visit-help" class="mt-1 text-xs text-lune-faint" data-i18n
-              data-fr="Une préférence, pas une réservation — nous confirmons le créneau exact avec vous."
-              data-ar="تفضيل وليس حجزاً — سنؤكد الموعد الدقيق معكم.">
-              Une préférence, pas une réservation — nous confirmons le créneau exact avec vous.
-            </p>
-            <div class="mt-2 grid grid-cols-2 gap-2">
-              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="matin" aria-pressed="false" data-i18n data-fr="Matin" data-ar="صباحاً">Matin</button>
-              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="apres_midi" aria-pressed="false" data-i18n data-fr="Après-midi" data-ar="بعد الظهر">Après-midi</button>
-            </div>
-            <div class="mt-2 grid grid-cols-2 gap-2">
-              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="cette_semaine" aria-pressed="false" data-i18n data-fr="Cette semaine" data-ar="هذا الأسبوع">Cette semaine</button>
-              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="semaine_prochaine" aria-pressed="false" data-i18n data-fr="La semaine prochaine" data-ar="الأسبوع المقبل">La semaine prochaine</button>
-            </div>
-          </fieldset>
+          <DevisMonToitFieldset60A5 />
 
           <!-- L-WEBT — « Affinez votre profil de consommation » : FACULTATIF et
                REPLIABLE (<details> fermé par défaut) — un visiteur qui saute
@@ -1465,12 +1377,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
 
           <!-- WJ3 — CTA PRIMAIRE WhatsApp-first. WJ60 — libellé « Envoi en cours… ». -->
-          <button type="submit" id="mt-submit"
-            class="inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" class="flex-none"><path d="M.057 24l1.687-6.163a11.867 11.867 0 0 1-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 0 1 8.413 3.488 11.824 11.824 0 0 1 3.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 0 1-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 0 0 1.512 5.26l-.999 3.648 3.736-.979z"/></svg>
-            <span id="mt-submit-label" data-i18n data-fr="Recevoir mon estimation sur WhatsApp" data-ar="استلام تقديري على واتساب">Recevoir mon estimation sur WhatsApp</span>
-            <span id="mt-submit-pending" hidden data-i18n data-fr="Envoi en cours…" data-ar="جارٍ الإرسال…">Envoi en cours…</span>
-          </button>
+          <DevisMonToitTransitionOpacity10D0 />
 
           <!-- WJ58 — promesse de délai honnête près de la CTA de capture (badge statique). -->
           <p class="mt-2 flex items-center justify-center gap-1.5 text-center text-xs text-lune-faint">
@@ -1557,13 +1464,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <!-- QX — l'ancien scaffold #mt-install-photos (mort) est retiré. -->
 
         <!-- WJ35 — preuve sociale premium : compteur réel + note Google + certifications. -->
-        <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <InstallCounter />
-          <StarRating compact />
-        </div>
-        <div class="mt-5">
-          <CertLogoRow />
-        </div>
+        <DevisMonToitDiv6C75 />
       </aside>
 
       <!-- WJ35 — signature zellige de clôture -->
@@ -1585,12 +1486,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         <button type="button" id="mt-exit-close" aria-label="إغلاق"
           class="flex-none min-h-11 min-w-11 inline-flex items-center justify-center text-lune-faint hover:text-white">✕</button>
       </div>
-      <p class="mt-2 text-sm text-lune-soft" data-i18n
-        data-fr="Laissez juste votre numéro — on vous envoie votre estimation et on répond à vos questions. Gratuit, sans engagement."
-        data-ar="اترك رقمك فقط — نرسل لك تقديرك ونجيب عن أسئلتك. مجاناً، بدون التزام.">
-        Laissez juste votre numéro — on vous envoie votre estimation et on répond à vos
-        questions. Gratuit, sans engagement.
-      </p>
+      <DevisMonToitPB974 />
       <div class="mt-4 flex flex-col gap-2 sm:flex-row">
         <input id="mt-exit-phone" type="tel" inputmode="tel" autocomplete="tel"
           placeholder="06 XX XX XX XX" dir="ltr" class={inputClass} />

@@ -1,0 +1,14 @@
+---
+// ENF19 : bloc partagé (copies identiques) — mon-toit.astro
+import { CROP_KEYS } from '../../lib/agronomy';
+const { CROP_META } = Astro.props as Record<string, any>;
+---
+              <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                {CROP_KEYS.map((k) => (
+                  <button type="button" class="mt-culture-card cine-card flex flex-col items-center gap-1 border border-white/15 p-2.5 text-center transition-colors"
+                    data-value={k} aria-pressed="false">
+                    <span aria-hidden="true" class="text-xl leading-none">{CROP_META[k]?.icon ?? '🌱'}</span>
+                    <span class="text-xs font-semibold text-white">{CROP_META[k]?.label ?? k}</span>
+                  </button>
+                ))}
+              </div>

@@ -1,0 +1,11 @@
+---
+// ENF19 : bloc partagé (copies identiques) — mon-toit.astro
+import { REGION_KEYS } from '../../lib/agronomy';
+const { REGION_LABEL } = Astro.props as Record<string, any>;
+---
+              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {REGION_KEYS.map((k) => (
+                  <button type="button" class="mt-region-card cine-card border p-2.5 text-center text-sm text-white transition-colors"
+                    data-value={k} aria-pressed="false">{REGION_LABEL[k] ?? k}</button>
+                ))}
+              </div>

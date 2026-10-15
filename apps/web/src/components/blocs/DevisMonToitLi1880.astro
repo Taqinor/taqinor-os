@@ -1,0 +1,10 @@
+---
+// ENF19 : bloc partagé (copies identiques) — mon-toit.astro
+const { STEPS } = Astro.props as Record<string, any>;
+---
+        {STEPS.map((s: any, i: any) => (
+          <li class="mt-step flex flex-col gap-1.5" data-step={i}>
+            <span class="h-1.5 w-full rounded-full bg-white/10 mt-step-bar transition-colors"></span>
+            <span class="text-xs text-lune-faint mt-step-label" data-i18n data-fr={s.fr} data-ar={s.ar}>{s.fr}</span>
+          </li>
+        ))}

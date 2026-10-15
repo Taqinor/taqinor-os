@@ -1,0 +1,16 @@
+---
+// ENF19 : bloc partagé (copies identiques) — mon-toit.astro
+---
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Comment préférez-vous qu'on vous recontacte ?" data-ar="كيف تفضّلون أن نتواصل معكم؟">Comment préférez-vous qu'on vous recontacte&nbsp;?</legend>
+            <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-ok-600">
+                <input id="mt-contact-whatsapp" name="contactPreference" type="radio" value="whatsapp_only" checked
+                  class="h-4 w-4 flex-none accent-ok-600" />
+                <span data-i18n data-fr="Uniquement sur WhatsApp" data-ar="فقط عبر واتساب">Uniquement sur WhatsApp</span>
+              </label>
+              <label class="mt-contact-pref cine-card flex cursor-pointer items-center gap-2 border border-white/15 p-3 text-sm text-white transition-colors has-[:checked]:border-brass-400">
+                <input id="mt-contact-phone" name="contactPreference" type="radio" value="phone_ok"
+                  class="h-4 w-4 flex-none accent-brass-400" />
+                <span data-i18n data-fr="Un conseiller peut m'appeler" data-ar="يمكن لمستشار الاتصال بي">Un conseiller peut m'appeler</span>
+              </label>
+            </div>

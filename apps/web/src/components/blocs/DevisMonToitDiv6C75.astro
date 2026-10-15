@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — mon-toit.astro
+import CertLogoRow from '../CertLogoRow.astro';
+import InstallCounter from '../InstallCounter.astro';
+import StarRating from '../StarRating.astro';
+---
+        <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <InstallCounter />
+          <StarRating compact />
+        </div>
+        <div class="mt-5">
+          <CertLogoRow />
+        </div>

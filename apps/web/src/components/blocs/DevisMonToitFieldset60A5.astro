@@ -1,0 +1,23 @@
+---
+// ENF19 : bloc partagé (copies identiques) — mon-toit.astro
+---
+          <fieldset class="mt-1">
+            <legend id="mt-visit-legend" class="text-sm text-lune-soft" data-i18n
+              data-fr="Créneau de visite technique préféré (facultatif)"
+              data-ar="الوقت المفضل للزيارة التقنية (اختياري)">
+              Créneau de visite technique préféré (facultatif)
+            </legend>
+            <p id="mt-visit-help" class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Une préférence, pas une réservation — nous confirmons le créneau exact avec vous."
+              data-ar="تفضيل وليس حجزاً — سنؤكد الموعد الدقيق معكم.">
+              Une préférence, pas une réservation — nous confirmons le créneau exact avec vous.
+            </p>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="matin" aria-pressed="false" data-i18n data-fr="Matin" data-ar="صباحاً">Matin</button>
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="apres_midi" aria-pressed="false" data-i18n data-fr="Après-midi" data-ar="بعد الظهر">Après-midi</button>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="cette_semaine" aria-pressed="false" data-i18n data-fr="Cette semaine" data-ar="هذا الأسبوع">Cette semaine</button>
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="semaine_prochaine" aria-pressed="false" data-i18n data-fr="La semaine prochaine" data-ar="الأسبوع المقبل">La semaine prochaine</button>
+            </div>
+          </fieldset>

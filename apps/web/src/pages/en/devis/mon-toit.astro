@@ -115,6 +115,10 @@ const noscriptWaHref = whatsappLink(
   "Hello, I would like to receive my solar estimate from taqinor.ma (my browser has JavaScript disabled).",
 );
 const noscriptTelHref = `tel:${NAP.phone}`;
+import DevisMonToitDiv3598 from '../../../components/blocs/DevisMonToitDiv3598.astro';
+import DevisMonToitDiv6C75 from '../../../components/blocs/DevisMonToitDiv6C75.astro';
+import DevisMonToitDivFEAA from '../../../components/blocs/DevisMonToitDivFEAA.astro';
+import DevisMonToitDiv7D9F from '../../../components/blocs/DevisMonToitDiv7D9F.astro';
 ---
 
 <Layout
@@ -573,15 +577,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             <!-- (a) Activity category -->
             <fieldset>
               <legend class="text-sm text-lune-soft">Your activity</legend>
-              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                {COMMERCIAL_CATEGORIES.map((c) => (
-                  <button type="button" class="mt-commercial-cat cine-card flex flex-col items-center gap-1.5 border border-white/15 p-3 text-center transition-colors"
-                    data-value={c.value} aria-pressed="false">
-                    <span aria-hidden="true" class="text-2xl leading-none">{c.icon}</span>
-                    <span class="text-xs font-semibold text-white">{CC_CAT_LABEL[c.value] ?? c.label}</span>
-                  </button>
-                ))}
-              </div>
+              <DevisMonToitDiv3598 CC_CAT_LABEL={CC_CAT_LABEL} />
             </fieldset>
 
             <!-- (b) Monthly bill — MAD ⇄ kWh toggle, single field -->
@@ -631,15 +627,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div class="cine-card mt-5 space-y-5 p-5 sm:p-6">
             <fieldset>
               <legend class="text-sm text-lune-soft">Your main crop</legend>
-              <div class="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
-                {CROP_KEYS.map((k) => (
-                  <button type="button" class="mt-culture-card cine-card flex flex-col items-center gap-1 border border-white/15 p-2.5 text-center transition-colors"
-                    data-value={k} aria-pressed="false">
-                    <span aria-hidden="true" class="text-xl leading-none">{CROP_META[k]?.icon ?? '🌱'}</span>
-                    <span class="text-xs font-semibold text-white">{CROP_META[k]?.label ?? k}</span>
-                  </button>
-                ))}
-              </div>
+              <DevisMonToitDivFEAA CROP_META={CROP_META} />
               <select id="mt-culture" name="culture" class="sr-only" tabindex="-1" aria-hidden="true">
                 <option value="">Choose…</option>
                 {CROP_KEYS.map((k) => <option value={k}>{CROP_META[k]?.label ?? k}</option>)}
@@ -648,12 +636,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
             <fieldset>
               <legend class="text-sm text-lune-soft">Your region</legend>
-              <div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {REGION_KEYS.map((k) => (
-                  <button type="button" class="mt-region-card cine-card border p-2.5 text-center text-sm text-white transition-colors"
-                    data-value={k} aria-pressed="false">{REGION_LABEL[k] ?? k}</button>
-                ))}
-              </div>
+              <DevisMonToitDiv7D9F REGION_LABEL={REGION_LABEL} />
             </fieldset>
 
             <label class="block text-sm text-lune-soft">
@@ -1521,13 +1504,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
         <!-- WJ35 — premium social proof: real counter + Google rating (scaffold until
              available) + certifications. Discreet v3 grade (section-tight rhythm). -->
-        <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <InstallCounter />
-          <StarRating compact />
-        </div>
-        <div class="mt-5">
-          <CertLogoRow />
-        </div>
+        <DevisMonToitDiv6C75 />
       </aside>
 
       <!-- WJ35 — closing zellige signature (v3 imprint, consistent with the elevated homepage) -->
