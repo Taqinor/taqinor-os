@@ -511,9 +511,23 @@ export default function InterventionsPage() {
   const { wantedId, deepItem, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
   // id demandé mais introuvable (une fois le chargement terminé) : EmptyState
   // inline plutôt qu'un panneau vide ou une page blanche.
-  const deepMissing = !!wantedId && !loading && !deepItem
+  // ACHT62 — un id absent de la liste chargée est résolu par `getIntervention(id)`
+  // (jamais « introuvable » avant la réponse du serveur).
+  const [deepRemote, setDeepRemote] = useState(null)
+  useEffect(() => {
+    if (!wantedId || loading || deepItem) return undefined
+    let off = false
+    const id = String(wantedId)
+    Promise.resolve().then(() => installationsApi.getIntervention(id))
+      .then((r) => { if (!off) setDeepRemote({ id, item: r?.data ?? null }) })
+      .catch(() => { if (!off) setDeepRemote({ id, item: null }) })
+    return () => { off = true }
+  }, [wantedId, loading, deepItem])
+  const remote = deepRemote && deepRemote.id === String(wantedId) ? deepRemote : null
+  const deepFound = deepItem ?? remote?.item ?? null
+  const deepMissing = !!wantedId && !loading && !deepFound && remote !== null
   // Panneau ouvert : sélection manuelle OU intervention ciblée par le lien profond.
-  const detailItem = selected ?? deepItem
+  const detailItem = selected ?? deepFound
   const closeDetail = () => { setSelected(null); clearDeepLink() }
 
   const [view, setView] = useState(() => {

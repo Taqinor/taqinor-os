@@ -4,6 +4,7 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import CatalogueAchatPicker from '../../components/CatalogueAchatPicker'
 import { formatMAD, formatDate } from '../../lib/format'
 import { toastSuccess, toastError } from '../../lib/toast'
@@ -82,8 +83,7 @@ export default function DemandesAchatList() {
   const load = async () => {
     setLoading(true)
     try {
-      const res = await installationsApi.getDemandesAchat()
-      setItems(res.data?.results ?? res.data ?? [])
+      setItems(await lireToutesLesPages((p) => installationsApi.getDemandesAchat(p)))
     } finally {
       setLoading(false)
     }
@@ -94,8 +94,9 @@ export default function DemandesAchatList() {
     // picker, chantiers pour le rattachement). L'état n'est posé que dans les
     // callbacks asynchrones (pas de setState synchrone dans le corps d'effet).
     let alive = true
-    installationsApi.getDemandesAchat().then(
-      (res) => { if (alive) { setItems(res.data?.results ?? res.data ?? []); setLoading(false) } },
+    // ACHT62 — toutes les pages (liste + choix du chantier), jamais les 50 premières.
+    lireToutesLesPages((p) => installationsApi.getDemandesAchat(p)).then(
+      (rows) => { if (alive) { setItems(rows); setLoading(false) } },
       () => { if (alive) setLoading(false) },
     )
     // NTP2P3 — le picker de la demande d'achat lit le CATALOGUE D'ACHAT
@@ -112,8 +113,8 @@ export default function DemandesAchatList() {
       (r) => { if (alive) setFavoris(r.data?.produit_ids ?? []) },
       () => {},
     )
-    installationsApi.getInstallations().then(
-      (r) => { if (alive) setChantiers(r.data?.results ?? r.data ?? []) },
+    lireToutesLesPages((p) => installationsApi.getInstallations(p)).then(
+      (rows) => { if (alive) setChantiers(rows) },
       () => {},
     )
     return () => { alive = false }
