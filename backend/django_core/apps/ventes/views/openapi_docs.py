@@ -368,17 +368,25 @@ CORPS_MONTANT_POSITIF = corps_resserre({
 #: AFAC32 — une note de débit porte des ``lignes`` (au moins une) OU un
 #: ``montant`` HT strictement positif ; ``{}`` était « conforme » puis refusé
 #: « Saisissez les lignes ou le montant de la note de débit. ».
+#: CI #1000 — UN SEUL prédicat pour le ``montant`` HT et le ``taux_tva`` saisis :
+#: la vue (``_montant_note_debit``) les applique en ``fullmatch`` sur la chaîne
+#: BRUTE, ce motif est publié tel quel. ``Decimal(str)`` acceptait en plus
+#: ``"1e1"``, ``"1_000"``, des blancs de bord et des chiffres non ASCII, que le
+#: schéma déclarait invalides (« accepted schema-violating request »).
+#: ``[0-9]`` et non ``\d`` : ``\d`` Python couvre aussi les chiffres Unicode.
+MOTIF_MONTANT_NOTE_DEBIT = (r'^0*(?:[1-9][0-9]{0,7}(?:\.[0-9]{0,2})?'
+                            r'|\.(?:[1-9][0-9]?|0[1-9]))$')
+MOTIF_TAUX_NOTE_DEBIT = (r'^(?:|100(?:\.0{0,2})?'
+                         r'|[0-9]{1,2}(?:\.[0-9]{0,2})?'
+                         r'|\.[0-9]{1,2})$')
 CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT = corps_resserre({'anyOf': [
     {'required': ['lignes'],
      'properties': {'lignes': {'type': 'array', 'minItems': 1}}},
     {'required': ['montant'],
      'properties': {'montant': {'type': 'string',
-                                'pattern': r'^0*(?:[1-9]\d{0,7}(?:\.\d{0,2})?'
-                                           r'|\.(?:[1-9]\d?|0[1-9]))$'},
+                                'pattern': MOTIF_MONTANT_NOTE_DEBIT},
                     'taux_tva': {'type': 'string',
-                                 'pattern': r'^(?:|100(?:\.0{0,2})?'
-                                            r'|\d{1,2}(?:\.\d{0,2})?'
-                                            r'|\.\d{1,2})$'}}},
+                                 'pattern': MOTIF_TAUX_NOTE_DEBIT}}},
 ]})
 
 EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
@@ -1065,7 +1073,9 @@ CreerAvoirRequest = _ser('FactureCreerAvoirRequest', {
                           allow_null=True),
 })
 CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
-    'motif': s.CharField(required=False, allow_blank=True),
+    # CI #1000 — textes STRICTS comme pour l'avoir : ``taux_tva: null`` (ou un
+    # nombre) était « hors schéma » et pourtant accepté (201).
+    'motif': ChaineStricte(required=False, allow_blank=True),
     # ENF11 — une ligne de note de débit est validée par
     # ``_montants_ligne_corrective`` comme une ligne d'avoir (désignation,
     # produit, bornes) : même forme publiée.
@@ -1073,8 +1083,8 @@ CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
                           required=False),
     # AFAC32 — sans ``lignes`` : un montant HT + un taux (défaut : celui de
     # la facture). Publiés pour que la règle « lignes OU montant » le soit.
-    'montant': s.CharField(required=False),
-    'taux_tva': s.CharField(required=False, allow_blank=True),
+    'montant': ChaineStricte(required=False),
+    'taux_tva': ChaineStricte(required=False, allow_blank=True),
 })
 LigneRetour = _ser('FactureLigneRetour', {
     'produit': s.IntegerField(),

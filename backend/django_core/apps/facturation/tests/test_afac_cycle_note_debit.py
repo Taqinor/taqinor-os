@@ -88,6 +88,46 @@ class CycleNoteDebitTests(TestCase):
         self.assertTrue(set(contrat['exemple']).issubset(set(r.data)))
         self.assertEqual(r.data['total_ttc'], '600.00')
 
+    def test_nd_corps_hors_schema_400_meme_predicat(self):
+        # CI #1000 — `taux_tva: null` (201 alors que le schéma le déclare
+        # texte), `motif: 5` (500), nombre pour `montant` et les formes que
+        # `Decimal` lisait mais que le motif publié refuse (« 1e1 », « 1_000 »,
+        # blancs de bord, chiffres non ASCII) : 400, aucune ND créée.
+        import re
+        from apps.ventes.models import NoteDebit
+        from apps.ventes.views.openapi_docs import (
+            MOTIF_MONTANT_NOTE_DEBIT, MOTIF_TAUX_NOTE_DEBIT)
+        motif_montant = re.compile(MOTIF_MONTANT_NOTE_DEBIT)
+        motif_taux = re.compile(MOTIF_TAUX_NOTE_DEBIT)
+        corps_ko = [
+            {'montant': '1', 'taux_tva': None},
+            {'montant': '1', 'taux_tva': 20},
+            {'montant': 1, 'taux_tva': '20'},
+            {'motif': 5, 'montant': '1', 'taux_tva': '20'},
+            {'montant': '1e1', 'taux_tva': '20'},
+            {'montant': '1_000', 'taux_tva': '20'},
+            {'montant': ' 10', 'taux_tva': '20'},
+            {'montant': '١٠', 'taux_tva': '20'},
+            {'montant': '10', 'taux_tva': '1e1'},
+            {'montant': '10.123', 'taux_tva': '20'},
+            {'montant': '100000000', 'taux_tva': '20'},
+            {'montant': '10', 'taux_tva': '100.01'},
+        ]
+        for corps in corps_ko:
+            r = self._creer_nd(corps)
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        for brut in ('1e1', '1_000', ' 10', '١٠', '10.123', '100000000', '0'):
+            self.assertIsNone(motif_montant.fullmatch(brut), brut)
+        for brut in ('1e1', '100.01', '101', ' 5'):
+            self.assertIsNone(motif_taux.fullmatch(brut), brut)
+        self.assertFalse(
+            NoteDebit.objects.filter(facture=self.facture).exists())
+        for corps in ({'montant': '10', 'taux_tva': ''},
+                      {'montant': '.5'}, {'montant': '5000.5',
+                                          'taux_tva': '100'}):
+            r = self._creer_nd(corps)
+            self.assertEqual(r.status_code, 201, (corps, r.content))
+
     def test_annuler_nd(self):
         from apps.ventes.models import Avoir, FactureActivity
         r = self._creer_nd({'motif': 'pénalité', 'montant': '500.00',
