@@ -29,7 +29,7 @@ def _nom_societe(company):
         nom = (company_identity(company).get('nom') or '').strip()
         if nom:
             return nom
-    except Exception:  # noqa: BLE001 — un envoi ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un envoi ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_nom_societe', exc_info=True)
     return (getattr(company, 'nom', '') or '').strip()
 
@@ -3026,7 +3026,7 @@ def _envoyer_lien_signature(email, nom, demande, lien, *, relance=False,
         )
         send_mail(sujet, corps, from_email, [email], fail_silently=False)
         return True
-    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('ADOC63: envoi du lien de signature échoué : %s', exc)
         return False
 
@@ -3725,7 +3725,8 @@ def envoyer_code_otp_signataire(signataire, *, telephone_override='',
                 f'{_nom_societe(signataire.demande.company)} — code de '
                 'signature', f'Votre code : {code}',
                 from_email, [email], fail_silently=False)
-        except Exception as exc:  # noqa: BLE001 — dégrade, jamais bloquant.
+        except Exception as exc:  # noqa: BLE001 — dégrade, erreur remontée à l'appelant (D-ENF22-BLE001)
+            logger.warning('ged : envoi du code OTP échoué, signature dégradée', exc_info=True)
             return _degrader_otp(
                 signataire, f"Envoi email échoué ({exc}) : authentification "
                             "dégradée, signature sans OTP.")
@@ -5963,7 +5964,8 @@ def appliquer_regles_dossier(document, *, user=None):
                 try:
                     resultats.append(
                         _executer_action_regle(document, step, user=user))
-                except Exception as exc:  # noqa: BLE001 — best-effort, journalisé.
+                except Exception as exc:  # noqa: BLE001 — erreur consignée dans le résultat (D-ENF22-BLE001)
+                    logger.warning('ged : action de règle de dossier échouée', exc_info=True)
                     resultats.append({
                         'type': (step or {}).get('type'),
                         'ok': False, 'erreur': str(exc),
@@ -6457,7 +6459,8 @@ def creer_lot_envoi_signature(*, company, modele, destinataires, libelle='',
                 'ligne': index, 'nom': nom, 'email': email, 'ok': True,
                 'document_id': new_doc.pk, 'demande_id': demande.pk,
             })
-        except Exception as exc:  # noqa: BLE001 — rapporté par ligne, jamais bloquant.
+        except Exception as exc:  # noqa: BLE001 — rapporté par ligne, jamais bloquant (D-ENF22-BLE001)
+            logger.warning("ged : ligne du lot d'envoi en erreur", exc_info=True)
             nb_erreurs += 1
             resultats.append({
                 'ligne': index, 'nom': ligne.get('nom'),
@@ -6922,7 +6925,7 @@ def seed_guide_visite(companies=None):
                 crees += 1
             else:
                 existants += 1
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             echecs += 1
             logger.warning(
                 'seed_guide_visite : dépôt du guide échoué pour la société '
