@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Radar, ShieldAlert } from 'lucide-react'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Card, CardContent, Badge, Spinner, Button, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, toast,
@@ -118,8 +119,9 @@ export default function VisiteursPage() {
   const chargerEquipe = () => {
     // Même différé que `chargerAppareils` (react-hooks/set-state-in-effect).
     queueMicrotask(() => setLoadingEquipe(true))
-    return crmApi.getAppareilsEquipe()
-      .then((r) => setEquipe(r.data?.results ?? r.data ?? []))
+    return fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getAppareilsEquipe({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setEquipe(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setEquipe([]))
       .finally(() => setLoadingEquipe(false))
   }
@@ -171,8 +173,9 @@ export default function VisiteursPage() {
     if (ouvertId === appareilId) { setOuvertId(null); return }
     setOuvertId(appareilId)
     setLoadingDetail(true)
-    crmApi.getVisitesExternes({ appareil_id: appareilId })
-      .then((r) => setVisitesDetail(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getVisitesExternes({ appareil_id: appareilId, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setVisitesDetail(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setVisitesDetail([]))
       .finally(() => setLoadingDetail(false))
   }

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatDate } from '../../lib/format'
 import { compressPhotoForUpload } from '../preferences/prefs'
 import DataSaverThumb from '../../features/pwa/DataSaverThumb'
@@ -128,8 +129,10 @@ export default function ChantierPhotos({ installationId }) {
   const fileRefs = { avant: useRef(null), pendant: useRef(null), apres: useRef(null) }
 
   const load = () => {
-    recordsApi.getAttachments('installations.installation', installationId)
-      .then((r) => setItems(r.data.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      recordsApi.getAttachments('installations.installation', installationId, { page, page_size: pageSize })
+        .then((r) => r.data))
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }
   useEffect(() => { load() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -140,9 +143,11 @@ export default function ChantierPhotos({ installationId }) {
   // pas les autres (Promise.all sur des promesses déjà `.catch()`ées).
   const loadInterventionPhotos = () => {
     if (!installationId) { setInterventionPhotos([]); return }
-    installationsApi.getInterventions({ installation: installationId })
-      .then((r) => {
-        const list = r.data?.results ?? r.data ?? []
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getInterventions({ installation: installationId, page, page_size: pageSize })
+        .then((r) => r.data))
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : (rows?.results ?? [])
         return Promise.all(list.map((interv) => installationsApi.getPhotos(interv.id)
           .then((pr) => ({ interv, groupes: pr.data?.groupes ?? {} }))
           .catch(() => ({ interv, groupes: {} }))))

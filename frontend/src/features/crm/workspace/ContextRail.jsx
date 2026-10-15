@@ -5,6 +5,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent, Button } from '../../../ui'
 import ActivitiesPanel from '../../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../../components/AttachmentsPanel'
 import recordsApi from '../../../api/recordsApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import TimelineTab from './TimelineTab'
 import DevisTab from './DevisTab'
 // VT5 — visite technique terrain (fondateur 2026-09-09) : bouton de création
@@ -93,15 +94,19 @@ export default function ContextRail({
   const loadCounts = useCallback(() => {
     if (!leadId) return
     const requestedId = leadId
-    recordsApi.getActivities('crm.lead', requestedId)
-      .then((r) => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      recordsApi.getActivities('crm.lead', requestedId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
         if (leadIdRef.current !== requestedId) return
-        const list = r.data.results ?? r.data
+        const list = Array.isArray(rows) ? rows : (rows?.results ?? [])
         setOpenActivites(list.filter((a) => !a.done).length)
       })
       .catch(() => {})
-    recordsApi.getAttachments('crm.lead', requestedId)
-      .then((r) => { if (leadIdRef.current === requestedId) setNbPieces((r.data.results ?? r.data).length) })
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      recordsApi.getAttachments('crm.lead', requestedId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
+        if (leadIdRef.current === requestedId) setNbPieces((Array.isArray(rows) ? rows : (rows?.results ?? [])).length)
+      })
       .catch(() => {})
   }, [leadId])
 

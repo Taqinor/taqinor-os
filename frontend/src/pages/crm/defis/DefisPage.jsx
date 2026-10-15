@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Trophy, Medal, Award } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import { ModuleHero } from '../../../ui/module'
 import { Segmented, Spinner, EmptyState } from '../../../ui'
 
@@ -28,10 +29,11 @@ export default function DefisPage() {
 
   useEffect(() => {
     let active = true
-    crmApi.getDefis({ actif: true })
-      .then((r) => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getDefis({ actif: true, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
         if (!active) return
-        const results = r.data?.results ?? r.data ?? []
+        const results = Array.isArray(rows) ? rows : (rows?.results ?? [])
         setDefis(results)
         if (results.length > 0) setDefiId(results[0].id)
       })

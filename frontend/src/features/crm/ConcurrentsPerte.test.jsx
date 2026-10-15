@@ -63,7 +63,7 @@ describe('ConcurrentsPerte (PACT103)', () => {
     withProviders(<ConcurrentsPerte />)
 
     await user.type(screen.getByLabelText('Rechercher un lead perdu'), 'Alami')
-    await waitFor(() => expect(getLeads).toHaveBeenCalledWith({ search: 'Alami' }))
+    await waitFor(() => expect(getLeads).toHaveBeenCalledWith(expect.objectContaining({ search: 'Alami' })))
 
     expect((await screen.findAllByText(/Ahmed Alami/)).length).toBeGreaterThan(0)
     expect(screen.queryByText(/Sara B\./)).not.toBeInTheDocument()

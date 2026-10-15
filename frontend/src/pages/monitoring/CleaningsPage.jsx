@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Droplets, Plus, Trash2 } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Badge, Button, Card, CardContent, DataTable, EmptyState, IconButton,
   Input, Label, Spinner, Textarea,
@@ -37,8 +38,9 @@ export default function CleaningsPage() {
 
   const reload = (cfgId, instId) => {
     if (!cfgId || !instId) return
-    monitoringApi.getCleanings({ installation: instId })
-      .then((r) => setCleanings(r.data.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      monitoringApi.getCleanings({ installation: instId, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setCleanings(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setCleanings([]))
     monitoringApi.getSoiling(cfgId)
       .then((r) => setSoiling(r.data))
@@ -54,11 +56,12 @@ export default function CleaningsPage() {
       setLoading(true)
       try {
         const [c, s] = await Promise.all([
-          monitoringApi.getCleanings({ installation: installationId }),
+          fetchAllPages((page, { page_size: pageSize } = {}) =>
+      monitoringApi.getCleanings({ installation: installationId, page, page_size: pageSize }).then((r) => r.data)),
           monitoringApi.getSoiling(selectedId),
         ])
         if (active) {
-          setCleanings(c.data.results ?? c.data ?? [])
+          setCleanings(Array.isArray(c) ? c : (c?.results ?? []))
           setSoiling(s.data)
         }
       } catch {

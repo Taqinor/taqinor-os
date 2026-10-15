@@ -369,8 +369,8 @@ const stockApi = {
   getBonsCommandeFournisseurDe: (fournisseurId, params) =>
     api.get('/stock/bons-commande-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
   // XPUR1 — documents de conformité, filtrés serveur par ?fournisseur=.
-  getDocumentsConformiteFournisseur: (fournisseurId) =>
-    api.get('/stock/documents-conformite-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  getDocumentsConformiteFournisseur: (fournisseurId, params) =>
+    api.get('/stock/documents-conformite-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
   // ASTK225 — CRUD des pièces XPUR1 (écriture stock_modifier, suppression Admin).
   createDocumentConformiteFournisseur: (data) =>
     api.post('/stock/documents-conformite-fournisseur/', data),
@@ -505,9 +505,9 @@ const stockApi = {
     api.get(`/stock/kits/${id}/composition-au/`, { params: { date } }),
 
   // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
-  getFichesTechniques: (produitId) =>
+  getFichesTechniques: (produitId, params) =>
     api.get('/stock/fiches-techniques/',
-      { params: produitId ? { produit: produitId } : {} }),
+      { params: { ...(produitId ? { produit: produitId } : {}), ...params } }),
   createFicheTechnique: (data) =>
     api.post('/stock/fiches-techniques/', data),
   updateFicheTechnique: (id, data) =>
@@ -538,8 +538,8 @@ const stockApi = {
   // XPUR5 — contacts secondaires du fournisseur (N par fournisseur), déjà
   // filtrés serveur par ?fournisseur=. `Fournisseur.contact_personne` reste
   // le contact principal (champ libre, inchangé).
-  getContactsFournisseurDe: (fournisseurId) =>
-    api.get('/stock/contacts-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  getContactsFournisseurDe: (fournisseurId, params) =>
+    api.get('/stock/contacts-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
   createContactFournisseur: (data) =>
     api.post('/stock/contacts-fournisseur/', data),
   updateContactFournisseur: (id, data) =>
@@ -596,8 +596,8 @@ const stockApi = {
   // XPUR9 — avoirs fournisseur (notes de crédit AP), filtrés serveur par
   // ?fournisseur=. `imputer` réduit le solde dû d'une facture du même
   // fournisseur ; `valider` fait passer brouillon → validé.
-  getAvoirsFournisseurDe: (fournisseurId) =>
-    api.get('/stock/avoirs-fournisseur/', { params: { fournisseur: fournisseurId } }),
+  getAvoirsFournisseurDe: (fournisseurId, params) =>
+    api.get('/stock/avoirs-fournisseur/', { params: { ...params, fournisseur: fournisseurId } }),
   createAvoirFournisseur: (data) =>
     api.post('/stock/avoirs-fournisseur/', data),
   validerAvoirFournisseur: (id) =>

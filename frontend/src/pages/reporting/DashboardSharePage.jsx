@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Copy, Link2, Plus, Ban, Users } from 'lucide-react'
 import coreApi from '../../api/coreApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Badge, Button, DataTable, EmptyState, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Spinner,
@@ -74,8 +75,9 @@ export default function DashboardSharePage() {
     return (id) => map.get(id) || `#${id}`
   }, [membres])
 
-  const reload = () => coreApi.dashboardsPartages.list()
-    .then((r) => setPartages(r.data?.results ?? r.data ?? []))
+  const reload = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    coreApi.dashboardsPartages.list({ page, page_size: pageSize }).then((r) => r.data))
+    .then((rows) => setPartages(Array.isArray(rows) ? rows : (rows?.results ?? [])))
     .catch(() => setPartages([]))
 
   useEffect(() => {
@@ -110,8 +112,9 @@ export default function DashboardSharePage() {
       .catch(() => toast.error('Révocation impossible.'))
   }
 
-  const reloadInternes = () => coreApi.dashboardsPartagesInternes.list()
-    .then((r) => setInternes(r.data?.results ?? r.data ?? []))
+  const reloadInternes = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    coreApi.dashboardsPartagesInternes.list({ page, page_size: pageSize }).then((r) => r.data))
+    .then((rows) => setInternes(Array.isArray(rows) ? rows : (rows?.results ?? [])))
     .catch(() => setInternes([]))
 
   useEffect(() => {

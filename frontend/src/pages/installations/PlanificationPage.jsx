@@ -22,6 +22,7 @@ import {
   Wrench, Gauge, GripVertical,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   Badge, Spinner, EmptyState, Select, SelectTrigger, SelectValue,
@@ -791,8 +792,9 @@ export function OutilsChantierTab() {
   const [tarifJour, setTarifJour] = useState('')
 
   useEffect(() => {
-    installationsApi.getInstallations({ annule: 'sans' })
-      .then((r) => setChantiers(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getInstallations({ annule: 'sans', page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setChantiers(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setChantiers([]))
   }, [])
 

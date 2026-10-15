@@ -72,7 +72,7 @@ describe('AnnoncesPage (WIR177)', () => {
     renderPage()
     expect(await screen.findByText(ORDINAIRE.titre)).toBeInTheDocument()
     expect(screen.getByText(OBLIGATOIRE.titre)).toBeInTheDocument()
-    expect(getAnnonces).toHaveBeenCalledWith({ active: 1 })
+    expect(getAnnonces).toHaveBeenCalledWith(expect.objectContaining({ active: 1 }))
   })
 
   it('sans `?annonce=`, l’annonce ÉPINGLÉE passe devant', async () => {

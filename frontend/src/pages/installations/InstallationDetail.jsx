@@ -14,6 +14,7 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
@@ -415,26 +416,31 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       .then(r => setHistorique(r.data)).catch(() => {})
   }
   const loadEquipements = () => {
-    savApi.getEquipements({ installation: id })
-      .then(r => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      savApi.getEquipements({ installation: id, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setEquipements(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }
   const loadTickets = () => {
-    savApi.getTickets({ installation: id, ouvert: 'tous' })
-      .then(r => setTickets(r.data?.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      savApi.getTickets({ installation: id, ouvert: 'tous', page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setTickets(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }
   const loadContrats = () => {
     if (!installation.client) return
-    savApi.getContrats({ client: installation.client })
-      .then(r => setContrats(r.data?.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      savApi.getContrats({ client: installation.client, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setContrats(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
   }
   // CHT20 — lecture légère best-effort, endpoint EXISTANT (RegulatoryDossier,
   // FG268) déjà filtrable par `?devis=` (aucun nouveau backend) : le premier
   // dossier réglementaire du devis de ce chantier, s'il existe.
   const loadDossierReglementaire = () => {
     if (!installation.devis) return
-    ventesApi.getReglementaire('dossiers-reglementaires', { devis: installation.devis })
-      .then((r) => {
-        const rows = r.data?.results ?? r.data ?? []
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      ventesApi.getReglementaire('dossiers-reglementaires', { devis: installation.devis, page, page_size: pageSize })
+        .then((r) => r.data))
+      .then((res) => {
+        const rows = Array.isArray(res) ? res : (res?.results ?? [])
         setDossierReglementaireLie(rows[0] ?? null)
       })
       .catch(() => {})

@@ -74,7 +74,7 @@ describe('ProblemesPage (NTSRV16/NTSRV17/NTSRV31)', () => {
     render(<ProblemesPage />)
     expect(await screen.findByText('PRB-202603-0001')).toBeInTheDocument()
     expect(screen.getByText('Onduleur Y — Usure')).toBeInTheDocument()
-    expect(savApi.getProblemes).toHaveBeenCalledWith({ ordering: '-impact' })
+    expect(savApi.getProblemes).toHaveBeenCalledWith(expect.objectContaining({ ordering: '-impact' }))
   })
 
   it('annonce l\'absence de regroupement sans en inventer', async () => {

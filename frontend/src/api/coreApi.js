@@ -191,7 +191,7 @@ const coreApi = {
   // XPLT10 — partage de dashboard : lien public tokenisé (créer/révoquer) +
   // mode TV (rotation plein écran des dashboards société/partagés).
   dashboardsPartages: {
-    list: () => api.get('/core/dashboards-partages/'),
+    list: (params) => api.get('/core/dashboards-partages/', { params }),
     create: (dashboardId, expiresAt) =>
       api.post('/core/dashboards-partages/', {
         dashboard: dashboardId, expires_at: expiresAt || null,
@@ -219,7 +219,7 @@ const coreApi = {
   },
   // PACT120 — annuaire de la société (sélecteur « partager à un utilisateur »).
   utilisateurs: {
-    list: () => api.get('/users/'),
+    list: (params) => api.get('/users/', { params }),
   },
   // PACT146 — catalogue des datasets interrogeables (`core.data_explorer`),
   // servi par le ViewSet des requêtes sauvegardées. Chaque entrée porte son

@@ -14,6 +14,7 @@ import installationsApi from '../../../api/installationsApi'
 // L'annuaire de la société est DÉJÀ exposé par `coreApi.utilisateurs.list`
 // (PACT120, `GET /users/`) — aucun nouvel endpoint.
 import coreApi from '../../../api/coreApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   Badge, Spinner, EmptyState,
@@ -38,16 +39,18 @@ export default function EquipeTerrainHome() {
 
   const charger = useCallback(() => {
     const jour = todayIso()
-    coreApi.utilisateurs.list()
-      .then((r) => {
-        const list = r.data?.results ?? r.data ?? []
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      coreApi.utilisateurs.list({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : (rows?.results ?? [])
         // Subordonnés DIRECTS uniquement (le sous-arbre complet est une autre
         // notion, portée par la visibilité des enregistrements — pas ici).
         setEquipe(list.filter((u) => u.supervisor === moi))
       })
       .catch(() => setEquipe([]))
-    installationsApi.getInterventions({ date_prevue: jour })
-      .then((r) => setInterventions(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getInterventions({ date_prevue: jour, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setInterventions(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setInterventions([]))
     installationsApi.getConflitsAffectation({ debut: jour, fin: jour })
       .then((r) => setConflits(r.data?.conflits ?? r.data?.results ?? []))
