@@ -3,13 +3,14 @@ Django settings for erp_agentique project.
 Base settings - shared across all environments.
 """
 
+import json as _json
 import os
 import sys
 import warnings
 from pathlib import Path
 from datetime import timedelta
 
-from . import placeholders  # noqa: E402  (prédicat pur, sans Django)
+from . import placeholders
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -1917,7 +1918,6 @@ PAYMENT_PROVIDER = os.environ.get('PAYMENT_PROVIDER', '').strip()
 # Un fournisseur sélectionné mais non configuré (clé absente) retombe lui-même
 # sur le NO-OP — garantie « aucun appel sans config ». Capacités : 'ocr', 'stt',
 # 'vision_qa', 'llm'. Lue depuis AI_PROVIDERS_JSON (JSON) si présente.
-import json as _json  # noqa: E402
 try:
     AI_PROVIDERS = _json.loads(os.environ.get('AI_PROVIDERS_JSON', '') or '{}')
     if not isinstance(AI_PROVIDERS, dict):
@@ -1991,7 +1991,7 @@ METRICS_ALLOWED_IPS = [
 # ingérable tel quel par Loki/CloudWatch (doc: docs/observability.md).
 LOG_FORMAT = os.environ.get('LOG_FORMAT', '').strip().lower()
 if LOG_FORMAT == 'json':
-    from core.logging_ext import build_logging_config  # noqa: E402
+    from core.logging_ext import build_logging_config
     LOGGING = build_logging_config(
         level=os.environ.get('LOG_LEVEL', 'INFO').upper())
 
