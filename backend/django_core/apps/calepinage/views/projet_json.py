@@ -32,6 +32,7 @@ from drf_spectacular.extensions import OpenApiSerializerExtension
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from core.champs_stricts import BooleenStrict, ChaineStricte
@@ -125,7 +126,8 @@ class _RattachementUniquePublie(OpenApiSerializerExtension):
     responses={200: IMPORT_PROJET_SCHEMA, 201: IMPORT_PROJET_SCHEMA})
 @corps_obligatoire
 @action(detail=False, methods=['post'], url_path='import-projet',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage],
+        parser_classes=[JSONParser])  # ``projet`` est un objet JSON imbriqué
 def import_projet(self, request):
     """CALX370 — réimporte le fichier de projet (nouveau calepinage)."""
     donnees = request.data if isinstance(request.data, dict) else {}

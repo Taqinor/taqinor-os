@@ -442,6 +442,15 @@ class CorpsImportProjetTest(unittest.TestCase):
             self.assertFalse(valide, (champ, valeur))
             self.assertIn(champ, erreurs)
 
+    def test_le_corps_ne_se_donne_qu_en_json(self):
+        # CI #1001 : ``projet`` est un objet imbriqué, que multipart (part
+        # texte) et urlencoded ne portent pas — le schéma publié n'a que JSON.
+        from rest_framework.parsers import JSONParser
+
+        from apps.calepinage.views.projet_json import import_projet
+
+        self.assertEqual(import_projet.kwargs['parser_classes'], [JSONParser])
+
     def test_statuts_des_refus_du_service(self):
         # Faute de FORME : 400 ; contenu du fichier : 409 ; introuvable : 404.
         for document, attendu in (([], 400), ({}, 400),
