@@ -69,3 +69,37 @@ class TestCustomDataValidation(CFBase):
                             {'nom': 'X', 'custom_data': {'canal_pub': 'Z'}},
                             format='json')
         self.assertEqual(bad.status_code, 400)
+
+
+class TestDefinitionsStrictes(CFBase):
+    """CI #1000 fuzz — la définition valide son corps comme le schéma le publie :
+    `formule: 0`, `code: 0`, `module: 0`, `conditions: 1` étaient acceptés ou
+    convertis ; `?field_def=abc` levait ValueError (500)."""
+
+    def _corps(self, **extra):
+        return {'module': 'fournisseur', 'code': 'c0', 'libelle': 'L',
+                'type': 'text', **extra}
+
+    def test_types_faux_400(self):
+        for extra in ({'formule': 0}, {'code': 0}, {'code': ' a '},
+                      {'module': 0}, {'conditions': 1}, {'rollup_config': []},
+                      {'ordre': '5'}, {'libelle': 0}):
+            resp = self.api.post('/api/django/custom-fields/definitions/',
+                                 self._corps(**extra), format='json')
+            self.assertEqual(resp.status_code, 400, (extra, resp.content))
+        self.assertFalse(CustomFieldDef.objects.filter(
+            company=self.company).exists())
+
+    def test_filtre_field_def_non_entier_400(self):
+        resp = self.api.get(
+            '/api/django/custom-fields/permissions-role/?field_def=abc')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_generer_corps_invalide_400(self):
+        defi = CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='ia1', libelle='IA',
+            type='ia', ia_prompt='Bonjour {nom}')
+        url = f'/api/django/custom-fields/definitions/{defi.id}/generer/'
+        for corps in ([1], {'record_id': 'x'}, {'record_id': 2 ** 40}, {}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
