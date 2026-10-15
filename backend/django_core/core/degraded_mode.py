@@ -117,13 +117,13 @@ def _statut_llm_ia():
     (pas de sonde infra dédiée pour l'IA — dérivé du registre de fournisseurs)."""
     try:
         from core.ai.registry import is_capability_configured
-    except Exception:  # noqa: BLE001 — module IA absent/KO, jamais bloquant
+    except Exception:  # noqa: BLE001 — module IA absent/KO, jamais bloquant (D-ENF22-BLE001)
         logger.warning("statut llm ia : échec ignoré, comportement dégradé", exc_info=True)
         return 'unknown'
     for capability in ('llm', 'ocr', 'stt'):
         try:
             is_capability_configured(capability)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("statut llm ia : échec ignoré, comportement dégradé", exc_info=True)
             return 'degraded'
     return 'ok'
@@ -137,7 +137,7 @@ def degraded_mode_status():
 
     try:
         services = {s['name']: s['status'] for s in health.check_services()}
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("degraded mode status : échec ignoré, comportement dégradé", exc_info=True)
         services = {}
 

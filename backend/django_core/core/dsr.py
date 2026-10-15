@@ -76,7 +76,7 @@ def verifier_gardes_effacement(company, subject_identifier):
             motif = _ERASURE_GUARDS[name](company, subject_identifier)
         except EffacementBloque:
             raise
-        except Exception:  # noqa: BLE001 - une garde en échec ne bloque pas
+        except Exception:  # noqa: BLE001 — une garde en échec ne bloque pas (D-ENF22-BLE001)
             logger.warning("verifier gardes effacement : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if motif:
@@ -119,7 +119,7 @@ def exporter(company, subject_identifier):
             continue
         try:
             out[name] = fn(company, subject_identifier)
-        except Exception as exc:  # noqa: BLE001 - isolation par fournisseur
+        except Exception as exc:  # noqa: BLE001 — isolation par fournisseur (D-ENF22-BLE001)
             logger.warning("exporter : échec ignoré, comportement dégradé", exc_info=True)
             out[name] = {'erreur': str(exc)}
     return out
@@ -147,7 +147,7 @@ def effacer(company, subject_identifier):
             continue
         try:
             out[name] = fn(company, subject_identifier)
-        except Exception as exc:  # noqa: BLE001 - isolation par fournisseur
+        except Exception as exc:  # noqa: BLE001 — isolation par fournisseur (D-ENF22-BLE001)
             logger.warning("effacer : échec ignoré, comportement dégradé", exc_info=True)
             out[name] = {'erreur': str(exc)}
     return out
@@ -356,7 +356,7 @@ def _minio_manifest(company_id):
     try:
         from .backup import _minio_client
         client = _minio_client()
-    except Exception:  # noqa: BLE001 — stockage indisponible → manifeste vide
+    except Exception:  # noqa: BLE001 — stockage indisponible → manifeste vide (D-ENF22-BLE001)
         logger.warning("minio manifest : échec ignoré, comportement dégradé", exc_info=True)
         return entries
     for bucket in buckets:
@@ -367,7 +367,7 @@ def _minio_manifest(company_id):
                     entries.append({
                         'bucket': bucket, 'key': obj.get('Key'),
                         'size': int(obj.get('Size', 0) or 0)})
-        except Exception:  # noqa: BLE001 — bucket absent/erreur → ignore
+        except Exception:  # noqa: BLE001 — bucket absent/erreur → ignore (D-ENF22-BLE001)
             logger.warning("minio manifest : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return entries
@@ -403,7 +403,7 @@ def export_tenant(company_id, out_path):
             try:
                 qs = model.objects.filter(company_id=company_id)
                 payload = dj_serializers.serialize('json', qs.iterator())
-            except Exception:  # noqa: BLE001 — un modèle KO ne bloque pas tout
+            except Exception:  # noqa: BLE001 — un modèle KO ne bloque pas tout (D-ENF22-BLE001)
                 logger.warning("export tenant : échec ignoré, comportement dégradé", exc_info=True)
                 continue
             count = payload.count('"model":') if payload else 0

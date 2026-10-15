@@ -115,7 +115,7 @@ class RequestObservabilityMiddleware:
             try:
                 from . import metrics
                 metrics.record_http_request(company_id, status, duration_ms)
-            except Exception:  # noqa: BLE001 — l'observabilité ne casse jamais la requête
+            except Exception:  # noqa: BLE001 — l'observabilité ne casse jamais la requête (D-ENF22-BLE001)
                 logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
             # NTPLT51 — trace des requêtes lentes (WARNING au-delà du seuil).
             self._maybe_log_slow(ctx, duration_ms, capture)

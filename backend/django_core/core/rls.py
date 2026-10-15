@@ -98,7 +98,7 @@ def _has_local_company_fk(model):
         return False
     try:
         field = meta.get_field("company")
-    except Exception:  # noqa: BLE001 - pas de champ company => hors périmètre
+    except Exception:  # noqa: BLE001 — pas de champ company => hors périmètre (D-ENF22-BLE001)
         logger.warning("has local company fk : échec ignoré, comportement dégradé", exc_info=True)
         return False
     return isinstance(field, m.ForeignKey)

@@ -242,7 +242,7 @@ class IdempotentCreateMixin:
                     'response_body': response.data,
                 },
             )
-        except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT, ne
+        except Exception:  # noqa: BLE001 — l'idempotence est un CONFORT, ne (D-ENF22-BLE001)
             # doit jamais faire échouer une création qui a déjà réussi.
             logger.warning("avec idempotence : échec ignoré, comportement dégradé", exc_info=True)
         return response

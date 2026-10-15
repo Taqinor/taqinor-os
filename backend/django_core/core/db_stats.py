@@ -80,7 +80,7 @@ def collect_db_stats() -> dict:
             cursor.execute(_TOP_QUERIES_SQL)
             result['top_queries'] = _rows(cursor)
             result['pg_stat_statements'] = True
-        except Exception as exc:  # noqa: BLE001 — extension absente → dégradé
+        except Exception as exc:  # noqa: BLE001 — extension absente → dégradé (D-ENF22-BLE001)
             logger.warning("collect db stats : échec ignoré, comportement dégradé", exc_info=True)
             result['top_queries_error'] = (
                 "pg_stat_statements indisponible (shared_preload_libraries ?) : "
@@ -91,7 +91,7 @@ def collect_db_stats() -> dict:
             try:
                 cursor.execute(sql)
                 result[key] = _rows(cursor)
-            except Exception as exc:  # noqa: BLE001 — dégrade section par section
+            except Exception as exc:  # noqa: BLE001 — dégrade section par section (D-ENF22-BLE001)
                 logger.warning("collect db stats : échec ignoré, comportement dégradé", exc_info=True)
                 result[f'{key}_error'] = str(exc)
     return result

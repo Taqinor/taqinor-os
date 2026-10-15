@@ -67,7 +67,7 @@ def effective_prompt(company, cle: str) -> tuple[str, str]:
     if _RESOLVER is not None and company is not None:
         try:
             surcharge = _RESOLVER(company, cle)
-        except Exception:  # noqa: BLE001 — une surcharge illisible ne casse rien
+        except Exception:  # noqa: BLE001 — une surcharge illisible ne casse rien (D-ENF22-BLE001)
             logger.warning('core.ai.prompts: surcharge illisible (%s)', cle,
                            exc_info=True)
             surcharge = None

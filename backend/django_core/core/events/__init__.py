@@ -97,15 +97,65 @@ import logging
 import django.dispatch
 from django.db import transaction as _transaction
 
-from .parked import *  # noqa: F401,F403
-from .facturation import *  # noqa: F401,F403
-from .devis import *  # noqa: F401,F403
-from .stock import *  # noqa: F401,F403
-from .lead import *  # noqa: F401,F403
-from .acquisition import *  # noqa: F401,F403
-from .chantiers import *  # noqa: F401,F403
-from .sav import *  # noqa: F401,F403
-from .calepinage import *  # noqa: F401,F403
+from .parked import (
+    employe_sorti, conge_approuve, contrat_signe, contrat_actif, contrat_resilie, effet_rejete,
+    abonnement_monitoring_resilie, projet_status_change, incident_declared, budget_cycle_clos,
+    cycle_sterilisation_non_conforme, ao_depose, ao_gagne, lead_maturite_changee,
+    dossier_export_cloture, scm_rupture_imminente_detectee, scm_cycle_sop_cloture,
+    dossier_juridique_clos, btp_reserve_levee, btp_rfi_repondu, btp_visa_approuve,
+    btp_dgd_finalise,
+)
+from .facturation import (
+    payment_captured, document_produit, facture_paid, paiement_rejete, facture_emise,
+    facture_payee, facture_annulee, bon_commande_cree, paiement_enregistre, avoir_cree,
+    avoir_annule,
+)
+from .devis import (
+    devis_accepted, devis_acceptation_annulee, devis_sent, layout_finalise, devis_revise,
+    devis_refused, devis_expired, document_pdf_generated,
+)
+from .stock import (
+    reception_fournisseur_confirmee, reception_fournisseur_annulee, facture_fournisseur_creee,
+    paiement_fournisseur_enregistre, mouvement_stock_enregistre, produit_modifie,
+    demande_achat_approuvee, rfq_attribuee,
+)
+from .lead import (
+    lead_erased, lead_created, visite_validee, visite_planifiee, visite_terminee,
+    lead_stage_changed, deal_commission_due, appointment_effectue, salle_vente_signal_interet,
+)
+from .acquisition import (
+    meta_lead_captured, lead_trace_toit_recu,
+)
+from .chantiers import (
+    intervention_completed, chantier_annule, chantier_receptionne,
+)
+from .sav import (
+    ticket_resolu, equipement_remplace,
+)
+from .calepinage import (
+    calepinage_simule,
+)
+
+# Signaux ré-exportés par les sous-modules (même surface que l'ancien `import *` : leur `__all__`).
+__all__ = [
+    'employe_sorti', 'conge_approuve', 'contrat_signe', 'contrat_actif', 'contrat_resilie',
+    'effet_rejete', 'abonnement_monitoring_resilie', 'projet_status_change', 'incident_declared',
+    'budget_cycle_clos', 'cycle_sterilisation_non_conforme', 'ao_depose', 'ao_gagne',
+    'lead_maturite_changee', 'dossier_export_cloture', 'scm_rupture_imminente_detectee',
+    'scm_cycle_sop_cloture', 'dossier_juridique_clos', 'btp_reserve_levee', 'btp_rfi_repondu',
+    'btp_visa_approuve', 'btp_dgd_finalise', 'payment_captured', 'document_produit',
+    'facture_paid', 'paiement_rejete', 'facture_emise', 'facture_payee', 'facture_annulee',
+    'bon_commande_cree', 'paiement_enregistre', 'avoir_cree', 'avoir_annule', 'devis_accepted',
+    'devis_acceptation_annulee', 'devis_sent', 'layout_finalise', 'devis_revise', 'devis_refused',
+    'devis_expired', 'document_pdf_generated', 'reception_fournisseur_confirmee',
+    'reception_fournisseur_annulee', 'facture_fournisseur_creee',
+    'paiement_fournisseur_enregistre', 'mouvement_stock_enregistre', 'produit_modifie',
+    'demande_achat_approuvee', 'rfq_attribuee', 'lead_erased', 'lead_created', 'visite_validee',
+    'visite_planifiee', 'visite_terminee', 'lead_stage_changed', 'deal_commission_due',
+    'appointment_effectue', 'salle_vente_signal_interet', 'meta_lead_captured',
+    'lead_trace_toit_recu', 'intervention_completed', 'chantier_annule', 'chantier_receptionne',
+    'ticket_resolu', 'equipement_remplace', 'calepinage_simule',
+]
 
 _logger = logging.getLogger(__name__)
 
@@ -127,7 +177,7 @@ def abonne_best_effort(func):
         try:
             with _transaction.atomic():
                 return func(*args, **kwargs)
-        except Exception:  # noqa: BLE001 — best-effort, journalisé
+        except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
             _logger.exception('Abonné best-effort %s en échec (isolé)', nom)
             return None
 
@@ -410,7 +460,7 @@ def emettre_langue_changed(company, *, ancienne_langue, nouvelle_langue,
             ancienne_langue=avant,
             nouvelle_langue=apres,
             user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         _logger.warning("emettre langue changed : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(

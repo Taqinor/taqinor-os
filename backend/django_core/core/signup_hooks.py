@@ -62,7 +62,7 @@ def run_signup_hooks(company, user=None):
         try:
             fn(company, user=user)
             resultats[name] = 'ok'
-        except Exception as exc:  # noqa: BLE001 — un hook KO n'arrête jamais tout
+        except Exception as exc:  # noqa: BLE001 — un hook KO n'arrête jamais tout (D-ENF22-BLE001)
             logger.warning('signup hook %s a échoué: %s', name, exc,
                            exc_info=True)
             resultats[name] = f'erreur: {exc}'

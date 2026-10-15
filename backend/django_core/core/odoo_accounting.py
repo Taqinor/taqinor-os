@@ -59,7 +59,7 @@ class OdooJson2Client(BaseProvider):
             return {'ok': False, 'detail': 'Connecteur Odoo non configuré.'}
         try:
             import requests
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
             return {'ok': False, 'detail': 'Bibliothèque HTTP indisponible.'}
         body = {
@@ -73,7 +73,7 @@ class OdooJson2Client(BaseProvider):
             ok = 200 <= resp.status_code < 300
             data = resp.json() if ok else {}
             return {'ok': ok, 'status': resp.status_code, 'data': data}
-        except Exception as exc:  # noqa: BLE001 — réseau/transport.
+        except Exception as exc:  # noqa: BLE001 — réseau/transport (D-ENF22-BLE001)
             logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
             return {'ok': False, 'detail': f'Erreur réseau : {exc}'}
 

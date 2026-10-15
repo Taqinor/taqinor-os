@@ -50,7 +50,7 @@ def _to_decimal(value, default=Decimal('0')) -> Decimal:
         return value
     try:
         return Decimal(str(value))
-    except Exception:  # noqa: BLE001 — entrée non numérique quelconque
+    except Exception:  # noqa: BLE001 — entrée non numérique quelconque (D-ENF22-BLE001)
         logger.warning("to decimal : échec ignoré, comportement dégradé", exc_info=True)
         return default
 

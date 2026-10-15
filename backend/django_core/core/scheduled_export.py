@@ -195,7 +195,7 @@ class MinioWarehouseDestination(ExportDestinationProvider):
                     logger.warning("deliver : échec ignoré, comportement dégradé", exc_info=True)
             client.put_object(Bucket=bucket, Key=key, Body=data or b'',
                               ContentType=content_type or 'text/csv')
-        except Exception as exc:  # noqa: BLE001 — jamais d'exception remontée
+        except Exception as exc:  # noqa: BLE001 — jamais d'exception remontée (D-ENF22-BLE001)
             logger.warning('entrepôt MinIO : dépôt %s/%s en échec', bucket, key,
                            exc_info=True)
             return {'ok': False, 'statut': 'erreur',
@@ -325,7 +325,7 @@ class SnowflakeDestination(ExportDestinationProvider):
                 cur.execute(copie)
             finally:
                 conn.close()
-        except Exception as exc:  # noqa: BLE001 - jamais d'exception remontée
+        except Exception as exc:  # noqa: BLE001 — jamais d'exception remontée (D-ENF22-BLE001)
             logger.warning('Snowflake : chargement de %s en échec', table,
                            exc_info=True)
             return {'ok': False, 'statut': 'erreur',
@@ -398,7 +398,7 @@ def prochain_curseur(export, rows):
     try:
         agg = data_explorer.run_query(
             export.dataset, export.company, None, spec)
-    except Exception:  # noqa: BLE001 — jamais d'échec d'export sur le curseur
+    except Exception:  # noqa: BLE001 — jamais d'échec d'export sur le curseur (D-ENF22-BLE001)
         logger.warning('curseur incrémental : max(%s) indisponible sur %r',
                        champ, export.dataset, exc_info=True)
         return None
@@ -625,7 +625,7 @@ def executer(export, now=None):
             mres = dest.deliver(f'{filename}.{MANIFEST_SUFFIXE}',
                                 _manifeste_bytes(manifeste),
                                 'application/json', context=ctx_manifest)
-        except Exception:  # noqa: BLE001 — le manifeste ne casse jamais l'export
+        except Exception:  # noqa: BLE001 — le manifeste ne casse jamais l'export (D-ENF22-BLE001)
             logger.warning('manifeste d\'entrepôt : dépôt en échec (extrait %s)',
                            getattr(export, 'pk', None), exc_info=True)
         else:
@@ -666,7 +666,7 @@ def _champ_cron(champ, borne_max, borne_min=0):
         return None
     try:
         return crontab_parser(borne_max + 1 - borne_min, borne_min).parse(champ)
-    except Exception:  # noqa: BLE001 — une expression fautive n'est jamais due
+    except Exception:  # noqa: BLE001 — une expression fautive n'est jamais due (D-ENF22-BLE001)
         logger.warning("champ cron : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -767,7 +767,7 @@ def executer_exports_dus(now=None, *, companies=None):
     for export in exports_dus(now, companies=companies):
         try:
             executer(export, now=now)
-        except Exception:  # noqa: BLE001 — un extrait ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — un extrait ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning('extraits planifiés : extrait %s en échec',
                            getattr(export, 'pk', None), exc_info=True)
             continue

@@ -159,7 +159,7 @@ def _emettre_journal(target, spec, fields, count, company, user):
             company=company,
             user=user,
         )
-    except Exception:  # noqa: BLE001 — jamais casser une écriture commitée
+    except Exception:  # noqa: BLE001 — jamais casser une écriture commitée (D-ENF22-BLE001)
         logger.warning("emettre journal : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).warning(
             "bulk_edit_applied non journalisé pour la cible %r", target,

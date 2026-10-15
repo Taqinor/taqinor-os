@@ -93,7 +93,7 @@ class GenericHttpSmsProvider(SmsProvider):
         # imposer la dépendance réseau à la fondation, et on dégrade si absente.
         try:
             import requests  # import paresseux, optionnel
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("send : échec ignoré, comportement dégradé", exc_info=True)
             return SmsResult(
                 sent=False, provider=self.code,
@@ -116,7 +116,7 @@ class GenericHttpSmsProvider(SmsProvider):
                 sent=ok, provider=self.code,
                 detail=f'HTTP {resp.status_code}',
                 message_id=str(resp.headers.get('X-Message-Id', '')))
-        except Exception as exc:  # noqa: BLE001 — réseau/transport.
+        except Exception as exc:  # noqa: BLE001 — réseau/transport (D-ENF22-BLE001)
             logger.warning("send : échec ignoré, comportement dégradé", exc_info=True)
             return SmsResult(
                 sent=False, provider=self.code, detail=f'Erreur réseau : {exc}')

@@ -77,7 +77,7 @@ def _ensure_backup_bucket(client) -> None:
         try:
             client.create_bucket(Bucket=BACKUP_BUCKET)
             logger.info('Bucket MinIO créé: %s', BACKUP_BUCKET)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('Impossible de créer le bucket %s: %s',
                            BACKUP_BUCKET, exc)
 
@@ -109,7 +109,7 @@ def construire_manifeste(company, user=None, datasets=None):
             ds = data_explorer.get_dataset(name)
             qs = ds['provider'](company, user)
             nb = qs.count()
-        except Exception as exc:  # noqa: BLE001 — dataset défaillant n'arrête pas
+        except Exception as exc:  # noqa: BLE001 — dataset défaillant n'arrête pas (D-ENF22-BLE001)
             logger.warning("construire manifeste : échec ignoré, comportement dégradé", exc_info=True)
             lignes_par_dataset.append(
                 {'name': name, 'label': d['label'], 'erreur': str(exc)})
@@ -223,7 +223,7 @@ def dump_database(run: BackupRun) -> BackupRun:
                 result = subprocess.run(
                     args, stdout=fh, stderr=subprocess.PIPE, env=env,
                     timeout=3600)
-        except Exception as exc:  # noqa: BLE001 — pg_dump introuvable, timeout…
+        except Exception as exc:  # noqa: BLE001 — pg_dump introuvable, timeout… (D-ENF22-BLE001)
             logger.warning("dump database : échec ignoré, comportement dégradé", exc_info=True)
             run.statut = BackupRun.STATUT_ECHEC
             run.detail = {'message': f'pg_dump: exception: {exc}'}
@@ -245,7 +245,7 @@ def dump_database(run: BackupRun) -> BackupRun:
             client = _minio_client()
             _ensure_backup_bucket(client)
             client.upload_file(str(dump_path), BACKUP_BUCKET, object_key)
-        except Exception as exc:  # noqa: BLE001 — échec upload = échec du run
+        except Exception as exc:  # noqa: BLE001 — échec upload = échec du run (D-ENF22-BLE001)
             logger.warning("dump database : échec ignoré, comportement dégradé", exc_info=True)
             run.statut = BackupRun.STATUT_ECHEC
             run.detail = {'message': f"Échec de l'upload MinIO: {exc}"}
@@ -339,7 +339,7 @@ def _push_offsite(dump_path: Path, object_key: str) -> dict:
     try:
         client = _offsite_client(cfg)
         client.upload_file(str(dump_path), cfg['bucket'], object_key)
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('SCA13: échec upload hors-boîte %s: %s', object_key, exc)
         return {'configured': True, 'status': 'echec', 'message': str(exc)}
 
@@ -363,7 +363,7 @@ def _purge_offsite_retention(client, cfg) -> dict:
             client.delete_object(Bucket=cfg['bucket'], Key=key)
         return {'conserves': min(len(objets), cfg['retain_last']),
                 'supprimes': len(a_purger)}
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('SCA13: échec rétention hors-boîte: %s', exc)
         return {'erreur': str(exc)}
 
@@ -413,7 +413,7 @@ def _top_tenants_live(limit=RESTORE_DRILL_TOP_TENANTS):
                         table=sql.Identifier(table)))
                 for company_id, n in cur.fetchall():
                     totals[company_id] = totals.get(company_id, 0) + n
-            except Exception:  # noqa: BLE001 — table absente → ignorée
+            except Exception:  # noqa: BLE001 — table absente → ignorée (D-ENF22-BLE001)
                 logger.warning("top tenants live : échec ignoré, comportement dégradé", exc_info=True)
                 continue
     top = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:limit]
@@ -451,7 +451,7 @@ def _tenant_counts_in_restored(cur, company_ids):
                 (list(company_ids),))
             for company_id, n in cur.fetchall():
                 counts[company_id] = counts.get(company_id, 0) + n
-        except Exception:  # noqa: BLE001 — dégrade proprement
+        except Exception:  # noqa: BLE001 — dégrade proprement (D-ENF22-BLE001)
             logger.warning("tenant counts in restored : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return counts
@@ -530,7 +530,7 @@ def restore_drill(run: BackupRun) -> BackupRun:
             client = _minio_client()
             client.download_file(BACKUP_BUCKET, source.object_key,
                                  str(dump_path))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("restore drill : échec ignoré, comportement dégradé", exc_info=True)
             run.statut = BackupRun.STATUT_ECHEC
             run.detail = {'message': f'Échec du téléchargement MinIO: {exc}'}
@@ -594,7 +594,7 @@ def restore_drill(run: BackupRun) -> BackupRun:
                             cur, list(top_live.keys()))
                 finally:
                     conn.close()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 logger.warning("restore drill : échec ignoré, comportement dégradé", exc_info=True)
                 run.statut = BackupRun.STATUT_ECHEC
                 run.detail = {'message': f'Échec des comptages: {exc}'}
@@ -720,7 +720,7 @@ def purger_backups(now=None, apply_=False):
             try:
                 client = client or _minio_client()
                 client.delete_object(Bucket=BACKUP_BUCKET, Key=r.object_key)
-            except Exception as exc:  # noqa: BLE001 — échec objet n'arrête pas
+            except Exception as exc:  # noqa: BLE001 — échec objet n'arrête pas (D-ENF22-BLE001)
                 logger.warning(
                     'purger_backups: échec suppression objet MinIO %s: %s',
                     r.object_key, exc)
@@ -761,7 +761,7 @@ def _rpo_planifie_label():
         heure = sorted(schedule.hour)[0] if schedule.hour else 0
         minute = sorted(schedule.minute)[0] if schedule.minute else 0
         return f'quotidien, {heure:02d}:{minute:02d}'
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("rpo planifie label : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -808,7 +808,7 @@ def resume_sauvegardes(company):
         profile = CompanyProfile.objects.filter(company=company).first()
         if profile is not None:
             rto_annonce_heures = profile.rto_annonce_heures
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("resume sauvegardes : échec ignoré, comportement dégradé", exc_info=True)
 
     return {

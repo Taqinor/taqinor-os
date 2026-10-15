@@ -55,7 +55,7 @@ def get(company_id, name: str, default=None):
     """Lecture scopée société (best-effort, jamais d'exception propagée)."""
     try:
         return cache.get(tenant_key(company_id, name), default)
-    except Exception:  # noqa: BLE001 — backend cache indisponible → défaut
+    except Exception:  # noqa: BLE001 — backend cache indisponible → défaut (D-ENF22-BLE001)
         logger.debug("get : échec ignoré, comportement dégradé", exc_info=True)
         return default
 
@@ -64,7 +64,7 @@ def set(company_id, name: str, value, timeout=None):
     """Écriture scopée société (best-effort)."""
     try:
         cache.set(tenant_key(company_id, name), value, timeout)
-    except Exception:  # noqa: BLE001 — backend cache indisponible → no-op
+    except Exception:  # noqa: BLE001 — backend cache indisponible → no-op (D-ENF22-BLE001)
         logger.warning('tenant cache set KO: %s/%s', company_id, name)
 
 
@@ -75,7 +75,7 @@ def invalidate(company_id, names) -> None:
     for name in names:
         try:
             cache.delete(tenant_key(company_id, name))
-        except Exception:  # noqa: BLE001 — une suppression KO n'arrête rien
+        except Exception:  # noqa: BLE001 — une suppression KO n'arrête rien (D-ENF22-BLE001)
             logger.warning('tenant cache delete KO: %s/%s', company_id, name)
 
 
@@ -112,7 +112,7 @@ def _on_change(sender, instance, **kwargs):
     """
     try:
         label = f'{sender._meta.app_label}.{sender._meta.model_name}'
-    except Exception:  # noqa: BLE001 — sender atypique → ignore
+    except Exception:  # noqa: BLE001 — sender atypique → ignore (D-ENF22-BLE001)
         logger.warning("on change : échec ignoré, comportement dégradé", exc_info=True)
         return
     names = _INVALIDATION.get(label)

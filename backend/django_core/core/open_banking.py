@@ -89,7 +89,7 @@ class GenericOpenBankingProvider(BankAggregatorProvider):
             return []
         try:
             import requests
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("fetch transactions : échec ignoré, comportement dégradé", exc_info=True)
             return []
         params = {'account': self.config.get('account', '')}
@@ -105,7 +105,7 @@ class GenericOpenBankingProvider(BankAggregatorProvider):
             if not (200 <= resp.status_code < 300):
                 return []
             rows = resp.json().get('transactions', [])
-        except Exception:  # noqa: BLE001 — réseau/format : dégrade en vide.
+        except Exception:  # noqa: BLE001 — réseau/format : dégrade en vide (D-ENF22-BLE001)
             logger.warning("fetch transactions : échec ignoré, comportement dégradé", exc_info=True)
             return []
         out = []

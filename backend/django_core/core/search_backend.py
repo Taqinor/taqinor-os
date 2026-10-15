@@ -73,7 +73,7 @@ class PostgresFtsBackend(SearchBackend):
         import importlib
         try:
             reporting_search = importlib.import_module('apps.reporting.search')
-        except Exception:  # noqa: BLE001 — reporting absent → aucun résultat
+        except Exception:  # noqa: BLE001 — reporting absent → aucun résultat (D-ENF22-BLE001)
             logger.warning('search_backend: reporting.search indisponible')
             return []
         fn = getattr(reporting_search, 'global_search', None)

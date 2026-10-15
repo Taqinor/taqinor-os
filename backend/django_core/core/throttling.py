@@ -34,7 +34,7 @@ def _texte_ip(valeur) -> str:
         return ''
     try:
         return str(valeur).strip()[:MAX_LONGUEUR_IP]
-    except Exception:  # noqa: BLE001 — défensif : une IP illisible vaut ''
+    except Exception:  # noqa: BLE001 — défensif : une IP illisible vaut '' (D-ENF22-BLE001)
         logger.warning("texte ip : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
@@ -119,7 +119,7 @@ def ip_de_requete(request) -> str:
             if cloudflare:
                 return cloudflare
         return _texte_ip(meta.get('REMOTE_ADDR'))
-    except Exception:  # noqa: BLE001 — défensif
+    except Exception:  # noqa: BLE001 — défensif (D-ENF22-BLE001)
         logger.warning("ip de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
@@ -156,7 +156,7 @@ def ips_declarees_de_requete(request):
             ip_de_requete(request),
         )
         return tuple(c for c in candidates if c)
-    except Exception:  # noqa: BLE001 — défensif, comme ip_de_requete
+    except Exception:  # noqa: BLE001 — défensif, comme ip_de_requete (D-ENF22-BLE001)
         logger.warning("ips declarees de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ()
 

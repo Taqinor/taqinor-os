@@ -200,7 +200,7 @@ def redis_queue_length(queue_name='celery'):
         import redis as redis_lib
         client = redis_lib.Redis.from_url(broker_url, socket_timeout=0.5)
         return client.llen(queue_name)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("redis queue length : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -209,7 +209,7 @@ def _django_prometheus_available():
     try:
         __import__('django_prometheus')  # sonde de disponibilité
         return True
-    except Exception:  # noqa: BLE001 — dépendance optionnelle non installée
+    except Exception:  # noqa: BLE001 — dépendance optionnelle non installée (D-ENF22-BLE001)
         logger.warning("django prometheus available : échec ignoré, comportement dégradé", exc_info=True)
         return False
 

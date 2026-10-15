@@ -233,7 +233,7 @@ def record_usage(*, capability: str, provider: str, prompt_tokens: int = 0,
         try:
             sink(**charge)
             ecrit = True
-        except Exception:  # noqa: BLE001 — le journal ne casse jamais l'appel
+        except Exception:  # noqa: BLE001 — le journal ne casse jamais l'appel (D-ENF22-BLE001)
             logger.warning('core.ai.usage: puits en échec (%s)',
                            getattr(sink, '__name__', sink), exc_info=True)
     return ecrit
@@ -293,7 +293,7 @@ def capability_metrics(company) -> dict:
         return {}
     try:
         mesures = _STATS_PROVIDER(company)
-    except Exception:  # noqa: BLE001 — l'état des capacités ne casse jamais
+    except Exception:  # noqa: BLE001 — l'état des capacités ne casse jamais (D-ENF22-BLE001)
         logger.warning('core.ai.usage: métriques indisponibles', exc_info=True)
         return {}
     return mesures if isinstance(mesures, dict) else {}
@@ -324,7 +324,7 @@ def budget_status(company) -> BudgetStatus:
         return BudgetStatus()
     try:
         statut = fn(company)
-    except Exception:  # noqa: BLE001 — un budget illisible ne coupe rien
+    except Exception:  # noqa: BLE001 — un budget illisible ne coupe rien (D-ENF22-BLE001)
         logger.warning('core.ai.usage: statut de budget indisponible',
                        exc_info=True)
         return BudgetStatus()

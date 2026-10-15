@@ -154,7 +154,7 @@ class TenantIsolationSweepTests(TestCase):
                 except SkipModel as exc:
                     skipped.append((name, str(exc)))
                     continue
-                except Exception as exc:  # noqa: BLE001 - dette, pas un crash
+                except Exception as exc:  # noqa: BLE001 — dette, pas un crash (D-ENF22-BLE001)
                     skipped.append((name, f"échec de construction : {exc}"))
                     continue
 
@@ -224,7 +224,7 @@ class TenantIsolationSweepTests(TestCase):
                             entry.view_class, self.company_b)
                 except SkipModel as exc:
                     create_dette.append((name, str(exc)))
-                except Exception as exc:  # noqa: BLE001 - dette, pas un crash
+                except Exception as exc:  # noqa: BLE001 — dette, pas un crash (D-ENF22-BLE001)
                     create_dette.append((name, f"synthèse impossible : {exc}"))
                 else:
                     # Le client de test RE-LÈVE les exceptions non gérées : un
@@ -235,7 +235,7 @@ class TenantIsolationSweepTests(TestCase):
                         with transaction.atomic():
                             create_resp = client.post(
                                 entry.list_path, payload, format="json")
-                    except Exception as exc:  # noqa: BLE001 — dette explicite
+                    except Exception as exc:  # noqa: BLE001 — dette explicite (D-ENF22-BLE001)
                         create_dette.append((name, f"POST en erreur : {exc}"))
                     else:
                         if create_resp.status_code in (200, 201):
@@ -249,7 +249,7 @@ class TenantIsolationSweepTests(TestCase):
                     try:
                         with transaction.atomic():
                             action_resp = client.get(action_path)
-                    except Exception as exc:  # noqa: BLE001 — dette explicite
+                    except Exception as exc:  # noqa: BLE001 — dette explicite (D-ENF22-BLE001)
                         create_dette.append(
                             (name, f"@action {url_path} en erreur : {exc}"))
                         continue

@@ -107,7 +107,7 @@ def params_actifs(company, nom):
         return {}
     try:
         brut = _resolveur_params(company, nom)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'params_actifs : résolveur en échec pour le scorer %s', nom)
         return {}

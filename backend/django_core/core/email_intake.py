@@ -87,7 +87,7 @@ def _dispatch(messages, company):
             try:
                 handler(msg, company)
                 handled += 1
-            except Exception:  # noqa: BLE001 — un handler défaillant n'arrête rien.
+            except Exception:  # noqa: BLE001 — un handler défaillant n'arrête rien (D-ENF22-BLE001)
                 logger.warning("dispatch : échec ignoré, comportement dégradé", exc_info=True)
                 continue
     return handled
@@ -151,7 +151,7 @@ def fetch_messages(config_obj):
     folder = settings.get('folder', 'INBOX')
     try:
         import imaplib
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("fetch messages : échec ignoré, comportement dégradé", exc_info=True)
         return []
     out = []
@@ -166,7 +166,7 @@ def fetch_messages(config_obj):
                 if t == 'OK' and msg_data and msg_data[0]:
                     out.append(_parse_email_message(msg_data[0][1]))
         conn.logout()
-    except Exception:  # noqa: BLE001 — réseau/auth : dégrade en vide.
+    except Exception:  # noqa: BLE001 — réseau/auth : dégrade en vide (D-ENF22-BLE001)
         logger.warning("fetch messages : échec ignoré, comportement dégradé", exc_info=True)
         return out
     return out
