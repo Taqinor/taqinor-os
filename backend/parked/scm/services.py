@@ -3,6 +3,7 @@ NTSCM). Toute lecture cross-app (``apps.stock``, ``apps.ventes``…) passe par
 le ``selectors.py``/``services.py`` de l'app cible, jamais un import de
 modèle — voir chaque fonction pour le détail de sa frontière.
 """
+import logging
 import math
 from calendar import monthrange
 from datetime import date
@@ -329,7 +330,7 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
     if prochain == CyclePlanificationSOP.Statut.CLOS:
         try:
             generer_compte_rendu_sop(cycle, user=user)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             import logging
             logging.getLogger(__name__).warning(
                 'avancer_statut_cycle: génération du compte-rendu S&OP '
@@ -342,7 +343,7 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
             from core.events import scm_cycle_sop_cloture
             scm_cycle_sop_cloture.send(
                 sender='apps.scm.services', cycle=cycle, user=user)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             import logging
             logging.getLogger(__name__).warning(
                 'avancer_statut_cycle: émission scm_cycle_sop_cloture '
@@ -988,7 +989,8 @@ def generer_fiche_politique_stock(politique):
                 '<div class="section-h">Historique des révisions (12 dernières)</div>'
                 '<table><tr><th>Date</th><th>Champ</th><th>Avant</th>'
                 f'<th>Après</th></tr>{lignes_html}</table>')
-    except Exception:  # noqa: BLE001 - chatter optionnel, jamais bloquant
+    except Exception:  # noqa: BLE001 - chatter optionnel, jamais bloquant (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services.generer_fiche_politique_stock : erreur ignorée (mode dégradé)", exc_info=True)
         historique_html = ''
 
     body = (
@@ -1094,7 +1096,7 @@ def detecter_ruptures_imminentes_et_notifier(company):
                 rupture_date=ligne['rupture_date'],
                 quantite_suggeree=ligne['quantite_suggeree'])
             nb_emis += 1
-        except Exception:  # noqa: BLE001 — best-effort par produit
+        except Exception:  # noqa: BLE001 — best-effort par produit (D-ENF22-BLE001)
             import logging
             logging.getLogger(__name__).warning(
                 'detecter_ruptures_imminentes_et_notifier: émission échouée '
@@ -1188,7 +1190,8 @@ def creer_evenement_demande_import(company, f):
 
     try:
         impact_pct = Decimal(str(f.get('impact_pct') or '0'))
-    except Exception:  # noqa: BLE001 — valeur non convertible
+    except Exception:  # noqa: BLE001 — valeur non convertible (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services.creer_evenement_demande_import : erreur ignorée (mode dégradé)", exc_info=True)
         return 'erreur', f'impact_pct invalide : {f.get("impact_pct")!r}'
 
     type_evenement = (f.get('type_evenement') or '').strip().lower()

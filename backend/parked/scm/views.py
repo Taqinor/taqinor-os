@@ -11,6 +11,7 @@ permissions`` (``HasPermissionOrLegacy`` — repli sur ce MÊME palier
 Responsable/Admin pour un compte hérité sans rôle fin, donc AUCUNE régression
 pour les comptes existants). ``ClassificationABCViewSet`` reste sur le
 palier générique (aucun code dédié demandé par le plan)."""
+import logging
 from decimal import Decimal
 
 from drf_spectacular.types import OpenApiTypes
@@ -985,7 +986,8 @@ def parametres_scm_view(request):
             else:
                 try:
                     valeur = Decimal(str(valeur))
-                except Exception:  # noqa: BLE001 — valeur non convertible
+                except Exception:  # noqa: BLE001 — valeur non convertible (D-ENF22-BLE001)
+                    logging.getLogger(__name__).warning("views.parametres_scm_view : erreur ignorée (mode dégradé)", exc_info=True)
                     return Response({field: 'Nombre requis.'}, status=400)
             setattr(parametres, field, valeur)
             champs_modifies.append(field)
