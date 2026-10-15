@@ -5,7 +5,9 @@ from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import MOTIF_URL_HTTP, ChampsStrictsMixin
+from core.champs_stricts import (
+    MOTIF_URL_HTTP_SOUPLE, URL_HTTP_SOUPLE_MAX, ChampsStrictsMixin,
+    UrlHttpSouple)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
 
@@ -69,15 +71,23 @@ class TrustedDeviceSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class UrlFacultative(serializers.URLField):
-    """ENF11 — URL ou chaîne vide.
+class UrlFacultative(serializers.CharField):
+    """ENF11 — URL http(s) ou chaîne vide, moins de 254 signes.
 
     CI #997 (api-fuzz « rejected schema-compliant request ») : ``format: uri``
-    admettait des hôtes de 7 étiquettes de 63 signes (> 253 signes) que
-    ``URLValidator`` refuse. La REQUÊTE publie donc le motif ``MOTIF_URL_HTTP``
-    (sous-ensemble sûr de ce que le validateur accepte, vide permis) borné à
-    500 signes ; la RÉPONSE reste libre (``""`` tant que l'IdP n'est pas
-    configuré, ou toute URL déjà enregistrée)."""
+    admettait un hôte de 7 étiquettes de 63 signes que ``URLValidator`` refusait
+    (400). Le schéma de REQUÊTE et le serveur partagent désormais LE MÊME
+    prédicat (``core.champs_stricts.UrlHttpSouple`` / ``MOTIF_URL_HTTP_SOUPLE``,
+    ``maxLength`` 253) : ce que l'un accepte, l'autre aussi — ports, requêtes et
+    hôtes d'un vrai IdP compris. La RÉPONSE reste une chaîne libre (``""`` tant
+    que l'IdP n'est pas configuré)."""
+    default_validators = [UrlHttpSouple()]
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('max_length', URL_HTTP_SOUPLE_MAX)
+        # Pas de rognage : une URL à blancs de bord est HORS motif, pas corrigée.
+        kwargs.setdefault('trim_whitespace', False)
+        super().__init__(**kwargs)
 
 
 class _UrlFacultative(OpenApiSerializerFieldExtension):
@@ -85,10 +95,9 @@ class _UrlFacultative(OpenApiSerializerFieldExtension):
 
     def map_serializer_field(self, auto_schema, direction):
         if direction == 'request':
-            return {'type': 'string', 'maxLength': 500,
-                    'pattern': MOTIF_URL_HTTP}
-        return {'anyOf': [{'type': 'string', 'format': 'uri', 'maxLength': 500},
-                          {'type': 'string', 'maxLength': 0}]}
+            return {'type': 'string', 'maxLength': URL_HTTP_SOUPLE_MAX,
+                    'pattern': MOTIF_URL_HTTP_SOUPLE}
+        return {'type': 'string', 'maxLength': 500}
 
 
 class IdentityProviderSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
@@ -96,9 +105,8 @@ class IdentityProviderSerializer(ChampsStrictsMixin, serializers.ModelSerializer
 
     CI #997 (3) — textes et booléens STRICTS : ``enforce_sso: 0`` (le schéma
     déclare un booléen) était lu ``False`` et le POST répondait 201."""
-    metadata_url = UrlFacultative(
-        max_length=500, required=False, allow_blank=True)
-    sso_url = UrlFacultative(max_length=500, required=False, allow_blank=True)
+    metadata_url = UrlFacultative(required=False, allow_blank=True)
+    sso_url = UrlFacultative(required=False, allow_blank=True)
     # CI #997 fuzz : OBJET JSON non nul publié comme tel (``null`` était conforme
     # au schéma ``{}`` puis refusé par le champ de modèle : 400).
     attribute_map = ObjetJSON(required=False)

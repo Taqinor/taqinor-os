@@ -11,6 +11,7 @@ from datetime import date
 
 from django.db import models
 from django.core import validators as _validateurs
+from django.core.exceptions import ValidationError as _ErreurDjango
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 from rest_framework.fields import SkipField, empty
@@ -50,6 +51,36 @@ _VALIDATEURS_PUBLIES = (
 #: Sous-ensemble sûr des URL que ``URLValidator`` accepte (http(s), hôte à
 #: points, chemin simple) ; vide permis (champ facultatif).
 MOTIF_URL_HTTP = r'^(|https?://[a-z]{1,10}\.[a-z]{2,10}(/[A-Za-z0-9._~/-]*)?)$'
+
+
+#: URL « souple » (IdP SSO : ports, requêtes, hôtes à étiquettes longues) :
+#: http(s), puis au moins un signe ni blanc ni de contrôle ; vide permis.
+#: C'est LE MÊME prédicat côté serveur (``UrlHttpSouple``) et côté schéma.
+MOTIF_URL_HTTP_SOUPLE = r'^(|https?://[^\s\x00-\x1f]+)$'
+URL_HTTP_SOUPLE_MAX = 253
+_RE_URL_HTTP_SOUPLE = re.compile(MOTIF_URL_HTTP_SOUPLE)
+
+
+class UrlHttpSouple:
+    """Validateur dont l'acceptation égale EXACTEMENT le schéma publié
+    (``MOTIF_URL_HTTP_SOUPLE`` + ``maxLength: 253``) : tout ce que le schéma
+    refuse, le serveur le refuse, et inversement — plus de 400 sur un corps
+    « conforme » (hôte à étiquettes de 63 signes) ni de 2xx sur un corps hors
+    schéma. ``fullmatch`` : ``$`` Python tolérerait un ``\\n`` final."""
+
+    code = 'invalid'
+    message = 'Saisissez une URL valide.'
+
+    def __call__(self, value):
+        if (not isinstance(value, str) or len(value) > URL_HTTP_SOUPLE_MAX
+                or not _RE_URL_HTTP_SOUPLE.fullmatch(value)):
+            raise _ErreurDjango(self.message, code=self.code)
+
+    def __eq__(self, autre):
+        return isinstance(autre, UrlHttpSouple)
+
+    def __hash__(self):
+        return hash(UrlHttpSouple)
 
 
 class MotifUrlPublie(_validateurs.RegexValidator):
