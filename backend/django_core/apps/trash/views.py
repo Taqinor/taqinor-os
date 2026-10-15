@@ -53,6 +53,16 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
     http_method_names = ['get', 'post', 'head', 'options']
     parser_classes = [JSONParser]
 
+    @property
+    def allowed_methods(self):
+        # CI #1003 (fuzz « Invalid Allow header ») — sur la LISTE, POST
+        # (= `create`, 405, exclu du schéma) n'est pas annoncé dans `Allow` ;
+        # `post` reste servi pour l'action de détail `restaurer/`.
+        methodes = super().allowed_methods
+        if (self.action_map or {}).get('post') == 'create':
+            return [m for m in methodes if m != 'POST']
+        return methodes
+
     def get_permissions(self):
         # Une garde déclarée par l'@action PRIME (sinon le `permission_classes=`
         # du décorateur serait silencieusement jeté — cf. core.permissions).

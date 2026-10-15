@@ -552,6 +552,11 @@ _FICHIERS_VALIDES = (
     # ne dit que ``format: binary``. Un CSV à en-têtes seuls est lisible.
     (re.compile(r'^/api/django/imports/(traductions|feries)/import/$'), {'POST'},
      {'file': _CSV_IMPORT}),
+    # CI #1003 fuzz — import de vues enregistrées / de favoris : un fichier non
+    # tabulaire (PNG…) est « Lecture du fichier impossible » (400) ; le schéma
+    # ne dit que ``format: binary``. Un CSV à en-têtes seuls est lisible.
+    (re.compile(r'^/api/django/uxviews/(saved-views|favoris)/importer/$'), {'POST'},
+     {'fichier': _CSV_IMPORT}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},

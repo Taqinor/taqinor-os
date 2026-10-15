@@ -15,6 +15,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole, IsAnyRole
+from apps.records.champs_stricts import RegexStricte
 
 from .models import AgentActionLog
 from .registry import for_user
@@ -61,8 +62,10 @@ def sans_nul(valeur):
 
 class BrouillonAutomationSerializer(drf_serializers.Serializer):
     # ``nom`` : au moins un caractère non blanc (le service refuse un nom vide
-    # après ``strip``), 255 au plus (``AutomationRule.nom``).
-    nom = drf_serializers.RegexField(r'\S', max_length=255)
+    # après ``strip``), 255 au plus (``AutomationRule.nom``). CI #1003 (fuzz) —
+    # une VRAIE chaîne JSON : ``RegexField`` convertissait ``0`` en ``"0"`` et
+    # créait le brouillon (201) alors que le schéma publie ``type: string``.
+    nom = RegexStricte(r'\S', max_length=255)
     trigger_type = drf_serializers.CharField()
     trigger_config = drf_serializers.DictField(required=False)
     action_type = drf_serializers.CharField()
@@ -207,8 +210,21 @@ class AgentActionConfirmerView(APIView):
         })})
     def post(self, request):
         data = request.data or {}
-        action_key = (data.get('action_key') or '').strip()
+        # CI #1003 (fuzz) — les TYPES publiés par ``ConfirmationActionSerializer``
+        # sont vérifiés avant tout usage : un ``action_key`` liste (``[null]``)
+        # levait AttributeError sur ``.strip()`` (500) ; un corps non-objet ou
+        # un ``object_id`` non entier est un 400, jamais une erreur serveur.
+        if not isinstance(data, dict):
+            raise ParseError('Un objet JSON est attendu.')
+        action_key = data.get('action_key') or ''
         risk_level = data.get('risk_level') or ''
+        object_id = data.get('object_id')
+        if (not isinstance(action_key, str) or not isinstance(risk_level, str)
+                or (object_id is not None and (isinstance(object_id, bool)
+                                               or not isinstance(object_id, int)))):
+            raise ParseError(
+                'action_key et risk_level sont des chaînes, object_id un entier.')
+        action_key = action_key.strip()
         # AANA18 — les refus sont LEVES (corps DRF `{detail}`, statut
         # inchange) : la seule forme RENVOYEE est le journal, que le contrat
         # `logs_confirmer.json` declare complet (`forme_serveur: complete`).
@@ -233,7 +249,6 @@ class AgentActionConfirmerView(APIView):
                     action.required_permission)):
             raise PermissionDenied("Action non autorisée pour ce compte.")
         inputs = data.get('inputs') or {}
-        object_id = data.get('object_id')
         preuve = data.get('preuve')
         if not isinstance(inputs, dict) or not preuve_confirmation_valide(
                 preuve, action_key=action_key, company_id=company.pk,

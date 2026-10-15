@@ -120,7 +120,10 @@ class AutomationDraftEndpointTest(TestCase):
                 'action_type': 'create_activity'}
         for corps in ({**base, 'action_type': '0'},
                       {**base, 'trigger_config': ['pas', 'un', 'objet']},
-                      {**base, 'nom': 'x' * 256}):
+                      {**base, 'nom': 'x' * 256},
+                      # CI #1003 (fuzz) — ``nom`` est une chaîne : ``0`` n'est
+                      # plus converti en ``"0"`` (le brouillon était créé, 201).
+                      {**base, 'nom': 0}, {**base, 'nom': True}):
             with self.subTest(corps=corps):
                 resp = _auth(self.user).post(URL, corps, format='json')
                 self.assertEqual(resp.status_code, 400, resp.data)

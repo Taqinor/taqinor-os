@@ -113,6 +113,23 @@ class AgentActionConfirmerViewTests(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_types_hors_schema_sont_un_400_jamais_un_500(self):
+        # CI #1003 (fuzz) — ``action_key: [null, null]`` levait AttributeError
+        # sur ``.strip()`` (500) ; tout type contraire au schéma publié est 400.
+        for corps in (
+                {'action_key': [None, None], 'risk_level': 'internal',
+                 'inputs': {}, 'object_id': None, 'preuve': '0'},
+                {'action_key': 'crm.client.create', 'risk_level': ['outward']},
+                {'action_key': 'crm.client.create', 'risk_level': 'outward',
+                 'object_id': 'abc'},
+                {'action_key': 'crm.client.create', 'risk_level': 'outward',
+                 'object_id': True},
+                ['pas', 'un', 'objet']):
+            with self.subTest(corps=corps):
+                resp = _api(self.user).post(URL, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(AgentActionLog.objects.count(), 0)
+
 
 class IsUndoableReflectsHandlerTests(TestCase):
     """AUDV27 — `is_undoable` ne dit plus « annulable » pour une action
