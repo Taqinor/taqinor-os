@@ -136,15 +136,24 @@ class IVCurveApiTest(TestCase):
 
     def test_champs_stricts_400(self):
         # CI #997 fuzz — un nombre JSON pour un texte ou un décimal-chaîne
-        # (et une chaîne vide pour une mesure) était converti en silence.
+        # était converti en silence.
         for corps in ({'string_label': 0}, {'voc_mesure_v': 0},
-                      {'pmax_mesure_w': ''}, {'observations': 0}):
+                      {'pmax_mesure_w': 4000}, {'observations': 0}):
             resp = self.api.post(self.url, {
                 'recette': self.recette.id, 'string_label': 'S9', **corps,
             }, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
             self.assertIn(next(iter(corps)), resp.data)
         self.assertFalse(IVCurveCapture.objects.exists())
+        # Une mesure nullable est une ``DecimalStricte`` : le schéma PUBLIE
+        # ``""`` (anyOf motif | maxLength 0) comme « non renseigné » — elle
+        # est donc acceptée et stockée nulle, jamais un nombre inventé.
+        resp = self.api.post(self.url, {
+            'recette': self.recette.id, 'string_label': 'S9',
+            'pmax_mesure_w': '',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertIsNone(resp.data['pmax_mesure_w'])
 
     def test_filter_defaut(self):
         IVCurveCapture.objects.create(
