@@ -31,7 +31,7 @@ def evaluer_qualite_donnees():
     for company in active_companies():
         try:
             resultats = evaluer_regles(company, user=None)
-        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres (D-ENF22-BLE001)
             logger.exception(
                 'NTDATA15 : évaluation qualité échouée pour la société %s',
                 company.pk)
@@ -64,7 +64,7 @@ def consolider_golden_records():
         for entite in sorted(CONSOLIDATION):
             try:
                 total += len(consolider_golden(company, entite, user=None))
-            except Exception:  # noqa: BLE001 — une entité ne bloque pas le reste
+            except Exception:  # noqa: BLE001 — une entité ne bloque pas le reste (D-ENF22-BLE001)
                 logger.exception(
                     'NTDATA24 : consolidation %s échouée pour la société %s',
                     entite, company.pk)
