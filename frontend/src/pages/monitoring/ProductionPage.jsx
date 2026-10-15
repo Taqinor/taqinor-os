@@ -24,6 +24,7 @@ import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
 import { buildProductionChartData } from './ProductionPage.helpers'
 import { todayLocalIso } from '../../lib/dateLocale'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 const todayISO = () => todayLocalIso()
 
@@ -294,7 +295,7 @@ export default function ProductionPage() {
       </div>
 
       {loadingSystems ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : systems.length === 0 ? (
         <EmptyState
           title="Aucun système installé"

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import installationsApi from '../../api/installationsApi'
-import { DataTable, EmptyState, Spinner } from '../../ui'
+import { DataTable, EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber } from '../../lib/format'
@@ -13,6 +13,7 @@ import useVisibilityAwarePoll from './useVisibilityAwarePoll'
 import FreshnessBadge from './FreshnessBadge'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* WR7 — Suivi CO₂ évité (FG286) : CO₂ évité cumulé sur le parc + par système,
    depuis GET /monitoring/configs/co2-fleet/. Rend uniquement ce que renvoie le
@@ -256,7 +257,7 @@ function Co2SystemDetail({ installationId }) {
       </Link>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error ? (
         <EmptyState icon={METRIC_ICONS.co2} title="Détail indisponible" description={error} className="my-6" />
       ) : (

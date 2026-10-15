@@ -16,6 +16,7 @@ import { formatMAD, formatNumber, formatPercent } from '../../lib/format'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* WR6 — Garanties de production (FG282/FG284) : CRUD des garanties par
    système + statut annuel (réel vs garanti dégradé → manque / compensation)
@@ -240,7 +241,7 @@ export default function WarrantiesPage() {
 
       {loading ? (
         showLoadingSpinner && (
-          <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+          <ChargementPage />
         )
       ) : warranties.length === 0 ? (
         <EmptyState

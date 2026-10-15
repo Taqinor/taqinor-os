@@ -257,7 +257,6 @@
 50c4fa82f048|frontend/src/features/crm/workspace/LeadWorkspace.jsx,frontend/src/pages/crm/ClientForm.jsx,frontend/src/pages/stock/ProduitForm.jsx
 50ca8cec6d78|apps/web/src/pages/ar/blog/prix-installation-solaire-maroc-2026.astro,apps/web/src/pages/ar/blog/rentabilite-solaire-par-ville-maroc.astro,apps/web/src/pages/blog/[...slug].astro,apps/web/src/pages/en/blog/prix-installation-solaire-maroc-2026.astro,apps/web/src/pages/en/blog/rentabilite-solaire-par-ville-maroc.astro
 50d99b6c6897|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
-50de56246242|frontend/src/pages/ia/AgentActions.jsx,frontend/src/pages/reporting/CohortsPage.jsx
 51286b3bd80f|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 5153020d6b63|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 516d6810b68a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
@@ -771,7 +770,6 @@ fa1212e21e6c|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pag
 fa2dd0bb2d5f|frontend/src/features/ventes/devisEnvoyerWhatsappStatut.test.jsx,frontend/src/pages/ventes/DevisList.test.jsx,frontend/src/pages/ventes/DevisListConceptionElectrique.test.jsx,frontend/src/pages/ventes/DevisListPdfCalepinage.test.jsx,frontend/src/pages/ventes/FactureList.golden.test.jsx,frontend/src/pages/ventes/FactureList.test.jsx,frontend/src/pages/ventes/RoofViewerPage.test.jsx
 fa90221109b4|apps/web/src/lib/batterySim.ts,apps/web/src/lib/productionWindow.ts,apps/web/src/lib/proposalChart.ts,apps/web/src/lib/proposalCurve.ts
 fac3d8d92f8f|apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
-fba1c70c6f5a|frontend/src/features/ia/copilotMessages.js,frontend/src/pages/ia/AgentChat.jsx
 fbb714bab050|apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/production-mesuree.astro
 fbcf1e7fcd32|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
 fc0addc6f79a|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/financement.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro

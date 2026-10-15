@@ -5,9 +5,10 @@ import fetchAllPages from '../../utils/fetchAllPages'
 import reportingApi from '../../api/reportingApi'
 import {
   Card, CardContent, EmptyState, Select, SelectTrigger, SelectValue,
-  SelectContent, SelectItem, Spinner,
+  SelectContent, SelectItem,
 } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    XFSM17 — Scorecard technicien (coaching), `reporting/insights/
@@ -94,7 +95,7 @@ export default function TechnicienScorecardPage() {
           className="my-6"
         />
       ) : loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error || !data ? (
         <EmptyState icon={Award} title="Erreur" description="Impossible de charger le scorecard." className="my-6" />
       ) : (

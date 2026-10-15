@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FileDown, Mail, Send } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import {
-  Badge, Button, Card, CardContent, EmptyState, Input, Label, Spinner,
+  Badge, Button, Card, CardContent, EmptyState, Input, Label,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
@@ -12,6 +12,7 @@ import useSupervisedSystems from './useSupervisedSystems'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
 import SegmentedPetit from './SegmentedPetit'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* WR7 — Génération + envoi du rapport O&M périodique (FG289).
    Affiche les données JSON du rapport (/om-report/), permet de télécharger le
@@ -112,7 +113,7 @@ export default function OmReportPage() {
           className="my-6"
         />
       ) : loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error ? (
         <EmptyState title="Erreur" description={error} className="my-6" />
       ) : report ? (

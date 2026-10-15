@@ -5,12 +5,13 @@ import api from '../../api/axios'
 import reportingApi from '../../api/reportingApi'
 import {
   Badge, Button, DataTable, EmptyState, IconButton, Input, Label, MultiSelect,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Spinner,
+  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Switch,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import toutesLesPages from './toutesLesPages'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    XPLT6 — CRUD des alertes de seuil sur KPI AGRÉGÉS (`reporting/kpi-alertes/`).
@@ -199,7 +200,7 @@ export default function KpiAlertesPage() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : alertes.length === 0 ? (
         <EmptyState
           icon={AlertTriangle}

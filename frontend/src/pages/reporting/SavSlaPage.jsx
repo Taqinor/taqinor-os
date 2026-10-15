@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { AlertOctagon, Clock, ShieldCheck } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import { Badge, EmptyState, Spinner } from '../../ui'
+import { Badge, EmptyState } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { Table } from './Table'
 import KpiCard from './KpiCard'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    XSAV8 — Rapport de conformité SLA + KPI SAV avancés
@@ -56,7 +57,7 @@ export default function SavSlaPage() {
       />
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error || !data ? (
         <EmptyState icon={AlertOctagon} title="Erreur" description="Impossible de charger le rapport SLA SAV." className="my-6" />
       ) : (
