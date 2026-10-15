@@ -173,7 +173,7 @@ class FiletGeneriqueSansIssueTests(CadxBase):
         reponse = self._api().post(
             f'/api/django/crm/relance-etapes/{appel.id}/fait/', {},
             format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('outcome', reponse.data.get('erreurs', {}))
 
 

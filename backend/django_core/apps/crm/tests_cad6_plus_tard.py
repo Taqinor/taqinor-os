@@ -115,7 +115,7 @@ class PlusTardTests(_Base):
 
     def test_la_date_convenue_est_obligatoire_et_nommee(self):
         resp = self._plus_tard(rappel_le='', rappel_heure='')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('« Rappeler le »', resp.data['erreurs']['rappel_le'])
 
     def test_une_date_passee_est_refusee(self):
@@ -136,7 +136,7 @@ class PlusTardTests(_Base):
             libelle='Préparer et envoyer le devis (ou fixer un rappel)',
             due_at=MERCREDI, due_date=MERCREDI.date())
         resp = self._plus_tard(etape=filet)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('reponse', resp.data['erreurs'])
 
 

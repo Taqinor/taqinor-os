@@ -295,7 +295,7 @@ class JointTelephoneApiTests(TestCase):
 
         resp = self._repondre(appel)
 
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('« Client joint au téléphone »',
                       resp.data['erreurs']['reponse'])
         appel.refresh_from_db()

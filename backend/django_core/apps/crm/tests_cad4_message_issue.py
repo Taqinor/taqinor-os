@@ -57,6 +57,6 @@ class MessageIssueApiTests(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(acteur)}')
         resp = api.post(f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
                         {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data, {'erreurs': {
             'outcome': MESSAGE_ISSUE_APPEL_OBLIGATOIRE}})

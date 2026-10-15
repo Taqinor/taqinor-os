@@ -208,7 +208,7 @@ export default function CadenceFrise({
       // qu'après un succès) : la ligne garde son panneau ouvert.
       const statut = err?.response?.status
       const donnees = err?.response?.data
-      const refusNomme = statut === 403 || (statut === 400
+      const refusNomme = statut === 403 || ((statut === 400 || statut === 409)
         && (Object.keys(donnees?.erreurs ?? {}).length > 0
           || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
       if (!refusNomme) toastError('Action impossible pour le moment.')

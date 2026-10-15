@@ -340,7 +340,7 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
       // reste ouvert : l'erreur est relancée, jamais avalée.
       const statut = err?.response?.status
       const donnees = err?.response?.data
-      const refusNomme = statut === 403 || (statut === 400
+      const refusNomme = statut === 403 || ((statut === 400 || statut === 409)
         && (Object.keys(donnees?.erreurs ?? {}).length > 0
           || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
       // F2 — l'échec n'est plus MUET : la ligne reste (retirer() jamais

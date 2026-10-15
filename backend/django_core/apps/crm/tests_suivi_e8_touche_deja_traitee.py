@@ -6,9 +6,9 @@ pas le statut : une touche close (deux onglets ouverts, double clic, liste
 périmée) pouvait être re-cochée — la suite du moteur rejouait une seconde
 fois (barreau suivant, filet, arrêt de cadence) — ou reportée, ce qui
 déplaçait tout le reste du plan depuis une touche qui n'était plus la
-prochaine. Décision : 400 ``{"erreurs": {"etape": "Cette étape est déjà
-traitée — rechargez la liste."}}`` quand la touche n'est plus À FAIRE, avant
-toute écriture. ``annuler`` (RLC1) n'est pas concerné : il vise précisément
+prochaine. Décision : 409 (un ÉTAT, ERR-ENF11-FUZZ-CRM) ``{"erreurs": {"etape":
+"Cette étape est déjà traitée — rechargez la liste."}}`` quand la touche n'est
+plus À FAIRE, avant toute écriture. ``annuler`` (RLC1) n'est pas concerné : il vise précisément
 une touche traitée.
 
 Horloge FIXE : mercredi 23/09/2026, 10 h à Casablanca.
@@ -77,7 +77,7 @@ class _Base(TestCase):
             corps or {}, format='json')
 
     def _refus(self, resp):
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data['erreurs']['etape'],
                          MESSAGE_ETAPE_DEJA_TRAITEE)
 
@@ -125,6 +125,30 @@ class ToucheDejaTraiteeTests(_Base):
         self._refus(self._post(etape, 'fait', {'outcome': 'joint'}))
         self.assertFalse(LeadActivity.objects.filter(
             lead=self.lead, outcome='joint').exists())
+
+
+class CorpsDuFaitTests(_Base):
+    """ERR-ENF11-FUZZ-CRM — le corps de « Fait » est typé (quatre textes) : un
+    booléen ou un nombre est un 400 nommé, jamais un 500 à ``.strip()``."""
+
+    def test_un_champ_texte_qui_n_est_pas_un_texte_est_refuse_en_400_nomme(self):
+        etape = self._touche()
+        for champ in ('outcome', 'reponse', 'langue', 'note'):
+            resp = self._post(etape, 'fait', {champ: True})
+            self.assertEqual(resp.status_code, 400, (champ, resp.data))
+            self.assertIn(champ, resp.data['erreurs'])
+        resp = self._post(etape, 'fait', {'note': None})
+        self.assertEqual(resp.status_code, 400, resp.data)
+        etape.refresh_from_db()
+        self.assertEqual(etape.statut, RelanceEtape.Statut.A_FAIRE)
+
+    def test_un_corps_qui_n_est_pas_un_objet_est_refuse_en_400(self):
+        etape = self._touche()
+        resp = self.api.post(
+            f'/api/django/crm/relance-etapes/{etape.pk}/fait/', [1],
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('corps', resp.data['erreurs'])
 
 
 class TemoinsTests(_Base):

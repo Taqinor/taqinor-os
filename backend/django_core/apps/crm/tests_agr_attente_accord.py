@@ -98,7 +98,7 @@ class AttenteAccordTests(_Base):
 
     def test_a_sans_date_400_nomme_le_champ_date(self):
         resp = self._attente(rappel_le='', rappel_heure='')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('rappel_le', resp.data['erreurs'])
         self.assertIn("En attente d'un accord",
                       resp.data['erreurs']['rappel_le'])

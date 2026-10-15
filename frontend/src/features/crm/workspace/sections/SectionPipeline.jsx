@@ -281,7 +281,8 @@ function ResumeAssocie({ leadId, devis, erreurs, setErreurs }) {
       if (url) window.open(url, '_blank', 'noopener,noreferrer')
     } catch (err) {
       const data = err?.response?.data
-      if (err?.response?.status === 400 && data && typeof data === 'object') {
+      const statutResume = err?.response?.status
+      if ((statutResume === 400 || statutResume === 409) && data && typeof data === 'object') {
         setErreurs(data)
       } else {
         toast.error(getApiError(err, 'Préparation du résumé impossible.').message)
