@@ -22,7 +22,7 @@ from apps.paie.services import (
     ensure_defaults,
 )
 from apps.paie.tests.test_avantages import make_dossier, make_profil
-from apps.rh.models import DossierEmploye  # noqa: F401  (registre app RH)
+__import__('apps.rh.models')  # registre app RH
 
 
 def make_company(slug):

@@ -31,7 +31,7 @@ from apps.paie.services import (
     valider_bulletin,
 )
 from apps.paie.tests.test_avantages import make_dossier, make_profil
-from apps.rh.models import DossierEmploye  # noqa: F401  (registre app RH)
+__import__('apps.rh.models')  # registre app RH
 
 User = get_user_model()
 

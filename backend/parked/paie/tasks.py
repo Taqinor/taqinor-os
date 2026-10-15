@@ -127,7 +127,7 @@ def rappeler_echeances_declaratives_company(company, *, today=None):
                 _destinataires_paie(company, EVENEMENT_RAPPEL_ECHEANCE),
                 EVENEMENT_RAPPEL_ECHEANCE, title=titre, body=corps,
                 company=company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'paie.rappeler_echeances_declaratives : notification échouée '
                 "pour l'échéance #%s", echeance.pk, exc_info=True)
@@ -246,7 +246,7 @@ def recalculer_cumuls_annuels():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += len(recalculer_cumuls_annuels_company(company))
-        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning(
                 'paie.recalculer_cumuls_annuels : échec pour la société #%s',
                 getattr(company, 'pk', '?'), exc_info=True)
@@ -267,7 +267,7 @@ def rappeler_echeances_declaratives():
     for company in active_companies():  # AUD415/SCA19 — pas les suspendus
         try:
             total += len(rappeler_echeances_declaratives_company(company))
-        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning(
                 'paie.rappeler_echeances_declaratives : échec pour la '
                 'société #%s', getattr(company, 'pk', '?'), exc_info=True)
