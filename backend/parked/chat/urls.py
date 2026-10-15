@@ -23,7 +23,7 @@ router.register(r'retention-policies', RetentionPolicyViewSet,
 router.register(r'reminders', MessageReminderViewSet,
                 basename='chat-message-reminder')
 
-from .views_transcription import transcrire  # noqa: E402  (NTMOB30)
+from .views_transcription import transcrire  # noqa: E402 — NTMOB30 (D-ENF22)
 
 urlpatterns = router.urls + [
     path('inbound-email/', inbound_email_webhook,
