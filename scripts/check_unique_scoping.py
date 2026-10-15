@@ -41,6 +41,8 @@ import ast
 import re
 import sys
 from pathlib import Path
+
+import _exceptions_permanentes  # ENF14/ENF15 — exceptions permanentes signées
 TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -255,6 +257,25 @@ def check_file(path: Path):
     return unique_sites, findings
 
 
+def _modele_hors_tenant(key, signes):
+    """ENF15 — ``key`` (``<app>/models*.py::Modele.champ``) porte-t-elle sur un
+    modèle global PAR CONCEPTION ? Deux sources, jamais une liste locale :
+    les modèles signés par le fondateur (``tenant_exempt_models`` de
+    ``scripts/exceptions_permanentes.yml``, clé ``app.Modele``) et la table
+    tenant elle-même (``authentication.Company`` : son ``slug`` ne peut pas
+    être borné à une société, c'est elle la frontière)."""
+    chemin, sep, reste = key.partition("::")
+    if not sep:
+        return False
+    modele = reste.partition(".")[0]
+    morceaux = chemin.split("/")
+    app = morceaux[morceaux.index("apps") + 1] if "apps" in morceaux else (
+        morceaux[-2] if len(morceaux) > 1 else "")
+    if (app, modele) == ("authentication", "Company"):
+        return True
+    return f"{app}.{modele}" in signes
+
+
 def _autorise(key, allow):
     """``key`` est-il gelé ? Un modèle DÉPLACÉ de ``models.py`` vers un
     ``models_<x>.py`` de la même app (scission SPL, move only) garde sa clé
@@ -271,6 +292,7 @@ def _autorise(key, allow):
 def main(argv):
     list_mode = "--list" in argv
     allow = _load_allowlist()
+    signes = _exceptions_permanentes.charger("tenant_exempt_models")
     all_sites = []
     offenders = []
     for path in _iter_models_files():
@@ -280,6 +302,9 @@ def main(argv):
             all_sites.append(f"{rel}::{model}.{field}")
         for code, key, msg in findings:
             if _autorise(key, allow):
+                continue
+            if code == "UNIQUE_NOT_COMPANY_SCOPED" and _modele_hors_tenant(
+                    key, signes):
                 continue
             offenders.append(f"[{code}] {key}: {msg}")
 
