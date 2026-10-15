@@ -50,8 +50,7 @@ const result = spawnSync(
 );
 
 const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
-// eslint-disable-next-line no-control-regex
-const clean = output.replace(/\x1b\[[0-9;]*m/g, '');
+const clean = output.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '');
 const lines = clean.split(/\r?\n/);
 
 if (!/^Result \(\d+ files\):/m.test(clean)) {

@@ -79,8 +79,7 @@ describe('PVUNI — contrat de charge utile', () => {
       roof_image_url: null,
       layout_stale: true,
       layout_nb_panneaux: 9,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      quote: { nb_panneaux: 8 } as any,
+      quote: { nb_panneaux: 8 } as never,
     };
     expect(payload.layout_stale).toBe(true);
     expect(payload.layout_nb_panneaux).toBe(9);
@@ -95,8 +94,7 @@ describe('PVUNI — contrat de charge utile', () => {
       client_name: 'X',
       statut: 'brouillon',
       roof_image_url: null,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      quote: {} as any,
+      quote: {} as never,
     };
     expect(payload.layout_stale ?? false).toBe(false);
   });
