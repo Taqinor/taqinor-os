@@ -35,6 +35,7 @@ import {
 import { DatePicker } from '../../ui/DatePicker'
 import { toastError, toastSuccess } from '../../lib/toast'
 import { suiteJournal } from './relances/suite'
+import PiedPopover from '../../ui/PiedPopover'
 
 // Choix d'issue proposés (miroir de LeadActivity.OUTCOMES côté serveur, hors
 // la clé vide '—' qui ne fait pas sens comme choix explicite ici).
@@ -334,10 +335,7 @@ export default function CallLogPopover({
             </div>
           )}
 
-          <div className="clp-actions">
-            <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
-              Annuler
-            </Button>
+          <PiedPopover className="clp-actions" onAnnuler={() => setOpen(false)}>
             <Button
               type="button"
               size="sm"
@@ -347,7 +345,7 @@ export default function CallLogPopover({
             >
               Enregistrer
             </Button>
-          </div>
+          </PiedPopover>
         </div>
       </PopoverContent>
     </Popover>

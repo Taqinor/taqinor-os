@@ -68,7 +68,6 @@
 14635a551978|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 1516f75657a7|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 15172fc7e9b7|apps/web/src/pages/ar/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/en/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/batterie-lithium-ou-gel.astro
-152c88ea99f1|frontend/src/pages/crm/leads/FilterBar.jsx,frontend/src/pages/crm/leads/LeadsPage.jsx
 15e8b2bded18|apps/web/src/pages/ar/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/en/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/batterie-lithium-ou-gel.astro
 16260728b930|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 166d808c0a6c|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro,apps/web/src/pages/à-propos.astro
@@ -305,7 +304,6 @@
 727f724a0426|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 72aa24bfa3c2|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 72f940c0e30d|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
-7368ca5350ff|frontend/src/pages/crm/ClientList.jsx,frontend/src/pages/crm/leads/LeadsPage.jsx
 746d4f236096|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 74c82bce57aa|frontend/src/features/crm/workspace/sections/TraceToitClient.test.jsx,frontend/src/features/ventes/ToitClientOverlay.test.jsx
 74ff5c176c5b|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
@@ -348,7 +346,6 @@
 86b7657f3eec|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 86ba301a0301|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 86d8bee687b0|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-88d15e9a63c1|frontend/src/features/crm/CallLogPopover.jsx,frontend/src/pages/crm/leads/PerduPopover.jsx
 89abd9c0e55d|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
 89ed9d73d588|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 8a7ae1d0483f|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts
@@ -374,7 +371,6 @@
 91090debb983|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 9146a6cd13c8|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 9184ed7882df|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/en/ensoleillement-maroc.astro
-918e6e24e9d7|frontend/src/pages/crm/leads/views/ChartsView.jsx,frontend/src/pages/crm/leads/views/KanbanView.jsx
 91b76cd7fcbc|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 91c9112356ea|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/nos-solutions.astro
 93166076be55|apps/web/src/lib/freeLayout.ts,apps/web/src/scripts/roofPro11/layoutEditor.ts
@@ -439,7 +435,6 @@ aefe6d3fbe2b|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 af5c29500513|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
 af8da5d3b297|apps/web/src/pages/ar/guides/index.astro,apps/web/src/pages/en/guides/index.astro
 afa00e8d3551|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro
-b01425274eaa|frontend/src/pages/crm/leads/views/ForecastView.jsx,frontend/src/pages/crm/leads/views/KanbanView.jsx
 b1e169753499|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 b21aa80671b9|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 b3a4838eedda|apps/web/src/pages/pourquoi-taqinor.astro,apps/web/src/pages/équipement.astro
@@ -556,7 +551,6 @@ d79dd7415ae5|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pag
 d81e1cd976cf|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx
 d8267f49c9e2|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 d937d52879d7|backend/django_core/apps/ventes/quote_engine/builder.py,backend/django_core/apps/ventes/quote_engine/residential/sample_data.py
-d9fbe729a925|frontend/src/pages/crm/leads/views/ChartsView.jsx,frontend/src/pages/crm/leads/views/KanbanView.jsx
 da7f43b103e5|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 da843faa173c|apps/web/src/scripts/roofPro11/matrix.test.ts,apps/web/src/scripts/roofPro11/mesureUi.test.ts,apps/web/src/scripts/roofPro11/optimizer.test.ts,apps/web/src/scripts/roofPro11/scene3d.test.ts
 dabaf86224ab|frontend/src/features/crm/workspace/DevisTab.test.jsx,frontend/src/pages/ventes/DevisOffresTailles.test.jsx
@@ -603,7 +597,6 @@ eaa158d40112|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos
 eaba3145c0b6|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 eb3a13ac6b6a|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 eb496b7f4ded|frontend/src/pages/stock/MouvementsPage.jsx,frontend/src/pages/ventes/BonCommandeList.jsx
-ebe08b5d9b7d|frontend/src/pages/crm/leads/ConvertirClientDialog.jsx,frontend/src/pages/crm/leads/PlanActiviteDialog.jsx
 ecc123a6bc47|frontend/src/pages/installations/ChantierGateTimeline.jsx,frontend/src/pages/installations/InstallationDetail.jsx
 ed06f83bb9d7|apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 ed0f9ff492ff|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro

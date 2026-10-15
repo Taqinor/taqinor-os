@@ -27,6 +27,7 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 // tiret cadratin du reste de l'application.
 import { formatDate, formatMAD } from '../../lib/format'
 import { useDeepLinkId } from '../../hooks/useDeepLinkId'
+import { useOuvrirNouveauParUrl } from '../../hooks/useOuvrirNouveauParUrl'
 
 const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
 
@@ -116,17 +117,7 @@ export default function ClientList() {
   // vers /crm?new=1 : câblage MINIMAL du paramètre — ouvre directement le
   // formulaire de création (périmètre réduit, @coord NTUX9/10 — cf. LeadsPage.jsx
   // même patron). Le paramètre est retiré une fois lu.
-  useEffect(() => {
-    if (searchParams.get('new') !== '1') return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1 (D-ENF22)
-    openNew()
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.delete('new')
-      return next
-    }, { replace: true })
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- ouverture one-shot de la liste clients pilotée par ?new=1; setSearchParams ne doit pas la rejouer (D-ENF22)
-  }, [searchParams])
+  useOuvrirNouveauParUrl(searchParams, setSearchParams, openNew)
 
   const openReleve = async (c) => {
     try {
