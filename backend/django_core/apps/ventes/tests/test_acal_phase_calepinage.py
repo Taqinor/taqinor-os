@@ -7,7 +7,7 @@ et dans le pré-vol ``validate_composition_for_layout``.
   et le module comme from-layout composent le MÊME onduleur ;
 * lead « aucun » (site isolé) — ACAL361, deux tests distincts : catalogue
   qui sert un onduleur autonome + une batterie tarifés ⇒ 201, ce kit, jamais
-  un onduleur réseau ; catalogue seedé seul ⇒ 422 NOMMÉ ``{hors_reseau: …}``,
+  un onduleur réseau ; catalogue seedé seul ⇒ 409 NOMMÉ ``{hors_reseau: …}``,
   aucun devis créé, jamais un 500 ;
 * le pré-vol compose avec la phase / le site isolé du lead.
 
@@ -163,12 +163,12 @@ class PhaseDuLeadSurLeLayout(TestCase):
                 self.assertTrue(any('batterie' in _norm(ligne.designation)
                                     for ligne in devis.lignes.all()))
 
-    def test_module_lead_isole_sans_kit_autonome_422_nomme(self):
+    def test_module_lead_isole_sans_kit_autonome_409_nomme(self):
         for geste in (self._generer_module, self._from_layout):
             with self.subTest(geste=geste.__name__):
                 avant = Devis.objects.filter(company=self.company).count()
                 r = geste(self._lead('aucun'))
-                self.assertEqual(r.status_code, 422, r.data)
+                self.assertEqual(r.status_code, 409, r.data)
                 self.assertIn('hors_reseau', r.data)
                 self.assertTrue(str(r.data['hors_reseau']).strip())
                 self.assertEqual(

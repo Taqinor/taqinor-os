@@ -136,7 +136,7 @@ class LigneParModele(TestCase):
         r = self._from_layout(self._layout(
             [_pan('A', 12, 'm1')],
             [_module('m1', self.p550_premium, 550)]))
-        self.assertEqual(r.status_code, 422, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('tarifez la fiche', str(r.data))
         self.assertIn('Panneau mono 550W premium', str(r.data))
         self.assertEqual(Devis.objects.filter(company=self.company).count(),

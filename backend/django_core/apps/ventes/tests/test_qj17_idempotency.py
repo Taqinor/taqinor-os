@@ -3,7 +3,7 @@
 Two acceptance criteria:
   (a) Re-clicking « Générer » returns the EXISTING brouillon (HTTP 200,
       deduplicated=True) — no duplicate devis created.
-  (b) An invalid composition (catalogue gap) returns HTTP 422 with clear
+  (b) An invalid composition (catalogue gap) returns HTTP 409 with clear
       French inline guidance instead of raising a 500 / PDF error.
 
 Run:
@@ -294,7 +294,7 @@ class TestQJ17Idempotency(TestCase):
 
 
 class TestQJ17CompositionCheck(TestCase):
-    """QJ17 (b) — invalid composition → HTTP 422 with clear French message."""
+    """QJ17 (b) — invalid composition → HTTP 409 (refus d état) with clear French message."""
 
     def setUp(self):
         self.company = make_company('qj17-comp')
@@ -316,14 +316,14 @@ class TestQJ17CompositionCheck(TestCase):
                              format='json')
         self.assertIn(resp.status_code, (200, 201), resp.data)
 
-    def test_empty_catalogue_returns_422_not_500(self):
-        """No inverter in catalogue → 422 with a readable French error, not 500."""
+    def test_empty_catalogue_returns_409_not_500(self):
+        """No inverter in catalogue → 409 with a readable French error, not 500."""
         Produit.objects.filter(nom__icontains='réseau').delete()
         lead = self._lead()
         resp = self.api.post(FROM_LAYOUT_URL,
                              {'layout': SAMPLE_LAYOUT, 'lead': lead.id},
                              format='json')
-        self.assertEqual(resp.status_code, 422, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         # Must carry a readable French message.
         self.assertIn('detail', resp.data)
         detail = resp.data['detail']
@@ -331,17 +331,17 @@ class TestQJ17CompositionCheck(TestCase):
         # Must NOT create a devis.
         self.assertEqual(Devis.objects.filter(company=self.company).count(), 0)
 
-    def test_missing_battery_for_battery_layout_returns_422(self):
+    def test_missing_battery_for_battery_layout_returns_409(self):
         Produit.objects.filter(nom__icontains='Batterie').delete()
         lead = self._lead()
         resp = self.api.post(FROM_LAYOUT_URL,
                              {'layout': BATTERY_LAYOUT, 'lead': lead.id},
                              format='json')
-        self.assertEqual(resp.status_code, 422, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         detail = resp.data['detail']
         self.assertIn('batterie', detail.lower())
 
-    def test_no_panels_in_layout_returns_422(self):
+    def test_no_panels_in_layout_returns_409(self):
         layout_no_panels = dict(SAMPLE_LAYOUT)
         layout_no_panels['result'] = {'panels': 0, 'kwc': 0}
         layout_no_panels['zones'] = []
@@ -349,7 +349,7 @@ class TestQJ17CompositionCheck(TestCase):
         resp = self.api.post(FROM_LAYOUT_URL,
                              {'layout': layout_no_panels, 'lead': lead.id},
                              format='json')
-        self.assertEqual(resp.status_code, 422, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('panneau', resp.data['detail'].lower())
 
     def test_errors_list_present_in_response(self):
@@ -359,15 +359,15 @@ class TestQJ17CompositionCheck(TestCase):
         resp = self.api.post(FROM_LAYOUT_URL,
                              {'layout': SAMPLE_LAYOUT, 'lead': lead.id},
                              format='json')
-        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('errors', resp.data)
         self.assertIsInstance(resp.data['errors'], list)
         self.assertGreater(len(resp.data['errors']), 0)
 
-    def test_priceless_inverter_returns_422(self):
+    def test_priceless_inverter_returns_409(self):
         Produit.objects.filter(nom__icontains='réseau').update(prix_vente=0)
         lead = self._lead()
         resp = self.api.post(FROM_LAYOUT_URL,
                              {'layout': SAMPLE_LAYOUT, 'lead': lead.id},
                              format='json')
-        self.assertEqual(resp.status_code, 422, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)

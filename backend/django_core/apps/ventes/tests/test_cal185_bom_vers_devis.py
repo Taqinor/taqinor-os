@@ -5,7 +5,7 @@ ACAL108 (D-ACAL-2) a RETIRÉ la porte jumelle ``from-layout {calepinage}`` et
 conception courante, que ``generer-devis`` du calepinage chiffre. Ce qui est
 prouvé ici :
 
-* ``POST from-layout {calepinage}`` sans ``layout`` ⇒ 422 ``{detail, champ}``
+* ``POST from-layout {calepinage}`` sans ``layout`` ⇒ 409 ``{detail, champ}``
   NOMMÉ, et AUCUN devis ni AUCUN calepinage créé (comptage) — même avec une
   variante retenue ;
 * un ``layout`` explicite garde la réponse historique (aucune clé CAL185) ;
@@ -160,7 +160,7 @@ class Cal185FromLayoutTest(TestCase):
         calepinages_avant = Calepinage.objects.count()
         reponse = self._poster({'calepinage': self.calepinage.pk,
                                 'client': self.client_obj.pk})
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(set(reponse.data) & {'detail', 'champ'},
                          {'detail', 'champ'})
         self.assertEqual(reponse.data['champ'], 'calepinage')
@@ -188,3 +188,31 @@ class Cal185FromLayoutTest(TestCase):
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertEqual(reponse.data['detail'],
                          'Layout manquant ou invalide.')
+
+    def test_enf11_layout_vide_400_et_refus_d_etat_409_publies(self):
+        """ENF11 fuzz — le layout vide (400) est une règle de schéma PUBLIÉE
+        (minProperties 1) ; le calepinage à chiffrer par « Générer le devis »
+        est un refus d'ÉTAT (409 publié, plus de 422)."""
+        import json
+
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include('apps.ventes.urls'))
+        ]).get_schema(request=None, public=True)
+        operation = next(
+            item['post'] for chemin, item in schema['paths'].items()
+            if chemin.endswith('devis/from-layout/'))
+        self.assertIn('409', operation['responses'])
+        self.assertNotIn('422', operation['responses'])
+        corps = next(iter(operation['requestBody']['content'].values()))
+        self.assertIn('"minProperties": 1', json.dumps(corps['schema']))
+
+        vide = self._poster({'layout': {}, 'client': self.client_obj.pk})
+        self.assertEqual(vide.status_code, 400, vide.data)
+        self.assertEqual(vide.data['detail'], 'Layout manquant ou invalide.')
+        refus = self._poster({'layout': {}, 'calepinage': self.calepinage.pk,
+                              'client': self.client_obj.pk})
+        self.assertEqual(refus.status_code, 409, refus.data)
+        self.assertEqual(refus.data['champ'], 'calepinage')
