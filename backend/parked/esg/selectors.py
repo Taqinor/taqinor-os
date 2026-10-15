@@ -29,6 +29,8 @@ elle aussi en ``disponible=False`` plutôt que de faire échouer toute
 l'agrégation.
 """
 
+import logging
+
 
 def _safe(source_fn, *args):
     """Filet de sécurité DÉFENSE-EN-PROFONDEUR autour d'un appel de source.
@@ -40,7 +42,7 @@ def _safe(source_fn, *args):
     ``disponible=False`` plutôt que de propager l'exception à l'appelant."""
     try:
         return source_fn(*args)
-    except Exception as exc:  # noqa: BLE001 - dégradation gracieuse globale
+    except Exception as exc:  # noqa: BLE001 — dégradation gracieuse globale (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"erreur inattendue ({exc.__class__.__name__})"}
 
@@ -49,12 +51,12 @@ def _source_indicateurs_esg(company, annee):
     """Indicateurs ESG bruts (E/S/G) de l'année via ``qhse.selectors``."""
     try:
         from apps.qhse.selectors import export_esg
-    except Exception as exc:  # noqa: BLE001 - app absente/erreur d'import
+    except Exception as exc:  # noqa: BLE001 — app absente/erreur d'import (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"qhse indisponible ({exc.__class__.__name__})"}
     try:
         data = export_esg(company, annee=annee)
-    except Exception as exc:  # noqa: BLE001 - dégradation gracieuse
+    except Exception as exc:  # noqa: BLE001 — dégradation gracieuse (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"erreur qhse.selectors.export_esg "
                           f"({exc.__class__.__name__})"}
@@ -92,12 +94,12 @@ def _source_carburant_flotte(company, annee):
     """Carburant flotte (scope 1 mobile) via ``flotte.selectors``."""
     try:
         from apps.flotte.selectors import consommation_annuelle_flotte
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"flotte indisponible ({exc.__class__.__name__})"}
     try:
         conso = consommation_annuelle_flotte(company, annee)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"erreur flotte.selectors."
                           f"consommation_annuelle_flotte "
@@ -122,7 +124,7 @@ def _source_social_hse(company, date_debut, date_fin):
     """AT/accidents-travail + heures travaillées via ``rh.selectors``."""
     try:
         from apps.rh.selectors import tableau_bord_hse
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"rh indisponible ({exc.__class__.__name__})"}
     within_days = 30
@@ -131,7 +133,7 @@ def _source_social_hse(company, date_debut, date_fin):
     try:
         hse = tableau_bord_hse(
             company, within_days=within_days, today=date_fin)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"erreur rh.selectors.tableau_bord_hse "
                           f"({exc.__class__.__name__})"}
@@ -159,12 +161,12 @@ def _source_effectifs(company):
     """Effectif actif via ``rh.selectors.kpi_effectifs_absences``."""
     try:
         from apps.rh.selectors import kpi_effectifs_absences
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"rh indisponible ({exc.__class__.__name__})"}
     try:
         tuiles = kpi_effectifs_absences(company)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"erreur rh.selectors.kpi_effectifs_absences "
                           f"({exc.__class__.__name__})"}
@@ -287,7 +289,8 @@ def couverture_catalogue(company):
             for ligne in data.get('lignes', [])
             if (ligne.get('code') or '').strip()
         }
-    except Exception:  # noqa: BLE001 - dégradation gracieuse
+    except Exception:  # noqa: BLE001 - dégradation gracieuse (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors.couverture_catalogue : erreur ignorée (mode dégradé)", exc_info=True)
         codes_utilises = set()
 
     piliers = {}
@@ -339,7 +342,8 @@ def codes_indicateurs_disponibles(company):
     try:
         from apps.qhse.selectors import export_esg
         lignes = export_esg(company).get('lignes', []) or []
-    except Exception:  # noqa: BLE001 — dégradation gracieuse (qhse absent)
+    except Exception:  # noqa: BLE001 — dégradation gracieuse (qhse absent) (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors.codes_indicateurs_disponibles : erreur ignorée (mode dégradé)", exc_info=True)
         lignes = []
 
     actifs = {}
@@ -368,11 +372,13 @@ def _valeur_indicateur_annee(company, code, annee):
     année donnée, via ``qhse.selectors.export_esg`` — ``None`` si absente."""
     try:
         from apps.qhse.selectors import export_esg
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors._valeur_indicateur_annee : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     try:
         data = export_esg(company, annee=annee)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors._valeur_indicateur_annee : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     code_norm = (code or '').strip().upper()
     for ligne in data.get('lignes', []):
@@ -499,8 +505,8 @@ def badge_maturite_esg(company):
             atteints = sum(1 for ligne in avec_cible if ligne['atteinte_cible'])
             atteinte_pct = round(atteints * 100.0 / len(avec_cible), 1)
             atteinte_disponible = True
-    except Exception:  # noqa: BLE001 - dégradation gracieuse
-        pass
+    except Exception:  # noqa: BLE001 - dégradation gracieuse (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors.badge_maturite_esg : erreur ignorée (mode dégradé)", exc_info=True)
 
     codes_catalogue = set(
         CatalogueIndicateurESG.objects.filter(company=company)
@@ -708,7 +714,8 @@ def prerequis_cloture_esg(periode):
     else:
         try:
             comparaison = comparer_periodes(precedente, periode)
-        except Exception:  # noqa: BLE001 — dégradation gracieuse
+        except Exception:  # noqa: BLE001 — dégradation gracieuse (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("selectors.prerequis_cloture_esg : erreur ignorée (mode dégradé)", exc_info=True)
             comparaison = None
             avertissements.append(
                 'La comparaison avec la période précédente est '
@@ -754,12 +761,12 @@ def _source_ca_periode(company, date_debut, date_fin):
     de l'intensité carbone (NTESG9)."""
     try:
         from apps.ventes.selectors import analyse_facturation
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"ventes indisponible ({exc.__class__.__name__})"}
     try:
         lignes = analyse_facturation(company, date_debut, date_fin)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — l'exception est consignée, jamais avalée (D-ENF22-BLE001)
         return {'disponible': False,
                 'raison': f"erreur ventes.selectors.analyse_facturation "
                           f"({exc.__class__.__name__})"}
