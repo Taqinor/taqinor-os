@@ -2623,9 +2623,10 @@ def intervention_rapport_public_payload(interv, request=None):
         'reserves': intervention_pdf._reserves_payload(interv),
         'signataire_nom': interv.signataire_nom or None,
         'signe_le': interv.signe_le.isoformat() if interv.signe_le else None,
-        'pdf_url': (
+        # AFAC94 — lien client ABSOLU (même constructeur que les photos).
+        'pdf_url': intervention_pdf._public_url(
             f'/api/django/public/installations/intervention-rapport/'
-            f'{interv.lien_rapport_token}/pdf/'),
+            f'{interv.lien_rapport_token}/pdf/', request),
     }
 
 
