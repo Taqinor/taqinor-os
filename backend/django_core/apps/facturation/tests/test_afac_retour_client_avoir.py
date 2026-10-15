@@ -98,7 +98,8 @@ class RetourClientAvoirTests(_Base, TestCase):
         facture = Facture.objects.get(pk=facture.pk)
         self.assertEqual(facture.avoirs_total, Decimal('20400.00'))
         self.assertEqual(facture.montant_du, Decimal('0'))
-        self.assertEqual(self._retour(facture).status_code, 400)
+        # CI #997 fuzz — plus rien de retournable : refus d'ÉTAT, 409.
+        self.assertEqual(self._retour(facture).status_code, 409)
 
     def test_corps_fuzz_ligne_mal_typee_400(self):
         """api-fuzz (ENF11) : ``produit`` non entier / ``quantite`` vide

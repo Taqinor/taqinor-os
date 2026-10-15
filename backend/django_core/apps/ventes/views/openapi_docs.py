@@ -7,12 +7,15 @@ un champ requis). Le moteur de devis (règle #4) n'est pas touché.
 """
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as _ErreurDjango
+from django.core.validators import RegexValidator as _RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
 
 from core.champs_stricts import (
-    BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, EntierStrict,
+    BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, DecimalStricte,
+    EntierStrict,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from ..models import Paiement
@@ -28,6 +31,15 @@ from ..serializers_facturation import (
 
 def _ser(name, fields, **kwargs):
     return inline_serializer(name, fields, **kwargs)
+
+
+class _MotifEntier(_RegexValidator):
+    """CI #997 fuzz — ``RegexValidator`` PUBLIÉ tel quel mais appliqué en
+    ``fullmatch`` : ``$`` laisserait passer un saut de ligne final."""
+
+    def __call__(self, value):
+        if not isinstance(value, str) or not self.regex.fullmatch(value):
+            raise _ErreurDjango(self.message, code=self.code)
 
 
 # ---------------------------------------------------------------- devis
@@ -777,8 +789,24 @@ ErreurEconomie = _ser('DevisErreurEconomie', {
 })
 
 # --------------------------------------------------------------- facturation
+#: CI #997 fuzz — un paiement DÉJÀ reçu (« Facturer », 0 à 5) publié tel que
+#: ``domain/facturation_ops.valider_paiements_saisis`` le lit : montant
+#: décimal-chaîne > 0 à 2 décimales au plus (10 chiffres entiers, colonne
+#: 12,2), date ``AAAA-MM-JJ``, mode connu, référence de 120 signes au plus.
+#: Une date FUTURE est un refus d'état (dépend du jour) : 409.
+MOTIF_MONTANT_SAISI = (
+    r'^(?:[1-9][0-9]{0,9}(?:\.[0-9]{0,2})?|0?\.(?:0[1-9]|[1-9][0-9]?))$')
+PaiementDejaRecu = _ser('DevisFacturerCompletPaiementSaisi', {
+    'montant': ChaineStricte(trim_whitespace=False, validators=[_MotifEntier(
+        MOTIF_MONTANT_SAISI, message='Montant invalide.')]),
+    'date_paiement': DateStricte(),
+    'mode_paiement': s.ChoiceField(choices=[
+        'especes', 'virement', 'cheque', 'carte', 'prelevement', 'autre']),
+    'reference': ChaineStricte(required=False, allow_blank=True,
+                               allow_null=True, max_length=120),
+})
 FacturerCompletRequest = _ser('DevisFacturerCompletRequest', {
-    'paiements': s.ListField(child=s.DictField(), required=False,
+    'paiements': s.ListField(child=PaiementDejaRecu, required=False,
                              max_length=5),
     'override_credit': BooleenStrict(required=False),
     'override_avertissement': BooleenStrict(required=False),
@@ -848,8 +876,9 @@ ErreurFacturerVente = _ser('DevisFacturerVenteErreur', {
     'code': s.CharField(required=False),
 })
 GenererFactureRequest = _ser('DevisGenererFactureRequest', {
-    'override_credit': s.BooleanField(required=False),
-    'override_avertissement': s.BooleanField(required=False),
+    # CI #997 fuzz — booléens STRICTS (``0`` était lu « faux » et accepté).
+    'override_credit': BooleenStrict(required=False),
+    'override_avertissement': BooleenStrict(required=False),
 })
 
 
@@ -1077,16 +1106,22 @@ CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
     'taux_tva': s.CharField(required=False, allow_blank=True),
 })
 LigneRetour = _ser('FactureLigneRetour', {
-    'produit': s.IntegerField(),
+    # CI #997 fuzz — un id de produit (≥ 1, entier JSON) : ``0`` était
+    # conforme puis refusé « produit requis ».
+    'produit': EntierStrict(min_value=1),
     # ENF11 — « Ligne 1 : quantité > 0 requise. » : publiée > 0.
     'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
                                min_value=Decimal('0.01'),
                                max_value=_MONTANT_LIGNE_MAX),
 })
 RetourClientRequest = _ser('FactureRetourClientRequest', {
-    'motif': s.RegexField(_NON_BLANC),
+    # CI #997 fuzz — texte et booléen STRICTS (``"motif": 0``,
+    # ``"restocker": 0`` étaient convertis) ; « non blanc » publié au sens
+    # de DRF (``ChaineStricte``), plus le ``\S`` que la regex du schéma lit
+    # autrement que ``str.strip``.
+    'motif': ChaineStricte(),
     'lignes': s.ListField(child=LigneRetour, min_length=1),
-    'restocker': s.BooleanField(required=False),
+    'restocker': BooleenStrict(required=False),
 })
 
 RelanceApercuResponse = _ser('FactureRelanceApercu', {
@@ -1111,26 +1146,40 @@ ArrondiCaisseResponse = _ser('FactureArrondiCaisse', {
     'pas': s.CharField(),
 })
 ConsoliderRequest = _ser('FactureConsoliderRequest', {
-    'devis_ids': s.ListField(child=s.IntegerField(min_value=1),
+    # CI #997 fuzz — ids entiers JSON (``"5"`` était relu par ``int()``).
+    'devis_ids': s.ListField(child=EntierStrict(min_value=1),
                              min_length=2),
 })
 #: ENF11 — ``[5, 5]`` consolidait deux fois le même devis : ids DISTINCTS.
 CORPS_DEVIS_IDS_UNIQUES = corps_resserre({
     'properties': {'devis_ids': {'type': 'array', 'uniqueItems': True}}})
+#: CI #997 fuzz — montant encaissé tel que la vue l'ARRONDIT (au centime,
+#: moitié vers le haut, ``quantize_mad``) : décimal-chaîne strictement
+#: positif APRÈS arrondi (``0.005`` → 0,01 ; ``0.0049`` → 0 refusé), 9
+#: chiffres entiers avec décimales libres (le total pré-rempli par l'écran
+#: porte du bruit flottant) ou 10 chiffres et 2 décimales au plus (colonne
+#: 12,2). Validé par ce MÊME motif, en entier et sans rognage.
+MOTIF_MONTANT_ENCAISSE = (
+    r'^(?:[1-9][0-9]{0,8}(?:\.[0-9]*)?|[1-9][0-9]{9}(?:\.[0-9]{0,2})?'
+    r'|0?\.(?:0[1-9]|[1-9])[0-9]*|0?\.00[5-9][0-9]*)$')
+
+
 EncaissementGroupeRequest = _ser('FactureEncaissementGroupeRequest', {
-    'client': s.IntegerField(min_value=1),
-    # Montant STRICTEMENT positif, 2 décimales : le motif exclut "" et "0",
-    # que le décimal générique du schéma laisserait passer.
-    'montant': s.RegexField(
-        r'^(?:[1-9][0-9]{0,9}(?:\.[0-9]{1,2})?|0\.(?:0[1-9]|[1-9][0-9]?))$'),
-    'factures': s.ListField(child=s.IntegerField(min_value=1), min_length=1),
+    # CI #997 fuzz — la vue lit ce corps VALIDÉ (elle le relisait à la main,
+    # plus souplement que publié) : entiers, texte, date et décimaux STRICTS.
+    'client': EntierStrict(min_value=1),
+    'montant': ChaineStricte(trim_whitespace=False, validators=[_MotifEntier(
+        MOTIF_MONTANT_ENCAISSE, message='Montant invalide.')]),
+    'factures': s.ListField(child=EntierStrict(min_value=1), min_length=1),
     'mode': s.ChoiceField(
         choices=['especes', 'virement', 'cheque', 'carte', 'prelevement',
                  'autre'], required=False),
-    'date': s.DateField(required=False),
-    'reference': s.CharField(required=False, allow_blank=True,
-                             max_length=120),
-    'repartition': s.DictField(child=s.DecimalField(
+    'date': DateStricte(required=False),
+    'reference': ChaineStricte(required=False, allow_blank=True,
+                               max_length=120),
+    # Clé = id d'une facture du lot (sinon 409), part en décimal-chaîne ;
+    # une part ≤ 0 est ignorée.
+    'repartition': s.DictField(child=DecimalStricte(
         max_digits=12, decimal_places=2), required=False, allow_null=True),
 })
 BulkRequest = _ser('FactureBulkRequest', {

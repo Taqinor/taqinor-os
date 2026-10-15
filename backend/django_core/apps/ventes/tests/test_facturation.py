@@ -126,9 +126,9 @@ class TestEcheancierGeneration(TestCase):
         self.assertEqual(sum(ttcs), Decimal('17000.00'))
         self.assertEqual(ttcs, [Decimal('5100.00'), Decimal('10200.00'),
                                 Decimal('1700.00')])
-        # 4e appel : échéancier complet → 400
+        # 4e appel : échéancier complet → refus d'état (409, CI #997 fuzz)
         r4 = self._gen(devis)
-        self.assertEqual(r4.status_code, 400)
+        self.assertEqual(r4.status_code, 409)
 
     def test_references_are_distinct_and_sequential(self):
         devis = make_accepted_devis(self.company, self.client_obj)
@@ -142,7 +142,7 @@ class TestEcheancierGeneration(TestCase):
         devis.statut = Devis.Statut.BROUILLON
         devis.save()
         r = self._gen(devis)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # CI #997 fuzz : refus d'état, 409
 
 
 class TestPaiementsEtSolde(TestCase):

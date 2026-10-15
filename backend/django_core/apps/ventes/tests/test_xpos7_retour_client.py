@@ -6,7 +6,7 @@ Couvre :
   * un retour SANS re-stockage reste possible (`restocker=False`) : avoir
     créé, stock inchangé ;
   * motif de retour obligatoire (400 sans motif) ;
-  * quantité retournée > quantité vendue refusée (400), y compris en tenant
+  * quantité retournée > quantité vendue refusée (409), y compris en tenant
     compte d'un retour déjà acté sur la même ligne (pas de double retour) ;
   * scoping company (isolation cross-tenant).
 """
@@ -120,7 +120,25 @@ class TestRetourClient(TestCase):
                 'restocker': True,
                 'lignes': [{'produit': self.panneau.id, 'quantite': '11'}],
             }, format='json')
-        self.assertEqual(r.status_code, 400)
+        # CI #997 fuzz — au-delà du vendu restant : refus d'ÉTAT, 409.
+        self.assertEqual(r.status_code, 409)
+
+    def test_produit_inconnu_404_et_corps_strict_400(self):
+        # CI #997 fuzz — produit bien formé mais absent : 404 ; ``motif: 0``
+        # ou ``restocker: 0`` (convertis en silence) et ``produit: 0`` : 400.
+        api = self._api(self.resp)
+        url = f'/api/django/ventes/factures/{self.facture.id}/retour-client/'
+        ligne = {'produit': self.panneau.id, 'quantite': '1'}
+        r = api.post(url, {'motif': 'x', 'lignes': [
+            {'produit': 999999, 'quantite': '1'}]}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        for corps in ({'motif': 0, 'lignes': [ligne]},
+                      {'motif': 'x', 'restocker': 0, 'lignes': [ligne]},
+                      {'motif': 'x', 'lignes': [{'produit': 0,
+                                                 'quantite': '1'}]}):
+            r = api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        self.assertFalse(Avoir.objects.filter(facture=self.facture).exists())
 
     def test_pas_de_double_retour_au_dela_du_vendu(self):
         api = self._api(self.resp)
@@ -140,7 +158,7 @@ class TestRetourClient(TestCase):
                 'restocker': True,
                 'lignes': [{'produit': self.panneau.id, 'quantite': '4'}],
             }, format='json')
-        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(r2.status_code, 409)
         # Mais un second retour dans la limite restante passe.
         r3 = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/retour-client/',

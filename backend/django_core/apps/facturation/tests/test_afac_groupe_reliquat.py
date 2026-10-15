@@ -81,7 +81,8 @@ class GroupeReliquatTests(TestCase):
     def test_somme_parts_superieure_refusee(self):
         from apps.ventes.models import Paiement
         r = self._post('5000', {str(self.a.id): '3000', str(self.b.id): '4000'})
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 fuzz — corps valide, refus d'ÉTAT / d'ensemble : 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertFalse(Paiement.objects.filter(company=self.company).exists())
 
     def test_reliquat_centime_ignore(self):

@@ -149,7 +149,7 @@ class PortesFacturationTests(TestCase):
                     self.assertEqual(len(emises), 1)
                     self.assertIn(emises[0].reference, str(r3.data))
                     continue
-                self.assertEqual(r2.status_code, 400, r2.data)
+                self.assertEqual(r2.status_code, 409, r2.data)  # CI #997 fuzz : refus d'état, 409
                 self.assertIn(avant[0], str(r2.data))
                 self.assertIn('avoir', str(r2.data))
                 self.assertEqual(self._refs(devis), avant)
@@ -180,7 +180,7 @@ class PortesFacturationTests(TestCase):
         # Version remplacée (is_active faux) : plus aucune émission.
         Devis.objects.filter(pk=devis.pk).update(is_active=False)
         r = self._porte('tranche', Devis.objects.get(pk=devis.pk))
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(
             Facture.objects.filter(devis=devis).exclude(
                 statut=Facture.Statut.BROUILLON).count(), 1)
@@ -190,7 +190,7 @@ class PortesFacturationTests(TestCase):
         r1 = self._porte('complete', devis)
         self.assertEqual(r1.status_code, 201, r1.data)
         r2 = self._porte('tranche', devis)
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.status_code, 409, r2.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn(r1.data['facture_reference'], r2.data['detail'])
         total = sum((Decimal(str(f.total_ttc)) for f in self._actives(devis)),
                     Decimal('0'))
@@ -208,7 +208,7 @@ class PortesFacturationTests(TestCase):
         for porte, devis in (('tranche', d1), ('complete', d2), ('bc', d3)):
             with self.subTest(porte=porte):
                 resp = self._porte(porte, Devis.objects.get(pk=devis.pk))
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
                 self.assertIn(consolidee.reference, str(resp.data))
         self.assertEqual(Facture.objects.count(), nb)
         self.assertEqual(

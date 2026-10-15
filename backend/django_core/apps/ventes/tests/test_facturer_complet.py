@@ -159,7 +159,7 @@ class TestFacturerComplet(TestCase):
     def test_refuse_un_devis_non_accepte(self):
         devis = self._devis(statut=Devis.Statut.ENVOYE)
         resp = self._post([], devis=devis)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('accepté', resp.data['detail'])
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
 
@@ -167,7 +167,7 @@ class TestFacturerComplet(TestCase):
         premiere = self._post([])
         self.assertEqual(premiere.status_code, 201, premiere.data)
         resp = self._post([self._p('1000', 1)])
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn(premiere.data['facture_reference'], resp.data['detail'])
         self.assertEqual(Facture.objects.filter(devis=self.devis).count(), 1)
         self.assertEqual(Paiement.objects.count(), 0)
@@ -178,23 +178,24 @@ class TestFacturerComplet(TestCase):
             {}, format='json')
         self.assertEqual(tranche.status_code, 201, tranche.data)
         resp = self._post([])
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn(tranche.data['reference'], resp.data['detail'])
 
-    def test_vnt65_version_remplacee_refusee_400_nommee_aux_deux_portes(self):
+    def test_vnt65_version_remplacee_refusee_409_nommee_aux_deux_portes(self):
         """VNT65 — les deux portes sont des enveloppes de « Facturer la
-        vente » : une version REMPLACÉE est refusée en 400 nommant la tête
-        de chaîne (elle rendait 201 sur ``generer-facture``), rien d'écrit."""
+        vente » : une version REMPLACÉE est refusée (409 depuis CI #997, un
+        refus d'état) nommant la tête de chaîne (elle rendait 201 sur
+        ``generer-facture``), rien d'écrit."""
         v2 = self._devis()
         Devis.objects.filter(pk=self.devis.pk).update(
             is_active=False, superseded_by=v2)
         resp = self._post([])
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn(v2.reference, resp.data['detail'])
         tranche = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/generer-facture/',
             {}, format='json')
-        self.assertEqual(tranche.status_code, 400, tranche.data)
+        self.assertEqual(tranche.status_code, 409, tranche.data)
         self.assertIn(v2.reference, tranche.data['detail'])
         self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
 
@@ -212,7 +213,7 @@ class TestFacturerComplet(TestCase):
     def test_surpaiement_refuse_et_rien_n_est_cree(self):
         avant_factures = Facture.objects.count()
         resp = self._post([self._p('100000', 10), self._p('60000', 5)])
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('dépassent', resp.data['detail'])
         # Atomicité : ni facture, ni paiement.
         self.assertEqual(Facture.objects.count(), avant_factures)
@@ -225,18 +226,25 @@ class TestFacturerComplet(TestCase):
         cas = [
             [{'montant': '-5', 'date_paiement': date.today().isoformat(),
               'mode_paiement': 'virement'}],
-            [{'montant': '100', 'date_paiement': futur,
-              'mode_paiement': 'virement'}],
             [{'montant': '100', 'date_paiement': date.today().isoformat(),
               'mode_paiement': 'bitcoin'}],
             [{'montant': '100', 'date_paiement': 'hier',
               'mode_paiement': 'virement'}],
             [self._p('10', 1)] * 6,
+            # CI #997 fuzz — la ligne de paiement est PUBLIÉE : montant
+            # décimal-chaîne (nombre JSON, 3 décimales refusés), référence
+            # de 120 signes au plus.
+            [self._p('10', 1) | {'montant': 10}],
+            [self._p('10.005', 1)],
+            [self._p('10', 1, reference='x' * 121)],
         ]
         for paiements in cas:
-            with self.subTest(paiements=paiements[:1]):
-                resp = self._post(paiements)
-                self.assertEqual(resp.status_code, 400, resp.data)
+            resp = self._post(paiements)
+            self.assertEqual(resp.status_code, 400, (paiements[:1], resp.data))
+        # Une date FUTURE dépend du jour : refus d'état, 409.
+        resp = self._post([{'montant': '100', 'date_paiement': futur,
+                            'mode_paiement': 'virement'}])
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertFalse(Facture.objects.filter(devis=self.devis).exists())
 
     def test_isolation_societe(self):

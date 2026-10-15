@@ -205,7 +205,8 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
             assert resp.status_code == 201, resp.data
             self.bc = BonCommande.objects.get(pk=resp.data['id'])
         else:
-            assert resp.status_code == 400, (resp.status_code, resp.data)
+            # CI #997 fuzz — refus d'état : 409.
+            assert resp.status_code == 409, (resp.status_code, resp.data)
 
     # ── BonCommande : en_attente / confirme / livre / annule ────────────────
 
@@ -289,7 +290,7 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
         if bc_ok and not facture_bc_deja and not facture_devis_deja:
             assert resp.status_code == 201, resp.data
         else:
-            assert resp.status_code == 400, (resp.status_code, resp.data)
+            assert resp.status_code == 409, (resp.status_code, resp.data)
 
     @rule()
     def generer_facture_directe(self):
@@ -304,7 +305,7 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
             f'/api/django/ventes/devis/{self.devis.id}/generer-facture/',
             {}, format='json')
         if not devis_accepte or facture_bc_deja:
-            assert resp.status_code == 400, (resp.status_code, resp.data)
+            assert resp.status_code == 409, (resp.status_code, resp.data)
             return
         # Le devis est accepté et aucune facture BC ne le bloque : le seul
         # motif de refus restant est un échéancier déjà complet — l'ORACLE
@@ -314,7 +315,7 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
         self.devis.refresh_from_db()
         tranche = next_tranche(self.devis)
         if tranche is None:
-            assert resp.status_code == 400, (resp.status_code, resp.data)
+            assert resp.status_code == 409, (resp.status_code, resp.data)
         else:
             assert resp.status_code == 201, resp.data
 

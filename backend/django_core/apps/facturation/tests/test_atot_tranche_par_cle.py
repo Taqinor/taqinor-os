@@ -95,7 +95,7 @@ class TrancheParCleTests(TestCase):
                 while True:
                     r = self._generer(devis)
                     if r.status_code != 201:
-                        self.assertEqual(r.status_code, 400, r.data)
+                        self.assertEqual(r.status_code, 409, r.data)  # CI #997 fuzz : refus d'état, 409
                         break
                 actives = self._actives(devis)
                 cles = [f.cle_tranche for f in actives]
@@ -122,7 +122,7 @@ class TrancheParCleTests(TestCase):
             montant_ttc=Decimal('15000.00'), motif='Révision V2')
         avant = Facture.objects.count()
         r = self._generer(devis)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('soldé', r.data['detail'])
         self.assertEqual(Facture.objects.count(), avant)
 

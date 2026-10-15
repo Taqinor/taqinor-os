@@ -390,7 +390,10 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                 created_by=request.user,
             )
         except ValidationError as exc:
-            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+            # CI #997 fuzz — l'entrée est déjà validée : facture annulée ou
+            # non encaissable, montant au-delà du reste dû sont des refus
+            # d'ÉTAT (409, corps inchangé), plus 400.
+            return Response(exc.detail, status=status.HTTP_409_CONFLICT)
         return Response({
             'paiement': PaiementSerializer(paiement).data,
             'retenue': RetenueSubieSerializer(retenue).data,
