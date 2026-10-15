@@ -88,7 +88,19 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
   // ── Surfaces JSON ─────────────────────────────────────────────────────────
   const detail = await page.request.get(`/api/django/ventes/devis/${devisId}/`)
   expect(detail.ok()).toBeTruthy()
-  const apiDevis = figuresDepuisDevisApi(await detail.json())
+  const detailJson = await detail.json()
+  const apiDevis = figuresDepuisDevisApi(detailJson)
+  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — le repli intermittent du
+  // document (6 543 kWh = kWc × productible de repli) n'a pas de cause
+  // reproduite sans pile : le journal CI dit, juste après la création, si le
+  // bloc horaire est rangé et pour quelle puissance (une ligne, jamais un échec).
+  const etudeRangee = detailJson.etude_params || {}
+  const bloc = etudeRangee.etude_horaire
+  console.log('[ERR-QAH-FIG-EDITION] bloc horaire après création : '
+    + (bloc ? `présent, kWc ${bloc.kwc}, production ${bloc.annuel?.production_kwh}, `
+      + `source ${bloc.source_production}` : 'ABSENT')
+    + ` ; puissance du devis ${etudeRangee.puissance_kwc}`
+    + ` ; production API ${apiDevis.production_annuelle_kwh?.[0]?.texte}`)
 
   // Jeton INTERNE (L-INTPREV) : même charge utile que le client, sans trace
   // d'ouverture, sans notification ; `envoi` absent → aucun changement de statut.
