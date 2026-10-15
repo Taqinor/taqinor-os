@@ -17,7 +17,6 @@
 # sans active_companies() ni filtre company. Cle stable fichier::fonction. NE PEUT QUE
 # DECROITRE (une cle morte fait echouer la garde). Raison : balayage ou lecture par objet
 # a scoper ; tache qui la retire = C-AFAC-036 (recouvrement : AFAC43) ou le plan du proprietaire.
-backend/django_core/apps/installations/tasks.py::_deja_notifie_aujourdhui
 # (10/10/2026) Les lectures d'UNE ligne par clé primaire (`.filter/.get(pk=…|id=…)`) ne sont
 # plus des balayages pour la garde : 5 entrées retirées (deliver_webhook, _societe_du_devis,
 # _content_version, ranger_simulation, _signaler_pdf_devis_genere).

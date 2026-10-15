@@ -262,7 +262,7 @@ def generer_interventions_recurrentes_task():
     return total
 
 
-def _deja_notifie_aujourdhui(event_type, titre, recipient=None):
+def _deja_notifie_aujourdhui(event_type, titre, recipient=None, company=None):
     """Vrai si CETTE notification (même événement, même titre, même
     destinataire) a déjà été créée aujourd'hui.
 
@@ -272,12 +272,14 @@ def _deja_notifie_aujourdhui(event_type, titre, recipient=None):
     ``/chantiers/consultations``), donc identique pour toutes les relances et
     jamais égal à la clé calculée : la garde ne trouvait rien et chaque passage
     re-notifiait. Le TITRE, lui, nomme la RFQ ET le fournisseur — c'est-à-dire
-    exactement la consultation relancée."""
+    exactement la consultation relancée. ``company`` borne la requête à la
+    société balayée (ENF15 : jamais un balayage global des notifications)."""
     from apps.notifications.models import Notification
     today = casablanca_today()
     try:
         qs = Notification.objects.filter(
-            event_type=event_type, title=titre, created_at__date=today)
+            company=company, event_type=event_type, title=titre,
+            created_at__date=today)
         if recipient is not None:
             qs = qs.filter(recipient=recipient)
         return qs.exists()
@@ -340,7 +342,8 @@ def relancer_rfq_en_attente_task():
             # la consultation), pas le lien — celui-ci est la route réelle de
             # l'écran, la même pour toutes les relances (cf. la garde).
             if _deja_notifie_aujourdhui(
-                    'bcf_relance_proposee', titre, recipient=acheteur):
+                    'bcf_relance_proposee', titre, recipient=acheteur,
+                    company=company):
                 continue
             try:
                 from apps.notifications.types_evenements import EventType
