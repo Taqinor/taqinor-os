@@ -12,6 +12,7 @@ de requête, statuts, binaires).
   le code l'est (sinon REJ).
 """
 from collections.abc import Mapping
+from datetime import date, timedelta
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (  # noqa: F401  (ré-exportés)
@@ -24,6 +25,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict, date_ou_400
+from core.conflit_etat import ConflitEtat
 
 from ..signature_validation import (
     MESSAGE_SIGNATURE_INVALIDE, MOTIF_DATA_URL, SIGNATURE_MAX_CARACTERES,
@@ -240,6 +242,22 @@ def id_requete(request, nom, requis=False):
             raise ValidationError({nom: 'Paramètre requis.'})
         return None
     return id_entier(brut, nom)
+
+
+def fenetre_semaine(request):
+    """``(debut, fin)`` des paramètres ``debut``/``fin`` (ISO) ; défaut = la
+    semaine en cours (lundi → dimanche). Une fenêtre inversée (``fin`` avant
+    ``debut``) est une règle d'ENSEMBLE que le schéma ne peut pas exprimer :
+    409 (conflit), jamais un 400 sur une requête conforme."""
+    debut = date_ou_400(request.query_params.get('debut'), 'debut')
+    fin = date_ou_400(request.query_params.get('fin'), 'fin')
+    if debut is None:
+        debut = date.today() - timedelta(days=date.today().weekday())
+    if fin is None:
+        fin = debut + timedelta(days=6)
+    if fin < debut:
+        raise ConflitEtat('La fin de fenêtre précède le début.')
+    return debut, fin
 
 
 def _valider_filtres(request, entiers, dates):

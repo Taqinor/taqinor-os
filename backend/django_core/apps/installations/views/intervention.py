@@ -2429,24 +2429,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``heures_par_jour`` (défaut 8). Aucun ``?format=`` —
         sortie JSON simple (export via ``?export=`` non requis ici)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
         params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         heures = nombre_ou_400(
             params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
         data = selectors.plan_de_charge_equipes(
@@ -2465,24 +2451,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Pure détection, scopée société, aucun nouveau modèle.
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche). Sortie JSON simple (aucun ``?format=``)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
-        params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         data = selectors.conflits_affectation(
             request.user.company, debut, fin)
         return Response(data)
@@ -2501,24 +2472,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``heures_par_jour`` (défaut 8). Sortie JSON simple
         (aucun ``?format=``)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
         params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         heures = nombre_ou_400(
             params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
         data = selectors.nivellement_charge(
@@ -2616,24 +2573,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``capacite_jour`` (défaut 1). Sortie JSON simple
         (aucun ``?format=``)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
-        params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         # ERR-ENF11 : entier >= 1 strict (illisible → 400, absent/vide → 1).
         cap = oa.id_requete(request, 'capacite_jour') or 1
         data = selectors.planning_camionnettes(
