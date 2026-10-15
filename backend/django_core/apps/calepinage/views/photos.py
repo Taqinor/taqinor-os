@@ -78,27 +78,25 @@ _CHAMPS_PHOTO = {
 _FORME_PHOTO = forme_reponse('CalepinagePhotoSite', 'photo', 'photos')
 
 
+# ``ChoiceField`` pour un corps multipart : DRF y lit une valeur VIDE d'un champ
+# facultatif comme « absent » (``Field.get_value``) — un genre ``''``, hors
+# énumération publiée, passait donc pour un genre omis (201). La valeur vide est
+# ici transmise telle quelle, et refusée (400).
 class _ChoixDeFormulaire(serializers.ChoiceField):
-    """``ChoiceField`` pour un corps multipart : DRF y lit une valeur VIDE
-    d'un champ facultatif comme « absent » (``Field.get_value``) — un genre
-    ``''``, hors énumération publiée, passait donc pour un genre omis (201).
-    La valeur vide est ici transmise telle quelle, et refusée (400)."""
-
     def get_value(self, dictionary):
         return dictionary.get(self.field_name, serializers.empty)
 
 
+# ERR-ENF11-FUZZ-CALEPINAGE (w4) — les champs TEXTE du dépôt d'une photo : UN
+# seul prédicat, publié au schéma ET appliqué par le serveur.
+#   * ``prise_le`` : date ``AAAA-MM-JJ`` OBLIGATOIRE (« saisie, jamais déduite
+#     de la date d'import ») ; une date FUTURE dépend du jour du serveur, le
+#     schéma ne peut pas la dire : 409 (``PhotoEnConflit``) ;
+#   * ``genre`` : l'une des valeurs de ``PhotoSite.Genre`` (absent ⇒ drone) ;
+#   * ``legende`` : texte libre sans caractère nul (tronqué à 200).
+# (Commentaire et non docstring : une docstring fuiterait dans la description
+# OpenAPI.)
 class PhotoSiteChampsSerializer(serializers.Serializer):
-    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — les champs TEXTE du dépôt d'une photo :
-    UN seul prédicat, publié au schéma ET appliqué par le serveur.
-
-    * ``prise_le`` : date ``AAAA-MM-JJ`` OBLIGATOIRE (« saisie, jamais déduite
-      de la date d'import ») ; une date FUTURE dépend du jour du serveur, le
-      schéma ne peut pas la dire : 409 (``PhotoEnConflit``) ;
-    * ``genre`` : l'une des valeurs de ``PhotoSite.Genre`` (absent ⇒ drone) ;
-    * ``legende`` : texte libre sans caractère nul (tronqué à 200).
-    """
-
     genre = _ChoixDeFormulaire(choices=PhotoSite.Genre.choices,
                                required=False)
     prise_le = DateStricte(error_messages={
@@ -110,9 +108,8 @@ class PhotoSiteChampsSerializer(serializers.Serializer):
     legende = ChaineStricte(required=False, allow_blank=True)
 
 
+# Le corps publié du dépôt : les champs ci-dessus et le fichier.
 class PhotoSiteCorpsSerializer(PhotoSiteChampsSerializer):
-    """Le corps publié du dépôt : les champs ci-dessus et le fichier."""
-
     photo = serializers.ImageField()
 
 

@@ -29,6 +29,8 @@ Les lectures cross-app passent par les ``selectors.py`` des apps cibles
 """
 from __future__ import annotations
 
+import math
+
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.utils import (
     OpenApiResponse, extend_schema_field, inline_serializer,
@@ -39,6 +41,10 @@ from core.champs_stricts import ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Calepinage, CalepinageVariante
+from .services.import_plan import (
+    COORDONNEE_CALAGE_MAX, DISTANCE_CALAGE_MAX_M, DISTANCE_CALAGE_MIN_M,
+    ROTATION_CALAGE_MAX_DEG,
+)
 from .services.presentation import image_apercu, reference_calepinage
 
 
@@ -673,3 +679,42 @@ class CalepinageVarianteSerializer(serializers.ModelSerializer):
                   'layout_hash', 'cree_par', 'created_at', 'updated_at']
         read_only_fields = ['retenue', 'layout_hash', 'cree_par',
                             'created_at', 'updated_at']
+
+
+class NombreFiniStrict(serializers.FloatField):
+    """Nombre JSON RÉEL et fini : ``"12"``, ``true`` et ``NaN`` sont refusés
+    (400) au lieu d'être convertis en silence — ce que le schéma déclare."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        try:
+            valeur = super().to_internal_value(data)
+        except OverflowError:  # entier JSON > 1e308 : ``float()`` déborde
+            self.fail('invalid')
+        if not math.isfinite(valeur):
+            self.fail('invalid')
+        return valeur
+
+
+def _point_du_plan():
+    return serializers.ListField(
+        child=NombreFiniStrict(min_value=-COORDONNEE_CALAGE_MAX,
+                               max_value=COORDONNEE_CALAGE_MAX),
+        min_length=2)
+
+
+# ERR-ENF11-FUZZ-CALEPINAGE (w4) — le CALAGE d'un plan importé
+# (``importer-plan``) : deux points du plan et leur distance réelle. UN seul
+# prédicat : ``services.import_plan.lire_calage`` valide avec CE sérialiseur,
+# et le schéma publie ses bornes. Ce que la forme ne peut pas dire (A = B,
+# aucun calque, pas d'épingle) est un 409 (``CalageEnConflit``). (Commentaire
+# et non docstring : une docstring fuiterait dans la description OpenAPI.)
+class CalageSerializer(serializers.Serializer):
+    pointA = _point_du_plan()
+    pointB = _point_du_plan()
+    distanceM = NombreFiniStrict(min_value=DISTANCE_CALAGE_MIN_M,
+                                 max_value=DISTANCE_CALAGE_MAX_M)
+    rotationDeg = NombreFiniStrict(
+        required=False, allow_null=True,
+        min_value=-ROTATION_CALAGE_MAX_DEG, max_value=ROTATION_CALAGE_MAX_DEG)

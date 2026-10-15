@@ -274,6 +274,31 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
         self.assertEqual(meteo['properties']['fournisseur']['pattern'],
                          MOTIF_NON_BLANC_SANS_NUL)
 
+    def test_importer_plan_publie_le_rang_et_le_calage_du_serveur(self):
+        """Le rang d'entité (≥ 1) et le calage (deux points, distance dans les
+        bornes) sont publiés tels que ``lire_calage`` les juge : un seul
+        prédicat (le ``CalageSerializer``)."""
+        from apps.calepinage.services.import_plan import (
+            DISTANCE_CALAGE_MIN_M, ROTATION_CALAGE_MAX_DEG,
+        )
+
+        composants = self.schema['components']['schemas']
+        corps = self._corps_multipart('{id}/importer-plan/')
+        self.assertEqual(corps['required'], ['fichier'])
+        self.assertEqual(corps['properties']['entite'],
+                         {'type': 'integer', 'minimum': 1})
+        calage = composants[
+            corps['properties']['calage']['$ref'].rsplit('/', 1)[-1]]
+        self.assertEqual(sorted(calage['required']),
+                         ['distanceM', 'pointA', 'pointB'])
+        self.assertEqual(calage['properties']['pointA']['minItems'], 2)
+        self.assertEqual(calage['properties']['distanceM']['minimum'],
+                         DISTANCE_CALAGE_MIN_M)
+        rotation = calage['properties']['rotationDeg']
+        self.assertEqual(rotation['maximum'], ROTATION_CALAGE_MAX_DEG)
+        self.assertIs(rotation['nullable'], True)
+        self.assertNotIn('rotationDeg', calage['required'])
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']
