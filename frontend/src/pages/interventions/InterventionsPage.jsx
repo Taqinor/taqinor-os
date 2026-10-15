@@ -511,9 +511,23 @@ export default function InterventionsPage() {
   const { wantedId, deepItem, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
   // id demandé mais introuvable (une fois le chargement terminé) : EmptyState
   // inline plutôt qu'un panneau vide ou une page blanche.
-  const deepMissing = !!wantedId && !loading && !deepItem
+  // ACHT62 — un id absent de la liste chargée est résolu par `getIntervention(id)`
+  // (jamais « introuvable » avant la réponse du serveur).
+  const [deepRemote, setDeepRemote] = useState(null)
+  useEffect(() => {
+    if (!wantedId || loading || deepItem) return undefined
+    let off = false
+    const id = String(wantedId)
+    Promise.resolve().then(() => installationsApi.getIntervention(id))
+      .then((r) => { if (!off) setDeepRemote({ id, item: r?.data ?? null }) })
+      .catch(() => { if (!off) setDeepRemote({ id, item: null }) })
+    return () => { off = true }
+  }, [wantedId, loading, deepItem])
+  const remote = deepRemote && deepRemote.id === String(wantedId) ? deepRemote : null
+  const deepFound = deepItem ?? remote?.item ?? null
+  const deepMissing = !!wantedId && !loading && !deepFound && remote !== null
   // Panneau ouvert : sélection manuelle OU intervention ciblée par le lien profond.
-  const detailItem = selected ?? deepItem
+  const detailItem = selected ?? deepFound
   const closeDetail = () => { setSelected(null); clearDeepLink() }
 
   const [view, setView] = useState(() => {
@@ -529,13 +543,18 @@ export default function InterventionsPage() {
   // Récupère sans toucher `loading` de façon synchrone (compat règle hooks) :
   // l'état initial est déjà `true`, et un rafraîchissement de fond ne fait pas
   // clignoter le spinner du kanban.
+  // ACHT65 — `?installation=<id>` (lien « photos de l'intervention » de la fiche
+  // chantier) : filtre serveur existant `installation`.
+  const installationFiltre = searchParams.get('installation')
   const fetchData = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
-    installationsApi.getInterventions({ page, page_size: pageSize }).then((r) => r.data))
+    installationsApi.getInterventions({
+      page, page_size: pageSize, ...(installationFiltre ? { installation: installationFiltre } : {}),
+    }).then((r) => r.data))
     .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })
     .catch(() => setError('Impossible de charger les interventions. Réessayez.'))
     .finally(() => setLoading(false))
   const reload = () => { setLoading(true); return fetchData() }
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [installationFiltre]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65)
   useEffect(() => {
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})

@@ -9,7 +9,7 @@ import {
   Plus, Play, CheckCircle2, XCircle, FileText, Printer, RefreshCw, Wrench,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Button, Badge, Segmented, Spinner, Skeleton, EmptyState, Input, Textarea,
   Checkbox,
@@ -1082,15 +1082,16 @@ export default function AteliersPage() {
   const [creating, setCreating] = useState(false)
 
   const load = () => {
+    // ACHT62 — toutes les pages des ordres (jamais les 50 premiers).
     Promise.all([
-      installationsApi.getOrdresAssemblage(),
-      installationsApi.getOrdresDemontage(),
+      lireToutesLesPages((p) => installationsApi.getOrdresAssemblage(p)),
+      lireToutesLesPages((p) => installationsApi.getOrdresDemontage(p)),
       installationsApi.getKitsAssemblage({ active: 1 }),
     ])
       .then(([a, d, k]) => {
         const arr = (r) => (Array.isArray(r) ? r : r?.results ?? [])
-        setAssemblages(arr(a.data))
-        setDemontages(arr(d.data))
+        setAssemblages(a)
+        setDemontages(d)
         setKits(arr(k.data))
         setLoading(false)
       })

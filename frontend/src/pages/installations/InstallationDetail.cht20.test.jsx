@@ -66,22 +66,13 @@ beforeEach(() => {
 })
 
 describe('InstallationDetail — « Autour de ce chantier » (CHT20)', () => {
-  it('les 5 liens satellites naviguent vers leur route avec ?chantier=<id>', async () => {
-    const user = userEvent.setup()
+  it('ACHT65 — aucun bouton ne mène à /btp-chantier/* (module parqué, aucune route)', async () => {
     renderInstallationDetail(CHANTIER)
-
-    const attendus = [
-      ['Réserves', '/btp-chantier/reserves?chantier=601'],
-      ['RFI', '/btp-chantier/rfi?chantier=601'],
-      ['Journal', '/btp-chantier/journal?chantier=601'],
-      ['Avenants', '/btp-chantier/avenants?chantier=601'],
-      ['DGD', '/btp-chantier/dgd?chantier=601'],
-    ]
-    for (const [label, url] of attendus) {
-      const bouton = await screen.findByRole('button', { name: label })
-      await user.click(bouton)
-      expect(navigateMock).toHaveBeenCalledWith(url)
+    await screen.findByRole('button', { name: /Voir le devis/ })
+    for (const label of ['Réserves', 'RFI', 'Journal', 'Avenants', 'DGD']) {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
     }
+    expect(navigateMock).not.toHaveBeenCalledWith(expect.stringContaining('/btp-chantier'))
   })
 
   it('affiche le lien « Dossier réglementaire » quand un RegulatoryDossier existe pour le devis, et navigue vers la liste', async () => {

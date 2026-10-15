@@ -217,7 +217,7 @@ function CarteLiveTab() {
 // jamais dans cette file d'attente.
 function AlertesTab() {
   const { rows, loading, error, reload } = useFilteredList(
-    () => installationsApi.getGeofenceAlertes({ type_franchissement: 'sortie' }),
+    (p) => installationsApi.getGeofenceAlertes({ ...p, type_franchissement: 'sortie' }),
   )
 
   const acquitter = async (id) => {

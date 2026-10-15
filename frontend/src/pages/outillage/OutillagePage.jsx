@@ -60,7 +60,7 @@ export default function OutillagePage() {
   // après stock NTMOB14 et SAV NTMOB15).
   const [scanOpen, setScanOpen] = useState(false)
 
-  const load = () => fetchAllPages((page) => outillageApi.getOutils({ page }).then((r) => r.data), { concurrency: 3 })
+  const load = () => fetchAllPages((page, { page_size: pageSize } = {}) => outillageApi.getOutils({ page, page_size: pageSize }).then((r) => r.data), { concurrency: 3 })
     .then((rows) => { setOutils(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })
     .catch(() => setError("Impossible de charger l'outillage. Réessayez."))
     .finally(() => setLoading(false))

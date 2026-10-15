@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /* Chargement de liste PARTAGÉ des écrans Chantiers (kits, import, suivi GPS,
    approvisionnement) : un seul endroit, jamais recopié écran par écran. */
@@ -18,8 +19,11 @@ export function useFilteredList(fetcher, params) {
   const load = useCallback(() => {
     let cancelled = false
     setLoading(true); setError(null)
-    fetcher(params)
-      .then((res) => { if (!cancelled) setRows(unwrap(res)) })
+    // ACHT62 — TOUTES les pages (jamais les 50 premières lignes) ; une liste nue
+    // (endpoint non paginé) revient telle quelle de `fetchAllPages`.
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      Promise.resolve(fetcher({ ...params, page, page_size: pageSize })).then((r) => r?.data))
+      .then((rows) => { if (!cancelled) setRows(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch((err) => {
         if (!cancelled) setError(err?.response?.data?.detail || 'Chargement impossible.')
       })

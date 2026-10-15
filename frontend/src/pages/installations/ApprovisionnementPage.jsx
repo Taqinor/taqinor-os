@@ -112,12 +112,12 @@ const RECEPTIONS_COLS = [
 ]
 
 const TABS = [
-  { value: 'seuils', label: 'Seuils BCF', fetcher: () => installationsApi.getSeuilsApprobationBcf(), columns: SEUILS_COLS, empty: 'Aucun seuil configuré' },
-  { value: 'approbations', label: 'Approbations BCF', fetcher: () => installationsApi.getApprobationsBcf(), columns: APPROBATIONS_COLS, empty: 'Aucune approbation' },
-  { value: 'cadre', label: 'Contrats-cadre', fetcher: () => installationsApi.getCommandesCadre(), columns: CADRE_COLS, empty: 'Aucun contrat-cadre' },
-  { value: 'appels', label: "Commandes d'appel", fetcher: () => installationsApi.getAppelsCommande(), columns: APPELS_COLS, empty: "Aucune commande d'appel" },
-  { value: 'contrats', label: 'Contrats de prix', fetcher: () => installationsApi.getContratsPrixFournisseur(), columns: CONTRATS_COLS, empty: 'Aucun contrat de prix' },
-  { value: 'receptions', label: 'Réceptions non facturées', fetcher: () => installationsApi.getReceptionsNonFacturees(), columns: RECEPTIONS_COLS, empty: 'Aucune réception non facturée' },
+  { value: 'seuils', label: 'Seuils BCF', fetcher: (p) => installationsApi.getSeuilsApprobationBcf(p), columns: SEUILS_COLS, empty: 'Aucun seuil configuré' },
+  { value: 'approbations', label: 'Approbations BCF', fetcher: (p) => installationsApi.getApprobationsBcf(p), columns: APPROBATIONS_COLS, empty: 'Aucune approbation' },
+  { value: 'cadre', label: 'Contrats-cadre', fetcher: (p) => installationsApi.getCommandesCadre(p), columns: CADRE_COLS, empty: 'Aucun contrat-cadre' },
+  { value: 'appels', label: "Commandes d'appel", fetcher: (p) => installationsApi.getAppelsCommande(p), columns: APPELS_COLS, empty: "Aucune commande d'appel" },
+  { value: 'contrats', label: 'Contrats de prix', fetcher: (p) => installationsApi.getContratsPrixFournisseur(p), columns: CONTRATS_COLS, empty: 'Aucun contrat de prix' },
+  { value: 'receptions', label: 'Réceptions non facturées', fetcher: (p) => installationsApi.getReceptionsNonFacturees(p), columns: RECEPTIONS_COLS, empty: 'Aucune réception non facturée' },
 ]
 
 export default function ApprovisionnementPage() {

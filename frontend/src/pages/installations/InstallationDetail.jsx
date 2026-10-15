@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -14,6 +14,7 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
+import { useResyncForm } from '../../features/installations/useResyncForm'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
@@ -27,7 +28,7 @@ import {
 } from '../../features/ventes/previewPdf'
 import {
   INSTALLATION_STATUSES,
-  STATUS_LABELS,
+  statusLabel,
   INTERVENTION_TYPES,
   adjacentStatuses,
   canMoveStatus,
@@ -62,6 +63,7 @@ import {
 } from '../../features/sav/ticketStatuses'
 import { formatDate } from '../../lib/format'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
+import useStatutConfig from '../../features/parametres/useStatutConfig'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Card, CardHeader, CardTitle, CardContent,
@@ -205,6 +207,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // plutôt qu'une route dédiée — repli sur « Installation » si le client
   // n'est pas encore chargé.
   useDocumentTitle(installation?.client_nom ? `Installation · ${installation.client_nom}` : 'Installation')
+  // APAR54 — libellés de statut réglés dans Paramètres › Statuts (fiche ouverte hors liste).
+  useStatutConfig('chantier')
   const dispatch = useDispatch()
   const navigate = useNavigate()
   const id = installation.id
@@ -249,16 +253,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // champ NON touché suit la nouvelle valeur serveur, un champ édité par
   // l'utilisateur garde sa saisie. Le diff envoyé à « Mettre à jour » se
   // calcule contre `initialFields`, donc un champ périmé n'est jamais renvoyé.
-  const initialKey = JSON.stringify(initialFields)
-  const baseRef = useRef(initialKey)
-  useEffect(() => {
-    if (baseRef.current === initialKey) return
-    const ancien = JSON.parse(baseRef.current)
-    baseRef.current = initialKey
-    setFields(f => Object.fromEntries(Object.keys(initialFields).map(
-      k => [k, JSON.stringify(f[k]) === JSON.stringify(ancien[k]) ? initialFields[k] : f[k]])))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialKey])
+  useResyncForm(initialFields, setFields)
   const set = (k, v) => setFields(f => ({ ...f, [k]: v }))
   const dirty = JSON.stringify(fields) !== JSON.stringify(initialFields)
   useDirtyGuard(dirty)
@@ -352,12 +347,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   // Mise en service
-  const [mes, setMes] = useState({
+  const initialMes = {
     date_mise_en_service: F('date_mise_en_service'),
     mes_pv_notes: F('mes_pv_notes'),
     mes_production_test: F('mes_production_test'),
     mes_tension: F('mes_tension'),
-  })
+  }
+  const [mes, setMes] = useState(initialMes)
+  // ACHT102 — même resynchronisation que `fields` (une seule implémentation).
+  useResyncForm(initialMes, setMes)
   const [mesBusy, setMesBusy] = useState(false)
 
   // Parc d'équipements & tickets SAV du chantier
@@ -388,29 +386,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // N7 — confirmation supplémentaire si le système est actif au parc.
   const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
 
-  // N15 — détecte si le devis lié a divergé depuis la création du chantier
-  // (nomenclature gelée `bom` vs lignes actuelles du devis).
-  const [devisDivergent, setDevisDivergent] = useState(false)
-  const checkDevisDivergence = () => {
-    if (!installation.devis) {
-      // Reset hors du corps synchrone de l'effet (évite un setState en cascade).
-      Promise.resolve().then(() => setDevisDivergent(false))
-      return
-    }
-    ventesApi.getDevisById(installation.devis).then((r) => {
-      const lignes = (r.data?.lignes ?? []).filter((l) => l.produit)
-      const bom = Array.isArray(current.bom) ? current.bom : []
-      const norm = (arr) => arr
-        .map((x) => `${x.produit ?? x.produit_id}:${Number(x.quantite) || 0}`)
-        .sort()
-        .join('|')
-      const devisKey = norm(lignes)
-      const bomKey = norm(bom)
-      // Un BOM vide (chantier sans devis d'origine) n'est pas une divergence.
-      setDevisDivergent(bom.length > 0 && devisKey !== bomKey)
-    }).catch(() => {})
-  }
-
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
       .then(r => setHistorique(r.data)).catch(() => {})
@@ -435,6 +410,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   useEffect(() => {
+    // APRF37 — la LIGNE de liste porte `null` pour regime_suggere/calepinage/dossier : le détail est relu à l'ouverture.
+    Promise.resolve().then(() => installationsApi.getInstallation(id)).then((r) => { if (r?.data) setCurrent(r.data) }).catch(() => {})
     loadHistorique()
     loadEquipements()
     loadTickets()
@@ -442,7 +419,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     if (produits.length === 0) dispatch(fetchProduits())
     lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
       .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
-    checkDevisDivergence()
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     loadDossierReglementaire()
@@ -941,12 +917,16 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       body: actionError,
       clearable: true,
     },
-    !current.annule && devisDivergent && {
+    // ACHT67 — bannière d'après `divergence_devis` SERVI par le serveur (ACHT66,
+    // contrat installation_divergence_devis.json) : rien n'est recalculé ici.
+    !current.annule && current.divergence_devis?.diverge && {
       key: 'devis-divergent',
       tone: 'warning',
-      title: 'Devis modifié :',
-      body: 'le devis a changé depuis la création du chantier (la nomenclature '
-        + 'gelée diffère des lignes actuelles).',
+      title: 'Devis modifié :',
+      body: 'le devis a changé depuis la création du chantier — '
+        + (current.divergence_devis.lignes ?? []).map((l) => (
+          `${l.designation} : ${l.quantite_bom ?? 'absent'} gelés / ${l.quantite_devis ?? 'absent'} au devis`
+        )).join(' ; ') + '.',
     },
     !current.annule && Array.isArray(current.bom) && current.bom.length === 0 && {
       key: 'bom-absente',
@@ -1060,44 +1040,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             {/* ── CAL213 — l'encart disparaît de lui-même (rend `null`) quand
                 le devis du chantier n'a pas de calepinage retenu (CAL209). ── */}
             <CalepinageRetenuCard calepinage={current.calepinage} />
-            {/* ── CHT20 — la passerelle vers les satellites : fin du parcours
-                « re-sélectionner le même chantier dans 4 menus ». Chaque lien
-                est un deep-link RÉEL déjà lu par l'écran cible (CHT19,
-                ?chantier=<id>) — jamais une URL ad hoc. ── */}
+            {/* ── ACHT65 — les cinq boutons vers /btp-chantier/* (module parqué, aucune
+                route) sont retirés ; reste le lien vers le dossier réglementaire. ── */}
+            {dossierReglementaireLie && (
             <Section icon={Share2} title="Autour de ce chantier">
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/reserves?chantier=${current.id}`)}>
-                  Réserves
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/rfi?chantier=${current.id}`)}>
-                  RFI
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/journal?chantier=${current.id}`)}>
-                  Journal
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/avenants?chantier=${current.id}`)}>
-                  Avenants
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/dgd?chantier=${current.id}`)}>
-                  DGD
-                </Button>
                 {/* Couche SÉPARÉE de la section « Dossier réglementaire »
                     ci-dessous (celle-ci vit sur le chantier ; RegulatoryDossier
                     vit sur le devis, côté ventes) — le lien évite toute
                     confusion sur laquelle fait foi. */}
-                {dossierReglementaireLie && (
-                  <Button size="sm" variant="outline"
-                          onClick={() => navigate('/ventes/dossiers-reglementaires')}>
-                    Dossier réglementaire ({dossierReglementaireLie.statut_label})
-                  </Button>
-                )}
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate('/ventes/dossiers-reglementaires')}>
+                  Dossier réglementaire ({dossierReglementaireLie.statut_label})
+                </Button>
               </div>
             </Section>
+            )}
             {/* ── Infos & édition ── */}
             <Section icon={Hammer} title="Chantier">
               <div className="grid gap-3 sm:grid-cols-3">
@@ -1139,12 +1097,12 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                       {/* Statut hérité éventuel conservé en tête pour ne pas le perdre. */}
                       {fields.statut && !INSTALLATION_STATUSES.includes(fields.statut) && (
                         <SelectItem value={fields.statut}>
-                          {STATUS_LABELS[fields.statut] ?? fields.statut} (ancien)
+                          {statusLabel(fields.statut)} (ancien)
                         </SelectItem>
                       )}
                       {/* Seuls le statut courant et ses voisins (±1) sont offerts. */}
                       {adjacentStatuses(current.statut).map((k) => (
-                        <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
+                        <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
