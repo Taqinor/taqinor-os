@@ -13,6 +13,7 @@ import { billRangeBounds, isBillRangeId, qualifiesForCrm, type BillRangeId, type
 import { estimateFromBill } from './billEstimate';
 import { normalizeMoroccanPhone } from './phone';
 import { COMMERCIAL_CATEGORY_IDS } from './commercialCategories';
+import { isSameOriginRequest } from './sameOrigin';
 import { storeDeadLetter } from '../../worker/deadLetter.mjs'; // QJR663 — lettre morte KV
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -26,28 +27,11 @@ import { storeDeadLetter } from '../../worker/deadLetter.mjs'; // QJR663 — let
  * `Origin`/`Sec-Fetch-Site` étaient jusqu'ici de la documentation
  * (« proxy same-origin ») jamais vérifiée en pratique : le rate-limit par IP
  * (lib/rateLimit.ts) reste best-effort par isolate et ne bloque pas un
- * cross-site direct. `Sec-Fetch-Site` (émis par tous les navigateurs
- * modernes) est le signal le plus fiable — `same-origin`/`same-site`/`none`
- * (navigation directe, ex. curl/Postman) passent ; `cross-site` est rejeté.
- * Quand `Sec-Fetch-Site` est absent (vieux navigateur, certains clients HTTP
- * hors-navigateur), on retombe sur `Origin` comparé à `request.url` — un
- * mismatch EXPLICITE est rejeté, mais l'absence totale des deux en-têtes
- * (navigation directe sans fetch, tests, outils serveur-à-serveur légitimes)
- * n'est PAS bloquée : ce garde-fou cible le cross-site FORGÉ, pas les clients
- * qui n'envoient simplement pas ces en-têtes.
+ * cross-site direct. L'implémentation vit dans `lib/sameOrigin.ts` (une seule
+ * copie, partagée avec les routes `roof-*`) ; ré-exportée ici pour les
+ * importeurs historiques.
  */
-export function isSameOriginRequest(request: Request): boolean {
-  const secFetchSite = request.headers.get('sec-fetch-site');
-  if (secFetchSite) return secFetchSite !== 'cross-site';
-
-  const origin = request.headers.get('origin');
-  if (!origin) return true; // aucun signal exploitable → laissé passer (voir note ci-dessus)
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false; // Origin illisible : on ne peut pas prouver l'égalité → rejeté
-  }
-}
+export { isSameOriginRequest };
 
 /**
  * Réponse 403 uniforme pour un POST cross-site détecté. Porte à la fois

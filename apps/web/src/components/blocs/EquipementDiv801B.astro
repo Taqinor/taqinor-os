@@ -1,0 +1,6 @@
+---
+// ENF19 : bloc partagé (copies identiques) — équipement.astro
+const { warranties } = Astro.props as Record<string, any>;
+import WarrantyListBlock from './WarrantyListBlock.astro';
+---
+        <WarrantyListBlock warranties={warranties} />

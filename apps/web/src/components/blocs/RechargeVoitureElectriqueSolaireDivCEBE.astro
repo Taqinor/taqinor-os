@@ -1,0 +1,12 @@
+---
+// ENF19 : bloc partagé (copies identiques) — recharge-voiture-electrique-solaire.astro
+const { dimensionnement } = Astro.props as Record<string, any>;
+---
+        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+          {dimensionnement.map((d: any, i: any) => (
+            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-azur-700">{d.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{d.body}</p>
+            </div>
+          ))}
+        </div>

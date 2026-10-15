@@ -124,6 +124,7 @@ const serviceJsonLd = {
 // une photo qui laisserait croire à un chantier local là où il n'y en a pas.
 const neutralHero = { name: 'crepuscule-penthouse', widths: [1600, 1024, 640], ratio: 4 / 3 };
 const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
+import InstallationSolaireCityMxAuto6B9C from '../components/blocs/InstallationSolaireCityMxAuto6B9C.astro';
 ---
 
 <Layout title={title} description={description} ogSlug="accueil">
@@ -182,12 +183,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
       {/* W328 — la bande 3–7 ans reste le chiffre site-wide (résidentiel.astro/
           billRange.ts) ; on la nuance ici par ville via l'ensoleillement déjà
           committé, sans jamais lui substituer un nouveau chiffre inventé. */}
-      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
-      {delegataireNote && (
-        <p class="mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
-          {delegataireNote}
-        </p>
-      )}
+      <InstallationSolaireCityMxAuto6B9C delegataireNote={delegataireNote} roiNuance={roiNuance} />
     </section>
 
     <!-- Chantiers : réels en ville, sinon les plus proches -->

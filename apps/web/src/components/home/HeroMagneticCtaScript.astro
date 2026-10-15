@@ -1,0 +1,28 @@
+<script>
+  // W368 — CTA magnétique : le bouton brass du héros suit très légèrement le
+  // pointeur (±8 px max), transform seul (aucun reflow). Gated souris/trackpad
+  // précis uniquement ((pointer:fine) — jamais sur tactile, où « pointermove »
+  // n'a pas de sens) et prefers-reduced-motion. Progressive enhancement pur :
+  // sans JS ou hors media match, le bouton reste un lien normal, taille et
+  // position inchangées.
+  const magnet = document.getElementById('hero-cta-magnetic');
+  const canMagnet =
+    matchMedia('(prefers-reduced-motion: no-preference)').matches && matchMedia('(pointer: fine)').matches;
+  if (magnet && canMagnet) {
+    const strength = 8; // px — déplacement maximal, discipline « chuchoté »
+    let raf = 0;
+    magnet.addEventListener('pointermove', (ev) => {
+      const rect = magnet.getBoundingClientRect();
+      const relX = (ev.clientX - rect.left) / rect.width - 0.5; // -0.5 … 0.5
+      const relY = (ev.clientY - rect.top) / rect.height - 0.5;
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        magnet.style.transform = `translate(${(relX * 2 * strength).toFixed(1)}px, ${(relY * 2 * strength).toFixed(1)}px)`;
+      });
+    });
+    magnet.addEventListener('pointerleave', () => {
+      if (raf) cancelAnimationFrame(raf);
+      magnet.style.transform = '';
+    });
+  }
+</script>

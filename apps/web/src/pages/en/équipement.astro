@@ -59,6 +59,7 @@ const warranties = [
   { item: 'Galvanised steel structure', years: '20 years' },
   { item: 'Taqinor installation and labour', years: '2 years' },
 ];
+import EquipementDiv801B from '../../components/blocs/EquipementDiv801B.astro';
 ---
 
 <Layout
@@ -248,14 +249,7 @@ const warranties = [
           of protections, the commissioning procedure and real-time production monitoring access so
           you can check the production yourself.
         </p>
-        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
-          {warranties.map((w, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
-              <span class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{w.years}</span>
-            </div>
-          ))}
-        </div>
+        <EquipementDiv801B warranties={warranties} />
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Nothing on this list is decided before your roof. It's the study that dictates the power to
           fit, whether or not a battery is needed, single-phase or three-phase; these references then

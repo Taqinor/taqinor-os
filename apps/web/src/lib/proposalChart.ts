@@ -18,6 +18,7 @@
  * dans la page de proposition : la géométrie de barres et le format kWh sont
  * triviaux et reproduits ici à l'identique du langage pro-11.
  */
+import { esc, type SvgBox } from './svgBox';
 
 /** Étiquettes mensuelles courtes FR (index 0 = janvier) — alignées sur pro-11. */
 export const MONTH_LABELS_FR = [
@@ -61,24 +62,8 @@ export function fmtKwh(n: number, lang: ChartLang = 'fr'): string {
 }
 
 /** Échappe le texte injecté dans le SVG (`<title>` notamment). */
-function esc(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 /** Boîte SVG (mêmes proportions que le graphe ANNÉE de pro-11). */
-export interface ChartBox {
-  width: number;
-  height: number;
-  padLeft: number;
-  padRight: number;
-  padTop: number;
-  padBottom: number;
-}
+export type ChartBox = SvgBox;
 
 export const DEFAULT_CHART_BOX: ChartBox = {
   width: 360,

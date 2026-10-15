@@ -1,0 +1,67 @@
+<script>
+  // W371 — Scrollytelling épinglé, UNIQUE sur la page (« Comment ça se passe »).
+  // Progressive enhancement pur : sans JS, ou hors desktop, ou sous
+  // prefers-reduced-motion, la section reste la grille plate d'origine — ce
+  // script ne fait qu'AJOUTER une classe + un attribut, jamais de
+  // scroll-jack (aucun preventDefault, aucun scrollTo forcé).
+  const journeySection = document.querySelector<HTMLElement>('[data-journey-section]');
+  const steps = Array.from(document.querySelectorAll<HTMLElement>('[data-journey-step]'));
+  const caption = document.querySelector<HTMLElement>('[data-journey-caption]');
+
+  if (journeySection && steps.length && 'IntersectionObserver' in window) {
+    const desktopMotionOk = matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)');
+
+    let io: IntersectionObserver | null = null;
+
+    const setActive = (step: HTMLElement) => {
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      step.setAttribute('data-journey-active', '');
+      if (caption) {
+        const title = step.dataset.journeyTitle ?? '';
+        const body = step.dataset.journeyBody ?? '';
+        caption.textContent = title && body ? `${title} — ${body}` : '';
+      }
+    };
+
+    const teardown = () => {
+      io?.disconnect();
+      io = null;
+      journeySection.classList.remove('journey-pinned');
+      for (const s of steps) s.removeAttribute('data-journey-active');
+      if (caption) {
+        caption.hidden = true;
+        caption.textContent = '';
+      }
+    };
+
+    const setup = () => {
+      journeySection.classList.add('journey-pinned');
+      if (caption) caption.hidden = false;
+      // Le pas dont le centre est le plus proche du centre du viewport
+      // « s'allume » — une fenêtre resserrée autour de la ligne médiane,
+      // pas un simple seuil d'entrée, pour un couplage lecture/animation net.
+      io = new IntersectionObserver(
+        (entries) => {
+          const visible = entries.filter((e) => e.isIntersecting);
+          if (!visible.length) return;
+          const closest = visible.reduce((best, e) =>
+            Math.abs(e.boundingClientRect.top) < Math.abs(best.boundingClientRect.top) ? e : best
+          );
+          setActive(closest.target as HTMLElement);
+        },
+        { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
+      );
+      for (const s of steps) io.observe(s);
+      // Premier pas actif par défaut, avant tout croisement de seuil.
+      setActive(steps[0]);
+    };
+
+    const sync = () => {
+      if (desktopMotionOk.matches) setup();
+      else teardown();
+    };
+
+    sync();
+    desktopMotionOk.addEventListener('change', sync);
+  }
+</script>

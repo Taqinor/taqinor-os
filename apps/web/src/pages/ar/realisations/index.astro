@@ -56,6 +56,7 @@ const itemListJsonLd = {
   })),
   provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
 };
+import RealisationsIndexSection9BE4 from '../../../components/blocs/RealisationsIndexSection9BE4.astro';
 ---
 
 <Layout
@@ -152,12 +153,7 @@ const itemListJsonLd = {
 
     {/* W280 — CertLogoRow + BrandStrip: معايير منشورة أصلاً في مكان آخر +
         علامات الصف الأول، آمن بدون بيانات (لا شعار/رقم مُختلَق). */}
-    <section class="border-t border-white/10 px-4 py-14 sm:py-16">
-      <div class="mx-auto max-w-6xl">
-        <CertLogoRow />
-      </div>
-    </section>
-    <BrandStrip />
+    <RealisationsIndexSection9BE4 />
 
     {/* القاعدة ب17 (2026-07-04) — روابط سياقية نحو صفحتَي الإثبات الرقمي
         المستمر، ضعيفتَي الاكتشاف (غائبتان عن الترويسة/التذييل). */}

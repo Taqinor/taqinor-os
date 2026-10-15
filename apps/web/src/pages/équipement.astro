@@ -57,6 +57,7 @@ const warranties = [
   { item: 'Structure acier galvanisé', years: '20 ans' },
   { item: 'Installation et main-d’œuvre Taqinor', years: '2 ans' },
 ];
+import EquipementDiv801B from '../components/blocs/EquipementDiv801B.astro';
 ---
 
 <Layout
@@ -247,14 +248,7 @@ const warranties = [
           protections, procédure de mise en service et l'accès au suivi de production en temps réel
           pour vérifier la production vous-même.
         </p>
-        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
-          {warranties.map((w, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
-              <span class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{w.years}</span>
-            </div>
-          ))}
-        </div>
+        <EquipementDiv801B warranties={warranties} />
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Rien sur cette liste n'est décidé avant votre toiture. C'est l'étude qui dit la puissance
           à poser, s'il faut une batterie ou non, du mono ou du triphasé ; ces références ne font

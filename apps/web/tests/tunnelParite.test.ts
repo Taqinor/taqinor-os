@@ -50,8 +50,13 @@ import { validateLead } from '../src/lib/lead';
 import { CHAMPS_DOM_TUNNEL, lireChampsDomTunnel, type ChampDomTunnel } from '../src/lib/tunnel/lecture';
 import { construireCorps, type LocaleTunnel } from '../src/lib/tunnel/corps';
 import { ERREURS } from '../src/lib/tunnel/i18n';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+// ENF19 — blocs partagés (components/blocs) déroulés dans la source de la page.
+const read = (rel: string) => {
+  const chemin = fileURLToPath(new URL(rel, import.meta.url));
+  return rel.endsWith('.astro') ? lireAstroAvecBlocs(chemin) : readFileSync(chemin, 'utf-8');
+};
 
 const SOURCES: Array<[LocaleTunnel, string]> = [
   ['fr', read('../src/pages/devis/mon-toit.astro')],

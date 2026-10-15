@@ -1,0 +1,6 @@
+---
+// ENF19 : bloc partagé (copies identiques) — pompage-solaire.astro
+const { variables } = Astro.props as Record<string, any>;
+import PompageSolaireDiv3A4ESuite from './PompageSolaireDiv3A4ESuite.astro';
+---
+        <PompageSolaireDiv3A4ESuite variables={variables} />

@@ -17,6 +17,8 @@ import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import RelatedLinks from '../components/RelatedLinks.astro';
 import { REGIMES } from '../lib/regime';
+import Loi8221DivBD31 from '../components/blocs/Loi8221DivBD31.astro';
+import Loi8221MxAutoCF28 from '../components/blocs/Loi8221MxAutoCF28.astro';
 ---
 
 <Layout
@@ -81,33 +83,12 @@ import { REGIMES } from '../lib/regime';
     </section>
 
     <!-- L'instrument éclairé : le sélecteur, document blanc sur la nuit -->
-    <section class="mx-auto max-w-4xl px-4 py-14">
-      <div class="v2-rise [&>div]:shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)]">
-        <RegimeSelector />
-      </div>
-    </section>
-
-    <ZelligeDivider tone="white" />
+    <Loi8221MxAutoCF28 />
 
     <section class="mx-auto max-w-4xl px-4 py-16">
       <p class="tech-label v2-kicker rule-brass text-lune">Référence</p>
       <h2 class="display v2-section-title mt-4 text-white">Les trois régimes en détail</h2>
-      <div class="mt-10 grid gap-6" data-stagger>
-        {Object.values(REGIMES).map((r, i) => (
-          <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>
-            <span class="fig lum text-4xl" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
-            <div>
-              <h3 class="display text-xl text-white">{r.title}</h3>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.summary}</p>
-              <ul class="mt-4 space-y-2 text-sm text-lune">
-                {r.obligations.map((o) => (
-                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-lune-faint" aria-hidden="true"></span><span>{o}</span></li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        ))}
-      </div>
+      <Loi8221DivBD31 REGIMES={REGIMES} />
       <RelatedLinks mt="mt-8" links={[
         { href: '/résidentiel', label: 'Régimes pour une villa ou un appartement' },
         { href: '/professionnel', label: 'Régimes pour un site professionnel' },

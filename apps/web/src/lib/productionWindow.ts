@@ -25,6 +25,7 @@ import {
   type PerKwcProduction,
 } from './productionEngine';
 import { annualSavingsMad } from './estimatorBrainV2';
+import type { SvgBox } from './svgBox';
 
 export type ProductionScope = 'year' | 'month' | 'day';
 
@@ -214,14 +215,7 @@ export function annualSavings(annualKwh: number, annualTargetKwh: number): { low
 
 // — Géométrie des graphes (SVG inline, hand-built, sans librairie) ————————————
 
-export interface SvgBox {
-  width: number;
-  height: number;
-  padLeft: number;
-  padRight: number;
-  padTop: number;
-  padBottom: number;
-}
+export type { SvgBox };
 
 const DEFAULT_BOX: SvgBox = { width: 320, height: 140, padLeft: 6, padRight: 6, padTop: 8, padBottom: 18 };
 

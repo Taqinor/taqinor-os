@@ -1,0 +1,13 @@
+<script>
+  // W365 — Balayage de lumière laiton, une seule fois, sur le titre héros.
+  // Armé UNIQUEMENT après `load` (jamais avant : aucune peinture supplémentaire
+  // ne concurrence l'affiche héros pour le LCP). Le CSS (.hero-title-sweep,
+  // global.css) ne fait RIEN tant que .hero-sweep-armed n'est pas posée, donc
+  // ce script ne peut jamais retarder ni modifier la première peinture.
+  const heroTitle = document.getElementById('hero-title');
+  if (heroTitle) {
+    const arm = () => heroTitle.classList.add('hero-sweep-armed');
+    if (document.readyState === 'complete') requestAnimationFrame(arm);
+    else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
+  }
+</script>

@@ -30,20 +30,8 @@ import {
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { lirePaiementAcceptation } from '../../lib/paiementAcceptation';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
-  });
-}
-
-function resolveApiBase(): string {
-  const env = (cf.env ?? {}) as { PUBLIC_API_BASE?: string };
-  const runtime = env.PUBLIC_API_BASE?.trim();
-  const build = (import.meta.env.PUBLIC_API_BASE as string | undefined)?.trim();
-  return runtime || build || 'https://api.taqinor.ma';
-}
+import { jsonResponse as json } from '../../lib/apiJson';
+import { resolveApiBase } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : le chemin d'e-signature est le plus

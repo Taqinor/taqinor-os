@@ -111,6 +111,8 @@ const jsonLd = {
   description:
     'دراسة وتحديد مقاس أنظمة الضخ الشمسي للفلاحة والسقي بالمغرب: مضخّة وحقل كهروضوئي محسوبان على الصبيب والـ HMT وحاجات الماء الفعلية.',
 };
+import PompageSolaireG2D36 from '../../components/blocs/PompageSolaireG2D36.astro';
+import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv3A4ESuite.astro';
 ---
 
 <Layout
@@ -212,14 +214,7 @@ const jsonLd = {
           مضخّة مفرطة الحجم تُبدّد الألواح؛ ومضخّة ضيّقة جداً تجفّ في عزّ يوليوز. النقطة الصحيحة توجد
           عند تقاطع أربعة متغيرات ملموسة، تُؤخذ ميدانياً قبل فتح أي كاطالوݣ.
         </p>
-        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
-          {variables.map((v, i) => (
-            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
-              <h3 class="display text-xl text-azur-700">{v.title}</h3>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{v.body}</p>
-            </div>
-          ))}
-        </div>
+        <PompageSolaireDiv3A4ESuite variables={variables} />
         <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
           أعطنا هذه الأرقام الأربعة وينرسم النظام من تلقاء نفسه؛ ينقص الصبيب أو الـ HMT، ويبقى كل شيء
           تخميناً. نفضّل القياس. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">اطلب تشخيصاً <span class="inline-block rtl:-scale-x-100">→</span></a>
@@ -247,17 +242,7 @@ const jsonLd = {
                 <text text-anchor="middle" dy="-2" font-weight="700">الحاجات</text>
               </g>
             </g>
-            <g stroke="#0f1c54" stroke-width="2" fill="none" opacity="0.6" aria-hidden="true">
-              <path d="M96 40 L300 130" marker-end="url(#arrowP)" />
-              <path d="M96 110 L300 130" marker-end="url(#arrowP)" />
-              <path d="M96 180 L300 130" marker-end="url(#arrowP)" />
-              <path d="M96 240 L300 130" marker-end="url(#arrowP)" />
-            </g>
-            <defs>
-              <marker id="arrowP" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                <path d="M0 0 L6 3 L0 6 Z" fill="#0f1c54" />
-              </marker>
-            </defs>
+            <PompageSolaireG2D36 />
             <g transform="translate(300,130)">
               <rect x="-70" y="-40" width="140" height="80" rx="4" fill="#0f1c54" />
               <text text-anchor="middle" dy="-8" font-size="11" fill="white" font-weight="700">مضخّة +</text>
