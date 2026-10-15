@@ -8,7 +8,6 @@ backend/django_core/apps/calepinage/services/chaine_pertes.py::_part_saisonniere
 backend/django_core/apps/calepinage/services/electrique.py::_depuis_fournisseur
 backend/django_core/apps/calepinage/services/electrique.py::_nom_auteur
 backend/django_core/apps/calepinage/services/electrique.py::parametres_societe
-backend/django_core/apps/crm/fiche_bulk.py::apply_bulk_action
 backend/django_core/apps/crm/views.py::LeadViewSet._a_un_changement
 backend/django_core/apps/ged/services.py::_administrateurs_societe
 backend/django_core/apps/ged/services.py::_certificat_societe_pour_scellement
@@ -67,11 +66,6 @@ backend/django_core/apps/installations/services.py::default_installer_for
 backend/django_core/apps/installations/services.py::methode_reservation_stock
 backend/django_core/apps/installations/services.py::verifier_gate_acompte_planification
 backend/django_core/apps/installations/services.py::verifier_securite_avant_demarrage
-backend/django_core/apps/sav/models.py::ContratMaintenance.prochaine_visite
-backend/django_core/apps/sav/selectors.py::_jour_ouvre
-backend/django_core/apps/sav/selectors.py::_revenu_contrat_maintenance
-backend/django_core/apps/sav/selectors.py::pareto_pannes._fournisseur_for
-backend/django_core/apps/sav/services.py::_delai_intervention_societe
 backend/django_core/apps/sav/services.py::_notifier_demande_contrat_maintenance
 backend/django_core/apps/sav/services.py::creer_equipement_import
 backend/django_core/apps/sav/services.py::suggerer_triage_ticket
@@ -84,8 +78,6 @@ backend/django_core/core/models.py::MaintenanceMode.set_active
 backend/django_core/core/models.py::MatriceApprobation.couvre
 backend/django_core/core/views.py::BulkEditViewSet.get_permissions
 backend/django_core/core/views.py::metrics_view
-backend/django_core/apps/ventes/etude_horaire.py::_reglages_tarifaires
-backend/django_core/apps/ventes/public_views.py::_octets_pdf_signe
 backend/django_core/apps/ventes/public_views.py::proposal_pdf
 backend/django_core/apps/ventes/public_views.py::proposal_taille_detail
 backend/django_core/apps/ventes/public_views.py::public_bcf_document
