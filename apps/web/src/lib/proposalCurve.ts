@@ -39,6 +39,7 @@
  * en CSS dans la page et GATÉE derrière `prefers-reduced-motion: no-preference` —
  * ce module n'émet que la géométrie statique (zéro CLS, lisible sans JS ni motion).
  */
+import { esc, type SvgBox } from './svgBox';
 import {
   OCCUPANCY_SHAPES,
   SEASON_INLINE,
@@ -419,26 +420,10 @@ export function equipmentAdjustedConsumptionKwhShape(
   return out;
 }
 
-function esc(s: string): string {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 /** WJ80 — Langue courante de la page, thread à travers étiquettes + annotations. */
 export type CurveLang = 'fr' | 'en' | 'ar';
 
-export interface CurveBox {
-  width: number;
-  height: number;
-  padLeft: number;
-  padRight: number;
-  padTop: number;
-  padBottom: number;
-}
+export type CurveBox = SvgBox;
 
 export const DEFAULT_CURVE_BOX: CurveBox = {
   width: 360,
