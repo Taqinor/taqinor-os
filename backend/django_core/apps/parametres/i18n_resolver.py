@@ -64,7 +64,7 @@ def _defaut_du_champ(client, nom_champ='langue_document'):
     """
     try:
         champ = client._meta.get_field(nom_champ)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour un rendu PDF
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un rendu PDF (D-ENF22-BLE001)
         logger.warning("_defaut_du_champ : erreur absorbée, repli dégradé", exc_info=True)
         return None
     defaut = getattr(champ, 'default', None)
@@ -127,7 +127,7 @@ def resolve_langue_sortie(*, langue_explicite=None, client=None, company=None) -
             company_langue = _valide(getattr(profile, 'langue_repli', None))
             if company_langue:
                 return company_langue
-        except Exception:  # noqa: BLE001 — jamais bloquant pour un rendu PDF
+        except Exception:  # noqa: BLE001 — jamais bloquant pour un rendu PDF (D-ENF22-BLE001)
             logger.warning("resolve_langue_sortie : erreur absorbée, repli dégradé", exc_info=True)
 
     return LANGUE_PAR_DEFAUT

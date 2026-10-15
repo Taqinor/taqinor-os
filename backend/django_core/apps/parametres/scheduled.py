@@ -51,7 +51,7 @@ def _ids_existants(model, ids_bruts):
     for brut in ids_bruts:
         try:
             convertibles[champ_pk.to_python(brut)] = brut
-        except Exception:  # noqa: BLE001 — id non convertible = orphelin
+        except Exception:  # noqa: BLE001 — id non convertible = orphelin (D-ENF22-BLE001)
             logger.warning("_ids_existants : erreur absorbée, repli dégradé", exc_info=True)
             continue
     if not convertibles:
@@ -97,7 +97,7 @@ def _orphelines_de_la_societe(company, compteurs=None):
         try:
             content_type = ContentType.objects.get_for_id(ct_id)
             modele = content_type.model_class()
-        except Exception:  # noqa: BLE001 — content type introuvable
+        except Exception:  # noqa: BLE001 — content type introuvable (D-ENF22-BLE001)
             logger.warning("_orphelines_de_la_societe : erreur absorbée, repli dégradé", exc_info=True)
             content_type, modele = None, None
         if modele is None:
@@ -114,7 +114,7 @@ def _orphelines_de_la_societe(company, compteurs=None):
             continue
         try:
             vivants = _ids_existants(modele, par_objet.keys())
-        except Exception:  # noqa: BLE001 — jamais bloquant pour les suivants
+        except Exception:  # noqa: BLE001 — jamais bloquant pour les suivants (D-ENF22-BLE001)
             logger.warning(
                 'purger_traductions_orphelines: content type %s illisible '
                 'pour la société %s', ct_id, getattr(company, 'id', None),
@@ -166,7 +166,7 @@ def purger_traductions_orphelines():
         societes += 1
         try:
             pks = _orphelines_de_la_societe(company, compteurs)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête rien
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête rien (D-ENF22-BLE001)
             logger.warning(
                 'purger_traductions_orphelines: société %s ignorée',
                 getattr(company, 'id', None), exc_info=True)
@@ -217,14 +217,14 @@ def _destinataires_localisation(company):
             if u.role_id and u.has_erp_permission(
                 PERMISSION_LOCALISATION_GERER)
         ]
-    except Exception:  # noqa: BLE001 — défensif
+    except Exception:  # noqa: BLE001 — défensif (D-ENF22-BLE001)
         logger.warning("_destinataires_localisation : erreur absorbée, repli dégradé", exc_info=True)
         candidats = []
     if candidats:
         return candidats
     try:
         return list(CustomUser.admins_actifs_qs(company))
-    except Exception:  # noqa: BLE001 — défensif
+    except Exception:  # noqa: BLE001 — défensif (D-ENF22-BLE001)
         logger.warning("_destinataires_localisation : erreur absorbée, repli dégradé", exc_info=True)
         return []
 
@@ -257,7 +257,7 @@ def notifier_traductions_manquantes_hebdo(limite=None):
     for company in active_companies():
         try:
             lignes = cles_a_notifier(company, limite=plafond)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête rien
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête rien (D-ENF22-BLE001)
             logger.warning(
                 'notifier_traductions_manquantes_hebdo: société %s ignorée',
                 getattr(company, 'id', None), exc_info=True)

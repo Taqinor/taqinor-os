@@ -31,7 +31,7 @@ def notifier_changement_plan(profile, *, ancien_plan_id, user=None):
             old=ancien.nom if ancien else None,
             new=nouveau.nom if nouveau else None,
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("notifier_changement_plan : erreur absorbée, repli dégradé", exc_info=True)
 
     if profile.company_id is None:
@@ -45,7 +45,7 @@ def notifier_changement_plan(profile, *, ancien_plan_id, user=None):
             'ancien_plan': ancien.code if ancien else None,
             'nouveau_plan': nouveau.code if nouveau else None,
         })
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("notifier_changement_plan : erreur absorbée, repli dégradé", exc_info=True)
 
 

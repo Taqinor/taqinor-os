@@ -296,7 +296,7 @@ def kwh_depuis_facture(settings, mad_ttc, *, classe):
             'Aucun montant de facture pour ce mois : rien à convertir.'))
     try:
         montant = Decimal(str(mad_ttc))
-    except Exception:  # noqa: BLE001 — InvalidOperation et types exotiques
+    except Exception:
         raise FactureInvalide(
             f'Montant de facture illisible (reçu : {mad_ttc!r}).',
             champ='mad_ttc')

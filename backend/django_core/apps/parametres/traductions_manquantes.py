@@ -64,7 +64,7 @@ def enregistrer_repli(company, langue: str, cle: str) -> bool:
                 company=company, langue=langue, cle=cle,
                 defaults={'occurrences': 1})
         return True
-    except Exception:  # noqa: BLE001 — jamais bloquant pour un affichage
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un affichage (D-ENF22-BLE001)
         logger.debug('enregistrer_repli: compteur i18n indisponible',
                      exc_info=True)
         return False

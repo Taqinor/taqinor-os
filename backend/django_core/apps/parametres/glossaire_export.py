@@ -72,7 +72,7 @@ def _variantes(instance):
 
     try:
         return translations_for(instance)
-    except Exception:  # noqa: BLE001 — un export ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un export ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning("_variantes : erreur absorbée, repli dégradé", exc_info=True)
         return {}
 

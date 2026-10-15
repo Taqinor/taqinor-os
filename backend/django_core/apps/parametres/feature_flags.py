@@ -82,7 +82,7 @@ def _modules_installables():
     from core import modules as modules_infra
     try:
         manifests = modules_infra.collect_manifests()
-    except Exception:  # noqa: BLE001 — jamais enfermer un tenant
+    except Exception:  # noqa: BLE001 — jamais enfermer un tenant (D-ENF22-BLE001)
         logger.warning("_modules_installables : erreur absorbée, repli dégradé", exc_info=True)
         return set()
     return {
