@@ -61,7 +61,8 @@ class InterventionInstallationTests(TestCase):
         self.interv.refresh_from_db()
         self.assertIsNone(self.interv.technicien_id)
         r2 = self.api.post(f'{BASE}/interventions/', {
-            'installation': self.inst.pk, 'technicien': self.tech_b.pk},
+            'installation': self.inst.pk, 'technicien': self.tech_b.pk,
+            'type_intervention': Intervention.Type.CONTROLE},
             format='json')
         self.assertEqual(r2.status_code, 404, r2.content)
 
