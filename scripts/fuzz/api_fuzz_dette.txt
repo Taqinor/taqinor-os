@@ -114,7 +114,6 @@ API rejected schema-compliant request|POST /api/django/public/portail/invitation
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
 API rejected schema-compliant request|POST /api/django/register/
-API rejected schema-compliant request|POST /api/django/reporting/classeurs/{id}/evaluer/
 API rejected schema-compliant request|POST /api/django/sav/portail/tickets/
 API rejected schema-compliant request|POST /api/django/sav/warranty-claims/
 API rejected schema-compliant request|POST /api/django/stock/accords-rfa-fournisseur/

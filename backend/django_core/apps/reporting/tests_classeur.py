@@ -147,6 +147,21 @@ class TestClasseurApi(ClasseurBase):
             f'/api/django/reporting/classeurs/{classeur_id}/rafraichir/')
         self.assertEqual(resp3.status_code, 200)
 
+    def test_formule_non_evaluable_409_et_non_texte_400(self):
+        """ERR-ENF11-FUZZ-REPORTING — une chaîne que la grammaire refuse est
+        conforme au schéma (409) ; un non-texte est une faute de forme (400)."""
+        classeur = Classeur.objects.create(
+            company=self.company, proprietaire=self.owner, titre='F')
+        url = f'/api/django/reporting/classeurs/{classeur.pk}/evaluer/'
+        resp = self.api.post(url, {'formule': '=7-7k1'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('detail', resp.data)
+        resp = self.api.post(url, {'formule': 5}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        resp = self.api.post(url, {'formule': '=1+1'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['valeur'], 2)
+
     def test_cellules_liens_objets_non_nuls_et_schema_publie(self):
         """ERR-ENF11-FUZZ-REPORTING — ``cellules``/``liens`` nuls ou listes =
         400 ; le schéma les publie en objets (plus ``{}`` qui admettait null)."""
