@@ -102,8 +102,7 @@ export function useFocusedRecordShortcuts(screenId, handlers, enabled = true, { 
     if (!enabled || !FOCUSED_RECORD_SHORTCUTS[screenId]) return undefined
     setActiveScreen(screenId)
     return () => setActiveScreen((current) => (current === screenId ? null : current))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screenId, enabled])
+  }, [screenId, enabled, setActiveScreen])
 
   useEffect(() => {
     const entry = FOCUSED_RECORD_SHORTCUTS[screenId]
