@@ -152,7 +152,7 @@ class VisiteSupplementMt(VisiteTerrainBase):
         # ENF11 (visites) : catégorie hors gabarit = conflit d'état (409), même corps `erreurs`.
         self.assertEqual(resp.status_code, 409, resp.data)
         resp = self.poster_photo(visite_id, 'cellule_mt')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         resp = self._terminer(visite_id)
         self.assertEqual(resp.status_code, 200, resp.data)
 
