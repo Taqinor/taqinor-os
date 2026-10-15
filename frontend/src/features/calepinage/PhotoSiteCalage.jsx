@@ -10,7 +10,7 @@ import {
   Button, Card, FileUpload, Input, Label, Select, SelectContent, SelectItem,
   SelectTrigger, SelectValue, Spinner,
 } from '../../ui'
-import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
+import { dessinerApercuDrape } from '../../lib/calage/apercuDrape'
 import { DEFAULT_CENTER, coinsDepuisMarqueurs, positionsInitiales } from './PhotoSiteCalage.helpers'
 
 /* ============================================================================
@@ -185,25 +185,10 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
 
   // Redessine l'aperçu drapé en projetant les 4 poignées CARTE → pixels écran.
   const redessiner = useCallback(() => {
-    const canvas = canvasRef.current
-    const map = mapRef.current
-    const image = imageRef.current
-    if (!canvas || !map || !image?.complete) return
-    const points = markersRef.current.map((m) => {
-      const p = map.latLngToContainerPoint(m.getLatLng())
-      return [p.x, p.y]
+    dessinerApercuDrape({
+      canvas: canvasRef.current, map: mapRef.current, image: imageRef.current,
+      markers: markersRef.current, opacite: opacite,
     })
-    if (points.length !== 4) return
-    const box = boundingBox(points)
-    canvas.width = Math.max(1, Math.round(box.width))
-    canvas.height = Math.max(1, Math.round(box.height))
-    canvas.style.left = `${box.x}px`
-    canvas.style.top = `${box.y}px`
-    const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    const decale = points.map(([x, y]) => [x - box.x, y - box.y])
-    ctx.globalAlpha = opacite
-    warpImageToQuad(ctx, image, decale)
   }, [opacite])
 
   // Boot carte (une fois le calepinage/la photo connus) + 4 poignées.

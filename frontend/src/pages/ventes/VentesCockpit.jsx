@@ -8,6 +8,7 @@ import { fetchDevis, fetchFactures } from '../../features/ventes/store/ventesSli
 import { formatNumber, formatMAD } from '../../lib/format'
 // NTI18N1 — rollout i18n : premier écran Ventes migré (sous-titre du cockpit).
 import { useT } from '../../i18n'
+import { ChiffresCockpit } from '../../ui/module/ChiffresCockpit'
 
 /* ============================================================================
    ODY16 — Cockpit Ventes : porte d'entrée de l'app (ModuleHero VX15 + actions
@@ -76,23 +77,7 @@ export default function VentesCockpit() {
             </Button>
           </>
         )}
-        kpiSlot={(
-          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3" data-testid="ventes-cockpit-stats">
-            {stats.map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => navigate(s.to)}
-                className="rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-muted"
-              >
-                <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {s.label}
-                </span>
-                <span className="font-display text-xl font-semibold tabular-nums">{s.value}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        kpiSlot={<ChiffresCockpit stats={stats} onOpen={navigate} colonnes="grid-cols-1" testId="ventes-cockpit-stats" />}
       />
     </div>
   )

@@ -33,14 +33,12 @@
 031a15dcab6a|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts
 03b888485ae9|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 04470008e4b3|apps/web/src/scripts/roofPro11/cablageLot2.test.ts,apps/web/src/scripts/roofPro11/layoutEditor.test.ts
-052d4965c485|frontend/src/pages/crm/CrmCockpit.jsx,frontend/src/pages/ventes/VentesCockpit.jsx
 053ef256acae|apps/web/src/components/FounderPortrait.astro,apps/web/src/components/GarantiesTeaser.astro
 0572915e05c1|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 0655e6aac354|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 07295b4bda60|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 0746f2198898|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
 086980b0d865|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/professionnel.astro
-08b9fc95c1ce|frontend/src/features/crm/store/crmSlice.js,frontend/src/features/stock/store/stockSlice.js,frontend/src/features/ventes/store/ventesSlice.js
 08c61a036712|frontend/src/pages/crm/DormantAccountsWidget.jsx,frontend/src/pages/crm/dashboard/PortfolioWidget.jsx
 08c72c01ea54|apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/estimatorBrainV8.ts
 08d34f8f1e20|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
@@ -67,7 +65,6 @@
 12231c49d3b7|frontend/src/features/ged/GedNavigator.jsx,frontend/src/pages/ventes/devisList/DevisRow.jsx,frontend/src/pages/ventes/factureList/FactureRow.jsx
 130ccdcae376|apps/web/src/scripts/roofPro11/layoutEditor.ts,apps/web/src/scripts/roofPro11/optimizer.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 135c7687c487|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/contact.astro,apps/web/src/pages/en/contact.astro
-136f60db19b9|frontend/src/features/crm/store/crmSlice.js,frontend/src/features/stock/store/stockSlice.js,frontend/src/features/ventes/store/ventesSlice.js
 137b890a6d3f|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro
 139898db6f4e|frontend/src/features/calepinage/CalepinageNouveau.test.jsx,frontend/src/features/calepinage/Etiquettes.test.jsx
 13b9b93fc83a|apps/web/src/pages/api/roof-estimate.ts,apps/web/src/pages/api/roof-production.ts,apps/web/src/pages/api/roof-yield.ts
@@ -687,7 +684,6 @@ d81e1cd976cf|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.j
 d8267f49c9e2|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 d84e7a6a035e|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/Journal.jsx,frontend/src/pages/admin/GouvernanceAccesPage.jsx,frontend/src/pages/ia/OcrUpload.jsx,frontend/src/pages/installations/PlanificationPage.jsx,frontend/src/pages/parametres/AvanceSection.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/parametres/EquipeSection.jsx,frontend/src/pages/parametres/GammesMarquesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx,frontend/src/pages/ventes/DossiersReglementairesPage.jsx,frontend/src/pages/ventes/generator/PanneauSurcharges.jsx
 d937d52879d7|backend/django_core/apps/ventes/quote_engine/builder.py,backend/django_core/apps/ventes/quote_engine/residential/sample_data.py
-d9e3e6251265|frontend/src/features/calepinage/PhotoSiteCalage.jsx,frontend/src/pages/visites/CalageToitPage.jsx
 d9fbe729a925|frontend/src/pages/crm/leads/views/ChartsView.jsx,frontend/src/pages/crm/leads/views/KanbanView.jsx
 da7f43b103e5|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 da843faa173c|apps/web/src/scripts/roofPro11/matrix.test.ts,apps/web/src/scripts/roofPro11/mesureUi.test.ts,apps/web/src/scripts/roofPro11/optimizer.test.ts,apps/web/src/scripts/roofPro11/scene3d.test.ts
