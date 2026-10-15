@@ -1546,7 +1546,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 company, user if getattr(user, 'pk', None) else None,
                 f'Mode présentation {etat} par {actor}.',
                 company=company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
 
     def _log_audit_mode_presentation(self, company, user):
@@ -1566,7 +1566,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 'demo_mode_toggle', instance=company,
                 company=company, user=user,
                 detail=f'Mode présentation {etat}.')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
 
     @extend_schema(request=None, responses=inline_serializer(
@@ -1616,7 +1616,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 user=request.user,
                 detail=f'Société démo "{slug}" réinitialisée par '
                        f'{actor_username}.')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
         recorder.end_request()
         _run_demo_reset(slug)
@@ -1649,7 +1649,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 f'Données de démonstration réinitialisées par '
                 f'{actor_username}.',
                 company=fraiche)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
 
     # ── NTDMO22/23/24 — kit de démonstration (scénario, pas un devis client) ─
