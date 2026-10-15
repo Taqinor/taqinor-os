@@ -48,97 +48,97 @@ from __future__ import annotations
 # CAL243 — rattache l'action ``equipements`` au ``CalepinageViewSet`` par
 # import (affectation d'attribut de classe, voir la docstring du module) ;
 # doit s'exécuter AVANT ``router.register`` pour que le routeur la découvre.
-from . import equipements as _equipements_action  # noqa: F401
+from . import equipements as _equipements_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL92/93 — même patron : rattache l'action ``horizon`` (profil d'horizon
 # PVGIS ``printhorizon``, contrat CAL92).
-from . import horizon as _horizon_action  # noqa: F401
+from . import horizon as _horizon_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL144 — même forme pour l'export CSV (``calepinages/<pk>/export-csv/``) :
 # code dans un fichier neuf, enregistrement en une ligne additive.
-from . import export_csv as _export_csv_action  # noqa: F401
+from . import export_csv as _export_csv_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL246 — même patron : rattache l'action ``modeles`` (bibliothèque).
-from . import bibliotheque as _bibliotheque_action  # noqa: F401
+from . import bibliotheque as _bibliotheque_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL208 — même patron : rattache ``archiver``/``restaurer-corbeille``.
-from . import archivage as _archivage_action  # noqa: F401
+from . import archivage as _archivage_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL216 — même patron : rattache ``export-layout``/``import-layout``.
-from . import io_layout as _io_layout_action  # noqa: F401
+from . import io_layout as _io_layout_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL159 — même discipline pour l'action ``pompage`` (dimensionnement du
 # pompage solaire, services CAL155-CAL158) : code dans son propre fichier,
 # rattachement par cet import, AVANT ``router.register``.
-from . import pompage as _pompage_action  # noqa: F401
+from . import pompage as _pompage_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL139 — même patron : rattache ``pertes``/``enregistrer-pertes``.
-from . import simulation as _simulation_actions  # noqa: F401
+from . import simulation as _simulation_actions  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CAL191 — même patron : rattache ``dossiers-reglementaires`` (contrat CAL247).
-from . import reglementaire as _reglementaire_action  # noqa: F401
+from . import reglementaire as _reglementaire_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX39 — même patron : rattache ``importer-plan`` (analyse d'un plan DXF /
 # PDF vectoriel déposé, service CAL62). Aucune écriture : la porte rend le
 # contour, elle ne pose aucun ``roof_layout``.
-from . import import_plan as _import_plan_action  # noqa: F401
+from . import import_plan as _import_plan_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 
 # CALX35 — même patron : rattache ``dupliquer`` (la porte HTTP du service de
 # copie CAL14, ``services/variantes.py::dupliquer``).
-from . import cycle as _cycle_action  # noqa: F401
+from . import cycle as _cycle_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX47 — même patron : rattache ``depuis-lead`` (la porte CRM du module,
 # idempotente, qui appelle ``services/creation.py::creer_pour_lead``).
-from . import depuis_lead as _depuis_lead_action  # noqa: F401
+from . import depuis_lead as _depuis_lead_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX62 — même patron : rattache ``meteo-fichier`` (le dépôt d'une série
 # météo horaire de la société, lue par ``services/meteo_fichier.py``).
-from . import meteo_fichier as _meteo_fichier_action  # noqa: F401
+from . import meteo_fichier as _meteo_fichier_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX244 — même patron : rattache ``raccordement`` (GET + POST du point de
 # raccordement réseau, services/raccordement.py, contrat CALX205).
-from . import raccordement as _raccordement_action  # noqa: F401
+from . import raccordement as _raccordement_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX109 — même patron : rattache ``modules-disponibles`` (les fiches
 # « module » du catalogue de la société avec leurs cotes réelles, lues par
 # ``services/modules_stock.py``, contrat CALX109).
-from . import modules_disponibles as _modules_disponibles_action  # noqa: F401
+from . import modules_disponibles as _modules_disponibles_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 
 # CALX228 — même patron : rattache ``troncons`` (le métré et la chute tronçon
 # par tronçon, contrat CALX203, servi par ``services/troncons.py``). Lecture
 # PURE : la porte n'écrit rien.
-from . import troncons as _troncons_action  # noqa: F401
+from . import troncons as _troncons_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX107 — même patron : rattache ``plan-importe`` (l'URL servie et la taille
 # en pixels de la pièce jointe que le document désigne comme plan de fond).
 # LECTURE PURE : la porte n'écrit rien.
-from . import plan_importe as _plan_importe_action  # noqa: F401
+from . import plan_importe as _plan_importe_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX297 — même patron : rattache les DOCUMENTS du lot 6
 # (``views/documents.py`` : ``rapport-etude.pdf`` d'abord, puis les pièces
 # suivantes du lot dans le MÊME fichier). Lecture PURE : aucun statut ne bouge.
-from . import documents as _documents_actions  # noqa: F401
+from . import documents as _documents_actions  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX370 — même patron : rattache ``import-projet`` (réimportation du fichier
 # ``export-projet.json``, ``services/export_projet.importer_projet``).
-from . import projet_json as _projet_json_action  # noqa: F401
+from . import projet_json as _projet_json_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX341 — même patron : rattache ``comparer-projets`` (comparatif de 1 à 5
 # calepinages, action de liste) et ``comparatif.xlsx`` (le même en classeur).
 # Lecture PURE : aucune simulation lancée, aucun statut ne bouge.
-from . import comparaison_projets as _comparaison_projets_actions  # noqa: F401
+from . import comparaison_projets as _comparaison_projets_actions  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX343 — même patron : rattache ``etiquettes`` (GET/POST/DELETE des
 # étiquettes libres, ``records.Tag``/``TaggedItem`` ; garde choisie par méthode).
-from . import etiquettes as _etiquettes_action  # noqa: F401
+from . import etiquettes as _etiquettes_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX345 — même patron : rattache ``versions_diff`` (GET
 # ``versions/<version_id>/diff/``, le différentiel entre deux versions).
 # Lecture PURE : aucune version n'est créée.
-from . import versions_diff as _versions_diff_action  # noqa: F401
+from . import versions_diff as _versions_diff_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX347 — même patron : rattache ``approbation`` (GET l'état / POST la
 # décision du second regard, contrat CALX334, services/approbation.py).
-from . import approbation as _approbation_action  # noqa: F401
+from . import approbation as _approbation_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX359 — même patron : rattache ``bom-fixation`` (la nomenclature de
 # fixation, contrat CALX335, services/fixation.py). Lecture PURE.
-from . import fixation as _fixation_action  # noqa: F401
+from . import fixation as _fixation_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX364 — même patron : rattache ``releve-visite`` (GET/POST la reprise de la
 # visite technique validée, contrat CALX336, services/reprise_visite.py).
-from . import reprise_visite as _reprise_visite_action  # noqa: F401
+from . import reprise_visite as _reprise_visite_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # CALX366 — même patron : rattache ``pose-reelle`` (GET/POST la pose réelle et
 # ses écarts, contrat CALX337, services/asbuilt.py).
-from . import asbuilt as _asbuilt_action  # noqa: F401
+from . import asbuilt as _asbuilt_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ACAL65 — même patron : rattache ``suggestions-pente`` (proposer / accepter /
 # refuser une suggestion de pente IGN, D-ACAL-19).
-from . import suggestion_pente as _suggestion_pente_action  # noqa: F401
+from . import suggestion_pente as _suggestion_pente_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ACAL310 — même patron : rattache ``consommation/proposer`` (la
 # consommation PROPOSÉE par le serveur, ``services/consommation.py``).
-from . import consommation as _consommation_action  # noqa: F401
+from . import consommation as _consommation_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ACAL72 — même patron : rattache ``fond-plan`` (téléverse une image de plan
 # et ÉCRIT l'underlay par section). Fichier À PART de ``import_plan`` : la
 # porte ``importer-plan`` reste une LECTURE (CALX39).
-from . import fond_plan as _fond_plan_action  # noqa: F401
+from . import fond_plan as _fond_plan_action  # noqa: F401 — import d'enregistrement (D-ENF22)
 # ↑ AJOUTER LA LIGNE SUIVANTE ICI, EN FIN — jamais au milieu, jamais de tri.
 
 #: Les sous-modules de vues rattachés ci-dessus, dans leur ordre d'import.
