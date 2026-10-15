@@ -10,7 +10,7 @@ stable ; les anciennes routes ``/api/django/compta/…`` continuent de servir le
 MÊMES classes. ODX22 re-logera le corps ici.
 """
 
-from apps.compta.views import (  # noqa: F401
+from apps.compta.views import (
     # ViewSets marketing (mailing, séquences, tracking, formulaires, appels).
     AbonnementListeViewSet,
     AppelTelephoniqueViewSet,
@@ -80,6 +80,22 @@ from .serializers import (
     NoeudJourneySerializer, ParametresMarketingSerializer,
     VersionFormulaireIntakeSerializer,
 )
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'AbonnementListeViewSet', 'AppelTelephoniqueViewSet', 'ApprobationEnvoiCampagneViewSet',
+    'AvisClientViewSet', 'BilletEvenementViewSet', 'CommunicationEvenementViewSet',
+    'CompteFideliteViewSet', 'DomaineEnvoiViewSet', 'EnqueteViewSet', 'EnvoiCampagneViewSet',
+    'EtapeSequenceViewSet', 'EvenementMarketingViewSet', 'FormulaireIntakeViewSet',
+    'InscriptionEvenementViewSet', 'InscriptionSequenceViewSet', 'ListeDiffusionViewSet',
+    'MessageWhatsAppEntrantViewSet', 'MouvementFideliteViewSet', 'OuverturePartageViewSet',
+    'QuestionEvenementViewSet', 'RegleUpsellViewSet', 'RelanceDevisAbandonneViewSet',
+    'SegmentMarketingViewSet', 'SequenceRelanceViewSet', 'SupportOfflineViewSet',
+    'TypeEvenementViewSet', 'desinscription_publique', 'double_optin_confirmer',
+    'enquete_certificat_pdf', 'enquete_publique', 'enquete_soumettre',
+    'evenement_inscription_publique', 'redirection_lien_tracke', 'webhook_brevo_campagne',
+    'webhook_sms_stop',
+]
 
 
 # ── NTMKT12 — Journey en graphe (nœuds + arcs) ──────────────────────────────
