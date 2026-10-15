@@ -1,3 +1,4 @@
+import functools
 """ENF4 — petits assistants pour déclarer EXACTEMENT le schéma OpenAPI des
 vues stock/achats (statuts, corps, paramètres de requête, exports binaires).
 
@@ -139,7 +140,10 @@ def corps(_nom, /, **champs):
     return inline_serializer(name=_nom, fields=champs)
 
 
+@functools.lru_cache(maxsize=None)
 def detail_reponse(nom='DetailReponse'):
+    # Une seule CLASSE par nom : chaque appel créait un inline_serializer neuf
+    # (« identical names and different identities » — backend-openapi, PR #1000).
     return corps(nom, detail=serializers.CharField())
 
 

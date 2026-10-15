@@ -285,7 +285,8 @@ class TestFactureFournisseur(G5Base):
             '/api/django/stock/factures-fournisseur/',
             {'fournisseur': foreign_f.id, 'montant_ttc': '100.00'},
             format='json')
-        self.assertEqual(r.status_code, 400)
+        # IdInconnu404Mixin (vague 3) : un fournisseur d'une autre société = 404, comme un id absent.
+        self.assertEqual(r.status_code, 404, r.content)
 
     def test_other_tenant_cannot_read_facture(self):
         r = self._create_facture()
