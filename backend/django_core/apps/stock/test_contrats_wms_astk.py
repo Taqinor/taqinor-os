@@ -573,7 +573,7 @@ class ContratWmsQuaisTests(WmsBase):
             'quai': self.quai.id,
             'date_heure_debut': rdv.date_heure_debut.isoformat(),
             'date_heure_fin': rdv.date_heure_fin.isoformat()}, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.status_code, 409, rep.content)
         self.assertEqual(
             texte(rep.json()['detail']),
             contrat['exemple_erreur_400_chevauchement']['detail'])
@@ -1245,7 +1245,7 @@ class ContratKitsStockTests(WmsBase):
         rep = self.api.post(f'{self.BASE}remplacer-composant/', {
             'produit_ancien': self.panneau.id,
             'produit_nouveau': self.panneau.id}, format='json')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)
         self.assertEqual(rep.json(), rempl['exemple_erreur_400'])
 
 

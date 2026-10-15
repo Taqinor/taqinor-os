@@ -10,6 +10,8 @@ rangement (``RegleRangement``/``CategorieStockage``, ZSTK9) vivent dans
 """
 import logging
 
+from .erreurs_achats import EtatIncompatible
+
 logger = logging.getLogger('stock.wms')
 
 
@@ -275,7 +277,7 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
                     })
 
     if not besoins:
-        raise ValueError('Aucun besoin à regrouper dans cette vague.')
+        raise EtatIncompatible('Aucun besoin à regrouper dans cette vague.')
 
     # ERR-ASTK6 — les sources d'un besoin (chantier / BCF) sont des string-FK
     # cross-app : relues ICI bornées à la société. Un id étranger et un id
@@ -325,7 +327,7 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
             })
 
     if not preparees:
-        raise ValueError('Aucun besoin valide à regrouper dans cette vague.')
+        raise EtatIncompatible('Aucun besoin valide à regrouper dans cette vague.')
 
     # NTWMS28 — parcours en SERPENTIN : chaque allée n'est traversée qu'une
     # fois (le tri zone → allée → casier faisait redescendre chaque allée à

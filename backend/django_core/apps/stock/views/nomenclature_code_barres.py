@@ -41,6 +41,8 @@ class RegleCodeBarresViewSet(viewsets.ModelViewSet):
     queryset = RegleCodeBarres.objects.select_related('nomenclature').all()
     serializer_class = RegleCodeBarresSerializer
 
+    parser_classes = [JSONParser]  # CI #997 fuzz (4) : booléens et texte stricts (le formulaire lisait « 0 » faux)
+
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]

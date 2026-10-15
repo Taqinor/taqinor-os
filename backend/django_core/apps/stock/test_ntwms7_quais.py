@@ -158,7 +158,7 @@ class TestPlanningQuais(Ntwms7Base):
 
 
 class TestEndpointsQuais(Ntwms7Base):
-    def test_api_refuse_le_chevauchement_en_400(self):
+    def test_api_refuse_le_chevauchement_en_409(self):
         self._rdv(self.quai_a, 8, 10)
         resp = self.api.post(
             '/api/django/stock/rendez-vous-transporteur/', {
@@ -166,7 +166,29 @@ class TestEndpointsQuais(Ntwms7Base):
                 'date_heure_debut': h(LUNDI, 9).isoformat(),
                 'date_heure_fin': h(LUNDI, 11).isoformat(),
             }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+
+    def test_api_fin_avant_debut_en_409(self):
+        resp = self.api.post(
+            '/api/django/stock/rendez-vous-transporteur/', {
+                'quai': self.quai_a.id,
+                'date_heure_debut': h(LUNDI, 11).isoformat(),
+                'date_heure_fin': h(LUNDI, 9).isoformat(),
+            }, format='json')
+        self.assertEqual(resp.status_code, 409)
+
+    def test_api_textes_stricts(self):
+        """CI #997 fuzz (4) : chauffeur, immatriculation et note sont des textes
+        JSON, jamais convertis depuis un nombre."""
+        for champ in ('chauffeur_nom', 'immatriculation', 'note'):
+            resp = self.api.post(
+                '/api/django/stock/rendez-vous-transporteur/', {
+                    'quai': self.quai_a.id,
+                    'date_heure_debut': h(LUNDI, 9).isoformat(),
+                    'date_heure_fin': h(LUNDI, 11).isoformat(),
+                    champ: 7,
+                }, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.content))
 
     def test_api_accepte_un_creneau_libre(self):
         resp = self.api.post(

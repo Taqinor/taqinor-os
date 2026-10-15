@@ -167,14 +167,22 @@ def export_products_xlsx(produits):
 def _quantite_comptee_entiere(valeur):
     """ASTK209 — ``valeur`` en ``int`` si c'est un entier ≥ 0 (``7``,
     ``"7"``, ``7.0``), sinon ``None`` (``7.5``, ``"7.5"``, ``-3``, ``True``,
-    texte, absent)."""
+    texte, absent). CI #997 fuzz (4) : une CHAÎNE est faite de chiffres seuls
+    (``" 7 "``, ``"1e2"`` ne sont plus lus) et le niveau compté tient dans la
+    capacité d'un compteur (``QUANTITE_MAX``, le ``maximum`` publié) : au-delà il
+    débordait la colonne entière (500)."""
+    import re
+    from core.champs_stricts import QUANTITE_MAX
+    from .utils.params import MOTIF_QUANTITE_COMPTEE
     if valeur is None or isinstance(valeur, bool):
         return None
+    if isinstance(valeur, str) and not re.fullmatch(MOTIF_QUANTITE_COMPTEE, valeur):
+        return None
     try:
-        nombre = Decimal(str(valeur).strip())
+        nombre = Decimal(str(valeur))
     except (InvalidOperation, ValueError):
         return None
-    if not nombre.is_finite() or nombre != nombre.to_integral_value() or nombre < 0:
+    if not nombre.is_finite() or nombre != nombre.to_integral_value() or not 0 <= nombre <= QUANTITE_MAX:
         return None
     return int(nombre)
 
@@ -200,7 +208,7 @@ def apply_inventory_count(*, company, user, motif, lignes):
         compte = _quantite_comptee_entiere(
             ligne.get('quantite_comptee') if isinstance(ligne, dict) else None)
         if compte is None:
-            erreurs[str(index)] = ['Quantité entière ≥ 0 attendue.']
+            erreurs[str(index)] = ['Quantité entière ≥ 0 attendue.']  # ≤ QUANTITE_MAX, voir ci-dessus
         comptes.append(compte)
     if erreurs:
         raise ValidationError({'lignes': erreurs})
@@ -429,7 +437,7 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
         if not demande_approuvee and transfert_exige_approbation(
                 company, produit, quantite, source_id=source.id,
                 destination_id=destination.id):
-            raise ValueError(
+            raise EtatIncompatible(
                 'Ce transfert dépasse le seuil d\'approbation de la société : '
                 'ouvrez une demande de transfert et faites-la approuver.')
 
@@ -448,7 +456,7 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
             return se.quantite if se else 0
 
         if quantite > current_qty(source):
-            raise ValueError(
+            raise EtatIncompatible(  # le stock de la source s'oppose : 409 côté vue
                 f'Quantité insuffisante à « {source.nom} » '
                 f'({current_qty(source)} disponible).')
 
@@ -3369,7 +3377,7 @@ def creer_profil_saisonnier(
         for m in range(1, 13):
             if candidat.couvre_mois(m) and autre.couvre_mois(m):
                 label = autre.nom or f'#{autre.id}'
-                raise ValueError(
+                raise EtatIncompatible(  # état des profils existants : 409 côté vue
                     f'Ce profil chevauche le profil existant « {label} » '
                     f'sur le mois {m}.')
 

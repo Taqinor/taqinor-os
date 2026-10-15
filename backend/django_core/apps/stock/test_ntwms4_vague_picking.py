@@ -231,3 +231,27 @@ class TestEndpointsVague(Ntwms4Base):
         resp = self.api.post(
             '/api/django/stock/vagues-picking/', [None, None], format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_rien_a_regrouper_est_un_conflit_409(self):
+        """CI #997 fuzz (4) : un corps conforme sans besoin servable (aucun besoin,
+        produit inconnu) est un état « rien à regrouper » -> 409, rien de créé."""
+        url = '/api/django/stock/vagues-picking/'
+        for corps in ({}, {'note': ''}, {'besoins': []}, {'besoins': [{'produit_id': 99999999, 'quantite': 1}]}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 409, (corps, resp.content))
+        self.assertEqual(VaguePicking.objects.filter(company=self.company).count(), 0)
+
+    def test_corps_mal_type_400_jamais_500(self):
+        url = '/api/django/stock/vagues-picking/'
+        ok = {'produit_id': self.produit_proche.id, 'quantite': 1}
+        cas = (
+            {'besoins': 'x'}, {'besoins': [5]}, {'besoins': [{**ok, 'quantite': '1'}]},
+            {'besoins': [{**ok, 'produit_id': {}}]}, {'besoins': [{**ok, 'installation_id': 'a'}]},
+            {'besoins': [ok], 'note': 5}, {'besoins': [ok], 'note': 'a\u0000b'},
+            {'installations': 'x'}, {'installations': ['1']}, {'installations': [0]},
+        )
+        for corps in cas:
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self.api.post(url, {'besoins': [ok], 'note': None}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
