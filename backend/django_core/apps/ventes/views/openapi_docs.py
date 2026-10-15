@@ -754,6 +754,33 @@ EtudeParamsGetResponse = _ser('DevisEtudeParamsResponse', {
     'etude_params': s.DictField(),
     'updated_at': s.CharField(required=False, allow_null=True),
 })
+
+
+def _proprietes_etude_params():
+    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
+    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
+    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
+    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
+    (400 attendu) — plus jamais « rejected schema-compliant ».
+    """
+    from ..domain import etude_schema as _es
+    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
+             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
+    props = {}
+    for cle, regle in _es.SCHEMA.items():
+        if regle['nature'] != _es.ENTREE or regle['exclusif']:
+            continue
+        formes = []
+        for t in regle['type']:
+            f = dict(_json[t])
+            if f not in formes:
+                formes.append(f)
+        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
+        props[cle] = {**forme, 'nullable': True}
+    props['expected_updated_at'] = {'type': 'string', 'nullable': True}
+    return props
+
+
 EtudeParamsPatchRequest = {
     'application/json': {
         'type': 'object',
@@ -761,7 +788,8 @@ EtudeParamsPatchRequest = {
             "Clés d'étude à fusionner (une valeur `null` retire la clé) ; "
             '`expected_updated_at` : jeton optimiste optionnel.'),
         'minProperties': 1,
-        'additionalProperties': True,
+        'properties': _proprietes_etude_params(),
+        'additionalProperties': False,
     },
 }
 OffresTaillesResponse = _ser('DevisOffresTailles', {
