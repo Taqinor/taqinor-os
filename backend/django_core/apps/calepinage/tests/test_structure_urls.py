@@ -246,6 +246,34 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
             'properties']['ids']
         self.assertEqual((ids['minItems'], ids['maxItems']), (1, 5))
 
+    def _corps_multipart(self, suffixe):
+        schema = self._operation('post', suffixe)['requestBody']['content'][
+            'multipart/form-data']['schema']
+        return self.schema['components']['schemas'][
+            schema['$ref'].rsplit('/', 1)[-1]]
+
+    def test_depots_de_fichier_publient_le_predicat_du_serveur(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE (w4) — photo, fond de plan et série météo :
+        le schéma dit EXACTEMENT ce que le serveur exige (date saisie, genre
+        énuméré, jeton / fournisseur non blancs) ; sans cela le fuzz envoyait
+        une valeur « conforme » (``" "``, genre libre) et recevait 400."""
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
+        composants = self.schema['components']['schemas']
+        photo = self._corps_multipart('{id}/photos/')
+        self.assertEqual(sorted(photo['required']), ['photo', 'prise_le'])
+        self.assertEqual(photo['properties']['prise_le'],
+                         {'type': 'string', 'format': 'date'})
+        genre = composants[
+            photo['properties']['genre']['$ref'].rsplit('/', 1)[-1]]
+        self.assertEqual(genre['enum'], ['drone', 'oblique', 'sol'])
+        fond = self._corps_multipart('{id}/fond-plan/')
+        self.assertEqual(fond['properties']['base_empreinte']['pattern'],
+                         MOTIF_NON_BLANC_SANS_NUL)
+        meteo = self._corps_multipart('{id}/meteo-fichier/')
+        self.assertEqual(meteo['properties']['fournisseur']['pattern'],
+                         MOTIF_NON_BLANC_SANS_NUL)
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']

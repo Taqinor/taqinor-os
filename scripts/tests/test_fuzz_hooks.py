@@ -583,6 +583,49 @@ class FichiersPdfTests(unittest.TestCase):
         # 2 lignes de (filtre 0 + 2 pixels RGB) toutes à zéro = pixels noirs.
         self.assertEqual(zlib.decompress(blocs[b'IDAT']), bytes(14))
 
+    def test_depots_de_fichier_d_un_calepinage_recoivent_le_format_lu(self):
+        # CI #997 (w4) : rendu de toiture, photo de site, fond de plan, carte
+        # d'ombrage (PNG 8 px : image-document exige 8 px de côté au moins),
+        # plan importé (DXF) et série météo (CSV) ; champs de formulaire
+        # intacts, négatifs / GET / autres sous-ressources intacts.
+        base = '/api/django/calepinage/calepinages/{id}/'
+        attendus = (('roof-image/', 'image', b'\x89PNG'),
+                    ('photos/', 'photo', b'\x89PNG'),
+                    ('fond-plan/', 'fichier', b'\x89PNG'),
+                    ('image-document/', 'fichier', b'\x89PNG'),
+                    ('importer-plan/', 'fichier', b'0\nSECTION\n'),
+                    ('meteo-fichier/', 'fichier', b'horodatage;gi_w_m2\r\n'))
+        for suffixe, champ, debut in attendus:
+            corps = self._corps(chemin=base + suffixe,
+                                corps={champ: b'', 'genre': 'sol'})
+            self.assertTrue(corps[champ].startswith(debut), suffixe)
+            self.assertEqual(corps['genre'], 'sol', suffixe)
+            negatif = self._corps(chemin=base + suffixe, mode='NEGATIVE',
+                                  corps={champ: b''})
+            self.assertEqual(negatif[champ], b'', suffixe)
+            lecture = self._corps(chemin=base + suffixe, methode='GET',
+                                  corps={champ: b''})
+            self.assertEqual(lecture[champ], b'', suffixe)
+        self.assertEqual(
+            self._corps(chemin=base + 'photos/{photo_id}/calage/',
+                        corps={'photo': b''})['photo'], b'')
+
+    def test_png_de_capture_a_huit_pixels_et_dxf_de_plan_bien_forme(self):
+        import struct
+        png = self.hooks._PNG_CAPTURE
+        entete = png[16:24]
+        self.assertEqual(struct.unpack('>II', entete), (8, 8))
+        lignes = self.hooks._DXF_PLAN.decode('ascii').split('\n')
+        self.assertEqual(lignes[-1], '')
+        lignes = lignes[:-1]
+        # Un DXF est une suite de paires (code de groupe, valeur) ; le
+        # contour fermé du calque « 0 » porte quatre sommets.
+        self.assertEqual(len(lignes) % 2, 0)
+        self.assertTrue(all(code.strip().lstrip('-').isdigit()
+                            for code in lignes[0::2]))
+        self.assertEqual(lignes.count('VERTEX'), 4)
+        self.assertEqual(lignes[-2:], ['0', 'EOF'])
+
     def test_depot_ged_negatif_et_autres_operations_intacts(self):
         ged = '/api/django/ged/documents/'
         self.assertEqual(

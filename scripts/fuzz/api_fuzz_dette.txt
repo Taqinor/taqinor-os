@@ -43,12 +43,7 @@ API rejected schema-compliant request|POST /api/django/automation/rules/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/depuis-modele/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/import-projet/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/consommation/proposer/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/fond-plan/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/image-document/
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/importer-plan/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/meteo-fichier/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/photos/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/roof-image/
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/calculer/
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/pose/
 API rejected schema-compliant request|POST /api/django/calepinage/parametres/suggestion-pente/

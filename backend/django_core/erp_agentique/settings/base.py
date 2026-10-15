@@ -851,6 +851,10 @@ SPECTACULAR_SETTINGS = {
         # signale « multiple names for the same choice set ». Nommage seulement.
         'RoleAutoCompositionEnum': 'apps.ventes.models.ROLES_AUTO_COMPOSITION',
         'CodeRemiseDocumentEnum': 'apps.calepinage.views.remise_document.CODES_REMISE',
+        # CI #997 (w4) — le dépôt d'une photo de site énumère ses genres
+        # (drone / oblique / sol) ; `genre` de image-document garde « GenreEnum »
+        # (ombrage). Nommage de schéma uniquement — aucun choix ne change.
+        'GenrePhotoSiteEnum': 'apps.calepinage.models.PhotoSite.Genre',
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',
