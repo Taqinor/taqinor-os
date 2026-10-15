@@ -98,7 +98,6 @@
 1c62c666589f|apps/web/src/pages/ar/loi-82-21.astro,apps/web/src/pages/en/loi-82-21.astro,apps/web/src/pages/loi-82-21.astro
 1d0f8efae56b|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/en/contact.astro
 1d26c66648ed|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
-1e23ed886ed8|frontend/src/features/offlinesync/mobile/CockpitHome.test.jsx,frontend/src/features/offlinesync/mobile/CommercialHome.test.jsx,frontend/src/features/offlinesync/mobile/EquipeTerrainHome.test.jsx
 1eaaebe21ab6|frontend/src/pages/crm/ClientDetailPanel.jsx,frontend/src/pages/ventes/RelancesPage.jsx
 1ecd3d1998e5|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 1eee6fd2ed15|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
@@ -438,7 +437,6 @@
 8b658ce7298b|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
 8bc61765606a|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/estimatorBrainV8.ts
 8cda2d939272|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro
-8d7df5c9b070|frontend/src/features/offlinesync/mobile/CockpitHome.test.jsx,frontend/src/features/offlinesync/mobile/CommercialHome.test.jsx,frontend/src/features/offlinesync/mobile/EquipeTerrainHome.test.jsx
 8d8e8e7cfcc8|apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/en/équipement.astro
 8dc0e7d956d4|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts
 8e022af54fa3|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
@@ -760,7 +758,6 @@ f974c510418a|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/
 f97a10540356|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 fa1145ae678d|frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/FleetPage.jsx
 fa1212e21e6c|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
-fa2dd0bb2d5f|frontend/src/features/ventes/devisEnvoyerWhatsappStatut.test.jsx,frontend/src/pages/ventes/DevisList.test.jsx,frontend/src/pages/ventes/DevisListConceptionElectrique.test.jsx,frontend/src/pages/ventes/DevisListPdfCalepinage.test.jsx,frontend/src/pages/ventes/FactureList.golden.test.jsx,frontend/src/pages/ventes/FactureList.test.jsx,frontend/src/pages/ventes/RoofViewerPage.test.jsx
 fa90221109b4|apps/web/src/lib/batterySim.ts,apps/web/src/lib/productionWindow.ts,apps/web/src/lib/proposalChart.ts,apps/web/src/lib/proposalCurve.ts
 fac3d8d92f8f|apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
 fbb714bab050|apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/production-mesuree.astro

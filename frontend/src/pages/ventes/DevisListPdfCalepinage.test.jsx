@@ -22,20 +22,8 @@ import { configureStore } from '@reduxjs/toolkit'
 
 const genererPdfSpy = vi.fn()
 
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }),
-    genererPdfDevis: (payload) => {
-      genererPdfSpy(payload)
-      const action = { type: 'ventes/genererPdfDevis/noop' }
-      action.unwrap = () => Promise.resolve()
-      return action
-    },
-    convertirDevisEnBC: () => ({ type: 'ventes/convertirDevisEnBC/noop' }),
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/devisListMocks.js')).ventesSliceMock(importOriginal, { onGenererPdf: ([payload]) => genererPdfSpy(payload) }))
 
 vi.mock('../../api/ventesApi', async (importOriginal) => {
   const actual = await importOriginal()

@@ -10,19 +10,8 @@ import { configureStore } from '@reduxjs/toolkit'
 // QG1 — genererPdfDevis renvoie une action « thunk-like » : dispatch(...) doit
 // rester chaînable en .unwrap() (comme le vrai createAsyncThunk) pour que
 // genererUnPdf() poursuive jusqu'au polling dans le test dédié plus bas.
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    fetchDevis: vi.fn(() => ({ type: 'ventes/fetchDevis/noop' })),
-    genererPdfDevis: () => {
-      const action = { type: 'ventes/genererPdfDevis/noop' }
-      action.unwrap = () => Promise.resolve()
-      return action
-    },
-    convertirDevisEnBC: () => ({ type: 'ventes/convertirDevisEnBC/noop' }),
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/devisListMocks.js')).ventesSliceMock(importOriginal))
 
 // WR1 — espionne l'appel réseau du refus dédié (jamais un PATCH statut direct).
 // QG1 — espionne getDevisById (polling) + telechargerPdfDevis (ouverture auto).
