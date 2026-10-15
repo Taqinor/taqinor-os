@@ -56,7 +56,7 @@ def ingerer_plan(job_id=None, company_id=None, plan_source_id=None, page=None,
             user=job.user, progression=job.marquer_progression)
         job.marquer_termine(resultat.get('file_key', ''))
         return dict(resultat, statut='done')
-    except Exception as erreur:  # noqa: BLE001 — toute panne = échec PROPRE
+    except Exception as erreur:  # noqa: BLE001 — toute panne = échec PROPRE (D-ENF22-BLE001)
         logger.exception('ao.ingerer_plan : échec du job #%s', job_id)
         job.marquer_echec(str(erreur))
         return {'statut': 'failed', 'motif': str(erreur)}

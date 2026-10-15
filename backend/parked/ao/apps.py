@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -24,7 +26,7 @@ class AoConfig(AppConfig):
         # calepinage : toute écriture d'obstacle, de cote ou d'enveloppe
         # recalcule l'empreinte d'entrée et bascule ``PERIME`` ce qui diverge.
         # Borné à LA toiture touchée (péremption GRANULAIRE).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
         # AOF168 — fournisseur DSR (loi 09-08) du domaine AO : export et
         # ANONYMISATION (jamais suppression) des identités portées par les
         # relevés et les séries de questions. Patron `apps/crm/apps.py`.

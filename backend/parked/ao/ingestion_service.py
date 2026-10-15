@@ -298,7 +298,7 @@ def normaliser_image(contenu):
     try:
         image = Image.open(io.BytesIO(contenu))
         image = ImageOps.exif_transpose(image)
-    except Exception as erreur:  # noqa: BLE001 — fichier illisible
+    except Exception as erreur:
         raise IngestionImpossible(
             "Ce fichier n'est pas une image exploitable (jpg, png ou webp)."
         ) from erreur

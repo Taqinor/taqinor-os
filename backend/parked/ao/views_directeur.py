@@ -16,6 +16,8 @@ sous les pièces qui la citent.
 """
 from __future__ import annotations
 
+
+import logging
 import re
 
 from django.http import Http404, HttpResponse
@@ -148,7 +150,8 @@ class EconomieAOViewSet(_BaseDirecteurViewSet):
                 KIND_RENTABILITE_XLSX, tasks.produire_rentabilite_xlsx_task,
                 company=economie.company, user=request.user,
                 projet_id=economie.appel_offre_id)
-        except Exception:  # noqa: BLE001 — broker injoignable : 503, pas 500.
+        except Exception:  # noqa: BLE001 — broker injoignable : 503, pas 500. (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("views_directeur.EconomieAOViewSet._lancer_production : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(
                 {'detail': "La file de traitement est injoignable : le "
                            "classeur n'a pas pu être lancé. Réessayez."},

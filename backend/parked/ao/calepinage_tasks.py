@@ -87,7 +87,7 @@ def calculer_calepinage(job_id=None, company_id=None, toiture_id=None,
         return {'statut': 'done', 'hash_entree': resultat['hash_entree'],
                 'modules': resultat['total_modules'],
                 'variante': variante_id}
-    except Exception as erreur:  # noqa: BLE001 — toute panne = échec PROPRE
+    except Exception as erreur:  # noqa: BLE001 — toute panne = échec PROPRE (D-ENF22-BLE001)
         logger.exception('ao.calculer_calepinage : échec du job #%s', job_id)
         job.marquer_echec(str(erreur))
         return {'statut': 'failed', 'motif': str(erreur)}
