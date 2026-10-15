@@ -9,21 +9,8 @@ import {
 } from '../../../test/fixtures/calepinageApiMock'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { SAISIE_SOL } from '../../../test/fixtures/saisiesSurfacePose'
-
-/* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
-   (que la configuration vitest fixe à `frontend/`) et on remonte jusqu'à la
-   racine du dépôt — le même repli que `src/api/calepinageApi.test.mjs`.
-   `globalThis.process` plutôt que `process` nu : le lint de ce dossier ne
-   déclare pas les globales Node. */
-const RACINE_FRONTEND = globalThis.process.cwd()
-function racineDepot() {
-  let dossier = RACINE_FRONTEND
-  for (let i = 0; i < 8; i += 1) {
-    if (fs.existsSync(path.join(dossier, 'backend', 'django_core'))) return dossier
-    dossier = path.dirname(dossier)
-  }
-  throw new Error(`Racine du depot introuvable depuis ${RACINE_FRONTEND}`)
-}
+import { champPoseMock } from '../../../test/fixtures/champPoseMock'
+import { RACINE_FRONTEND, racineDepot } from '../../../test/fixtures/racineDepot'
 
 /* ============================================================================
    CAL89 — LE MODE TERRAIN SE TRACE, SE CALCULE ET SE RECHARGE.
@@ -54,56 +41,9 @@ vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/f
  * `pose.json` (`REPONSE` ci-dessus), donc les assertions existantes n'ont pas
  * besoin de changer. Le VRAI module reste exercé par ses propres tests
  * (`apps/web/src/scripts/roofPro11/*.test.ts`) — ici on ne teste QUE l'écran. */
-const construireChampPose = vi.fn((plan, opts) => {
-  const tablesMoteur = plan?.tables ?? []
-  const tables = []
-  let empriseTablesM2Calc = 0
-  for (const t of tablesMoteur) {
-    const largeurM = Math.abs(t.x1 - t.x0)
-    const profondeurM = Math.abs(t.y1 - t.y0)
-    empriseTablesM2Calc += largeurM * profondeurM
-    tables.push({
-      cx: (t.x0 + t.x1) / 2,
-      cy: (t.y0 + t.y1) / 2,
-      largeurM,
-      profondeurM,
-      z: Number.isFinite(opts?.hauteurLibreM) ? opts.hauteurLibreM : 0,
-      inclinaisonRad: 0,
-      kit: typeof t.kit === 'string' ? t.kit : null,
-    })
-  }
-  const nonMesure = []
-  if (!tables.length) nonMesure.push('aucune table rendue par le moteur')
-  if (!Number.isFinite(opts?.penteTerrainDeg)) {
-    nonMesure.push('pente du terrain non renseignée : terrain rendu horizontal')
-  }
-
-  const y = Array.from(new Set((plan?.rangees ?? [])
-    .map((r) => Number(r?.y0)).filter((v) => Number.isFinite(v)))).sort((a, b) => a - b)
-  let pasInterRangeeM = null
-  if (y.length >= 2) {
-    let min = Infinity
-    for (let i = 1; i < y.length; i += 1) min = Math.min(min, y[i] - y[i - 1])
-    pasInterRangeeM = Number.isFinite(min) && min > 0 ? min : null
-  }
-  if (pasInterRangeeM === null) {
-    nonMesure.push('pas inter-rangées non mesurable (moins de deux rangées posées)')
-  }
-
-  const aire = Number.isFinite(opts?.aireTerrainM2) ? opts.aireTerrainM2 : null
-  let tauxOccupationCalc = null
-  if (aire !== null && aire > 0 && tables.length) tauxOccupationCalc = empriseTablesM2Calc / aire
-  else nonMesure.push('taux d’occupation non calculable (surface du terrain manquante)')
-
-  return {
-    tables,
-    modules: Number.isFinite(plan?.modules) ? plan.modules : null,
-    pasInterRangeeM,
-    empriseTablesM2: empriseTablesM2Calc,
-    tauxOccupation: tauxOccupationCalc,
-    nonMesure,
-  }
-})
+const construireChampPose = vi.fn((plan, opts) => champPoseMock(plan, opts, {
+  altitude: Number.isFinite(opts?.hauteurLibreM) ? opts.hauteurLibreM : 0, pente: 'siAbsente',
+}))
 vi.mock('@roofpro/scene3d', () => ({
   construireChampPose: (...args) => construireChampPose(...args),
 }))
