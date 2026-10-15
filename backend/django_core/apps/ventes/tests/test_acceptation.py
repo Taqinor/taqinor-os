@@ -401,3 +401,19 @@ class DateAcceptationFutureTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         g = self.api.get(f'/api/django/ventes/devis/{devis.id}/')
         self.assertEqual(g.data['date_acceptation'], jour)
+
+    def test_sans_date_jour_local_a_00h30(self):
+        """Portes sans date (signature publique, portail) : à 00:30 heure du
+        Maroc (= veille en UTC), la date posée est le jour LOCAL."""
+        from datetime import datetime, time
+        from unittest import mock
+        from zoneinfo import ZoneInfo
+        from apps.ventes.services import accept_devis
+        devis = self._devis(num=343)
+        jour = timezone.localdate()
+        instant = datetime.combine(
+            jour, time(0, 30), tzinfo=ZoneInfo('Africa/Casablanca'))
+        with mock.patch('django.utils.timezone.now', return_value=instant):
+            accept_devis(devis=devis, user=self.user, nom='Client')
+        devis.refresh_from_db()
+        self.assertEqual(devis.date_acceptation, jour)
