@@ -114,7 +114,7 @@ CACHE_MAX = 200
 #: * ``locale_standard`` — l'heure locale SANS heure d'été, ce que PVGIS
 #:   annonce servir sous ``localtime=1`` (« Output the time in the local time
 #:   zone (not daylight saving time), instead of UTC »,
-#:   https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en) ;
+#:   https://joint-research-centre.ec.europa.eu/photovoltaic-geographical-information-system-pvgis/getting-started-pvgis/api-non-interactive-service_en) ;  # noqa: E501
 #: * ``locale_legale`` — l'heure LÉGALE du site, saison comprise. C'est celle
 #:   dans laquelle une courbe de charge est saisie, donc la SEULE dans
 #:   laquelle un croisement production/consommation a un sens. Aucune réponse

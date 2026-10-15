@@ -5,6 +5,9 @@ Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).
 """
 from .models import RelanceEtape
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _company_fallback_managers(company):
@@ -24,6 +27,7 @@ def _company_fallback_managers(company):
             role__nom__in=('Commercial responsable', 'Directeur'),
         ).order_by('id'))
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('%s : échec ignoré (dégradé)', '_company_fallback_managers', exc_info=True)
         return []
 
 

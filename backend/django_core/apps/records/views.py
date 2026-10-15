@@ -1391,9 +1391,11 @@ def attachments_all(request):
         qs = qs.filter(phase=phase)
     model = p.get('model')
     if model:
+        # Import AVANT le ``try`` : le ``except`` nomme ``ContentType`` et un
+        # ``model`` sans point (ValueError au split) le trouvait non lié (500).
+        from django.contrib.contenttypes.models import ContentType
         try:
             app_label, model_name = str(model).lower().split('.', 1)
-            from django.contrib.contenttypes.models import ContentType
             ct = ContentType.objects.get(app_label=app_label, model=model_name)
             qs = qs.filter(content_type=ct)
         except (ValueError, ContentType.DoesNotExist):

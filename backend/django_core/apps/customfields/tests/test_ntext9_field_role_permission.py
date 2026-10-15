@@ -138,3 +138,33 @@ class VueFormulaireObjetCustomTests(TestCase):
         champ = next(c for c in res.data['champs']
                      if c['code'] == 'cout_interne')
         self.assertTrue(champ['lecture_seule_role'])
+
+
+class PermissionRoleIdInconnuTests(TestCase):
+    """ENF11 (api-fuzz) — un `field_def` bien formé mais inexistant (0 compris)
+    ou d'une autre société répond 404, identique dans les deux cas."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='NTEXT9 404 Co')
+        self.admin = User.objects.create_user(
+            username='nt9_404_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = _auth(self.admin)
+
+    def test_field_def_inconnu_404(self):
+        for pk in (0, 987654):
+            resp = self.api.post(
+                '/api/django/custom-fields/permissions-role/',
+                {'field_def': pk, 'role_tier': 'normal', 'niveau': 'lecture'},
+                format='json')
+            self.assertEqual(resp.status_code, 404, resp.data)
+
+    def test_field_def_autre_societe_404(self):
+        autre = Company.objects.create(nom='NTEXT9 404 Autre')
+        champ = CustomFieldDef.objects.create(
+            company=autre, module='lead', code='x', libelle='X', type='text')
+        resp = self.api.post(
+            '/api/django/custom-fields/permissions-role/',
+            {'field_def': champ.pk, 'role_tier': 'normal', 'niveau': 'lecture'},
+            format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)

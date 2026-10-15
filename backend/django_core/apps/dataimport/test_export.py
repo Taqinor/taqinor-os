@@ -74,9 +74,20 @@ class TestFormatStrict(ExportBase):
         for url, corps in (
                 ('/api/django/imports/export-object/',
                  {'object': 'clients', 'format': 12}),
+                # ENF11 (api-fuzz) : `format: null` est un type faux, pas une absence.
+                ('/api/django/imports/export-object/',
+                 {'object': 'clients', 'format': None}),
+                ('/api/django/imports/sauvegarde/', {'format': None}),
                 ('/api/django/imports/sauvegarde/', {'format': 'pdf'})):
             resp = self.api.post(url, corps, format='json')
             self.assertEqual(resp.status_code, 400, (url, resp.content))
+
+    def test_format_blanc_retombe_sur_le_defaut(self):
+        # Déclaré `allow_blank` : un format blanc est « inconnu » donc csv.
+        resp = self.api.post(
+            '/api/django/imports/export-object/',
+            {'object': 'clients', 'format': ''}, format='json')
+        self.assertEqual(resp.status_code, 200)
 
     def test_format_absent_utilise_le_defaut(self):
         resp = self.api.post(

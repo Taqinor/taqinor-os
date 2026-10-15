@@ -146,6 +146,9 @@ def verifier_corps_texte(request, champs):
         valeur = donnees.get(champ)
         if valeur is not None and not isinstance(valeur, str):
             erreurs[champ] = 'Un texte est attendu.'
+        elif valeur and '\x00' in valeur:
+            # ERR-ENF11-FUZZ-CRM — le NUL ne s'écrit pas en base (500).
+            erreurs[champ] = 'Le caractère nul est interdit.'
     if erreurs:
         raise ValidationError(erreurs)
 

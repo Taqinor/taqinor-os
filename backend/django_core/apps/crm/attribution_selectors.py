@@ -10,6 +10,9 @@ from .clients_selectors import (
 from .portee_selectors import (
     lead_signe_q, est_lead_signe, cles_numeros_lead,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def signed_lead_phone_keys(company):
@@ -265,6 +268,7 @@ def attribution_leads(company, debut=None, fin=None):
                 try:
                     total += Decimal(str(devis.total_ttc or 0))
                 except Exception:
+                    logger.warning('%s : échec ignoré (dégradé)', '_ca_signe_lead', exc_info=True)
                     continue
         return total
 
@@ -408,6 +412,7 @@ def revenu_attribue_campagne(company, nom_campagne):
                 try:
                     revenu += Decimal(str(devis.total_ttc or 0))
                 except Exception:
+                    logger.warning('%s : échec ignoré (dégradé)', 'revenu_attribue_campagne', exc_info=True)
                     continue
         if signe_pour_ce_lead:
             nb_signes += 1
@@ -942,6 +947,7 @@ def attribution_comparaison_devis(devis):
     try:
         total_revenu = Decimal(str(devis.total_ttc or 0))
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', 'attribution_comparaison_devis', exc_info=True)
         total_revenu = Decimal('0')
     return {
         'devis_id': devis.pk,

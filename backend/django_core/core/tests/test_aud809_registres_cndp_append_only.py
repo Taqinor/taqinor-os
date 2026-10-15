@@ -23,12 +23,13 @@ pas même depuis ses tests (contrat import-linter
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from drf_spectacular.drainage import get_override
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from authentication.models import Company
 from core.models import ConsentRecord, DataSubjectRequest, RegistreTraitement
-from core.serializers import ConsentRecordSerializer
+from core.serializers import AdresseIP, ConsentRecordSerializer
 from core.views import (
     ConsentRecordViewSet,
     DataSubjectRequestViewSet,
@@ -130,6 +131,24 @@ class Aud809RegistresCndpAppendOnlyTests(TestCase):
             ConsentRecord.objects.filter(
                 company=self.company,
                 subject_identifier='client@example.ma').count(), 2)
+
+    def test_ip_confirmation_ipv4_ou_ipv6(self):
+        """ERR-ENF11-FUZZ-CORE — l'IP de preuve est publiée IPv4 OU IPv6
+        (``AdresseIP``) : le serveur accepte ces deux formes, refuse le reste
+        en 400 et ``null`` reste « inconnue »."""
+        vue = ConsentRecordViewSet.as_view({'post': 'create'})
+        for ip, attendu in (('203.0.113.9', 201), ('2001:db8::1', 201),
+                            (None, 201), ('pas-une-ip', 400)):
+            with self.subTest(ip=ip):
+                requete = self.factory.post('/consent-records/', {
+                    'subject_identifier': 'ip@example.ma',
+                    'purpose': 'marketing', 'ip_confirmation': ip,
+                }, format='json')
+                force_authenticate(requete, user=self.admin)
+                self.assertEqual(vue(requete).status_code, attendu)
+        schema = get_override(AdresseIP, 'field')
+        self.assertEqual(
+            [b['format'] for b in schema['anyOf']], ['ipv4', 'ipv6'])
 
     def test_lecture_et_action_traiter_inchangees(self):
         requete = self.factory.get('/registre-traitements/')

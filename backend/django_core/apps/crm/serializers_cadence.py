@@ -12,6 +12,9 @@ from .models import Lead, LeadActivity, MessageTemplate, RelanceEtape
 from .serializers import (
     nom_affichable_lead, nom_affichable_responsable, pii_masquee_pour,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RelanceEtapeSerializer(serializers.ModelSerializer):
@@ -351,6 +354,7 @@ class RelanceEtapeSerializer(serializers.ModelSerializer):
                 from apps.visites.selectors import visites_recentes_par_lead
                 lignes = visites_recentes_par_lead(lead.company, candidats)
             except Exception:  # noqa: BLE001 — jamais bloquant
+                logger.warning('%s : échec ignoré (dégradé)', '_visite_du_lead', exc_info=True)
                 lignes = {}
             for lid in candidats:
                 ligne = lignes.get(lid)

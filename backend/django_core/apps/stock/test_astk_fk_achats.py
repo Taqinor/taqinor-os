@@ -115,9 +115,11 @@ class FkAchatsTests(TestCase):
 
     # ── aides ────────────────────────────────────────────────────────────
 
-    def _assert_comme_absent(self, r, r_absent, pk):
-        self.assertEqual(r.status_code, 400, r.content)
-        self.assertEqual(r_absent.status_code, 400, r_absent.content)
+    def _assert_comme_absent(self, r, r_absent, pk, statut=400):
+        # ENF11 — une clé de PREMIER niveau inconnue répond 404 (``IdInconnu404Mixin``) ;
+        # une clé imbriquée / un autre sérialiseur garde le 400.
+        self.assertEqual(r.status_code, statut, r.content)
+        self.assertEqual(r_absent.status_code, statut, r_absent.content)
         corps = r.content.decode()
         # L'erreur « objet inexistant » de cet id : elle a bien visé le champ.
         self.assertIn('<INEXISTANT>', str(_sans_id(r.json(), pk)))
@@ -126,11 +128,11 @@ class FkAchatsTests(TestCase):
         for secret in SECRETS:
             self.assertNotIn(secret, corps)
 
-    def _post_compare(self, url, payload, champ, pk_etranger):
+    def _post_compare(self, url, payload, champ, pk_etranger, statut=400):
         r = self.api.post(url, {**payload, champ: pk_etranger}, format='json')
         r_absent = self.api.post(
             url, {**payload, champ: ID_ABSENT}, format='json')
-        self._assert_comme_absent(r, r_absent, pk_etranger)
+        self._assert_comme_absent(r, r_absent, pk_etranger, statut)
 
     def _serializer_compare(self, cls, payload, champ, pk_etranger):
         ctx = {'request': SimpleNamespace(user=self.admin_a)}
@@ -190,14 +192,32 @@ class FkAchatsTests(TestCase):
         self._post_compare('/api/django/stock/receptions-fournisseur/', {
             'bon_commande': self.bc_a.pk, 'date_reception': '2026-10-06',
             'lignes': [{'ligne_commande': self.ligne_a.pk, 'quantite': 1}],
-        }, 'recu_par', self.user_b.pk)
+        }, 'recu_par', self.user_b.pk, statut=404)
         self.assertFalse(ReceptionFournisseur.objects.exists())
 
     def test_reception_bcf_autre_societe(self):
         self._post_compare('/api/django/stock/receptions-fournisseur/', {
             'date_reception': '2026-10-06',
             'lignes': [{'ligne_commande': self.ligne_a.pk, 'quantite': 1}],
-        }, 'bon_commande', self.bc_b.pk)
+        }, 'bon_commande', self.bc_b.pk, statut=404)
+
+    def test_reception_ligne_commande_inconnue_404(self):
+        """ENF11 — ``lignes[].ligne_commande`` inconnu (``0`` compris) = 404, même
+        corps qu'un id absent ; une quantité invalide à côté garde le 400."""
+        url = '/api/django/stock/receptions-fournisseur/'
+        for inconnu in (0, ID_ABSENT):
+            r = self.api.post(url, {
+                'bon_commande': self.bc_a.pk, 'date_reception': '2026-10-06',
+                'lignes': [{'ligne_commande': inconnu, 'quantite': 1}],
+            }, format='json')
+            self.assertEqual(r.status_code, 404, r.content)
+            self.assertIn('ligne_commande', r.json()['lignes'][0])
+        r = self.api.post(url, {
+            'bon_commande': self.bc_a.pk, 'date_reception': '2026-10-06',
+            'lignes': [{'ligne_commande': 0, 'quantite': 0}],
+        }, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertFalse(ReceptionFournisseur.objects.exists())
 
     # ── Facture, paiement, échéance ─────────────────────────────────────
 
@@ -220,7 +240,7 @@ class FkAchatsTests(TestCase):
     def test_facture_fournisseur_autre_societe(self):
         self._post_compare('/api/django/stock/factures-fournisseur/', {
             'montant_ht': '10', 'montant_tva': '2', 'montant_ttc': '12',
-        }, 'fournisseur', self.fb.pk)
+        }, 'fournisseur', self.fb.pk, statut=404)
 
     def test_fuzz_paiement_facture_illisible_400(self):
         """ERR fuzz : ``facture`` non entier (liste/texte) = 400, pas 500."""
@@ -340,5 +360,24 @@ class FkAchatsTests(TestCase):
     def test_prix_fournisseur_produit_etranger(self):
         self._post_compare('/api/django/stock/prix-fournisseurs/', {
             'fournisseur': self.fa.pk, 'prix_achat': '10',
-        }, 'produit', self.pb.pk)
+        }, 'produit', self.pb.pk, statut=404)
         self.assertFalse(PrixFournisseur.objects.exists())
+
+    def test_schema_facture_paiements_search_et_echeancier(self):
+        """ENF11 — ``search`` de ``paiements``/``echeancier`` publié SANS nul ;
+        la réponse 201 d'``echeancier`` est un TABLEAU (pas une page)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from core.champs_stricts import MOTIF_SANS_NUL
+        from apps.stock import urls as stock_urls
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/stock/', include(stock_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+        base = '/api/django/stock/factures-fournisseur/{id}/'
+        for route in ('paiements/', 'echeancier/'):
+            params = {p['name']: p for p in chemins[base + route]['get']['parameters']}
+            self.assertEqual(params['search']['schema']['pattern'], MOTIF_SANS_NUL, route)
+        reponse = chemins[base + 'echeancier/']['post']['responses']['201']
+        self.assertEqual(
+            reponse['content']['application/json']['schema']['type'], 'array')

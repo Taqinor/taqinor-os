@@ -1128,7 +1128,7 @@ def creer_equipement_depuis_vente_pos(*, company, produit, client,
         marquer_serie_entrepot_sortie(
             company=company, produit_id=produit.id, numero_serie=serie)
     except Exception:  # pragma: no cover - défensif (best-effort)
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'creer_equipement_depuis_vente_pos', exc_info=True)
 
     return equip
 
@@ -1423,7 +1423,7 @@ def notify_followers(ticket, *, event_type, title, body='', link=None,
                 user=user, event_type=event_type, title=title, body=body,
                 link=link, company=ticket.company)
         except Exception:  # pragma: no cover - best-effort, jamais bloquant
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'notify_followers', exc_info=True)
 
 
 # ── ARC37 — sav devient émetteur du bus (core.events) ───────────────────────
@@ -1446,7 +1446,7 @@ def emettre_ticket_resolu(ticket, *, company, user=None, ancien_statut):
             sender=None, ticket=ticket, company=company, user=user,
             ancien_statut=ancien_statut)
     except Exception:  # pragma: no cover - défensif (best-effort)
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'emettre_ticket_resolu', exc_info=True)
 
 
 def emettre_changement_statut_ticket(ticket, *, company, user=None,
@@ -1477,7 +1477,7 @@ def emettre_changement_statut_ticket(ticket, *, company, user=None,
             },
             user=user)
     except Exception:  # pragma: no cover - défensif (best-effort)
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'emettre_changement_statut_ticket', exc_info=True)
 
 
 # ── ASAV12 — LE service unique de transition de statut d'un ticket ──────────

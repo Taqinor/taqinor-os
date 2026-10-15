@@ -28,14 +28,16 @@ site reste de la dette à migrer vers ``get_company_object``.
 import tempfile
 from pathlib import Path
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.http import Http404
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
-from apps.records.models import Tag
 from core import object_scope_scan
 from core.selectors import get_company_object
+
+Tag = django_apps.get_model('records', 'Tag')
 
 User = get_user_model()
 

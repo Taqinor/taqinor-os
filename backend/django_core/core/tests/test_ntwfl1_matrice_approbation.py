@@ -10,6 +10,7 @@ Couvre :
 """
 from decimal import Decimal
 
+from django.apps import apps as django_apps
 from django.test import TestCase
 
 from authentication.models import Company
@@ -141,13 +142,13 @@ class ApprovalPolicyMatriceCompatTests(TestCase):
         cls.company = make_company('taqinor-ntwfl1d', 'Taqinor NTWFL1 D')
 
     def test_matrice_prime_sans_politique_configuree(self):
-        from apps.parametres.models_approvals import ApprovalPolicy
+        ApprovalPolicy = django_apps.get_model('parametres', 'ApprovalPolicy')
         make_matrice(self.company, type_objet='discount', departement='')
         self.assertTrue(
             ApprovalPolicy.requires_approval(self.company, 'discount', 10))
 
     def test_sans_matrice_repli_sur_politique_historique_inchange(self):
-        from apps.parametres.models_approvals import ApprovalPolicy
+        ApprovalPolicy = django_apps.get_model('parametres', 'ApprovalPolicy')
         # Aucune matrice, aucune politique -> False (comportement historique).
         self.assertFalse(
             ApprovalPolicy.requires_approval(self.company, 'discount', 10))

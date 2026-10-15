@@ -47,7 +47,8 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from .champs_stricts import (
-    BooleenStrict, ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin)
+    BooleenStrict, ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+    IdInconnu404Mixin)
 from .conflit_etat import ConflitEtat
 from .parseurs import ListeJSON, ObjetJSON
 
@@ -256,8 +257,8 @@ class WorkflowTemplateSerializer(serializers.Serializer):
 
 
 class WorkflowStepDefinitionSerializer(
-    ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin,
-    serializers.ModelSerializer
+    IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
+    CompanyScopedRelationsMixin, serializers.ModelSerializer
 ):
     """WIR51 — étape (modèle) d'un ``WorkflowDefinition``.
 
@@ -265,7 +266,12 @@ class WorkflowStepDefinitionSerializer(
     (``definition`` alors imposée par le parent, jamais lue du corps) et en
     AUTONOME via ``WorkflowStepDefinitionViewSet`` (``definition`` fournie et
     validée company-scope pour interdire l'accroche à une définition d'un
-    autre tenant)."""
+    autre tenant).
+
+    ERR-ENF11-FUZZ-CORE — en autonome, une ``definition`` (ou un
+    ``formulaire``, une ``etape_alternative_si_echec``) bien formée mais
+    inexistante ou d'une autre société répond 404 « objet inexistant » (plus
+    400) : la requête est conforme, c'est la ressource qui manque."""
 
     class Meta:
         model = WorkflowStepDefinition
@@ -444,7 +450,7 @@ def _champ_formulaire_valide(champ):
 
 
 class MatriceApprobationSerializer(
-    ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin,
+    ChampsStrictsMixin, CompanyScopedRelationsMixin,
     serializers.ModelSerializer
 ):
     """NTWFL1 — matrice d'approbation d'entreprise unifiée.
@@ -462,7 +468,9 @@ class MatriceApprobationSerializer(
 
     avertissements = serializers.SerializerMethodField()
     # ERR-ENF11-FUZZ-CORE — JSON typé et non nul (``null`` était conforme au
-    # schéma ``{}`` puis refusé par le champ de modèle).
+    # schéma ``{}`` puis refusé par le champ de modèle). Montants en CHAÎNE
+    # décimale comme publiés (``ChampsStrictsMixin`` : ``montant_min: 0``
+    # était converti en silence ; aucun écran n'écrit cette table).
     chaine_paliers = ListeJSON(element=dict, required=False)
 
     class Meta:
@@ -800,6 +808,14 @@ class BrandedTemplateSerializer(
         return variables_utilisees(f'{obj.sujet}\n{obj.corps}')
 
 
+@extend_schema_field({'type': 'string',
+                      'anyOf': [{'format': 'ipv4'}, {'format': 'ipv6'}]})
+class AdresseIP(serializers.IPAddressField):
+    """ERR-ENF11-FUZZ-CORE — adresse IPv4 OU IPv6 publiée comme telle :
+    drf-spectacular rend un ``IPAddressField`` « both » en texte libre, que le
+    serveur refusait ensuite (400 sur une requête conforme au schéma)."""
+
+
 # ERR-ENF11-FUZZ-CORE — composant OpenAPI distinct : le nom par défaut
 # « ConsentRecord » entrait en collision avec ``apps.adsengine`` (PUB75) et le
 # schéma publiait SES champs (client_nom…) pour ``core/consent-records/`` :
@@ -822,6 +838,10 @@ class ConsentRecordSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelati
     # apparaissait, ces champs resteraient figés sur une ligne existante.
     _CHAMPS_PREUVE = ('granted', 'occurred_at', 'version_texte',
                       'ip_confirmation')
+    ip_confirmation = AdresseIP(
+        required=False, allow_null=True, label='IP de confirmation',
+        help_text='IP du clic de confirmation (double opt-in), preuve '
+                  'loi 09-08.')
 
     class Meta:
         model = ConsentRecord

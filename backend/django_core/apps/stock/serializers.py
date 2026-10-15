@@ -9,13 +9,14 @@ from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
-from core.champs_stricts import ChaineStricte, ChampsStrictsMixin, DecimalStricte, TexteLie
+from core.champs_stricts import (
+    ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin, TexteLie)
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
 
-from .erreurs_achats import ConflitEtat
+from .erreurs_achats import ConflitEtat, IdInconnu404LignesMixin
 from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -1433,7 +1434,7 @@ class PalierPrixFournisseurSerializer(serializers.ModelSerializer):
         fields = ['id', 'qte_min', 'prix']
 
 
-class PrixFournisseurSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class PrixFournisseurSerializer(IdInconnu404Mixin, ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -1834,7 +1835,7 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
         return value
 
 
-class ReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
+class ReceptionFournisseurSerializer(IdInconnu404LignesMixin, CompanyScopedRelationsMixin,
                                      ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2040,7 +2041,7 @@ class EcheanceFactureFournisseurSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['date_creation']
 
 
-class FactureFournisseurSerializer(SameCompanyFKSerializerMixin,
+class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                    CompanyScopedRelationsMixin,
                                    serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est

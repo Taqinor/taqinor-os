@@ -16,15 +16,20 @@ On pilote le viewset directement via ``APIRequestFactory`` (les actions du kit
 sont testées sans routage d'URL). Modèle + serializer JETABLES (``app_label=
 'core'``, table créée via ``schema_editor``).
 """
+from importlib import import_module
+
 from django.db import connection, models
 from django.test import TestCase
 from django.test.utils import isolate_apps
 from rest_framework import serializers
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.records.views import ChatterViewSetMixin
 from authentication.models import Company, CustomUser
 from core.documents import DocumentMetier, document_viewset
+
+# ENF20 : mixin du chatter résolu par import_module — aucune arête statique
+# core -> apps (contrat core-foundation-is-a-base-layer).
+ChatterViewSetMixin = import_module('apps.records.views').ChatterViewSetMixin
 
 
 # ── Document + serializer JETABLES — registre d'apps ISOLÉ ────────────────────

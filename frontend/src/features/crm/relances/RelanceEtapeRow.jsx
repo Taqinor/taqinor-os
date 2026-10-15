@@ -11,6 +11,7 @@ import { PRIORITE_LABELS } from '../stages'
 import { toastInfo } from '../../../lib/toast'
 import { formatDate } from '../../../lib/format'
 import crmApi from '../../../api/crmApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import PanneauProposerVisite from './PanneauProposerVisite'
 import PanneauScriptAppel from './PanneauScriptAppel'
 import PlanifierVisiteModal from './PlanifierVisiteModal'
@@ -608,9 +609,10 @@ export default function RelanceEtapeRow({
     if (motifsDemandes.current) return
     motifsDemandes.current = true
     Promise.resolve()
-      .then(() => crmApi.getMotifsPerte())
-      .then((r) => setMotifs(
-        (r?.data?.results ?? r?.data ?? []).filter((m) => !m.archived)))
+      .then(() => fetchAllPages((page, { page_size: pageSize } = {}) =>
+        crmApi.getMotifsPerte({ page, page_size: pageSize }).then((r) => r.data)))
+      .then((rows) => setMotifs(
+        (Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived)))
       .catch(() => setMotifs([]))
   }
 

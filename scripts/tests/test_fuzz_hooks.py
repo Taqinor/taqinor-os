@@ -335,6 +335,24 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
         self.assertEqual(corps['client_id'], 1)
 
+    def test_scan_carte_et_photo_de_visite_recoivent_un_png(self):
+        # ERR-ENF11-FUZZ-CRM / -VISITES — deux dépôts de PHOTO dont le serveur
+        # lit les octets : un cas positif en reçoit un PNG décodable.
+        scan = self._corps('POST', '/api/django/crm/leads/scan-carte/',
+                           {'file': b''})
+        self.assertTrue(scan['file'].startswith(b'\x89PNG'))
+        photo = self._corps('POST', '/api/django/visites/visites/{id}/photos/',
+                            {'fichier': b'', 'slot_code': 'general_facade'})
+        self.assertTrue(photo['fichier'].startswith(b'\x89PNG'))
+        self.assertEqual(photo['slot_code'], 'general_facade')
+        piece = self._corps(
+            'POST', '/api/django/crm/relance-etapes/{id}/piece-recue/',
+            {'fichier': b'', 'type_piece': 'facture'})
+        self.assertTrue(piece['fichier'].startswith(b'%PDF-'))
+        negatif = self._corps('POST', '/api/django/crm/leads/scan-carte/',
+                              {'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def _operation_multipart(self, schema):
         corps = types.SimpleNamespace(
             media_type='multipart/form-data', definition={'schema': schema})
@@ -1024,6 +1042,28 @@ class ConfigSchemathesisTests(unittest.TestCase):
         # Les défauts de Schemathesis 4.28 gardés, 428 ajouté.
         self.assertEqual(sorted(attendus),
                          [400, 401, 403, 406, 415, 422, 428])
+
+    def test_410_admis_pour_la_seule_route_retiree_du_portail_sav(self):
+        # ERR-ENF11-FUZZ-SAV — ASAV27 : la route retirée répond 410 voulu.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        visees = [op for op in config['operations']
+                  if 'positive_data_acceptance' in op.get('checks', {})]
+        self.assertEqual(len(visees), 1)
+        op = visees[0]
+        self.assertEqual(
+            {k for k in op if k.startswith(('include-', 'exclude-'))},
+            {'include-name'})
+        self.assertEqual(op['include-name'],
+                         'POST /api/django/sav/portail/tickets/')
+        self.assertNotIn('enabled', op)
+        attendus = op['checks']['positive_data_acceptance']['expected-statuses']
+        # Les défauts de Schemathesis 4.28 gardés, 410 ajouté.
+        self.assertEqual(sorted(str(s) for s in attendus),
+                         ['2xx', '401', '403', '404', '409', '410', '429',
+                          '5xx'])
 
 
 if __name__ == '__main__':

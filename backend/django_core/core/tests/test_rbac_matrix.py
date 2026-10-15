@@ -10,6 +10,9 @@ vérifiant le verdict attendu :
 Couvre crm + ventes + stock à 100 % des lignes déclarées ; garantit aussi que
 tout endpoint métier hors matrice serait détectable (via l'inventaire YRBAC1).
 """
+from importlib import import_module
+
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase
@@ -17,9 +20,13 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.roles.models import Role
-from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from core import rbac_matrix
+
+Role = django_apps.get_model('roles', 'Role')
+# ENF20 : registre lu dans son emplacement unique (garde SPL300), sans arête
+# statique core -> apps (contrat core-foundation-is-a-base-layer).
+ROLES_SYSTEME = import_module(
+    'apps.roles.permissions_registre').CANONICAL_SYSTEM_ROLES
 
 User = get_user_model()
 
@@ -45,7 +52,7 @@ class RbacMatrixTests(TestCase):
                 # Repli : recréer le rôle depuis la table canonique si
                 # init_roles n'a pas ciblé cette société de test.
                 perms = dict(
-                    (n, p) for n, p in CANONICAL_SYSTEM_ROLES).get(name, [])
+                    (n, p) for n, p in ROLES_SYSTEME).get(name, [])
                 role = Role.objects.create(
                     company=cls.company, nom=name, permissions=list(perms),
                     est_systeme=True)
@@ -56,7 +63,7 @@ class RbacMatrixTests(TestCase):
 
     def test_canonical_role_names_match_source(self):
         """La liste de rôles de la matrice reste alignée sur roles.*."""
-        source_names = [n for n, _ in CANONICAL_SYSTEM_ROLES]
+        source_names = [n for n, _ in ROLES_SYSTEME]
         for name in rbac_matrix.CANONICAL_ROLE_NAMES:
             self.assertIn(
                 name, source_names,

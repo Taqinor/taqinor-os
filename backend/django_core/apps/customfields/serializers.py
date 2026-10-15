@@ -1,5 +1,7 @@
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import (
+    BooleenStrict, ChampsStrictsMixin, IdInconnu404Mixin)
 from core.mixins import SameCompanyFKSerializerMixin
 from .models import (
     CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
@@ -9,13 +11,41 @@ from .models import (
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
 
 
+class ModuleChamp(serializers.CharField):
+    """ENF11 (api-fuzz) — ``module`` d'une définition de champ : chaîne libre
+    côté DRF (un objet personnalisé pose ``custom:<code>``), mais le schéma
+    publie les modules RÉELLEMENT acceptés (natifs + registre) ou le préfixe
+    ``custom:`` — plus n'importe quelle chaîne que ``validate_module`` refuse."""
+
+
+class _ModulePublie(OpenApiSerializerFieldExtension):
+    target_class = 'apps.customfields.serializers.ModuleChamp'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+        from . import registry
+        modules = sorted(
+            {m for m in CustomFieldDef.Module.values
+             if len(m) <= 20} | {m for m in registry.registered_module_keys()
+                                 if len(m) <= 20})
+        schema = dict(schema)
+        schema['anyOf'] = [
+            {'type': 'string', 'enum': modules},
+            {'type': 'string', 'pattern': r'^custom:[^\u0000]+$'},
+        ]
+        return schema
+
+
 class CustomFieldDefSerializer(serializers.ModelSerializer):
     # XPLT16 — `module` reste un CharField explicite (pas un ChoiceField
     # auto-dérivé des choices du modèle) : un objet personnalisé pose ses
     # définitions sous ``custom:<code>`` (préfixe validé dans `validate`, la
     # liste fixe `Module.choices` reste par ailleurs le catalogue des modules
     # natifs — voir `validate` pour la double vérification).
-    module = serializers.CharField(max_length=20)
+    module = ModuleChamp(max_length=20)
 
     class Meta:
         model = CustomFieldDef
@@ -330,7 +360,8 @@ def _validate_fichier_value(field_def, val):
     raise ValidationError({field_def.code: 'Fichier attendu.'})
 
 
-class FieldRolePermissionSerializer(SameCompanyFKSerializerMixin,
+class FieldRolePermissionSerializer(IdInconnu404Mixin,
+                                    SameCompanyFKSerializerMixin,
                                     serializers.ModelSerializer):
     """NTEXT9 — permission de champ par palier de rôle (admin)."""
 
@@ -366,7 +397,7 @@ class FieldRolePermissionSerializer(SameCompanyFKSerializerMixin,
 
 # --- XPLT16 — objets personnalisés no-code ----------------------------------
 
-class CustomObjectDefSerializer(serializers.ModelSerializer):
+class CustomObjectDefSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     actif = BooleenStrict(required=False)  # ENF11 : `0`/`"oui"` = 400
 
     class Meta:

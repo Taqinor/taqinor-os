@@ -47,6 +47,7 @@ def ecrire_identite_client(client) -> bool:
                 'cin': client.cin or '',
             })
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', 'ecrire_identite_client', exc_info=True)
         return False
 
 
@@ -81,7 +82,7 @@ def attacher_tiers_au_lead(lead: Lead, client: Client) -> None:
             Lead.objects.filter(pk=lead.pk).update(tiers_id=tiers_id)
             lead.tiers_id = tiers_id
     except Exception:
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'attacher_tiers_au_lead', exc_info=True)
 
 
 def dupliquer_client(client: Client, *, user) -> Client:

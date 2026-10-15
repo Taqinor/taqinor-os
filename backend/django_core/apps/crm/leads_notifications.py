@@ -7,6 +7,9 @@ from .leads_attribution import responsable_leads_pro
 from .leads_socle import lead_notification_recipients
 from .models import Lead
 from .visites import avec_direction, historique_appareil, resume_historique_fr
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _build_lead_wa_reply_url(lead):
@@ -37,6 +40,7 @@ def _build_lead_wa_reply_url(lead):
         text = urllib.parse.quote(f'Bonjour {nom}, je vous contacte suite à votre demande.')
         return f'https://wa.me/{digits}?text={text}'
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', '_build_lead_wa_reply_url', exc_info=True)
         return None
 
 

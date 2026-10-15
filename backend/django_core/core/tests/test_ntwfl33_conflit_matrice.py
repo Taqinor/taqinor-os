@@ -175,3 +175,19 @@ class ConflitDePorteeApiTests(TenantAPITestCase):
             URL, self._payload(avertissements=['injecté']), format='json')
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(r.json()['avertissements'], [])
+
+    def test_types_stricts_montants_et_actif(self):
+        """ERR-ENF11-FUZZ-CORE (api-fuzz) — montants en chaîne décimale et
+        ``actif`` booléen JSON, comme publiés : ``0`` était converti en
+        silence ; ``""`` reste « borne non fixée »."""
+        client = self.client_as(role=CustomUser.ROLE_ADMIN)
+        for champ, valeur in (('montant_min', 0), ('montant_max', 1.5),
+                              ('actif', 0)):
+            with self.subTest(champ=champ):
+                r = client.post(URL, self._payload(**{champ: valeur}),
+                                format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn(champ, r.json())
+        r = client.post(URL, self._payload(montant_min=''), format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertIsNone(r.json()['montant_min'])

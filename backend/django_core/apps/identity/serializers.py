@@ -7,15 +7,17 @@ from rest_framework import serializers
 
 from core.champs_stricts import (
     MOTIF_URL_HTTP_SOUPLE, URL_HTTP_SOUPLE_MAX, ChampsStrictsMixin,
-    UrlHttpSouple)
+    IdInconnu404Mixin, UrlHttpSouple)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
 
 from .models import IdentityProvider, IpAllowRule, NetworkPolicy, TrustedDevice
 
 
-class IpAllowRuleSerializer(SameCompanyFKSerializerMixin,
+class IpAllowRuleSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                            SameCompanyFKSerializerMixin,
                             serializers.ModelSerializer):
+    # ENF11 (api-fuzz) : politique inconnue (0 compris) = 404 ; texte strict.
     # ENF15 : la politique référencée naît bornée à la société de l'appelant.
     same_company_fields = ('policy',)
 

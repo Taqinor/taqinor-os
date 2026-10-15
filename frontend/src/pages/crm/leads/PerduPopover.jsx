@@ -11,6 +11,7 @@ import { Button, HelpTip, Popover, PopoverAnchor, PopoverContent, PopoverTrigger
 // NTMOB30). Jamais deux boutons micro sur un même champ.
 import { DictationButton, DICTATION_PRIVACY_FR } from '../../../ui/DictationButton'
 import crmApi from '../../../api/crmApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 
 /**
  * PerduPopover — popover « Marquer perdu » réutilisable.
@@ -63,8 +64,9 @@ export default function PerduPopover({
 
   useEffect(() => {
     if (!open || motifs !== null) return
-    crmApi.getMotifsPerte()
-      .then((r) => setMotifs(((r.data?.results ?? r.data) || []).filter((m) => !m.archived)))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getMotifsPerte({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setMotifs((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived)))
       .catch(() => setMotifs([]))
   }, [open, motifs])
 

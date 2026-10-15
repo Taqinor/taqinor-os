@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ClipboardCheck } from 'lucide-react'
 import savApi from '../../api/savApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, Checkbox, ChecklistProgress, Input, Spinner, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -31,8 +32,9 @@ export default function TicketChecklistPanel({ ticketId }) {
     savApi.getTicketChecklist(ticketId)
       .then((r) => setItems(r.data ?? []))
       .catch(() => setItems([]))
-    savApi.getChecklistTemplates()
-      .then((r) => setTemplates(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      savApi.getChecklistTemplates({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setTemplates((Array.isArray(rows) ? rows : (rows?.results ?? []))))
       .catch(() => {})
   }, [ticketId])
 

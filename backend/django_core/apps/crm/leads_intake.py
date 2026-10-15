@@ -1,4 +1,5 @@
-"""Derniers points d'entrée d'arrivée de lead (OCR, carte de visite, WhatsApp, livechat, ticket, import) (SPL24, extrait de crm/services.py : déplacement pur).
+"""Derniers points d'entrée d'arrivée de lead (OCR, carte de visite, WhatsApp, livechat, ticket, import) (SPL24, extrait
+de crm/services.py : déplacement pur).
 
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).
@@ -350,7 +351,7 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
         try:
             notify_new_lead(lead)
         except Exception:  # noqa: BLE001 — best-effort
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'create_lead_from_livechat', exc_info=True)
         # MRY6 — même démarrage explicite que les autres créateurs vivants.
         demarrer_cadence_contact(lead, origine='livechat')
     else:

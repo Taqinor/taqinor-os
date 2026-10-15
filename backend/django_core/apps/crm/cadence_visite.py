@@ -1,4 +1,5 @@
-"""Suivi déclenché par la visite : suspension, reprise, retour de visite (SPL15, extrait de crm/services.py : déplacement pur).
+"""Suivi déclenché par la visite : suspension, reprise, retour de visite (SPL15, extrait de crm/services.py :
+déplacement pur).
 
 Module RACINE de la scission : il importe ``.services`` au niveau module ;
 aucun module de type (a) ne l'importe et ``services`` ne le réexporte pas.

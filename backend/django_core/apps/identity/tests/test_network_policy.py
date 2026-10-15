@@ -144,7 +144,7 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
         r = self._admin().post(
             self.RULES,
             {'policy': foreign.id, 'cidr': '10.0.0.0/8'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
 
     def test_invalid_cidr_rejected(self):
         pol = NetworkPolicy.objects.create(
@@ -171,7 +171,7 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
         r = self._admin().patch(
             f'{self.RULES}{regle.id}/',
             {'policy': etrangere.id, 'cidr': '0.0.0.0/0'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         regle.refresh_from_db()
         self.assertNotEqual(regle.policy_id, etrangere.id)
         self.assertEqual(regle.cidr, '10.0.0.0/8')
@@ -183,7 +183,7 @@ class NetworkPolicyCrudTests(TenantAPITestCase):
         r = self._admin().put(
             f'{self.RULES}{regle.id}/',
             {'policy': etrangere.id, 'cidr': '0.0.0.0/0'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         regle.refresh_from_db()
         self.assertNotEqual(regle.policy_id, etrangere.id)
 

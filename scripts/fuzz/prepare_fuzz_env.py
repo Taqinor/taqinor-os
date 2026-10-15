@@ -571,6 +571,38 @@ def _palettes_ouvertes(qs, company):
     return qs.filter(type_unite='palette', statut='en_preparation')
 
 
+def _semer_partenaire(company, user):
+    """ERR-ENF11-FUZZ-CRM — ``partenaires/{id}/provisionner-acces`` n'ouvre un
+    accès portail qu'à un partenaire AVEC e-mail (le mot de passe temporaire
+    part par e-mail) : un partenaire sans e-mail est un ÉTAT de la donnée que
+    le schéma ne dit pas. Le seed en garantit un, et complète les autres."""
+    import secrets
+
+    modele = _modele('crm.Partenaire')
+    modele.objects.filter(company=company, email='').update(
+        email='partenaire-fuzz@example.com')
+    existant = _premier('crm.Partenaire', company)
+    if existant is not None:
+        return existant
+    return modele.objects.create(
+        company=company, nom='Partenaire fuzz',
+        email='partenaire-fuzz@example.com',
+        token_acces=secrets.token_urlsafe(32))
+
+
+def _semer_contact_secondaire(company, user):
+    """ERR-ENF11-FUZZ-CRM — ``leads/{id}/resume-associe`` prépare le lien du
+    résumé vers l'ASSOCIÉ (contact secondaire) : sans numéro valide sur la
+    fiche, refus nommé. Le seed donne un numéro aux leads qui n'en ont pas."""
+    from django.db.models import Q
+
+    leads = _modele('crm.Lead').objects.filter(
+        Q(contact_secondaire_telephone__isnull=True)
+        | Q(contact_secondaire_telephone=''), company=company)
+    leads.update(contact_secondaire_telephone='+212612345678')
+    return _premier('crm.Lead', company)
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
     ('records.ActivityType', _semer_type_activite),
@@ -579,6 +611,8 @@ SEMEURS = (
     ('installations.Installation', _semer_installation),
     ('monitoring.MonitoringConfig', _semer_supervision),
     ('visites.VisiteTerrain', _semer_visite),
+    ('crm.Partenaire (avec e-mail)', _semer_partenaire),
+    ('crm.Lead (contact secondaire)', _semer_contact_secondaire),
     ('core.Dashboard', _semer_dashboard),
     ('core.BrandedTemplate', _semer_modele_marque),
     ('sav.Equipement', _semer_equipement),
@@ -629,6 +663,13 @@ REGLES_PAR_CHEMIN = (
     (r'^/api/django/sav/', ('contrat', 'contrat_id'), 'sav.ContratMaintenance',
      None, None),
     (r'^/api/django/sav/', ('ticket_ids',), 'sav.Ticket', None, None),
+    # ERR-ENF11-FUZZ-SAV — ``equipement`` / ``ticket`` visent sav.Equipement /
+    # sav.Ticket dans toute l'app (réclamations de garantie, tickets…) : la
+    # table par NOM mélangeait des modèles d'autres apps (« Clé primaire non
+    # valide » sur ``POST warranty-claims``).
+    (r'^/api/django/sav/', ('equipement', 'equipement_id'), 'sav.Equipement',
+     None, None),
+    (r'^/api/django/sav/', ('ticket', 'ticket_id'), 'sav.Ticket', None, None),
     (r'^/api/django/sav/', ('technicien', 'technicien_id'),
      'authentication.CustomUser', _utilisateurs_internes, None),
     (r'^/api/django/sav/tickets/actions-groupees/', ('ids',), 'sav.Ticket',

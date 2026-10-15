@@ -3,15 +3,17 @@ CRÉATION d'une fenêtre de maintenance (``MaintenanceWindowListCreateView.
 perform_create``) : annonce immédiate côté webhook sortant, distincte du
 rappel in-app 24h/1h avant l'échéance (NTOBS9, ``core.notify_registry``,
 resté inchangé — voir ``test_ntobs9_maintenance_window.py``)."""
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.roles.models import Role
 from authentication.models import Company
 from core import events
 from core.maintenance_windows import MaintenanceWindow
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

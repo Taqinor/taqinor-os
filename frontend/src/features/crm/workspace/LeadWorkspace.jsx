@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import ventesApi from '../../../api/ventesApi'
 import { toastPromise, useConfirmDialog } from '../../../ui/confirm'
 import { toastWithUndo } from '../../../lib/toast'
@@ -213,8 +214,13 @@ export default function LeadWorkspace({
 
   useEffect(() => {
     crmApi.getAssignableUsers().then((r) => setUsers(r.data.results ?? r.data)).catch(() => {})
-    crmApi.getTags().then((r) => setTagOptions((r.data.results ?? r.data).filter((t) => !t.archived))).catch(() => {})
-    crmApi.getMotifsPerte().then((r) => setMotifOptions((r.data.results ?? r.data).filter((m) => !m.archived))).catch(() => {})
+    // ENF15 : référentiels paginés (PAGE_SIZE 50) — lecture COMPLÈTE, pas la seule page 1.
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getTags({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setTagOptions((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((t) => !t.archived))).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getMotifsPerte({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setMotifOptions((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((m) => !m.archived))).catch(() => {})
   }, [])
 
   // LW43 — garde d'identité : `leadId` capturé À L'ENVOI (`requestedId`),

@@ -175,12 +175,12 @@ class PublicEndpointHardeningTests(TestCase):
         from django.test import override_settings
         from rest_framework.test import APIClient
 
-        from apps.parametres.models_company import CompanyProfile
         from authentication.models import Company
         from core.models import TenantTheme
 
-        # ENF20 — journal résolu par libellé : core n'importe aucune app.
+        # ENF20 — journal et profil résolus par libellé : core n'importe aucune app.
         AuditLog = django_apps.get_model("audit", "AuditLog")
+        CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
 
         hote = "asec17-banner.example"
         company = Company.objects.create(nom="ASEC17 Co", slug="asec17-co")

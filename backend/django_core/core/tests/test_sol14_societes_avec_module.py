@@ -61,7 +61,7 @@ class SocietesAvecModuleTests(TestCase):
         """SOL9 : un module hors plan est aussi sauté par le beat."""
         from django.apps import apps as django_apps
 
-        from apps.parametres.models import CompanyProfile
+        CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
 
         # ENF20 — modèle d'adminops résolu par libellé : core n'importe aucune app.
         PlanLicence = django_apps.get_model('adminops', 'PlanLicence')

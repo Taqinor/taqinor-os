@@ -137,7 +137,9 @@ def _usage_utilisateurs(company):
     — ``apps.parametres`` est une app de fondation exemptée). ``None`` de
     limite = illimité (aucun plan de sièges défini)."""
     from authentication.models import CustomUser
-    from apps.parametres.models import CompanyProfile
+
+    # ENF20 : profil résolu par libellé, aucune arête statique core -> apps.
+    CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
 
     actifs = CustomUser.objects.filter(company=company, is_active=True).count()
     profile = CompanyProfile.objects.filter(company=company).first()
