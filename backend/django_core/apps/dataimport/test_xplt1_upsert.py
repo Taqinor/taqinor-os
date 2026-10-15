@@ -142,4 +142,5 @@ class TestTenantIsolation(ImportBase):
         resp = self.api_dir.post(
             '/api/django/imports/commit/',
             {'file': f, 'target': 'products', 'mode': 'upsert'}, format='multipart')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # Couple cible/mode inexprimable dans le corps publié : 409 (ENF11).
+        self.assertEqual(resp.status_code, 409, resp.data)

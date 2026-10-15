@@ -467,6 +467,9 @@ def _png_minimal():
 _PNG_MINIMAL = _png_minimal()
 # CSV de métadonnées d'un import en masse : en-têtes + UNE ligne (``nom`` requis).
 _CSV_MINIMAL = b'nom,description\r\nFuzz,Import\r\n'
+# Fichier d'un import générique (dry-run/commit) : un CSV à en-têtes seuls, lisible
+# pour TOUTE cible ; des octets quelconques (NUL…) sont « Lecture impossible ».
+_CSV_IMPORT = b'nom,email\r\n'
 _GED = r'^/api/django/ged/documents/'
 # (chemin, méthodes, {champ du corps: octets d'un fichier valide})
 _FICHIERS_VALIDES = (
@@ -501,6 +504,8 @@ _FICHIERS_VALIDES = (
     # les octets (``store_attachment`` : image PNG/JPEG/WebP).
     (re.compile(r'^/api/django/visites/visites/\{[^/]+\}/photos/$'), {'POST'},
      {'fichier': _PNG_MINIMAL}),
+    (re.compile(r'^/api/django/imports/(dry-run|commit)/$'), {'POST'},
+     {'file': _CSV_IMPORT}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},

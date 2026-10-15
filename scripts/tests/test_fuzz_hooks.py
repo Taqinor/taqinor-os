@@ -552,6 +552,16 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertEqual(self._corps('POST', chemin, {'file': b''}, mode='NEGATIVE')['file'], b'')
         self.assertEqual(self._corps('DELETE', chemin, {'file': b''})['file'], b'')
 
+    def test_import_generique_recoit_un_csv_lisible(self):
+        # ENF11 imports : dry-run/commit lisent un CSV (en-têtes seuls) ; des
+        # octets quelconques sont « Lecture impossible » (400).
+        for chemin in ('/api/django/imports/dry-run/', '/api/django/imports/commit/'):
+            corps = self._corps('POST', chemin, {'file': b'', 'target': 'leads'})
+            self.assertEqual(corps['file'], b'nom,email\r\n')
+            self.assertEqual(corps['target'], 'leads')
+        negatif = self._corps('POST', '/api/django/imports/dry-run/', {'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(

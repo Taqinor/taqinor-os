@@ -242,6 +242,11 @@ class ImportTooLarge(ValueError):
     """Le fichier dépasse le plafond de lignes autorisé (ERR53)."""
 
 
+class ModeNonSupporte(ValueError):
+    """Le mode (maj/upsert) n'est pas câblé pour cette cible : le couple
+    cible/mode est inexprimable dans le corps publié — la vue répond 409."""
+
+
 def _norm(s):
     """Normalise un en-tête : minuscules, sans accents, espaces → underscore.
 
@@ -780,7 +785,7 @@ def _check_mode(target, mode):
     if mode not in MODES:
         raise ValueError("Mode d'import inconnu (creer, maj ou upsert).")
     if mode != 'creer' and target not in UPSERT_TARGETS:
-        raise ValueError(
+        raise ModeNonSupporte(
             f"Le mode « {mode} » n'est pas supporté pour la cible « {target} » "
             "(seuls leads et clients supportent maj/upsert).")
 
