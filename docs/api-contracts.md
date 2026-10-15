@@ -227,7 +227,7 @@
 - frontend/src/api/installationsApi.js :: getInterventionPublique -> /api/django/public/installations/intervention/<>
     date_prevue:inconnu, detail:texte, distance_km:inconnu, eta_minutes:inconnu, fenetre_debut:inconnu, fenetre_fin:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, technicien_avatar_url:inconnu, technicien_nom:inconnu
 - frontend/src/api/installationsApi.js :: getInterventionRapportPublic -> /api/django/public/installations/intervention-rapport/<>
-    chantier_reference:inconnu, consommation:inconnu, date_realisee:inconnu, detail:texte, equipe:inconnu, pdf_url:texte, photos:inconnu, reserves:inconnu, serials:inconnu, signataire_nom:inconnu, signe_le:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, type_intervention_display:inconnu
+    chantier_reference:inconnu, consommation:inconnu, date_realisee:inconnu, detail:texte, equipe:inconnu, pdf_url:inconnu, photos:inconnu, reserves:inconnu, serials:inconnu, signataire_nom:inconnu, signe_le:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, type_intervention_display:inconnu
 - frontend/src/api/installationsApi.js :: getLandedCostDossier -> /api/django/installations/dossiers-import/<>/landed-cost
     dossier_id:inconnu, lignes:inconnu, total_fob:nombre, total_frais:nombre, total_landed:nombre
 - frontend/src/api/installationsApi.js :: getLienClientIntervention -> /api/django/installations/interventions/<>/lien-client

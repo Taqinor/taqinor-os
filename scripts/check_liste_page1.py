@@ -56,7 +56,7 @@ _RESULTS_RE = re.compile(r"\bdata\??\.results\b")
 _HTTP_RE = re.compile(
     r"\.get\(|\bapi\.\w+\(|\baxios\b|\bapiGet\(|\.then\(|\bawait\b")
 _PAGINE_RE = re.compile(
-    r"fetchAllPages|chargerToutesLesPages|toutesLesPages|\.next\b|\bnext\s*[:=]|\bnext\?\.")
+    r"fetchAllPages|lireToutesLesPages|chargerToutesLesPages|toutesLesPages|\.next\b|\bnext\s*[:=]|\bnext\?\.")
 
 # ENF15 : écran qui pagine lui-même — envoie `page` ET lit `count` (total affiché).
 _PAGE_PARAM_RE = re.compile(r"[{,]\s*page\s*[,}:]|\.page\s*=")

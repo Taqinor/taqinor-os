@@ -440,10 +440,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     loadTickets()
     loadContrats()
     if (produits.length === 0) dispatch(fetchProduits())
-    installationsApi.getTypesIntervention()
-      .then((r) => setTypesInterv(
-        (r.data?.results ?? r.data ?? []).filter((t) => !t.archived)))
-      .catch(() => {})
+    lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
+      .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
     checkDevisDivergence()
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
