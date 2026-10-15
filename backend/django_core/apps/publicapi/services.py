@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def _safe_dispatch(company_id, event, payload):
     try:
         delivery.dispatch_event(company_id, event, payload)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception('Webhook dispatch failed for %s', event)
 
 

@@ -70,7 +70,7 @@ def deliver_webhook(self, webhook_id, event, payload):
                 try:
                     from .retry import schedule_first_retry
                     schedule_first_retry(record)
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                     logger.exception(
                         'Could not schedule NTAPI8 long-tail retry for '
                         'delivery %s', record.pk)

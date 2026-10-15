@@ -140,7 +140,7 @@ def _alerter_admins(webhook, compte, heures):
             link='/parametres/api',
             company=webhook.company,
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'Alerte de désactivation webhook %s non émise', webhook.pk)
 
@@ -157,7 +157,7 @@ def apres_livraison(webhook, statut):
         if statut == WebhookDelivery.Statut.SUCCESS:
             return False
         return evaluer_sante(webhook)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour la livraison
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la livraison (D-ENF22-BLE001)
         logger.exception('Évaluation de santé du webhook %s échouée',
                          getattr(webhook, 'pk', None))
         return False
