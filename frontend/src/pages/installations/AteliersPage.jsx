@@ -3,7 +3,7 @@
 // backflush de stock à la clôture, réservations/disponibilité par composant,
 // gate qualité (checklist QC), gamme d'exécution, chatter et bon d'assemblage
 // PDF (worksheet atelier). Aucun coût d'achat / marge n'est affiché ici.
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Plus, Play, CheckCircle2, XCircle, FileText, Printer, RefreshCw, Wrench,
@@ -257,7 +257,7 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
 
   // Chargements read-only isolés dans une fonction pure (pas de setState
   // synchrone au montage) — appelée par l'effet et après chaque action.
-  const load = () => {
+  const load = useCallback(function load() {
     installationsApi.getDisponibiliteAssemblage(ordre.id)
       .then((r) => setDispo(Array.isArray(r.data) ? r.data : []))
       .catch(() => {})
@@ -274,8 +274,8 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
       installationsApi.getLignesAssemblage(ordre.id, { page, page_size: pageSize }).then((r) => r.data))
       .then((rows) => setLignes(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
-  }
-  useEffect(() => { load() }, [ordre.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ordre.id])
+  useEffect(() => { load() }, [load])
 
   const qcBloque = controles.some(
     (c) => c.resultat == null || c.resultat === 'echec')

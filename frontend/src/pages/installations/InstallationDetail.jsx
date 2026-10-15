@@ -422,7 +422,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     loadDossierReglementaire()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargement par chantier : les loaders sont recréés à chaque rendu, seul `id` relance (D-ENF22)
   }, [id])
 
   // N5 — édition/suppression en place d'un équipement capturé.

@@ -554,7 +554,7 @@ export default function InterventionsPage() {
     .catch(() => setError('Impossible de charger les interventions. Réessayez.'))
     .finally(() => setLoading(false))
   const reload = () => { setLoading(true); return fetchData() }
-  useEffect(() => { fetchData() }, [installationFiltre]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65)
+  useEffect(() => { fetchData() }, [installationFiltre]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65, D-ENF22)
   useEffect(() => {
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})

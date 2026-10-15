@@ -105,8 +105,7 @@ export function useFieldOutbox() {
         }
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshCount, flush])
 
   return {
     online, pending, pendingPhotos, failed, flushing, flush, refreshCount,
