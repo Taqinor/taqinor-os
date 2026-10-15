@@ -824,8 +824,8 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   }
 
   // Charge trois ressources indépendantes (étapes/recette/pack) au montage +
-  // après chaque avancement, comme le fait déjà `checkDevisDivergence` plus
-  // haut sur cette même page (même repli d'effet).
+  // après chaque avancement (la divergence du devis, elle, est servie par le
+  // détail du chantier — ACHT67).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de chantier (D-ENF22)
     load()

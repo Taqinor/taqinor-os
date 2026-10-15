@@ -388,29 +388,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // N7 — confirmation supplémentaire si le système est actif au parc.
   const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
 
-  // N15 — détecte si le devis lié a divergé depuis la création du chantier
-  // (nomenclature gelée `bom` vs lignes actuelles du devis).
-  const [devisDivergent, setDevisDivergent] = useState(false)
-  const checkDevisDivergence = () => {
-    if (!installation.devis) {
-      // Reset hors du corps synchrone de l'effet (évite un setState en cascade).
-      Promise.resolve().then(() => setDevisDivergent(false))
-      return
-    }
-    ventesApi.getDevisById(installation.devis).then((r) => {
-      const lignes = (r.data?.lignes ?? []).filter((l) => l.produit)
-      const bom = Array.isArray(current.bom) ? current.bom : []
-      const norm = (arr) => arr
-        .map((x) => `${x.produit ?? x.produit_id}:${Number(x.quantite) || 0}`)
-        .sort()
-        .join('|')
-      const devisKey = norm(lignes)
-      const bomKey = norm(bom)
-      // Un BOM vide (chantier sans devis d'origine) n'est pas une divergence.
-      setDevisDivergent(bom.length > 0 && devisKey !== bomKey)
-    }).catch(() => {})
-  }
-
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
       .then(r => setHistorique(r.data)).catch(() => {})
@@ -442,7 +419,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     if (produits.length === 0) dispatch(fetchProduits())
     lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
       .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
-    checkDevisDivergence()
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
     loadDossierReglementaire()
@@ -941,12 +917,16 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       body: actionError,
       clearable: true,
     },
-    !current.annule && devisDivergent && {
+    // ACHT67 — bannière d'après `divergence_devis` SERVI par le serveur (ACHT66,
+    // contrat installation_divergence_devis.json) : rien n'est recalculé ici.
+    !current.annule && current.divergence_devis?.diverge && {
       key: 'devis-divergent',
       tone: 'warning',
-      title: 'Devis modifié :',
-      body: 'le devis a changé depuis la création du chantier (la nomenclature '
-        + 'gelée diffère des lignes actuelles).',
+      title: 'Devis modifié :',
+      body: 'le devis a changé depuis la création du chantier — '
+        + (current.divergence_devis.lignes ?? []).map((l) => (
+          `${l.designation} : ${l.quantite_bom ?? 'absent'} gelés / ${l.quantite_devis ?? 'absent'} au devis`
+        )).join(' ; ') + '.',
     },
     !current.annule && Array.isArray(current.bom) && current.bom.length === 0 && {
       key: 'bom-absente',
