@@ -14,18 +14,12 @@ import { exempleContrat } from '../../../../test/fixtures/contractSamples'
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 const APPEL = { ...ETAPES.find((e) => e.canal === 'appel' && e.cadence === 'contact') }
 
-vi.mock('../../../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesLead: vi.fn(),
+vi.mock('../../../../api/crmApi', async () => (await import('../../../../test/cadenceFriseMocks')).crmApiFrise({
     getLeadVisites: vi.fn(() => Promise.resolve({ data: { visites: [] } })),
-    marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
-    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
-    reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: { statut: 'a_faire' } })),
     getRelanceEtapeMessage: vi.fn(() => Promise.resolve({ data: { message: 'Bonjour', langue: 'fr' } })),
     getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
     planifierVisiteLead: vi.fn(() => Promise.resolve({ data: { visite: { id: 1 }, prochaine_touche: null } })),
     getPanneauAppel: vi.fn(() => Promise.reject(new Error('indisponible'))),
-  },
 }))
 vi.mock('../../../../lib/toast', () => ({
   toastError: vi.fn(), toastInfo: vi.fn(), toastSuccess: vi.fn(),

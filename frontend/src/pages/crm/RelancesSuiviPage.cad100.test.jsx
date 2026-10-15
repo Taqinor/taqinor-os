@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { mount } from '../../test/relancesSuiviHarness'
+import { isAdminOrResponsableMock } from '../../test/relancesSuiviMocks'
+import { screen, cleanup, waitFor, within } from '@testing-library/react'
 
 /* CAD100 (moitié écran de CAD87) — les deux tableaux de `mesure_cadence`
    (taux de joint par touche × heure × jour × canal, signatures par nombre
@@ -11,45 +12,20 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
 
 const MESURE = exempleContrat('crm', 'mesure_cadence')
 
-const isAdminOrResponsableMock = vi.fn(() => false)
-vi.mock('../../hooks/useHasPermission', () => ({
-  useIsAdminOrResponsable: () => isAdminOrResponsableMock(),
-}))
-vi.mock('react-redux', () => ({
-  useSelector: (sel) => sel({ auth: { user: { id: 42 } } }),
-}))
-
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesSuivi: vi.fn(() => Promise.resolve({
+vi.mock('../../api/crmApi', async () => (await import('../../test/relancesSuiviMocks')).crmApiSuivi({
+  getRelanceEtapesSuivi: vi.fn(() => Promise.resolve({
       data: { results: [], resume: { a_faire: 0, en_retard: 0, fait: 0, sautee: 0, annulee: 0 } },
     })),
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    marquerRelanceEtapeFait: vi.fn(),
-    marquerRelanceEtapeSautee: vi.fn(),
-    reporterRelanceEtape: vi.fn(),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-    getMesureCadence: vi.fn(),
-  },
+  getMesureCadence: vi.fn(),
 }))
 
 import crmApi from '../../api/crmApi'
-import RelancesSuiviPage from './RelancesSuiviPage'
 
 beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(false)
   crmApi.getMesureCadence.mockResolvedValue(reponseContrat('crm', 'mesure_cadence'))
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function mount() {
-  return render(
-    <MemoryRouter>
-      <RelancesSuiviPage />
-    </MemoryRouter>,
-  )
-}
 
 describe('RelancesSuiviPage — CAD100 (KPI touche × heure × jour × canal)', () => {
   it('rend les deux tableaux à partir de la réponse serveur, telle quelle', async () => {

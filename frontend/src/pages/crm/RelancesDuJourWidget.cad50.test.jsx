@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { mount } from '../../test/relancesWidgetHarness'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 
 /* CAD50 — « Annuler »/« Arrêter » n'existaient auparavant que sur la fiche
    du lead. Ce cockpit ne sert que des touches `a_faire` (jamais fait/
@@ -13,35 +13,19 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 const PREMIERE = ETAPES[0]
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesDues: vi.fn(),
-    marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
-    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
+vi.mock('../../api/crmApi', async () => (await import('../../test/cadenceFriseMocks')).crmApiFrise({
     reporterRelanceEtape: vi.fn(),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
     annulerRelanceEtape: vi.fn(),
     arreterCadence: vi.fn(),
-  },
 }))
 vi.mock('../../lib/toast', () => ({ toastError: vi.fn() }))
 
 import crmApi from '../../api/crmApi'
-import RelancesDuJourWidget from './RelancesDuJourWidget'
 
 beforeEach(() => {
   crmApi.getRelanceEtapesDues.mockResolvedValue({ data: { count: 1, results: [PREMIERE] } })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function mount() {
-  return render(
-    <MemoryRouter>
-      <RelancesDuJourWidget />
-    </MemoryRouter>,
-  )
-}
 
 describe('RelancesDuJourWidget — CAD50 (« Annuler »/« Arrêter » hors fiche)', () => {
   it('« Arrêter la cadence » ouvre la saisie du motif, exige un motif, puis appelle crmApi.arreterCadence(leadId, {motif})', async () => {

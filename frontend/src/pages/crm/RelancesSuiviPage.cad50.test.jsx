@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { mount } from '../../test/relancesSuiviHarness'
+import { isAdminOrResponsableMock } from '../../test/relancesSuiviMocks'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 
 /* CAD50 — « Annuler » (retour arrière 24h) et « Arrêter la cadence » (motif
    obligatoire) directement sur la ligne du Suivi des relances : les deux
@@ -12,31 +13,13 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 const ETAPE_MODELE = exempleContrat('crm', 'relance_etapes_suivi').results[0]
 
-const isAdminOrResponsableMock = vi.fn(() => false)
-vi.mock('../../hooks/useHasPermission', () => ({
-  useIsAdminOrResponsable: () => isAdminOrResponsableMock(),
-}))
-vi.mock('react-redux', () => ({
-  useSelector: (sel) => sel({ auth: { user: { id: 42 } } }),
-}))
-
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesSuivi: vi.fn(),
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    marquerRelanceEtapeFait: vi.fn(),
-    marquerRelanceEtapeSautee: vi.fn(),
-    reporterRelanceEtape: vi.fn(),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-    getMesureCadence: vi.fn(() => Promise.reject(new Error('non pertinent ici'))),
-    annulerRelanceEtape: vi.fn(),
-    arreterCadence: vi.fn(),
-  },
+vi.mock('../../api/crmApi', async () => (await import('../../test/relancesSuiviMocks')).crmApiSuivi({
+  getMesureCadence: vi.fn(() => Promise.reject(new Error('non pertinent ici'))),
+  annulerRelanceEtape: vi.fn(),
+  arreterCadence: vi.fn(),
 }))
 
 import crmApi from '../../api/crmApi'
-import RelancesSuiviPage from './RelancesSuiviPage'
 
 function casaISO(d) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(d)
@@ -46,14 +29,6 @@ beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(false)
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function mount() {
-  return render(
-    <MemoryRouter>
-      <RelancesSuiviPage />
-    </MemoryRouter>,
-  )
-}
 
 describe('RelancesSuiviPage — CAD50 (« Annuler »/« Arrêter » hors fiche)', () => {
   it('une touche « a_faire » porte « Arrêter la cadence », motif obligatoire, appelle crmApi.arreterCadence(leadId, {motif})', async () => {
