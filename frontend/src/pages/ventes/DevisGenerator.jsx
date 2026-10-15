@@ -118,7 +118,7 @@ import {
   // ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES — kWh déclaré vs factures du lead.
   MESSAGE_KWH_INCOHERENT,
 } from '../../features/ventes/solar'
-import { formatNumber } from '../../lib/format'
+import { formatNumber, todayLocalIso } from '../../lib/format'
 // CJ2b — l'aperçu du moteur horaire résidentiel vit dans `useApercuEtude`
 // (SPL51, dérivations) et `ApercuSimulation` (SPL52, carte).
 // QJR99 — LA BASCULE : l'écran adopte la machine à états du dimensionnement
@@ -205,7 +205,6 @@ import {
   FENETRE_REFERENCE_MS,
 } from '../../features/ventes/quote/ecranDefauts.js'
 import { AlerteErreur } from '../../ui/AlertesServeur'
-import { todayLocalIso } from '../../lib/dateLocale'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [

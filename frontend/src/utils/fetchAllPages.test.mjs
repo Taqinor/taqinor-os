@@ -6,7 +6,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { fetchAllPages } from './fetchAllPages.js'
+import { fetchAllPages, lireToutesLesPages } from './fetchAllPages.js'
 
 function makeApi(totalItems, pageSize) {
   const pages = []
@@ -163,4 +163,16 @@ test('onPage : chemin SANS count (découverte via next) signale aussi chaque pag
 test('onPage absent : comportement byte-identique (aucune dépendance au callback)', async () => {
   const all = await fetchAllPages(makeApi(120, 50), { concurrency: 3 })
   assert.equal(all.length, 120)
+})
+
+test('lireToutesLesPages : tableau complet, paramètres page/page_size transmis au wrapper', async () => {
+  const appels = []
+  const api = makeApi(250, 100)
+  const all = await lireToutesLesPages((p) => {
+    appels.push(p)
+    return api(p.page).then((data) => ({ data }))
+  })
+  assert.equal(all.length, 250)
+  assert.deepEqual(appels.map((p) => p.page).sort(), [1, 2, 3])
+  assert.ok(appels.every((p) => 'page_size' in p))
 })

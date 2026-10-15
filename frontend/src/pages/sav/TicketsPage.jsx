@@ -102,7 +102,7 @@ import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsEquipem
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
-import { todayLocalIso } from '../../lib/dateLocale'
+import { todayLocalIso as todayISO } from '../../lib/dateLocale'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const TP_ECRAN = 'sav.tickets'
@@ -118,7 +118,6 @@ const lireTout = (appel) => fetchAllPages(
   (page) => appel({ page, page_size: 200 }).then((r) => r.data),
 ).then((res) => (Array.isArray(res) ? res : (res?.results ?? [])))
 
-const todayISO = () => todayLocalIso()
 
 
 // L298 — niveau SLA → présentation (badge ton + libellé « ouvert depuis X j »).
