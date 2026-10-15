@@ -1132,7 +1132,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(AttachmentSerializer(qs, many=True).data)
 
     @oa.extend_schema(
-        request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(), phase=oa.s()),
+        request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(), phase=oa.choice(_RELEVE_PHASES)),
         responses={201: AttachmentSerializer},
     )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-releve',
@@ -1148,7 +1148,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if file is None:
             return Response({'file': 'Fichier requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        phase = (request.data.get('phase') or 'releve').strip()
+        phase = request.data.get('phase', 'releve')
         if phase not in self._RELEVE_PHASES:
             return Response(
                 {'phase': 'Valeur invalide (releve ou drone).'},

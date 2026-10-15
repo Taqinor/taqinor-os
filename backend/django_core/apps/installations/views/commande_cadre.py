@@ -17,6 +17,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -197,7 +198,7 @@ class AppelCommandeViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         except (InvalidOperation, ValueError):
             montant = Decimal('0')
         if montant > ligne.volume_restant:
-            raise ValidationError(
+            raise ConflitEtat(
                 {'quantite': "L'appel dépasse le volume engagé restant."})
 
     def perform_create(self, serializer):

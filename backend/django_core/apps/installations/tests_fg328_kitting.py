@@ -114,7 +114,7 @@ class TestKit(TestCase):
         resp = self.api.post(f'{BASE}/kit-composants/', {
             'kit': kit.id, 'produit': p_other.id, 'quantite': 1,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
 
 class TestOrdreAssemblage(TestCase):
@@ -175,7 +175,7 @@ class TestOrdreAssemblage(TestCase):
         resp = self.api.post(f'{BASE}/ordres-assemblage/', {
             'kit': kit_other.id, 'quantite': 1,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_cycle_demarrer_terminer(self):
         # `terminer` backflush produit le composite (XMFG1) : le kit doit

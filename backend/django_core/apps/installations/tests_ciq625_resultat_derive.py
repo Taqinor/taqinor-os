@@ -61,10 +61,10 @@ class ResultatDeriveTests(TestCase):
         r = self._patch(dict(corps, resultat='conforme'))
         self.assertEqual(r.data['resultat'], 'en_cours')
 
-    def test_reserves_avec_un_essai_faux_400_fr(self):
+    def test_reserves_avec_un_essai_faux_409_fr(self):
         r = self._patch(dict(TOUS_VRAIS, polarite_ok=False,
                              resultat='reserves'))
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('réserves', str(r.data['resultat']))
         self.rec.refresh_from_db()
         self.assertEqual(self.rec.resultat,

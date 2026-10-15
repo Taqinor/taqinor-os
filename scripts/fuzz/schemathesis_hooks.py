@@ -492,6 +492,10 @@ _FICHIERS_VALIDES = (
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
      {'file': b'PVObject_=pvModule\n'}),
+    # Relevé de toiture / drone d'un chantier : ``store_attachment`` lit les
+    # octets magiques (PDF, PNG, JPEG, WebP), inexprimables dans le schéma.
+    (re.compile(r'^/api/django/installations/chantiers/\{[^}]+\}/ajouter-releve/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
 )
 
 

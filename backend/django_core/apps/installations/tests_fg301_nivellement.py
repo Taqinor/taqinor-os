@@ -15,7 +15,7 @@ Couvre :
     anti-conflit FG300) → non résolue, aucune proposition ;
   * la garde fenêtre vide/None/inversée ;
   * le scope société (aucune intervention d'une autre société) ;
-  * l'endpoint nivellement-charge : 200, lecture pour tout rôle, 400 fenêtre
+  * l'endpoint nivellement-charge : 200, lecture pour tout rôle, 409 fenêtre
     inversée.
 
 Pure agrégation, lecture seule, aucun nouveau modèle.
@@ -284,12 +284,12 @@ class TestNivellementEndpoint(TestCase):
             {'debut': LUNDI.isoformat(), 'fin': SEMAINE_FIN.isoformat()})
         self.assertEqual(r.status_code, 200)
 
-    def test_endpoint_fenetre_inversee_400(self):
-        """FG301 — fenêtre inversée côté endpoint → 400."""
+    def test_endpoint_fenetre_inversee_409(self):
+        """FG301 — fenêtre inversée côté endpoint → 409."""
         r = self.api.get(
             f'{BASE}/interventions/nivellement-charge/',
             {'debut': SEMAINE_FIN.isoformat(), 'fin': LUNDI.isoformat()})
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_endpoint_scope_societe(self):
         """FG301 — l'endpoint ne montre que les sur-charges de la société de

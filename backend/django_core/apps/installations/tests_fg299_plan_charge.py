@@ -285,11 +285,11 @@ class TestPlanChargeTenant(TestCase):
         self.assertEqual(r.data['jours_ouvres'], 5)
 
     def test_endpoint_rejects_inverted_window(self):
-        """FG299 — une fenêtre inversée (fin < début) est refusée (400)."""
+        """FG299 — une fenêtre inversée (fin < début) est refusée (409, règle d'ensemble)."""
         r = self.api.get(
             f'{BASE}/interventions/plan-de-charge/',
             {'debut': '2026-06-07', 'fin': '2026-06-01'})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_endpoint_parametres_illisibles_400_nommes(self):
         """ERR-ENF11-FUZZ-INSTALLATIONS — ``debut``/``fin`` hors AAAA-MM-JJ et

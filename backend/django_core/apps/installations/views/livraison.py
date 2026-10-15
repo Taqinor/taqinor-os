@@ -13,6 +13,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -41,7 +42,7 @@ CHAMPS_FIGES_LIVRAISON = ('depot', 'mode_acheminement', 'installation')
 def _exiger_lignes_modifiables(livraison):
     """ACHT20 — les lignes d'une livraison ventilée sont figées."""
     if livraison is not None and livraison.stock_mouvemente:
-        raise ValidationError({'livraison': MESSAGE_LIVRAISON_FIGEE})
+        raise ConflitEtat({'livraison': MESSAGE_LIVRAISON_FIGEE})
 
 
 def _valeur(obj):

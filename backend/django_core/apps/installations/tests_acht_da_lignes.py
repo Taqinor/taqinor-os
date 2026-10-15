@@ -60,7 +60,7 @@ class DaLignesTests(TestCase):
     def test_quantite_negative_refusee(self):
         for q in ('0', '-3'):
             r = self._post_ligne(quantite=q)
-            self.assertEqual(r.status_code, 400, r.data)
+            self.assertEqual(r.status_code, 409, r.data)
             self.assertIn('quantite', r.data)
         self.assertEqual(self.da.lignes.count(), 0)
 
@@ -72,14 +72,14 @@ class DaLignesTests(TestCase):
 
     def test_csv_nan_infinity_rapportes(self):
         csv = (b'designation,quantite,prix_estime\n'
-               b'x,NaN,1\ny,Infinity,1\nz,1,-7\nok,2,10\n')
+               b'x,NaN,1\ny,Infinity,1\nz,1,-7\nn,0,1\nok,2,10\n')
         r = self.api.post(
             f'{BASE}/demandes-achat/{self.da.id}/importer-lignes-csv/',
             {'fichier': SimpleUploadedFile('l.csv', csv)},
             format='multipart')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['importees'], 1)
-        self.assertEqual(len(r.data['erreurs']), 3)
+        self.assertEqual(len(r.data['erreurs']), 4)  # dont quantité nulle (409 de ligne)
         self.assertEqual(self.da.lignes.count(), 1)
         self.da.refresh_from_db()
         self.assertEqual(self.da.montant_estime, Decimal('20'))

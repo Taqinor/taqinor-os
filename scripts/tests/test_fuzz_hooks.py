@@ -516,6 +516,16 @@ class FichiersPdfTests(unittest.TestCase):
                               corps={'fournisseur': 1, 'file': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['file'], b'')
 
+    def test_releve_chantier_recoit_un_pdf_lu_par_le_stockage(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — ajouter-releve : ``store_attachment``
+        # lit les octets magiques ; le champ ``phase`` du formulaire reste intact.
+        chemin = '/api/django/installations/chantiers/{id}/ajouter-releve/'
+        corps = self._corps(chemin=chemin, corps={'file': b'', 'phase': 'drone'})
+        self.assertTrue(corps['file'].startswith(b'%PDF-'))
+        self.assertEqual(corps['phase'], 'drone')
+        negatif = self._corps(chemin=chemin, corps={'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(

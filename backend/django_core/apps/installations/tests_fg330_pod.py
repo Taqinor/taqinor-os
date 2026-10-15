@@ -89,7 +89,7 @@ class TestPreuveLivraison(TestCase):
         resp = self.api.post(f'{BASE}/preuves-livraison/', {
             'livraison': liv_other.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_one_pod_per_livraison(self):
         PreuveLivraison.objects.create(
@@ -98,7 +98,7 @@ class TestPreuveLivraison(TestCase):
         resp = self.api.post(f'{BASE}/preuves-livraison/', {
             'livraison': self.liv.id, 'signataire_nom': 'Doublon',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
 
 class TestScopingAndRoles(TestCase):
