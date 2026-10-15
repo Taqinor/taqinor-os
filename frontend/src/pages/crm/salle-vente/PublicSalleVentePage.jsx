@@ -6,7 +6,7 @@
  * lead/client directement. Chaque consultation réussie journalise une
  * `SalleVenteVue` côté serveur (compteur NTCRM19), sans action ici.
  */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { FileText, Folder, Video, StickyNote, Lock } from 'lucide-react'
 import api from '../../../api/axios'
@@ -34,7 +34,7 @@ export default function PublicSalleVentePage() {
   // envoyé à tout tiers. Il part désormais dans le CORPS d'un POST, et le
   // serveur ne lit plus du tout la chaîne de requête (aucun repli).
   // Sans mot de passe, la lecture reste un GET — inchangée.
-  const charger = (pwd) => {
+  const charger = useCallback((pwd) => {
     setStatus('loading')
     setError(null)
     const requete = pwd
@@ -56,12 +56,11 @@ export default function PublicSalleVentePage() {
           setStatus('invalid')
         }
       })
-  }
+  }, [token])
 
   // setState différé au prochain microtask (jamais synchrone dans l'effet) —
   // évite react-hooks/set-state-in-effect sans changer le comportement visible.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { queueMicrotask(() => charger()) }, [token])
+  useEffect(() => { queueMicrotask(() => charger()) }, [charger])
 
   const handlePasswordSubmit = (e) => {
     e.preventDefault()

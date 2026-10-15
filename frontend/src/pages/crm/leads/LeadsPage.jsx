@@ -606,8 +606,7 @@ export default function LeadsPage() {
       next.delete('new')
       return next
     }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  }, [searchParams, setSearchParams])
 
   // Ouvrir un doublon depuis l'avertissement du formulaire : on charge la fiche
   // complète puis on bascule le formulaire dessus (même panneau, autre lead).
