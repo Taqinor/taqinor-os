@@ -11,8 +11,8 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { Users, ChevronRight } from 'lucide-react'
 import crmApi from '../../../api/crmApi'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Badge, Spinner, EmptyState, Segmented,
+  CardHeader, CardTitle, CardDescription, Badge, Spinner, EmptyState, Segmented,
+  CarteContenu,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import OnboardingTerrain from '../OnboardingTerrain'
@@ -53,7 +53,8 @@ export default function EquipeCommercialeHome() {
       {onglet === 'moi' ? (
         <CommercialHome />
       ) : (
-        <Card>
+        <CarteContenu
+          entete={(
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -61,44 +62,43 @@ export default function EquipeCommercialeHome() {
             </CardTitle>
             <CardDescription>Mon équipe, du plus chargé au moins</CardDescription>
           </CardHeader>
-          <CardContent>
-            {enRetard === null
-              ? <Spinner />
-              : classement.length === 0
-                ? <EmptyState title="Aucune relance en retard dans l'équipe" />
-                : (
-                  <ul className="flex flex-col gap-3">
-                    {classement.map((c) => (
-                      <li key={c.id}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">{c.nom}</span>
-                          <Badge tone="danger">{c.leads.length}</Badge>
-                        </div>
-                        <ul className="flex flex-col divide-y divide-border">
-                          {c.leads.map((lead) => (
-                            <li key={lead.id}>
-                              <button
-                                type="button"
-                                className="flex w-full items-center justify-between gap-2 py-1.5 text-left text-sm"
-                                onClick={() => navigate(`/crm/leads/${lead.id}`)}
-                              >
-                                <span className="min-w-0 flex-1 truncate">
-                                  {[lead.prenom, lead.nom].filter(Boolean).join(' ')
-                                    || `Lead #${lead.id}`}
-                                </span>
-                                <ChevronRight
-                                  className="size-4 text-muted-foreground"
-                                  aria-hidden="true" />
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-          </CardContent>
-        </Card>
+          )}>
+          {enRetard === null
+            ? <Spinner />
+            : classement.length === 0
+              ? <EmptyState title="Aucune relance en retard dans l'équipe" />
+              : (
+                <ul className="flex flex-col gap-3">
+                  {classement.map((c) => (
+                    <li key={c.id}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{c.nom}</span>
+                        <Badge tone="danger">{c.leads.length}</Badge>
+                      </div>
+                      <ul className="flex flex-col divide-y divide-border">
+                        {c.leads.map((lead) => (
+                          <li key={lead.id}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-2 py-1.5 text-left text-sm"
+                              onClick={() => navigate(`/crm/leads/${lead.id}`)}
+                            >
+                              <span className="min-w-0 flex-1 truncate">
+                                {[lead.prenom, lead.nom].filter(Boolean).join(' ')
+                                  || `Lead #${lead.id}`}
+                              </span>
+                              <ChevronRight
+                                className="size-4 text-muted-foreground"
+                                aria-hidden="true" />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              )}
+        </CarteContenu>
       )}
     </div>
   )

@@ -24,13 +24,13 @@ import {
 import installationsApi from '../../api/installationsApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Badge, Spinner, EmptyState, Select, SelectTrigger, SelectValue,
+  CardHeader, CardTitle, CardDescription, Badge, Spinner, EmptyState, Select, SelectTrigger, SelectValue,
   SelectContent, SelectItem, Tabs, TabsList, TabsTrigger, TabsContent,
   Input, Button, toast,
   // APX28 — confirmation avant d'écrire un créneau (fenêtre de RDV client).
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+  CarteContenu,
 } from '../../ui'
 // APX28 — mobile = grille en lecture seule (aucun glisser-déposer au pouce).
 import { useIsMobile } from '../../ui/ResponsiveDialog'
@@ -614,7 +614,8 @@ function ChargeTab() {
       ) : (
         <>
           {/* FG299 — capacité vs affecté */}
-          <Card>
+          <CarteContenu contenu="pt-0"
+            entete={(
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Gauge className="size-4 text-muted-foreground" aria-hidden="true" /> Plan de charge des équipes
@@ -623,42 +624,42 @@ function ChargeTab() {
                 {plan?.jours_ouvres ?? 0} jour(s) ouvré(s) · capacité {plan?.capacite_heures ?? 0} h/technicien
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-0">
-              {(plan?.techniciens ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune affectation sur la période.</p>
-              ) : (
-                <TableauLignes enveloppe="table-scroll" className="data-table"
-                  tete={(
-                    <thead>
-                      <tr>
-                        <th>Technicien</th>
-                        <th>Affecté</th>
-                        <th>Capacité</th>
-                        <th>Charge</th>
-                        <th>Statut</th>
-                      </tr>
-                    </thead>
-                  )}>
-                  {plan.techniciens.map((t) => (
-                    <tr key={t.technicien_id ?? 'na'}>
-                      <td data-label="Technicien">{t.nom}</td>
-                      <td data-label="Affecté">{t.affecte_count}</td>
-                      <td data-label="Capacité">{t.capacite_heures} h</td>
-                      <td data-label="Charge">{t.charge_pct}%</td>
-                      <td data-label="Statut">
-                        {t.sur_reservation
-                          ? <Badge tone="danger">Sur-réservé</Badge>
-                          : <Badge tone="success">OK</Badge>}
-                      </td>
+            )}>
+            {(plan?.techniciens ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune affectation sur la période.</p>
+            ) : (
+              <TableauLignes enveloppe="table-scroll" className="data-table"
+                tete={(
+                  <thead>
+                    <tr>
+                      <th>Technicien</th>
+                      <th>Affecté</th>
+                      <th>Capacité</th>
+                      <th>Charge</th>
+                      <th>Statut</th>
                     </tr>
-                  ))}
-                </TableauLignes>
-              )}
-            </CardContent>
-          </Card>
+                  </thead>
+                )}>
+                {plan.techniciens.map((t) => (
+                  <tr key={t.technicien_id ?? 'na'}>
+                    <td data-label="Technicien">{t.nom}</td>
+                    <td data-label="Affecté">{t.affecte_count}</td>
+                    <td data-label="Capacité">{t.capacite_heures} h</td>
+                    <td data-label="Charge">{t.charge_pct}%</td>
+                    <td data-label="Statut">
+                      {t.sur_reservation
+                        ? <Badge tone="danger">Sur-réservé</Badge>
+                        : <Badge tone="success">OK</Badge>}
+                    </td>
+                  </tr>
+                ))}
+              </TableauLignes>
+            )}
+          </CarteContenu>
 
           {/* FG300 — conflits d'affectation */}
-          <Card>
+          <CarteContenu contenu="pt-0"
+            entete={(
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" /> Conflits d'affectation
@@ -667,45 +668,44 @@ function ChargeTab() {
                 )}
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
-              {(conflits?.conflits ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun conflit détecté sur la période.</p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {conflits.conflits.map((c, i) => (
-                    <li key={`${c.type}-${c.ressource_id}-${c.date}-${i}`}
-                      className="rounded border border-destructive/40 p-2 text-sm">
-                      <span className="font-medium">{c.ressource_nom}</span>
-                      {' — '}{formatDate(c.date)} · {c.count} interventions ({c.type})
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+            )}>
+            {(conflits?.conflits ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun conflit détecté sur la période.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {conflits.conflits.map((c, i) => (
+                  <li key={`${c.type}-${c.ressource_id}-${c.date}-${i}`}
+                    className="rounded border border-destructive/40 p-2 text-sm">
+                    <span className="font-medium">{c.ressource_nom}</span>
+                    {' — '}{formatDate(c.date)} · {c.count} interventions ({c.type})
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CarteContenu>
 
           {/* FG301 — nivellement de charge (proposition, lecture seule) */}
-          <Card>
+          <CarteContenu contenu="pt-0"
+            entete={(
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm">
                 <Scale className="size-4 text-muted-foreground" aria-hidden="true" /> Nivellement proposé
               </CardTitle>
               <CardDescription>Proposition en lecture seule — rien n'est modifié automatiquement.</CardDescription>
             </CardHeader>
-            <CardContent className="pt-0">
-              {(nivellement?.propositions ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun rééquilibrage à proposer.</p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {nivellement.propositions.map((p) => (
-                    <li key={p.intervention_id} className="rounded border border-border p-2 text-sm">
-                      {formatDate(p.date)} · intervention #{p.intervention_id} : {p.de_nom} → {p.vers_nom}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+            )}>
+            {(nivellement?.propositions ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun rééquilibrage à proposer.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {nivellement.propositions.map((p) => (
+                  <li key={p.intervention_id} className="rounded border border-border p-2 text-sm">
+                    {formatDate(p.date)} · intervention #{p.intervention_id} : {p.de_nom} → {p.vers_nom}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CarteContenu>
         </>
       )}
     </div>
@@ -748,28 +748,28 @@ function CamionnettesTab() {
       ) : (
         <div className="flex flex-col gap-3">
           {camionnettes.map((v, i) => (
-            <Card key={v.id ?? v.camionnette_id ?? i}>
+            <CarteContenu key={v.id ?? v.camionnette_id ?? i} contenu="pt-0"
+              entete={(
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-sm">
                   <Truck className="size-4 text-muted-foreground" aria-hidden="true" />
                   {v.nom ?? v.camionnette_nom ?? `Véhicule #${v.id ?? i}`}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-0">
-                {(v.interventions ?? []).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Aucune intervention sur la période.</p>
-                ) : (
-                  <ul className="flex flex-col gap-1 text-sm">
-                    {v.interventions.map((iv) => (
-                      <li key={iv.id} className="flex justify-between">
-                        <span>{iv.installation_reference ?? `#${iv.id}`} — {iv.technicien_nom ?? '—'}</span>
-                        <span className="text-muted-foreground">{formatDate(iv.date_prevue ?? iv.date)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
+              )}>
+              {(v.interventions ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune intervention sur la période.</p>
+              ) : (
+                <ul className="flex flex-col gap-1 text-sm">
+                  {v.interventions.map((iv) => (
+                    <li key={iv.id} className="flex justify-between">
+                      <span>{iv.installation_reference ?? `#${iv.id}`} — {iv.technicien_nom ?? '—'}</span>
+                      <span className="text-muted-foreground">{formatDate(iv.date_prevue ?? iv.date)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CarteContenu>
           ))}
         </div>
       )}
@@ -828,48 +828,49 @@ export function OutilsChantierTab() {
   return (
     <div className="flex flex-col gap-4" data-testid="outils-chantier">
       {/* N43 — suggestion de régime loi 82-21 */}
-      <Card>
+      <CarteContenu contenu="flex flex-wrap items-center gap-2 pt-0"
+        entete={(
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Suggestion de régime — loi 82-21</CardTitle>
           <CardDescription>Renseignez la puissance (kWc) pour obtenir le régime suggéré.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-center gap-2 pt-0">
-          <Input type="number" min="0" step="0.1" value={kwc} placeholder="kWc"
-            aria-label="Puissance en kWc" onChange={(e) => setKwc(e.target.value)} className="w-32" />
-          <Button size="sm" onClick={suggestRegime} disabled={!kwc}>Suggérer</Button>
-          {regime && (
-            <span className="text-sm">
-              Régime suggéré : <Badge tone="primary">{regime.label}</Badge>
-              {' '}(seuil déclaration {regime.seuil_declaration_kwc} kWc, seuil ANRE {regime.seuil_anre_kwc} kWc)
-            </span>
-          )}
-        </CardContent>
-      </Card>
+        )}>
+        <Input type="number" min="0" step="0.1" value={kwc} placeholder="kWc"
+          aria-label="Puissance en kWc" onChange={(e) => setKwc(e.target.value)} className="w-32" />
+        <Button size="sm" onClick={suggestRegime} disabled={!kwc}>Suggérer</Button>
+        {regime && (
+          <span className="text-sm">
+            Régime suggéré : <Badge tone="primary">{regime.label}</Badge>
+            {' '}(seuil déclaration {regime.seuil_declaration_kwc} kWc, seuil ANRE {regime.seuil_anre_kwc} kWc)
+          </span>
+        )}
+      </CarteContenu>
 
       {/* Sélecteur de chantier commun aux deux outils suivants */}
-      <Card>
+      <CarteContenu contenu="pt-0"
+        entete={(
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Chantier</CardTitle>
         </CardHeader>
-        <CardContent className="pt-0">
-          <Select value={chantierId || '__none__'} onValueChange={(v) => setChantierId(v === '__none__' ? '' : v)}>
-            <SelectTrigger className="w-full sm:w-80" aria-label="Choisir un chantier">
-              <SelectValue placeholder="— Choisir un chantier —" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__none__">— Choisir un chantier —</SelectItem>
-              {chantiers.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.reference} — {c.client_nom ?? '—'}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </CardContent>
-      </Card>
+        )}>
+        <Select value={chantierId || '__none__'} onValueChange={(v) => setChantierId(v === '__none__' ? '' : v)}>
+          <SelectTrigger className="w-full sm:w-80" aria-label="Choisir un chantier">
+            <SelectValue placeholder="— Choisir un chantier —" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">— Choisir un chantier —</SelectItem>
+            {chantiers.map((c) => (
+              <SelectItem key={c.id} value={String(c.id)}>
+                {c.reference} — {c.client_nom ?? '—'}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </CarteContenu>
 
       {/* FG79 — générer les interventions standard */}
-      <Card>
+      <CarteContenu contenu="pt-0"
+        entete={(
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
             <Wrench className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -879,37 +880,36 @@ export function OutilsChantierTab() {
             Matérialise la chaîne d'interventions standard du type d'installation du chantier. Idempotent.
           </CardDescription>
         </CardHeader>
-        <CardContent className="pt-0">
-          <Button size="sm" onClick={creerStandard} disabled={!chantierId || busyStd}>
-            {busyStd ? 'Génération…' : 'Générer les interventions standard'}
-          </Button>
-        </CardContent>
-      </Card>
+        )}>
+        <Button size="sm" onClick={creerStandard} disabled={!chantierId || busyStd}>
+          {busyStd ? 'Génération…' : 'Générer les interventions standard'}
+        </Button>
+      </CarteContenu>
 
       {/* FG71 — coût/marge (INTERNE, admin-only) */}
       {isAdmin && (
-        <Card>
+        <CarteContenu contenu="flex flex-col gap-3 pt-0"
+          entete={(
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Synthèse coût / marge (interne)</CardTitle>
             <CardDescription>Réservé admin — jamais affiché ni exporté sur un document client.</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 pt-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <Input type="number" min="0" step="1" value={tarifJour} placeholder="Tarif/jour (MAD)"
-                aria-label="Tarif journalier" onChange={(e) => setTarifJour(e.target.value)} className="w-44" />
-              <Button size="sm" onClick={loadCout} disabled={!chantierId}>Calculer</Button>
+          )}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input type="number" min="0" step="1" value={tarifJour} placeholder="Tarif/jour (MAD)"
+              aria-label="Tarif journalier" onChange={(e) => setTarifJour(e.target.value)} className="w-44" />
+            <Button size="sm" onClick={loadCout} disabled={!chantierId}>Calculer</Button>
+          </div>
+          {coutError && <p className="text-sm text-destructive">{coutError}</p>}
+          {cout && (
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div><div className="text-muted-foreground">Matériel retenu</div><div>{cout.materiel?.cout_retenu} MAD</div></div>
+              <div><div className="text-muted-foreground">Main-d'œuvre (réel)</div><div>{cout.labour?.cout_reel ?? '—'} MAD</div></div>
+              <div><div className="text-muted-foreground">Devis HT</div><div>{cout.devis_total_ht ?? '—'} MAD</div></div>
+              <div><div className="text-muted-foreground">Marge</div><div>{cout.marge ?? '—'} {cout.marge_taux != null ? `(${cout.marge_taux}%)` : ''}</div></div>
             </div>
-            {coutError && <p className="text-sm text-destructive">{coutError}</p>}
-            {cout && (
-              <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                <div><div className="text-muted-foreground">Matériel retenu</div><div>{cout.materiel?.cout_retenu} MAD</div></div>
-                <div><div className="text-muted-foreground">Main-d'œuvre (réel)</div><div>{cout.labour?.cout_reel ?? '—'} MAD</div></div>
-                <div><div className="text-muted-foreground">Devis HT</div><div>{cout.devis_total_ht ?? '—'} MAD</div></div>
-                <div><div className="text-muted-foreground">Marge</div><div>{cout.marge ?? '—'} {cout.marge_taux != null ? `(${cout.marge_taux}%)` : ''}</div></div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          )}
+        </CarteContenu>
       )}
     </div>
   )

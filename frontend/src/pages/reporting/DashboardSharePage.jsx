@@ -8,6 +8,7 @@ import {
 } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { ChargementPage } from '../../ui/ChargementPage'
+import { TableauNu } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    XPLT10 — Partage de dashboard : lien public tokenisé (créer/révoquer).
@@ -359,43 +360,43 @@ export default function DashboardSharePage() {
             className="my-6"
           />
         ) : (
-          <table className="w-full text-sm" aria-label="Partages internes de tableaux de bord">
-            <thead>
-              <tr className="text-left text-xs text-muted-foreground">
-                <th className="py-2">Dashboard</th>
-                <th className="py-2">Destinataire</th>
-                <th className="py-2">Niveau</th>
-                <th className="py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {internes.map((p) => (
-                <tr key={p.id} className="border-t" data-testid={`partage-interne-${p.id}`}>
-                  <td className="py-2">{dashboardTitle(p.dashboard)}</td>
-                  <td className="py-2">
-                    {p.utilisateur
-                      ? nomMembre(p.utilisateur)
-                      : `Rôle : ${LIBELLE_ROLE[p.role] || p.role}`}
-                  </td>
-                  <td className="py-2">
-                    <Badge tone={p.niveau === 'edition' ? 'warning' : 'neutral'}>
-                      {LIBELLE_NIVEAU[p.niveau] || p.niveau}
-                    </Badge>
-                  </td>
-                  <td className="py-2 text-right">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => retirerPartageInterne(p)}
-                      data-testid={`retirer-partage-interne-${p.id}`}
-                    >
-                      <Ban /> Retirer
-                    </Button>
-                  </td>
+          <TableauNu className="w-full text-sm" aria-label="Partages internes de tableaux de bord"
+            tete={(
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="py-2">Dashboard</th>
+                  <th className="py-2">Destinataire</th>
+                  <th className="py-2">Niveau</th>
+                  <th className="py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+            )}>
+            {internes.map((p) => (
+              <tr key={p.id} className="border-t" data-testid={`partage-interne-${p.id}`}>
+                <td className="py-2">{dashboardTitle(p.dashboard)}</td>
+                <td className="py-2">
+                  {p.utilisateur
+                    ? nomMembre(p.utilisateur)
+                    : `Rôle : ${LIBELLE_ROLE[p.role] || p.role}`}
+                </td>
+                <td className="py-2">
+                  <Badge tone={p.niveau === 'edition' ? 'warning' : 'neutral'}>
+                    {LIBELLE_NIVEAU[p.niveau] || p.niveau}
+                  </Badge>
+                </td>
+                <td className="py-2 text-right">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => retirerPartageInterne(p)}
+                    data-testid={`retirer-partage-interne-${p.id}`}
+                  >
+                    <Ban /> Retirer
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </TableauNu>
         )}
       </section>
     </div>

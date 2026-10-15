@@ -4,7 +4,7 @@ import ventesApi from '../../api/ventesApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import {
-  Badge, Button, Card, CardContent, EmptyState, Input, Label, Segmented,
+  Badge, Button, EmptyState, Input, Label, Segmented,
   Skeleton,
   CarteContenu,
 } from '../../ui'
@@ -760,69 +760,67 @@ export default function DossiersReglementairesPage() {
           {!dossiersLoading && !dossiersError && STATUTS_DOSSIER.map((s) => {
             const groupe = dossiersParStatut[s.value] || []
             return (
-              <Card key={s.value} data-statut-groupe={s.value}>
-                <CardContent>
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <h3 className="m-0 text-sm font-semibold text-foreground">
-                      {s.label}
-                    </h3>
-                    <Badge tone="neutral">{groupe.length}</Badge>
-                  </div>
-                  {groupe.length === 0 ? (
-                    <p className="m-0 text-sm text-muted-foreground">
-                      Aucun dossier.
-                    </p>
-                  ) : (
-                    <ul className="m-0 flex list-none flex-col gap-1.5 p-0"
-                        aria-label={`Dossiers — ${s.label}`}>
-                      {groupe.map((d) => {
-                        const urg = urgenceDossier(d.id, echeancesToutes)
-                        return (
-                          <li key={d.id} data-dossier-id={d.id}
-                            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm">
-                            {urg && (
-                              <Badge tone={TON_ALERTE[urg.statut_alerte] ?? 'neutral'}>
-                                {LIBELLE_ALERTE[urg.statut_alerte] ?? urg.statut_alerte}
-                              </Badge>
-                            )}
-                            <span className="font-medium text-foreground">
-                              {d.reference_dossier || `Devis ${d.devis}`}
+              <CarteContenu key={s.value} data-statut-groupe={s.value}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="m-0 text-sm font-semibold text-foreground">
+                    {s.label}
+                  </h3>
+                  <Badge tone="neutral">{groupe.length}</Badge>
+                </div>
+                {groupe.length === 0 ? (
+                  <p className="m-0 text-sm text-muted-foreground">
+                    Aucun dossier.
+                  </p>
+                ) : (
+                  <ul className="m-0 flex list-none flex-col gap-1.5 p-0"
+                      aria-label={`Dossiers — ${s.label}`}>
+                    {groupe.map((d) => {
+                      const urg = urgenceDossier(d.id, echeancesToutes)
+                      return (
+                        <li key={d.id} data-dossier-id={d.id}
+                          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm">
+                          {urg && (
+                            <Badge tone={TON_ALERTE[urg.statut_alerte] ?? 'neutral'}>
+                              {LIBELLE_ALERTE[urg.statut_alerte] ?? urg.statut_alerte}
+                            </Badge>
+                          )}
+                          <span className="font-medium text-foreground">
+                            {d.reference_dossier || `Devis ${d.devis}`}
+                          </span>
+                          {urg && (
+                            <span className="text-muted-foreground">
+                              {urg.libelle} — {urg.date_echeance}
                             </span>
-                            {urg && (
-                              <span className="text-muted-foreground">
-                                {urg.libelle} — {urg.date_echeance}
-                              </span>
-                            )}
-                            <Button type="button" size="sm" variant="ghost"
-                                    onClick={ouvrirDossierDansLeTableau}>
-                              Voir le dossier
-                            </Button>
-                            <Button type="button" size="sm" variant="ghost"
-                                    aria-expanded={detailId === d.id}
-                                    onClick={() => setDetailId(detailId === d.id ? null : d.id)}>
-                              Détail 82-21
-                            </Button>
-                            {d.chantier && (
-                              <Link to={`/chantiers?id=${d.chantier}`}
-                                    className="text-sm underline">
-                                Voir le chantier
-                              </Link>
-                            )}
-                            {detailId === d.id && (
-                              <DossierDetail82
-                                key={`${d.id}-${detailVersion}`}
-                                dossier={d}
-                                onSaved={dossierEnregistre}
-                                onClose={() => setDetailId(null)}
-                              />
-                            )}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-                </CardContent>
-              </Card>
+                          )}
+                          <Button type="button" size="sm" variant="ghost"
+                                  onClick={ouvrirDossierDansLeTableau}>
+                            Voir le dossier
+                          </Button>
+                          <Button type="button" size="sm" variant="ghost"
+                                  aria-expanded={detailId === d.id}
+                                  onClick={() => setDetailId(detailId === d.id ? null : d.id)}>
+                            Détail 82-21
+                          </Button>
+                          {d.chantier && (
+                            <Link to={`/chantiers?id=${d.chantier}`}
+                                  className="text-sm underline">
+                              Voir le chantier
+                            </Link>
+                          )}
+                          {detailId === d.id && (
+                            <DossierDetail82
+                              key={`${d.id}-${detailVersion}`}
+                              dossier={d}
+                              onSaved={dossierEnregistre}
+                              onClose={() => setDetailId(null)}
+                            />
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </CarteContenu>
             )
           })}
         </div>

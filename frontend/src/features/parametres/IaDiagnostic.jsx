@@ -12,7 +12,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { AlertCircle } from 'lucide-react'
 import iaApi from '../../api/iaApi'
 import {
-  Card, CardContent, Button, Spinner, EmptyState, DefinitionList, Badge,
+  Button, Spinner, EmptyState, DefinitionList, Badge,
+  CarteContenu,
 } from '../../ui'
 
 export default function IaDiagnostic() {
@@ -62,46 +63,42 @@ export default function IaDiagnostic() {
 
       {!loadError && schema !== null && (
         <div className="flex flex-col gap-4">
-          <Card>
-            <CardContent className="p-5">
-              <DefinitionList
-                items={[
-                  { term: 'Fournisseur LLM', description: schema.provider || '—' },
-                  { term: 'Modèle', description: schema.model || '—' },
-                  {
-                    term: 'Statut',
-                    description: (
-                      <Badge tone={schema.status === 'ok' ? 'success' : 'neutral'}>
-                        {schema.status || 'inconnu'}
-                      </Badge>
-                    ),
-                  },
-                ]}
-              />
-            </CardContent>
-          </Card>
+          <CarteContenu contenu="p-5">
+            <DefinitionList
+              items={[
+                { term: 'Fournisseur LLM', description: schema.provider || '—' },
+                { term: 'Modèle', description: schema.model || '—' },
+                {
+                  term: 'Statut',
+                  description: (
+                    <Badge tone={schema.status === 'ok' ? 'success' : 'neutral'}>
+                      {schema.status || 'inconnu'}
+                    </Badge>
+                  ),
+                },
+              ]}
+            />
+          </CarteContenu>
 
-          <Card>
-            <CardContent className="p-5">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">
-                Tables autorisées ({tables.length})
-              </h3>
-              {tables.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune table déclarée.</p>
-              ) : (
-                <ul className="flex flex-col gap-2 text-sm">
-                  {tables.map((t) => (
-                    <li key={t.table} className="flex flex-col gap-0.5 border-b border-border pb-2 last:border-b-0 last:pb-0">
-                      <span className="font-mono font-medium text-foreground">{t.table}</span>
-                      {t.description && (
-                        <span className="text-xs text-muted-foreground">{t.description}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+          <CarteContenu contenu="p-5">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">
+              Tables autorisées ({tables.length})
+            </h3>
+            {tables.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune table déclarée.</p>
+            ) : (
+              <ul className="flex flex-col gap-2 text-sm">
+                {tables.map((t) => (
+                  <li key={t.table} className="flex flex-col gap-0.5 border-b border-border pb-2 last:border-b-0 last:pb-0">
+                    <span className="font-mono font-medium text-foreground">{t.table}</span>
+                    {t.description && (
+                      <span className="text-xs text-muted-foreground">{t.description}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CarteContenu>
         </div>
       )}
     </div>

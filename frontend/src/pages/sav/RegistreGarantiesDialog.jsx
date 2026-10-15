@@ -5,6 +5,7 @@ import {
   Badge, Button, Spinner,
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from '../../ui'
+import { TableauNu } from '../../ui/TableauDefilant'
 
 // WR11 / FG290 — registre des garanties matériel & échéancier PAR PARC.
 // Lecture seule : parcs triés par échéance la plus proche, chaque unité avec
@@ -100,35 +101,35 @@ export default function RegistreGarantiesDialog({ onClose }) {
                     Prochaine échéance : {fmtDate(parc.prochaine_echeance)}
                   </span>
                 </header>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-muted-foreground">
-                      <th className="px-3 py-1.5 font-medium">Produit</th>
-                      <th className="px-3 py-1.5 font-medium">Série</th>
-                      <th className="px-3 py-1.5 font-medium">Fin garantie</th>
-                      <th className="px-3 py-1.5 font-medium">Statut</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(parc.items ?? []).map((it) => (
-                      <tr key={it.equipement} className="border-t border-border">
-                        <td className="px-3 py-1.5">
-                          {it.produit || '—'}
-                          {it.marque ? (
-                            <span className="text-xs text-muted-foreground"> · {it.marque}</span>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-1.5">{it.numero_serie || '—'}</td>
-                        <td className="px-3 py-1.5">{fmtDate(it.date_fin_garantie_effective ?? it.date_fin_garantie)}</td>
-                        <td className="px-3 py-1.5">
-                          <Badge tone={STATUT_TONES[it.statut_garantie] ?? 'neutral'}>
-                            {STATUT_LABELS[it.statut_garantie] ?? it.statut_garantie}
-                          </Badge>
-                        </td>
+                <TableauNu className="w-full text-sm"
+                  tete={(
+                    <thead>
+                      <tr className="text-left text-muted-foreground">
+                        <th className="px-3 py-1.5 font-medium">Produit</th>
+                        <th className="px-3 py-1.5 font-medium">Série</th>
+                        <th className="px-3 py-1.5 font-medium">Fin garantie</th>
+                        <th className="px-3 py-1.5 font-medium">Statut</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                  )}>
+                  {(parc.items ?? []).map((it) => (
+                    <tr key={it.equipement} className="border-t border-border">
+                      <td className="px-3 py-1.5">
+                        {it.produit || '—'}
+                        {it.marque ? (
+                          <span className="text-xs text-muted-foreground"> · {it.marque}</span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-1.5">{it.numero_serie || '—'}</td>
+                      <td className="px-3 py-1.5">{fmtDate(it.date_fin_garantie_effective ?? it.date_fin_garantie)}</td>
+                      <td className="px-3 py-1.5">
+                        <Badge tone={STATUT_TONES[it.statut_garantie] ?? 'neutral'}>
+                          {STATUT_LABELS[it.statut_garantie] ?? it.statut_garantie}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </TableauNu>
               </section>
             ))}
           </div>

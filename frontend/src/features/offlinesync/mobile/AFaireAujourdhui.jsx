@@ -12,8 +12,8 @@ import crmApi from '../../../api/crmApi'
 import reportingApi from '../../../api/reportingApi'
 import installationsApi from '../../../api/installationsApi'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Badge, Spinner, EmptyState,
+  CardHeader, CardTitle, CardDescription, Badge, Spinner, EmptyState,
+  CarteContenu,
 } from '../../../ui'
 // NOTE : le module de logique s'appelle `aFaireItems.js` et NON
 // `aFaireAujourdhui.js` — sur un système de fichiers insensible à la casse
@@ -82,7 +82,8 @@ export default function AFaireAujourdhui({ exclure = [] }) {
   }, [exclureCle])
 
   return (
-    <Card data-widget="a-faire-aujourdhui">
+    <CarteContenu data-widget="a-faire-aujourdhui"
+      entete={(
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -95,34 +96,33 @@ export default function AFaireAujourdhui({ exclure = [] }) {
           {items && items.length > 0 && <Badge tone="warning">{items.length}</Badge>}
         </div>
       </CardHeader>
-      <CardContent>
-        {items === null
-          ? <Spinner />
-          : items.length === 0
-            ? <EmptyState title="Rien d'urgent aujourd'hui" />
-            : (
-              <ul className="flex flex-col divide-y divide-border">
-                {items.map((it) => (
-                  <li key={it.id}>
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-2 py-2 text-left"
-                      onClick={() => navigate(it.to)}
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{it.label}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {it.sublabel}
-                        </span>
+      )}>
+      {items === null
+        ? <Spinner />
+        : items.length === 0
+          ? <EmptyState title="Rien d'urgent aujourd'hui" />
+          : (
+            <ul className="flex flex-col divide-y divide-border">
+              {items.map((it) => (
+                <li key={it.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-2 py-2 text-left"
+                    onClick={() => navigate(it.to)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{it.label}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {it.sublabel}
                       </span>
-                      <Badge tone={TONE[it.kind] || 'neutral'}>{it.kind}</Badge>
-                      <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-      </CardContent>
-    </Card>
+                    </span>
+                    <Badge tone={TONE[it.kind] || 'neutral'}>{it.kind}</Badge>
+                    <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+    </CarteContenu>
   )
 }

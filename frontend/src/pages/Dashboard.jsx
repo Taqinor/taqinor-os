@@ -59,9 +59,9 @@ import {
   INSTALLATION_STATUSES, STATUS_LABELS, STATUS_COLORS, canonicalStatus,
 } from '../features/installations/statuses'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent,
-  StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText, Segmented,
+  Card, CardHeader, CardTitle, CardDescription, StatusPill, Badge, Progress, EmptyState, Skeleton, SkeletonText, Segmented,
   ErrorBoundary,
+  CarteContenu,
 } from '../ui'
 import { StateBlock } from '../components/StateBlock'
 import { cn } from '../lib/cn'
@@ -343,7 +343,8 @@ export function KpiCard({ kpi, navigate }) {
 // cette carte affiche l'écran de récupération.
 function ChartCard({ title, description, children, isEmpty, emptyLabel, loading, actions }) {
   return (
-    <Card>
+    <CarteContenu
+      entete={(
       <CardHeader className={actions ? 'flex-row items-center justify-between gap-3' : undefined}>
         <div>
           <CardTitle>{title}</CardTitle>
@@ -351,17 +352,16 @@ function ChartCard({ title, description, children, isEmpty, emptyLabel, loading,
         </div>
         {actions}
       </CardHeader>
-      <CardContent>
-        {loading ? (
-          // Squelette de graphe (K148) — aire fantôme pendant le chargement.
-          <Skeleton className="h-44 w-full" />
-        ) : isEmpty ? (
-          <ChartEmpty description={emptyLabel} />
-        ) : (
-          <ErrorBoundary>{children}</ErrorBoundary>
-        )}
-      </CardContent>
-    </Card>
+      )}>
+      {loading ? (
+        // Squelette de graphe (K148) — aire fantôme pendant le chargement.
+        <Skeleton className="h-44 w-full" />
+      ) : isEmpty ? (
+        <ChartEmpty description={emptyLabel} />
+      ) : (
+        <ErrorBoundary>{children}</ErrorBoundary>
+      )}
+    </CarteContenu>
   )
 }
 
@@ -415,7 +415,8 @@ function PriorityCard({
 }) {
   const count = items.length
   return (
-    <Card>
+    <CarteContenu
+      entete={(
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span className="flex items-center gap-2">
@@ -430,24 +431,23 @@ function PriorityCard({
           {count > 0 && <Badge tone={tone === 'danger' ? 'destructive' : tone === 'warning' ? 'warning' : 'primary'}>{count}</Badge>}
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        {count === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">{emptyLabel}</p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-border">
-            {items.slice(0, 5).map((it) => renderItem(it))}
-            {count > 5 && toAll && (
-              <li className="pt-2">
-                <button type="button" onClick={() => navigate(toAll)}
-                        className="text-xs font-medium text-primary hover:underline">
-                  Voir les {count} →
-                </button>
-              </li>
-            )}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+      )}>
+      {count === 0 ? (
+        <p className="py-4 text-center text-sm text-muted-foreground">{emptyLabel}</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {items.slice(0, 5).map((it) => renderItem(it))}
+          {count > 5 && toAll && (
+            <li className="pt-2">
+              <button type="button" onClick={() => navigate(toAll)}
+                      className="text-xs font-medium text-primary hover:underline">
+                Voir les {count} →
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
+    </CarteContenu>
   )
 }
 
@@ -882,11 +882,9 @@ export function Component() {
         // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
         // (relance les 5 fetch du montage), là où l'ancienne carte d'erreur
         // n'offrait aucun moyen de réessayer sans recharger la page entière.
-        <Card>
-          <CardContent className="py-8 sm:py-10">
-            <StateBlock error={errorMessage} onRetry={reload} />
-          </CardContent>
-        </Card>
+        <CarteContenu contenu="py-8 sm:py-10">
+          <StateBlock error={errorMessage} onRetry={reload} />
+        </CarteContenu>
       ) : showLoading ? (
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-4">
@@ -900,24 +898,24 @@ export function Component() {
           </div>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {Array.from({ length: 2 }).map((unused, i) => (
-              <Card key={i}>
+              <CarteContenu key={i}
+                entete={(
                 <CardHeader>
                   <Skeleton className="h-4 w-40" />
                 </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-40 w-full" />
-                </CardContent>
-              </Card>
+                )}>
+                <Skeleton className="h-40 w-full" />
+              </CarteContenu>
             ))}
           </div>
-          <Card>
+          <CarteContenu
+            entete={(
             <CardHeader>
               <Skeleton className="h-4 w-32" />
             </CardHeader>
-            <CardContent>
-              <SkeletonText lines={5} />
-            </CardContent>
-          </Card>
+            )}>
+            <SkeletonText lines={5} />
+          </CarteContenu>
         </div>
       ) : (
         <div className="flex flex-col gap-4 sm:gap-5">
@@ -1212,7 +1210,8 @@ export function Component() {
 
           {/* Rangée : conversion devis→signé + flux d'activité */}
           <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
-            <Card>
+            <CarteContenu
+              entete={(
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1220,31 +1219,31 @@ export function Component() {
                 </CardTitle>
                 <CardDescription>Taux de signature des devis émis</CardDescription>
               </CardHeader>
-              <CardContent>
-                {conversion.emis === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    Aucun devis émis à analyser.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-end justify-between">
-                      <span className="font-display text-3xl font-semibold tabular-nums leading-none text-foreground">
-                        {formatPercent(conversion.taux)}
-                      </span>
-                      <Badge tone="success">
-                        {formatNumber(conversion.signes)} signé{conversion.signes > 1 ? 's' : ''}
-                      </Badge>
-                    </div>
-                    <Progress value={conversion.taux} tone="success" />
-                    <p className="text-xs text-muted-foreground">
-                      {formatNumber(conversion.signes)} signés sur {formatNumber(conversion.emis)} devis émis
-                    </p>
+              )}>
+              {conversion.emis === 0 ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Aucun devis émis à analyser.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-end justify-between">
+                    <span className="font-display text-3xl font-semibold tabular-nums leading-none text-foreground">
+                      {formatPercent(conversion.taux)}
+                    </span>
+                    <Badge tone="success">
+                      {formatNumber(conversion.signes)} signé{conversion.signes > 1 ? 's' : ''}
+                    </Badge>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <Progress value={conversion.taux} tone="success" />
+                  <p className="text-xs text-muted-foreground">
+                    {formatNumber(conversion.signes)} signés sur {formatNumber(conversion.emis)} devis émis
+                  </p>
+                </div>
+              )}
+            </CarteContenu>
 
-            <Card className="lg:col-span-2">
+            <CarteContenu classe="lg:col-span-2"
+              entete={(
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Activity className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1252,44 +1251,43 @@ export function Component() {
                 </CardTitle>
                 <CardDescription>Derniers devis et factures</CardDescription>
               </CardHeader>
-              <CardContent>
-                {activite.length === 0 ? (
-                  <EmptyState
-                    icon={Activity}
-                    title="Aucune activité"
-                    description="Vos derniers devis et factures apparaîtront ici."
-                    className="border-0 px-0 py-8"
-                  />
-                ) : (
-                  <ul className="flex flex-col divide-y divide-border">
-                    {activite.map((a) => {
-                      const Icon = a.type === 'devis' ? FileText : ReceiptText
-                      return (
-                        <li key={a.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-                          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                            <Icon className="size-4" aria-hidden="true" />
+              )}>
+              {activite.length === 0 ? (
+                <EmptyState
+                  icon={Activity}
+                  title="Aucune activité"
+                  description="Vos derniers devis et factures apparaîtront ici."
+                  className="border-0 px-0 py-8"
+                />
+              ) : (
+                <ul className="flex flex-col divide-y divide-border">
+                  {activite.map((a) => {
+                    const Icon = a.type === 'devis' ? FileText : ReceiptText
+                    return (
+                      <li key={a.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <Icon className="size-4" aria-hidden="true" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {a.type === 'devis' ? 'Devis' : 'Facture'} {a.reference ?? '—'}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {a.client || 'Client non renseigné'} · {formatDate(a.date)}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="text-sm font-medium tabular-nums text-foreground">
+                            {a.montant != null ? formatMAD(a.montant, { decimals: 0 }) : '—'}
                           </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-foreground">
-                              {a.type === 'devis' ? 'Devis' : 'Facture'} {a.reference ?? '—'}
-                            </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {a.client || 'Client non renseigné'} · {formatDate(a.date)}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 flex-col items-end gap-1">
-                            <span className="text-sm font-medium tabular-nums text-foreground">
-                              {a.montant != null ? formatMAD(a.montant, { decimals: 0 }) : '—'}
-                            </span>
-                            {a.statut && <StatusPill status={a.statut} label={a.statut} />}
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </CardContent>
-            </Card>
+                          {a.statut && <StatusPill status={a.statut} label={a.statut} />}
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </CarteContenu>
           </div>
 
           {/* ZSAL3 — Tableau de bord « Mes équipes » (autonome : ne rend rien
@@ -1311,7 +1309,8 @@ export function Component() {
           {/* FG8 — Flux d'activités planifiées (records.Activity).
               VX189(c) — cv-auto : section liste/texte sous le pli, jamais un
               graphique recharts (voir index.css). */}
-          <Card className="cv-auto">
+          <CarteContenu classe="cv-auto"
+            entete={(
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -1319,16 +1318,16 @@ export function Component() {
               </CardTitle>
               <CardDescription>Activités ouvertes qui vous sont assignées</CardDescription>
             </CardHeader>
-            <CardContent>
-              <Suspense fallback={<p className="text-sm text-muted-foreground">Chargement…</p>}>
-                <ActivityFeedWidget limit={5} />
-              </Suspense>
-            </CardContent>
-          </Card>
+            )}>
+            <Suspense fallback={<p className="text-sm text-muted-foreground">Chargement…</p>}>
+              <ActivityFeedWidget limit={5} />
+            </Suspense>
+          </CarteContenu>
 
           {/* Alerte factures en retard — VX189(c) cv-auto (liste, sous le pli). */}
           {facturesEnRetard.length > 0 && (
-            <Card className="border-destructive/30 bg-destructive/5 cv-auto">
+            <CarteContenu classe="border-destructive/30 bg-destructive/5 cv-auto"
+              entete={(
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-destructive">
                   <Clock className="size-4" aria-hidden="true" />
@@ -1336,22 +1335,21 @@ export function Component() {
                 </CardTitle>
                 <CardDescription>Factures dont l'échéance est dépassée — à relancer.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <ul className="flex flex-col gap-1.5">
-                  {facturesEnRetard.map((f) => (
-                    <li key={f.id} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate text-foreground">
-                        <span className="font-medium">{f.reference}</span>
-                        <span className="text-muted-foreground"> · {f.client_nom || '—'}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums font-medium text-destructive">
-                        {f.total_ttc != null ? formatMAD(f.total_ttc, { decimals: 0 }) : '—'}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+              )}>
+              <ul className="flex flex-col gap-1.5">
+                {facturesEnRetard.map((f) => (
+                  <li key={f.id} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="truncate text-foreground">
+                      <span className="font-medium">{f.reference}</span>
+                      <span className="text-muted-foreground"> · {f.client_nom || '—'}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums font-medium text-destructive">
+                      {f.total_ttc != null ? formatMAD(f.total_ttc, { decimals: 0 }) : '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </CarteContenu>
           )}
         </div>
       )}

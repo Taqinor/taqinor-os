@@ -18,6 +18,7 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
   toast,
 } from '../../ui'
+import { TableauNu } from '../../ui/TableauDefilant'
 
 const STATUTS = [
   ['disponible', 'Disponible'],
@@ -248,59 +249,59 @@ export default function OutillagePage() {
       ) : (
         <Card>
           <CardContent className="p-0">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Outil</th>
-                  <th className="m-hide">Catégorie</th>
-                  <th className="m-hide">Étiquette</th>
-                  <th className="m-hide">N° de série</th>
-                  <th>Emplacement</th>
-                  <th>Statut</th>
-                  <th aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((o) => (
-                  <tr key={o.id} className="cursor-pointer" onClick={() => openEdit(o)}>
-                    <td data-label="Outil" className="font-medium">
-                      <span className="inline-flex items-center gap-1.5">
-                        {o.nom}
-                        {/* FG80/WIR28 — conformité légale de calibration (multimètres,
-                            testeurs de terre, harnais…) : `a_calibrer` vient tel quel
-                            du serializer, jamais recalculé côté front. */}
-                        {o.a_calibrer && <Badge tone="danger">À calibrer</Badge>}
-                      </span>
-                    </td>
-                    <td data-label="Catégorie" className="m-hide">{o.categorie || '—'}</td>
-                    <td data-label="Étiquette" className="m-hide">{o.asset_tag || '—'}</td>
-                    <td data-label="N° de série" className="m-hide">{o.numero_serie || '—'}</td>
-                    <td data-label="Emplacement">
-                      {o.emplacement_nom || <Badge tone="neutral">Hors emplacement</Badge>}
-                    </td>
-                    <td data-label="Statut">
-                      <StatusPill tone={STATUT_TONES[o.statut] ?? 'neutral'}
-                        label={STATUT_LABELS[o.statut] ?? o.statut} />
-                    </td>
-                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
-                      {o.intervalle_calibration_mois > 0 && (
-                        <IconButton size="sm" variant="ghost" label="Enregistrer une calibration"
-                          onClick={() => calibrer(o)}>
-                          <CalendarCheck className="size-4" aria-hidden="true" />
-                        </IconButton>
-                      )}
-                      <IconButton size="sm" variant="ghost" label="Modifier" onClick={() => openEdit(o)}>
-                        <Pencil className="size-4" aria-hidden="true" />
-                      </IconButton>
-                      <IconButton size="sm" variant="ghost" label="Supprimer"
-                        className="text-destructive hover:text-destructive" onClick={() => remove(o)}>
-                        <Trash2 className="size-4" aria-hidden="true" />
-                      </IconButton>
-                    </td>
+            <TableauNu className="data-table"
+              tete={(
+                <thead>
+                  <tr>
+                    <th>Outil</th>
+                    <th className="m-hide">Catégorie</th>
+                    <th className="m-hide">Étiquette</th>
+                    <th className="m-hide">N° de série</th>
+                    <th>Emplacement</th>
+                    <th>Statut</th>
+                    <th aria-label="Actions" />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+              )}>
+              {filtered.map((o) => (
+                <tr key={o.id} className="cursor-pointer" onClick={() => openEdit(o)}>
+                  <td data-label="Outil" className="font-medium">
+                    <span className="inline-flex items-center gap-1.5">
+                      {o.nom}
+                      {/* FG80/WIR28 — conformité légale de calibration (multimètres,
+                          testeurs de terre, harnais…) : `a_calibrer` vient tel quel
+                          du serializer, jamais recalculé côté front. */}
+                      {o.a_calibrer && <Badge tone="danger">À calibrer</Badge>}
+                    </span>
+                  </td>
+                  <td data-label="Catégorie" className="m-hide">{o.categorie || '—'}</td>
+                  <td data-label="Étiquette" className="m-hide">{o.asset_tag || '—'}</td>
+                  <td data-label="N° de série" className="m-hide">{o.numero_serie || '—'}</td>
+                  <td data-label="Emplacement">
+                    {o.emplacement_nom || <Badge tone="neutral">Hors emplacement</Badge>}
+                  </td>
+                  <td data-label="Statut">
+                    <StatusPill tone={STATUT_TONES[o.statut] ?? 'neutral'}
+                      label={STATUT_LABELS[o.statut] ?? o.statut} />
+                  </td>
+                  <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                    {o.intervalle_calibration_mois > 0 && (
+                      <IconButton size="sm" variant="ghost" label="Enregistrer une calibration"
+                        onClick={() => calibrer(o)}>
+                        <CalendarCheck className="size-4" aria-hidden="true" />
+                      </IconButton>
+                    )}
+                    <IconButton size="sm" variant="ghost" label="Modifier" onClick={() => openEdit(o)}>
+                      <Pencil className="size-4" aria-hidden="true" />
+                    </IconButton>
+                    <IconButton size="sm" variant="ghost" label="Supprimer"
+                      className="text-destructive hover:text-destructive" onClick={() => remove(o)}>
+                      <Trash2 className="size-4" aria-hidden="true" />
+                    </IconButton>
+                  </td>
+                </tr>
+              ))}
+            </TableauNu>
           </CardContent>
         </Card>
       )}

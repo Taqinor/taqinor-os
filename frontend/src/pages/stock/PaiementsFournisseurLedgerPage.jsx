@@ -32,7 +32,7 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast } from '../../ui/confirm'
 import { frenchError } from '../../lib/frenchError'
 import {
-  Button, Input, Badge, EmptyState,   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, Input, Badge, EmptyState, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   CarteContenu,
 } from '../../ui'
 import { PageHeader } from '../../ui/PageHeader'

@@ -5,6 +5,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import { EmptyState, Spinner } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import { PARAM_ONGLET } from './onglets'
+import { TableauNu } from '../../../ui/TableauDefilant'
 
 /* ============================================================================
    CALX346 — MONTER LE DIFFÉRENTIEL DE VERSIONS EN ONGLET DE L'ATELIER.
@@ -156,28 +157,28 @@ export default function DiffVersions({ calepinageId: idPropose } = {}) {
                 description="Ces deux versions sont identiques sur les grandeurs comparées."
               />
             ) : (
-              <table className="mt-3 w-full text-sm" data-testid="cal-diff-versions-tableau">
-                <thead>
-                  <tr className="text-left text-xs text-lune-faint">
-                    <th className="pb-1 pr-3">Champ</th>
-                    <th className="pb-1 pr-3">Avant</th>
-                    <th className="pb-1">Après</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {diff.ecarts.map((ecart) => (
-                    <tr key={ecart.champ} data-testid={`cal-diff-versions-ligne-${ecart.champ}`}>
-                      <td className="py-1 pr-3 text-white">{ecart.libelle}</td>
-                      <td className="py-1 pr-3 text-muted-foreground">
-                        {ecart.avant ?? '—'}
-                      </td>
-                      <td className="py-1 text-muted-foreground">
-                        {ecart.apres ?? '—'}
-                      </td>
+              <TableauNu className="mt-3 w-full text-sm" data-testid="cal-diff-versions-tableau"
+                tete={(
+                  <thead>
+                    <tr className="text-left text-xs text-lune-faint">
+                      <th className="pb-1 pr-3">Champ</th>
+                      <th className="pb-1 pr-3">Avant</th>
+                      <th className="pb-1">Après</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                )}>
+                {diff.ecarts.map((ecart) => (
+                  <tr key={ecart.champ} data-testid={`cal-diff-versions-ligne-${ecart.champ}`}>
+                    <td className="py-1 pr-3 text-white">{ecart.libelle}</td>
+                    <td className="py-1 pr-3 text-muted-foreground">
+                      {ecart.avant ?? '—'}
+                    </td>
+                    <td className="py-1 text-muted-foreground">
+                      {ecart.apres ?? '—'}
+                    </td>
+                  </tr>
+                ))}
+              </TableauNu>
             )
           )}
         </>

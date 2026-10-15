@@ -28,3 +28,10 @@ export function TableauLignes({
     </TableauDefilant>
   )
 }
+
+/* Tableau nu (sans enveloppe) : `tete` = l'élément `<thead>`, les enfants =
+   lignes du `<tbody>`, le reste (className, data-testid, style…) sur le
+   `table`. */
+export function TableauNu({ tete, children, ...table }) {
+  return <table {...table}>{tete}<tbody>{children}</tbody></table>
+}
