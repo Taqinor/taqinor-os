@@ -138,7 +138,7 @@ def champs_non_bornes(classe, requete, societe_a, societe_b):
             continue
         try:
             queryset = champ.get_queryset()
-        except Exception:  # noqa: BLE001 — champ sans queryset exploitable
+        except Exception:  # noqa: BLE001 — champ sans queryset exploitable (D-ENF22-BLE001)
             continue
         if queryset is None:
             continue

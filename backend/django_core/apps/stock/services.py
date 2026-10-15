@@ -568,7 +568,7 @@ def affecter_livraison_directe_chantier(
                 solder_reservations_vente(
                     chantier, {produit.id: quantite}, reference, user=user)
         produit.refresh_from_db()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.info(
             'XPUR23: affectation chantier non tracée pour BCF %s', bc.pk)
 
@@ -1949,7 +1949,7 @@ def annuler_reception_confirmee(reception, user):
                     sender=ReceptionFournisseur, reception=reception,
                     company=reception.company, user=user,
                     lignes=lignes_annulees)
-            except Exception:  # noqa: BLE001 — après commit : journalisé
+            except Exception:  # noqa: BLE001 — après commit : journalisé (D-ENF22-BLE001)
                 logger.exception(
                     'ASTK56: abonné de reception_fournisseur_annulee en '
                     'échec pour la réception %s', reception.pk)
@@ -2861,7 +2861,7 @@ def _emit_mouvement_stock_enregistre(mouvement, company):
         from core.events import mouvement_stock_enregistre
         mouvement_stock_enregistre.send(
             sender=type(mouvement), instance=mouvement, company=company)
-    except Exception:  # noqa: BLE001 — miroir best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — miroir best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'WIR85: émission mouvement_stock_enregistre échouée pour le '
             'mouvement %s', getattr(mouvement, 'pk', '?'), exc_info=True)
@@ -2889,7 +2889,7 @@ def _notify_seuil_atteint_si_franchi(*, company, produit, quantite_avant,
                 quantite_disponible=quantite_apres,
                 seuil=seuil,
             )
-    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock (D-ENF22-BLE001)
         logger.exception('publicapi stock.seuil_atteint dispatch failed')
 
 
@@ -5404,7 +5404,7 @@ def notify_expiring_conformite_documents(company, jours=30):
                 recipients, EventType.SUPPLIER_DOC_EXPIRING,
                 title=titre, body=corps, company=company)
             count += 1
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'notify_expiring_conformite_documents: échec pour doc %s',
                 doc.pk)
@@ -5448,7 +5448,7 @@ def notify_expiring_documents_fournisseur(company, jours=30, *, link=None):
                 recipients, EventType.SUPPLIER_DOC_EXPIRING,
                 title=titre, body=corps, link=link, company=company)
             count += 1
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'notify_expiring_documents_fournisseur: échec pour doc %s',
                 doc['document_id'])
@@ -5792,7 +5792,7 @@ def log_bcf_chatter(bon_commande, *, user, body):
             body=body,
             author=user,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.info(
             'ZPUR11: chatter non journalisé pour BCF %s', bon_commande.pk)
 
@@ -5934,7 +5934,7 @@ def notify_bcf_en_retard(company):
                       f'retard de livraison.'),
                 company=company)
             count += 1
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('notify_bcf_en_retard: échec pour BCF %s', bc.pk)
     return count
 
@@ -5979,7 +5979,7 @@ def notify_bcf_annule(bc):
                       f'{bc.fournisseur.nom if bc.fournisseur_id else "?"} '
                       f'a été annulé.'),
                 company=bc.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('notify_bcf_annule: échec pour BCF %s', bc.pk)
 
 
@@ -6483,7 +6483,7 @@ def log_doublon_override(*, user, instance, detail):
         from core.audit_registry import record
         record('create', instance=instance,
                user=user, detail=detail)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.info('doublon override (audit indisponible): %s', detail)
 
 
@@ -6616,7 +6616,7 @@ def creer_facture_fournisseur_depuis_ocr(
                 uploaded_by=user,
                 **attachment,
             )
-        except Exception:  # noqa: BLE001 — la pièce jointe ne casse jamais
+        except Exception:  # noqa: BLE001 — la pièce jointe ne casse jamais (D-ENF22-BLE001)
             logger.info(
                 'XACC36: pièce jointe OCR non rattachée à %s',
                 facture.reference)
@@ -6700,7 +6700,7 @@ def check_prix_ligne_bcf(
         accord = prix_convenu_fournisseur(
             company, produit_id, fournisseur_id=fournisseur_id,
             a_la_date=a_la_date)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("services.check_prix_ligne_bcf : erreur ignorée (mode dégradé)", exc_info=True)
         accord = None
     if accord and accord.get('prix_convenu') is not None:
@@ -6749,7 +6749,7 @@ def rapport_achats_hors_contrat(
     from .models import LigneBonCommandeFournisseur, BonCommandeFournisseur
     try:
         from apps.installations.selectors import prix_convenu_fournisseur
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("services.rapport_achats_hors_contrat : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
@@ -6774,7 +6774,7 @@ def rapport_achats_hors_contrat(
                 fournisseur_id=bc.fournisseur_id,
                 a_la_date=bc.date_creation.date() if bc.date_creation
                 else None)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning("services.rapport_achats_hors_contrat : erreur ignorée (mode dégradé)", exc_info=True)
             accord = None
         if not accord or accord.get('prix_convenu') is None:
@@ -7147,7 +7147,7 @@ def _log_revision_change(company, bc, user, lines):
             body=body,
             author=user,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.info('XPUR18: révision non journalisée pour BCF %s', bc.pk)
 
 
@@ -7179,7 +7179,7 @@ def _invalidate_approbation_si_hausse(company, bc, montant_avant, montant_apres)
             approbation.delete()
             return True
         return False
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("services._invalidate_approbation_si_hausse : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
@@ -7615,7 +7615,7 @@ def notify_bcf_confirmation_fournisseur(bc):
                     f'pour le {bc.date_confirmee_fournisseur}.'),
                 company=bc.company,
             )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.info(
                 'XPUR22: notification confirmation BCF %s non envoyée',
                 bc.pk)
@@ -7634,7 +7634,7 @@ def notify_bcf_confirmation_fournisseur(bc):
                 'fournisseur.'),
             author=None,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("services.notify_bcf_confirmation_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
@@ -7695,7 +7695,7 @@ def _nom_affiche_societe(company):
         theme = TenantTheme.objects.filter(company=company).first()
         if theme is not None and (theme.nom_affichage or '').strip():
             return theme.nom_affichage.strip()
-    except Exception:  # noqa: BLE001 — la marque ne casse jamais un accès
+    except Exception:  # noqa: BLE001 — la marque ne casse jamais un accès (D-ENF22-BLE001)
         logger.warning("services._nom_affiche_societe : erreur ignorée (mode dégradé)", exc_info=True)
     return (getattr(company, 'nom', '') or '').strip()
 
@@ -7731,7 +7731,7 @@ def _envoyer_identifiants_portail_fournisseur(user, mot_de_passe, company):
             fail_silently=True,
         )
         return True
-    except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès
+    except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès (D-ENF22-BLE001)
         logger.warning(
             "services._envoyer_identifiants_portail_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
         return False
@@ -8092,7 +8092,7 @@ def notify_annonce_livraison_fournisseur(annonce):
                     + '.'),
                 company=bc.company,
             )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.info(
                 'NTPRT22: notification annonce livraison BCF %s non envoyée',
                 bc.pk)
@@ -8116,7 +8116,7 @@ def notify_annonce_livraison_fournisseur(annonce):
                   'en interne.'),
             author=None,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("services.notify_annonce_livraison_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
 
@@ -8851,7 +8851,7 @@ def _notifier_candidature_fournisseur(fournisseur):
             link='/stock/fournisseurs',
             company=fournisseur.company,
         )
-    except Exception:  # noqa: BLE001 - une notification KO ne fait jamais
+    except Exception:  # noqa: BLE001 — une notification KO ne fait jamais (D-ENF22-BLE001)
         # perdre la candidature (elle reste visible dans /stock/fournisseurs).
         logger.warning("services._notifier_candidature_fournisseur : erreur ignorée (mode dégradé)", exc_info=True)
 
@@ -9085,7 +9085,7 @@ def produits_par_ids(company, ids):
 # -- Groupe NTWMS -- couche ENTREPOT (rangement, vagues, colisage, quais) --
 # Definis dans `services_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.services import ...`.
-from .services_wms import (  # noqa: E402
+from .services_wms import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     FENETRE_ROTATION_JOURS,
     affecter_reception_cross_dock,
     appliquer_quarantaine_rappel,

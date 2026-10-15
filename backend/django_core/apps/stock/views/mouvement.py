@@ -119,7 +119,7 @@ class MouvementStockViewSet(CompanyScopedModelViewSet):
                 MOUVEMENTS_EXPORT_JOB_KIND, export_mouvements_xlsx_task,
                 company=request.user.company, user=request.user,
                 mouvement_ids=ids)
-        except Exception:  # noqa: BLE001 — broker down : job déjà en échec
+        except Exception:  # noqa: BLE001 — broker down : job déjà en échec (D-ENF22-BLE001)
             logger.warning(
                 "mouvement.MouvementStockViewSet.export_xlsx : erreur ignorée (mode dégradé)", exc_info=True)
             return Response(

@@ -51,8 +51,8 @@ def parse_bool_strict(valeur):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-from .fournisseur_scm import ScmFournisseurActionsMixin  # noqa: E402
-from ..utils.params import choix_ou_400  # noqa: E402
+from .fournisseur_scm import ScmFournisseurActionsMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from ..utils.params import choix_ou_400  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('categorie', INT, False, 'Catégorie fournisseur (id)'),
@@ -304,7 +304,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                 response.data['ice_duplicate_warning'] = (
                     f"Attention : l'ICE {ice} est déjà utilisé par "
                     f'« {dup.nom} ».')
-        except Exception:  # noqa: BLE001 — le warning ne casse jamais
+        except Exception:  # noqa: BLE001 — le warning ne casse jamais (D-ENF22-BLE001)
             logger.warning(
                 "fournisseur.FournisseurViewSet._attach_ice_warning : erreur ignorée (mode dégradé)", exc_info=True)
 

@@ -28,7 +28,7 @@ SEUIL_ECART_DELAI_PCT = Decimal('20')
 def _dec(value):
     try:
         return Decimal(str(value))
-    except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash.
+    except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash (D-ENF22-BLE001)
         logger.warning("selectors_fournisseur._dec : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('0')
 
