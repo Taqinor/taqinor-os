@@ -155,18 +155,23 @@ def flag_dead_branches(company, *, now=None, min_weeks=DEFAULT_DEAD_BRANCH_WEEKS
     flagged = 0
     for b in branches:
         entity_key = f'dead_branch:{b["node_id"]}'
-        _, created = EngineAlert.objects.get_or_create(
+        # Pas de contrainte d'unicité (company, entity_key) : `get_or_create`
+        # levait MultipleObjectsReturned dès qu'une course avait laissé deux
+        # alertes ouvertes et cassait tout le beat. L'existence est testée.
+        if EngineAlert.objects.filter(
+                company=company, entity_key=entity_key,
+                resolved=False).exists():
+            continue
+        EngineAlert.objects.create(
             company=company, entity_key=entity_key, resolved=False,
-            defaults={
-                'alert_type': EngineAlert.Type.ANOMALIE,
-                'severity': EngineAlert.Severity.INFO,
-                'message': (
-                    f"🔵 Branche morte : l'hypothèse « {b['enonce_fr'][:50]} » "
-                    f"est figée sur son prior depuis ≥ {min_weeks} semaines — "
-                    "à re-tester (file VoI) ou à retirer. Jamais automatique."),
-                'detail': b})
-        if created:
-            flagged += 1
+            alert_type=EngineAlert.Type.ANOMALIE,
+            severity=EngineAlert.Severity.INFO,
+            message=(
+                f"🔵 Branche morte : l'hypothèse « {b['enonce_fr'][:50]} » "
+                f"est figée sur son prior depuis ≥ {min_weeks} semaines — "
+                "à re-tester (file VoI) ou à retirer. Jamais automatique."),
+            detail=b)
+        flagged += 1
     return flagged
 
 

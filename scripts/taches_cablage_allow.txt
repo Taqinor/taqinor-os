@@ -52,9 +52,6 @@ clauses-absentes|SPL207
 clauses-absentes|SPL208
 clauses-absentes|SPL209
 clauses-absentes|SPL210
-clauses-absentes|SPL280
-clauses-absentes|SPL281
-clauses-absentes|SPL282
 contrat-absent|NTCPQ12
 contrat-absent|NTCPQ23
 contrat-absent|NTCPQ27

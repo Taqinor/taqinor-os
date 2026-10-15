@@ -128,3 +128,15 @@ class FlagDeadBranchesTests(TestCase):
         posterior_drift.flag_dead_branches(self.company, min_weeks=4)
         again = posterior_drift.flag_dead_branches(self.company, min_weeks=4)
         self.assertEqual(again, 0)   # dédup par entity_key, pas de doublon
+
+    def test_flag_tolere_deux_alertes_ouvertes_deja_presentes(self):
+        node = self._dead_node()
+        for _ in range(2):
+            EngineAlert.objects.create(
+                company=self.company, entity_key=f'dead_branch:{node.pk}',
+                resolved=False, alert_type=EngineAlert.Type.ANOMALIE,
+                severity=EngineAlert.Severity.INFO, message='doublon')
+        flagged = posterior_drift.flag_dead_branches(self.company, min_weeks=4)
+        self.assertEqual(flagged, 0)
+        self.assertEqual(EngineAlert.objects.filter(
+            company=self.company, resolved=False).count(), 2)

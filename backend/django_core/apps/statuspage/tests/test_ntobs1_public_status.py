@@ -120,6 +120,27 @@ class RafraichirComposantsTaskTest(TestCase):
         api = ComponentStatus.objects.get(nom='API', company=None)
         self.assertEqual(api.statut, ComponentStatus.Statut.OPERATIONAL)
 
+    def test_beat_task_tolere_deux_lignes_systeme_de_meme_nom(self):
+        # (nom, region, company NULL) n'est pas unique en base : deux lignes
+        # ne doivent ni bloquer le rafraîchissement ni en faire naître une 3e.
+        for _ in range(2):
+            ComponentStatus.objects.create(
+                nom='API', region='EU-West/Hetzner', company=None,
+                statut=ComponentStatus.Statut.DEGRADED)
+        fake_services = [
+            {'name': nom, 'status': 'ok', 'detail': ''}
+            for nom in ('database', 'cache', 'storage', 'broker', 'queue')]
+        with mock.patch(
+                'apps.statuspage.tasks.check_services',
+                return_value=fake_services):
+            maj = rafraichir_composants()
+        self.assertGreater(maj, 0)
+        lignes = ComponentStatus.objects.filter(nom='API', company=None)
+        self.assertEqual(lignes.count(), 2)
+        self.assertEqual(
+            lignes.order_by('pk').first().statut,
+            ComponentStatus.Statut.OPERATIONAL)
+
     def test_beat_task_never_raises_when_check_services_fails(self):
         with mock.patch(
                 'apps.statuspage.tasks.check_services',

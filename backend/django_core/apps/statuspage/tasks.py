@@ -53,6 +53,29 @@ def _pire_statut_public(statuts):
     return pire
 
 
+def _poser_statut_composant(nom, statut, now):
+    """Pose le statut courant du composant SYSTÈME ``nom`` et renvoie l'ancien.
+
+    ``(nom, region, company=NULL)`` ne peut PAS être unique en base (NULL
+    distincts) : ``update_or_create`` levait MultipleObjectsReturned dès que
+    deux lignes existaient et le composant ne se rafraîchissait plus. On
+    reprend la plus ancienne ligne, sans jamais en créer une seconde."""
+    ligne = (
+        ComponentStatus.objects
+        .filter(nom=nom, region=PUBLIC_REGION_DEFAUT, company=None)
+        .order_by('pk').first())
+    if ligne is None:
+        ComponentStatus.objects.create(
+            nom=nom, region=PUBLIC_REGION_DEFAUT, company=None,
+            statut=statut, derniere_verification=now)
+        return None
+    ancien = ligne.statut
+    ligne.statut = statut
+    ligne.derniere_verification = now
+    ligne.save(update_fields=['statut', 'derniere_verification', 'updated_at'])
+    return ancien
+
+
 def _logger_changement_statut(nom, region, ancien, nouveau):
     """NTOBS33 — journalise un changement RÉELLEMENT détecté (jamais un tick
     inchangé, jamais bloquant si l'écriture échoue)."""
@@ -136,14 +159,7 @@ def rafraichir_composants():
         ]
         statut = _pire_statut_public(statuts_public)
         try:
-            ancien = (
-                ComponentStatus.objects
-                .filter(nom=nom, region=PUBLIC_REGION_DEFAUT, company=None)
-                .values_list('statut', flat=True).first())
-            ComponentStatus.objects.update_or_create(
-                nom=nom, region=PUBLIC_REGION_DEFAUT, company=None,
-                defaults={'statut': statut, 'derniere_verification': now},
-            )
+            ancien = _poser_statut_composant(nom, statut, now)
             maj += 1
             if ancien != statut:
                 _logger_changement_statut(
@@ -155,14 +171,7 @@ def rafraichir_composants():
 
     statut_ia = _statut_ia_public()
     try:
-        ancien_ia = (
-            ComponentStatus.objects
-            .filter(nom='IA', region=PUBLIC_REGION_DEFAUT, company=None)
-            .values_list('statut', flat=True).first())
-        ComponentStatus.objects.update_or_create(
-            nom='IA', region=PUBLIC_REGION_DEFAUT, company=None,
-            defaults={'statut': statut_ia, 'derniere_verification': now},
-        )
+        ancien_ia = _poser_statut_composant('IA', statut_ia, now)
         maj += 1
         if ancien_ia != statut_ia:
             _logger_changement_statut(
