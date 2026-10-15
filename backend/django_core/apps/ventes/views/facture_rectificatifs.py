@@ -388,20 +388,18 @@ class FactureRectificatifsActionsMixin:
         # d'arrondi de la facture (au prorata, le dernier retour porte le
         # solde au centime), plafond SOUS verrou, re-stockage dans la même
         # transaction, `avoir_cree`, recalcul du statut (ATOT8).
-        from ..domain.facturation_ops import (
-            AvoirPlafondDepasse, AvoirRefuse, creer_avoir_facture,
-        )
+        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
         try:
             avoir = creer_avoir_facture(
                 facture=facture, user=request.user, motif=motif,
                 retour_lignes=lignes, restocker=restocker)
-        except AvoirPlafondDepasse as exc:
-            # CI #997 (3) — même refus d'ÉTAT que creer-avoir : 409.
+        except AvoirRefuse as exc:
+            # ENF11 — les lignes sont conformes au corps publié (validé plus
+            # haut) : produit inconnu ou non vendu, quantité au-delà du reste
+            # retournable, plafond créditable — l'ÉTAT de la facture s'oppose
+            # au retour : 409.
             return Response({'detail': exc.motif},
                             status=status.HTTP_409_CONFLICT)
-        except AvoirRefuse as exc:
-            return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)

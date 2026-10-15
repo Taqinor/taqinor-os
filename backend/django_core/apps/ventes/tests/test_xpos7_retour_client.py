@@ -120,7 +120,8 @@ class TestRetourClient(TestCase):
                 'restocker': True,
                 'lignes': [{'produit': self.panneau.id, 'quantite': '11'}],
             }, format='json')
-        self.assertEqual(r.status_code, 400)
+        # ENF11 : corps conforme, l'ÉTAT de la facture s'y oppose → 409.
+        self.assertEqual(r.status_code, 409)
 
     def test_pas_de_double_retour_au_dela_du_vendu(self):
         api = self._api(self.resp)
@@ -140,7 +141,7 @@ class TestRetourClient(TestCase):
                 'restocker': True,
                 'lignes': [{'produit': self.panneau.id, 'quantite': '4'}],
             }, format='json')
-        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(r2.status_code, 409)
         # Mais un second retour dans la limite restante passe.
         r3 = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/retour-client/',
