@@ -34,6 +34,53 @@ class TestDefinitions(CFBase):
         self.assertTrue(CustomFieldDef.objects.filter(
             company=self.company, module='lead', code='origine_pub').exists())
 
+    def test_options_type_json_un_seul_predicat(self):
+        # CI #1000 (api-fuzz) — ``options`` : liste de chaînes, ``""`` ou
+        # ``null`` ; ``0`` / ``true`` / objet / élément non texte = 400 (le
+        # schéma ne publiait que « tout JSON » : ``options: 0`` conforme refusé).
+        url = '/api/django/custom-fields/definitions/'
+        base = {'module': 'fournisseur', 'libelle': 'L', 'type': 'text'}
+        for n, options in enumerate((0, True, {'a': 'b'}, 'x', ['a', 0])):
+            resp = self.api.post(
+                url, {**base, 'code': f'mauvais_{n}', 'options': options},
+                format='json')
+            self.assertEqual(resp.status_code, 400, (options, resp.content))
+            self.assertIn('options', resp.data)
+        for n, options in enumerate((None, '', [], [' a ', 'b'])):
+            resp = self.api.post(
+                url, {**base, 'code': f'bon_{n}', 'options': options},
+                format='json')
+            self.assertEqual(resp.status_code, 201, (options, resp.content))
+
+    def test_choix_options_non_vides_publie_et_applique(self):
+        # Le corps de création publie « Choix => options non vides » ; le
+        # serveur l'applique (option blanche refusée, plus écartée en silence).
+        import jsonschema
+        from apps.customfields.serializers import corps_definition_resserre
+        regle = corps_definition_resserre()
+        valide = jsonschema.Draft7Validator(regle).is_valid
+        self.assertTrue(valide({'type': 'text', 'options': None}))
+        self.assertTrue(valide({'type': 'choice', 'options': ['A']}))
+        self.assertFalse(valide({'type': 'choice'}))
+        self.assertFalse(valide({'type': 'choice', 'options': []}))
+        self.assertFalse(valide({'type': 'choice', 'options': ['A', ' ']}))
+        self.assertFalse(valide({'type': 'relation', 'relation_module': 'x'}))
+        self.assertTrue(valide({'type': 'relation', 'relation_module': 'lead'}))
+        self.assertFalse(valide({'type': 'formula', 'formule': ' '}))
+        url = '/api/django/custom-fields/definitions/'
+        base = {'module': 'lead', 'libelle': 'L', 'type': 'choice'}
+        for n, options in enumerate((None, [], ['A', ' '])):
+            resp = self.api.post(
+                url, {**base, 'code': f'c_{n}', 'options': options},
+                format='json')
+            self.assertEqual(resp.status_code, 400, (options, resp.content))
+            self.assertIn('options', resp.data)
+        resp = self.api.post(
+            url, {**base, 'code': 'c_ok', 'options': [' A ', 'B']},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['options'], ['A', 'B'])
+
     def test_scoped_to_company(self):
         other = Company.objects.create(slug='cf-other', nom='Autre')
         CustomFieldDef.objects.create(company=other, module='lead',
