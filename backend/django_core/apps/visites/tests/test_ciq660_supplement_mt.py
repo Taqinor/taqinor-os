@@ -149,7 +149,8 @@ class VisiteSupplementMt(VisiteTerrainBase):
             self.assertNotIn(cat, self._categories(visite_id))
             self.assertNotIn(cat, self._detail(visite_id)['mesures'])
         resp = self._mesures(visite_id, 'poste_mt', MESURES_MT['poste_mt'])
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ENF11 (visites) : catégorie hors gabarit = conflit d'état (409), même corps `erreurs`.
+        self.assertEqual(resp.status_code, 409, resp.data)
         resp = self.poster_photo(visite_id, 'cellule_mt')
         self.assertEqual(resp.status_code, 400, resp.data)
         resp = self._terminer(visite_id)

@@ -111,7 +111,8 @@ class VisiteSiteCommerce(VisiteTerrainBase):
             visite_id = self.creer_visite()
             self.assertNotIn('accord_proprietaire', self._slots(visite_id))
             resp = self.poster_photo(visite_id, 'accord_proprietaire')
-            self.assertEqual(resp.status_code, 400, resp.data)
+            # ENF11 (visites) : slot absent du gabarit = 409, même corps `erreurs`.
+            self.assertEqual(resp.status_code, 409, resp.data)
             self.assertIn('slot_code', resp.data['erreurs'])
 
     def test_le_statut_est_relu_du_lead_pas_fige(self):
