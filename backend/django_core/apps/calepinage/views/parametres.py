@@ -103,9 +103,24 @@ _MOTS_BOOLEENS = ('oui', 'vrai', 'true', '1', 'active', 'activee', 'activée',
                   'desactivee', 'désactivée', 'inactive')
 
 
-def _schema_valeur_de_cle(declaration):
+def _forme_publiee(forme):
+    """La forme d'une ``table`` (``parametres_cles.FORMES_TABLES``) telle que
+    le contrat la publie : la MÊME déclaration que le validateur d'écriture,
+    copiée, dont chaque texte porte en plus le motif « sans NUL »."""
+    if isinstance(forme, dict):
+        publiee = {cle: _forme_publiee(sous) for cle, sous in forme.items()}
+        if forme.get('type') == 'string':
+            publiee['pattern'] = MOTIF_SANS_NUL
+        return publiee
+    if isinstance(forme, (list, tuple)):
+        return [_forme_publiee(sous) for sous in forme]
+    return forme
+
+
+def _schema_valeur_de_cle(declaration, forme=None):
     """Le schéma de la ``valeur`` d'une clé à registre, tiré de son type
-    déclaré (``parametres_cles.TYPES_CLES``) — jamais une seconde table."""
+    déclaré (``parametres_cles.TYPES_CLES``) — jamais une seconde table.
+    ``forme`` : celle d'une clé ``table`` (``FORMES_TABLES``)."""
     genre = declaration.get('type')
     bornes = {cle: declaration[cle] for cle in ('minimum', 'maximum')
               if cle in declaration}
@@ -121,18 +136,15 @@ def _schema_valeur_de_cle(declaration):
                           {'type': 'string', 'enum': list(_MOTS_BOOLEENS)}]}
     if genre == 'intervalle_annees':
         return {'type': 'string', 'enum': list(_FENETRES_ANNEES)}
-    # ``table`` : un objet ou une liste non vide, validée par l'étape lectrice.
-    return {'anyOf': [
-        {'type': 'object', 'minProperties': 1,
-         'additionalProperties': {'type': 'number'}},
-        {'type': 'array', 'minItems': 1, 'items': {'type': 'number'}}]}
+    # ``table`` : la forme DÉCLARÉE de la clé, la même que le PUT applique.
+    return _forme_publiee(forme)
 
 
 def _schema_section_a_registre(section):
     """Une section À REGISTRE : AUCUNE clé hors registre, chaque clé
     ``{valeur, source, reference}`` (ou ``null`` pour la retirer)."""
     from ..services.parametres_cles import (
-        SOURCES_ADMISES, registre, type_de_cle,
+        SOURCES_ADMISES, forme_de_table, registre, type_de_cle,
     )
 
     entree = {'type': 'object', 'nullable': True,
@@ -141,7 +153,8 @@ def _schema_section_a_registre(section):
     proprietes = {}
     for cle in registre(section):
         proprietes[cle] = dict(entree, properties={
-            'valeur': _schema_valeur_de_cle(type_de_cle(section, cle)),
+            'valeur': _schema_valeur_de_cle(type_de_cle(section, cle),
+                                            forme_de_table(section, cle)),
             'source': {'type': 'string', 'enum': list(SOURCES_ADMISES)},
             'reference': {'type': 'string', 'nullable': True,
                           'pattern': MOTIF_SANS_NUL}})
