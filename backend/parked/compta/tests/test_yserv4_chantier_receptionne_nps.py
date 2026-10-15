@@ -12,7 +12,7 @@ from apps.compta.models import EnqueteNPS
 from apps.crm.models import Client
 from core.events import chantier_receptionne
 
-from apps.compta import receivers  # noqa: F401  (câblage ready())
+__import__('apps.compta.receivers')  # câblage ready()
 
 
 def make_company(slug='yserv4-co', nom='YSERV4 Co'):

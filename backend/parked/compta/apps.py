@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -18,11 +20,11 @@ class ComptaConfig(AppConfig):
     def ready(self):
         # PACT161/XMKT1 — abonne l'inscription automatique aux séquences de
         # relance à l'événement lead_stage_changed (core.events, M6).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
         # ARC19 — miroir one-way compta.Partenaire → répertoire unifié
         # tiers.Tiers (l'import câble le récepteur post_save ; pont réversible,
         # ODX13-compatible).
-        from . import tiers_bridge  # noqa: F401
+        import_module(f'{self.name}.tiers_bridge')
         # NTDATA11 — enregistre les adaptateurs de métrique (DSO, marge brute)
         # dans la couche sémantique. Le CALCUL reste ici (grand livre) ;
         # `semantic` ne connaît qu'une clé et une fonction.

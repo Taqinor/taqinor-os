@@ -5,6 +5,7 @@ réservé au palier Administrateur/Responsable (``IsResponsableOrAdmin``).
 Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur ; aucun prix d'achat ni marge n'apparaît ici.
 """
+import logging
 import csv
 import io
 
@@ -207,6 +208,13 @@ from .serializers import (
     # AUDV09 / XACC20 — règles d'auto-imputation analytique.
     RegleImputationSerializer,
 )
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'AppelOffreViewSet', 'BordereauPrixViewSet', 'CautionSoumissionViewSet',
+    'DossierSoumissionViewSet', 'EcheanceAOViewSet', 'LigneBordereauViewSet',
+    'PieceSoumissionViewSet', 'ResultatAOViewSet',
+]
 
 
 class _ComptaBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -8005,8 +8013,8 @@ def _resoudre_compte_portail(token):
             from apps.portail.services import enregistrer_connexion_portail
             enregistrer_connexion_portail(
                 compte.id, compte.derniere_connexion)
-        except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès
-            pass
+        except Exception:  # noqa: BLE001 - la trace ne casse jamais l'accès (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("views._resoudre_compte_portail : erreur ignorée (mode dégradé)", exc_info=True)
     return compte
 
 
@@ -8535,7 +8543,7 @@ class ComparateurCashFinancementViewSet(viewsets.ViewSet):
 # ``/api/django/compta/…`` et tous les imports ``from apps.compta.views import
 # AppelOffreViewSet`` déjà écrits. ODX22 (RETRAIT des shims transitoires) reste
 # ouvert : il aura ce shim-ci à retirer, dans le sens inverse d'avant.
-from apps.ao.views import (  # noqa: E402,F401
+from apps.ao.views import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     AppelOffreViewSet,
     BordereauPrixViewSet,
     CautionSoumissionViewSet,
