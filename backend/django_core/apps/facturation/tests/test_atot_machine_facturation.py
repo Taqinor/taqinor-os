@@ -18,8 +18,9 @@ Après CHAQUE règle (relecture en base, jamais l'objet en mémoire) :
 
 1. ``Σ TTC facturé − Σ avoirs actifs ≤ TTC de l'option effective`` pour la
    version courante du devis ET pour chaque devis partenaire de consolidée
-   (une consolidée compte pour chaque devis au prorata de son
-   ``FactureSource.sous_total_ht``) ;
+   (une consolidée compte pour chaque devis au prorata du TTC de ce devis
+   à la consolidation : ATOT3 la compose égale à Σ TTC des devis au
+   centime, palier ARRONDI-100 de chaque devis compris) ;
 2. aucune réponse 5xx — un refus de porte est un 409 (refus d'ÉTAT,
    ea003bef8 / CI #997 fuzz : les quatre portes partagent ce statut) ;
 3. ``solde_devis(...)['porte_facturation']`` (contrat ``devis_solde.json``,
@@ -103,6 +104,8 @@ class MachineFacturation(RuleBasedStateMachine):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
         self.devis_id = self._nouveau_devis().pk
         self.partenaires = []
+        # {facture consolidée: {devis: TTC du devis à la consolidation}}.
+        self.ttc_sources = {}
 
     # ── fixtures ────────────────────────────────────────────────────────
     def _nouveau_devis(self):
@@ -211,6 +214,17 @@ class MachineFacturation(RuleBasedStateMachine):
         self._verifier_reponse(r, (201, 409))
         self._predire(porte, 'consolidee', r)
         if r.status_code == 201:
+            from apps.ventes.models import Devis, Facture
+            from apps.ventes.utils.options import option_totaux
+            ttc = {d.pk: _d(option_totaux(d)['ttc']) for d in
+                   Devis.objects.filter(pk__in=[devis.id, partenaire.id])}
+            # ATOT3 (_composer_remise_et_palier) — la consolidée vaut Σ TTC
+            # des devis AU CENTIME, sinon le serveur refuse : chaque devis y
+            # est donc facturé de SON TTC, base de sa part (``_part``).
+            facture = Facture.objects.get(pk=r.data['id'])
+            assert _d(facture.total_ttc) == sum(ttc.values(), ZERO), (
+                facture.total_ttc, ttc)
+            self.ttc_sources[facture.pk] = ttc
             self.partenaires.append(partenaire.pk)
 
     @rule(rang=st.integers(min_value=0, max_value=5))
@@ -278,14 +292,17 @@ class MachineFacturation(RuleBasedStateMachine):
     # ── l'invariant ───────────────────────────────────────────────────────
     def _part(self, facture, devis):
         """Part de ``facture`` (et de ses avoirs actifs) imputable à
-        ``devis`` : 100 % hors consolidée, prorata HT sinon."""
-        sources = list(facture.sources.all())
-        if not sources:
+        ``devis`` : 100 % hors consolidée, sinon prorata du TTC de chaque
+        devis à la consolidation. Le prorata HT (``FactureSource.
+        sous_total_ht``, lignes AVANT remise et palier) imputait à un devis
+        plus que son TTC dès que les paliers ARRONDI-100 diffèrent (CI
+        #1003 : 167 900 × 84 700 / 154 700 = 91 927,15 pour un devis de
+        91 900 dont le palier avait absorbé 60 MAD)."""
+        if not facture.sources.exists():
             return Decimal('1')
-        total = sum((_d(s.sous_total_ht) for s in sources), ZERO)
-        mien = sum((_d(s.sous_total_ht) for s in sources
-                    if s.devis_id == devis.pk), ZERO)
-        return (mien / total) if total else ZERO
+        poids = self.ttc_sources[facture.pk]
+        total = sum(poids.values(), ZERO)
+        return (poids.get(devis.pk, ZERO) / total) if total else ZERO
 
     def _verifier_borne(self, devis):
         from apps.ventes.utils.options import option_totaux
