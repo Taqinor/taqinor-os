@@ -68,6 +68,7 @@ const itemListJsonLd = {
   })),
   provider: { '@type': 'LocalBusiness', name: NAP.name, url: NAP.url },
 };
+import RealisationsIndexSection9BE4 from '../../components/blocs/RealisationsIndexSection9BE4.astro';
 ---
 
 <Layout
@@ -179,12 +180,7 @@ const itemListJsonLd = {
 
     {/* W280 — CertLogoRow + BrandStrip : normes déjà publiées + marques
         tier-1, no-op-safe (aucun logo/chiffre fabriqué). */}
-    <section class="border-t border-white/10 px-4 py-14 sm:py-16">
-      <div class="mx-auto max-w-6xl">
-        <CertLogoRow />
-      </div>
-    </section>
-    <BrandStrip />
+    <RealisationsIndexSection9BE4 />
 
     {/* WB17 (2026-07-04) — liens contextuels vers les deux pages de preuve
         chiffrée continue, faiblement découvrables (absentes du header/footer). */}

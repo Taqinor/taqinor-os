@@ -160,6 +160,7 @@ const jsonLd = {
   description:
     'Supervision en temps réel incluse sur chaque installation solaire au Maroc : production en temps réel, alertes automatiques et SAV proactif, avec accès client via l’application mobile et dossier technique complet livré.',
 };
+import MaintenanceMonitoringOlF23D from '../components/blocs/MaintenanceMonitoringOlF23D.astro';
 ---
 
 <Layout
@@ -206,15 +207,7 @@ const jsonLd = {
           La pose n’est pas la fin de la relation, c’est son début. Voici, dans l’ordre, ce qui vous
           attend une fois le chantier terminé.
         </p>
-        <ol class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-          {apresInstallation.map((s, i) => (
-            <li class="v2-rise cine-card flex flex-col p-6" style={`--v2-i:${i}`}>
-              <span class="fig lum text-2xl" aria-hidden="true">{s.k}</span>
-              <h3 class="display mt-3 text-lg text-white">{s.title}</h3>
-              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            </li>
-          ))}
-        </ol>
+        <MaintenanceMonitoringOlF23D apresInstallation={apresInstallation} />
 
         {/* Porte Espace client — un seul CTA laiton (le vrai portail de suivi),
             deux liens secondaires (ticket SAV réel, garanties). */}

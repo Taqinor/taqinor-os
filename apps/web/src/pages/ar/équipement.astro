@@ -58,6 +58,7 @@ const warranties = [
   { item: 'الهيكل الفولاذي المُجلفن', years: '20 سنة' },
   { item: 'التركيب واليد العاملة تاكينور', years: 'سنتان' },
 ];
+import GarantiesDivEF39 from '../../components/blocs/GarantiesDivEF39.astro';
 ---
 
 <Layout
@@ -244,14 +245,7 @@ const warranties = [
           أحادية الخط، حساب مقطع الأسلاك، لائحة الحمايات، إجراء التشغيل وولوج متابعة الإنتاج في
           الوقت الحقيقي للتحقق من الإنتاج بنفسك.
         </p>
-        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
-          {warranties.map((w, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
-              <span class="fig whitespace-nowrap text-2xl text-azur-600" dir="ltr" data-tally>{w.years}</span>
-            </div>
-          ))}
-        </div>
+        <GarantiesDivEF39 warranties={warranties} />
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           لا واحدة من هذه المراجع مختارة سلفاً. القدرة المعتمدة، وجود بطارية من عدمه، أحادي أو ثلاثي
           الطور: كل ذلك يخرج من أرقام سطحك.

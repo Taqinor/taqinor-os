@@ -102,6 +102,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 // aucun chiffre nouveau.
 const investRangeLow = formatMAD(Math.min(...brackets.map((b) => b.investLow)));
 const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh)));
+import ResidentielDiv9D1E from '../components/blocs/ResidentielDiv9D1E.astro';
 ---
 
 <Layout
@@ -200,17 +201,7 @@ const investRangeHigh = formatMAD(Math.max(...brackets.map((b) => b.investHigh))
         <div class="tech-label hidden grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] gap-4 border-b border-white/10 py-3 text-lune-faint sm:grid">
           <span>Facture mensuelle</span><span>Puissance</span><span>Investissement (ordre de grandeur)</span><span>Retour</span>
         </div>
-        {brackets.map((b, i) => (
-          <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
-            <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
-              <span class="font-display text-base font-bold text-white">{b.bill}</span>
-              <span class="fig lum text-xl sm:text-2xl" data-tally>{b.kwc}</span>
-              <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
-              <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
-            </div>
-            {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
-          </div>
-        ))}
+        <ResidentielDiv9D1E brackets={brackets} />
       </div>
       <p class="mt-5 max-w-2xl text-xs leading-relaxed text-lune-soft">
         Sous 1 000 MAD par mois, le retour dépasse le plus souvent 7 ans : nous le disons

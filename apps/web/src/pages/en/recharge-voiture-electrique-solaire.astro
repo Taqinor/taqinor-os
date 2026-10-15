@@ -98,6 +98,7 @@ const breadcrumbJsonLd = {
     },
   ],
 };
+import RechargeVoitureElectriqueSolaireDivCEBE from '../../components/blocs/RechargeVoitureElectriqueSolaireDivCEBE.astro';
 ---
 
 <Layout
@@ -159,14 +160,7 @@ const breadcrumbJsonLd = {
           around 15 to 20 kWh per 100 km; multiply by your daily kilometres, and you get the
           energy to cover.
         </p>
-        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
-          {dimensionnement.map((d, i) => (
-            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
-              <h3 class="display text-xl text-azur-700">{d.title}</h3>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{d.body}</p>
-            </div>
-          ))}
-        </div>
+        <RechargeVoitureElectriqueSolaireDivCEBE dimensionnement={dimensionnement} />
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           These orders of magnitude come from public technical data, stated in ranges; the exact
           sizing depends on your roof and your usage. <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See the equipment →</a>

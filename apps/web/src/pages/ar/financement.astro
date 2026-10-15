@@ -87,6 +87,8 @@ const mecanismes = [
     ],
   },
 ];
+import FinancementDiv34FD from '../../components/blocs/FinancementDiv34FD.astro';
+import FinancementPs6F3AC from '../../components/blocs/FinancementPs6F3AC.astro';
 ---
 
 <Layout
@@ -124,14 +126,7 @@ const mecanismes = [
           أما الرقم الدقيق لمردوديتك <em>أنت</em> فيُحتسب على فاتورتك الفعلية؛ وإن لم تكن الطاقة الشمسية
           الاستثمار الصحيح لملمحك، سنخبرك دون التواء.
         </p>
-        <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:grid-cols-4 sm:ps-10" data-stagger>
-          {chiffres.map((c, i) => (
-            <div class="v2-rise" style={`--v2-i:${i}`}>
-              <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" dir="ltr" data-tally>{c.v}</dd>
-              <dt class="tech-label mt-2 text-lune-faint">{c.label}</dt>
-            </div>
-          ))}
-        </dl>
+        <FinancementPs6F3AC chiffres={chiffres} />
         <p class="mt-8 max-w-2xl text-sm leading-relaxed text-lune-soft">
           كلما ثقُلت الفاتورة، أسرع العائد. لفيلا نموذجية، احسب في حدود
           <a href={L('/résidentiel')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white"><span dir="ltr">4</span> إلى <span dir="ltr">6 سنوات</span> في السكني</a>؛
@@ -193,15 +188,7 @@ const mecanismes = [
           لنوضّح أمراً من البداية: نركّب ونضمن الطاقة الشمسية، ولا نبيع أي منتج مالي. إليك، دون تجميل،
           الطرق الثلاث التي يؤدّي بها زبناؤنا فعلاً ثمن تركيبتهم.
         </p>
-        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
-          {moyens.map((m, i) => (
-            <div class="v2-rise flex flex-col border-t-2 border-azur-900 bg-blanc p-7" style={`--v2-i:${i}`}>
-              <p class="fig text-3xl text-azur-600" dir="ltr">{m.k}</p>
-              <h3 class="display mt-2 text-xl">{m.title}</h3>
-              <p class="mt-3 flex-1 text-sm leading-relaxed text-encre-soft">{m.body}</p>
-            </div>
-          ))}
-        </div>
+        <FinancementDiv34FD moyens={moyens} />
 
         <!-- التوضيحات الصادقة -->
         <div class="mt-10 max-w-3xl border-s-4 border-azur-600 bg-blanc px-5 py-5 text-sm leading-relaxed text-encre-soft">

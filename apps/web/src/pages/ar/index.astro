@@ -205,6 +205,7 @@ import GalleryFilterLightboxScript from '../../components/home/GalleryFilterLigh
 import HeroVideoScript from '../../components/home/HeroVideoScript.astro';
 import HeroTitleSweepScript from '../../components/home/HeroTitleSweepScript.astro';
 import HeroMagneticCtaScript from '../../components/home/HeroMagneticCtaScript.astro';
+import ArIndexButton3FED from '../../components/blocs/ArIndexButton3FED.astro';
 ---
 
 <Layout
@@ -349,16 +350,7 @@ import HeroMagneticCtaScript from '../../components/home/HeroMagneticCtaScript.a
             جافاسكريبت: بدون النص البرمجي، تبقى كل البطاقات ظاهرة (تحسين
             تدريجي). */}
         <div class="v2-rise mt-8 flex flex-wrap gap-2" role="group" aria-label="فلترة حسب المدينة" data-gallery-filter>
-          {galleryCities.map((c, i) => (
-            <button
-              type="button"
-              class={`gallery-filter-chip border px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:border-white/50 hover:text-white ${i === 0 ? 'gallery-filter-chip-active border-brass-400 bg-brass-400/10 text-brass-300' : 'border-white/25 text-lune-soft'}`}
-              data-city={c}
-              aria-pressed={i === 0 ? 'true' : 'false'}
-            >
-              {c}
-            </button>
-          ))}
+          <ArIndexButton3FED galleryCities={galleryCities} />
         </div>
         <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (

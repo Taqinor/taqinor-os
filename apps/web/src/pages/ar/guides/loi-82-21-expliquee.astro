@@ -70,6 +70,7 @@ const regimes = [
     body: 'ابتداءً من 5 MW، في الجهد المتوسط أو العالي أو العالي جداً، تتغيّر الكتلة: يجب الحصول على ترخيص في حلّة قانونية قبل أول ضربة معول. قليل من الأسطح الخاصة معنيّة.',
   },
 ];
+import Loi8221ExpliqueeDiv68F7 from '../../../components/blocs/Loi8221ExpliqueeDiv68F7.astro';
 ---
 
 <Layout
@@ -126,17 +127,7 @@ const regimes = [
         </p>
       </div>
 
-      <div class="mt-12 grid gap-6" data-stagger>
-        {regimes.map((r, i) => (
-          <div class="v2-rise cine-card grid gap-4 p-6 sm:grid-cols-[auto_1fr] sm:p-7" style={`--v2-i:${i}`}>
-            <span class="fig lum text-4xl" aria-hidden="true">{r.n}</span>
-            <div>
-              <h2 class="display text-xl text-white">{r.title}</h2>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.body}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+      <Loi8221ExpliqueeDiv68F7 regimes={regimes} />
 
       <h2 class="display v2-section-title mt-14 text-white">وإن كانت تركيبتي قائمة بالفعل؟</h2>
       <p class="v2-lead mt-5 text-lune-soft">

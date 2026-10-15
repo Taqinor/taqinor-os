@@ -1,0 +1,14 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro
+const { galleryCities } = Astro.props as Record<string, any>;
+---
+          {galleryCities.map((c: any, i: any) => (
+            <button
+              type="button"
+              class={`gallery-filter-chip border px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:border-white/50 hover:text-white ${i === 0 ? 'gallery-filter-chip-active border-brass-400 bg-brass-400/10 text-brass-300' : 'border-white/25 text-lune-soft'}`}
+              data-city={c}
+              aria-pressed={i === 0 ? 'true' : 'false'}
+            >
+              {c}
+            </button>
+          ))}

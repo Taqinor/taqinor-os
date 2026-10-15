@@ -209,6 +209,8 @@ import GalleryFilterLightboxScript from '../../components/home/GalleryFilterLigh
 import HeroVideoScript from '../../components/home/HeroVideoScript.astro';
 import HeroTitleSweepScript from '../../components/home/HeroTitleSweepScript.astro';
 import HeroMagneticCtaScript from '../../components/home/HeroMagneticCtaScript.astro';
+import ArIndexButton3FED from '../../components/blocs/ArIndexButton3FED.astro';
+import EnIndexDlF52D from '../../components/blocs/EnIndexDlF52D.astro';
 ---
 
 <Layout
@@ -354,16 +356,7 @@ import HeroMagneticCtaScript from '../../components/home/HeroMagneticCtaScript.a
             JS: without the script, every card stays visible (progressive
             enhancement). */}
         <div class="v2-rise mt-8 flex flex-wrap gap-2" role="group" aria-label="Filter by city" data-gallery-filter>
-          {galleryCities.map((c, i) => (
-            <button
-              type="button"
-              class={`gallery-filter-chip border px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors hover:border-white/50 hover:text-white ${i === 0 ? 'gallery-filter-chip-active border-brass-400 bg-brass-400/10 text-brass-300' : 'border-white/25 text-lune-soft'}`}
-              data-city={c}
-              aria-pressed={i === 0 ? 'true' : 'false'}
-            >
-              {c}
-            </button>
-          ))}
+          <ArIndexButton3FED galleryCities={galleryCities} />
         </div>
         <div class="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger data-gallery-grid>
           {gallery.map((g, i) => (
@@ -465,14 +458,7 @@ import HeroMagneticCtaScript from '../../components/home/HeroMagneticCtaScript.a
             during which it keeps producing for you, at 0 MAD.
           </p>
         </div>
-        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4" data-stagger>
-          {investment.map((it, i) => (
-            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
-              <dd class="fig fig-md whitespace-nowrap text-azur-600" data-tally>{it.v}</dd>
-              <dt class="tech-label mt-2 text-encre-soft">{it.label}</dt>
-            </div>
-          ))}
-        </dl>
+        <EnIndexDlF52D investment={investment} />
         <a href={L('/financement')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-azur-600 pb-0.5 text-sm font-bold text-azur-700 transition-colors hover:text-azur-600">
           See the financing details <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
         </a>

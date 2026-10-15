@@ -86,6 +86,7 @@ const hasDiptych = phasedPhotos.length >= 2;
 
 // W309 — lightbox: all gallery photos (rest), index from 0
 const galleryPhotos = rest;
+import RealisationsSlugP5E85 from '../../../components/blocs/RealisationsSlugP5E85.astro';
 ---
 
 <Layout title={title} description={description} ogSlug={ogSlug}>
@@ -231,15 +232,7 @@ const galleryPhotos = rest;
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-lune">The equipment fitted</p>
         <h2 class="display v2-section-title mt-5 text-white">What is really on the roof</h2>
-        <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
-        <div class="mt-8 border-t-2 border-white/20" data-stagger>
-          {equipment.map((e, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
-              <span class="tech-label text-lune-faint">{e.label}</span>
-              <span class="text-right font-display text-base font-bold text-white">{e.value}</span>
-            </div>
-          ))}
-        </div>
+        <RealisationsSlugP5E85 cs={cs} equipment={equipment} />
         <p class="mt-5 text-sm text-lune-soft">
           Tier-1 brands sourced through official distributors in Morocco — local warranties
           activatable. <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">See all the equipment →</a>

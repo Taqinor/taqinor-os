@@ -45,6 +45,8 @@ const sanctions = [
   { title: 'Formal notice and shutdown — article 25', body: 'Risk of a formal notice followed by an ordered shutdown of the installation.' },
   { title: 'Disconnection from the grid — article 32', body: 'The grid operator may disconnect a non-compliant installation.' },
 ];
+import RegularizationArticle33Ol7511 from '../../components/blocs/RegularizationArticle33Ol7511.astro';
+import RegularizationArticle33DivC937 from '../../components/blocs/RegularizationArticle33DivC937.astro';
 ---
 
 <Layout
@@ -129,26 +131,11 @@ const sanctions = [
       <h2 class="display v2-section-title v2-rise mt-14 text-white">Regularization in 5 steps</h2>
       {/* Timeline rail demoted to white/15; step numbers as .lum in an azur ring,
           no more filled brass disk repeated. */}
-      <ol class="mt-8 border-l-2 border-white/15" data-stagger>
-        {steps.map((s, i) => (
-          <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
-            <span class="fig lum absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full border border-azur-200/40 bg-nuit text-lg">{i + 1}</span>
-            <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
-            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-          </li>
-        ))}
-      </ol>
+      <RegularizationArticle33Ol7511 steps={steps} />
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">What you risk by doing nothing</h2>
       <p class="v2-rise mt-2 text-sm text-lune-soft">Penalties provided for by Law 82-21:</p>
-      <div class="mt-5 grid gap-4 sm:grid-cols-2" data-stagger>
-        {sanctions.map((s, i) => (
-          <div class="v2-rise cine-card border-alert-300/30 p-5" style={`--v2-i:${i}`}>
-            <h3 class="font-display text-sm font-bold text-alert-300">{s.title}</h3>
-            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-          </div>
-        ))}
-      </div>
+      <RegularizationArticle33DivC937 sanctions={sanctions} />
 
       <RelatedLinks mt="mt-8" links={[
         { href: L('/loi-82-21'), label: 'The 3 regimes of Law 82-21' },

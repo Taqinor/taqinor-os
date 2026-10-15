@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — [slug].astro
+const { cs, equipment } = Astro.props as Record<string, any>;
+---
+        <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
+        <div class="mt-8 border-t-2 border-white/20" data-stagger>
+          {equipment.map((e: any, i: any) => (
+            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
+              <span class="tech-label text-lune-faint">{e.label}</span>
+              <span class="text-right font-display text-base font-bold text-white">{e.value}</span>
+            </div>
+          ))}
+        </div>

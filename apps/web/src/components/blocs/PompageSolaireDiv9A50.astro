@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — pompage-solaire.astro
+const { etapes } = Astro.props as Record<string, any>;
+---
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
+          {etapes.map((e: any, i: any) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl">{e.k}</p>
+              <h3 class="display mt-2 text-2xl text-white">{e.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{e.body}</p>
+            </div>
+          ))}
+        </div>

@@ -128,6 +128,7 @@ const jsonLd = {
   provider: { '@type': 'Organization', name: 'Taqinor', url: 'https://taqinor.ma' },
   areaServed: { '@type': 'Country', name: 'Maroc' },
 };
+import BatteriesStockageDiv7684 from '../components/blocs/BatteriesStockageDiv7684.astro';
 ---
 
 <Layout
@@ -272,14 +273,7 @@ const jsonLd = {
           hybride Deye, qui pilote charge et décharge au plus juste. Matériel sourcé via les
           distributeurs officiels au Maroc, garantie activable sur place.
         </p>
-        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
-          {specs.map((s, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{s.item}</span>
-              <span class="whitespace-normal text-right text-sm text-azur-600">{s.detail}</span>
-            </div>
-          ))}
-        </div>
+        <BatteriesStockageDiv7684 specs={specs} />
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Les modules s'empilent par tranches de 5 kWh. Concrètement, on mesure le creux que votre
           consommation laisse après le coucher du soleil et on empile juste assez de modules pour le
