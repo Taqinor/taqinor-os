@@ -271,7 +271,7 @@ def _notifier_touches_heritees(lead, nouveau_responsable):
             link=f'/crm/leads?lead={lead.pk}',
             reason='assigne_a_vous',
         )
-    except Exception:  # noqa: BLE001 — jamais bloquant pour la réattribution
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la réattribution (D-ENF22-BLE001)
         logger.warning(
             'CAD54: notification des touches héritées échouée (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)
@@ -602,7 +602,7 @@ def tracer_opposition_registre(lead, *, source, occurred_at=None):
             lead, granted=False,
             source=f'{source} — {BASE_LEGALE_OPPOSITION}',
             occurred_at=occurred_at)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD91 : opposition non écrite au registre pour le lead #%s',
             getattr(lead, 'pk', None), exc_info=True)
@@ -879,7 +879,7 @@ def _prolonger_validite_attente_accord(lead, user=None):
                 kind=LeadActivity.Kind.NOTE,
                 body=(f'Validité prolongée au {nouvelle:%d/%m} — en attente '
                       "d'un accord (réglage société)."))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('CIQ510 : validité non prolongée (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
     return prolonges
@@ -921,7 +921,7 @@ def _poser_etape_validite_a_renouveler(lead, decision):
         devis = dernier_devis_envoye_par_lead(
             lead.company, [lead.pk]).get(lead.pk)
         validite = date_validite_effective(devis)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('CIQ512 : validité illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return None

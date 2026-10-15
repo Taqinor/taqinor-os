@@ -46,7 +46,7 @@ def _leads_visibles(request):
     """ALEA38 — LA portée du ``LeadViewSet`` (société + équipe/sous-arbre +
     entité), relue sur le viewset lui-même : une seule source de vérité,
     jamais une copie du filtre qui dériverait."""
-    from .views import LeadViewSet  # noqa: PLC0415 — évite un cycle d'import
+    from .views import LeadViewSet  # noqa: PLC0415 — évite un cycle d'import (D-ENF22)
 
     vue = LeadViewSet()
     vue.request = request
@@ -87,7 +87,7 @@ def lead_roof_footprint(request, lead_id):
         )
 
     # QJR598 — LE repère toit du lead (le GPS corrigé prime sur l'épingle).
-    from .selectors import repere_toit  # noqa: PLC0415
+    from .selectors import repere_toit  # noqa: PLC0415 — import différé (cycle/coût de démarrage) (D-ENF22)
 
     pin, _source, _contour_utilisable = repere_toit(lead)
     if pin is None:

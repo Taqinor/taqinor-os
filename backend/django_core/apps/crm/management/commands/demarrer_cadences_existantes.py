@@ -231,7 +231,7 @@ def _devis_envoyes_recents(company, depuis):
         from apps.ventes.selectors import devis_envoyes_en_attente
         return [d for d in devis_envoyes_en_attente(company, depuis)
                 if getattr(d, 'lead_id', None)]
-    except Exception:  # noqa: BLE001 — une reprise n'échoue jamais sur ce point
+    except Exception:  # noqa: BLE001 — une reprise n'échoue jamais sur ce point (D-ENF22-BLE001)
         logger.warning(
             'MRY23: devis récents illisibles (société %s)',
             getattr(company, 'pk', '?'), exc_info=True)

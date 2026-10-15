@@ -424,7 +424,7 @@ def _lead_provenance_valeurs(lead):
         # par son id : JSON-safe et comparable.
         try:
             relation = lead._meta.get_field(f).is_relation
-        except Exception:  # noqa: BLE001 — champ absent : None des deux côtés
+        except Exception:  # noqa: BLE001 — champ absent : None des deux côtés (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', '_lead_provenance_valeurs', exc_info=True)
             relation = False
         v = getattr(lead, f'{f}_id', None) if relation else getattr(lead, f, None)

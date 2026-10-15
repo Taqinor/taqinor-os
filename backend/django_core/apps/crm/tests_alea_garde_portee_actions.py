@@ -247,7 +247,7 @@ class GardePorteeActionsTests(TestCase):
             CLIENT_EMAIL_HORS) if mot in texte]
         try:
             donnee = resp.json()
-        except Exception:  # noqa: BLE001 — binaire (xlsx) ou vide
+        except ValueError:  # binaire (xlsx) ou vide
             donnee = None
         if isinstance(donnee, (dict, list)):
             # Fiches de LEAD uniquement sur les pk de lead (un pk de client

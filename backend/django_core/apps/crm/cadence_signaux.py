@@ -75,7 +75,7 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
         try:
             noter_version_remplacee_ouverte(
                 devis_reference, lead, remplacee_par=remplacee_par)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'ACRM11 : note de version remplacée non écrite (lead #%s)',
                 getattr(lead, 'pk', None), exc_info=True)
@@ -97,7 +97,7 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
         LeadActivity.objects.create(
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE, body=corps)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD135 : note de signal de lecture non écrite (lead #%s)',
             getattr(lead, 'pk', None), exc_info=True)
@@ -123,7 +123,7 @@ def notifier_signal_lecture(devis_reference: str, lead, *, friction_section='',
             link=f'/crm/visiteurs?lead={lead.pk}',
             company=company,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD135 : notification de signal de lecture échouée (lead #%s)',
             getattr(lead, 'pk', None), exc_info=True)
@@ -203,7 +203,7 @@ def notifier_signal_client(lead, signal, *, detail='') -> None:
             link=f'/crm/leads/{lead.pk}',
             company=company,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD136 : notification de signal client échouée (lead #%s, %s)',
             getattr(lead, 'pk', None), signal, exc_info=True)
@@ -358,7 +358,7 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
             lead.refresh_from_db(fields=['stage', 'perdu', 'is_archived',
                                          'ne_plus_contacter',
                                          'contact_preference'])
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('CAD130 : lead #%s illisible', lead.pk,
                            exc_info=True)
             return None
@@ -448,7 +448,7 @@ def poser_touche_signal(lead, signal, *, user=None, maintenant=None):
             company=lead.company, lead=lead, user=None,
             kind=LeadActivity.Kind.NOTE, body=corps)
         return etape
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD130 : touche signal non posée (lead #%s, %s)',
             getattr(lead, 'pk', None), signal, exc_info=True)
@@ -504,7 +504,7 @@ def poser_etape_preparer_devis(lead, *, origine, user=None, jours=None,
                   f'{quand:%d/%m/%Y à %H:%M} — tâche de production, pas une '
                   'relance.'))
         return etape
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD136 : étape « préparer le devis » non posée (lead #%s)',
             getattr(lead, 'pk', None), exc_info=True)
@@ -520,7 +520,7 @@ def poser_touche_signal_du_lead_id(lead_id, signal, *, company):
         return None
     try:
         lead = Lead.objects.filter(pk=lead_id, company=company).first()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('CAD130 : lead #%s illisible', lead_id, exc_info=True)
         return None
     if lead is None:
@@ -630,7 +630,7 @@ def notify_client_contact_request(devis_reference: str, lead,
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         import logging
         logging.getLogger(__name__).warning(
             'QJ27: notify_client_contact_request échoué pour lead #%s '
@@ -711,7 +711,7 @@ def notify_lead_callback_requested(lead) -> None:
             link=f'/crm/leads?lead={lead.pk}',
             company=lead.company,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         import logging
         logging.getLogger(__name__).warning(
             'QW4: notify_lead_callback_requested échoué pour lead #%s : %s',
@@ -816,7 +816,7 @@ def _poser_touche_rappel_demande(lead, *, user=None, quand=None):
             note='Posée automatiquement : le client a demandé un rappel.')
         _recaler_file(lead, user)
         return etape
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD129 : touche de rappel non posée pour le lead #%s',
             getattr(lead, 'pk', None), exc_info=True)

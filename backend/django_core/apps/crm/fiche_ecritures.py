@@ -124,7 +124,7 @@ def appliquer_champ_automatique(lead, champ, valeur, user=None):
 
     try:
         champ_modele = Lead._meta.get_field(champ)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'appliquer_champ_automatique', exc_info=True)
         return CHAMP_AUTO_INVALIDE, f'Champ « {champ} » inconnu.'
     if champ == 'owner':

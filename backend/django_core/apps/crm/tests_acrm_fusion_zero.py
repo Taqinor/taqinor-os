@@ -12,6 +12,7 @@ Aucun mock : ``merge_leads`` et la vue « doublons » réels.
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -33,7 +34,7 @@ def _champs_numeriques():
     for nom in _MERGE_FILL_FIELDS:
         try:
             champ = Lead._meta.get_field(nom)
-        except Exception:  # noqa: BLE001
+        except FieldDoesNotExist:
             continue
         if isinstance(champ, NUMERIQUES) and not champ.choices:
             champs.append(nom)

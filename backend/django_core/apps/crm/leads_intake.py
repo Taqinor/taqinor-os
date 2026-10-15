@@ -81,7 +81,7 @@ def reactivate_lead_on_new_touch(lead, *, source='site web') -> bool:
     # échouer sur une cadence.
     try:
         reprendre_cadence_apres_reouverture(lead, None, origine=source)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning(
             'CAD107: reprise non posée après réactivation (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)
@@ -350,7 +350,7 @@ def create_lead_from_livechat(*, company, nom, telephone='', email='',
         activity.log_creation(lead, None)
         try:
             notify_new_lead(lead)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'create_lead_from_livechat', exc_info=True)
         # MRY6 — même démarrage explicite que les autres créateurs vivants.
         demarrer_cadence_contact(lead, origine='livechat')

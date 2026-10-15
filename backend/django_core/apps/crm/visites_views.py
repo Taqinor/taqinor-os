@@ -454,7 +454,7 @@ class LeadVisitesActionsMixin:
             from apps.audit.recorder import record
             record(AuditLog.Action.WHATSAPP, instance=lead,
                    detail=f'Message de visite ouvert ({cle})')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('CAD111: AuditLog non écrit (lead #%s)', lead.pk,
                            exc_info=True)
         return Response({'journalise': True, 'cle': cle, 'langue': langue,

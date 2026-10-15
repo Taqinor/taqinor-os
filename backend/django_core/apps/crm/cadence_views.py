@@ -50,7 +50,7 @@ def _best_effort(libelle, fn, *args, **kwargs):
     try:
         with transaction.atomic():
             return fn(*args, **kwargs)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('ALEA30: effet secondaire « %s » échoué', libelle,
                        exc_info=True)
         return None
@@ -1425,7 +1425,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             from .visites_rdv import public_booking_url
             try:
                 lien_rdv = public_booking_url(lead, request=request)
-            except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
+            except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu (D-ENF22-BLE001)
                 logger.warning('%s : échec ignoré (dégradé)', 'render_template', exc_info=True)
                 lien_rdv = ''
         return Response({'texte': tmpl.render(

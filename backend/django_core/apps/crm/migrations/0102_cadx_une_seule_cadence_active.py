@@ -65,7 +65,7 @@ def _annuler_doublons(apps, schema_editor):
                       f'{nb} touche(s) de « {", ".join(annulees)} » '
                       'annulée(s) — une seule cadence active par lead '
                       '(règle fondateur 15/09/2026).'))
-        except Exception:  # noqa: BLE001 — la note est un confort, jamais bloquante
+        except Exception:  # noqa: BLE001 — la note est un confort, jamais bloquante (D-ENF22-BLE001)
             logger.warning('CADX : note chatter non écrite (lead #%s)',
                            lead_id, exc_info=True)
 

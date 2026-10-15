@@ -5,13 +5,13 @@ fonctions plutôt qu'en important `apps.crm.models` directement (voir CLAUDE.md,
 règle de modularité). Comportement strictement identique aux requêtes inline
 d'origine.
 """
-import datetime  # noqa: F401 — façade : `datetime` reste exposé (golden SPL70)
-from .portee_selectors import (  # noqa: F401
+import datetime  # façade : `datetime` reste exposé (golden SPL70)
+from .portee_selectors import (
     MOTIF_CONTACT_REFUSE, peut_contacter, portee_leads, leads_visibles,
     leads_en_portee, lead_signe_q, est_lead_signe, cles_numeros_lead,
     lead_ids_du_responsable, lead_ids_anonymises, client_ids_anonymises,
 )
-from .cadence_selectors import (  # noqa: F401
+from .cadence_selectors import (
     JOURS_OUVRES_JOINDRE, _minutes_ouvrees_de_5_jours, kpi_cadences,
     _STATUTS_CLOS_HUMAIN, LEADS_SANS_TOUCHE_MAX, _lundi, _pct, _mediane_decimale,
     _a_lheure, _a_lheure_ou_excusee, _conversion_par_stage,
@@ -26,7 +26,7 @@ from .cadence_selectors import (  # noqa: F401
     CADENCES_CLOTURABLES, cadences_echues_a_clore, mesure_cadence, PRIORITE_RANG_FILE,
     PRIORITE_RANG_DEFAUT, trier_file_du_jour,
 )
-from .leads_selectors import (  # noqa: F401
+from .leads_selectors import (
     normalize_phone_key, normalize_email_key, normalize_name_key,
     find_lead_id_by_phone, leads_sla_depasse, CANAL_RAPPEL_SLA,
     leads_callback_sla_depasse, leads_meta_sla_depasse, leads_response_time_rows,
@@ -36,7 +36,7 @@ from .leads_selectors import (  # noqa: F401
     lead_known_field_codes, lead_ids_by_contact, lead_ids_par_identifiant,
     doublons_foyer_probables,
 )
-from .clients_selectors import (  # noqa: F401
+from .clients_selectors import (
     client_base_qs, find_client_by_email, clients_pour_controle_ice,
     find_client_by_ice_or_libelle, find_client_by_phone, client_credit_warning,
     credit_hold_check, get_company_client, client_label, get_latest_lead_for_client,
@@ -53,7 +53,7 @@ from .clients_selectors import (  # noqa: F401
     salle_vente_summary_for_lead, _metric_count_for_owner, classement_defi,
     metrique_pipeline_pondere, register_metric_adapters, client_ids_par_identifiant,
 )
-from .devis_selectors import (  # noqa: F401
+from .devis_selectors import (
     lead_du_devis, ville_effective, _srm_deduite, lead_bills_for_devis,
     SITE_PROFILE_FIELDS, ALIAS_DEPRECIE_CV_ACTUELLE, site_profile_for_client,
     ENTREES_POMPAGE_CIBLES, _ENTREES_POMPAGE_SOURCES, _ENTREES_POMPAGE_INFORMATION,
@@ -66,15 +66,15 @@ from .devis_selectors import (  # noqa: F401
     lead_devis_ids_by_id, _kwh_positif, SEGMENTS_REPLI_KWH_SITE,
     conso_mensuelle_kwh_pour_devis,
 )
-from .roof_selectors import (  # noqa: F401
+from .roof_selectors import (
     conception_3d_du_lead, REPERE_SOURCE_ROOF_POINT, REPERE_SOURCE_GPS,
     _REPERE_TOLERANCE_DEG, _repere_nombre, _repere_pin, _repere_anneau,
     _repere_dans_anneau, repere_toit,
 )
-from .stock_selectors import (  # noqa: F401
+from .stock_selectors import (
     leads_utilisant_produit,
 )
-from .attribution_selectors import (  # noqa: F401
+from .attribution_selectors import (
     signed_lead_phone_keys, signed_leads_for_campaigns, attribution_lead_rows,
     lead_appointment_stats, lead_touchpoints_attribution, attribution_leads,
     leads_ville_rows, revenu_attribue_campagne, leads_source_campagne,
@@ -85,7 +85,7 @@ from .attribution_selectors import (  # noqa: F401
     _ATTRIBUTION_DEMI_VIE_JOURS, _attribution_part, _repartir_attribution,
     attribution_comparaison_devis,
 )
-from .fiche_selectors import (  # noqa: F401
+from .fiche_selectors import (
     get_company_lead, get_company_leads_by_ids, rechercher_leads_minimal, lead_card,
     _VALEUR_CHATTER_VIDE, provenance_site, LEAD_PROVENANCE_FIELDS,
     _LEAD_PROVENANCE_MARQUEURS, _RAISON_LU_EN_DIRECT, _RAISON_PROFIL_APPEL,
@@ -99,3 +99,72 @@ from .fiche_selectors import (  # noqa: F401
     leads_export_rows, dernier_contact_lead, leads_signes_sans_devis_accepte,
     champs_devis_auto_manquants, lead_en_attente_ou_veille,
 )
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'ALIAS_DEPRECIE_CV_ACTUELLE', 'ATTRIBUTION_MODELES', 'CADENCES_CLOTURABLES', 'CANAL_RAPPEL_SLA',
+    'CHAINE_COMMERCIALE_LIMITE', 'COLD_AGE_BUCKETS', 'ENTREES_POMPAGE_CIBLES',
+    'FORMULE_VOLUME_DECLARE', 'HEURE_RAPPEL_DU_MATIN', 'JOURNAL_TYPES', 'JOURS_OUVRES_JOINDRE',
+    'LEADS_SANS_TOUCHE_MAX', 'LEAD_PROVENANCE_EXCLUSIONS', 'LEAD_PROVENANCE_FIELDS',
+    'LEAD_SEGMENT_FIELDS', 'MIN_SAMPLE_COLD_BUCKET', 'MOTIF_CONTACT_REFUSE', 'PRIORITE_RANG_DEFAUT',
+    'PRIORITE_RANG_FILE', 'PROFILS_ACTIVITE', 'REPERE_SOURCE_GPS', 'REPERE_SOURCE_ROOF_POINT',
+    'SEGMENTS_REPLI_KWH_SITE', 'SERIE_JOURS_MAX', 'SITE_PROFILE_FIELDS', 'STATUTS_SUIVI',
+    'STATUT_EN_RETARD', 'SUIVI_JOURS_MAX', '_ATTRIBUTION_DEMI_VIE_JOURS', '_CI_COLONNE_SOURCE',
+    '_CI_DETAIL_SOURCE', '_CI_INFORMATIONS', '_CI_PHASES', '_CI_REGISTRES_MT',
+    '_ENTREES_POMPAGE_INFORMATION', '_ENTREES_POMPAGE_SOURCES', '_JOURNAL_FENETRE',
+    '_JOURNAL_PREFIXES', '_KIND_DEVIS_VERS_CHATTER', '_LEAD_PROVENANCE_MARQUEURS',
+    '_LIBELLE_HEURES_ACTUELLES', '_META_LEAD_ADS_SYSTEM', '_PROGRESSIVE_PROFILING_STANDARD_FIELDS',
+    '_RAISON_LU_EN_DIRECT', '_RAISON_POMPAGE_AGR', '_RAISON_PROFIL_APPEL', '_RAISON_PRO_CIQ',
+    '_RAISON_QUALIFICATION', '_RAISON_TRANCHE', '_REPERE_TOLERANCE_DEG', '_STATUTS_CLOS_HUMAIN',
+    '_VALEUR_CHATTER_VIDE', '_a_lheure', '_a_lheure_ou_excusee', '_activites_en_retard', '_as_date',
+    '_assigne_de_la_visite', '_attribution_part', '_ca_signe_mois', '_chaine_bloc',
+    '_chaine_devis_partis', '_chaine_identite', '_ci_nombre', '_conversion_par_stage',
+    '_devis_compte_comme_signe', '_entree_valeur', '_entree_vide',
+    '_journal_cause_apres_deux_points', '_journal_phrase', '_kwh_positif', '_lead_champs_concrets',
+    '_lead_provenance_valeurs', '_lignes_pipeline_ouvertes', '_limite_rappel_du_matin', '_lundi',
+    '_mediane', '_mediane_decimale', '_metric_count_for_owner', '_minutes_ouvrees_de_5_jours',
+    '_objectif_premier_contact', '_pct', '_repartir_attribution', '_repere_anneau',
+    '_repere_dans_anneau', '_repere_nombre', '_repere_pin', '_serie_jours_sans_retard',
+    '_srm_deduite', '_tous_descendants', '_valeur_ponderee_leads', 'attribution_comparaison_devis',
+    'attribution_lead_rows', 'attribution_leads', 'ca_signe_periode', 'cadences_echues_a_clore',
+    'certifications_expirantes', 'chaine_commerciale', 'champs_devis_auto_manquants',
+    'classement_defi', 'cles_numeros_lead', 'client_base_qs', 'client_credit_warning',
+    'client_ids_anonymises', 'client_ids_par_identifiant', 'client_label',
+    'clients_contact_identifiers', 'clients_pour_controle_ice', 'cold_reactivation_by_age_bucket',
+    'comptes_dormants', 'compute_attainment', 'conception_3d_du_lead',
+    'conso_mensuelle_kwh_pour_devis', 'consolidation_client', 'credit_hold_check', 'datetime',
+    'delai_paiement_client', 'dernier_contact_lead', 'devis_a_cadence_active',
+    'devis_expirant_bientot', 'doublons_foyer_probables', 'entrees_ci_du_lead',
+    'entrees_ci_pour_lead_id', 'entrees_pompage_du_lead', 'entrees_pompage_pour_lead_id',
+    'equipements_pour_devis', 'equipements_pour_lead', 'est_lead_signe', 'existing_lead_emails',
+    'file_du_cockpit', 'find_client_by_email', 'find_client_by_ice_or_libelle',
+    'find_client_by_phone', 'find_lead_id_by_phone', 'forecast_rollup', 'get_company_client',
+    'get_company_lead', 'get_company_leads_by_ids', 'get_latest_lead_for_client', 'journal_relance',
+    'kpi_cadences', 'kpi_premier_contact', 'lead_appointment_stats', 'lead_bills_for_devis',
+    'lead_capi_identifiers', 'lead_card', 'lead_chatter_envelope', 'lead_contact_identifiers',
+    'lead_criteria_for_territoire', 'lead_current_stage', 'lead_devis_ids_by_id', 'lead_du_devis',
+    'lead_en_attente_ou_veille', 'lead_ids_anonymises', 'lead_ids_by_contact',
+    'lead_ids_du_responsable', 'lead_ids_par_identifiant', 'lead_jalons_devis',
+    'lead_known_field_codes', 'lead_merge_fields', 'lead_provenance_champs_energie_toit',
+    'lead_provenance_omissions', 'lead_provenance_stamp', 'lead_signe_q',
+    'lead_touchpoints_attribution', 'lead_values_changed_since', 'leads_callback_sla_depasse',
+    'leads_chauds_non_contactes', 'leads_en_portee', 'leads_export_rows', 'leads_matching_regles',
+    'leads_meta_sla_depasse', 'leads_rappel_demande', 'leads_recents_pour_couverture',
+    'leads_response_time_rows', 'leads_signes_sans_devis_accepte', 'leads_sla_depasse',
+    'leads_source_campagne', 'leads_utilisant_produit', 'leads_ville_rows', 'leads_visibles',
+    'ma_file_commercial_items', 'mesure_cadence', 'meta_lead_match_coverage',
+    'metrique_pipeline_pondere', 'nb_devis_envoyes_periode', 'new_leads_by_mode_meta',
+    'normalize_email_key', 'normalize_name_key', 'normalize_phone_key', 'objection_mining_rows',
+    'occupation_jour_pour_devis', 'organic_referral_lead_series', 'partenaire_peut_soumettre',
+    'partenaire_pour_certification', 'partenaires_certifies_qs', 'peut_contacter',
+    'pipeline_pondere_par_entite', 'pipeline_stage_order', 'portee_leads',
+    'portefeuille_commercial', 'prochaine_touche_par_lead', 'profil_activite_pour_devis',
+    'provenance_site', 'rechercher_leads_minimal', 'reconciliation_lead_rows',
+    'register_metric_adapters', 'relance_etapes_dues', 'relance_etapes_periode', 'relances_du_jour',
+    'releve_commissions_partenaire', 'releve_declare_ci', 'repere_toit', 'reporting_lead_rows',
+    'resume_portail_partenaire', 'revenu_attribue_campagne', 'revenu_pipeline_pondere_par_mois',
+    'salle_vente_analytics', 'salle_vente_summary_for_lead', 'signed_lead_phone_keys',
+    'signed_leads_for_campaigns', 'site_location_for_devis', 'site_profile_for_client',
+    'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
+    'trier_file_du_jour', 'ville_effective',
+]

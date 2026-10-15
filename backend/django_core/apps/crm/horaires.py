@@ -103,7 +103,7 @@ def _profil(company):
     try:
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 — jamais bloquant, défauts assumés
+    except Exception:  # noqa: BLE001 — jamais bloquant, défauts assumés (D-ENF22-BLE001)
         logger.warning('crm.horaires: profil illisible', exc_info=True)
         return None
     if cache is not None:

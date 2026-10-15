@@ -90,7 +90,7 @@ def coords_depuis_lien_maps(lien):
         if coords:
             return coords
         return _extraire(reponse.text[:200000])
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("coords depuis lien maps : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -121,7 +121,7 @@ def coords_depuis_adresse(adresse, ville=''):
                                   resultats[0].get('lon'))
                 if coords:
                     return (*coords, 'adresse')
-        except Exception:  # noqa: BLE001 — best-effort, repli ville
+        except Exception:  # noqa: BLE001 — best-effort, repli ville (D-ENF22-BLE001)
             logger.warning("coords depuis adresse : échec ignoré, comportement dégradé", exc_info=True)
     # VREF-LIEUX (08/09/2026, cas « Sidi Hashass ») — lieu-dit GeoNames
     # (douar, quartier, hameau) : l'ADRESSE d'abord, corroborée par la ville

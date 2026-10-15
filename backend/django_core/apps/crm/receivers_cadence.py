@@ -182,7 +182,7 @@ def _planifier_apres_devis_on_devis_sent(sender, devis, user, ancien_statut,
         # files. L'étape générique tient l'invariant Froid-ou-Signé.
         if not any(getattr(e, 'statut', '') == 'a_faire' for e in etapes):
             assurer_prochaine_etape_apres_succes(lead, user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             "MRY7: cadence après devis non planifiée (devis #%s)",
             getattr(devis, 'pk', '?'), exc_info=True)
@@ -220,7 +220,7 @@ def _arreter_apres_devis_on_devis_refused(sender, devis, user, motif_refus,
         # gabarit « Après l'appel » : la société la renomme dans Paramètres.
         assurer_prochaine_etape_apres_succes(
             lead, user, cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             "MRY7: arrêt de la cadence après devis échoué (devis #%s)",
             getattr(devis, 'pk', '?'), exc_info=True)
@@ -332,7 +332,7 @@ def _arreter_cadence_on_outcome(sender, instance, created, **kwargs):
             assurer_prochaine_etape_apres_succes(
                 instance.lead, instance.user,
                 cle=CLE_DECIDER_SUITE, avec_plan_devis=False)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             "MRY9: arrêt de cadence échoué sur l'issue « %s » (lead #%s)",
             issue, getattr(instance, 'lead_id', '?'), exc_info=True)
@@ -352,7 +352,7 @@ def _arreter_cadence_on_stage_change(sender, lead, old_stage, new_stage, user,
         elif new_stage == stages.COLD:
             arreter_cadence(lead, user=user, motif='lead passé en froid',
                             cadences=['contact', 'apres_devis'])
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             "MRY9: arrêt de cadence échoué au changement d'étape du lead #%s",
             getattr(lead, 'pk', '?'), exc_info=True)
@@ -379,7 +379,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
             ecrire_retour_lead_visite(
                 lead, recap, visite_id=getattr(visite, "pk", None))
         journaliser_visite(visite, user, 'validee')
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'VTA5 : retour lead du feu vert de visite échoué pour le lead '
             '#%s', lead_id, exc_info=True)
@@ -395,7 +395,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
                 pk=lead_id, company_id=visite.company_id).first()
             if lead is not None:
                 appliquer_mesures_point_eau(lead, mesures, user)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'AGR413 : retour des mesures du point d\'eau échoué pour le '
                 'lead #%s', lead_id, exc_info=True)
@@ -410,7 +410,7 @@ def _retour_lead_on_visite_validee(sender, visite, lead_id, user, recap,
                 pk=lead_id, company_id=visite.company_id).first()
             if lead is not None:
                 appliquer_releve_ci(lead, releve_ci, user)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'CIQ607 : retour du relevé C&I échoué pour le lead #%s',
                 lead_id, exc_info=True)
@@ -430,7 +430,7 @@ def _suivi_on_visite_planifiee(sender, visite, lead_id, user, date_prevue,
             return
         appliquer_visite_planifiee(
             lead, user, date_prevue, commercial_nom=commercial_nom)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'VISITE-CADENCE : recalage du suivi échoué à la planification '
             'du lead #%s', lead_id, exc_info=True)
@@ -463,7 +463,7 @@ def _suivi_on_visite_terminee(sender, visite, lead_id, user, retour,
         etape = appliquer_retour_visite(lead, user, retour, auteur=auteur,
                                         qualification=qualification)
         _notifier_responsable_retour_visite(lead, user, etape)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'VISITE-CADENCE : retour terrain non traité pour le lead #%s',
             lead_id, exc_info=True)
@@ -494,7 +494,7 @@ def _notifier_responsable_retour_visite(lead, acteur, etape=None):
             f'Retour de visite — {lead}',
             body=phrase_notification_retour_visite(etape),
             link=f'/crm/leads/{lead.pk}', company=lead.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'VISITE-CADENCE : notification de retour de visite non envoyée '
             '(lead #%s)', getattr(lead, 'pk', '?'), exc_info=True)
@@ -541,7 +541,7 @@ def _tracer_facture_emise_sur_le_lead(sender, instance, company, **kwargs):
             kind=LeadActivity.Kind.NOTE,
             body=FACTURE_EMISE_TRACE.format(
                 reference=getattr(instance, 'reference', '') or '?'))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD61: trace de facture non écrite (facture #%s)',
             getattr(instance, 'pk', '?'), exc_info=True)

@@ -180,7 +180,7 @@ def leads_callback_sla_depasse(company, now=None, seuil_heures=None):
             try:
                 echeance = horaires.echeance_en_temps_ouvre(
                     horloge, delai, company, canal=CANAL_RAPPEL_SLA)
-            except Exception:  # noqa: BLE001 — repli calendaire, jamais muet
+            except Exception:  # noqa: BLE001 — repli calendaire, jamais muet (D-ENF22-BLE001)
                 logger.warning('%s : échec ignoré (dégradé)', 'leads_callback_sla_depasse', exc_info=True)
                 echeance = horloge + delai
             if echeance <= now:
@@ -362,7 +362,7 @@ def _objectif_premier_contact(company):
         profil = CompanyProfile.objects.filter(company=company).first()
         valeur = getattr(profil, 'premier_contact_objectif_min', None)
         return int(valeur) if valeur is not None else 5
-    except Exception:  # noqa: BLE001 — défaut assumé
+    except Exception:  # noqa: BLE001 — défaut assumé (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_objectif_premier_contact', exc_info=True)
         return 5
 

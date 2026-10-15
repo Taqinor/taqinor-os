@@ -32,7 +32,7 @@ def _dans_un_thread(fonction, resultats, cle):
     def corps():
         try:
             resultats[cle] = fonction()
-        except Exception as exc:  # noqa: BLE001 — remonté au test
+        except Exception as exc:  # noqa: BLE001 — remonté au test (D-ENF22-BLE001)
             resultats[cle] = exc
         finally:
             connection.close()

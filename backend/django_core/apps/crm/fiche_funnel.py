@@ -67,7 +67,7 @@ def _emit_stage_changed(lead, old_stage, new_stage, user=None):
         lead_stage_changed.send(
             sender=Lead, lead=lead, old_stage=old_stage, new_stage=new_stage,
             user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'NTCRM12: émission lead_stage_changed échouée pour le lead #%s',
             getattr(lead, 'pk', '?'), exc_info=True)
@@ -173,7 +173,7 @@ def _playbook_correspond_au_lead(playbook, lead):
     }
     try:
         return evaluate_condition_group(playbook.condition, criteres)
-    except Exception:  # noqa: BLE001 — tolérant, jamais bloquant
+    except Exception:  # noqa: BLE001 — tolérant, jamais bloquant (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_playbook_correspond_au_lead', exc_info=True)
         return False
 

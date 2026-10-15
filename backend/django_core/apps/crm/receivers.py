@@ -63,7 +63,7 @@ def _point_de_sauvegarde(fn):
         try:
             with transaction.atomic():
                 return fn(*args, **kwargs)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('ADEV54 : abonné %s en échec (isolé)',
                            fn.__name__, exc_info=True)
             return None
@@ -257,7 +257,7 @@ def _noter_conception_on_layout_finalise(sender, devis, user=None, **kwargs):
     try:
         from .selectors import conception_3d_du_lead
         kwc = (conception_3d_du_lead(lead) or {}).get('kwc')
-    except Exception:  # noqa: BLE001 — une puissance illisible ne bloque rien
+    except Exception:  # noqa: BLE001 — une puissance illisible ne bloque rien (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_noter_conception_on_layout_finalise', exc_info=True)
         kwc = None
     if kwc:
@@ -428,7 +428,7 @@ def _chatter_on_ticket_resolu(sender, ticket, company, user, ancien_statut,
             client, user,
             f'Ticket SAV {ticket.reference} résolu.',
             company=company)
-    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'ARC37 : chatter ARC8 échoué sur ticket_resolu pour ticket #%s',
             getattr(ticket, 'pk', '?'), exc_info=True)
@@ -477,7 +477,7 @@ def _emit_appointment_effectue_on_transition(sender, instance, created,
         appointment_effectue.send(
             sender='crm.Appointment', appointment=instance,
             company=instance.company, user=None, ancien_statut=old_statut)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'PUB30 : émission appointment_effectue échouée pour le '
             'rendez-vous #%s', getattr(instance, 'pk', '?'), exc_info=True)
@@ -498,7 +498,7 @@ def _emit_lead_created(sender, instance, created, **kwargs):
         lead_created.send(
             sender='crm.Lead', lead=instance,
             company=getattr(instance, 'company', None))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'NTGRC9 : émission lead_created échouée pour le lead #%s',
             getattr(instance, 'pk', '?'), exc_info=True)
@@ -602,7 +602,7 @@ def _notifier_responsable_interet_salle(sender, lead, salle, company,
             link=f'/crm/leads?lead={lead.pk}',
             company=company,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'ALEA3 : notification « intérêt signalé » échouée (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)

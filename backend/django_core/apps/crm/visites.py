@@ -103,7 +103,7 @@ def _texte(valeur, longueur) -> str:
         return ''
     try:
         return str(valeur).strip()[:longueur]
-    except Exception:  # noqa: BLE001 — défensif : une entrée publique
+    except Exception:  # noqa: BLE001 — défensif : une entrée publique (D-ENF22-BLE001)
         logger.warning("texte : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
@@ -159,7 +159,7 @@ def user_agent_de_requete(request) -> str:
         return ''
     try:
         return _texte(request.META.get('HTTP_USER_AGENT'), MAX_USER_AGENT)
-    except Exception:  # noqa: BLE001 — défensif
+    except Exception:  # noqa: BLE001 — défensif (D-ENF22-BLE001)
         logger.warning("user agent de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
@@ -204,7 +204,7 @@ def appareil_de_requete(request) -> str:
             return trouve
         cookies = getattr(request, 'COOKIES', None) or {}
         return _texte(cookies.get(COOKIE_APPAREIL), MAX_APPAREIL)
-    except Exception:  # noqa: BLE001 — défensif
+    except Exception:  # noqa: BLE001 — défensif (D-ENF22-BLE001)
         logger.warning("appareil de requete : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
@@ -226,7 +226,7 @@ def est_appareil_equipe(company, appareil_id) -> bool:
         from .models import AppareilEquipe
         return AppareilEquipe.objects.filter(
             company=company, appareil_id=appareil_id).exists()
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: est_appareil_equipe échoué : %s', exc)
         return False
 
@@ -241,7 +241,7 @@ def appareils_equipe_ids(company) -> set:
         return set(
             AppareilEquipe.objects.filter(company=company)
             .values_list('appareil_id', flat=True))
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: appareils_equipe_ids échoué : %s', exc)
         return set()
 
@@ -287,7 +287,7 @@ def requete_marquee_equipe(company, request) -> bool:
         if cookies.get(COOKIE_EQUIPE) == '1':
             return True
         return est_appareil_equipe(company, appareil_de_requete(request))
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: requete_marquee_equipe échoué : %s', exc)
         return False
 
@@ -362,7 +362,7 @@ def domaine_cookies_equipe(request):
         if hote == domaine or hote.endswith('.' + domaine):
             return domaine
         return None
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: domaine_cookies_equipe échoué : %s', exc)
         return None
 
@@ -477,7 +477,7 @@ def enregistrer_visite_externe(company, *, point, appareil_id='', lead=None,
             user_agent=user_agent, langue=langue, appareil_id=appareil_id,
             duree_s=duree_s, terminee=fin,
         )
-    except Exception as exc:  # noqa: BLE001 — le traçage ne casse JAMAIS un
+    except Exception as exc:  # noqa: BLE001 — le traçage ne casse JAMAIS un (D-ENF22-BLE001)
         # point public : on journalise et on rend la main.
         logger.warning(
             'T-TRACE: enregistrer_visite_externe échoué (point=%s) : %s',
@@ -541,7 +541,7 @@ def historique_appareil(company, appareil_id):
                 qs.exclude(lead__isnull=True)
                 .values_list('lead_id', flat=True))),
         }
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: historique_appareil échoué : %s', exc)
         return None
 
@@ -562,7 +562,7 @@ def _date_fr(moment) -> str:
         return ''
     try:
         return timezone.localtime(moment).strftime('%d/%m/%Y à %H:%M')
-    except Exception:  # noqa: BLE001 — défensif
+    except Exception:  # noqa: BLE001 — défensif (D-ENF22-BLE001)
         logger.warning("date fr : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
@@ -621,7 +621,7 @@ def utilisateurs_direction(company):
             company=company, is_active=True,
             role__nom__in=ROLES_DIRECTION,
         ).order_by('id'))
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: utilisateurs_direction échoué : %s', exc)
         return []
 
@@ -657,7 +657,7 @@ def _une_seule_fois(company, cle) -> bool:
         empreinte = hashlib.sha256(cle.encode('utf-8')).hexdigest()
         return dedupe_event(
             company=company, source='crm.visite_alerte', event_id=empreinte)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: garde d’idempotence indisponible : %s', exc)
         return True
 
@@ -737,7 +737,7 @@ def alerter_appareil_partage(lead) -> None:
             link=f'/crm/leads?lead={lead.pk}',
             company=company,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'T-TRACE: alerter_appareil_partage échoué (lead #%s) : %s',
             getattr(lead, 'pk', '?'), exc)
@@ -870,7 +870,7 @@ def detecter_concurrent(company, *, appareil_id='', ip='') -> None:
             link=lien,
             company=company,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: detecter_concurrent échoué : %s', exc)
 
 
@@ -913,7 +913,7 @@ def rattacher_visites_au_lead(lead) -> int:
         return VisiteExterne.objects.filter(
             company=company, appareil_id=appareil_id, lead__isnull=True,
         ).update(lead=lead)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'T-TRACE: rattacher_visites_au_lead échoué (lead #%s) : %s',
             getattr(lead, 'pk', '?'), exc)

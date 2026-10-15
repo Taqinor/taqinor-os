@@ -181,7 +181,7 @@ def _adapter_gabarits_reveil(lead, etapes, *, rang_initial=0):
     from apps.ventes.selectors import lead_a_un_devis
     try:
         avec_devis = bool(lead_a_un_devis(lead))
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning('MRY11: lecture des devis du lead #%s impossible',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return
@@ -208,7 +208,7 @@ def _realisation_eligible(lead):
     try:
         from apps.parametres.selectors import realisation_pour_lead
         return realisation_pour_lead(lead) is not None
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('Preuve J4 : catalogue illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return False
@@ -837,7 +837,7 @@ def initialiser_plan_relance(lead, user, *, depart=None, cadence='contact',
                     kind=LeadActivity.Kind.NOTE,
                     body=(f'Validité de la proposition posée au '
                           f'{derniere:%d/%m/%Y} — {motif}.'))
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'initialiser_plan_relance', exc_info=True)
     return resultats
 
@@ -1123,7 +1123,7 @@ def cloturer_cadence(lead, user, cadence):
                         cadences=['generique'])
         initialiser_plan_relance(
             lead, user, cadence='reveil', depart=timezone.now())
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'MRY11: clôture de cadence échouée (lead #%s, cadence %s)',
             getattr(lead, 'pk', '?'), cadence, exc_info=True)
@@ -1297,7 +1297,7 @@ def demarrer_cadence_contact(lead, *, user=None, origine=''):
         # CADX — le refus est ÉCRIT (chatter) : Meryem voit pourquoi le lead
         # n'a pas reçu de nouvelle prise de contact.
         return _refus_cadence(lead, user, str(exc))
-    except Exception:  # noqa: BLE001 — jamais vers l'appelant
+    except Exception:  # noqa: BLE001 — jamais vers l'appelant (D-ENF22-BLE001)
         logger.warning(
             'demarrer_cadence_contact: échec sur le lead #%s (%s)',
             getattr(lead, 'pk', '?'), origine, exc_info=True)
@@ -1551,7 +1551,7 @@ def arreter_cadence_du_lead_id(lead_id, *, company=None, user=None, motif='',
                 return 0
             return arreter_cadence(lead, user=user, motif=motif,
                                    cadences=cadences)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'arreter_cadence: échec sur le lead #%s', lead_id, exc_info=True)
         return 0

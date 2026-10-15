@@ -204,5 +204,5 @@ def _tracer_reponse(request, lien, section):
             token=getattr(lien, 'token', ''),
             request=request,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning("tracer reponse : échec ignoré, comportement dégradé", exc_info=True)

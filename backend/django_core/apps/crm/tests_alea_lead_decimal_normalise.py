@@ -105,7 +105,7 @@ class LeadDecimalGardeTests(SimpleTestCase):
             with self.subTest(champ=champ_modele.name, valeur=valeur):
                 try:
                     champ.run_validation(valeur)
-                except Exception as exc:  # noqa: BLE001 — on nomme le champ
+                except Exception as exc:  # noqa: BLE001 — on nomme le champ (D-ENF22-BLE001)
                     self.fail(f'Lead.{champ_modele.name} refuse {valeur} : '
                               f'{exc}')
         self.assertGreater(vus, 5)  # anti-faux-vert
