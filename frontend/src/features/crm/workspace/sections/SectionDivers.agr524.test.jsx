@@ -58,14 +58,14 @@ describe('AGR524 — Dossier de subvention sur la fiche lead', () => {
 
   it('choisir « Déposé » sans date : le message serveur s’affiche SOUS la date', () => {
     const setField = vi.fn()
-    const message = contrat.exemple_400.dossier_subvention_le[0]
+    const message = contrat.exemple_refus.dossier_subvention_le[0]
     const lead = { id: 1512, type_installation: 'agricole', ...contrat.exemple_vide }
     const { rerender } = render(
       <SectionDivers state={initState({ lead, mode: 'edit' })} {...base} setField={setField} />,
     )
     fireEvent.change(document.getElementById('lf-dossier-subvention'), { target: { value: 'depose' } })
     expect(setField).toHaveBeenCalledWith('dossier_subvention', 'depose')
-    // Le serveur refuse (400) : l'erreur est posée sur le champ fautif.
+    // Le serveur refuse (409, règle entre deux champs — ERR-ENF11-FUZZ-CRM) : l'erreur est posée sur le champ fautif.
     rerender(
       <SectionDivers
         state={initState({ lead, mode: 'edit' })} {...base} setField={setField}
