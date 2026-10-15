@@ -32,12 +32,13 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast } from '../../ui/confirm'
 import { frenchError } from '../../lib/frenchError'
 import {
-  Button, Input, Badge, Spinner, EmptyState,   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, Input, Badge, EmptyState,   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   CarteContenu,
 } from '../../ui'
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import { ChargementPageCentree } from '../../ui/ChargementPage'
 
 // Le modele a migre vers `achats` (ODX19) : `stock/models.py` n'en garde
 // qu'un re-export.
@@ -163,15 +164,7 @@ export default function PaiementsFournisseurLedgerPage() {
     } finally { setBusy(false) }
   }
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-[1100px] p-6">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4 text-primary" /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <ChargementPageCentree />
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-4 p-6">

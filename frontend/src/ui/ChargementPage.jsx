@@ -14,3 +14,15 @@ export function ChargementPage() {
 export function ErreurChargement({ icon, title, description }) {
   return <EmptyState icon={icon} title={title} description={description} className="my-6" />
 }
+
+/** Écran de paramétrage / registre en cours de chargement : ligne
+ *  « Chargement… » dans la colonne centrée (1100 px) de la page. */
+export function ChargementPageCentree() {
+  return (
+    <div className="mx-auto max-w-[1100px] p-6">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner className="size-4 text-primary" /> Chargement…
+      </p>
+    </div>
+  )
+}

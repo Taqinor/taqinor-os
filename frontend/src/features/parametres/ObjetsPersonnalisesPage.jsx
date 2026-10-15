@@ -20,11 +20,12 @@ import api from '../../api/axios'
 import customFieldsApi from '../../api/customFieldsApi'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
-  Button, IconButton, Input, Badge, Spinner, EmptyState, Card, CardContent,
+  Button, IconButton, Input, Badge, EmptyState, Card, CardContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import toutesLesPages from '../../pages/parametres/toutesLesPages'
 import { slugifyCode, erreurServeurLisible } from '../../lib/champsPerso'
+import { ChargementPageCentree } from '../../ui/ChargementPage'
 
 // Types de champ supportés par le moteur EXISTANT (CustomFieldDef.type).
 const TYPES_CHAMP = [
@@ -135,15 +136,7 @@ export default function ObjetsPersonnalisesPage() {
     } catch (e) { toast.error(erreurServeurLisible(e, 'Suppression impossible.')) }
   }
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-[1100px] p-6">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4 text-primary" /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <ChargementPageCentree />
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-4 p-6">

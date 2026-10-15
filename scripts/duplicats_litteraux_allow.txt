@@ -41,7 +41,6 @@
 08d34f8f1e20|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
 08d405da6a0b|apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/production-mesuree.astro
 0938b12351f6|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
-096958d0bcf3|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx
 0997734a11df|apps/web/src/pages/ar/garanties.astro,apps/web/src/pages/en/garanties.astro,apps/web/src/pages/garanties.astro
 0a6a19cf0ebb|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 0a997289056f|apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/marocains-du-monde.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
@@ -413,7 +412,6 @@ a09bc042357f|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pag
 a0d81455b089|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
 a20c512e4037|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 a28a7fd9629f|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
-a394b1001bed|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx
 a3c994fbff89|apps/web/src/components/InstallCounter.astro,apps/web/src/components/V2Enhance.astro
 a3cf965119a8|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
 a3fbc0df0db9|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro

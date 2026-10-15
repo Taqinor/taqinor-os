@@ -27,11 +27,12 @@ import api from '../../api/axios'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
-  Button, Input, Spinner, EmptyState,
+  Button, Input, EmptyState,
   CarteContenu,
 } from '../../ui'
 import BoutonSupprimerIcone from '../../ui/BoutonSupprimerIcone'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import { ChargementPageCentree } from '../../ui/ChargementPage'
 
 // Rendu d'une valeur de cellule selon le formatage annoncé par le serveur.
 function afficherValeur(valeur, formatage) {
@@ -135,15 +136,7 @@ export default function CustomObjectRecordsPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-[1100px] p-6">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4 text-primary" /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <ChargementPageCentree />
 
   if (introuvable) {
     return (
