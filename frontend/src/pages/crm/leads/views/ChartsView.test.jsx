@@ -22,19 +22,13 @@ function renderWithStore(ui) {
   return render(<Provider store={makeStore()}>{ui}</Provider>)
 }
 
-vi.mock('../../../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
-      getObjectifsAttainment: vi.fn(() => Promise.resolve({ data: [] })),
-      getRoiSources: vi.fn(() => Promise.resolve({ data: [] })),
-      getSlaBreach: vi.fn(() => Promise.resolve({ data: [] })),
-    },
-  }
-})
+vi.mock('../../../../api/crmApi', async (importOriginal) =>
+  (await import('../../../../test/etendreApi')).etendreApi(importOriginal, {
+    getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
+    getObjectifsAttainment: vi.fn(() => Promise.resolve({ data: [] })),
+    getRoiSources: vi.fn(() => Promise.resolve({ data: [] })),
+    getSlaBreach: vi.fn(() => Promise.resolve({ data: [] })),
+  }))
 
 // jsdom n'implémente pas ResizeObserver (mesuré par recharts ResponsiveContainer).
 beforeAll(() => {

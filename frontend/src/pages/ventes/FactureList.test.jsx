@@ -31,31 +31,25 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
 
 // WR2b — espionne lienPaiementFacture / dgiExportFacture / dgiConformiteFacture
 // / bulkFactures (le pouvoir de la liste factures complétant WR2).
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      lienPaiementFacture: vi.fn(() => Promise.resolve({
-        // montant figé à la création ≠ montant_a_payer : l'écran annonce le second.
-        data: { ...CONTRAT_LIEN, montant: '5000.00', montant_a_payer: '900.00' },
-      })),
-      dgiExportFacture: vi.fn(() => Promise.resolve({
-        data: new Blob(['<xml/>'], { type: 'application/xml' }),
-      })),
-      dgiConformiteFacture: vi.fn(() => Promise.resolve({ data: { conforme: true, problemes: [] } })),
-      // VNT46 — quittance d'UN paiement (GET paiements/<id>/recu-pdf/).
-      recuPdfPaiement: vi.fn(() => Promise.resolve({
-        data: new Blob(['%PDF'], { type: 'application/pdf' }),
-        headers: { 'content-disposition': 'inline; filename="Quittance_REC-1.pdf"' },
-      })),
-      bulkFactures: vi.fn(() => Promise.resolve({
-        data: { 1: { ok: true, detail: 'Émise.' } },
-      })),
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    lienPaiementFacture: vi.fn(() => Promise.resolve({
+      // montant figé à la création ≠ montant_a_payer : l'écran annonce le second.
+      data: { ...CONTRAT_LIEN, montant: '5000.00', montant_a_payer: '900.00' },
+    })),
+    dgiExportFacture: vi.fn(() => Promise.resolve({
+      data: new Blob(['<xml/>'], { type: 'application/xml' }),
+    })),
+    dgiConformiteFacture: vi.fn(() => Promise.resolve({ data: { conforme: true, problemes: [] } })),
+    // VNT46 — quittance d'UN paiement (GET paiements/<id>/recu-pdf/).
+    recuPdfPaiement: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF'], { type: 'application/pdf' }),
+      headers: { 'content-disposition': 'inline; filename="Quittance_REC-1.pdf"' },
+    })),
+    bulkFactures: vi.fn(() => Promise.resolve({
+      data: { 1: { ok: true, detail: 'Émise.' } },
+    })),
+  }))
 
 vi.mock('../../api/parametresApi', async (importOriginal) =>
   (await import('../../test/mocksVentesEcrans.js')).parametresApiProfil(await importOriginal(), { dgi_export_actif: false }))

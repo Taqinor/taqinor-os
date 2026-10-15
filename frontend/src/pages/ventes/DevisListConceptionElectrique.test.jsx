@@ -15,17 +15,11 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
 vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
 vi.mock('../../api/crmApi', async (importOriginal) =>
   (await import('../../test/mocksVentesEcrans.js')).crmApiMotifsPerteVide(await importOriginal()))
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getConceptionElectrique: vi.fn(),
-      getSchemaUnifilaireDevis: vi.fn(() => Promise.resolve({ data: { params: {}, svg: null } })),
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    getConceptionElectrique: vi.fn(),
+    getSchemaUnifilaireDevis: vi.fn(() => Promise.resolve({ data: { params: {}, svg: null } })),
+  }))
 
 import ventesApi from '../../api/ventesApi'
 import { renderList, ouvrirMenu } from './devisList.testHelpers.jsx'

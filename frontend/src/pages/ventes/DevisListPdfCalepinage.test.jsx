@@ -25,20 +25,14 @@ const genererPdfSpy = vi.fn()
 vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
   (await import('../../test/devisListMocks.js')).ventesSliceMock(importOriginal, { onGenererPdf: ([payload]) => genererPdfSpy(payload) }))
 
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      etatPdfDevis: vi.fn(() => Promise.resolve({
-        data: { devis: 77, statut: 'en_cours', fichier_pdf: false, erreur: null, date: null },
-      })),
-      getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
-      historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    etatPdfDevis: vi.fn(() => Promise.resolve({
+      data: { devis: 77, statut: 'en_cours', fichier_pdf: false, erreur: null, date: null },
+    })),
+    getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
+    historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
+  }))
 
 vi.mock('../../api/crmApi', async (importOriginal) => {
   const actual = await importOriginal()
