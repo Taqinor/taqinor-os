@@ -7,44 +7,9 @@
 # (la fonction n'est plus signalee) fait echouer la garde.
 # AFAC95/ASAV77 (2026-10-09) : racines etendues a pages/** et store/** ; leurs sites
 # (releve du jour) sont geles ici, memes regles (fichier::fonction, decroissant).
-frontend/src/features/audit/ObjectHistoryButton.jsx::charger
-frontend/src/features/core/ExplorateurDonneesPage.jsx::ExplorateurDonneesPage
 frontend/src/features/crm/companyLookup.js::searchCompanies
-frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab
-frontend/src/features/crm/workspace/VisiteTab.jsx::VisiteTab
-frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise
-frontend/src/features/ged/GedNavigator.jsx::submit
-frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien
 frontend/src/features/offlinesync/mobile/CockpitHome.jsx::CockpitHome
-frontend/src/features/offlinesync/mobile/CommercialHome.jsx::CommercialHome
-frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome
-frontend/src/features/portail/client/PortailClientChantiers.jsx::charger
-frontend/src/features/portail/client/PortailClientChantiers.jsx::voirSuivi
-frontend/src/features/portail/client/PortailClientConsommation.jsx::PortailClientConsommation
-frontend/src/features/portail/client/PortailClientContrats.jsx::PortailClientContrats
-frontend/src/features/portail/client/PortailClientDevis.jsx::charger
-frontend/src/features/portail/client/PortailClientDocuments.jsx::charger
-frontend/src/features/portail/client/PortailClientEquipe.jsx::charger
-frontend/src/features/portail/client/PortailClientFactures.jsx::charger
-frontend/src/features/portail/client/PortailClientLivraisons.jsx::charger
-frontend/src/features/portail/client/PortailClientSav.jsx::charger
-frontend/src/features/portail/client/PortailClientSav.jsx::voirFil
-frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour
-frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget
-frontend/src/pages/crm/RelancesDuJourWidget.jsx::CadencesEchues
-frontend/src/pages/crm/RelancesDuJourWidget.jsx::charger
-frontend/src/pages/crm/RelancesSuiviPage.jsx::RelancesSuiviPage
-frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils
-frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget
 frontend/src/pages/installations/DemandesAchatList.jsx::pickProduit
-frontend/src/pages/installations/SuiviGpsPage.jsx::SuiviGpsPage
-frontend/src/pages/interventions/InterventionsPage.jsx::reload
 frontend/src/pages/monitoring/Co2Page.jsx::load
-frontend/src/pages/sav/ContratsMaintenance.jsx::loadRentabilite
-frontend/src/pages/sav/ContratsMaintenance.jsx::loadTournee
-frontend/src/pages/sav/SavSlaReportPage.jsx::charger
-frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi
-frontend/src/pages/stock/FournisseurFiche360.jsx::reload
 frontend/src/pages/stock/StockList.jsx::loadTransferts
-frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage
 # ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.
