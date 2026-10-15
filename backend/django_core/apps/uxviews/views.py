@@ -486,20 +486,29 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
                 })
                 continue
 
+            # CI #1003 (fuzz) — une valeur hors des colonnes (longueur, octet
+            # NUL que PostgreSQL refuse jusque dans un filtre) était un 500 :
+            # la ligne est rejetée et nommée AVANT toute requête.
+            max_ecran = SavedView._meta.get_field('ecran').max_length
+            max_nom = SavedView._meta.get_field('nom').max_length
+            message_bornes = {
+                'ligne': i,
+                'message': f"'ecran' ({max_ecran} signes) ou 'nom' ({max_nom} signes) "
+                           'trop long, ou caractère nul dans la ligne.',
+            }
+            if (_texte_hors_bornes(ecran, max_ecran) or _texte_hors_bornes(nom, max_nom)
+                    or _porte_un_nul(configuration)):
+                erreurs.append(message_bornes)
+                continue
+
             final_nom = nom
             if SavedView.objects.filter(
                 company=request.user.company, owner=request.user, ecran=ecran, nom=nom,
             ).exists():
                 final_nom = f'{nom} (import)'
-            # CI #1003 (fuzz) — une valeur hors des colonnes (longueur, octet
-            # NUL refusé par PostgreSQL) était un 500 : ligne rejetée, nommée.
-            if (_texte_hors_bornes(ecran, 80) or _texte_hors_bornes(final_nom, 120)
-                    or _porte_un_nul(configuration)):
-                erreurs.append({
-                    'ligne': i,
-                    'message': "'ecran' (80 signes) ou 'nom' (120 signes) trop long, "
-                               'ou caractère nul dans la ligne.',
-                })
+            if len(final_nom) > max_nom:
+                # Le suffixe « (import) » ferait déborder la colonne.
+                erreurs.append(message_bornes)
                 continue
 
             view = SavedView.objects.create(
