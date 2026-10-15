@@ -214,6 +214,17 @@ class SeedFactTableTests(TestCase):
             FactTable.objects.filter(company=self.company).count(),
             first_table_count)
 
+    def test_fait_regional_de_meme_cle_ne_casse_pas_le_seed(self):
+        self._run()
+        table = FactTable.published_for(self.company)
+        FactEntry.objects.create(
+            company=self.company, table=table, region='Casablanca',
+            cle='fda_taux_subvention_pompage_pct', valeur='35', unite='%',
+            source='variante régionale', verifie_le='2026-07-19')
+        self._run()
+        self.assertEqual(table.entries.filter(
+            cle='fda_taux_subvention_pompage_pct').count(), 2)
+
     def test_seed_never_overwrites_existing_entry_value(self):
         self._run()
         table = FactTable.published_for(self.company)
