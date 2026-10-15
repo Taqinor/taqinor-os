@@ -9,6 +9,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Eye, FileWarning } from 'lucide-react'
 import ventesApi, { acceptationDejaFaite } from '../../../api/ventesApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { Button, Spinner } from '../../../ui'
 // VX182 — le shell fait-main de SigneDialog est passé à ResponsiveDialog.
@@ -169,10 +170,11 @@ export default function SigneDialog({ lead, onClose, onConfirmed, onAccepted, on
   // Le dialogue est monté à neuf par lead (clé signeLead) → un seul fetch.
   useEffect(() => {
     let alive = true
-    ventesApi.getDevis({ lead: lead.id })
-      .then((r) => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      ventesApi.getDevis({ lead: lead.id, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
         if (!alive) return
-        const all = r.data.results ?? r.data
+        const all = Array.isArray(rows) ? rows : (rows?.results ?? [])
         setTotalDevisCount((all ?? []).length)
         const list = selectableDevis(all)
         setDevisList(list)

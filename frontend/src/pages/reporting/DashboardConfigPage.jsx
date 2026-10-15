@@ -4,6 +4,7 @@ import api from '../../api/axios'
 import coreApi from '../../api/coreApi'
 import { colonneSupprimer } from './colonneSupprimer'
 import reportingApi from '../../api/reportingApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Badge, Button, Card, CardContent, Checkbox, DataTable, EmptyState, Label, Segmented, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Spinner,
@@ -107,8 +108,9 @@ export default function DashboardConfigPage() {
     return (id) => map.get(id)?.username || `Utilisateur #${id}`
   }, [users])
 
-  const reload = () => reportingApi.listDashboardConfigs()
-    .then((r) => setConfigs(r.data.results ?? r.data ?? []))
+  const reload = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    reportingApi.listDashboardConfigs({ page, page_size: pageSize }).then((r) => r.data))
+    .then((rows) => setConfigs(Array.isArray(rows) ? rows : (rows?.results ?? [])))
     .catch(() => setConfigs([]))
 
   useEffect(() => {

@@ -73,7 +73,7 @@ async function ouvrirRebut(user, container) {
   await waitFor(() => expect(container.querySelector('[data-dt-table]')).not.toBeNull())
   const table = within(container.querySelector('[data-dt-table]'))
   await user.click(await table.findByText('ASM-001'))
-  await waitFor(() => expect(api.getLignesAssemblage).toHaveBeenCalledWith(1))
+  await waitFor(() => expect(api.getLignesAssemblage).toHaveBeenCalledWith(1, expect.objectContaining({ page: 1 })))
   await user.click(await screen.findByRole('button', { name: /Déclarer un rebut/ }))
   return screen.findByText('Sortie de stock typée REBUT rattachée à ASM-001.', { exact: false })
 }

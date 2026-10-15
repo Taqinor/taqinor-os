@@ -123,7 +123,7 @@ describe('ProductionPage (WIR122 — suppression de relevé + historique mensuel
     const select = await screen.findByRole('combobox', { name: 'Choisir un système installé' })
     await userEvent.selectOptions(select, '11')
 
-    await waitFor(() => expect(monitoringApi.getReadings).toHaveBeenCalledWith({ installation: '11' }))
+    await waitFor(() => expect(monitoringApi.getReadings).toHaveBeenCalledWith(expect.objectContaining({ installation: '11' })))
     // DataTable rend bureau + mobile (2 occurrences de la même valeur).
     await waitFor(() => expect(screen.getAllByText('120.5 kWh').length).toBeGreaterThan(0))
 

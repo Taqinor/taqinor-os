@@ -1,38 +1,20 @@
 # YDATA18 — unique-scoping allowlist (existing, human-reviewed sites).
 # One key per line. check_unique_scoping.py fails on any NEW finding not here.
 #
+# ENF15 — les modèles globaux PAR CONCEPTION signés par le fondateur
+# (`tenant_exempt_models` de scripts/exceptions_permanentes.yml : ExtensionPackage,
+# PlanLicence, StatusSubscriber…) et la table tenant `authentication.Company`
+# n'ont plus de ligne ici : la garde les lit à la source. Restent 3 sites à
+# trancher (portée société ou signature fondateur) :
+#
 # (a) business unique=True fields judged legitimately global for now:
-backend/django_core/apps/compta/models.py::Immobilisation.piece_origine_ligne_facture_fournisseur_id
 backend/django_core/apps/crm/models.py::Client.code_parrainage
 #
-#
-# NTEXT13 — extensions.ExtensionPackage is a GLOBAL marketplace catalogue (no
-# company FK, reviewed global-by-design in tenant_exempt_models.txt); its `code`
-# is legitimately globally unique across the shared registry, not tenant data.
-backend/django_core/apps/extensions/models.py::ExtensionPackage.code
-#
-# NTDMO11 — onboarding.OnboardingChecklistItem is a GLOBAL « Premiers pas »
-# catalogue (company FK nullable; company=None = item partagé par toutes les
-# sociétés, seedé une fois via migration). Its stable `key` is legitimately
-# globally unique across the shared catalogue, not per-tenant business data —
-# same rationale as extensions.ExtensionPackage.code above.
+# NTDMO11 — onboarding.OnboardingChecklistItem : catalogue « Premiers pas »
+# (company FK nullable ; company=None = item partagé, seedé via migration).
 backend/django_core/apps/onboarding/models.py::OnboardingChecklistItem.key
-backend/django_core/apps/adminops/models.py::PlanLicence.code
 #
-# AUD828 (M-08) — core/authentication were entirely UNSCANNED before this
-# fix (bare models.py in apps/* only); widening the surface to its full
-# declared shape (+ models_*.py + core/authentication) surfaces these 2,
-# both reviewed legitimately global — 0 new proven leak, a coverage gap only:
-# core.IdempotencyKey.cle: DB fallback for the idempotent_task decorator —
-# the key ITSELF encodes its own scope (company id + task name + window, per
-# its docstring), by design with no company FK. Reviewed safe 2026-09-06.
+# core.IdempotencyKey.cle : repli DB du décorateur idempotent_task — la clé
+# encode elle-même sa portée (id société + nom de tâche + fenêtre), par
+# conception sans FK société. Reviewed safe 2026-09-06.
 backend/django_core/core/models.py::IdempotencyKey.cle
-# authentication.Company.slug: Company IS the tenant boundary — its own
-# identifying slug is necessarily globally unique (scoping it to "company"
-# would be scoping the tenant table to itself). Reviewed safe 2026-09-06.
-backend/django_core/authentication/models.py::Company.slug
-# statuspage.StatusSubscriber.email: abonné PUBLIC de la page de statut
-# (NTOBS15) — l'e-mail EST l'identité (pas de company par conception, il
-# s'abonne aux incidents SYSTÈME company=None) ; l'unicité globale est le
-# comportement voulu (un e-mail = un abonnement). Reviewed safe 2026-09-12.
-backend/django_core/apps/statuspage/models.py::StatusSubscriber.email

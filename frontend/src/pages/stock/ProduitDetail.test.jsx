@@ -181,7 +181,7 @@ describe('PV8 — badge de complétude datasheet', () => {
     render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
     await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
     expect(await screen.findByText('Fiche absente')).toBeInTheDocument()
-    expect(stockApi.getFichesTechniques).toHaveBeenCalledWith(7)
+    expect(stockApi.getFichesTechniques).toHaveBeenCalledWith(7, expect.any(Object))
   })
 
   it('affiche « Fiche complète » quand tous les champs requis du type sont renseignés', async () => {

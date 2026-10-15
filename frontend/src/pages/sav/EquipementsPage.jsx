@@ -117,9 +117,11 @@ export function EquipementDetail({ equipement, onClose, onSaved }) {
   // (sauf si le serializer l'a déjà fourni via nb_tickets_ouverts).
   useEffect(() => {
     if (equipement.nb_tickets_ouverts != null) return
-    savApi.getTickets({ equipement: equipement.id, ouvert: 'tous' })
-      .then((r) => {
-        const rows = r.data.results ?? r.data ?? []
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      savApi.getTickets({ equipement: equipement.id, ouvert: 'tous', page, page_size: pageSize })
+        .then((r) => r.data))
+      .then((res) => {
+        const rows = Array.isArray(res) ? res : (res?.results ?? [])
         setNbTickets(rows.filter((t) => !t.annule
           && ['nouveau', 'planifie', 'en_cours'].includes(t.statut)).length)
       })

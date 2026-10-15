@@ -14,6 +14,7 @@ import savApi from '../../api/savApi'
 import crmApi from '../../api/crmApi'
 import documentsApi from '../../api/documentsApi'
 import ventesApi from '../../api/ventesApi'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 import { downloadBlob } from '../../utils/downloadBlob'
 import { openPdfInGesture } from '../../utils/pdfBlob'
 import { errorMessageFrom } from '../../lib/toast'
@@ -415,29 +416,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       .then(r => setHistorique(r.data)).catch(() => {})
   }
   const loadEquipements = () => {
-    savApi.getEquipements({ installation: id })
-      .then(r => setEquipements(r.data?.results ?? r.data ?? [])).catch(() => {})
+    lireToutesLesPages((p) => savApi.getEquipements({ installation: id, ...p })).then(setEquipements).catch(() => {})
   }
   const loadTickets = () => {
-    savApi.getTickets({ installation: id, ouvert: 'tous' })
-      .then(r => setTickets(r.data?.results ?? r.data ?? [])).catch(() => {})
+    lireToutesLesPages((p) => savApi.getTickets({ installation: id, ouvert: 'tous', ...p })).then(setTickets).catch(() => {})
   }
   const loadContrats = () => {
     if (!installation.client) return
-    savApi.getContrats({ client: installation.client })
-      .then(r => setContrats(r.data?.results ?? r.data ?? [])).catch(() => {})
+    lireToutesLesPages((p) => savApi.getContrats({ client: installation.client, ...p })).then(setContrats).catch(() => {})
   }
   // CHT20 — lecture légère best-effort, endpoint EXISTANT (RegulatoryDossier,
   // FG268) déjà filtrable par `?devis=` (aucun nouveau backend) : le premier
   // dossier réglementaire du devis de ce chantier, s'il existe.
   const loadDossierReglementaire = () => {
     if (!installation.devis) return
-    ventesApi.getReglementaire('dossiers-reglementaires', { devis: installation.devis })
-      .then((r) => {
-        const rows = r.data?.results ?? r.data ?? []
-        setDossierReglementaireLie(rows[0] ?? null)
-      })
-      .catch(() => {})
+    lireToutesLesPages((p) => ventesApi.getReglementaire('dossiers-reglementaires', { devis: installation.devis, ...p }))
+      .then((rows) => setDossierReglementaireLie(rows[0] ?? null)).catch(() => {})
   }
 
   useEffect(() => {
@@ -446,10 +440,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     loadTickets()
     loadContrats()
     if (produits.length === 0) dispatch(fetchProduits())
-    installationsApi.getTypesIntervention()
-      .then((r) => setTypesInterv(
-        (r.data?.results ?? r.data ?? []).filter((t) => !t.archived)))
-      .catch(() => {})
+    lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
+      .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
     checkDevisDivergence()
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})

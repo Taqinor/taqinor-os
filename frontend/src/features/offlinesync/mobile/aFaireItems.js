@@ -1,3 +1,4 @@
+import { todayLocalIso } from '../../../lib/dateLocale'
 // NTMOB19 — logique PURE (aucun React) du widget « À faire aujourd'hui ».
 // Agrège en UNE liste triée par urgence ce que quatre sources EXISTANTES
 // exposent déjà, sans aucun nouveau modèle ni endpoint :
@@ -23,7 +24,7 @@ const KIND_RANK = {
  * Trie par urgence : d'abord ce qui est EN RETARD (date passée), du plus
  * ancien au plus récent ; ensuite le reste par rang de nature puis par date.
  */
-export function trierParUrgence(items, today = new Date().toISOString().slice(0, 10)) {
+export function trierParUrgence(items, today = todayLocalIso()) {
   const score = (it) => {
     const enRetard = !!it.date && it.date < today
     return [enRetard ? 0 : 1, enRetard ? it.date : (KIND_RANK[it.kind] ?? 9), it.date || '9999-12-31']

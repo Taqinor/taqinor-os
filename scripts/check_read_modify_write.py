@@ -176,7 +176,9 @@ def _function_calls_select_for_update(func_node):
             f = sub.func
             name = f.attr if isinstance(f, ast.Attribute) else (
                 f.id if isinstance(f, ast.Name) else None)
-            if name == "select_for_update":
+            # ENF15 : ``core.verrous.sous_verrou`` (décorateur) = atomic +
+            # select_for_update + relecture de l'instance avant le corps.
+            if name in ("select_for_update", "sous_verrou"):
                 return True
     return False
 

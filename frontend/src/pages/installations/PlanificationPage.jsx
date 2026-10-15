@@ -22,6 +22,7 @@ import {
   Wrench, Gauge, GripVertical,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   Badge, Spinner, EmptyState, Select, SelectTrigger, SelectValue,
@@ -38,11 +39,10 @@ import TourneeStops from '../../features/installations/TourneeStops'
 import { toastWithUndo } from '../../lib/toast'
 import { formatDate } from '../../lib/format'
 import { HEURE_DEBUT, HEURE_FIN, NON_ASSIGNE, SLOT_PX, blocGeometry, chevauchements, colKey, deuxChiffres, moveInterventionLocal, payloadDeplacement } from './PlanificationPage.helpers'
+import { todayLocalIso } from '../../lib/dateLocale'
 
 function todayISO() {
-  const d = new Date()
-  const tz = d.getTimezoneOffset() * 60000
-  return new Date(d - tz).toISOString().slice(0, 10)
+  return todayLocalIso()
 }
 
 function mondayOf(date) {
@@ -52,7 +52,7 @@ function mondayOf(date) {
   return d
 }
 
-function isoOf(d) { return d.toISOString().slice(0, 10) }
+function isoOf(d) { return todayLocalIso(d) }
 
 function defaultWeek() {
   const today = new Date()
@@ -792,8 +792,9 @@ export function OutilsChantierTab() {
   const [tarifJour, setTarifJour] = useState('')
 
   useEffect(() => {
-    installationsApi.getInstallations({ annule: 'sans' })
-      .then((r) => setChantiers(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getInstallations({ annule: 'sans', page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setChantiers(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setChantiers([]))
   }, [])
 

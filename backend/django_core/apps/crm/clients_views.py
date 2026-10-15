@@ -985,6 +985,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(parameters=[sd.param('seuil', OpenApiTypes.INT)], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='dormants',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def dormants(self, request):
         """NTCRM14 — Comptes dormants : au moins un devis/facture passé mais
@@ -1049,6 +1050,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='mon-portefeuille',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def mon_portefeuille(self, request):
         """NTCRM29 — Widget « portefeuille de comptes » : les comptes du

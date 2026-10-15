@@ -123,6 +123,9 @@ class TestLienRapportToken(TestCase):
         self.assertIn('photos', resp.data)
         self.assertIn('reserves', resp.data)
         self.assertIn('pdf_url', resp.data)
+        # AFAC94 / ENF15 — le lien du PDF est ABSOLU (comme les photos).
+        self.assertTrue(resp.data['pdf_url'].startswith('http'))
+        self.assertIn(f'/intervention-rapport/{token}/pdf/', resp.data['pdf_url'])
         # Aucune donnée interne (prix d'achat/marge) — payload restreint.
         self.assertNotIn('prix_achat', resp.data)
         self.assertNotIn('marge', resp.data)

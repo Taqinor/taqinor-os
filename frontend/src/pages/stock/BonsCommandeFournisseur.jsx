@@ -298,8 +298,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
   // ZPUR8 — liste des membres de la société pour le sélecteur « acheteur ».
   useEffect(() => {
-    coreApi.utilisateurs.list()
-      .then((r) => setMembres(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      coreApi.utilisateurs.list({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setMembres(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
   }, [])
   // QS2 — produits créés à la volée (fusionnés au catalogue prop, en lecture

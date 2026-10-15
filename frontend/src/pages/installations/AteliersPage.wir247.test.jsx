@@ -131,7 +131,7 @@ describe('AteliersPage — WIR247 gamme, lignes, nomenclature', () => {
     const { container } = renderPage()
     await ouvrirOrdre(user, 'ASM-001', container)
 
-    await waitFor(() => expect(api.getLignesAssemblage).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(api.getLignesAssemblage).toHaveBeenCalledWith(1, expect.objectContaining({ page: 1 })))
     const bloc = within(await screen.findByTestId('atelier-lignes-editables'))
 
     const qte = bloc.getByLabelText('Quantité pour Onduleur 5kW')
@@ -156,7 +156,7 @@ describe('AteliersPage — WIR247 gamme, lignes, nomenclature', () => {
     const { container } = renderPage()
     await ouvrirOrdre(user, 'ASM-002', container)
 
-    await waitFor(() => expect(api.getLignesAssemblage).toHaveBeenCalledWith(2))
+    await waitFor(() => expect(api.getLignesAssemblage).toHaveBeenCalledWith(2, expect.objectContaining({ page: 1 })))
     expect(screen.queryByTestId('atelier-lignes-editables')).toBeNull()
   })
 

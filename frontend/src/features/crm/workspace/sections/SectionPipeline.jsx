@@ -16,6 +16,7 @@ import ArbreHistorique from './ArbreHistorique'
 // chaque ligne) + l'état courant en une phrase. Lecture serveur dédiée.
 import JournalRelance from './JournalRelance'
 import { enumOptions } from './enumOptions'
+import fetchAllPages from '../../../../utils/fetchAllPages'
 
 // Les trois cadences nommées du gabarit (MRY4) — jamais un libellé inventé.
 const CADENCE_CHOICES = [
@@ -401,10 +402,11 @@ export default function SectionPipeline({ state, setField, errors = {}, refData 
   useEffect(() => {
     if (state.mode !== 'edit' || state.leadId == null || !aSecondaire) return undefined
     let actif = true
-    Promise.resolve(ventesApi.getDevis({ lead: state.leadId }))
-      .then((r) => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      Promise.resolve(ventesApi.getDevis({ lead: state.leadId, page, page_size: pageSize })).then((r) => r?.data))
+      .then((rows) => {
         if (!actif) return
-        const liste = r?.data?.results ?? r?.data ?? []
+        const liste = Array.isArray(rows) ? rows : (rows?.results ?? [])
         setDevisEnvoyes(Array.isArray(liste) ? liste.filter((d) => d.statut && d.statut !== 'brouillon') : [])
       })
       .catch(() => { if (actif) setDevisEnvoyes([]) })

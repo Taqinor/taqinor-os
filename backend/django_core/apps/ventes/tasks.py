@@ -480,14 +480,13 @@ def ranger_simulation(devis_id, simulation):
     bouger depuis ce chemin (règle #4). Rend le devis rafraîchi, ou ``None``
     s'il a disparu entre-temps.
     """
+    from .domain.etude_schema import MOTEUR_SIMULATION, appliquer
     from .models import Devis
 
     devis = Devis.objects.filter(pk=devis_id).first()
     if devis is None:
         return None
-    etude = dict(devis.etude_params or {})
-    etude['simulation'] = simulation
-    devis.etude_params = etude
+    appliquer(devis, proprietaire=MOTEUR_SIMULATION, simulation=simulation)
     devis.save(update_fields=['etude_params'])
     return devis
 

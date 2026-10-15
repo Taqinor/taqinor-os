@@ -175,13 +175,13 @@ describe('VisiteursPage (VIS1)', () => {
     await screen.findByText('Ahmed Alami')
 
     await user.click(screen.getByText('ab12cd34…'))
-    await waitFor(() => expect(getVisitesExternes).toHaveBeenCalledWith({ appareil_id: 'ab12cd34ef56' }))
+    await waitFor(() => expect(getVisitesExternes).toHaveBeenCalledWith(expect.objectContaining({ appareil_id: 'ab12cd34ef56' })))
     expect(await screen.findByText('devis #12')).toBeInTheDocument()
   })
 
   it('pré-filtre sur l’appareil du lien profond (?appareil=)', async () => {
     mount(['/crm/visiteurs?appareil=ab12cd34ef56'])
-    await waitFor(() => expect(getAppareilsVisites).toHaveBeenCalledWith({ appareil_id: 'ab12cd34ef56' }))
+    await waitFor(() => expect(getAppareilsVisites).toHaveBeenCalledWith(expect.objectContaining({ appareil_id: 'ab12cd34ef56' })))
     expect(screen.getByText(/Filtré sur l’appareil/)).toBeInTheDocument()
   })
 })

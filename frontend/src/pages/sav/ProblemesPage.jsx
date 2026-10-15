@@ -13,6 +13,7 @@
 // à moitié rattaché.
 import { useEffect, useEffectEvent, useState } from 'react'
 import savApi from '../../api/savApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 
 const STATUT_LABELS = {
@@ -72,11 +73,12 @@ export default function ProblemesPage() {
   const charger = () => {
     setChargement(true)
     Promise.all([
-      savApi.getProblemes({ ordering: '-impact' }),
+      fetchAllPages((page, { page_size: pageSize } = {}) =>
+        savApi.getProblemes({ ordering: '-impact', page, page_size: pageSize }).then((r) => r.data)),
       savApi.getRegroupementsSuggeres(),
     ])
       .then(([repProblemes, repGroupes]) => {
-        setProblemes(liste(repProblemes))
+        setProblemes(Array.isArray(repProblemes) ? repProblemes : (repProblemes?.results ?? []))
         setGroupes(repGroupes?.data?.results || [])
       })
       .catch(() => setErreur('Chargement impossible pour le moment.'))

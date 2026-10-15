@@ -7,6 +7,7 @@ import {
 import { PageHeader } from '../../ui/PageHeader'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import notificationsApi from '../../api/notificationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /* WIR177 — Écran DESTINATAIRE des annonces internes (XKB5/XKB6).
 
@@ -72,10 +73,10 @@ export default function AnnoncesPage() {
 
   const charger = useCallback(() => {
     setLoading(true)
-    return notificationsApi.getAnnonces({ active: 1 })
-      .then((r) => {
-        const rows = Array.isArray(r.data) ? r.data : (r.data?.results ?? [])
-        setAnnonces(rows)
+    return fetchAllPages((page, { page_size: pageSize } = {}) =>
+      notificationsApi.getAnnonces({ active: 1, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
+        setAnnonces(Array.isArray(rows) ? rows : (rows?.results ?? []))
       })
       .catch(() => toast.error('Chargement des annonces impossible.'))
       .finally(() => setLoading(false))

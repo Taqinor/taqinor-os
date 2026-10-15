@@ -22,13 +22,14 @@ import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { formatDate } from '../../../lib/format'
 import AFaireAujourdhui from './AFaireAujourdhui'
 import OnboardingTerrain from '../OnboardingTerrain'
+import { todayLocalIso } from '../../../lib/dateLocale'
 
 // Priorité haute → normale → basse (Lead.Priorite, crm/models.py).
 const PRIORITY_ORDER = { haute: 0, normale: 1, basse: 2 }
 const PRIORITY_TONE = { haute: 'danger', normale: 'neutral', basse: 'neutral' }
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10)
+  return todayLocalIso()
 }
 
 function sortByPriority(leads) {

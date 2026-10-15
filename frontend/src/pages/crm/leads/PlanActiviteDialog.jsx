@@ -13,6 +13,7 @@
 // un gabarit crée N étapes d'un coup, ce popover en pose une, précise.
 import { useEffect, useState } from 'react'
 import crmApi from '../../../api/crmApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import { Button, Spinner } from '../../../ui'
 import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 
@@ -26,10 +27,11 @@ export default function PlanActiviteDialog({ lead, onClose, onApplied }) {
 
   useEffect(() => {
     let alive = true
-    crmApi.getPlansActivite()
-      .then((r) => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getPlansActivite({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
         if (!alive) return
-        const all = r.data.results ?? r.data
+        const all = Array.isArray(rows) ? rows : (rows?.results ?? [])
         const actifs = (all ?? []).filter((p) => p.actif !== false)
         setPlans(actifs)
         if (actifs.length) setPlanId(String(actifs[0].id))

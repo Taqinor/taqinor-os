@@ -11,6 +11,7 @@ import re
 from decimal import Decimal
 
 from apps.ventes.utils.references import create_with_reference
+from core.verrous import sous_verrou
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
@@ -1529,6 +1530,7 @@ def quantite_retournable(installation, produit_id):
     return max(sortie - retournee, Decimal('0'))
 
 
+@sous_verrou('retour')
 def valider_retour_materiel(retour, user):
     """YSTCK4 — valide un retour BROUILLON : pour chaque ligne {produit,
     quantité}, refuse si la quantité dépasse le solde retournable (sorti −
@@ -1536,8 +1538,9 @@ def valider_retour_materiel(retour, user):
     `RETOUR-<reference-chantier>` (idempotent via `stock_applique`).
     Lève ValueError si une ligne dépasse le retournable. Renvoie le nombre de
     lignes appliquées au stock."""
-    from decimal import Decimal
-    from django.db import transaction
+    # ENF15 — deux validations concurrentes du MÊME retour passaient toutes
+    # deux la garde de statut (lue avant la transaction) et postaient chacune
+    # l'entrée de stock : ``sous_verrou`` verrouille et RELIT le retour.
     from apps.stock.selectors import lock_produit
     from apps.stock.services import (
         mouvement_type_entree, record_stock_movement,
@@ -1561,34 +1564,33 @@ def valider_retour_materiel(retour, user):
                 f'« {ligne.designation or ligne.produit_id} ».')
 
     applied = 0
-    with transaction.atomic():
-        for ligne in lignes:
-            if ligne.stock_applique or ligne.produit_id is None:
-                continue
-            qte = ligne.quantite or Decimal('0')
-            if qte <= 0:
-                ligne.stock_applique = True
-                ligne.save(update_fields=['stock_applique'])
-                continue
-            produit = lock_produit(ligne.produit_id)
-            qte_avant = produit.quantite_stock
-            qte_apres = qte_avant + qte
-            record_stock_movement(
-                company=installation.company, produit=produit,
-                type_mouvement=mouvement_type_entree(),
-                quantite=qte,
-                quantite_avant=qte_avant, quantite_apres=qte_apres,
-                reference=f'RETOUR-{installation.reference}',
-                note=f'Retour chantier {installation.reference}',
-                created_by=user)
+    for ligne in lignes:
+        if ligne.stock_applique or ligne.produit_id is None:
+            continue
+        qte = ligne.quantite or Decimal('0')
+        if qte <= 0:
             ligne.stock_applique = True
             ligne.save(update_fields=['stock_applique'])
-            applied += 1
-        retour.statut = RetourMateriel.Statut.VALIDE
-        retour.valide_par = user
-        from django.utils import timezone as _tz
-        retour.valide_le = _tz.now()
-        retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
+            continue
+        produit = lock_produit(ligne.produit_id)
+        qte_avant = produit.quantite_stock
+        qte_apres = qte_avant + qte
+        record_stock_movement(
+            company=installation.company, produit=produit,
+            type_mouvement=mouvement_type_entree(),
+            quantite=qte,
+            quantite_avant=qte_avant, quantite_apres=qte_apres,
+            reference=f'RETOUR-{installation.reference}',
+            note=f'Retour chantier {installation.reference}',
+            created_by=user)
+        ligne.stock_applique = True
+        ligne.save(update_fields=['stock_applique'])
+        applied += 1
+    retour.statut = RetourMateriel.Statut.VALIDE
+    retour.valide_par = user
+    from django.utils import timezone as _tz
+    retour.valide_le = _tz.now()
+    retour.save(update_fields=['statut', 'valide_par', 'valide_le'])
     return applied
 
 
@@ -4400,6 +4402,7 @@ class DecisionError(Exception):
     """Décision invalide sur une réquisition d'achat (statut non éligible)."""
 
 
+@sous_verrou('demande_achat')
 def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
     """XKB1 — approuve/refuse une réquisition d'achat (FG310) depuis
     l'agrégateur d'approbations cross-app (``apps/reporting``).
@@ -4423,6 +4426,9 @@ def decider_demande_achat(demande_achat, *, approuver, user, motif_refus=''):
 
     from .models import DemandeAchat, EtapeApprobationAchat
 
+    # ENF15 — deux décisions concurrentes passaient toutes deux la garde de
+    # statut (lue avant la transaction) : ``sous_verrou`` verrouille et RELIT
+    # la demande avant la garde (patron AUD217/AUD320).
     if demande_achat.statut != DemandeAchat.Statut.SOUMISE:
         raise DecisionError(
             "Seule une demande soumise peut être décidée.")

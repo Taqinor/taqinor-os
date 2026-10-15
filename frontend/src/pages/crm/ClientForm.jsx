@@ -19,6 +19,7 @@ import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
 import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import tiersApi from '../../api/tiersApi'
 import {
   searchCompanies, hitsToOptions, verifierIceUrl, verifierOmpicUrl,
@@ -176,9 +177,10 @@ export default function ClientForm({ client = null, onClose }) {
   // XSAL1-2 — listes de prix actives de la société, pour le select tarif.
   const [listesPrix, setListesPrix] = useState([])
   useEffect(() => {
-    ventesApi.getListesPrix().then(({ data }) => {
-      setListesPrix(data.results ?? data)
-    }).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      ventesApi.getListesPrix({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => { setListesPrix(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
+      .catch(() => {})
   }, [])
 
   // VX239 — <PhoneHint> extrait (aperçu de la forme normalisée uniquement —

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, RefreshCw, Search, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import monitoringApi from '../../api/monitoringApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatNumber } from '../../lib/format'
 import {
   Button, Badge, Spinner, EmptyState, Input, IconButton,
@@ -22,8 +23,9 @@ import { ModuleDashboard } from '../../ui/module'
 import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
 import MonitoringNav from './MonitoringNav'
 import { buildProductionChartData } from './ProductionPage.helpers'
+import { todayLocalIso } from '../../lib/dateLocale'
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () => todayLocalIso()
 
 export default function ProductionPage() {
   const { confirmDelete } = useConfirmDialog()
@@ -71,8 +73,9 @@ export default function ProductionPage() {
   const reloadReadings = (id) => {
     if (!id) return
     const isStale = () => String(currentInstallationRef.current) !== String(id)
-    monitoringApi.getReadings({ installation: id })
-      .then((r) => { if (!isStale()) setReadings(r.data.results ?? r.data ?? []) })
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      monitoringApi.getReadings({ installation: id, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => { if (!isStale()) setReadings(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => { if (!isStale()) setReadings([]) })
       .finally(() => { if (!isStale()) setLoadingReadings(false) })
     monitoringApi.getConfigForInstallation(id)
@@ -93,8 +96,9 @@ export default function ProductionPage() {
       if (!active) return
       setLoadingReadings(true)
       try {
-        const r = await monitoringApi.getReadings({ installation: selectedId })
-        if (active) setReadings(r.data.results ?? r.data ?? [])
+        const rows = await fetchAllPages((page, { page_size: pageSize } = {}) =>
+          monitoringApi.getReadings({ installation: selectedId, page, page_size: pageSize }).then((r) => r.data))
+        if (active) setReadings(Array.isArray(rows) ? rows : (rows?.results ?? []))
       } catch {
         if (active) setReadings([])
       } finally {

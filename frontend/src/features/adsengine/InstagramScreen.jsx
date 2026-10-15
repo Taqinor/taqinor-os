@@ -54,8 +54,10 @@ export default function InstagramScreen() {
       adsengineApi.instagram.comments().then(r => r.data).catch(() => { setLoadErrors(markLoadError("les commentaires Instagram")); return [] }),
       adsengineApi.instagram.quota().then(r => r.data).catch(() => { setLoadErrors(markLoadError("le quota de publication")); return null }),
     ]).then(([m, c, q]) => {
-      setMedia(Array.isArray(m) ? m : (m?.results || []))
-      setComments(Array.isArray(c) ? c : (c?.results || []))
+      // Listes NON paginées côté serveur (APIView `many=True`, views.py
+      // InstagramMediaListView / InstagramCommentListView) : un tableau, jamais `results`.
+      setMedia(Array.isArray(m) ? m : [])
+      setComments(Array.isArray(c) ? c : [])
       setQuota(q && typeof q === 'object' ? q : null)
     }).finally(() => setLoading(false))
   }, [])

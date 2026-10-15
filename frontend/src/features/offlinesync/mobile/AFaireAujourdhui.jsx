@@ -20,6 +20,7 @@ import {
 // (Windows), `./AFaireAujourdhui` résoudrait vers le `.js` avant le `.jsx` et
 // le composant deviendrait `undefined` au rendu.
 import { aFaireAujourdhui } from './aFaireItems'
+import { todayLocalIso } from '../../../lib/dateLocale'
 
 // Lecture d'arrière-plan : une source indisponible ne doit jamais faire
 // surgir un toast rouge (le widget se contente de ne rien montrer pour elle).
@@ -47,7 +48,7 @@ export default function AFaireAujourdhui({ exclure = [] }) {
     let alive = true
     const exclus = exclureCle ? exclureCle.split(',') : []
     const veut = (kind) => !exclus.includes(kind)
-    const today = new Date().toISOString().slice(0, 10)
+    const today = todayLocalIso()
     // Chaque source échoue INDÉPENDAMMENT (réseau, droits, module absent) :
     // le widget se contente alors de ne rien afficher pour elle.
     const safe = (call, pick) => {

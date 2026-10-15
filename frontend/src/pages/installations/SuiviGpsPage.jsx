@@ -14,6 +14,7 @@ import { formatDate } from '../../lib/format'
 // importée normalement pour construire les popups.
 import { escapeHtml } from '../../components/MapView'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import crmApi from '../../api/crmApi'
 
 /* ============================================================================
@@ -319,9 +320,10 @@ function HistoriquePresenceTab() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    installationsApi.getInstallations({ page_size: 200 })
-      .catch(() => ({ data: [] }))
-      .then((r) => setChantiers(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getInstallations({ page, page_size: pageSize }).then((r) => r.data))
+      .catch(() => [])
+      .then((rows) => setChantiers(Array.isArray(rows) ? rows : (rows?.results ?? [])))
   }, [])
 
   // Enveloppé dans `useCallback` (même patron que `useList` ci-dessus dans
