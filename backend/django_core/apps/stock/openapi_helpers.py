@@ -10,11 +10,12 @@ from typing import Any, Dict, List
 from drf_spectacular.extensions import OpenApiSerializerExtension, OpenApiSerializerFieldExtension
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_serializer
 from django.db import models
 from rest_framework import serializers
 
-from core.champs_stricts import DecimalSouple
+from core.champs_stricts import QUANTITE_MAX, DecimalSouple
+from .utils.params import MOTIF_QUANTITE_COMPTEE
 from core.serializers import ChampsTexteBooleenStricts
 
 STR = OpenApiTypes.STR
@@ -141,6 +142,15 @@ def corps(_nom, /, **champs):
 
 def detail_reponse(nom='DetailReponse'):
     return corps(nom, detail=serializers.CharField())
+
+
+@extend_schema_field({'anyOf': [
+    {'type': 'integer', 'minimum': 0, 'maximum': QUANTITE_MAX},
+    {'type': 'string', 'pattern': '^(?:' + MOTIF_QUANTITE_COMPTEE + ')$'}]})
+class QuantiteComptee(serializers.JSONField):
+    """Quantité comptée d'un inventaire : entier 0..``QUANTITE_MAX`` OU chaîne de
+    chiffres (l'écran envoie ``Number(saisie)``, des clients le texte). Champ de
+    DOCUMENTATION de corps : le contrôle est ``services._quantite_comptee_entiere``."""
 
 
 class SchemaObjetUnique(AutoSchema):

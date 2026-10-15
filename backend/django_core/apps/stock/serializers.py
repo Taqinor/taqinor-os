@@ -1338,7 +1338,7 @@ class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSer
         return attrs
 
 
-class TransfertStockSerializer(CompanyScopedRelationsMixin,
+class TransfertStockSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2870,7 +2870,7 @@ class ModeleBonCommandeFournisseurSerializer(
         return instance
 
 
-class RegleCodeBarresSerializer(CompanyScopedRelationsMixin,
+class RegleCodeBarresSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

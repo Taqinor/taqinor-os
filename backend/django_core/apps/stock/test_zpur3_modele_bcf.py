@@ -114,14 +114,23 @@ class TestGardes(Zpur3Base):
         modele.lignes.create(produit=self.mc4, quantite=10)
         resp = self.api.post(
             f'/api/django/stock/modeles-bcf/{modele.id}/generer/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_generer_modele_vide_refuse(self):
         modele = ModeleBonCommandeFournisseur.objects.create(
             company=self.company, nom='Vide', fournisseur=self.fournisseur)
         resp = self.api.post(
             f'/api/django/stock/modeles-bcf/{modele.id}/generer/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+
+    def test_generer_fournisseur_mal_type_400(self):
+        modele = ModeleBonCommandeFournisseur.objects.create(
+            company=self.company, nom='Typage', fournisseur=self.fournisseur)
+        modele.lignes.create(produit=self.mc4, quantite=10)
+        for corps in ({'fournisseur': 'abc'}, {'fournisseur': 0}, {'fournisseur': None}):
+            resp = self.api.post(
+                f'/api/django/stock/modeles-bcf/{modele.id}/generer/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, corps)
 
 
 class TestMultiTenant(Zpur3Base):

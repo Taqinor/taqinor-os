@@ -13,8 +13,8 @@ from rest_framework.response import Response
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, corps
-from ..utils.params import corps_objet, decimal_ou_400, id_corps
+from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, DecimalSoupleStock, corps
+from ..utils.params import ID_MAX, corps_objet, decimal_ou_400, id_corps, types_corps_ou_400
 from ..serializers import RevisionKitSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
@@ -30,6 +30,10 @@ from ..serializers import KitComposantSerializer, KitProduitSerializer
 extend_schema_serializer(component_name='KitProduitComposant')(KitComposantSerializer)
 
 FACTEUR_MIN, FACTEUR_MAX = 0.0001, 1000
+#: CI #997 fuzz (4) — ratio de remplacement : décimal STRICTEMENT positif (chaîne
+#: ou nombre JSON, 4 décimales) ; le champ sert au schéma ET au contrôle.
+RATIO_REMPLACEMENT = DecimalSoupleStock(
+    max_digits=12, decimal_places=4, borne_min='0.0001', required=False, allow_null=True)
 _BOOLEENS = ('1', '0', 'true', 'false', 'True', 'False')
 READ_ACTIONS = ['list', 'retrieve', 'exploser', 'revisions',
                 'composition_au', 'disponibilite']
@@ -232,10 +236,10 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         return Response(
             self.get_serializer(copie).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('KitRemplacerComposantCorps', produit_ancien=serializers.IntegerField(),
-                                 produit_nouveau=serializers.IntegerField(),
-                                 ratio_quantite=serializers.DecimalField(max_digits=12, decimal_places=4,
-                                                                         required=False, allow_null=True),
+    @extend_schema(request=corps('KitRemplacerComposantCorps',
+                                 produit_ancien=serializers.IntegerField(min_value=1, max_value=ID_MAX),
+                                 produit_nouveau=serializers.IntegerField(min_value=1, max_value=ID_MAX),
+                                 ratio_quantite=RATIO_REMPLACEMENT,
                                  dry_run=serializers.BooleanField(required=False)), responses=OBJET)
     @action(detail=False, methods=['post'], url_path='remplacer-composant')
     def remplacer_composant(self, request):
@@ -247,20 +251,36 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         sa révision XMFG18 + une ligne d'audit récapitulative."""
         from ..services import remplacer_composant_masse
         donnees = corps_objet(request)
+        # CI #997 fuzz (4) — corps typé comme le schéma publié : identifiants
+        # entiers non nuls, `dry_run` booléen JSON (`0` lisait « appliquer »,
+        # et appliquait réellement le remplacement), ratio décimal > 0.
+        types_corps_ou_400(donnees, ids=('produit_ancien', 'produit_nouveau'), nuls=())
         dry_run = donnees.get('dry_run', True)
-        if isinstance(dry_run, str):
-            dry_run = dry_run.lower() not in ('0', 'false', 'non')
-        # CI #997 fuzz — ``produit_nouveau: {}`` faisait un TypeError ORM (500).
+        if not isinstance(dry_run, bool):
+            raise ValidationError({'dry_run': ['Booléen attendu (true/false).']})
+        ratio = donnees.get('ratio_quantite')
+        if ratio is not None:
+            try:
+                ratio = RATIO_REMPLACEMENT.run_validation(ratio)
+            except ValidationError as exc:
+                raise ValidationError({'ratio_quantite': exc.detail})
+            if ratio < RATIO_REMPLACEMENT.min_value:  # la borne est publiée, le contrôle est ici
+                raise ValidationError({'ratio_quantite': ['Le ratio de quantité doit être positif.']})
+        # CI #997 fuzz (3/4) — ``0`` ne désigne aucun produit (400) ; deux fois le
+        # même produit : l'état demandé s'oppose à lui-même, le corps était conforme (409).
         ancien, nouveau = (id_corps(donnees.get(c)) for c in ('produit_ancien', 'produit_nouveau'))
         if ancien is None or nouveau is None:
             return Response({'detail': 'Produit introuvable pour cette société.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        if ancien == nouveau:
+            return Response({'detail': 'Le produit de remplacement doit être différent du produit remplacé.'},
+                            status=status.HTTP_409_CONFLICT)
         try:
             resultat = remplacer_composant_masse(
                 request.user.company,
                 produit_ancien_id=ancien,
                 produit_nouveau_id=nouveau,
-                ratio_quantite=donnees.get('ratio_quantite'),
+                ratio_quantite=ratio,
                 dry_run=dry_run,
                 user=request.user)
         except ValueError as exc:

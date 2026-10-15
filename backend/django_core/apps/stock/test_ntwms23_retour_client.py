@@ -200,7 +200,29 @@ class TestEndpointsRetourClient(Ntwms23Base):
             'client': client_autre.id,
             'lignes': [{'produit': self.produit.id, 'quantite': 1}],
         }, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        # CI #997 fuzz (4) : un client étranger (ou absent) est une ressource
+        # qui manque -> 404, même corps pour les deux.
+        self.assertEqual(reponse.status_code, 404)
+
+    def test_corps_mal_type_400_et_rien_cree(self):
+        lignes_ok = [{'produit': self.produit.id, 'quantite': 1}]
+        cas = (
+            {'client': self.client_crm.id, 'lignes': []},
+            {'client': self.client_crm.id, 'lignes': 'x'},
+            {'client': self.client_crm.id, 'lignes': [5]},
+            {'client': self.client_crm.id, 'lignes': [{'produit': self.produit.id, 'quantite': '1'}]},
+            {'client': self.client_crm.id, 'lignes': [{'produit': self.produit.id, 'quantite': 1,
+                                                       'etat_constate': 'nimporte_quoi'}]},
+            {'client': self.client_crm.id, 'lignes': [{'quantite': 1}]},
+            {'client': self.client_crm.id, 'lignes': lignes_ok, 'motif': 7},
+            {'client': self.client_crm.id, 'lignes': lignes_ok, 'motif': 'a\u0000b'},
+            {'client': 0, 'lignes': lignes_ok},
+            {'lignes': lignes_ok},
+        )
+        for corps in cas:
+            reponse = self.api.post(self.URL, corps, format='json')
+            self.assertEqual(reponse.status_code, 400, (corps, reponse.content))
+        self.assertEqual(RetourClient.objects.count(), 0)
 
     def test_inspecter_via_api(self):
         retour = self._retour(etat='revendable', quantite=1)

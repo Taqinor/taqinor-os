@@ -15,6 +15,7 @@ from rest_framework.fields import SkipField
 
 from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
+from .erreurs_achats import ConflitEtat
 from .openapi_helpers import EntierBornePublie
 from .permissions import MasqueMontantsAchatMixin
 
@@ -175,7 +176,7 @@ class QuaiSerializer(CompanyScopedRelationsMixin,
 
 
 class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
-                                       serializers.ModelSerializer):
+                                       ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS7 — créneau transporteur sur un quai.
 
     Le chevauchement est refusé PAR LE SERVEUR (garde dans
@@ -218,8 +219,9 @@ class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
         fin = attrs.get(
             'date_heure_fin', getattr(self.instance, 'date_heure_fin', None))
         if debut and fin and fin <= debut:
-            raise serializers.ValidationError(
-                {'date_heure_fin': 'La fin doit être postérieure au début.'})
+            # Deux dates conformes au schéma dont l'ordre s'oppose : règle que
+            # le schéma ne sait pas dire -> 409 (état), plus 400.
+            raise ConflitEtat({'date_heure_fin': 'La fin doit être postérieure au début.'})
         return attrs
 
 

@@ -18,11 +18,11 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
-from ..erreurs_achats import EtatIncompatible
+from ..erreurs_achats import ConflitEtat, EtatIncompatible
 from ..utils.params import (
     corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
@@ -349,7 +349,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
 
 class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
                                      CompanyScopedRelationsMixin,
-                                     serializers.ModelSerializer):
+                                     ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ERR-STK-PRIX-ACHAT-SUITE — seuil de CA d'achat et montant fixe.
     champs_montants_achat = ('seuil_ca_achat', 'montant_fixe')
     fournisseur_nom = serializers.CharField(
@@ -395,8 +395,9 @@ class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
         fin = attrs.get('periode_fin',
                         getattr(self.instance, 'periode_fin', None))
         if debut and fin and fin < debut:
-            raise serializers.ValidationError(
-                'La fin de période doit suivre son début.')
+            # Deux dates conformes au schéma dont l'ordre s'oppose : une règle
+            # qu'il ne sait pas exprimer, donc 409 (état), plus 400.
+            raise ConflitEtat('La fin de période doit suivre son début.')
         return attrs
 
 

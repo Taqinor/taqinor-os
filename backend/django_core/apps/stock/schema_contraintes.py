@@ -71,6 +71,27 @@ PRODUIT_XOR_SOUS_KIT = {'anyOf': [
 ]}
 MOTIF_TAUX_0_100 = r'^(?:\d{1,2}(?:\.\d{1,2})?|\.\d{1,2})$'
 
+#: CI #997 fuzz (4) — profil saisonnier (``creer_profil_saisonnier``) : UNE cible,
+#: un produit OU une catégorie, jamais les deux ni aucune.
+PRODUIT_XOR_CATEGORIE = {'anyOf': [
+    {'required': ['produit'], 'properties': {
+        'produit': {'type': 'integer'}, 'categorie': {'nullable': True, 'enum': [None]}}},
+    {'required': ['categorie'], 'properties': {
+        'categorie': {'type': 'integer'}, 'produit': {'nullable': True, 'enum': [None]}}},
+]}
+
+#: CI #997 fuzz (4) — accord RFA (``AccordRFAFournisseurSerializer.validate``) :
+#: UN taux OU un montant fixe, jamais les deux ni aucun (``null`` et ``""`` sont
+#: « non renseigné »).
+_NON_RENSEIGNE = {'nullable': True, 'enum': [None, '']}
+_RENSEIGNE = {'not': {'enum': [None, '']}}
+TAUX_XOR_MONTANT_FIXE = {'anyOf': [
+    {'required': ['taux_pct'], 'properties': {
+        'taux_pct': _RENSEIGNE, 'montant_fixe': _NON_RENSEIGNE}},
+    {'required': ['montant_fixe'], 'properties': {
+        'montant_fixe': _RENSEIGNE, 'taux_pct': _NON_RENSEIGNE}},
+]}
+
 #: CI #997 fuzz — mouvement libre (``MouvementStockViewSet.perform_create``) :
 #: le transfert a sa route (refusé ici) ; ENTREE/SORTIE > 0, AJUSTEMENT = un
 #: niveau visé ≥ 0.
@@ -182,8 +203,12 @@ CONTRAINTES = {
     'PrixFournisseurRequest': {'nombre_accepte': ['prix_achat']},
     'PatchedPrixFournisseurRequest': {'nombre_accepte': ['prix_achat']},
     # CI #997 fuzz — décimaux nullables : ``""`` est lu « non renseigné ».
-    'AccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
-    'PatchedAccordRFAFournisseurRequest': {'vide_accepte': ['taux_pct', 'montant_fixe']},
+    # Les trois décimaux sont lus en chaîne OU en nombre JSON (``DecimalField``).
+    'AccordRFAFournisseurRequest': {'nombre_accepte': ['seuil_ca_achat', 'taux_pct', 'montant_fixe'],
+                                    'vide_accepte': ['taux_pct', 'montant_fixe'],
+                                    'racine': TAUX_XOR_MONTANT_FIXE},
+    'PatchedAccordRFAFournisseurRequest': {'nombre_accepte': ['seuil_ca_achat', 'taux_pct', 'montant_fixe'],
+                                           'vide_accepte': ['taux_pct', 'montant_fixe']},
     'TrancheEcheancierRequest': {},
     # ERR-ENF11-FUZZ-STOCK — montants / facteurs strictement positifs et
     # quantités réellement lues (un corps sans ``quantite`` : « Quantité
@@ -210,6 +235,7 @@ CONTRAINTES = {
     'KitProduitComposantRequest': {'montants_positifs': ['quantite'],
                                    'motifs': {'taux_perte_pct': MOTIF_TAUX_0_100},
                                    'racine': PRODUIT_XOR_SOUS_KIT},
+    'ProfilSaisonnierRequest': {'racine': PRODUIT_XOR_CATEGORIE},
     'ProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT},
     'PatchedProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT},
     'ProduitBulkCorpsRequest': {'racine': PRIX_EN_MASSE, 'remplacer': {
@@ -297,16 +323,16 @@ def declarer_contraintes_achats(result, generator=None, request=None,
         for champ, remplacement in (regles.get('remplacer') or {}).items():
             if champ in proprietes:
                 proprietes[champ] = dict(remplacement)
+        for champ in regles.get('nombre_accepte') or ():
+            propriete = proprietes.get(champ)
+            if isinstance(propriete, dict) and propriete.get('pattern'):
+                proprietes[champ] = _chaine_ou_nombre(propriete)
         for champ in regles.get('vide_accepte') or ():
             propriete = proprietes.get(champ)
             if isinstance(propriete, dict) and 'oneOf' not in propriete:
                 nullable = propriete.pop('nullable', False)
                 proprietes[champ] = {'nullable': nullable, 'oneOf': [
                     propriete, {'type': 'string', 'enum': ['']}]}
-        for champ in regles.get('nombre_accepte') or ():
-            propriete = proprietes.get(champ)
-            if isinstance(propriete, dict) and propriete.get('pattern'):
-                proprietes[champ] = _chaine_ou_nombre(propriete)
         for champ in regles.get('requis') or ():
             requis = composant.setdefault('required', [])
             if champ not in requis:
@@ -317,6 +343,7 @@ def declarer_contraintes_achats(result, generator=None, request=None,
                 elements.update(fragment)
         composant.update(regles.get('racine') or {})
     _gestes_scannables(schemas)
+    _classes_danger_autorisables(schemas)
     return result
 
 
@@ -337,3 +364,19 @@ def _gestes_scannables(schemas: dict) -> None:
             {'required': [casier], 'properties': {
                 'type_mouvement': {'enum': ['transfert']}, casier: {'type': 'integer'}}}
             for casier in ('bin_source', 'bin_destination')]
+
+
+def _classes_danger_autorisables(schemas: dict) -> None:
+    """CI #997 fuzz (4) — ``classe_danger`` d'un casier hazmat = les classes de
+    ``Produit.ClasseDanger`` hors « Aucune » (``validate_classe_danger`` refuse
+    l'inconnue ET « Aucune »). Énumération INLINE : un composant partagé avec
+    la fiche produit (qui admet « Aucune ») serait une collision de noms."""
+    from .models import Produit
+    autorisables = [v for v in Produit.ClasseDanger.values
+                    if v != Produit.ClasseDanger.AUCUNE]
+    for nom in ('CompatibiliteHazmatCasierRequest', 'PatchedCompatibiliteHazmatCasierRequest'):
+        propriete = ((schemas.get(nom) or {}).get('properties') or {}).get('classe_danger')
+        if isinstance(propriete, dict):
+            for cle in ('minLength', 'maxLength', 'pattern'):
+                propriete.pop(cle, None)
+            propriete['enum'] = autorisables

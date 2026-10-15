@@ -157,3 +157,13 @@ class HomonymeTests(TestCase):
         for corps in ({'nom': [None, None]}, [None, None]):
             reponse = self.api.post(url, corps, format='json')
             self.assertEqual(reponse.status_code, 400, reponse.content)
+
+    def test_dupliquer_nom_nul_ou_trop_long_400(self):
+        """CI #997 fuzz (4) : le nom suit la forme publiée (sans caractère nul,
+        255 caractères au plus) — avant, la base ou full_clean le refusait."""
+        url = f'/api/django/stock/produits/{self.source.pk}/dupliquer/'
+        avant = Produit.objects.count()
+        for nom in ('a\u0000b', 'x' * 256, '   '):
+            reponse = self.api.post(url, {'nom': nom}, format='json')
+            self.assertEqual(reponse.status_code, 400, (nom[:10], reponse.content))
+        self.assertEqual(Produit.objects.count(), avant)

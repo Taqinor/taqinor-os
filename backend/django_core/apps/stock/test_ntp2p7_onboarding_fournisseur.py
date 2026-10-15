@@ -267,6 +267,26 @@ class ProgressionEtValidationTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn('file_key', resp.data)
 
+    def test_document_dossier_inconnu_404_et_texte_strict(self):
+        """CI #997 fuzz (4) : un dossier absent est une ressource qui manque
+        (404) ; référence et note sont des textes JSON, jamais convertis."""
+        resp = self.api.post(f'{STOCK}/documents-fournisseur/',
+                             {'dossier': 99999999, 'type_document': 'rc'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = self.api.post(f'{STOCK}/documents-fournisseur/',
+                             {'dossier': self.dossier.pk, 'type_document': 'rc', 'reference': 0},
+                             format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('reference', resp.data)
+        resp = self.api.post(f'{STOCK}/documents-fournisseur/',
+                             {'dossier': self.dossier.pk, 'type_document': 'rc', 'note': 5},
+                             format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(f'{STOCK}/documents-fournisseur/',
+                             {'dossier': self.dossier.pk, 'type_document': 'rc', 'reference': 'RC-1'},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
     def test_endpoint_onboarding_sur_le_fournisseur(self):
         resp = self.api.get(
             f'{STOCK}/fournisseurs/{self.fournisseur.pk}/onboarding/')

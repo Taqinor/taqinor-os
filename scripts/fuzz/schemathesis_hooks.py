@@ -509,6 +509,10 @@ _FICHIERS_VALIDES = (
     # octets magiques (PDF, PNG, JPEG, WebP), inexprimables dans le schéma.
     (re.compile(r'^/api/django/installations/chantiers/\{[^}]+\}/ajouter-releve/$'), {'POST'},
      {'file': _PDF_MINIMAL}),
+    # CI #997 (4) - photo d'un produit : le serveur valide les octets magiques
+    # (PDF, PNG, JPEG, WebP) ; un part sans octets valides est « Format non supporté ».
+    (re.compile(r'^/api/django/stock/produits/\{[^}]+\}/photo/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
 )
 
 

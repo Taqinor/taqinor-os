@@ -187,13 +187,20 @@ class FkWmsTests(TestCase):
     # --- retour client ----------------------------------------------------
     def test_retour_client_etranger(self):
         lignes = [{'produit': self.pa.id, 'quantite': 1}]
+        # CI #997 fuzz (4) - un client / chantier étranger ou absent est une
+        # ressource qui manque : 404 de même corps (plus 400).
         r = self.api.post(f'{BASE}/retours-client/', {
             'client': self.client_b.id, 'lignes': lignes}, format='json')
-        self.assertObjetInexistant(r, 'client')
+        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.data['client'][0].code, 'does_not_exist', r.content)
+        r_absent = self.api.post(f'{BASE}/retours-client/', {
+            'client': 99999999, 'lignes': lignes}, format='json')
+        self.assertEqual(r_absent.status_code, 404, r_absent.content)
         r = self.api.post(f'{BASE}/retours-client/', {
             'client': self.client_a.id, 'chantier': self.chantier_b.id,
             'lignes': lignes}, format='json')
-        self.assertObjetInexistant(r, 'chantier')
+        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.data['chantier'][0].code, 'does_not_exist', r.content)
         r = self.api.post(f'{BASE}/retours-client/', {
             'client': self.client_a.id,
             'lignes': [{'produit': self.pa.id, 'quantite': 1,

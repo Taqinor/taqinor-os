@@ -8,13 +8,14 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, inline_seri
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from ..openapi_helpers import BINARY, BOOL, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, OBJET, P, PDF, STR, corps
-from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin, _ids_inconnus_seulement
 from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import (
-    booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
+    ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
     id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
 from ..erreurs_achats import ConflitEtat, EtatIncompatible
@@ -23,7 +24,7 @@ from authentication.permissions import (
 )
 
 from ..models_wms import (
-    AlerteRappel, BlocageQualite, ExpeditionTransporteur, MouvementRebut,
+    AlerteRappel, BlocageQualite, ExpeditionTransporteur, LigneRetourClient, MouvementRebut,
     PlanChargement, PlanComptageTournant, PortailTiersToken, Quai,
     RendezVousTransporteur, RetourClient, UniteLogistique, VaguePicking,
 )
@@ -45,15 +46,69 @@ CORPS_IMPORT_ASN = corps('UniteImportAsnCorps', version=ChaineStricte(required=F
                          totaux=serializers.DictField(required=False))
 
 
-def _relations_scopees(view, request, noms):
+_ID_CORPS = {'min_value': 1, 'max_value': ID_MAX}
+
+#: Début des deux refus de ``creer_vague_depuis_besoins`` qui disent « rien à regrouper »
+#: (« Aucun besoin à regrouper… », « Aucun besoin valide à regrouper… ») : un état, pas une saisie.
+AUCUN_BESOIN = 'Aucun besoin'
+
+#: CI #997 fuzz (4) — corps de création d'une vague : des besoins explicites
+#: et/ou des chantiers dont on reprend les réservations ; ni l'un ni l'autre (ou
+#: rien de servable) est un état « aucun besoin à regrouper » (409).
+CORPS_VAGUE = corps(
+    'VagueCreerCorps',
+    besoins=serializers.ListField(required=False, child=corps(
+        'VagueBesoinCorps', produit_id=serializers.IntegerField(**_ID_CORPS),
+        quantite=serializers.IntegerField(**_ID_CORPS),
+        installation_id=serializers.IntegerField(required=False, allow_null=True, **_ID_CORPS),
+        bon_commande_id=serializers.IntegerField(required=False, allow_null=True, **_ID_CORPS))),
+    installations=serializers.ListField(required=False, child=serializers.IntegerField(**_ID_CORPS)),
+    note=ChaineStricte(required=False, allow_blank=True, allow_null=True))
+
+#: Corps de création d'un retour client : un client, au moins une ligne.
+CORPS_RETOUR_CLIENT = corps(
+    'RetourClientCreerCorps',
+    client=serializers.IntegerField(**_ID_CORPS),
+    chantier=serializers.IntegerField(required=False, allow_null=True, **_ID_CORPS),
+    ticket=serializers.IntegerField(required=False, allow_null=True, **_ID_CORPS),
+    motif=ChaineStricte(required=False, allow_blank=True, allow_null=True),
+    lignes=serializers.ListField(min_length=1, child=corps(
+        'RetourClientLigneCorps', produit=serializers.IntegerField(**_ID_CORPS),
+        quantite=serializers.IntegerField(**_ID_CORPS),
+        etat_constate=serializers.ChoiceField(choices=LigneRetourClient.EtatConstate.choices, required=False),
+        bin=serializers.IntegerField(required=False, allow_null=True, **_ID_CORPS))))
+
+
+def _liste_d_objets_ou_400(valeur, champ, **types):
+    """Liste de ``champ`` dont CHAQUE élément est un objet typé par
+    ``types_corps_ou_400`` ; l'erreur nomme l'élément (``{champ: {rang: …}}``)."""
+    if valeur is None:
+        return []
+    if not isinstance(valeur, list):
+        raise ValidationError({champ: ['Liste attendue.']})
+    for rang, element in enumerate(valeur):
+        if not isinstance(element, dict):
+            raise ValidationError({champ: {str(rang): ['Objet attendu.']}})
+        try:
+            types_corps_ou_400(element, **types)
+        except ValidationError as exc:
+            raise ValidationError({champ: {str(rang): exc.detail}})
+    return valeur
+
+
+def _relations_scopees(view, request, noms, inconnu_en_404=False):
     """ASTK6 — résout les FK d'un ``create`` maison par les champs SCOPÉS
     société du sérialiseur de la vue (``CompanyScopedRelationsMixin``).
 
     Un id d'une autre société lève la même ``ValidationError`` « objet
     inexistant » (400) qu'un id qui n'existe pas — au lieu d'être
     silencieusement ignoré. Renvoie ``{nom: instance ou None}``.
+
+    ``inconnu_en_404`` (CI #997 fuzz 4) : quand TOUTES les erreurs sont « objet
+    inexistant », la réponse est un 404 de même corps — le corps était conforme
+    au schéma, c'est la ressource qui manque.
     """
-    from rest_framework.exceptions import ValidationError
+    from rest_framework.exceptions import NotFound, ValidationError
 
     champs = view.get_serializer().fields
     resolues, erreurs = {}, {}
@@ -68,6 +123,8 @@ def _relations_scopees(view, request, noms):
         except ValidationError as exc:
             erreurs[nom] = exc.detail
     if erreurs:
+        if inconnu_en_404 and _ids_inconnus_seulement(erreurs, champs):
+            raise NotFound(erreurs)
         raise ValidationError(erreurs)
     return resolues
 
@@ -111,20 +168,37 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @extend_schema(request=CORPS_VAGUE, responses={201: VaguePickingSerializer})
     def create(self, request, *args, **kwargs):
         """Crée la vague à partir des besoins fournis (multi-source) — le
         service pose la référence, résout les casiers et TRIE par parcours."""
         from ..services import creer_vague_depuis_besoins
-        donnees = request.data if isinstance(request.data, dict) else {}
+        donnees = corps_objet(request)  # corps non objet -> 400 (jamais « aucun besoin »)
+        # CI #997 fuzz (4) — corps typé comme le schéma publié (un besoin non
+        # objet, une quantité texte, une note numérique faisaient un 500 ou
+        # passaient en silence) ; ni besoin ni chantier servable : 409.
+        types_corps_ou_400(donnees, textes=('note',), nuls=('note',))
+        besoins = _liste_d_objets_ou_400(
+            donnees.get('besoins'), 'besoins', entiers=('quantite',),
+            ids=('produit_id', 'installation_id', 'bon_commande_id'), nuls=('installation_id', 'bon_commande_id'))
+        installations = donnees.get('installations')
+        if installations is not None and (not isinstance(installations, list) or any(
+                id_corps(i) is None or isinstance(i, str) for i in installations)):
+            raise ValidationError({'installations': ['Liste d\'identifiants entiers attendue.']})
+        if '\x00' in (donnees.get('note') or ''):
+            raise ValidationError({'note': ['Le caractère nul n’est pas autorisé.']})
         try:
             vague = creer_vague_depuis_besoins(
                 company=request.user.company, user=request.user,
-                besoins=donnees.get('besoins'),
-                installations=donnees.get('installations'),
+                besoins=besoins, installations=installations,
                 note=donnees.get('note') or '')
         except ValueError as exc:
+            # « Aucun besoin (valide) à regrouper » : le corps est conforme, c'est l'état
+            # des réservations / du catalogue qui ne donne rien à servir (409) ; les
+            # autres refus du service (source « objet inexistant »…) restent des 400.
+            etat = str(exc).startswith(AUCUN_BESOIN)
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT if etat else status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(vague).data,
                         status=status.HTTP_201_CREATED)
 
@@ -542,7 +616,7 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
         return qs
 
     def _sauver(self, serializer):
-        """Traduit le refus de chevauchement en 400 lisible plutôt qu'en 500.
+        """Traduit le refus de chevauchement en 409 lisible plutôt qu'en 500.
 
         Deux refus possibles, un seul message : la garde Python de ``save()``
         (``ValueError``) sur le chemin courant, et — AUD214 — l'
@@ -556,13 +630,13 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
             with transaction.atomic():
                 serializer.save(company=self.request.user.company)
         except ValueError as exc:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError({'detail': str(exc)})
+            # Chevauchement d'un rendez-vous déjà posé : l'état du quai
+            # s'oppose à un corps conforme (409, plus 400).
+            raise ConflitEtat(str(exc))
         except IntegrityError:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError({'detail': (
+            raise ConflitEtat(
                 'Ce créneau vient d\'être réservé sur ce quai, '
-                'choisissez-en un autre.')})
+                'choisissez-en un autre.')
 
     def perform_create(self, serializer):
         self._sauver(serializer)
@@ -901,7 +975,8 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         blocage.refresh_from_db()
         return Response(self.get_serializer(blocage).data)
 
-    @extend_schema(request=corps('QuarantaineLeverCasierCorps', bin=serializers.IntegerField()), responses={
+    @extend_schema(request=corps('QuarantaineLeverCasierCorps', bin=serializers.IntegerField(
+        min_value=1, max_value=ID_MAX)), responses={
         200: inline_serializer('StockQuarantaineLeveeCasier', {
             'bin': serializers.IntegerField(),
             'blocages_leves': serializers.IntegerField(),
@@ -1124,23 +1199,36 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(client_id=client)
         return qs
 
+    @extend_schema(request=CORPS_RETOUR_CLIENT, responses={201: RetourClientSerializer})
     def create(self, request, *args, **kwargs):
         """``{client, chantier?, ticket?, motif?, lignes: [{produit,
         quantite, etat_constate?, bin?}]}`` — la référence est posée côté
         serveur."""
         from ..services import creer_retour_client
         company = request.user.company
-        # ASTK6 — client, chantier et ticket bornés société ; id étranger →
-        # 400 « objet inexistant » (les casiers des lignes sont bornés par le
-        # service).
+        # CI #997 fuzz (4) — corps typé comme le schéma publié, AVANT toute
+        # résolution : lignes objets (produit, quantité entiers, état connu).
+        donnees = corps_objet(request)
+        types_corps_ou_400(donnees, textes=('motif',), ids=('client', 'chantier', 'ticket'),
+                           nuls=('chantier', 'ticket', 'motif'))
+        lignes = _liste_d_objets_ou_400(
+            donnees.get('lignes'), 'lignes', entiers=('quantite',), ids=('produit', 'bin'), nuls=('bin',))
+        etats = LigneRetourClient.EtatConstate.values
+        if any('etat_constate' in ligne and ligne['etat_constate'] not in etats for ligne in lignes):
+            raise ValidationError({'lignes': ['État constaté inconnu (' + ', '.join(etats) + ').']})
+        if '\x00' in (donnees.get('motif') or ''):
+            raise ValidationError({'motif': ['Le caractère nul n’est pas autorisé.']})
+        # ASTK6 — client, chantier et ticket bornés société ; id étranger ou
+        # absent → 404 « objet inexistant » de même corps (les casiers des
+        # lignes sont bornés par le service).
         liens = _relations_scopees(
-            self, request, ['client', 'chantier', 'ticket'])
+            self, request, ['client', 'chantier', 'ticket'], inconnu_en_404=True)
         try:
             retour = creer_retour_client(
                 company=company, user=request.user, client=liens['client'],
                 chantier=liens['chantier'], ticket=liens['ticket'],
-                motif=request.data.get('motif') or '',
-                lignes=request.data.get('lignes'))
+                motif=donnees.get('motif') or '',
+                lignes=lignes)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

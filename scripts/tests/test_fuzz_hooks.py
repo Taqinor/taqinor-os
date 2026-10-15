@@ -544,6 +544,14 @@ class FichiersPdfTests(unittest.TestCase):
         negatif = self._corps(chemin=chemin, corps={'file': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['file'], b'')
 
+    def test_photo_produit_recoit_un_png(self):
+        # CI #997 fuzz (4) - le serveur valide les octets magiques de la photo.
+        chemin = '/api/django/stock/produits/{id}/photo/'
+        corps = self._corps('POST', chemin, {'file': b''})
+        self.assertTrue(corps['file'].startswith(b'\x89PNG'))
+        self.assertEqual(self._corps('POST', chemin, {'file': b''}, mode='NEGATIVE')['file'], b'')
+        self.assertEqual(self._corps('DELETE', chemin, {'file': b''})['file'], b'')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(

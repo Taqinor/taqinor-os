@@ -409,6 +409,12 @@ class CorpsFuzzTests(TestCase):
         cas = (
             ('blocages-qualite/lever-quarantaine/', [None, None]),
             ('blocages-qualite/lever-quarantaine/', {'bin': {}}),
+            ('blocages-qualite/lever-quarantaine/', {'bin': 0}),
+            ('produits/inventaire/', {'lignes': [{'quantite_comptee': 1}]}),
+            ('produits/inventaire/', {'lignes': [{'produit': self.pa.id, 'quantite_comptee': 1000001}]}),
+            ('produits/inventaire/', {'lignes': [{'produit': self.pa.id, 'quantite_comptee': ' 7 '}]}),
+            ('kits/remplacer-composant/', {'produit_ancien': self.pa.id, 'produit_nouveau': self.pb.id,
+                                           'dry_run': 0}),
             ('kits/remplacer-composant/', {'produit_ancien': 0, 'produit_nouveau': {},
                                            'ratio_quantite': '0', 'dry_run': False}),
             ('produits/inventaire/', [None, None]),
