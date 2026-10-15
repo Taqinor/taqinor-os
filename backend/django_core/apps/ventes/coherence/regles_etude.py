@@ -193,7 +193,12 @@ def i7_bloc_perime(r, devis, ctx):
     """Le moteur rejette un bloc ``etude_horaire`` dont le kWc s'écarte de
     plus de 2 % de celui du devis (garde de fraîcheur) et chiffre alors les
     colonnes au modèle « factures »/« estimation » sans le dire. 60 devis
-    mesurés (bloc = kWc_sans + kWc_avec)."""
+    mesurés (bloc = kWc_sans + kWc_avec).
+
+    I7 (#740) — un devis divergent range un bloc PAR option : la colonne
+    ``sans`` se compare à ``etude_horaire_sans`` quand il existe (repli sur
+    le bloc principal sinon), ``avec``/``doc`` au bloc principal — comme
+    ``rafraichir_blocs_horaires`` et ``builder.bloc_horaire_pour_kwc``."""
     ep = _ep(devis)
     eh = _bloc_horaire(ep)
     if not eh:
@@ -202,22 +207,25 @@ def i7_bloc_perime(r, devis, ctx):
     if not kwc_bloc:
         return []
     data = ctx.donnees_devis(devis)
-    kwcs = {'doc': num(data.get('puissance_kwc'))}
+    kwcs = {'doc': (num(data.get('puissance_kwc')), kwc_bloc)}
     if data.get('panneaux_divergents'):
-        kwcs['sans'] = num(data.get('puissance_kwc_sans'))
-        kwcs['avec'] = num(data.get('puissance_kwc_avec'))
+        eh_sans = ep.get('etude_horaire_sans')
+        kwc_bloc_sans = (num(eh_sans.get('kwc'))
+                         if isinstance(eh_sans, dict) else None) or kwc_bloc
+        kwcs['sans'] = (num(data.get('puissance_kwc_sans')), kwc_bloc_sans)
+        kwcs['avec'] = (num(data.get('puissance_kwc_avec')), kwc_bloc)
     pire = None
-    for k, v in kwcs.items():
+    for k, (v, bloc) in kwcs.items():
         if v:
-            d = abs(kwc_bloc - v) / v
+            d = abs(bloc - v) / v
             if pire is None or d > pire[1]:
-                pire = (k, d, v)
+                pire = (k, d, v, bloc)
     if not pire or pire[1] <= TOL['I7_kwc_ratio']:
         return []
     return [r.violation(
-        devis, f"Bloc horaire calculé pour {kwc_bloc} kWc, devis à "
+        devis, f"Bloc horaire calculé pour {pire[3]} kWc, devis à "
                f"{pire[2]} kWc ({pire[0]}) : écart {pire[1]:.1%}.",
-        valeurs={'kwc_bloc': kwc_bloc, 'kwc_devis': pire[2],
+        valeurs={'kwc_bloc': pire[3], 'kwc_devis': pire[2],
                  'colonne': pire[0], 'ecart': round(pire[1], 3),
                  'modele_sans': data.get('savings_model_sans'),
                  'modele_avec': data.get('savings_model_avec')},
