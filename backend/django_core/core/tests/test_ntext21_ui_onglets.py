@@ -159,6 +159,41 @@ class ConditionOngletTests(TestCase):
             f'{self.devis.pk}')
         self.assertIn('Conditionnel', [o['titre'] for o in res.data])
 
+    def test_condition_schema_et_serveur_un_seul_predicat(self):
+        # CI #1000 — l'arbre publié au schéma de requête est exactement le
+        # prédicat appliqué : `{}` / `true` / opérateur inconnu / `field`
+        # blanc = 400 (« conformes » au JSON libre d'avant) ; `null`, une
+        # feuille, un groupe ET et un groupe NON = 201.
+        import jsonschema
+        from core.champs_stricts import (
+            arbre_conditions_valide, schema_arbre_conditions)
+        valideur = jsonschema.Draft7Validator(schema_arbre_conditions())
+        feuille = {'field': 'statut', 'operator': 'eq', 'value': 'x'}
+        mauvais = [{}, True, [], 'x', {'field': 'a'}, {'field': ' ',
+                   'operator': 'eq'}, {'field': 'a', 'operator': 'EQ'},
+                   {'op': 'and', 'conditions': []},
+                   {'op': 'not', 'conditions': [feuille, feuille]},
+                   {'op': 'AND', 'conditions': [feuille]}]
+        bons = [feuille, {'op': 'and', 'conditions': [feuille]},
+                {'conditions': [feuille, feuille]},
+                {'op': 'not', 'conditions': [feuille]}]
+        for arbre in mauvais:
+            self.assertFalse(valideur.is_valid(arbre), arbre)
+            self.assertFalse(arbre_conditions_valide(arbre), arbre)
+        for arbre in bons:
+            self.assertTrue(valideur.is_valid(arbre), arbre)
+            self.assertTrue(arbre_conditions_valide(arbre), arbre)
+        api = _auth(make_user(self.company, role='admin'))
+        base = {'cible': 'ventes.devis', 'titre': 'T',
+                'type_contenu': 'html', 'ref': ''}
+        for arbre in mauvais:
+            res = api.post(URL, {**base, 'condition': arbre}, format='json')
+            self.assertEqual(res.status_code, 400, (arbre, res.data))
+            self.assertIn('condition', res.data)
+        for arbre in bons + [None]:
+            res = api.post(URL, {**base, 'condition': arbre}, format='json')
+            self.assertEqual(res.status_code, 201, (arbre, res.data))
+
     def test_condition_fausse_onglet_omis(self):
         UiOngletCustom.objects.create(
             company=self.company, cible='ventes.devis', titre='Conditionnel',

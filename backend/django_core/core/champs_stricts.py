@@ -575,3 +575,108 @@ class IdInconnu404Mixin:
                 raise NotFound(self.errors)
             raise serializers.ValidationError(self.errors)
         return valide
+
+
+#: Profondeur de l'arbre ``core.rules`` publié au schéma (groupes imbriqués) ;
+#: la feuille est le niveau 0. Un arbre plus profond est HORS schéma ET refusé.
+PROFONDEUR_ARBRE_CONDITIONS = 3
+#: Un ``op`` de feuille ne doit pas se lire comme un opérateur de GROUPE, casse
+#: comprise (``core.rules._is_group`` passe ``op`` en minuscules).
+_MOTIF_OP_GROUPE = '^(?:[Aa][Nn][Dd]|[Oo][Rr]|[Nn][Oo][Tt])$'
+_RE_OP_GROUPE = re.compile(_MOTIF_OP_GROUPE)
+
+
+def schema_arbre_conditions(profondeur=PROFONDEUR_ARBRE_CONDITIONS):
+    """CI #1000 — l'arbre ``core.rules`` tel que le serveur l'accepte
+    (``arbre_conditions_valide``, son jumeau Python), publié en REQUÊTE : le
+    schéma d'un ``JSONField`` est ``{}`` (« tout JSON ») alors que ``{}`` ou
+    ``true`` étaient refusés (400 sur un corps conforme). Groupe ET/OU, groupe
+    NON (une seule condition) ou feuille (``field`` non blanc + opérateur
+    connu), déplié sur ``profondeur`` niveaux sans référence récursive."""
+    from core.rules import GROUP_OPERATORS, LEAF_OPERATORS
+    feuille = {'type': 'object', 'required': ['field', 'operator'],
+               'properties': {
+                   'field': {'type': 'string', 'minLength': 1,
+                             'pattern': MOTIF_NON_BLANC_SANS_NUL},
+                   'operator': {'type': 'string',
+                                'enum': list(LEAF_OPERATORS)},
+                   'op': {'not': {'type': 'string',
+                                  'pattern': _MOTIF_OP_GROUPE}}}}
+    if profondeur <= 0:
+        return feuille
+    enfants = schema_arbre_conditions(profondeur - 1)
+    et_ou = {'type': 'object', 'required': ['conditions'],
+             'anyOf': [{'required': ['op']},
+                       {'not': {'required': ['operator']}}],
+             'properties': {
+                 'op': {'type': 'string',
+                        'enum': [o for o in GROUP_OPERATORS if o != 'not']},
+                 'conditions': {'type': 'array', 'minItems': 1,
+                                'items': enfants}}}
+    non = {'type': 'object', 'required': ['op', 'conditions'], 'properties': {
+        'op': {'type': 'string', 'enum': ['not']},
+        'conditions': {'type': 'array', 'minItems': 1, 'maxItems': 1,
+                       'items': enfants}}}
+    return {'anyOf': [et_ou, non, feuille]}
+
+
+def arbre_conditions_valide(noeud, profondeur=PROFONDEUR_ARBRE_CONDITIONS):
+    """Jumeau Python EXACT de ``schema_arbre_conditions`` : vrai ssi
+    l'instance est valide au sens du schéma publié (même prédicat des deux
+    côtés — un test le compare à ``jsonschema``)."""
+    from core.rules import GROUP_OPERATORS, LEAF_OPERATORS
+    if not isinstance(noeud, dict):
+        return False
+    champ = noeud.get('field')
+    op = noeud.get('op')
+    feuille = (
+        isinstance(champ, str) and bool(champ) and '\u0000' not in champ
+        and non_blanc(champ)
+        and isinstance(noeud.get('operator'), str)
+        and noeud['operator'] in LEAF_OPERATORS
+        and not (isinstance(op, str) and _RE_OP_GROUPE.search(op)))
+    if profondeur <= 0:
+        return feuille
+    conditions = noeud.get('conditions')
+    enfants = (isinstance(conditions, list) and bool(conditions) and all(
+        arbre_conditions_valide(c, profondeur - 1) for c in conditions))
+    et_ou = (
+        enfants and (('op' in noeud) or ('operator' not in noeud))
+        and ('op' not in noeud
+             or (isinstance(op, str)
+                 and op in [o for o in GROUP_OPERATORS if o != 'not'])))
+    non = (enfants and isinstance(op, str) and op == 'not'
+           and len(conditions) == 1)
+    return bool(feuille or et_ou or non)
+
+
+class ArbreConditionsField(serializers.JSONField):
+    """Arbre de conditions ``core.rules`` (NTEXT21…) validé AU CHAMP : les
+    messages de ``validate_condition_group`` d'abord, puis le prédicat exact du
+    schéma publié (``arbre_conditions_valide``). ``null`` passe par
+    ``allow_null`` du champ."""
+
+    def to_internal_value(self, data):
+        from core.rules import validate_condition_group
+        valeur = super().to_internal_value(data)
+        erreurs = validate_condition_group(valeur)
+        if erreurs:
+            raise serializers.ValidationError('; '.join(erreurs))
+        if not arbre_conditions_valide(valeur):
+            raise serializers.ValidationError(
+                "Arbre de conditions non conforme au schéma publié.")
+        return valeur
+
+
+class _ArbreConditionsSchema(OpenApiSerializerFieldExtension):
+    target_class = 'core.champs_stricts.ArbreConditionsField'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+        schema = schema_arbre_conditions()
+        if self.target.allow_null:
+            schema['nullable'] = True
+        return schema
