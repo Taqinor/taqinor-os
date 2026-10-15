@@ -24,11 +24,7 @@ API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/f
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
 API rejected schema-compliant request|POST /api/django/facturation/factures/encaissement-groupe/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/
-API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/retour-client/
 API rejected schema-compliant request|POST /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/
-API rejected schema-compliant request|POST /api/django/imports/commit/
-API rejected schema-compliant request|POST /api/django/imports/dry-run/
-API rejected schema-compliant request|POST /api/django/imports/mapping/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/onboarding-localisation/
 API rejected schema-compliant request|POST /api/django/parametres/taux-tva/

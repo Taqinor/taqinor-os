@@ -488,6 +488,9 @@ _CSV_METEO = (b'horodatage;gi_w_m2\r\n2021-01-15T12:00:00+00:00;100\r\n'
               b'2021-01-15T13:00:00+00:00;120\r\n')
 # CSV de métadonnées d'un import en masse : en-têtes + UNE ligne (``nom`` requis).
 _CSV_MINIMAL = b'nom,description\r\nFuzz,Import\r\n'
+# Fichier d'un import générique (dry-run/commit) : un CSV à en-têtes seuls, lisible
+# pour TOUTE cible ; des octets quelconques (NUL…) sont « Lecture impossible ».
+_CSV_IMPORT = b'nom,email\r\n'
 _GED = r'^/api/django/ged/documents/'
 _CALEPINAGE = r'^/api/django/calepinage/calepinages/\{[^}]+\}/'
 # (chemin, méthodes, {champ du corps: octets d'un fichier valide})
@@ -538,6 +541,8 @@ _FICHIERS_VALIDES = (
      {'fichier': _DXF_PLAN}),
     (re.compile(_CALEPINAGE + r'meteo-fichier/$'), {'POST'},
      {'fichier': _CSV_METEO}),
+    (re.compile(r'^/api/django/imports/(dry-run|commit)/$'), {'POST'},
+     {'file': _CSV_IMPORT}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},

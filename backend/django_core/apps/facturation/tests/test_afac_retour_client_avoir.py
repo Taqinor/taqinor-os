@@ -98,7 +98,22 @@ class RetourClientAvoirTests(_Base, TestCase):
         facture = Facture.objects.get(pk=facture.pk)
         self.assertEqual(facture.avoirs_total, Decimal('20400.00'))
         self.assertEqual(facture.montant_du, Decimal('0'))
-        self.assertEqual(self._retour(facture).status_code, 400)
+        self.assertEqual(self._retour(facture).status_code, 409)
+
+    def test_produit_inconnu_ou_quantite_excessive_409(self):
+        """api-fuzz (ENF11) : un corps CONFORME au schéma dont le produit
+        n'existe pas (ou la quantité dépasse le retournable) est un refus
+        d'ÉTAT de la facture : 409, aucun avoir créé."""
+        from apps.ventes.models import Avoir
+        facture = self._facture(pu='10000')
+        for ligne in ({'produit': 2147483647, 'quantite': '1'},
+                      {'produit': self.produit.id, 'quantite': '99'}):
+            r = self.api.post(
+                f'/api/django/facturation/factures/{facture.id}/retour-client/',
+                {'motif': 'x', 'restocker': False, 'lignes': [ligne]},
+                format='json')
+            self.assertEqual(r.status_code, 409, r.data)
+        self.assertFalse(Avoir.objects.filter(facture=facture).exists())
 
     def test_corps_fuzz_ligne_mal_typee_400(self):
         """api-fuzz (ENF11) : ``produit`` non entier / ``quantite`` vide
