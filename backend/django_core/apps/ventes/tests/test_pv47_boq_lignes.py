@@ -230,7 +230,10 @@ class AjouterBoqEndpointTest(TestCase):
             company=self.company, reference="DV-PV47-VIDE",
             client=self.crm_client)
         resp = self.api.post(self._url(devis), {}, format="json")
-        self.assertEqual(resp.status_code, 400)
+        # CI #997 fuzz (d9f9ee2bf) : l'appel est valide, c'est l'ÉTAT du devis
+        # (pas de conception électrique) qui s'oppose — 409 publié.
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('conception électrique', resp.data['detail'])
         self.assertEqual(devis.lignes.count(), 0)
 
     def test_scope_societe_404(self):

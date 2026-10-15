@@ -270,8 +270,8 @@ class LesReglesMigreesViventCoteServeur(_Base):
         reponse = self.api.post(
             AUTO_URL, {'lead': self.lead(taille_souhaitee_kwc=Decimal('5')).id},
             format='json')
-        # CI #1003 — refus d'ÉTAT du catalogue sur un corps valide : 409
-        # (ENF11, /devis/auto/ publie 409 ErreurComposition).
+        # CI #997 fuzz (3dc8d2879) : refus d'ÉTAT de la fiche/du catalogue
+        # publié en 409 par devis/auto/ (ErreurComposition).
         self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('Trina', reponse.data['detail'])
         self.assertIn('Panneaux', reponse.data['detail'])
