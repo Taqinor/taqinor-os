@@ -131,6 +131,16 @@ class Aud402RegisterViewTest(TestCase):
             '/api/django/register/', [1], format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
+    def test_register_email_non_texte_400_pas_500(self):
+        """CI #1001 fuzz : ``email`` en liste -> 400 nommé ; la politique du
+        mot de passe ne relit plus le corps brut (``.strip()`` d'une liste = 500)."""
+        r = self.api.post('/api/django/register/', {
+            'username': 'collab_liste', 'password': '0',
+            'email': [None, None]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('email', r.json()['error']['fields'])
+        self.assertFalse(User.objects.filter(username='collab_liste').exists())
+
     def test_mot_de_passe_valide_accepte(self):
         r = self._post(STRONG)
         self.assertEqual(r.status_code, 201, r.data)
