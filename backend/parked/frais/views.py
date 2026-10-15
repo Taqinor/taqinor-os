@@ -16,7 +16,7 @@ stable ; les anciennes routes ``/api/django/compta/…`` continuent de servir le
 MÊMES classes (aucun client cassé). Le corps sera relogé ici plus tard.
 """
 
-from apps.compta.views import (  # noqa: F401
+from apps.compta.views import (
     BaremeIndemniteViewSet,
     IndemniteChantierViewSet,
     NoteFraisViewSet,

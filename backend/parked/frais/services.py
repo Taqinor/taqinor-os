@@ -14,7 +14,7 @@ comportement, même transaction) — ré-exportées, pas dupliquées : aucune lo
 comptable n'est copiée, donc aucune ne peut diverger.
 """
 
-from apps.compta.services import (  # noqa: F401
+from apps.compta.services import (
     # ── Notes de frais (FG135) ──
     creer_note_frais,
     soumettre_note_frais,
