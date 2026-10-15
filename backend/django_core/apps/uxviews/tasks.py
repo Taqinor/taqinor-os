@@ -87,7 +87,7 @@ def digest_favoris_obsoletes_hebdo():
                 company=company,
             )
             total_notifies += 1
-        except Exception:  # noqa: BLE001 — best-effort, ne casse jamais le beat
+        except Exception:  # noqa: BLE001 — best-effort, ne casse jamais le beat (D-ENF22-BLE001)
             logger.exception(
                 'uxviews.digest_favoris_obsoletes_hebdo: échec notification '
                 'société=%s owner=%s', company_id, owner_id)

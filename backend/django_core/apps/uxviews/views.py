@@ -112,7 +112,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             try:
                 EcranRecent.objects.update_or_create(
                     company=request.user.company, owner=request.user, ecran=ecran)
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
                 logger.exception(
                     'EcranRecent: mise à jour échouée (%s, %s)',
                     request.user.pk, ecran)
@@ -236,7 +236,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
                 ),
                 company=view.company,
             )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.exception(
                 'saved_view_shared: notification de modification échouée (%s)',
                 view.pk)
@@ -265,7 +265,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             saved_view_shared.send(
                 sender=SavedView, view=instance, company=self.request.user.company,
                 user=self.request.user, action=action)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.exception('saved_view_shared: envoi du signal échoué (%s)',
                              instance.pk)
 
@@ -653,7 +653,7 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                 try:
                     cible = manager.filter(
                         company=request.user.company, **{champ: valeur}).first()
-                except Exception:  # noqa: BLE001 — champ inconnu sur ce modèle
+                except Exception:  # noqa: BLE001 — champ inconnu sur ce modèle (D-ENF22-BLE001)
                     logger.warning(
                         "views.FavoriUtilisateurViewSet.importer : erreur ignorée (mode dégradé)",
                         exc_info=True)
