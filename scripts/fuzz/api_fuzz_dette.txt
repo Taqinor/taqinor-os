@@ -32,7 +32,6 @@ API rejected schema-compliant request|PATCH /api/django/installations/sessions-c
 API rejected schema-compliant request|PATCH /api/django/parametres/cadence-relance/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
-API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
 API rejected schema-compliant request|POST /api/django/agent/actions/automation-draft/
 API rejected schema-compliant request|POST /api/django/automation/approval-requests/
 API rejected schema-compliant request|POST /api/django/automation/incoming-webhooks/

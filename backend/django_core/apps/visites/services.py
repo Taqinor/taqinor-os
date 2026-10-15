@@ -1023,6 +1023,9 @@ def marquer_en_cours(visite):
 #: Début du refus « catégorie inconnue de CE gabarit » (la vue y reconnaît un
 #: refus d'ÉTAT, 409, sans le confondre avec un champ nommé ``categorie``).
 CATEGORIE_MESURES_INCONNUE = 'Catégorie de mesures inconnue'
+#: ERR-ENF11-FUZZ-VISITES — début du refus d'une clé de ``valeurs`` absente de
+#: la catégorie (le vocabulaire dépend du gabarit et du contexte de LA visite).
+CHAMP_MESURE_INCONNU = 'Champ inconnu dans la catégorie'
 
 
 def enregistrer_mesures(visite, categorie, valeurs):
@@ -1061,7 +1064,7 @@ def enregistrer_mesures(visite, categorie, valeurs):
             continue
         champ = connus.get(code)
         if champ is None:
-            erreurs[code] = (f'Champ inconnu dans la catégorie '
+            erreurs[code] = (f'{CHAMP_MESURE_INCONNU} '
                              f'« {declaration["libelle"]} ».')
             continue
         valeur, message = valeur_mesure(champ, brute)
