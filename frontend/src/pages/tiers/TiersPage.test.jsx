@@ -7,15 +7,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 /* WIR152 — `TiersViewSet` (ARC17, CRUD complet) n'était consommé qu'en
    resolver de nom par deux écrans compta — aucun écran répertoire. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const { tiersCreate, tiersUpdate } = vi.hoisted(() => ({
   tiersCreate: vi.fn(() => Promise.resolve({ data: { id: 9 } })),
@@ -42,6 +34,7 @@ vi.mock('../../api/tiersApi', () => ({
 }))
 
 import TiersPage from './TiersPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 beforeEach(() => { vi.clearAllMocks() })
 

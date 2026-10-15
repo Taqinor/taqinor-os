@@ -1,8 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 
 /* VX204 — `getMeta().catch(() => {})` rendait les menus de filtre (utilisateurs/
    actions/modules) vides SANS dire qu'ils sont cassés : indiscernable de
@@ -19,19 +16,11 @@ vi.mock('../api/auditApi', () => ({
 }))
 
 import Journal from './Journal'
+import { renderAvecAuth } from '../test/renderAvecAuth'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function renderJournal() {
-  const store = configureStore({
-    reducer: { auth: (state = { permissions: ['journal_activite_voir'] }) => state },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter><Journal /></MemoryRouter>
-    </Provider>,
-  )
-}
+const renderJournal = () => renderAvecAuth(<Journal />, { permissions: ['journal_activite_voir'] })
 
 describe('Journal — VX204 échec de getMeta()', () => {
   it('affiche un message + Réessayer quand les métadonnées de filtre échouent', async () => {

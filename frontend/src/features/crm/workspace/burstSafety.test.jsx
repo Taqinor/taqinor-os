@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { mockMatchMedia } from '../../../test/leadWorkspaceMocks'
 import { render, screen, cleanup, fireEvent, waitFor, renderHook, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -25,25 +26,13 @@ import LeadWorkspace from './LeadWorkspace'
         au retour (miroir sessionStorage) ;
      5. réponse LENTE de A arrivant après nav vers B → JETÉE (garde `id`). */
 
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 vi.mock('./ContextRail', () => ({ default: () => null }))
 // Le rail réel porte le menu « ⋯ » → onAction('archive') (IdentityRail.test.jsx) ;
 // ici un bouton minimal rejoue ce routage pour le scénario 3.
-vi.mock('./IdentityRail', () => ({
-  default: ({ onAction }) => (
-    <div data-testid="identity-rail">
-      <button type="button" onClick={() => onAction('archive')}>Archiver</button>
-    </div>
-  ),
-}))
+vi.mock('./IdentityRail', async () => (await import('../../../test/leadWorkspaceMocks'))
+  .identityRailMock([[['archive'], 'Archiver']]))
 
 vi.mock('../../../api/crmApi', () => ({
   default: {
@@ -60,17 +49,6 @@ vi.mock('../../../api/crmApi', () => ({
     restaurerLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   },
 }))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 
 beforeEach(() => {
   mockMatchMedia(false)

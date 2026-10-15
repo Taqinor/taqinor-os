@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { mount } from '../../test/relancesWidgetHarness'
+import { screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react'
 
 /* CAD99 — « cadences échues à clore » (moitié écran de CAD75) : la liste des
    dossiers dont la dernière touche est en retard et que PERSONNE n'a clos,
@@ -19,8 +19,7 @@ vi.mock('react-router-dom', async (importOriginal) => ({
   useNavigate: () => naviguer,
 }))
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
+vi.mock('../../api/crmApi', async () => (await import('../../test/cadenceFriseMocks')).crmApiFrise({
     getRelanceEtapesDues: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
     getCadencesEchues: vi.fn(),
     marquerRelanceEtapeFait: vi.fn(),
@@ -28,26 +27,14 @@ vi.mock('../../api/crmApi', () => ({
     reporterRelanceEtape: vi.fn(),
     annulerRelanceEtape: vi.fn(),
     arreterCadence: vi.fn(),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-  },
 }))
 
 import crmApi from '../../api/crmApi'
-import RelancesDuJourWidget from './RelancesDuJourWidget'
 
 beforeEach(() => {
   crmApi.getCadencesEchues.mockResolvedValue(reponseContrat('crm', 'cadences_echues'))
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function mount() {
-  return render(
-    <MemoryRouter>
-      <RelancesDuJourWidget />
-    </MemoryRouter>,
-  )
-}
 
 describe('RelancesDuJourWidget — CAD99 « cadences échues à clore »', () => {
   it('la section apparaît dès que le sélecteur renvoie au moins un lead (seuil affiché, envoyé)', async () => {

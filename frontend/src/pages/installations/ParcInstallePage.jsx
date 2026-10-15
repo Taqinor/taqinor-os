@@ -24,8 +24,9 @@ import {
   parcSummary,
 } from '../../features/installations/statuses'
 import InstallationDetail from './InstallationDetail'
+import { SelecteurVue } from '../../ui/SelecteurVue'
 import {
-  Button, Badge, Segmented, Spinner, Skeleton, EmptyState, Input,
+  Button, Badge, Spinner, Skeleton, EmptyState, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DataTable, StatusPill,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -319,16 +320,11 @@ export default function ParcInstallePage() {
           <Button type="button" size="sm" variant="outline" onClick={() => handleExport(rows)}>
             <Download /> Exporter Excel
           </Button>
-          <Segmented
-            size="sm"
-            value={view}
-            onChange={setView}
-            aria-label="Changer de vue"
+          <SelecteurVue view={view} onChange={setView}
             options={[
               { value: 'liste', label: 'Liste' },
               { value: 'carte', label: 'Carte' },
-            ]}
-          />
+            ]} />
         </div>
       </div>
 

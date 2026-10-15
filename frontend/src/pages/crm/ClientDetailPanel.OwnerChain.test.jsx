@@ -2,10 +2,7 @@
 // quand elle est sans ambiguïté (exactement un devis + un chantier) ; ni lead
 // ni ticket SAV ne sont exposés par cet endpoint, donc jamais inventés.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn() },
@@ -13,6 +10,7 @@ vi.mock('../../api/axios', () => ({
 
 import api from '../../api/axios'
 import ClientDetailPanel from './ClientDetailPanel'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -22,14 +20,7 @@ function renderPanel(client, { documents, consolidation = { filiales: [] } } = {
     if (url.includes('/consolidation/')) return Promise.resolve({ data: consolidation })
     return Promise.resolve({ data: {} })
   })
-  const store = configureStore({ reducer: { auth: (state = { role: 'admin' }) => state } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ClientDetailPanel client={client} onClose={() => {}} onNewDevis={() => {}} onChanged={() => {}} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderAvecAuth(<ClientDetailPanel client={client} onClose={() => {}} onNewDevis={() => {}} onChanged={() => {}} />, { role: 'admin' })
 }
 
 const client = { id: 9, nom: 'Benali', prenom: 'Sara' }

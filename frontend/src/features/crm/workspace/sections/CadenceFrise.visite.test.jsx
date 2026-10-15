@@ -14,16 +14,8 @@ import { exempleContrat } from '../../../../test/fixtures/contractSamples'
 
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 
-vi.mock('../../../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesLead: vi.fn(),
+vi.mock('../../../../api/crmApi', async () => (await import('../../../../test/cadenceFriseMocks')).crmApiFrise({
     getLeadVisites: vi.fn(),
-    marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
-    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
-    reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: { statut: 'a_faire' } })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-  },
 }))
 vi.mock('../../../../lib/toast', () => ({ toastError: vi.fn() }))
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { mount } from '../../test/relancesSuiviHarness'
+import { isAdminOrResponsableMock } from '../../test/relancesSuiviMocks'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 
 /* MRY31 — écran « Suivi des relances ». Charge utile venant de l'exemple
    COMMITTÉ (`apps/crm/contract_samples/relance_etapes_suivi.json`, PACT10),
@@ -13,31 +14,10 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
 const DONNEES = exempleContrat('crm', 'relance_etapes_suivi')
 const ETAPES = DONNEES.results
 
-// Même patron que `IdentityRail.test.jsx`/`ViewsManagerPopover.test.jsx` :
-// on mocke le hook de rôle plutôt que de monter un vrai Provider redux pour
-// `useHasRole`. Mock réassignable par test (`.mockReturnValue`).
-const isAdminOrResponsableMock = vi.fn(() => false)
-vi.mock('../../hooks/useHasPermission', () => ({
-  useIsAdminOrResponsable: () => isAdminOrResponsableMock(),
-}))
-
-// Même patron que `UsersManagement.test.jsx` : `useSelector` mocké
-// directement plutôt qu'un vrai Provider redux (l'écran ne lit que
-// `auth.user.id`).
-vi.mock('react-redux', () => ({
-  useSelector: (sel) => sel({ auth: { user: { id: 42 } } }),
-}))
-
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesSuivi: vi.fn(),
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: {} })),
-    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: {} })),
-    reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: {} })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-  },
+vi.mock('../../api/crmApi', async () => (await import('../../test/relancesSuiviMocks')).crmApiSuivi({
+  marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: {} })),
+  marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: {} })),
+  reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
 // SUIVI-REFUS — seul `toastError` est remplacé (pour prouver qu'un refus NOMMÉ
@@ -49,21 +29,12 @@ vi.mock('../../lib/toast', async (importOriginal) => ({
 
 import crmApi from '../../api/crmApi'
 import { toastError } from '../../lib/toast'
-import RelancesSuiviPage from './RelancesSuiviPage'
 
 beforeEach(() => {
   isAdminOrResponsableMock.mockReturnValue(false)
   crmApi.getRelanceEtapesSuivi.mockResolvedValue(reponseContrat('crm', 'relance_etapes_suivi'))
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function mount() {
-  return render(
-    <MemoryRouter>
-      <RelancesSuiviPage />
-    </MemoryRouter>,
-  )
-}
 
 // Bornes Casablanca — recalculées ICI indépendamment de l'écran (jamais un
 // import de son détail interne) pour que le test reste une vraie preuve, pas

@@ -3,11 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -32,6 +28,7 @@ vi.mock('../../api/reportingApi', () => ({
 
 import reportingApi from '../../api/reportingApi'
 import CohortsPage from './CohortsPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('CohortsPage (WR8 — cohortes de leads)', () => {
   it('rend les cohortes (taux + délai) dans le tableau', async () => {

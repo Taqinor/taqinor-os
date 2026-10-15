@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Gauge, Leaf, Sun } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
-import { Badge, Card, DataTable, EmptyState, IconButton, Segmented } from '../../ui'
+import { Badge, Card, DataTable, EmptyState, IconButton } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber, formatPercent } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
-import MonitoringNav from './MonitoringNav'
 import useVisibilityAwarePoll from './useVisibilityAwarePoll'
 import FreshnessBadge from './FreshnessBadge'
+import EnTeteMonitoring from './EnTeteMonitoring'
+import SegmentedPetit from './SegmentedPetit'
 
 /* WR6 — Vue PARC / FLOTTE multi-systèmes (FG281) : production totale, kWc
    installés, PR moyen pondéré et alertes de sous-performance ouvertes sur tous
@@ -196,24 +197,12 @@ export default function FleetPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Vue parc</h1>
-        <div className="page-subtitle">
-          Production, performance et alertes sur l’ensemble des systèmes supervisés.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Vue parc" sousTitre="Production, performance et alertes sur l’ensemble des systèmes supervisés." />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Fenêtre d’analyse</span>
-          <Segmented
-            size="sm"
-            options={WINDOWS}
-            value={windowDays}
-            onChange={setWindowDays}
-            aria-label="Fenêtre d'analyse"
-          />
+          <SegmentedPetit options={WINDOWS} value={windowDays} onChange={setWindowDays} label="Fenêtre d'analyse" />
         </div>
         <div className="flex items-center gap-3">
           {/* VX30 — badge de fraîcheur : distinct visuellement d'un « 0 » de
@@ -221,13 +210,7 @@ export default function FleetPage() {
           {lastUpdated && (
             <FreshnessBadge stale={stale} lastUpdated={lastUpdated} />
           )}
-          <Segmented
-            size="sm"
-            options={VIEW_MODES}
-            value={viewMode}
-            onChange={setViewMode}
-            aria-label="Mode d'affichage"
-          />
+          <SegmentedPetit options={VIEW_MODES} value={viewMode} onChange={setViewMode} label="Mode d'affichage" />
         </div>
       </div>
 

@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
 
 /* WIR20 — corrige le préfixe d'URL cassé d'`auditAnalytics()`
    (`/reporting/audit/analytics/` → 404 ; corrigé en `/audit/analytics/`,
@@ -36,19 +33,11 @@ vi.mock('../api/reportingApi', () => ({
 }))
 
 import Journal from './Journal'
+import { renderAvecAuth } from '../test/renderAvecAuth'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function renderJournal() {
-  const store = configureStore({
-    reducer: { auth: (state = { permissions: ['journal_activite_voir'] }) => state },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter><Journal /></MemoryRouter>
-    </Provider>,
-  )
-}
+const renderJournal = () => renderAvecAuth(<Journal />, { permissions: ['journal_activite_voir'] })
 
 describe('Journal — WIR20 onglet Analytiques', () => {
   it('appelle /audit/analytics/ (via reportingApi.auditAnalytics) et affiche les données', async () => {

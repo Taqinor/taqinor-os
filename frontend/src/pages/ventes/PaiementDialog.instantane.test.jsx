@@ -5,11 +5,7 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react'
    `/relances/` (sans montant_paye ni paiements), il affiche les vrais Payé /
    Dû et le paiement existant (forme réelle FactureSerializer). */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const LIGNE_RELANCES = {
   id: 9, reference: 'FAC-009', client_id: 42, client_nom: 'ACME', montant_du: 3000,
@@ -33,6 +29,7 @@ vi.mock('../../api/axios', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import PaiementDialog from './PaiementDialog'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

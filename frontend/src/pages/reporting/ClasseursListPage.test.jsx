@@ -3,11 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -26,6 +22,7 @@ vi.mock('../../api/reportingApi', () => ({
 
 import reportingApi from '../../api/reportingApi'
 import ClasseursListPage from './ClasseursListPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('ClasseursListPage (XPLT22)', () => {
   it('liste les classeurs existants', async () => {

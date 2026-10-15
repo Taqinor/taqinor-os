@@ -5,10 +5,11 @@ import { colonneSupprimer } from './colonneSupprimer'
 import reportingApi from '../../api/reportingApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
-  Button, DataTable, EmptyState, Input, Spinner,
+  Button, DataTable, EmptyState, Input,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* XPLT22 — Liste des classeurs (mini-spreadsheet BI) : création + navigation
    vers la grille (`ClasseurPage`, `/reporting/classeurs/:id`). */
@@ -84,7 +85,7 @@ export default function ClasseursListPage() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : classeurs.length === 0 ? (
         <EmptyState
           icon={Sheet}

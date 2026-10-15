@@ -5,11 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -37,6 +33,7 @@ vi.mock('../../ui/confirm', () => ({
 }))
 
 import VuesConfigurationPage from './VuesConfigurationPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const VIEWS = [
   {

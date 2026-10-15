@@ -8,11 +8,7 @@ import { MemoryRouter } from 'react-router-dom'
    Le test verrouille : un appel réel par ressource, un rendu générique des
    champs renvoyés, et le changement de ressource qui rappelle l'API. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 // WIR224 — le panneau « Échéances à venir » (FG273) est chargé au montage :
 // sans ce wrapper dans le mock, les trois tests WIR104 ci-dessous casseraient.
@@ -39,6 +35,7 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import DossiersReglementairesPage from './DossiersReglementairesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('DossiersReglementairesPage (WIR104)', () => {
   it('charge la première ressource et rend ses champs', async () => {

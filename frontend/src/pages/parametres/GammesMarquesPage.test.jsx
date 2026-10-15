@@ -4,11 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -42,6 +38,7 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import GammesMarquesPage from './GammesMarquesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('GammesMarquesPage (PVMRQ — Paramètres → Gammes & marques)', () => {
   it('charge le réglage existant : une seule colonne (Essentielle) visible quand deux_gammes est faux', async () => {

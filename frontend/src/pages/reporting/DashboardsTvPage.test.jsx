@@ -4,15 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 /* XPLT10 — kiosque TV plein écran (`/dashboards-tv`, core/dashboards-tv/). */
 
 // recharts (ResponsiveContainer) mesure sa taille — jsdom n'a pas ResizeObserver.
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../api/coreApi', () => ({
   default: {
@@ -26,6 +18,7 @@ vi.mock('../../api/coreApi', () => ({
 
 import coreApi from '../../api/coreApi'
 import DashboardsTvPage from './DashboardsTvPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('DashboardsTvPage (XPLT10 — kiosque TV)', () => {
   it('affiche le premier dashboard partagé', async () => {

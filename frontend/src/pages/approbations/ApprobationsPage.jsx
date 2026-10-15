@@ -15,6 +15,7 @@ import {
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog } from '../../ui/confirm'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    XKB1/ZCTR7-9 — Boîte d'approbations centralisée (agrégateur cross-app).
@@ -538,7 +539,7 @@ function ApprobationsFileTab() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : items.length === 0 ? (
         <EmptyState
           icon={Inbox}

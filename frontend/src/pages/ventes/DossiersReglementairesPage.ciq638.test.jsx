@@ -10,11 +10,7 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
    COMMITTÉ `ventes/contract_samples/dossier_8221.json` (check_api_shapes),
    jamais d'une charge utile écrite à la main. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../api/ventesApi', () => ({
   default: {
@@ -26,6 +22,7 @@ vi.mock('../../api/ventesApi', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import DossiersReglementairesPage from './DossiersReglementairesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const BT = exempleContrat('ventes', 'dossier_8221')
 const MT = exempleContrat('ventes', 'dossier_8221', 'exemple_mt')

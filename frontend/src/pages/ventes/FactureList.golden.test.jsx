@@ -42,35 +42,29 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
   return { ...actual, fetchFactures: () => ({ type: 'ventes/fetchFactures/noop' }) }
 })
 
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      lienPaiementFacture: vi.fn(() => Promise.resolve({ data: {} })),
-      dgiExportFacture: vi.fn(() => Promise.resolve({ data: new Blob(['<xml/>']) })),
-      dgiConformiteFacture: vi.fn(() => Promise.resolve({ data: { conforme: true, problemes: [] } })),
-      bulkFactures: vi.fn(() => Promise.resolve({ data: {} })),
-      getFacture: vi.fn(() => Promise.resolve({
-        data: {
-          id: 1, reference: 'FAC-2026-07-0001', montant_du: 5000,
-          lignes: [{ id: 11, designation: 'Panneau 550 W', quantite: 4, produit: 77 }],
-        },
-      })),
-      getDevis: vi.fn(() => Promise.resolve({
-        data: [{ id: 31, reference: 'DEV-1', client_nom: 'ACME', total_ttc: 3000 }],
-      })),
-      whatsappFacture: vi.fn(() => Promise.resolve({
-        data: { message: 'Bonjour ACME', url: 'https://x.example/f/1', wa_url: 'https://wa.me/1' },
-      })),
-      getNotesDebit: vi.fn(() => Promise.resolve({ data: [] })),
-      journalVentes: mocks.journalVentes,
-      auditNumerotation: mocks.auditNumerotation,
-      exportStatus: mocks.exportStatus,
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    lienPaiementFacture: vi.fn(() => Promise.resolve({ data: {} })),
+    dgiExportFacture: vi.fn(() => Promise.resolve({ data: new Blob(['<xml/>']) })),
+    dgiConformiteFacture: vi.fn(() => Promise.resolve({ data: { conforme: true, problemes: [] } })),
+    bulkFactures: vi.fn(() => Promise.resolve({ data: {} })),
+    getFacture: vi.fn(() => Promise.resolve({
+      data: {
+        id: 1, reference: 'FAC-2026-07-0001', montant_du: 5000,
+        lignes: [{ id: 11, designation: 'Panneau 550 W', quantite: 4, produit: 77 }],
+      },
+    })),
+    getDevis: vi.fn(() => Promise.resolve({
+      data: [{ id: 31, reference: 'DEV-1', client_nom: 'ACME', total_ttc: 3000 }],
+    })),
+    whatsappFacture: vi.fn(() => Promise.resolve({
+      data: { message: 'Bonjour ACME', url: 'https://x.example/f/1', wa_url: 'https://wa.me/1' },
+    })),
+    getNotesDebit: vi.fn(() => Promise.resolve({ data: [] })),
+    journalVentes: mocks.journalVentes,
+    auditNumerotation: mocks.auditNumerotation,
+    exportStatus: mocks.exportStatus,
+  }))
 
 vi.mock('../../api/parametresApi', async (importOriginal) =>
   (await import('../../test/mocksVentesEcrans.js')).parametresApiProfil(await importOriginal(), { dgi_export_actif: false }))

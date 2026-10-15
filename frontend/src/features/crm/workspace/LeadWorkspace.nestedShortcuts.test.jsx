@@ -1,12 +1,9 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { createPortal } from 'react-dom'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import crmReducer from '../store/crmSlice'
 import crmApi from '../../../api/crmApi'
-import LeadWorkspace from './LeadWorkspace'
 import { toastWithUndo } from '../../../lib/toast'
 
 /* INCIDENT 02/10/2026 — lead « ouissam merbahi » archivé sans le vouloir.
@@ -19,11 +16,6 @@ import { toastWithUndo } from '../../../lib/toast'
    Garde : une touche tapée dans une boîte de dialogue posée PAR-DESSUS la
    fiche n'atteint jamais les raccourcis de la fiche ; et l'archivage n'a
    plus de raccourci à une touche. */
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 // Le panneau devis réel est une Sheet Radix rendue en PORTAIL sur <body>, hors
 // de la boîte de dialogue de la fiche — on reproduit exactement cette forme.
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({
@@ -35,58 +27,19 @@ vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({
   ),
 }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
-    getTags: vi.fn(() => Promise.resolve({ data: [] })),
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: {} })),
-    getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
-    getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    logInteraction: vi.fn(() => Promise.resolve({ data: {} })),
-    mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
-    updateLead: vi.fn(() => Promise.resolve({ data: {} })),
-    createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-    archiverLead: vi.fn(() => Promise.resolve({ data: {} })),
-    restaurerLead: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace())
 vi.mock('../../../lib/toast', async (importOriginal) => ({
   ...(await importOriginal()),
   toastWithUndo: vi.fn(),
 }))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
-
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 
 const LEAD = { id: 1569, nom: 'ouissam merbahi', stage: 'FOLLOW_UP', is_archived: false }
 
-beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+installerHooksLeadWorkspace()
 
 function renderLead({ initialDevis = null, lead = LEAD, ...props } = {}) {
-  const store = configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 4 } }) => s } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <LeadWorkspace lead={lead} initialDevis={initialDevis} onClose={vi.fn()} onSaved={vi.fn()} {...props} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderLeadWorkspace({ lead, initialDevis, ...props }, 4)
 }
 const renderWithDevisPanel = () => renderLead({ initialDevis: 'edit' })
 

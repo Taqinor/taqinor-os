@@ -8,33 +8,13 @@
 // fois (même patron que les autres tests de cette ligne, ex.
 // `RelanceEtapeRow.canaux.test.jsx`).
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { ligne } from '../../../test/relanceEtapeRowHarness'
+import { screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { formatDate } from '../../../lib/format'
-import RelanceEtapeRow from './RelanceEtapeRow'
 
-vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-    enregistrerPieceRecue: vi.fn(),
-  },
-}))
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.sessionStorage.clear() })
-
-function noop() {}
-
-function ligne(etape, props = {}) {
-  return render(
-    <RelanceEtapeRow
-      etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
-      onOuvrirMessage={noop} {...props}
-    />,
-  )
-}
 
 const TOUCHE_DEBRIEF = exempleContrat('crm', 'relance_etape_v2', 'exemple_debrief_visite').results[0]
 const TOUCHE_ORDINAIRE = exempleContrat('crm', 'relance_etape_v2').results[0]

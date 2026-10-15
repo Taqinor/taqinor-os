@@ -11,18 +11,21 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'TicketsPage.jsx'), 'utf8')
+const HOOK = readFileSync(join(HERE, '..', '..', 'hooks', 'useDeepLinkId.js'), 'utf8')
 
 test('VX79 : ?id=<pk> ouvre le ticket ciblé (état dérivé, patron ?lead=)', () => {
   assert.match(SRC, /useSearchParams/)
-  assert.match(SRC, /const wantedId = searchParams\.get\('id'\)/)
-  assert.match(SRC, /const deepTicket = useMemo\(/)
+  // Logique PARTAGÉE : hooks/useDeepLinkId.js (ENF19), consommée par cet écran.
+  assert.match(HOOK, /const wantedId = searchParams\.get\('id'\)/)
+  assert.match(HOOK, /const deepItem = useMemo\(/)
+  assert.match(SRC, /deepItem: deepTicket, clearDeepLink \} = useDeepLinkId\(searchParams, setSearchParams, items\)/)
   assert.match(SRC, /const detailTicket = selected \?\? deepTicket/)
   assert.match(SRC, /<TicketDetail ticket=\{detailTicket\}/)
 })
 
 test('VX79 : fermer retire le paramètre ?id de l\'URL (ne ré-ouvre pas)', () => {
-  assert.match(SRC, /const clearDeepLink = \(\) =>/)
-  assert.match(SRC, /next\.delete\('id'\)/)
+  assert.match(HOOK, /const clearDeepLink = \(\) =>/)
+  assert.match(HOOK, /next\.delete\('id'\)/)
   assert.match(SRC, /const closeDetail = \(\) => \{ setSelected\(null\); clearDeepLink\(\) \}/)
   assert.match(SRC, /onClose=\{closeDetail\}/)
 })

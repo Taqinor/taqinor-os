@@ -12,50 +12,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { PlusCircle } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
-  Badge, Button, Spinner, EmptyState,
+  Badge, Button,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
-
-function unwrap(res) {
-  const p = res?.data
-  return Array.isArray(p) ? p : (p?.results ?? [])
-}
-
-function useFilteredList(fetcher, params) {
-  const key = JSON.stringify(params)
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const load = useCallback(() => {
-    let cancelled = false
-    setLoading(true); setError(null)
-    fetcher(params)
-      .then((res) => { if (!cancelled) setRows(unwrap(res)) })
-      .catch((err) => {
-        if (!cancelled) setError(err?.response?.data?.detail || 'Chargement impossible.')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` encode les filtres : seul son changement relance le chargement (D-ENF22)
-  }, [key])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de filtre (D-ENF22)
-  useEffect(() => load(), [load])
-  return { rows, loading, error, reload: load }
-}
-
-function ListShell({ loading, error, empty, children }) {
-  if (loading) return (
-    <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
-  if (error) return <EmptyState title="Impossible de charger" description={error} className="py-6" />
-  if (!children) return <EmptyState title={empty} className="py-6" />
-  return children
-}
+import { unwrap, useFilteredList } from './chargementListe'
+import ListShell from './ListeEtat'
+import MaitreDetail from './MaitreDetail'
+import PiedCreation from './PiedCreation'
 
 // ── Créer un kit ─────────────────────────────────────────────────────────────
 function CreateKitDialog({ produits, onClose, onCreated }) {
@@ -96,12 +62,7 @@ function CreateKitDialog({ produits, onClose, onCreated }) {
         </select>
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-      <div className="modal-footer">
-        <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-        <Button type="button" loading={busy} disabled={busy} onClick={create}>
-          {busy ? 'Création…' : 'Créer'}
-        </Button>
-      </div>
+      <PiedCreation busy={busy} onClose={onClose} onCreate={create} />
     </ResponsiveDialog>
   )
 }
@@ -147,12 +108,7 @@ function CreateComposantDialog({ kitId, produits, onClose, onCreated }) {
         <input id="kc-quantite" type="number" step="any" className="form-control" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-      <div className="modal-footer">
-        <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-        <Button type="button" loading={busy} disabled={busy} onClick={create}>
-          {busy ? 'Création…' : 'Créer'}
-        </Button>
-      </div>
+      <PiedCreation busy={busy} onClose={onClose} onCreate={create} />
     </ResponsiveDialog>
   )
 }
@@ -233,12 +189,7 @@ function CreateEtapeDialog({ kitId, ordreSuivant, onClose, onCreated }) {
         <input id="ea-duree" type="number" className="form-control" value={dureeAttendue} onChange={(e) => setDureeAttendue(e.target.value)} />
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-      <div className="modal-footer">
-        <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-        <Button type="button" loading={busy} disabled={busy} onClick={create}>
-          {busy ? 'Création…' : 'Créer'}
-        </Button>
-      </div>
+      <PiedCreation busy={busy} onClose={onClose} onCreate={create} />
     </ResponsiveDialog>
   )
 }
@@ -408,46 +359,29 @@ export default function ParametrageKits() {
         title="Paramétrage des kits d'assemblage"
         subtitle="Créez un kit, sa nomenclature, sa gamme d'étapes et son modèle de contrôle qualité — l'Atelier les consomme ensuite."
       />
-      <div className="flex flex-col gap-4 md:flex-row">
-        <aside className="w-full md:w-72 flex-shrink-0 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Kits</h3>
-            <Button size="sm" variant="outline" aria-label="Nouveau kit" onClick={() => setShowCreate(true)}>
-              <PlusCircle className="size-4" aria-hidden="true" />
-            </Button>
-          </div>
-          {loadingKits ? (
-            <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-              <Spinner className="size-4 text-primary" /> Chargement…
-            </p>
-          ) : kits.length === 0 ? (
-            <EmptyState title="Aucun kit" description="Créez le premier kit d'assemblage." className="py-4" />
-          ) : (
-            <ul className="flex flex-col gap-1" data-testid="liste-kits">
-              {kits.map((k) => (
-                <li key={k.id}>
-                  <button type="button"
-                    data-testid={`kit-${k.id}`}
-                    className={`w-full text-left rounded-lg border px-3 py-2 text-sm ${selected === k.id ? 'border-primary bg-primary/5' : 'border-border'}`}
-                    onClick={() => setSelected(k.id)}>
-                    <span className="font-medium block">{k.nom}</span>
-                    {k.reference_interne && <span className="text-xs text-muted-foreground">{k.reference_interne}</span>}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-        <div className="flex-1 min-w-0">
-          {!current ? (
-            <EmptyState title="Sélectionnez un kit"
-              description="Choisissez un kit dans la liste, ou créez-en un nouveau."
-              className="py-10" />
-          ) : (
-            <KitFiche kit={current} produits={produits} />
-          )}
-        </div>
-      </div>
+      <MaitreDetail
+        titre="Kits"
+        action={(
+          <Button size="sm" variant="outline" aria-label="Nouveau kit" onClick={() => setShowCreate(true)}>
+            <PlusCircle className="size-4" aria-hidden="true" />
+          </Button>
+        )}
+        loading={loadingKits}
+        vide={{ title: 'Aucun kit', description: "Créez le premier kit d'assemblage." }}
+        testId="liste-kits"
+        items={kits}
+        selected={selected}
+        onSelect={setSelected}
+        itemTestId={(k) => `kit-${k.id}`}
+        renderItem={(k) => (
+          <>
+            <span className="font-medium block">{k.nom}</span>
+            {k.reference_interne && <span className="text-xs text-muted-foreground">{k.reference_interne}</span>}
+          </>
+        )}
+        selectionVide={{ title: 'Sélectionnez un kit', description: 'Choisissez un kit dans la liste, ou créez-en un nouveau.' }}
+        fiche={current ? <KitFiche kit={current} produits={produits} /> : null}
+      />
       {showCreate && (
         <CreateKitDialog produits={produits}
           onClose={() => setShowCreate(false)}

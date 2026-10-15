@@ -8,15 +8,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    dans l'analyse par lead perdu, sans dupliquer une saisie déjà faite côté
    litiges (dette distincte, hors périmètre de cet écran). */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const { getLeads, getConcurrentsPerte, createConcurrentPerte } = vi.hoisted(() => ({
   getLeads: vi.fn(),
@@ -33,6 +25,7 @@ vi.mock('../../api/crmApi', () => ({
 }))
 
 import ConcurrentsPerte from './ConcurrentsPerte'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 beforeEach(() => {
   vi.clearAllMocks()

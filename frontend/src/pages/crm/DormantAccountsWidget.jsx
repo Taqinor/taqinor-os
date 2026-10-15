@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { MoonStar } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import crmApi from '../../api/crmApi'
+import { EtatListe } from '../../ui/EtatListe'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Spinner,
+  Card, CardHeader, CardTitle, CardDescription, CardContent, Button,
 } from '../../ui'
 
 /* ============================================================================
@@ -57,13 +58,8 @@ export default function DormantAccountsWidget({ seuil = 90 }) {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <Spinner />
-        ) : error ? (
-          <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
-        ) : comptes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucun compte dormant. 🎉</p>
-        ) : (
+        <EtatListe loading={loading} error={error} estVide={comptes.length === 0}
+          messageVide="Aucun compte dormant. 🎉">
           <ul className="space-y-2">
             {comptes.map((c) => (
               <li
@@ -93,7 +89,7 @@ export default function DormantAccountsWidget({ seuil = 90 }) {
               </li>
             ))}
           </ul>
-        )}
+        </EtatListe>
       </CardContent>
     </Card>
   )

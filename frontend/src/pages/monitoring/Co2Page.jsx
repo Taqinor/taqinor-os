@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import installationsApi from '../../api/installationsApi'
-import { DataTable, EmptyState, Spinner } from '../../ui'
+import { DataTable, EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber } from '../../lib/format'
@@ -11,6 +11,9 @@ import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
 import useVisibilityAwarePoll from './useVisibilityAwarePoll'
 import FreshnessBadge from './FreshnessBadge'
+import { lancerChargement } from '../../lib/chargementEffet'
+import EnTeteMonitoring from './EnTeteMonitoring'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* WR7 — Suivi CO₂ évité (FG286) : CO₂ évité cumulé sur le parc + par système,
    depuis GET /monitoring/configs/co2-fleet/. Rend uniquement ce que renvoie le
@@ -48,27 +51,19 @@ function Co2Fleet() {
   useEffect(() => () => { mountedRef.current = false }, [])
 
   useEffect(() => {
-    let active = true
-    const load = async () => {
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const r = await monitoringApi.getCo2Fleet()
-        if (active) {
+        if (actif()) {
           setData(r.data)
           setError(null)
           setStale(false)
           setLastUpdated(new Date())
         }
-      } catch {
-        if (active) setError('Impossible de charger le suivi CO₂.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+      },
+      surErreur: () => setError('Impossible de charger le suivi CO₂.'),
+    })
   }, [])
 
   // VX30 — re-sondage silencieux : ne remplace jamais l'état chargé/erreur
@@ -140,13 +135,7 @@ function Co2Fleet() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Suivi CO₂</h1>
-        <div className="page-subtitle">
-          CO₂ évité par la production solaire, cumulé sur le parc et par système.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Suivi CO₂" sousTitre="CO₂ évité par la production solaire, cumulé sur le parc et par système." />
 
       {/* VX30 — badge de fraîcheur : distinct visuellement d'un « 0 » réel
           (jamais la même couleur/forme qu'un état périmé). */}
@@ -204,18 +193,15 @@ function Co2SystemDetail({ installationId }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    let active = true
-    const load = async () => {
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      setError(null)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
+        setError(null)
         const [configRes, instRes] = await Promise.all([
           monitoringApi.getConfigForInstallation(installationId),
           installationsApi.getInstallation(installationId).catch(() => null),
         ])
-        if (!active) return
+        if (!actif()) return
         if (instRes?.data) {
           const inst = instRes.data
           setLabel(inst.reference ? `${inst.reference}${inst.client_nom ? ` — ${inst.client_nom}` : ''}` : `#${installationId}`)
@@ -230,15 +216,10 @@ function Co2SystemDetail({ installationId }) {
           return
         }
         const co2Res = await monitoringApi.getCo2(config.id)
-        if (active) setData(co2Res.data)
-      } catch {
-        if (active) setError('Impossible de charger le détail CO₂ de ce système.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) setData(co2Res.data)
+      },
+      surErreur: () => setError('Impossible de charger le détail CO₂ de ce système.'),
+    })
   }, [installationId])
 
   const stats = useMemo(() => (data ? [
@@ -276,7 +257,7 @@ function Co2SystemDetail({ installationId }) {
       </Link>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error ? (
         <EmptyState icon={METRIC_ICONS.co2} title="Détail indisponible" description={error} className="my-6" />
       ) : (

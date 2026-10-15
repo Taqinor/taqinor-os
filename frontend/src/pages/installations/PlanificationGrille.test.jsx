@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 
 /* APX28 — le « Calendrier techniciens » devient une VRAIE grille horaire
    (7 h → 19 h × techniciens).
@@ -17,27 +15,16 @@ import { configureStore } from '@reduxjs/toolkit'
    (4) poser une intervention sur une case d'heure passe par une confirmation
    puis UN SEUL PATCH sur l'endpoint EXISTANT (zéro écriture serveur nouvelle). */
 
-const api = vi.hoisted(() => ({
-  getCalendrierInterventions: vi.fn(),
-  getMaTournee: vi.fn(),
-  getPlanDeCharge: vi.fn(),
-  getConflitsAffectation: vi.fn(),
-  getNivellementCharge: vi.fn(),
-  getPlanningCamionnettes: vi.fn(),
-  getInstallations: vi.fn(),
-  updateIntervention: vi.fn(),
-}))
+const api = await vi.hoisted(async () => (await import('../../test/planificationApi')).apiPlanification([]))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 vi.mock('../../ui/confirm', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import PlanificationPage from './PlanificationPage'
 import { blocGeometry, chevauchements, minutesDeHeure, heureEnTime, payloadDeplacement } from './PlanificationPage.helpers'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
-function renderPage() {
-  const store = configureStore({ reducer: { auth: () => ({ role: 'responsable' }) } })
-  return render(<Provider store={store}><PlanificationPage /></Provider>)
-}
+const renderPage = () => renderAvecAuth(<PlanificationPage />, { role: 'responsable' }, { routeur: false })
 
 beforeEach(() => {
   api.getMaTournee.mockResolvedValue({ data: { stops: [] } })

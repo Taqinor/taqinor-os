@@ -1,9 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Bell, ExternalLink, Printer, Download } from 'lucide-react'
+import { Bell, ExternalLink, Download } from 'lucide-react'
 import adsengineApi from './adsengineApi'
-import AlertCenter from './AlertCenter'
-import CommandPalette from './CommandPalette'
+import ActionsConsole from './ActionsConsole'
 import MetricHelp from './MetricHelp'
 import AuditScoreTile from './AuditScoreTile'
 import {
@@ -320,15 +319,7 @@ export default function DashboardScreen() {
             chrome masqué, noir-sur-blanc, tables complètes) : distinct des PDF
             WeasyPrint client (règle #4), zéro dépendance nouvelle. */}
         <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button type="button" className="btn btn-light" data-testid="ae-dashboard-print"
-            onClick={() => window.print()}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-            <Printer size={15} aria-hidden="true" /> Imprimer / PDF
-          </button>
-          {/* PUB48 — centre de notifications persistant de la console */}
-          <AlertCenter />
-          {/* PUB51 — palette de commandes (Ctrl-K) */}
-          <CommandPalette />
+          <ActionsConsole printTestId="ae-dashboard-print" />
         </div>
       </div>
 

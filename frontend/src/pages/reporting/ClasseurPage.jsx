@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { RefreshCw, Save } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import { Button, Input, Spinner } from '../../ui'
+import { Button, Input } from '../../ui'
 import { toast } from '../../ui/confirm'
 import PageHeader from '../../components/layout/PageHeader'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    XPLT22 — Classeur léger embarqué avec données live (mini-spreadsheet BI).
@@ -98,7 +99,7 @@ export default function ClasseurPage() {
   }, [])
 
   if (loading) {
-    return <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+    return <ChargementPage />
   }
 
   if (!classeur) {

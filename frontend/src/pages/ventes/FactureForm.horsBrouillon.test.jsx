@@ -8,11 +8,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const { base } = vi.hoisted(() => ({ base: { facture: null, lignes: new Map() } }))
 
@@ -60,6 +56,7 @@ vi.mock('../../api/ventesApi', () => ({
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import authReducer from '../../features/auth/store/authSlice'
 import FactureForm from './FactureForm'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const LIGNE = {
   id: 1, produit: 3, designation: 'Panneau 550 Wc', quantite: '10', prix_unitaire: '1000',

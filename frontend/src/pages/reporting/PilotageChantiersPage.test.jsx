@@ -3,11 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -54,6 +50,7 @@ vi.mock('../../api/axios', () => ({
 
 import api from '../../api/axios'
 import PilotageChantiersPage from './PilotageChantiersPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('PilotageChantiersPage (CHT27)', () => {
   it('charge et affiche les KPIs, le cycle par étape, les retards et les tranches à facturer', async () => {

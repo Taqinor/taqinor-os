@@ -25,24 +25,18 @@ vi.mock('./store/ventesSlice', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
-      historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
-      whatsappPreviewDevis: vi.fn(() => Promise.resolve({
-        data: {
-          wa_url: 'https://wa.me/212600000000', message: 'Bonjour',
-          devis_statut: 'brouillon', preview: true,
-        },
-      })),
-      whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
+    historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
+    whatsappPreviewDevis: vi.fn(() => Promise.resolve({
+      data: {
+        wa_url: 'https://wa.me/212600000000', message: 'Bonjour',
+        devis_statut: 'brouillon', preview: true,
+      },
+    })),
+    whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
+  }))
 
 vi.mock('../../api/uxviewsApi', async () => (await import('../../test/mocksVentesEcrans.js')).uxviewsApiVide())
 

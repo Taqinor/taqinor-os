@@ -17,6 +17,7 @@ import SyncStatusBanner from './SyncStatusBanner'
 import UpdateBanner from './UpdateBanner'
 import LoadErrorNotice from './LoadErrorNotice'
 import { markLoadError } from './loadErrors'
+import { chargerDevise } from './devise'
 
 // PUB40 — dépense totale visible (somme ``depense_mad``/``spend_mad`` des
 // campagnes listées) — pure, testable isolément.
@@ -135,12 +136,7 @@ export default function CampaignsScreen() {
         .then(r => setRealLeads(r?.data?.by_campaign || {}))
         .catch(() => { setRealLeads({}); setLoadErrors(markLoadError("les vrais leads")) })
     }
-    const connGet = adsengineApi.connection?.get
-    if (connGet) {
-      connGet()
-        .then(r => setCurrency(r?.data?.currency || 'MAD'))
-        .catch(() => {})
-    }
+    chargerDevise(setCurrency)
     // PUB40 — comparaison : dépense TOTALE de la période précédente.
     if (range.compare && range.debut && range.fin) {
       const prev = previousRange(range)

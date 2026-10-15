@@ -12,11 +12,7 @@ import { ConfirmProvider } from '../../providers/ConfirmProvider'
    « Refusé » codé), confirmation inerte tant que le motif est vide, Annuler
    n'envoie aucune requête. Oracle = dialogue rendu + appels réseau. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../api/reportingApi', () => ({
   default: {
@@ -56,6 +52,7 @@ vi.mock('../../api/axios', () => ({
 import reportingApi from '../../api/reportingApi'
 import automationApi from '../../api/automationApi'
 import ApprobationsPage from './ApprobationsPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 function renderPage() {
   const store = configureStore({

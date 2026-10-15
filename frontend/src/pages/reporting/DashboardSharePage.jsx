@@ -4,9 +4,10 @@ import coreApi from '../../api/coreApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Badge, Button, DataTable, EmptyState, Select, SelectTrigger, SelectValue,
-  SelectContent, SelectItem, Spinner,
+  SelectContent, SelectItem,
 } from '../../ui'
 import { toast } from '../../ui/confirm'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    XPLT10 — Partage de dashboard : lien public tokenisé (créer/révoquer).
@@ -228,7 +229,7 @@ export default function DashboardSharePage() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : partages.length === 0 ? (
         <EmptyState
           icon={Link2}

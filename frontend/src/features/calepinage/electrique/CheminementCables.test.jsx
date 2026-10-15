@@ -11,26 +11,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join, resolve } from 'node:path'
 
-const ICI = dirname(fileURLToPath(import.meta.url))
-
-function racineDepot() {
-  let dossier = resolve(ICI)
-  for (let i = 0; i < 10; i += 1) {
-    try {
-      readFileSync(join(dossier, 'backend', 'django_core', 'manage.py'))
-      return dossier
-    } catch { dossier = dirname(dossier) }
-  }
-  throw new Error(`Racine du depot introuvable depuis ${ICI}`)
-}
-
-const CONTRAT = JSON.parse(readFileSync(join(
-  racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
-  'contract_samples', 'calepinage_troncons.json'), 'utf8'))
+const CONTRAT = documentContrat('calepinage', 'calepinage_troncons')
 
 vi.mock('../../../api/calepinageApi', () => ({
   default: { calepinages: { troncons: vi.fn() } },
@@ -39,6 +21,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 import calepinageApi from '../../../api/calepinageApi'
 import CheminementCables from './CheminementCables'
 import { celluleLongueur, libelleCote, libelleOrigine } from './CheminementCables.helpers'
+import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 const servir = (data) => { calepinageApi.calepinages.troncons.mockResolvedValue({ data }) }
 const refuser404 = () => {

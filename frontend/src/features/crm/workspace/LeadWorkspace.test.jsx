@@ -1,9 +1,7 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import crmReducer from '../store/crmSlice'
+import { describe, it, expect, vi } from 'vitest'
+import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import crmApi from '../../../api/crmApi'
 import LeadWorkspace from './LeadWorkspace'
 import SectionContact from './sections/SectionContact'
@@ -21,16 +19,9 @@ import { initState } from './draftCore'
    SIGNED→SigneDialog est prouvé ici au niveau du shell (le lien
    StageControl→onSigne est couvert par StageControl.test.jsx — non dupliqué). */
 
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 // SigneDialog rendu en sonde : prouve l'ouverture par onAction('signe').
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => <div data-testid="signe-dialog" /> }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 // ContextRail neutralisé : ses appels réseau (historique/records/marketing) sont
 // hors sujet ici — couverts par ContextRail.test.jsx / TimelineTab.test.jsx.
 vi.mock('./ContextRail', () => ({ default: () => null }))
@@ -38,75 +29,20 @@ vi.mock('./ContextRail', () => ({ default: () => null }))
 // expose un bouton « signe » pour le câblage SIGNED→SigneDialog du shell, et
 // (F4) « relance-cadence » pour le raccourci « ⋯ » qui doit recharger la
 // frise de cadence rendue plus bas dans SectionPipeline.
-vi.mock('./IdentityRail', () => ({
-  default: ({ onAction }) => (
-    <div data-testid="identity-rail">
-      <button type="button" onClick={() => onAction('signe')}>rail-signe</button>
-      <button type="button" onClick={() => onAction('relance-cadence')}>rail-relance-cadence</button>
-    </div>
-  ),
-}))
+vi.mock('./IdentityRail', async () => (await import('../../../test/leadWorkspaceMocks'))
+  .identityRailMock([[['signe'], 'rail-signe'], [['relance-cadence'], 'rail-relance-cadence']]))
 
-const LEAD_A = { id: 1, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false }
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
-    getTags: vi.fn(() => Promise.resolve({ data: [] })),
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: { id: 1, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false } })),
-    getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
-    updateLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-    createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-    // MRY15 — SectionPipeline (rendu réel ici) monte CadenceFrise en mode
-    // édition, qui se charge elle-même au montage.
-    getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
-    // VT13 — SectionSite monte TraceToitClient, qui lit la photo-toit du lead.
-    getLeadPhotoToit: vi.fn(() => Promise.resolve({ data: { visite_id: null, url: null, texture_calage: null } })),
-    villeStatut: vi.fn(() => Promise.resolve({ data: { statut: 'connue' } })),
-    // F4 — raccourci « ⋯ » du rail (onAction('relance-cadence')).
-    initialiserRelance: vi.fn(() => Promise.resolve({ data: [{ id: 1 }] })),
-  },
-}))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiSections())
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
-
-beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function makeStore() {
-  return configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s } })
-}
+installerHooksLeadWorkspace()
 
 function renderEdit(props = {}) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter>
-        <LeadWorkspace lead={LEAD_A} onClose={vi.fn()} onSaved={vi.fn()} {...props} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderLeadWorkspace({ lead: LEAD_A, ...props })
 }
 
 function renderCreate(props = {}) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter>
-        <LeadWorkspace onClose={vi.fn()} onSaved={vi.fn()} {...props} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderLeadWorkspace({ ...props })
 }
 
 // Attend que le GET complet d'ouverture (LW25 loadFresh) ait bien atterri avant

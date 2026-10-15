@@ -4,11 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -46,6 +42,7 @@ vi.mock('../../api/stockApi', () => ({
 
 import stockApi from '../../api/stockApi'
 import AchatsParametresPage from './AchatsParametresPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('AchatsParametresPage (WIR26 — Paramètres → Achats)', () => {
   it('charge le réglage existant', async () => {

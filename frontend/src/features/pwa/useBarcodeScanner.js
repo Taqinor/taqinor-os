@@ -11,6 +11,7 @@
 //   <video ref={videoRef} playsInline muted />
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hapticTap } from '../../lib/haptics'
+import { attacherFlux } from './flux'
 
 // Vrai si les deux briques natives requises existent dans ce navigateur.
 export function barcodeScanSupported() {
@@ -88,12 +89,7 @@ export function useBarcodeScanner({ onDetected, formats } = {}) {
         return
       }
       streamRef.current = stream
-      const video = videoRef.current
-      if (video) {
-        video.srcObject = stream
-        video.setAttribute('playsinline', 'true')
-        await video.play().catch(() => { /* autoplay bloqué : ignore */ })
-      }
+      await attacherFlux(videoRef.current, stream)
       setActive(true)
 
       const tick = async () => {

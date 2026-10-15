@@ -7,13 +7,13 @@ import reportingApi from '../../api/reportingApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Badge, Button, Card, CardContent, Checkbox, DataTable, EmptyState, Label, Segmented, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-  Spinner,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { isDirty } from '../../ui/form-utils'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
 import DashboardFilterBar from '../../features/reporting/DashboardFilterBar'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* WR8 — Gestionnaire de configuration de tableau de bord (FG96).
    CRUD des configs par UTILISATEUR ou par PALIER de rôle : choix des cartes
@@ -255,7 +255,7 @@ export default function DashboardConfigPage() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : configs.length === 0 ? (
         <EmptyState
           icon={LayoutGrid}

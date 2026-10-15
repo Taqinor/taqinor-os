@@ -4,11 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // jsdom n'implémente pas ResizeObserver (mesuré par recharts ResponsiveContainer).
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 // DataTable lit la densité via useDensity → <ThemeProvider> ; MemoryRouter pour NavLink.
 function renderPage(ui) {
@@ -53,6 +49,7 @@ vi.mock('../../api/installationsApi', () => ({
 
 import monitoringApi from '../../api/monitoringApi'
 import OmAnalyticsPage from './OmAnalyticsPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('OmAnalyticsPage (WR6 — analytique O&M)', () => {
   it('auto-sélectionne le seul système et rend PR / dispo / dégradation', async () => {

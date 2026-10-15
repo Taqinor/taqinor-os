@@ -26,6 +26,7 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 // rendait « Invalid Date » sur une date absente ou mal formée au lieu du
 // tiret cadratin du reste de l'application.
 import { formatDate, formatMAD } from '../../lib/format'
+import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 
 const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
 
@@ -70,20 +71,7 @@ export default function ClientList() {
   // TicketsPage.jsx) : la palette de commandes (⌘K) ouvre désormais le CLIENT
   // exact plutôt que la liste. État DÉRIVÉ (aucun effet) — un id absent des
   // clients chargés reste simplement sans panneau (jamais une page blanche).
-  const wantedId = searchParams.get('id')
-  const deepClient = useMemo(() => {
-    if (!wantedId) return null
-    return (clients ?? []).find(c => String(c.id) === String(wantedId)) ?? null
-  }, [wantedId, clients])
-  const clearDeepLink = () => {
-    if (searchParams.has('id')) {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev)
-        next.delete('id')
-        return next
-      }, { replace: true })
-    }
-  }
+  const { deepItem: deepClient, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, clients)
   // Panneau ouvert : sélection manuelle OU client ciblé par le lien profond.
   const detailItem = detailClient ?? deepClient
 

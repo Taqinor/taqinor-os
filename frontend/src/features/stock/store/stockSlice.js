@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
+import { pending, settleLoading, rejected } from '../../../lib/reducersChargement'
 
 // VX164 — garde anti-course PAR RESSOURCE sur les `update*.fulfilled` :
 // deux PATCH rapides du MÊME enregistrement, résolus dans l'ordre INVERSE
@@ -209,21 +210,7 @@ const stockSlice = createSlice({
     clearError(state) { state.error = null },
   },
   extraReducers: (builder) => {
-    // VX165 — voir `pendingCount` ci-dessus : `pending` incrémente,
-    // `settleLoading` (fulfilled/rejected) décrémente et redérive `loading`.
-    const pending = (state) => {
-      state.pendingCount = (state.pendingCount || 0) + 1
-      state.loading = true
-      state.error = null
-    }
-    const settleLoading = (state) => {
-      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
-      state.loading = state.pendingCount > 0
-    }
-    const rejected = (state, action) => {
-      settleLoading(state)
-      state.error = action.payload
-    }
+    // VX165 — compteur `pendingCount` partagé : voir lib/reducersChargement.js.
 
     builder
       // Produits

@@ -1,10 +1,10 @@
 import { useParams } from 'react-router-dom'
-import { AlertTriangle } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import ventesApi from '../../../api/ventesApi'
 import useResource from '../../../hooks/useResource'
 import { formatDate, formatMAD, formatNumber, formatPercent } from '../../../lib/format'
 import { Card, Spinner, Stat } from '../../../ui'
+import { MotifAbsence } from '../MotifAbsence'
 
 /* ============================================================================
    CALX289 — L'ONGLET « ÉCONOMIE », EN LECTURE SEULE.
@@ -102,19 +102,6 @@ function libelleOmission(motif) {
   return /^non publié\s*:/i.test(texte) ? texte : `non publié : ${texte}`
 }
 
-/** Un devis (ou aucun) : AUCUN chiffre, seulement le motif du serveur (ou,
-    à défaut, un motif générique — jamais un panneau muet). */
-function MotifAbsence({ motif, testId }) {
-  return (
-    <p
-      className="flex items-start gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground"
-      data-testid={testId}
-    >
-      <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
-      <span>{motif}</span>
-    </p>
-  )
-}
 
 /** UN indicateur : la valeur servie si publiée, sinon « non publié : <motif> »
     — jamais un zéro, jamais un tiret muet. */

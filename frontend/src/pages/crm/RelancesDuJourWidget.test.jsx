@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { mount } from '../../test/relancesWidgetHarness'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /* MRY14 — Cockpit « Relances du jour » v2 : message prêt + WhatsApp (aperçu-
@@ -27,15 +28,7 @@ const DEMAIN = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date(Date.now() + 24 * 3600 * 1000))
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesDues: vi.fn(),
-    marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
-    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
-    reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: { statut: 'a_faire' } })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-  },
+vi.mock('../../api/crmApi', async () => (await import('../../test/cadenceFriseMocks')).crmApiFrise({
 }))
 // F2 — le helper toast (lib/toast) est mocké pour PROUVER qu'un échec réseau
 // prévient l'agent (jamais le catch muet d'avant), sans dépendre du rendu
@@ -44,7 +37,6 @@ vi.mock('../../lib/toast', () => ({ toastError: vi.fn() }))
 
 import crmApi from '../../api/crmApi'
 import { toastError } from '../../lib/toast'
-import RelancesDuJourWidget from './RelancesDuJourWidget'
 
 // Les tests d'ACTION n'affichent qu'UNE ligne (sinon `getByRole('button')`
 // tombe sur deux boutons homonymes) ; la ligne reste celle du contrat, jamais
@@ -59,14 +51,6 @@ beforeEach(() => {
 })
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function mount() {
-  return render(
-    <MemoryRouter>
-      <RelancesDuJourWidget />
-    </MemoryRouter>,
-  )
-}
 
 describe('RelancesDuJourWidget (MRY14)', () => {
   it('liste les étapes avec cadence, canal, score et priorité', async () => {

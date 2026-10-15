@@ -3,11 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -24,6 +20,7 @@ vi.mock('../../api/parametresApi', () => ({
 
 import parametresApi from '../../api/parametresApi'
 import SauvegardesPage from './SauvegardesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('SauvegardesPage (NTOBS5)', () => {
   it('affiche la dernière sauvegarde et un drill récent sans alerte de péremption', async () => {

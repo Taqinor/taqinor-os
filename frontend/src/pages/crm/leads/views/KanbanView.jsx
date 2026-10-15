@@ -4,17 +4,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 // VX45 — icônes lucide (rendu stable multi-OS, contrairement à un emoji brut).
 import { ChevronDown, LayoutGrid, X } from 'lucide-react'
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  MouseSensor,
-  TouchSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import {
   formatMAD, groupLeadsByStage, isSortieSigne, isStageMoveAllowed,
   isStageMoveBackward, PIPELINE_STAGES, STAGE_LABELS,

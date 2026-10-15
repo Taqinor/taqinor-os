@@ -25,18 +25,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
    oubliée.
    ========================================================================== */
 
-vi.mock('../../../api/calepinageApi', () => {
-  const reponse = () => Promise.resolve({ data: {} })
-  const doublure = () => new Proxy(function appel() { return reponse() }, {
-    // `then` DOIT rester absent : un proxy « thenable » serait attendu comme
-    // une promesse par `await` et bloquerait le test.
-    get: (_cible, prop) => (typeof prop === 'symbol' || prop === 'then'
-      ? undefined
-      : doublure()),
-    apply: () => reponse(),
-  })
-  return { default: doublure() }
-})
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif())
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 /* CALX349 — l'onglet « Approbation » lit `useHasPermission`, qui va chercher

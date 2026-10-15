@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
 
 /* YHARD3 — « Historique à cette date » : depuis une ligne du Journal reliée à
    un objet (module + model + object_id connus), un bouton ouvre une
@@ -37,19 +34,11 @@ vi.mock('../api/auditApi', () => ({
 }))
 
 import Journal from './Journal'
+import { renderAvecAuth } from '../test/renderAvecAuth'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
-function renderJournal() {
-  const store = configureStore({
-    reducer: { auth: (state = { permissions: ['journal_activite_voir'] }) => state },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter><Journal /></MemoryRouter>
-    </Provider>,
-  )
-}
+const renderJournal = () => renderAvecAuth(<Journal />, { permissions: ['journal_activite_voir'] })
 
 describe('Journal — YHARD3 historique à cette date', () => {
   it('affiche le bouton historique pour une entrée reliée à un objet', async () => {
