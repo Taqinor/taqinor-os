@@ -337,7 +337,27 @@ class SectionsResserreesRequeteTest(SimpleTestCase):
             if 'maximum' in schema:
                 bornes.append(schema['maximum'])
             return bornes
-        return [{'a': 1}] if genre == 'object' else [[1]]
+        return [SectionsResserreesRequeteTest._instance(schema)]
+
+    @staticmethod
+    def _instance(schema):
+        """Une valeur MINIMALE conforme à ``schema`` (tables structurées)."""
+        faire = SectionsResserreesRequeteTest._instance
+        if 'anyOf' in schema:
+            return faire(schema['anyOf'][0])
+        genre = schema['type']
+        if genre == 'string':
+            return 'x'
+        if genre in ('number', 'integer'):
+            return schema.get('minimum', 0)
+        if genre == 'array':
+            return [faire(schema['items'])]
+        proprietes = schema.get('properties', {})
+        rendu = {nom: faire(proprietes[nom])
+                 for nom in schema.get('required', ())}
+        if not rendu and schema.get('minProperties'):
+            rendu = {'x': faire(schema['additionalProperties'])}
+        return rendu
 
     def test_sections_a_registre_publiees_cle_par_cle_et_acceptees(self):
         from apps.calepinage.services.parametres import (
@@ -382,3 +402,122 @@ class SectionsResserreesRequeteTest(SimpleTestCase):
             except ReglageInvalide:
                 pass
         self.assertEqual(acceptees, [])
+
+
+class FormeDesTablesTest(SimpleTestCase):
+    """CI #997 fuzz — ``PUT parametres/`` acceptait (200) une ``valeur`` de
+    table dont les items n'étaient pas du type publié
+    (``electrique_societe.regle_bom_structure.valeur`` = liste d'items du
+    mauvais type). Chaque clé ``table`` a désormais SA forme, lue par le
+    validateur d'écriture ET publiée dans le contrat : ce que le contrat
+    refuse, le serveur le refuse en nommant le chemin fautif."""
+
+    @staticmethod
+    def _tables():
+        return [(section, cle) for section, types in TYPES_CLES.items()
+                for cle, declaration in types.items()
+                if declaration['type'] == 'table']
+
+    @staticmethod
+    def _ecrire(section, cle, valeur):
+        from apps.calepinage.services.parametres import (
+            _normaliser_section_a_registre,
+        )
+
+        return _normaliser_section_a_registre(section, {cle: {
+            'valeur': valeur, 'source': 'societe', 'reference': ''}})
+
+    def test_chaque_cle_table_declare_sa_forme_et_la_publie(self):
+        from apps.calepinage.services.parametres_cles import (
+            FORMES_TABLES, forme_de_table,
+        )
+        from apps.calepinage.views.parametres import (
+            _sections_requete_resserrees,
+        )
+
+        tables = self._tables()
+        self.assertEqual(len(tables), 5)
+        champs = _sections_requete_resserrees()
+        ecarts = []
+        for section, cle in tables:
+            forme = forme_de_table(section, cle)
+            publie = champs[section]._spectacular_annotation['field'][
+                'properties'][cle]['properties']['valeur']
+            if (not forme or publie.get('type') != forme.get('type')
+                    or publie.get('required') != forme.get('required')):
+                ecarts.append((section, cle))
+        self.assertEqual(ecarts, [])
+        declarees = {(s, c) for s, formes in FORMES_TABLES.items()
+                     for c in formes}
+        self.assertEqual(declarees, set(tables))
+
+    def test_la_forme_minimale_conforme_est_acceptee_telle_quelle(self):
+        from apps.calepinage.services.parametres_cles import forme_de_table
+
+        ecarts = []
+        for section, cle in self._tables():
+            valeur = SectionsResserreesRequeteTest._instance(
+                forme_de_table(section, cle))
+            rendu = self._ecrire(section, cle, valeur)
+            if rendu[cle]['valeur'] != valeur:
+                ecarts.append((section, cle))
+        self.assertEqual(ecarts, [])
+
+    def test_les_vraies_saisies_des_etapes_restent_acceptees(self):
+        regle = {'rails_par_module': 2.0, 'pinces_par_module': 2.0,
+                 'pinces_supplement': 4.0, 'crochets_par_module': 0.6,
+                 'crochets_minimum': 4.0, 'source': 'Cahier de pose K2'}
+        pose = {'flush': {'uc_w_m2k': 20.0, 'uv_w_m3sk': 0.0,
+                          'source': 'mesure', 'reference': 'essai'}}
+        saisies = (
+            ('electrique_societe', 'regle_bom_structure', regle),
+            ('electrique_societe', 'correspondances_nomenclature',
+             {'coffret_dc': 12, 'onduleur': 'REF-9'}),
+            ('simulation', 'thermique_par_pose', pose),
+            ('simulation', 'lid_par_techno',
+             {'PERC': {'pct': 2.0, 'source': 'fiche', 'reference': ''}}),
+            ('simulation', 'indisponibilite_fenetres',
+             [{'debut': '2026-06-01', 'fin': '2026-06-08', 'motif': 'x'}]),
+        )
+        ecarts = [cle for section, cle, valeur in saisies
+                  if self._ecrire(section, cle, valeur)[cle]['valeur']
+                  != valeur]
+        self.assertEqual(ecarts, [])
+
+    def test_items_du_mauvais_type_refuses_en_nommant_le_chemin(self):
+        refuses = (
+            ('electrique_societe', 'regle_bom_structure', ['x'], 'objet'),
+            ('electrique_societe', 'regle_bom_structure', [1.5], 'objet'),
+            ('electrique_societe', 'regle_bom_structure',
+             {'rails_par_module': 'deux'}, 'rails_par_module'),
+            ('electrique_societe', 'regle_bom_structure',
+             {'rails_par_module': 1.0}, 'pinces_par_module'),
+            ('electrique_societe', 'correspondances_nomenclature',
+             {'coffret_dc': 1.5}, 'coffret_dc'),
+            ('electrique_societe', 'correspondances_nomenclature',
+             ['a'], 'objet'),
+            ('simulation', 'thermique_par_pose',
+             {'flush': {'uc_w_m2k': True, 'source': 's'}}, 'uc_w_m2k'),
+            ('simulation', 'thermique_par_pose', [1.0], 'objet'),
+            ('simulation', 'lid_par_techno',
+             {'PERC': {'pct': 120, 'source': 's'}}, 'hors bornes'),
+            ('simulation', 'lid_par_techno', {'PERC': 2.0}, 'PERC'),
+            ('simulation', 'lid_par_techno',
+             {'PERC': {'source': 's'}}, 'obligatoire'),
+            ('simulation', 'indisponibilite_fenetres', [0.0], '[0]'),
+            ('simulation', 'indisponibilite_fenetres',
+             [{'debut': 5, 'fin': '2026-06-08'}], 'debut'),
+            ('simulation', 'indisponibilite_fenetres',
+             {'debut': '2026-06-01'}, 'liste'),
+        )
+        ecarts = []
+        for section, cle, valeur, mot in refuses:
+            try:
+                self._ecrire(section, cle, valeur)
+            except ReglageInvalide as refus:
+                if (cle not in str(refus) or mot not in str(refus)
+                        or refus.champ != cle):
+                    ecarts.append((cle, valeur, str(refus)))
+            else:
+                ecarts.append((cle, valeur, 'ACCEPTÉ'))
+        self.assertEqual(ecarts, [])

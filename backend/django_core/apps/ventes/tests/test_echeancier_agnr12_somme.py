@@ -1,6 +1,8 @@
 """AGNR12 (C-AGNR-008) — ``valider_echeancier`` refuse un échéancier tout en
 pourcentages dont la somme ≠ 100 % (tolérance 0,01) ou qui porte une tranche
-vide : 400 en français sous la clé ``echeancier`` qui donne le total trouvé.
+vide, en français sous la clé ``echeancier`` qui donne le total trouvé —
+somme : 409 ``ConflitEtat`` depuis CI #997 (4) (règle d'ensemble que le
+schéma publié ne sait pas dire) ; tranche vide : 400 (hors forme publiée).
 Un échéancier déjà stocké hors règle reste LISIBLE (aucune migration) ; tout
 échéancier accepté donne des montants ≥ 0 qui somment au TTC.
 
@@ -48,11 +50,11 @@ class SommeEcheancierApiTests(TestCase):
 
     def test_cas_api(self):
         r = self._patch(_pcts(70, 60, 10))
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Total des tranches : 140 % — il doit faire 100 %.',
                       str(r.data['echeancier']))
         r = self._patch(_pcts(50, 40, 20))
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('110 %', str(r.data['echeancier']))
         r = self._patch(_pcts(40, 60, ''))
         self.assertEqual(r.status_code, 400, r.data)

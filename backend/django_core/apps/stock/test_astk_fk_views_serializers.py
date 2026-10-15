@@ -474,8 +474,15 @@ class CorpsFuzzTests(TestCase):
              'motif'),
             ('revalorisations-stock/', {'produit': pa, 'nouveau_cout': '1', 'motif': [None, None]}, 'motif'),
         )
+        # QG4 : la création de produit est réservée à Directeur / Commercial
+        # responsable — l'admin de la classe reçoit 403 avant toute validation.
+        directeur = User.objects.create_user(
+            username='fuzz_stock_directeur', password='x', role_legacy='directeur',
+            company=self.a)
+        api_directeur = auth_client(directeur)
         for fin, corps, champ in refuses:
-            r = api.post(f'{BASE}/{fin}', corps, format='json')
+            cli = api_directeur if fin == 'produits/' else api
+            r = cli.post(f'{BASE}/{fin}', corps, format='json')
             self.assertEqual(r.status_code, 400, (fin, r.content))
             self.assertIn(champ, r.content.decode('utf-8'), fin)
         # Ce que les écrans envoient reste accepté : prix d'achat en nombre JSON

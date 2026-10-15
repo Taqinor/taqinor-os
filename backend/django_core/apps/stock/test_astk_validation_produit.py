@@ -184,5 +184,6 @@ class SkuTests(_Base):
             '/api/django/stock/kits/',
             {'nom': 'Kit 4', 'sku': 'KIT-X', 'composants': []},
             format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.content)
-        self.assertIn('sku', reponse.json())
+        # CI #997 (2) : doublon de SKU = 409 ConflitUnicite (champ nommé sous error.fields).
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+        self.assertIn('sku', reponse.json()['error']['fields'])

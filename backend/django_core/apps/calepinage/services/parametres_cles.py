@@ -269,3 +269,99 @@ def type_de_cle(section, cle):
     l'ajout (la garde ``tests/test_acal_reglages_types.py`` l'interdit).
     """
     return dict(TYPES_CLES.get(section, {}).get(cle) or {})
+
+
+# ── CI #997 fuzz — LA FORME de chaque valeur ``table`` ───────────────────────
+#
+# Le type ``table`` disait seulement « objet ou liste » : un tableau d'items du
+# mauvais type (``regle_bom_structure.valeur = ["x"]``) était écrit tel quel,
+# et le schéma publié (« objet de nombres ou liste de nombres ») était de
+# toute façon FAUX pour les vraies saisies (une règle de structure porte sa
+# ``source`` texte, une ligne LID porte ``pct`` + ``source``…). Chaque clé
+# ``table`` déclare donc ICI sa forme, dans le sous-ensemble de JSON Schema
+# que lisent à la fois le validateur d'écriture (``services/parametres.py``)
+# et le contrat publié (``views/parametres.py``) : UNE déclaration, jamais
+# deux. Les formes décrivent ce que lit l'étape de chaque clé (``etapes/lid``,
+# ``etapes/thermique``, ``etapes/indisponibilite``, ``electrique``) ; aucun
+# seuil métier n'y est inventé (seules les bornes de nature : un pourcentage
+# dans [0, 100], une quantité positive ou nulle). La ``source`` d'une ligne
+# reste FACULTATIVE à l'écriture : l'étape qui lit une ligne sans source
+# l'écarte en le disant (D-CALX 7), et celle d'une règle de structure se
+# recolle depuis la provenance du registre (``_regle_structure``).
+#
+# Sous-ensemble : ``type`` (object/array/number/integer/string),
+# ``properties`` + ``required`` + ``additionalProperties`` (bool ou schéma),
+# ``minProperties``, ``items`` + ``minItems``, ``minimum`` / ``maximum``,
+# ``minLength``, ``anyOf``.
+_TEXTE = {'type': 'string', 'minLength': 1}
+_TEXTE_LIBRE = {'type': 'string'}
+_NOMBRE_POSITIF = {'type': 'number', 'minimum': 0}
+
+#: Provenance des bornes des formes (CALX384) : ``minimum: 0`` = grandeurs
+#: physiques ou comptages jamais négatifs (pct, uc_w_m2k, rails/pinces/crochets
+#: par module) ; ``maximum: 100`` = définition d'un pourcentage ; ``minProperties``
+#: / ``minItems`` = 1 : une table vide n'a aucun sens pour les lecteurs
+#: (etapes/lid.py, thermique, indisponibilite, nomenclature) ; les 5 clés requises
+#: de ``regle_bom_structure`` sont celles que lit core/electrique/nomenclature.py.
+FORMES_TABLES = {
+    SECTION_SIMULATION: {
+        # {technologie: {pct, source, reference?}} (etapes/lid.py)
+        'lid_par_techno': {
+            'type': 'object', 'minProperties': 1,
+            'additionalProperties': {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['pct'],
+                'properties': {
+                    'pct': {'type': 'number', 'minimum': 0, 'maximum': 100},
+                    'source': _TEXTE_LIBRE,
+                    'reference': _TEXTE_LIBRE}}},
+        # {type_pose: {uc_w_m2k, uv_w_m3sk?, source, reference?}}
+        # (etapes/thermique.py)
+        'thermique_par_pose': {
+            'type': 'object', 'minProperties': 1,
+            'additionalProperties': {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['uc_w_m2k'],
+                'properties': {
+                    'uc_w_m2k': _NOMBRE_POSITIF,
+                    'uv_w_m3sk': _NOMBRE_POSITIF,
+                    'source': _TEXTE_LIBRE,
+                    'reference': _TEXTE_LIBRE}}},
+        # [{debut, fin, motif?}] — dates ISO lues par etapes/indisponibilite.py
+        'indisponibilite_fenetres': {
+            'type': 'array', 'minItems': 1,
+            'items': {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['debut', 'fin'],
+                'properties': {
+                    'debut': _TEXTE, 'fin': _TEXTE,
+                    'motif': _TEXTE_LIBRE}}},
+    },
+    SECTION_ELECTRIQUE_SOCIETE: {
+        # {repère ou catégorie: identifiant produit} (electrique.py)
+        'correspondances_nomenclature': {
+            'type': 'object', 'minProperties': 1,
+            'additionalProperties': {'anyOf': [_TEXTE, {'type': 'integer'}]}},
+        # {rails_par_module, pinces_par_module, pinces_supplement,
+        #  crochets_par_module, crochets_minimum, source}
+        # (core/electrique/nomenclature.py::_lignes_structure)
+        'regle_bom_structure': {
+            'type': 'object', 'additionalProperties': False,
+            'required': ['rails_par_module', 'pinces_par_module',
+                         'pinces_supplement', 'crochets_par_module',
+                         'crochets_minimum'],
+            'properties': {
+                'rails_par_module': _NOMBRE_POSITIF,
+                'pinces_par_module': _NOMBRE_POSITIF,
+                'pinces_supplement': _NOMBRE_POSITIF,
+                'crochets_par_module': _NOMBRE_POSITIF,
+                'crochets_minimum': _NOMBRE_POSITIF,
+                'source': _TEXTE_LIBRE}},
+    },
+}
+
+
+def forme_de_table(section, cle):
+    """La forme JSON-Schema (sous-ensemble ci-dessus) de la table ``cle``,
+    ou ``None`` si la clé n'est pas une table. Lecture PURE."""
+    return FORMES_TABLES.get(section, {}).get(cle)

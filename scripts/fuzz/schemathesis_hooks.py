@@ -633,6 +633,96 @@ def _installer_noms_de_fichier():
 _ADAPTATEURS_CORRIGES = _installer_noms_de_fichier()
 
 
+# ── 5c. Une part structurée (tableau / objet) part en JSON, jamais en fichier ─
+# CI #997 (4) — même cause racine que 5b : ``_collect_encoded_fields`` (transport
+# requests de Schemathesis 4.28) ne pose « ``application/json`` par défaut » sur
+# une propriété tableau/objet que si le schéma du corps est EN LIGNE. Un corps
+# regroupé (``{'$ref': '#/x-bundled/…'}``) n'a plus de ``properties`` à lire : le
+# tableau ``champs`` de POST calepinage/gabarits-dossiers partait alors en une
+# part PAR ÉLÉMENT, chacune la ``repr`` Python de l'objet, sans type — et
+# ``requests`` pose le nom du champ comme nom de FICHIER à toute part nue : le
+# serveur recevait un fichier là où le formulaire de l'ERP envoie UN texte JSON
+# (``corps.append('champs', JSON.stringify(liste))``, ReglagesGabarits.jsx) et
+# répondait 400 « se donnent en liste ordonnée (reçu : InMemoryUploadedFile) ».
+# Ici, après avoir résolu le ``$ref`` racine puis celui de chaque propriété, tout
+# champ structuré que Schemathesis n'a pas vu est lui aussi sérialisé en JSON :
+# une seule part de texte, comme le client réel. Aucun nom de fichier n'est posé
+# (c'est 5b qui ne le pose QUE sur les champs ``format: binary``).
+def _resoudre_propriete(propriete, schema_racine):
+    reference = propriete.get('$ref') if isinstance(propriete, dict) else None
+    if isinstance(reference, str):
+        regroupe = (schema_racine.get('x-bundled') or {}) if isinstance(
+            schema_racine, dict) else {}
+        return regroupe.get(reference.rsplit('/', 1)[-1], propriete)
+    return propriete
+
+
+def _est_structure(propriete):
+    if not isinstance(propriete, dict):
+        return False
+    elements = propriete.get('items')
+    if isinstance(elements, dict) and elements.get('format') in (
+            'binary', 'base64'):
+        return False        # liste de fichiers : des fichiers, pas du JSON
+    declare = propriete.get('type')
+    if isinstance(declare, str):
+        declare = [declare]
+    if isinstance(declare, list):
+        return any(t in ('object', 'array') for t in declare)
+    return any(cle in propriete
+               for cle in ('properties', 'items', 'additionalProperties'))
+
+
+def _champs_structures(operation):
+    """Champs tableau / objet du corps multipart déclaré, ``$ref`` résolus."""
+    for corps in getattr(operation, 'body', None) or ():
+        if not str(getattr(corps, 'media_type', '')).lower().startswith(
+                'multipart/'):
+            continue
+        racine = corps.definition.get('schema')
+        schema = _schema_corps_resolu(racine)
+        proprietes = schema.get('properties') if isinstance(schema, dict) else None
+        # Le regroupement vit sur la racine (``x-bundled``) : les ``$ref`` de
+        # propriété se résolvent contre elle.
+        return {
+            nom for nom, propriete in (proprietes or {}).items()
+            if _est_structure(_resoudre_propriete(propriete, racine))}
+    return set()
+
+
+def _avec_parts_json(collecter):
+    """``_collect_encoded_fields`` de Schemathesis, complété des champs
+    structurés d'un corps regroupé (``nom -> application/json``)."""
+    if getattr(collecter, '_parts_json', False):
+        return collecter
+
+    def collecte(ctx):
+        trouves = collecter(ctx)
+        for nom in _champs_structures(ctx.case.operation):
+            trouves.setdefault(nom, 'application/json')
+        return trouves
+
+    collecte._parts_json = True
+    return collecte
+
+
+def _installer_parts_json():
+    """Pose le correctif sur le transport requests ; rend 1 si posé."""
+    try:
+        import importlib
+        transport = importlib.import_module('schemathesis.transport.requests')
+    except ImportError:
+        return 0
+    courant = getattr(transport, '_collect_encoded_fields', None)
+    if courant is None:
+        return 0
+    transport._collect_encoded_fields = _avec_parts_json(courant)
+    return 1
+
+
+_PARTS_JSON_CORRIGEES = _installer_parts_json()
+
+
 # ── 6. Un corps à fichier reste POSITIF après nos substitutions ─────────
 # Schemathesis revalide tout conteneur modifié par un crochet, et déclare
 # INVALIDE tout corps qui porte des octets (``_contains_bytes`` : ``Binary``

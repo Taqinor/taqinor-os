@@ -189,7 +189,8 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '5000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(r2.status_code, 400)
+        # CI #997 (3) : plafond d'avoir dépassé = conflit d'état (409), corps conforme.
+        self.assertEqual(r2.status_code, 409, r2.data)
         self.assertEqual(Avoir.objects.count(), 1)
 
     def test_corps_hors_schema_400_jamais_500(self):

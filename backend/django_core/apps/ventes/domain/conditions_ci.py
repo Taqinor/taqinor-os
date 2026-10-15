@@ -23,6 +23,8 @@ from core.champs_stricts import (
     MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, non_blanc,
 )
 
+from apps.ventes.utils.echeancier import schema_echeancier
+
 #: Pourcentage écrit en texte : ``]0 ; 100]``, virgule ou point décimal.
 MOTIF_POURCENT_POSITIF = (
     r'^(?:100(?:[.,]0+)?|[1-9]\d?(?:[.,]\d+)?|0?[.,]\d*[1-9]\d*)$')
@@ -68,10 +70,9 @@ def _decimal_borne(motif, maximum, nullable=False):
 SCHEMAS = {
     'remise_globale': _decimal_borne(MOTIF_REMISE, 100),
     # QJR21 — ``EcheancierValidationMixin`` : null, ``""``, ou une liste de
-    # tranches OBJETS (une liste de ``null`` était publiée conforme).
-    'echeancier': {'nullable': True, 'anyOf': [
-        {'type': 'array', 'items': {'type': 'object'}},
-        {'type': 'string', 'enum': ['']}]},
+    # tranches OBJETS ; CI #997 (4) — dont ``pct_or_montant`` est obligatoire
+    # (source unique : ``utils.echeancier``, jumelle du refus 400).
+    'echeancier': schema_echeancier(),
     'acompte_montant': _decimal_borne(
         MOTIF_ACOMPTE, 9999999999.99, nullable=True),
     'retenue_garantie': _objet(('taux_pct',), {
