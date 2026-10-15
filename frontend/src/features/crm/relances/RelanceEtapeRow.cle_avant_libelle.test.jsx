@@ -7,9 +7,9 @@
 // ex. `RelanceEtapeRow.canaux.test.jsx` : un objet réel, un ou deux champs
 // neutralisés/renommés — jamais un objet inventé de toutes pièces).
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { ligne } from '../../../test/relanceEtapeRowHarness'
+import { screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import RelanceEtapeRow from './RelanceEtapeRow'
 // SUIVI-PARCOURS (30/09/2026) — les questions viennent de la TABLE du
 // parcours, jamais retapées ici : si la table change, ce test suit.
 import { PARCOURS } from './parcours'
@@ -20,28 +20,8 @@ const QUESTION_PLANIFIER = question('planifier')
 const QUESTION_CONFIRMATION = question('confirmation')
 const QUESTION_DEVIS_MODIFIE = question('devis_modifie')
 
-vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-    enregistrerPieceRecue: vi.fn(),
-  },
-}))
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.sessionStorage.clear() })
-
-function noop() {}
-
-function ligne(etape, props = {}) {
-  return render(
-    <RelanceEtapeRow
-      etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
-      onOuvrirMessage={noop} {...props}
-    />,
-  )
-}
 
 const GENERIQUE = exempleContrat('crm', 'relance_etape_v2', 'exemple_generique').results[0]
 const DEBRIEF = exempleContrat('crm', 'relance_etape_v2', 'exemple_debrief_visite').results[0]

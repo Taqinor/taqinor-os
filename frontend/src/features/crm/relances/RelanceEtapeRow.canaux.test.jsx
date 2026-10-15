@@ -2,20 +2,11 @@
 // départ = les touches du contrat COMMITTÉ `relance_etape_v2.json` (PACT10),
 // jamais un objet retapé à la main.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import { ligne } from '../../../test/relanceEtapeRowHarness'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import RelanceEtapeRow from './RelanceEtapeRow'
 
-vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-    enregistrerPieceRecue: vi.fn(),
-  },
-}))
 
 import { toastInfo } from '../../../lib/toast'
 
@@ -27,17 +18,6 @@ const ETAPE_WHATSAPP = TOUCHES.find((t) => t.canal === 'whatsapp')
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.sessionStorage.clear() })
-
-function noop() {}
-
-function ligne(etape, props = {}) {
-  return render(
-    <RelanceEtapeRow
-      etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
-      onOuvrirMessage={noop} {...props}
-    />,
-  )
-}
 
 describe('CAD63 — la réponse « ne parle que darija » sur la touche', () => {
   it('cochée, elle part AVEC la réponse et pose la langue sur la fiche', async () => {
