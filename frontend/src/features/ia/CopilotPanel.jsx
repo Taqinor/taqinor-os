@@ -1,20 +1,24 @@
 import { useState, useRef, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Bot, MessageSquare, Send, Code2, ChevronDown, CheckCircle2,
-  ShieldQuestion, Check, X, FileDown, MessageCircle,
+  Bot, MessageSquare, Send, CheckCircle2,
 } from 'lucide-react'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-  Button, buttonVariants, IconButton, EmptyState, Textarea,
+  Button, IconButton, EmptyState,
 } from '../../ui'
 import { cn } from '../../lib/cn'
 import StateBlock from '../../components/StateBlock'
 import {
+  MessageActions, SuggestionButtons, TypingDots, QuestionForm,
+} from './ChatParts'
+import {
   queryAgent, loadChatHistory, clearChatHistory,
-  confirmAgentAction, dismissProposal, closeCopilot,
+  closeCopilot,
 } from './store/iaSlice'
-import { displayMessageText, formatAgentError, canSendQuestion } from './copilotMessages'
+import {
+  displayMessageText, formatAgentError, canSendQuestion, enterSubmits,
+} from './copilotMessages'
 
 // FG350 — Copilote in-app : tiroir conversationnel GLOBAL câblé sur l'agent
 // FastAPI (SQL + actions) déjà exposé par `iaApi`/`iaSlice` (POST
@@ -70,12 +74,7 @@ export default function CopilotPanel() {
     inputRef.current?.focus()
   }
 
-  const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
-    }
-  }
+  const handleKeyDown = enterSubmits(handleSubmit)
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) dispatch(closeCopilot()) }}>
@@ -106,17 +105,8 @@ export default function CopilotPanel() {
               className="border-0 py-6"
               action={
                 <div className="flex flex-col gap-2">
-                  {SUGGESTIONS.map((s) => (
-                    <Button
-                      key={s}
-                      variant="outline"
-                      size="sm"
-                      className="h-auto whitespace-normal py-1.5 text-left"
-                      onClick={() => handleSuggestion(s)}
-                    >
-                      {s}
-                    </Button>
-                  ))}
+                  <SuggestionButtons suggestions={SUGGESTIONS} onPick={handleSuggestion}
+ buttonClassName="h-auto whitespace-normal py-1.5 text-left" />
                 </div>
               }
             />
@@ -157,113 +147,8 @@ export default function CopilotPanel() {
                   {/* AG3 — carte CONFIRMATION pour une action proposée. La voie
                       /confirm reste la SEULE manière d'exécuter une action
                       sensible : jamais de confirmation automatique. */}
-                  {msg.kind === 'proposal' && (
-                    <div
-                      data-testid="copilot-proposal-card"
-                      className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-foreground"
-                    >
-                      <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                        <ShieldQuestion className="size-3.5" aria-hidden="true" />
-                        Confirmation requise
-                      </p>
-                      {msg.human_preview && (
-                        <p className="mt-1.5 whitespace-pre-wrap break-words text-sm">
-                          {msg.human_preview}
-                        </p>
-                      )}
-                      {!msg.confirm_token && (
-                        <p className="mt-1.5 text-xs text-muted-foreground">
-                          Confirmation indisponible pour le moment.
-                        </p>
-                      )}
-                      <div className="mt-2.5 flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          disabled={!msg.confirm_token || confirmingIndex === i}
-                          loading={confirmingIndex === i}
-                          onClick={() =>
-                            dispatch(confirmAgentAction({ token: msg.confirm_token, index: i }))
-                          }
-                        >
-                          <Check className="size-4" aria-hidden="true" />
-                          Confirmer
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={confirmingIndex === i}
-                          onClick={() => dispatch(dismissProposal(i))}
-                        >
-                          <X className="size-4" aria-hidden="true" />
-                          Annuler
-                        </Button>
-                      </div>
-                      {confirmError && confirmingIndex == null && (
-                        <p className="mt-2 text-xs text-destructive">
-                          {typeof confirmError === 'string' ? confirmError : 'Échec de la confirmation.'}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* AG3 — carte RÉSULTAT pour une action terminée. Le devis
-                      passe TOUJOURS par /proposal (rule founder #4). */}
-                  {msg.kind === 'result' && (
-                    <div
-                      data-testid="copilot-result-card"
-                      className="mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-foreground"
-                    >
-                      <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                        <CheckCircle2 className="size-3.5" aria-hidden="true" />
-                        Action effectuée
-                      </p>
-                      {msg.reference && (
-                        <p className="mt-1.5 text-sm">
-                          Référence : <span className="font-medium">{msg.reference}</span>
-                        </p>
-                      )}
-                      <div className="mt-2.5 flex flex-wrap gap-2">
-                        {msg.proposal_url && (
-                          <a
-                            href={msg.proposal_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-                          >
-                            <FileDown className="size-4" aria-hidden="true" />
-                            Télécharger le devis
-                          </a>
-                        )}
-                        {msg.wa_url && (
-                          <a
-                            href={msg.wa_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-                          >
-                            <MessageCircle className="size-4" aria-hidden="true" />
-                            Ouvrir WhatsApp
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {msg.sql_query && (
-                    <details className="group mt-2 rounded-md border border-border bg-card text-foreground">
-                      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-muted-foreground">
-                        <Code2 className="size-3.5" aria-hidden="true" />
-                        Requête SQL générée
-                        <ChevronDown
-                          className="ml-auto size-3.5 transition-transform group-open:rotate-180"
-                          aria-hidden="true"
-                        />
-                      </summary>
-                      <pre className="overflow-x-auto border-t border-border px-2.5 py-2 text-xs text-muted-foreground">
-                        <code>{msg.sql_query}</code>
-                      </pre>
-                    </details>
-                  )}
+                  <MessageActions msg={msg} index={i} variant="copilot"
+ confirmingIndex={confirmingIndex} confirmError={confirmError} />
                 </div>
               </div>
             ))}
@@ -274,9 +159,7 @@ export default function CopilotPanel() {
                   <Bot className="size-3.5" aria-hidden="true" />
                 </span>
                 <div className="flex items-center gap-1 rounded-xl bg-muted px-3 py-2.5">
-                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
-                  <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
+                  <TypingDots />
                 </div>
               </div>
             )}
@@ -299,18 +182,8 @@ export default function CopilotPanel() {
               </Button>
             </div>
           )}
-          <form className="flex items-end gap-2" onSubmit={handleSubmit}>
-            <Textarea
-              ref={inputRef}
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Posez votre question en français…"
-              disabled={agentLoading}
-              autoComplete="off"
-              className="max-h-32 min-h-[var(--control-h)] resize-none py-2.5"
-            />
+          <QuestionForm onSubmit={handleSubmit} inputRef={inputRef} input={input} setInput={setInput}
+              onKeyDown={handleKeyDown} disabled={agentLoading}>
             <IconButton
               type="submit"
               variant="default"
@@ -319,7 +192,7 @@ export default function CopilotPanel() {
             >
               <Send />
             </IconButton>
-          </form>
+          </QuestionForm>
           <p className="mt-2 text-center text-xs text-muted-foreground">
             L'agent peut faire des erreurs. Vérifiez les informations importantes.
           </p>

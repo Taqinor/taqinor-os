@@ -32,7 +32,6 @@
 02a20e08b2f6|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 02d709ddae24|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 031a15dcab6a|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts
-033e37c043e2|frontend/src/features/ia/CopilotPanel.jsx,frontend/src/pages/ia/AgentChat.jsx
 03b888485ae9|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 04470008e4b3|apps/web/src/scripts/roofPro11/cablageLot2.test.ts,apps/web/src/scripts/roofPro11/layoutEditor.test.ts
 052d4965c485|frontend/src/pages/crm/CrmCockpit.jsx,frontend/src/pages/ventes/VentesCockpit.jsx
@@ -333,18 +332,15 @@
 55d949c9abdb|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts
 5607a5919666|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 5614ef794d45|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
-56500b72a787|frontend/src/features/ia/CopilotPanel.jsx,frontend/src/pages/ia/AgentChat.jsx
 569c5758ede4|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceCreate.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
 56c160e3691d|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 571ed58891c8|frontend/src/pages/crm/ClientDetailPanel.DossierDocumentaire.test.jsx,frontend/src/pages/crm/ClientDetailPanel.OwnerChain.test.jsx,frontend/src/pages/crm/ClientDetailPanel.PlanCompte.test.jsx
-5731e8cab8ec|frontend/src/features/ia/CopilotPanel.jsx,frontend/src/pages/ia/AgentChat.jsx
 574392d084b2|apps/web/src/pages/api/proposition-accept.ts,apps/web/src/pages/api/proposition-engagement.ts
 577d6ac29f98|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceCreate.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
 579f24532b4b|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 57eccfdb7a11|frontend/src/pages/crm/leads/SigneDialog.jsx,frontend/src/pages/crm/leads/SigneDialog.test.mjs
 57f659a70cf1|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
 57f76e12361a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-581c2268ac25|frontend/src/features/ia/CopilotPanel.jsx,frontend/src/pages/ia/AgentChat.jsx
 58f721bbfb29|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool.ts
 5904783ffe94|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.nestedShortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.paletteActions.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
 5975f854f3bc|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
@@ -373,7 +369,6 @@
 5e819885efa3|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 5e9d47d6d2fe|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 5ebee5c6d91f|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/estimatorBrainV8.ts
-5f612af2b148|frontend/src/features/ia/CopilotPanel.jsx,frontend/src/pages/ia/AgentChat.jsx
 5f8c3471c88d|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 5fb2b1853d93|frontend/src/features/uxviews/quickcreate/TicketQuickCreateModal.jsx,frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/stock/ProduitDetail.jsx,frontend/src/pages/stock/ProduitForm.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx,frontend/src/pages/stock/RetoursFournisseur.jsx,frontend/src/pages/ventes/ClientQuickCreateModal.jsx,frontend/src/pages/ventes/ListesPrixPage.jsx
 5fcdeb365950|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
@@ -908,7 +903,6 @@ fdec568d0fb2|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 fe07fe379d79|apps/web/src/lib/estimatorPro.ts,apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 fe75990add10|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 fe8d2c1917e0|apps/web/src/lib/jourTypeData.ts,apps/web/src/lib/proposition.ts
-fecdf796ea5e|frontend/src/features/ia/CopilotPanel.jsx,frontend/src/pages/ia/AgentChat.jsx
 ff1132c880f1|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 ff5d317d3aa2|apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/production-mesuree.astro
 ff67290fc515|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
