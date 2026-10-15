@@ -161,7 +161,7 @@ export default function PatrimoineTree() {
     if (batiment) parts.push({ label: batiment.nom, onClick: () => goToBatiment(batiment) })
     if (niveau) parts.push({ label: niveau.numero, onClick: () => goToNiveau(niveau) })
     return parts
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [site, batiment, niveau])
 
   const goToRacine = useCallback(() => {
@@ -289,7 +289,7 @@ export default function PatrimoineTree() {
     } finally {
       setFormSaving(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [currentLevel, formMode, formRowId, formValues, PARENTS.site, PARENTS.batiment, PARENTS.niveau])
 
   const levelConfig = LEVEL_CONFIG[currentLevel]

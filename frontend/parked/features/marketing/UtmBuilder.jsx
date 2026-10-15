@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components --
+/* eslint-disable react-refresh/only-export-components -- parqué (D-ENF22)
    L'écran exporte AUSSI sa logique pure (`construireUrlUtm`), testée sans DOM
    comme `segmentRules.js`/`journeyGraph.js`. */
 import { useState } from 'react'

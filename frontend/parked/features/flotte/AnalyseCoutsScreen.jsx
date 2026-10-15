@@ -272,7 +272,7 @@ function PivotTab() {
     return () => { cancelled = true }
   }, [groupBy])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const pivotColumns = useMemo(() => [
@@ -350,7 +350,7 @@ function RemplacementTab() {
     return () => { cancelled = true }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const columns = useMemo(() => [
@@ -413,7 +413,7 @@ function BudgetTab() {
     return () => { cancelled = true }
   }, [annee])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const columns = useMemo(() => [
@@ -493,7 +493,7 @@ function JournalKilometriqueTab() {
     return () => { cancelled = true }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const columns = useMemo(() => [

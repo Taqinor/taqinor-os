@@ -40,7 +40,7 @@ export default function ManageMembers({ open, onOpenChange, conversation, curren
 
   useEffect(() => {
     if (!open) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du Sheet
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du Sheet (D-ENF22)
     setName(conversation?.name ?? '')
     setEditingName(false)
     setToAdd([])
@@ -59,7 +59,7 @@ export default function ManageMembers({ open, onOpenChange, conversation, curren
       })
       .catch(() => { if (alive) setOptions([]) })
     return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [open, conversation?.id])
 
   const refresh = async () => {

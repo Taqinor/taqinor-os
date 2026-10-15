@@ -202,7 +202,7 @@ function LignesOrdreDialog({ ordre, onClose }) {
       .then((r) => setLignes(listOf(r.data)))
       .catch(() => toast.error('Chargement des lignes impossible.'))
       .finally(() => setLoading(false))
-  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const rejeter = async (ligne) => {
     setBusy(`rejeter-${ligne.id}`)

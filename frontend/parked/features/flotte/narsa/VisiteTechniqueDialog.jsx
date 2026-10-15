@@ -48,7 +48,7 @@ export default function VisiteTechniqueDialog({ actifs = [], onClose, onSaved })
   // main sur CE formulaire (``dateProchaineToucheeRef``, lue à jour même si
   // la saisie manuelle survient pendant que l'appel réseau est en vol).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise la proposition à la désélection
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise la proposition à la désélection (D-ENF22)
     if (!actifFlotteId) { setProposition(null); return undefined }
     let cancelled = false
     setProposing(true)

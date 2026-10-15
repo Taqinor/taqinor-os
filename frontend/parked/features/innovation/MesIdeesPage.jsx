@@ -25,7 +25,7 @@ export default function MesIdeesPage() {
 
   useEffect(() => {
     if (!currentUser?.id) return
-    /* eslint-disable react-hooks/set-state-in-effect -- chargement au montage */
+    /* eslint-disable react-hooks/set-state-in-effect -- chargement au montage (D-ENF22) */
     setLoading(true)
     setError(null)
     /* eslint-enable react-hooks/set-state-in-effect */

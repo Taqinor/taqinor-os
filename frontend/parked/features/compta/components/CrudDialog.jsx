@@ -46,11 +46,11 @@ export default function CrudDialog({
     if (!open) return
     const base = {}
     for (const f of fields) base[f.name] = initial?.[f.name] ?? ''
-    /* eslint-disable react-hooks/set-state-in-effect -- reset à l'ouverture */
+    /* eslint-disable react-hooks/set-state-in-effect -- reset à l'ouverture (D-ENF22) */
     setInitialSnapshot(base)
     setValues(base)
     /* eslint-enable react-hooks/set-state-in-effect */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [open, initial])
 
   // VX229 — charge chaque champ `async` UNE FOIS à l'ouverture (mémoïsé en
@@ -60,7 +60,7 @@ export default function CrudDialog({
     if (!open) return
     const asyncFields = fields.filter((f) => f.async)
     if (!asyncFields.length) return
-    /* eslint-disable react-hooks/set-state-in-effect -- chargement à l'ouverture */
+    /* eslint-disable react-hooks/set-state-in-effect -- chargement à l'ouverture (D-ENF22) */
     setAsyncLoading((prev) => {
       const next = { ...prev }
       asyncFields.forEach((f) => { next[f.name] = true })
@@ -73,7 +73,7 @@ export default function CrudDialog({
         .catch(() => setAsyncOptions((prev) => ({ ...prev, [f.name]: [] })))
         .finally(() => setAsyncLoading((prev) => ({ ...prev, [f.name]: false })))
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [open, initial])
 
   const { guardedClose } = useFormSafety(initialSnapshot, values, onClose)

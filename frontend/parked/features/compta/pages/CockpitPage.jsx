@@ -58,7 +58,7 @@ const EXPORT_DESTINATIONS = [
 // VX232(a) — résolution pure `tiers_id` → nom (extraite pour un test unitaire
 // direct, sans dépendre du rendu recharts) ; repli « Tiers #N » si la fiche a
 // été supprimée entre-temps ou n'a pas encore été chargée.
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé isolément (D-ENF22)
 export function resolveTiersLabel(tiersId, tiersById) {
   if (!tiersId) return 'Non affecté'
   return tiersById[tiersId] || `Tiers #${tiersId}`
@@ -105,7 +105,7 @@ export default function CockpitPage() {
     return () => { alive = false }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   // APX35 — tranches d'ancienneté de la créance client, dérivées de la balance

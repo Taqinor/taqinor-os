@@ -36,10 +36,10 @@ export default function useComptaList(fetcher, params) {
       })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [fetcher, key])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => reload(), [reload])
 
   return { rows, loading, error, reload }

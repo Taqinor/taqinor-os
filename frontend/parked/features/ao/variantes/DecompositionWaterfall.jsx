@@ -65,7 +65,7 @@ const signe = (v) => (v > 0 ? `+${formatNumber(v, { decimals: 0 })}` : formatNum
 // Marches FAUTIVES : un `attendu` a été déclaré et le moteur courant ne le
 // reproduit plus. Une marche sans `attendu` (aucune attente figée) n'est
 // JAMAIS traitée comme fautive.
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function marchesFautives(marches = []) {
   return marches.filter((m) => m.attendu != null && m.modules !== m.attendu)
 }
@@ -73,7 +73,7 @@ export function marchesFautives(marches = []) {
 // Barres du waterfall : positions calculées depuis les valeurs SERVEUR.
 // `depart` est un NOMBRE (voir en-tête) ; `marche.modules` porte déjà l'état
 // CUMULATIF après la marche (même rôle que l'ancien `valeur_apres`).
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function geometrie({ depart = 0, marches = [] }) {
   const valeurs = [depart]
   let courant = depart

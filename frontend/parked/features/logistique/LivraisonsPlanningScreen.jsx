@@ -55,7 +55,7 @@ export default function LivraisonsPlanningScreen() {
     return () => { cancelled = true }
   }, [jour])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de jour
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de jour (D-ENF22)
   useEffect(() => load(), [load])
 
   const stops = useMemo(() => tourneeToStops(tournee), [tournee])

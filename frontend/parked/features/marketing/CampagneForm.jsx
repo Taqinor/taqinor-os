@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components -- dossier parqué, hors lint (D-ENF22) */
 import { useEffect, useState } from 'react'
 import marketingApi from '../../api/marketingApi'
 import HeatmapEnvoi from './HeatmapEnvoi'
@@ -80,7 +80,7 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
     { segment_label: '', offre: '', instruction: '', langue: 'fr' })
   const [iaLoading, setIaLoading] = useState(false)
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change (D-ENF22)
   useEffect(() => { setForm(initial || emptyForm()) }, [initial])
 
   useEffect(() => {

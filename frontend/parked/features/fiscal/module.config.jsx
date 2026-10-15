@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components --
+/* eslint-disable react-refresh/only-export-components -- parqué (D-ENF22)
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob — pas un module de composants. */
 import { lazy } from 'react'

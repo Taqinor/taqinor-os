@@ -107,7 +107,7 @@ export default function EvenementDetail() {
       .catch(() => setInscriptions([]))
   }, [id, statutFiltre])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { loadEvenement() }, [loadEvenement])
   useEffect(() => { loadInscriptions() }, [loadInscriptions])
 
@@ -143,7 +143,7 @@ export default function EvenementDetail() {
     if (onglet === 'billets') loadBillets()
     else if (onglet === 'questions') loadQuestions()
     else if (onglet === 'communications') loadCommunications()
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement paresseux de l'onglet
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement paresseux de l'onglet (D-ENF22)
     else if (onglet === 'reporting') loadRapport()
   }, [onglet, loadBillets, loadQuestions, loadCommunications, loadRapport])
 

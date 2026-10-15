@@ -50,7 +50,7 @@ export default function EnquetesNps() {
       .catch(() => setScore(null))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const envoyer = async (e) => {

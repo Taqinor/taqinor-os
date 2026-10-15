@@ -58,7 +58,7 @@ export default function DerogationsPage() {
     }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `charger` refresh helper
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `charger` refresh helper (D-ENF22)
   useEffect(() => charger(), [charger])
 
   async function decider(id, action) {

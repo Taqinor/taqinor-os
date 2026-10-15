@@ -594,7 +594,7 @@ async function synchroniserRessource({ ressource, nomRessource, locaux, distants
   for (const distant of distants) {
     if (idsLocaux.has(distant.id)) continue
     try {
-      // eslint-disable-next-line no-await-in-loop
+      // eslint-disable-next-line no-await-in-loop -- dossier parqué, hors lint (D-ENF22)
       await ressource.remove(distant.id)
     } catch (e) {
       throw erreurNommee(
@@ -606,7 +606,7 @@ async function synchroniserRessource({ ressource, nomRessource, locaux, distants
     const payload = versPayload(local)
     if (estIdServeur(local.id)) {
       try {
-        // eslint-disable-next-line no-await-in-loop
+        // eslint-disable-next-line no-await-in-loop -- dossier parqué, hors lint (D-ENF22)
         const { data } = await ressource.update(Number(local.id), payload)
         resultats.push({ ...local, _serveur: data })
       } catch (e) {
@@ -614,7 +614,7 @@ async function synchroniserRessource({ ressource, nomRessource, locaux, distants
       }
     } else {
       try {
-        // eslint-disable-next-line no-await-in-loop
+        // eslint-disable-next-line no-await-in-loop -- dossier parqué, hors lint (D-ENF22)
         const { data } = await ressource.create(payload)
         resultats.push({ ...local, id: data.id, _serveur: data })
       } catch (e) {
@@ -865,7 +865,7 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
       }
     })()
     return () => { annule = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule hydratation par mount (= par toiture ouverte)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule hydratation par mount (= par toiture ouverte) (D-ENF22)
   }, [toitureId])
 
   const majPoints = useCallback((suivants, libelle, opts) => {

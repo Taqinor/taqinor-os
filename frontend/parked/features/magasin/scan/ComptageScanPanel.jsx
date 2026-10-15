@@ -39,7 +39,7 @@ export default function ComptageScanPanel({ sessionId }) {
     }
   }
 
-  useMemo(() => { load() }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useMemo(() => { load() }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const lignes = session?.lignes || []
 

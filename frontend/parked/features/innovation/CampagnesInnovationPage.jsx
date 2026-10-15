@@ -293,7 +293,7 @@ export default function CampagnesInnovationPage() {
         </span>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- lancer/voirRapport/cloner recréés à chaque rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lancer/voirRapport/cloner recréés à chaque rendu (D-ENF22)
   ], [busyId])
 
   return (

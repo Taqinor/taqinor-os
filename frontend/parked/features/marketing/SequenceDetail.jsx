@@ -35,7 +35,7 @@ export default function SequenceDetail() {
       .finally(() => setLoading(false))
   }, [id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   useEffect(() => {

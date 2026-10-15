@@ -46,7 +46,7 @@ import { formatMAD, formatNumber } from '../../../lib/format'
 
 // Les 4 contrôles de la bande CONFORMITÉ AO, dans l'ordre normatif d'AOF102.
 // `cle` = clé attendue dans `variante.conformite`.
-// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DevisTab.DEVIS_MINI_TRACK
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DevisTab.DEVIS_MINI_TRACK (D-ENF22)
 export const CONTROLES_CONFORMITE = [
   { cle: 'caution', libelle: "Caution constituée et non expirée à l'ouverture" },
   { cle: 'delai_execution', libelle: "Délai d'exécution tenable" },

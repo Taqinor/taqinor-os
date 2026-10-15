@@ -37,7 +37,7 @@ export default function PickingScanPanel({ pickListId }) {
     }
   }
 
-  useMemo(() => { load() }, [pickListId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useMemo(() => { load() }, [pickListId]) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const lignes = sortPickListLignesByBin(pickList?.lignes)
   const progress = pickListProgress(lignes)

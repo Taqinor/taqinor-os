@@ -115,7 +115,7 @@ export default function Competences() {
 
   useEffect(() => {
     let vivant = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     setLoading(true)
     setError(null)
     Promise.all([

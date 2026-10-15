@@ -123,9 +123,9 @@ export default function AdministrationPage() {
       .finally(() => setChargementCycles(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { chargerDepartements() }, [chargerDepartements])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { chargerCycles() }, [chargerCycles])
 
   async function creerDepartement() {

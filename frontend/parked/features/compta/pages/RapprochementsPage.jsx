@@ -70,7 +70,7 @@ function SuggestionsDialog({ rapprochement, onClose }) {
       .catch(() => setApprises([]))
   }, [rapprochement.id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   const accepter = async () => {
@@ -325,7 +325,7 @@ function RapprochementDetailDialog({ rapprochement, onClose, onSaved }) {
     }
   }, [rapprochement.id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const lignes = detail?.lignes_releve || []

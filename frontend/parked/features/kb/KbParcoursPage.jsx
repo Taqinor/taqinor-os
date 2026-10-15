@@ -63,7 +63,7 @@ export default function KbParcoursPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
     load()
     messagesApi.listCompanyMembers()
       .then((res) => setUsers(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))

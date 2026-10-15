@@ -114,9 +114,9 @@ export default function ArticleDetail({
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [])
 
   const marquerLu = async () => {

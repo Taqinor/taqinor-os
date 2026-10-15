@@ -55,12 +55,12 @@ export default function EtatsLieux() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset de la sélection au changement de bail
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset de la sélection au changement de bail (D-ENF22)
     setSelectedId(null)
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset du détail au changement de bail
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset du détail au changement de bail (D-ENF22)
     setDetail(null)
     chargerListe(bailId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [bailId])
 
   const chargerDetail = (id) => {

@@ -18,7 +18,7 @@
    ========================================================================== */
 
 // Lettre indexée : A…Z, puis AA, AB… (jamais un index numérique nu).
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function lettreDe(index) {
   let n = index
   let out = ''
@@ -97,7 +97,7 @@ export function RepereMarker({
 }
 
 // Applique un déplacement/redimensionnement en restant dans le cadre.
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function deplacer(repere, { dx, dy }, taille) {
   return {
     ...repere,
@@ -106,7 +106,7 @@ export function deplacer(repere, { dx, dy }, taille) {
   }
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function redimensionner(repere, delta) {
   return { ...repere, r: clamp(repere.r + delta, RAYON_MIN, RAYON_MAX) }
 }

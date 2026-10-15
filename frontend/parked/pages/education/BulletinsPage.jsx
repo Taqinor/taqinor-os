@@ -58,9 +58,9 @@ export default function BulletinsPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de période
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de période (D-ENF22)
     chargerBulletins(periodeChoisie)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargerBulletins est stable (pas de dep externe changeante)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargerBulletins est stable (pas de dep externe changeante) (D-ENF22)
   }, [periodeChoisie])
 
   const bulletinDe = (eleveId) =>

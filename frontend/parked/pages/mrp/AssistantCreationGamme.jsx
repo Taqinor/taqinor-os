@@ -135,7 +135,7 @@ export default function AssistantCreationGamme() {
       const gammeId = gammeResp.data.id
       for (let i = 0; i < operations.length; i += 1) {
         const op = operations[i]
-        // eslint-disable-next-line no-await-in-loop -- ordre stable requis (ordre = i+1), pas de Promise.all.
+        // eslint-disable-next-line no-await-in-loop -- ordre stable requis (ordre = i+1), pas de Promise.all. (D-ENF22)
         await mrpApi.createOperationGamme({
           gamme: gammeId, ordre: i + 1, poste_charge: op.poste_charge,
           libelle: op.libelle, temps_prepa_min: op.temps_prepa_min,
