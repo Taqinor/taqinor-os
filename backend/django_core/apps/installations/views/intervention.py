@@ -352,11 +352,13 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             # Suppression : même palier que les écritures.
             'destroy',
         ]:
-            # ASEC50 / D-ASEC-4 — affecter un technicien (changer le
-            # ``technicien`` au PUT/PATCH, ou re-slotter une journée sur
-            # d'autres techniciens) exige ``technicien_assign``.
+            # ASEC50 / D-ASEC-4 — affecter un technicien (créer une
+            # intervention déjà affectée, changer le ``technicien`` au
+            # PUT/PATCH, ou re-slotter une journée sur d'autres techniciens)
+            # exige ``technicien_assign``.
             return [IsResponsableOrAdmin()] + droits_de_la_grille(
                 self,
+                create=[DroitDeLaGrille('technicien_assign', champ='technicien')],
                 update=[DroitDeLaGrille('technicien_assign', champ='technicien')],
                 partial_update=[
                     DroitDeLaGrille('technicien_assign', champ='technicien')],
