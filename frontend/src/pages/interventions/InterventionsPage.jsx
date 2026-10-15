@@ -6,16 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { MapPin, CalendarDays, Users, Wrench } from 'lucide-react'
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  TouchSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useSensor, useSensors } from '@dnd-kit/core'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -30,12 +21,12 @@ import {
   INTERVENTION_STATUS_COLORS,
   interventionStatusLabel,
   INTERVENTION_TYPES,
+  NO_TECH,
   raisonRefusStatut,
 } from '../../features/installations/statuses'
 import {
   Button,
   Badge,
-  Segmented,
   Spinner,
   EmptyState,
   Card,
@@ -73,6 +64,9 @@ import InterventionLiensPublicsPanel from '../../features/installations/Interven
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
+import { useDeepLinkId } from '../../hooks/useDeepLinkId'
+import { SelecteurVue } from '../../ui/SelecteurVue'
+import { ColonneStatut, ItemsUtilisateurs, SelectReaffectation } from '../../ui/kanbanAffectation'
 
 // VX43 — repli « changer le statut au menu » sans drag, sous 768px : le
 // glisser-déposer @dnd-kit (TouchSensor delay 150ms) reste utilisable au
@@ -86,11 +80,7 @@ const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
 const typeLabel = (k) => TYPE_LABELS[k] ?? k ?? '—'
 
-// Sentinelle « aucun technicien » (le Select du design system n'accepte pas '').
-const NO_TECH = '__none__'
-
 function InterventionCard({ it, users, onReassign, onChangeStatus }) {
-  const techValue = it.technicien ? String(it.technicien) : NO_TECH
   return (
     <StatusAccentCard accent={INTERVENTION_STATUS_COLORS[it.statut]}>
       <div className="kc-card-top">
@@ -135,24 +125,8 @@ function InterventionCard({ it, users, onReassign, onChangeStatus }) {
         </div>
       )}
       {onReassign && (
-        <div className="kc-reassign"
-             onPointerDown={(e) => e.stopPropagation()}
-             onClick={(e) => e.stopPropagation()}>
-          <Select value={techValue}
-                  onValueChange={(v) => onReassign(it, v === NO_TECH ? null : v)}>
-            <SelectTrigger className="h-8 text-xs" aria-label="Technicien">
-              <SelectValue placeholder="Technicien" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_TECH}>— Technicien —</SelectItem>
-              {(users ?? []).map((u) => (
-                <SelectItem key={u.id} value={String(u.id)}>
-                  {u.username ?? u.nom ?? `#${u.id}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SelectReaffectation valeur={it.technicien} users={users} label="Technicien"
+          onChange={(tech) => onReassign(it, tech)} />
       )}
     </StatusAccentCard>
   )
@@ -168,26 +142,6 @@ function DraggableCard({ it, users, onReassign, onChangeStatus }) {
          {...listeners} {...attributes}>
       <InterventionCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
     </div>
-  )
-}
-
-function StatusColumn({ col, children }) {
-  const { setNodeRef, isOver } = useDroppable({ id: col.key })
-  return (
-    <section ref={setNodeRef} className={isOver ? 'kb-col kb-over' : 'kb-col'}
-             style={{ '--kb-accent': col.color }}>
-      <header className="kb-col-header">
-        <div className="kb-col-title-row">
-          <span className="kb-col-title">{col.label}</span>
-          <span className="kb-col-count">{col.items.length}</span>
-        </div>
-      </header>
-      <div className="kb-col-body">
-        {col.items.length === 0
-          ? <div className="kb-col-empty">Aucune intervention</div>
-          : children}
-      </div>
-    </section>
   )
 }
 
@@ -225,13 +179,13 @@ function KanbanView({ items, onOpen, onChangeStatus, users, onReassign }) {
                 onDragCancel={() => setActive(null)}>
       <div className="kb-board">
         {columns.map((col) => (
-          <StatusColumn key={col.key} col={col}>
+          <ColonneStatut key={col.key} col={col} vide="Aucune intervention">
             {col.items.map((it) => (
               <div key={it.id} onClick={() => onOpen?.(it)}>
                 <DraggableCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
               </div>
             ))}
-          </StatusColumn>
+          </ColonneStatut>
         ))}
       </div>
       <DragOverlay>
@@ -498,11 +452,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_TECH}>— Technicien —</SelectItem>
-                {(users ?? []).map((u) => (
-                  <SelectItem key={u.id} value={String(u.id)}>
-                    {u.username ?? u.nom ?? `#${u.id}`}
-                  </SelectItem>
-                ))}
+                <ItemsUtilisateurs users={users} />
               </SelectContent>
             </Select>
           </div>
@@ -558,23 +508,10 @@ export default function InterventionsPage() {
   // InstallationsPage.jsx:343). Prérequis des liens de notification CHT9
   // (règle WIR176 : jamais un paramètre qu'aucune page ne lit).
   const [searchParams, setSearchParams] = useSearchParams()
-  const wantedId = searchParams.get('id')
-  const deepItem = useMemo(() => {
-    if (!wantedId) return null
-    return (items ?? []).find((it) => String(it.id) === String(wantedId)) ?? null
-  }, [wantedId, items])
+  const { wantedId, deepItem, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
   // id demandé mais introuvable (une fois le chargement terminé) : EmptyState
   // inline plutôt qu'un panneau vide ou une page blanche.
   const deepMissing = !!wantedId && !loading && !deepItem
-  const clearDeepLink = () => {
-    if (searchParams.has('id')) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('id')
-        return next
-      }, { replace: true })
-    }
-  }
   // Panneau ouvert : sélection manuelle OU intervention ciblée par le lien profond.
   const detailItem = selected ?? deepItem
   const closeDetail = () => { setSelected(null); clearDeepLink() }
@@ -708,16 +645,11 @@ export default function InterventionsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Segmented
-            size="sm"
-            value={view}
-            onChange={setView}
-            aria-label="Changer de vue"
+          <SelecteurVue view={view} onChange={setView}
             options={[
               { value: 'liste', label: 'Liste' },
               { value: 'kanban', label: 'Kanban' },
-            ]}
-          />
+            ]} />
         </div>
       </div>
 

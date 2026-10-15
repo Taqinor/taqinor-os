@@ -103,6 +103,7 @@ import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { todayLocalIso as todayISO } from '../../lib/dateLocale'
+import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const TP_ECRAN = 'sav.tickets'
@@ -1866,22 +1867,9 @@ export default function TicketsPage() {
   // ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet). Fermer retire
   // le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des tickets
   // chargés est signalé par un EmptyState inline (jamais une page blanche).
-  const wantedId = searchParams.get('id')
-  const deepTicket = useMemo(() => {
-    if (!wantedId) return null
-    return (items ?? []).find((t) => String(t.id) === String(wantedId)) ?? null
-  }, [wantedId, items])
+  const { wantedId, deepItem: deepTicket, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
   const deepMissing = !!wantedId && !loading && !error && !deepTicket
 
-  const clearDeepLink = () => {
-    if (searchParams.has('id')) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('id')
-        return next
-      }, { replace: true })
-    }
-  }
   // Panneau ouvert : sélection manuelle OU ticket ciblé par le lien profond.
   const detailTicket = selected ?? deepTicket
   const closeDetail = () => { setSelected(null); clearDeepLink() }
