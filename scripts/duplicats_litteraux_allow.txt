@@ -117,12 +117,10 @@
 2c13cded5657|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/professionnel.astro
 2cd6822e9f8e|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro
 2e9f7caa05ab|apps/web/src/lib/proposition.ts,apps/web/src/scripts/roofPro11/viewerFullModel.ts
-2ece50c5eee4|frontend/src/features/crm/relances/PanneauScriptAppel.jsx,frontend/src/features/crm/relances/RelanceEtapeRow.jsx
 2ef8f92a3a80|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 2f216ac58b6e|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 2f23535585f2|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro,frontend/src/pages/Landing.jsx
 3053f61268aa|frontend/src/pages/interventions/InterventionsPage.jsx,frontend/src/pages/interventions/MaJourneePage.jsx
-305acce9be12|frontend/src/features/calepinage/DossiersReglementaires.jsx,frontend/src/features/calepinage/SchemaUnifilairePanel.jsx,frontend/src/features/calepinage/production/DiagrammePertes.jsx,frontend/src/features/calepinage/production/PanneauProduction.jsx
 3099046a32f6|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 30e18de4db2f|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 310a063a8e03|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
@@ -315,7 +313,6 @@
 81cd346da135|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 832d8fbc2716|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 834d4ed8c44f|apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/marocains-du-monde.astro,apps/web/src/pages/résidentiel.astro
-83f585345ebb|frontend/src/pages/ventes/BonCommandeList.jsx,frontend/src/pages/ventes/RemisesEncaissementPage.jsx
 8448c91dc91c|apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/production-mesuree.astro
 853a9da35199|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
 86b7657f3eec|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro

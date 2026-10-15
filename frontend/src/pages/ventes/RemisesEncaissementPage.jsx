@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Banknote, FileText, Plus, AlertTriangle } from 'lucide-react'
 import api from '../../api/axios'
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import {
   Badge, Button, Card, Checkbox, EmptyState, Input, Label, Skeleton, Textarea,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -15,6 +13,7 @@ import { toast, useConfirmDialog } from '../../ui/confirm'
 import { frenchError } from '../../lib/frenchError'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 /* ============================================================================
    PACT46 — Remises d'encaissement terrain (XFSM19).
@@ -229,9 +228,7 @@ export default function RemisesEncaissementPage() {
 
   return (
     <div className="page">
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={Banknote}
         title="Remises d'encaissement terrain"
         subtitle="Collectes espèces et chèques déclarées par les techniciens, clôturées par le responsable. L'écart déclaré / encaissé est toujours affiché."

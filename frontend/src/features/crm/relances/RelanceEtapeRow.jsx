@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Check, SkipForward, Phone, MessageCircle, Clock3, ChevronDown, ChevronRight,
+  Check, SkipForward, Phone, MessageCircle, Clock3,
   Copy, Mail, Paperclip,
 } from 'lucide-react'
 import {
@@ -19,6 +19,7 @@ import { suiteAnnoncee, suiteDuSaut } from './suite'
 import {
   typeEtape, reponsesDeLEtape, estTache, estTacheSansAppel as estTacheSansAppel_,
 } from './parcours'
+import BasculeReplie from './BasculeReplie'
 
 /* ============================================================================
    MRY31 — `RelanceEtapeRow` EXTRAIT de `pages/crm/RelancesDuJourWidget.jsx`
@@ -370,16 +371,9 @@ function TexteDeTouche({ etape, titre, ouvert, onBasculer, destinataire }) {
 
   return (
     <div className="mt-1.5 rounded-md border border-dashed border-border p-2" data-testid="texte-touche">
-      <button
-        type="button"
-        className="flex w-full items-center gap-1.5 text-left text-xs font-medium text-foreground"
-        aria-expanded={ouvert}
-        onClick={onBasculer}
-      >
-        {ouvert ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
-          : <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
+      <BasculeReplie ouvert={ouvert} onBasculer={onBasculer}>
         <span>{titre}</span>
-      </button>
+      </BasculeReplie>
       {ouvert && (
         <div className="mt-1.5 flex flex-col gap-1.5">
           {destinataire !== undefined && (

@@ -16,8 +16,7 @@ import {
 import { Table } from '../reporting/Table'
 import { formatMAD } from '../../lib/format'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 const STATUT_TABS = [
   { key: 'tous', label: 'Tous' },
@@ -82,9 +81,7 @@ export default function AvoirsPage() {
   return (
     <div className="page">
       {/* APX11 — en-tête unique VX28 + accent Ventes. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={FileX2}
         title={(
           <>

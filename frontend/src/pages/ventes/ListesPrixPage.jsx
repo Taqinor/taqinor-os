@@ -11,12 +11,11 @@ import {
 } from '../../ui'
 import { Table } from '../reporting/Table'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
 import PiedDialogueFermer from '../stock/PiedDialogueFermer'
 import SqueletteLignesCarte from '../../ui/SqueletteLignesCarte'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -65,9 +64,7 @@ export default function ListesPrixPage() {
   return (
     <div className="ui-root page">
       {/* APX11 — en-tête unique VX28 + accent Ventes. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={Tags}
         title="Listes de prix"
         subtitle="Tarifs négociés par client"

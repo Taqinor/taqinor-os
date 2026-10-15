@@ -3,8 +3,6 @@ import { useDispatch, useSelector } from 'react-redux'
 import { Link, useNavigate } from 'react-router-dom'
 import { Search, Plus, FilePlus2, PackageX, ShoppingCart } from 'lucide-react'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 // APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK, bonCommandeTrack } from '../../features/ventes/documentChain'
@@ -39,6 +37,7 @@ import { frenchError } from '../../lib/frenchError'
 import { useConfirmDialog } from '../../ui/confirm'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -184,9 +183,7 @@ export default function BonCommandeList() {
   return (
     <div className="page">
       {/* APX11 — en-tête unique VX28 + accent Ventes. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={ShoppingCart}
         title={(
           <>

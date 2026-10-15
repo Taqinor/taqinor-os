@@ -5,7 +5,7 @@ import calepinageApi from '../../../api/calepinageApi'
 import useResource from '../../../hooks/useResource'
 import { useHasPermission } from '../../../hooks/useHasPermission'
 import { formatNumber, formatPercent } from '../../../lib/format'
-import { Button, Card, Spinner, Stat } from '../../../ui'
+import { Button, Card, Stat } from '../../../ui'
 import { PARAM_ONGLET } from '../atelier/onglets'
 import RetourAtelier from '../atelier/RetourAtelier'
 import {
@@ -15,6 +15,7 @@ import { BandeauBorneHaute, ReglagesUtilises } from './BandeauProvenanceProducti
 import { estIncomplet } from './BandeauProvenanceProduction.helpers'
 import TapisHoraire from './TapisHoraire'
 import useSuiviJob from './useSuiviJob'
+import EtatEcranAtelier from '../atelier/EtatEcranAtelier'
 
 /* ============================================================================
    CAL236 — LE PANNEAU « PRODUCTION » DU MODULE.
@@ -352,21 +353,8 @@ export default function PanneauProduction({ calepinageId, intervalleMs = 2000 })
     { select: (r) => r.data, errorMessage: 'Production indisponible.' },
   )
 
-  if (loading) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <Spinner />
-      </>
-    )
-  }
-  if (error) {
-    return (
-      <>
-        <RetourAtelier calepinageId={id} />
-        <p className="text-sm text-destructive" data-testid="cal236-erreur">{error}</p>
-      </>
-    )
+  if (loading || error) {
+    return <EtatEcranAtelier id={id} loading={loading} error={error} testIdErreur="cal236-erreur" />
   }
 
   const production = data?.production || null

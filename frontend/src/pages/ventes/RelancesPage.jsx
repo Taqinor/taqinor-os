@@ -5,8 +5,6 @@ import {
   CalendarClock, Download, UserCog, HandCoins,
 } from 'lucide-react'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import ventesApi from '../../api/ventesApi'
 // PACT44 — le paramétrage de relance par client (ZFAC8) n'a pas de wrapper
 // dédié : il est lu/écrit directement sur son endpoint REST company-scopé
@@ -35,6 +33,7 @@ import { toast, useConfirmDialog } from '../../ui/confirm'
 import { Table } from '../reporting/Table'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 import ApercuWhatsAppDialog from '../../components/ApercuWhatsAppDialog'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -729,9 +728,7 @@ export default function RelancesPage() {
       {/* APX11 — en-tête unique VX28 + accent Ventes ; la phrase de cadrage
           (consigner/imprimer, aucun envoi automatique) devient le sous-titre,
           elle n'a plus à flotter sous l'en-tête. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={CalendarClock}
         title={(
           <>

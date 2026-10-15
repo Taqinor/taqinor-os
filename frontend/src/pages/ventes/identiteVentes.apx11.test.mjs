@@ -17,6 +17,8 @@ import { fichiersPagesVentes } from './fichiersPagesVentes.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
+// ENF19 — l'en-tête Ventes (PageHeader + accent laiton) est un composant unique.
+const ENTETE = read('../../features/ventes/EnteteVentes.jsx')
 
 // Les 5 écrans de FLUX nommés par la tâche + les 4 autres pages du dossier :
 // la clause « zéro en-tête legacy dans pages/ventes/ » vaut pour tout le dossier.
@@ -40,9 +42,11 @@ test('les 5 écrans de flux rendent l’en-tête unique ui/PageHeader (VX28)', (
   for (const f of FLUX) {
     const src = read(f)
     // SPL206 — un niveau de plus pour devisList/DevisListChrome.jsx.
-    assert.match(src, /import \{ PageHeader \} from '(\.\.\/)+ui\/PageHeader'/, `${f} : import manquant`)
-    assert.match(src, /<PageHeader\b/, `${f} : PageHeader non rendu`)
+    assert.match(src, /import EnteteVentes from '(\.\.\/)+features\/ventes\/EnteteVentes'/, `${f} : import manquant`)
+    assert.match(src, /<EnteteVentes\b/, `${f} : EnteteVentes non rendu`)
   }
+  assert.match(ENTETE, /import \{ PageHeader \} from '\.\.\/\.\.\/ui\/PageHeader'/)
+  assert.match(ENTETE, /<PageHeader\b/)
 })
 
 test('l’accent Ventes vient de la source unique, jamais d’une couleur en dur', () => {
@@ -50,9 +54,10 @@ test('l’accent Ventes vient de la source unique, jamais d’une couleur en dur
   // La teinte est une VARIABLE de thème (--module-accent-brass), donc elle
   // suit clair/sombre — le patron déjà utilisé par Sidebar/Header/HomeMenu.
   assert.match(accent, /'--module-accent':\s*'var\(--module-accent-brass\)'/)
+  assert.match(ENTETE, /style=\{VENTES_ACCENT_STYLE\}/)
   for (const f of FLUX) {
     const src = read(f)
-    assert.match(src, /VENTES_ACCENT_STYLE/, `${f} : accent de module absent`)
+    assert.match(src, /<EnteteVentes\b/, `${f} : accent de module absent`)
     // Aucun hex posé à la main dans le style de l'en-tête.
     assert.doesNotMatch(src, /'--module-accent':\s*'#/, `${f} : couleur en dur`)
   }
@@ -60,6 +65,6 @@ test('l’accent Ventes vient de la source unique, jamais d’une couleur en dur
 
 test('l’icône du module accompagne le titre sur les 5 écrans de flux', () => {
   for (const f of FLUX) {
-    assert.match(read(f), /<PageHeader[\s\S]{0,400}?icon=\{/, `${f} : icône absente`)
+    assert.match(read(f), /<EnteteVentes[\s\S]{0,400}?icon=\{/, `${f} : icône absente`)
   }
 })

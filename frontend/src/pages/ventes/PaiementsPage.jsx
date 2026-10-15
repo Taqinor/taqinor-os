@@ -17,11 +17,10 @@ import { Table } from '../reporting/Table'
 // (même garde que le serveur : `get_permissions` → IsResponsableOrAdmin).
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
 import SqueletteLignesCarte from '../../ui/SqueletteLignesCarte'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -317,9 +316,7 @@ export default function PaiementsPage() {
   return (
     <div className="ui-root page">
       {/* APX11 — en-tête unique VX28 + accent Ventes. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={Wallet}
         title="Encaissements"
         subtitle="Tous les paiements reçus, par facture et par mode"
