@@ -253,10 +253,25 @@ def upsert_holiday(company, *, pays, date, nom, recurrent_annuel=False):
     faire échouer l'import entier.
 
     Renvoie ``(holiday, cree)``."""
+    from django.db import transaction
+
     from .models import Holiday
-    return Holiday.objects.update_or_create(
-        company=company, pays=pays, date=date,
-        defaults={'nom': nom, 'recurrent_annuel': bool(recurrent_annuel)})
+    valeurs = {'nom': nom, 'recurrent_annuel': bool(recurrent_annuel)}
+    # ENF18 : ``(company, pays, date)`` n'est adossée à AUCUNE contrainte en
+    # base — le verrou de la ligne société sérialise les imports concurrents
+    # (relecture + écriture sous le même verrou), au lieu d'un
+    # ``update_or_create`` qui créerait deux lignes en course.
+    with transaction.atomic():
+        type(company).objects.select_for_update().filter(pk=company.pk).first()
+        jour = Holiday.objects.filter(
+            company=company, pays=pays, date=date).order_by('id').first()
+        if jour is None:
+            return Holiday.objects.create(
+                company=company, pays=pays, date=date, **valeurs), True
+        for champ, valeur in valeurs.items():
+            setattr(jour, champ, valeur)
+        jour.save(update_fields=list(valeurs))
+        return jour, False
 
 
 def est_hors_fenetre_silence(moment, company) -> bool:

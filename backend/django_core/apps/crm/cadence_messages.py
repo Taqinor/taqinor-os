@@ -1110,24 +1110,37 @@ def seed_playbooks_segment(company, *, stage=None):
     l'étape et la tâche. Un playbook que le fondateur aurait désactivé ou
     personnalisé n'est JAMAIS réécrit.
     """
+    from django.db import transaction
+
     from . import stages as _stages
     from .models import Playbook, PlaybookEtape, PlaybookTache
 
     cible = stage or _stages.CONTACTED
     resultats = []
     for entree in PLAYBOOKS_SEGMENT_CAD125:
-        playbook, cree = Playbook.objects.get_or_create(
-            company=company, nom=entree['nom'],
-            defaults={'actif': True,
-                      'condition': _condition_playbook_segment(entree)})
-        resultats.append(playbook)
-        if not cree:
-            continue
-        etape, _ = PlaybookEtape.objects.get_or_create(
-            playbook=playbook, stage=cible, defaults={'ordre': 0})
-        PlaybookTache.objects.get_or_create(
-            etape=etape, libelle=entree['tache'],
-            defaults={'obligatoire': False, 'ordre': 0})
+        # ENF18 : ``(company, nom)`` n'a pas de contrainte en base — le verrou
+        # de la ligne société sérialise deux semeurs concurrents (lecture puis
+        # création sous le même verrou : jamais deux playbooks du même nom).
+        with transaction.atomic():
+            type(company).objects.select_for_update().filter(
+                pk=company.pk).first()
+            playbook = Playbook.objects.filter(
+                company=company, nom=entree['nom']).order_by('id').first()
+            cree = playbook is None
+            if cree:
+                playbook = Playbook.objects.create(
+                    company=company, nom=entree['nom'], actif=True,
+                    condition=_condition_playbook_segment(entree))
+            resultats.append(playbook)
+            if not cree:
+                continue
+            etape, _ = PlaybookEtape.objects.get_or_create(
+                playbook=playbook, stage=cible, defaults={'ordre': 0})
+            if not PlaybookTache.objects.filter(
+                    etape=etape, libelle=entree['tache']).exists():
+                PlaybookTache.objects.create(
+                    etape=etape, libelle=entree['tache'],
+                    obligatoire=False, ordre=0)
     return resultats
 
 
