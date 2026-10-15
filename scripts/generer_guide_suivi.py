@@ -1001,7 +1001,8 @@ def html_pied(table: dict) -> str:
             esc(table['version']) +
             ' \u2014 ' +
             date_fr(table['maj']) +
-            ' \u2014 généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « '
+            ' \u2014 généré depuis la table du parcours ; chaque réponse est rejouée par la garde de '
+            'parcours (hors cas « '
             'dernière touche ») à '
             'chaque mise à jour de l\u2019ERP.</p>')
 
