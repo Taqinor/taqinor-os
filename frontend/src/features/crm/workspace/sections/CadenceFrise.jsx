@@ -210,7 +210,9 @@ export default function CadenceFrise({
       setErreurAnnulation((etat) => ({ ...etat, [id]: '' }))
       onChanged?.()
     } catch (err) {
-      const erreurs = err?.response?.status === 400
+      const statutRefus = err?.response?.status
+      // ENF11 : le refus d'annulation (hors fenêtre 24 h…) est un refus d'ÉTAT, servi en 409 (400 avant).
+      const erreurs = (statutRefus === 400 || statutRefus === 409)
         ? err?.response?.data?.erreurs : null
       const motif = erreurs ? Object.values(erreurs)[0] : null
       if (motif) setErreurAnnulation((etat) => ({ ...etat, [id]: motif }))

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../../api/visitesApi'
+import { frErrRapide } from '../../../lib/frErr'
 import { Button, Card, Spinner, Badge } from '../../../ui'
 import { toast } from '../../../ui/confirm'
 import { STATUT_VISITE_LABEL } from '../../../pages/visites/visiteHelpers'
@@ -36,8 +37,9 @@ export default function VisiteTab({ leadId }) {
     try {
       const res = await visitesApi.createVisite({ lead: leadId })
       navigate(`/visites/${res.data.id}`)
-    } catch {
-      toast.error('Création de la visite impossible.')
+    } catch (err) {
+      // ENF11 : une visite déjà en place répond 409 {lead:[…]} — le message serveur s'affiche.
+      toast.error(frErrRapide(err, 'Création de la visite impossible.'))
     } finally {
       setCreating(false)
     }

@@ -70,10 +70,10 @@ describe('RLC1 — Annuler une touche traitée', () => {
     expect(screen.queryByTestId('frise-annuler-erreur')).toBeNull()
   })
 
-  it('refus serveur (400) : le motif EXACT s\'affiche sous la ligne, pas un toast', async () => {
+  it('refus serveur (409 ENF11) : le motif EXACT s\'affiche sous la ligne, pas un toast', async () => {
     const motif = "Cette touche a acté l'envoi du devis : cet effet ne se défait pas ici."
     crmApi.annulerRelanceEtape.mockRejectedValue({
-      response: { status: 400, data: { erreurs: { statut: motif } } },
+      response: { status: 409, data: { erreurs: { statut: motif } } },
     })
     render(<CadenceFrise leadId={1489} />)
     fireEvent.click(await screen.findByTestId('frise-annuler'))
