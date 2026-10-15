@@ -62,6 +62,12 @@ P_JOURS = OpenApiParameter(
                 'retombe sur le défaut de la vue.')
 P_OWNER = param('owner', OpenApiTypes.INT,
                 description='Identifiant du responsable.')
+#: ERR-ENF11-FUZZ-CRM — ``owner`` de ``relance-etapes/suivi`` et ``/controle`` :
+#: identifiant ENTIER d'un responsable (≥ 1) ; un texte non numérique reste un
+#: 400, un entier inconnu / hors portée un 404 (``controle``) ou une liste vide.
+P_OWNER_ID = OpenApiParameter(
+    'owner', {'type': 'integer', 'minimum': 1}, OpenApiParameter.QUERY,
+    required=False, description='Identifiant du responsable (entier >= 1).')
 #: ``owner`` : identifiant entier OU le mot « null » (responsable vide).
 P_OWNER_OU_NULL = OpenApiParameter(
     'owner',

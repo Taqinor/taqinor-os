@@ -18,6 +18,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
+from core.conflit_etat import ConflitEtat
 from core.mixins import TenantMixin
 from core.parseurs import ObjetJSON
 
@@ -245,12 +246,17 @@ class ClasseurViewSet(TenantMixin, viewsets.ModelViewSet):
         """XPLT22 — évalue UNE formule ad-hoc sans la persister (aperçu live
         pendant la saisie). Corps : ``{"formule": "=SOMME(A1:A3)"}``."""
         classeur = self.get_object()
-        formule = (request.data.get('formule') or '').strip()
-        if not formule:
+        formule = request.data.get('formule')
+        if not isinstance(formule, str) or not formule.strip():
             return Response({'detail': 'Champ « formule » requis.'}, status=400)
         try:
-            valeur = evaluate_formula(classeur, formule, user=request.user)
+            valeur = evaluate_formula(
+                classeur, formule.strip(), user=request.user)
         except Exception as exc:
+            # ERR-ENF11-FUZZ-REPORTING — une formule NON ÉVALUABLE (syntaxe,
+            # fonction inconnue, division par zéro…) : la grammaire n'est pas
+            # dans le schéma, la chaîne reçue y était conforme -> 409, même
+            # corps ``{detail}``.
             logger.warning("evaluer : échec ignoré, comportement dégradé", exc_info=True)
-            return Response({'detail': str(exc)}, status=400)
+            raise ConflitEtat(str(exc)) from exc
         return Response({'valeur': valeur})

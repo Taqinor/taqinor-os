@@ -19,15 +19,12 @@ API accepted schema-violating request|GET /api/django/trash/corbeille/
 API accepted schema-violating request|GET /api/django/users/
 API accepted schema-violating request|POST /api/django/adminops/config-packages/exporter/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
-API rejected schema-compliant request|GET /api/django/crm/relance-etapes/controle/
-API rejected schema-compliant request|GET /api/django/crm/relance-etapes/suivi/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|GET /api/django/stock/produits/tracabilite/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/cadence-relance/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
-API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/calage/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
 API rejected schema-compliant request|POST /api/django/agent/actions/automation-draft/
 API rejected schema-compliant request|POST /api/django/automation/approval-requests/
@@ -46,12 +43,7 @@ API rejected schema-compliant request|POST /api/django/calepinage/moteur/calcule
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/pose/
 API rejected schema-compliant request|POST /api/django/calepinage/parametres/suggestion-pente/
 API rejected schema-compliant request|POST /api/django/crm/leads/
-API rejected schema-compliant request|POST /api/django/crm/leads/scan-carte/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/relance/initialiser/
-API rejected schema-compliant request|POST /api/django/crm/leads/{id}/resume-associe/
-API rejected schema-compliant request|POST /api/django/crm/partenaires/{id}/provisionner-acces/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/fait/
-API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/piece-recue/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
 API rejected schema-compliant request|POST /api/django/facturation/factures/encaissement-groupe/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/
@@ -60,10 +52,6 @@ API rejected schema-compliant request|POST /api/django/facturation/paiements/fac
 API rejected schema-compliant request|POST /api/django/imports/commit/
 API rejected schema-compliant request|POST /api/django/imports/dry-run/
 API rejected schema-compliant request|POST /api/django/imports/mapping/
-API rejected schema-compliant request|POST /api/django/monitoring/cleanings/
-API rejected schema-compliant request|POST /api/django/monitoring/configs/
-API rejected schema-compliant request|POST /api/django/monitoring/readings/
-API rejected schema-compliant request|POST /api/django/monitoring/warranties/
 API rejected schema-compliant request|POST /api/django/parametres/cadence-relance/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/
@@ -76,9 +64,6 @@ API rejected schema-compliant request|POST /api/django/public/portail/invitation
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
 API rejected schema-compliant request|POST /api/django/register/
-API rejected schema-compliant request|POST /api/django/reporting/classeurs/{id}/evaluer/
-API rejected schema-compliant request|POST /api/django/sav/portail/tickets/
-API rejected schema-compliant request|POST /api/django/sav/warranty-claims/
 API rejected schema-compliant request|POST /api/django/stock/accords-rfa-fournisseur/
 API rejected schema-compliant request|POST /api/django/stock/blocages-qualite/lever-quarantaine/
 API rejected schema-compliant request|POST /api/django/stock/casiers-hazmat/
@@ -124,7 +109,6 @@ API rejected schema-compliant request|POST /api/django/ventes/factures/{id}/reto
 API rejected schema-compliant request|POST /api/django/ventes/paiements/factures/{facture_id}/paiement-avec-retenue/
 API rejected schema-compliant request|POST /api/django/ventes/plans-commission/
 API rejected schema-compliant request|POST /api/django/ventes/promesses-paiement/
-API rejected schema-compliant request|POST /api/django/visites/visites/{id}/photos/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/update/

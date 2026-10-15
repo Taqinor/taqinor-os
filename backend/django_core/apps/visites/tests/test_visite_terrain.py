@@ -27,7 +27,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead, LeadActivity
-from apps.visites.models import VisiteTerrain
+from apps.visites.models import VisiteMedia, VisiteTerrain
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from apps.stock.models import Produit
@@ -205,6 +205,30 @@ class CompletudeTests(VisiteTerrainBase):
         resp = self.poster_photo(visite_id, 'toiture_drone_360')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('slot_code', resp.data['erreurs'])
+
+    def test_slot_d_un_autre_gabarit_est_un_refus_d_etat(self):
+        # ERR-ENF11-FUZZ-VISITES — « cellule_mt » est publié (gabarit
+        # professionnel) mais étranger à une visite de toiture : 409.
+        visite_id = self.creer_visite()
+        resp = self.poster_photo(visite_id, 'cellule_mt')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('slot_code', resp.data['erreurs'])
+
+    def test_coordonnee_hors_amplitude_refusee_avant_toute_ecriture(self):
+        visite_id = self.creer_visite()
+        resp = self.poster_photo(visite_id, 'general_facade', gps_lat='1000')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('gps_lat', resp.data['erreurs'])
+        self.assertFalse(VisiteMedia.objects.filter(
+            visite_id=visite_id).exists())
+
+    def test_categorie_d_un_autre_gabarit_est_un_refus_d_etat(self):
+        visite_id = self.creer_visite()
+        resp = self.api.patch(
+            f'/api/django/visites/visites/{visite_id}/mesures/',
+            {'categorie': 'site_commerce', 'valeurs': {}}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('categorie', resp.data['erreurs'])
 
     def test_mesure_invalide_nomme_le_champ_fautif(self):
         visite_id = self.creer_visite()

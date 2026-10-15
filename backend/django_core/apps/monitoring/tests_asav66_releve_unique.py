@@ -57,10 +57,11 @@ class ReleveUniqueTests(TestCase):
     def _nb(self):
         return ProductionReading.objects.filter(installation=self.inst).count()
 
-    def test_double_post_400(self):
+    def test_double_post_409(self):
+        # ERR-ENF11-FUZZ-MONITORING — relevé déjà saisi = ÉTAT des données : 409.
         self.assertEqual(self._post().status_code, 201)
         r = self._post()
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('date', r.data)
         self.assertEqual(self._nb(), 1)
 
@@ -69,13 +70,14 @@ class ReleveUniqueTests(TestCase):
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('period_days', r.data)
 
-    def test_date_future_400(self):
+    def test_date_future_409(self):
+        # La date dépend de l'horloge : le schéma ne peut la dire -> 409.
         r = self._post(date=(self.today + timedelta(days=400)).isoformat())
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('date', r.data)
         self.assertEqual(self._nb(), 0)
 
-    def test_manuel_apres_csv_400(self):
+    def test_manuel_apres_csv_409(self):
         jour = self.today - timedelta(days=5)
         csv = f'date;periode_jours;energie_kwh\n{jour.isoformat()};1;30\n'
         r = self.api.post(
@@ -83,7 +85,7 @@ class ReleveUniqueTests(TestCase):
             {'csv': csv}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         r = self._post(date=jour.isoformat())
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(self._nb(), 1)
 
     def test_import_reevalue(self):
