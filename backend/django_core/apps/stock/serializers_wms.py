@@ -13,7 +13,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.fields import SkipField
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from .erreurs_achats import ConflitEtat
 from .openapi_helpers import EntierBornePublie
@@ -110,7 +110,7 @@ class UniteLogistiqueLigneSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['unite', 'scanne_le', 'scanne_par']
 
 
-class UniteLogistiqueSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+class UniteLogistiqueSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     """NTWMS6 — colis / palette adressable. Le SSCC est GÉNÉRÉ côté serveur
     (norme GS1) : jamais accepté du client."""
@@ -175,7 +175,7 @@ class QuaiSerializer(CompanyScopedRelationsMixin,
         return value
 
 
-class RendezVousTransporteurSerializer(CompanyScopedRelationsMixin,
+class RendezVousTransporteurSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                        ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS7 — créneau transporteur sur un quai.
 
@@ -355,7 +355,7 @@ class PortailTiersTokenSerializer(ChampsTexteBooleenStricts, CompanyScopedRelati
         return value
 
 
-class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
+class BlocageQualiteSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS31 — blocage qualité (quarantaine). Le statut et l'auteur sont
     posés côté serveur ; la levée passe par l'action dédiée."""
@@ -376,7 +376,7 @@ class BlocageQualiteSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class PlanChargementSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+class PlanChargementSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTWMS26 — plan de chargement camion. La référence est posée côté
     serveur ; les unités s'ajoutent par l'action dédiée (qui renvoie

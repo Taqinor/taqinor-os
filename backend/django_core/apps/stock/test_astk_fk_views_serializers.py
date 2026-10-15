@@ -93,8 +93,8 @@ class FkViewsSerializersTests(TestCase):
         self.bin_b = BinLocation.objects.create(
             company=self.b, emplacement=emp_b, code='B-07-SECRET')
 
-    def assertObjetInexistant(self, reponse, champ):
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+    def assertObjetInexistant(self, reponse, champ, statut=400):
+        self.assertEqual(reponse.status_code, statut, reponse.content)
         self.assertIn(champ, reponse.data, reponse.content)
         self.assertEqual(reponse.data[champ][0].code, 'does_not_exist',
                          reponse.content)
@@ -105,12 +105,12 @@ class FkViewsSerializersTests(TestCase):
                  'date_incident': JOUR}
         r = self.api.post(f'{BASE}/incidents-qualite-fournisseur/',
                           {**corps, 'fournisseur': self.fb.id}, format='json')
-        self.assertObjetInexistant(r, 'fournisseur')
+        self.assertObjetInexistant(r, 'fournisseur', 404)
         self.assertNotIn('FOURNISSEUR-B-SECRET', r.content.decode('utf-8'))
         inconnu = self.api.post(f'{BASE}/incidents-qualite-fournisseur/',
                                 {**corps, 'fournisseur': 99999999},
                                 format='json')
-        self.assertObjetInexistant(inconnu, 'fournisseur')
+        self.assertObjetInexistant(inconnu, 'fournisseur', 404)
         self.assertFalse(IncidentQualiteFournisseur.objects.exists())
         # Le fournisseur de B reste supprimable (aucun incident de A ne le
         # PROTÈGE).
@@ -169,7 +169,7 @@ class FkViewsSerializersTests(TestCase):
         r = self.api.post(f'{BASE}/casiers-hazmat/', {
             'bin': self.bin_b.id, 'classe_danger': 'BATTERIE_LITHIUM'},
             format='json')
-        self.assertObjetInexistant(r, 'bin')
+        self.assertObjetInexistant(r, 'bin', 404)
 
     def test_onboarding_fournisseur_etranger(self):
         r = self.api.post(f'{BASE}/dossiers-onboarding-fournisseur/', {
@@ -192,11 +192,23 @@ class FkViewsSerializersTests(TestCase):
         r = self.api.post(f'{BASE}/seuils-reappro-casier/', {
             'bin': self.bin_b.id, 'produit': self.pa.id, 'seuil': 1,
             'quantite_cible': 5}, format='json')
-        self.assertObjetInexistant(r, 'bin')
+        self.assertObjetInexistant(r, 'bin', 404)
         r = self.api.post(f'{BASE}/taches-reappro-interne/', {
             'produit': self.pb.id, 'bin_cible': self.bin_a.id,
             'quantite': 1}, format='json')
-        self.assertObjetInexistant(r, 'produit')
+        self.assertObjetInexistant(r, 'produit', 404)
+
+    def test_scanner_casier_ou_produit_etranger_404(self):
+        # ENF11 (nocturne 15/10) — un id inconnu de la société est une
+        # ressource qui manque (404), même corps qu'un id inexistant.
+        url = f'{BASE}/scanner/mouvement/'
+        corps = {'produit': self.pa.id, 'type_mouvement': 'entree', 'quantite': 1}
+        r = self.api.post(url, {**corps, 'bin_destination': self.bin_b.id}, format='json')
+        r_absent = self.api.post(url, {**corps, 'bin_destination': 99999999}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+        self.assertEqual(r.json(), r_absent.json())
+        r = self.api.post(url, {**corps, 'produit': self.pb.id}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
 
     # --- retour fournisseur scanné : bins_source bornés ---------------------
     def test_valider_scanne_casier_source_etranger(self):

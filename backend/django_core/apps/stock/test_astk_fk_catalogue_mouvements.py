@@ -96,20 +96,20 @@ class FkCatalogueMouvementsTests(TestCase):
             company=self.co_b, emplacement=self.emp_b, code='B-01-01',
             zone='B', allee='01', casier='01', ordre=1)
 
-    def _assert_comme_absent(self, r, r_absent, pk):
-        self.assertEqual(r.status_code, 400, r.content)
-        self.assertEqual(r_absent.status_code, 400, r_absent.content)
+    def _assert_comme_absent(self, r, r_absent, pk, statut=400):
+        self.assertEqual(r.status_code, statut, r.content)
+        self.assertEqual(r_absent.status_code, statut, r_absent.content)
         self.assertIn('<INEXISTANT>', str(_sans_id(r.json(), pk)))
         self.assertEqual(_sans_id(r.json(), pk),
                          _sans_id(r_absent.json(), ID_ABSENT))
         self.assertNotIn('SECRET-PRODUIT-B', r.content.decode())
         self.assertNotIn('touret', r.content.decode())
 
-    def _post_compare(self, url, payload, champ, pk_etranger):
+    def _post_compare(self, url, payload, champ, pk_etranger, statut=400):
         r = self.api.post(url, {**payload, champ: pk_etranger}, format='json')
         r_absent = self.api.post(
             url, {**payload, champ: ID_ABSENT}, format='json')
-        self._assert_comme_absent(r, r_absent, pk_etranger)
+        self._assert_comme_absent(r, r_absent, pk_etranger, statut)
 
     def test_conditionnement_produit_etranger(self):
         self._post_compare('/api/django/stock/conditionnements/',
@@ -123,7 +123,7 @@ class FkCatalogueMouvementsTests(TestCase):
                            format='json')
         r_absent = self.api.patch(url, {'nomenclature': ID_ABSENT},
                                   format='json')
-        self._assert_comme_absent(r, r_absent, self.nom_b.pk)
+        self._assert_comme_absent(r, r_absent, self.nom_b.pk, 404)
         self.regle_a.refresh_from_db()
         self.assertEqual(self.regle_a.nomenclature_id, self.nom_a.pk)
         # La règle de A ne s'évalue jamais chez B.
@@ -134,7 +134,7 @@ class FkCatalogueMouvementsTests(TestCase):
     def test_regle_creation_nomenclature_etrangere(self):
         self._post_compare('/api/django/stock/regles-code-barres/',
                            {'motif': '88', 'encode': 'produit'},
-                           'nomenclature', self.nom_b.pk)
+                           'nomenclature', self.nom_b.pk, 404)
         self.assertEqual(RegleCodeBarres.objects.count(), 1)
 
     def test_tolerance_categorie_etrangere(self):

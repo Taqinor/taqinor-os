@@ -1094,9 +1094,19 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         de capacité — l'avertissement AVANT validation."""
         from ..services import ajouter_unite_plan_chargement
         plan = self.get_object()
+        # ENF11 (nocturne 15/10) — forme du corps (400) ≠ unité inconnue de la
+        # société (404) ≠ plan déjà chargé (409, état).
+        brut = corps_objet(request).get('unite_logistique')
+        if isinstance(brut, bool) or not isinstance(brut, int):
+            raise ValidationError({'unite_logistique': ['Entier attendu.']})
         unite = UniteLogistique.objects.filter(
-            id=request.data.get('unite_logistique'),
-            company=request.user.company).first()
+            id=id_corps(brut), company=request.user.company).first()
+        if unite is None:
+            return Response({'detail': 'Plan ou unité logistique introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if plan.statut == PlanChargement.Statut.CHARGE:
+            return Response({'detail': 'Ce plan est déjà chargé : il ne bouge plus.'},
+                            status=status.HTTP_409_CONFLICT)
         try:
             controle = ajouter_unite_plan_chargement(plan=plan, unite=unite)
         except ValueError as exc:

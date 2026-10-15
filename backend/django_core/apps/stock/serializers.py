@@ -1982,7 +1982,7 @@ class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
         return fields
 
 
-class PaiementFournisseurSerializer(CompanyScopedRelationsMixin,
+class PaiementFournisseurSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                     ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2874,7 +2874,7 @@ class ModeleBonCommandeFournisseurSerializer(
         return instance
 
 
-class RegleCodeBarresSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class RegleCodeBarresSerializer(IdInconnu404Mixin, ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

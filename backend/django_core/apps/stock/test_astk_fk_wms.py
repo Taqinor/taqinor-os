@@ -120,8 +120,8 @@ class FkWmsTests(TestCase):
             company=self.b, type_unite='palette')
 
     # ------------------------------------------------------------------
-    def assertObjetInexistant(self, reponse, champ):
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+    def assertObjetInexistant(self, reponse, champ, statut=400):
+        self.assertEqual(reponse.status_code, statut, reponse.content)
         self.assertIn(champ, reponse.data, reponse.content)
         self.assertEqual(reponse.data[champ][0].code, 'does_not_exist',
                          reponse.content)
@@ -161,7 +161,7 @@ class FkWmsTests(TestCase):
         r = self.api.post(f'{BASE}/blocages-qualite/', {
             'produit': self.pa.id, 'quantite': 1, 'lot': self.lot_b.id},
             format='json')
-        self.assertObjetInexistant(r, 'lot')
+        self.assertObjetInexistant(r, 'lot', 404)
         self.assertFalse(BlocageQualite.objects.exists())
 
     def test_blocage_patch_casier_etranger(self):
@@ -170,7 +170,7 @@ class FkWmsTests(TestCase):
             bin_quarantaine=self.bin_a)
         r = self.api.patch(f'{BASE}/blocages-qualite/{blocage.id}/', {
             'bin': self.bin_b.id}, format='json')
-        self.assertObjetInexistant(r, 'bin')
+        self.assertObjetInexistant(r, 'bin', 404)
         blocage.refresh_from_db()
         self.assertEqual(blocage.bin_id, self.bin_a.id)
 
@@ -222,12 +222,12 @@ class FkWmsTests(TestCase):
     def test_plan_chargement_livraison_etrangere(self):
         r = self.api.post(f'{BASE}/plans-chargement/', {
             'livraison': self.livraison_b.id}, format='json')
-        self.assertObjetInexistant(r, 'livraison')
+        self.assertObjetInexistant(r, 'livraison', 404)
         self.assertFalse(PlanChargement.objects.exists())
         plan = creer_plan_chargement(company=self.a, user=self.resp_a)
         r = self.api.patch(f'{BASE}/plans-chargement/{plan.id}/', {
             'livraison': self.livraison_b.id}, format='json')
-        self.assertObjetInexistant(r, 'livraison')
+        self.assertObjetInexistant(r, 'livraison', 404)
         plan.refresh_from_db()
         self.assertIsNone(plan.livraison_id)
 
@@ -236,7 +236,7 @@ class FkWmsTests(TestCase):
         r = self.api.patch(
             f'{BASE}/rendez-vous-transporteur/{self.rdv_a.id}/', {
                 'transporteur': self.transporteur_b.id}, format='json')
-        self.assertObjetInexistant(r, 'transporteur')
+        self.assertObjetInexistant(r, 'transporteur', 404)
         self.rdv_a.refresh_from_db()
         self.assertIsNone(self.rdv_a.transporteur_id)
 
@@ -246,22 +246,22 @@ class FkWmsTests(TestCase):
         r = self.api.post(f'{BASE}/unites-logistiques/', {
             'type_unite': 'colis', 'parent': self.palette_b.id},
             format='json')
-        self.assertObjetInexistant(r, 'parent')
+        self.assertObjetInexistant(r, 'parent', 404)
         self.assertEqual(
             UniteLogistique.objects.filter(company=self.a).count(), avant)
         r = self.api.patch(f'{BASE}/unites-logistiques/{self.ul_a.id}/', {
             'parent': self.palette_b.id}, format='json')
-        self.assertObjetInexistant(r, 'parent')
+        self.assertObjetInexistant(r, 'parent', 404)
         self.ul_a.refresh_from_db()
         self.assertIsNone(self.ul_a.parent_id)
 
     def test_ul_vague_etrangere(self):
         r = self.api.post(f'{BASE}/unites-logistiques/', {
             'type_unite': 'colis', 'vague': self.vague_b.id}, format='json')
-        self.assertObjetInexistant(r, 'vague')
+        self.assertObjetInexistant(r, 'vague', 404)
         r = self.api.patch(f'{BASE}/unites-logistiques/{self.ul_a.id}/', {
             'vague': self.vague_b.id}, format='json')
-        self.assertObjetInexistant(r, 'vague')
+        self.assertObjetInexistant(r, 'vague', 404)
         self.ul_a.refresh_from_db()
         self.assertIsNone(self.ul_a.vague_id)
 

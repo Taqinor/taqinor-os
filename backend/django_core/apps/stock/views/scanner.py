@@ -25,7 +25,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 from core.champs_stricts import QUANTITE_MAX
-from ..erreurs_achats import debordement_compteur_en_409
+from ..erreurs_achats import debordement_compteur_en_409, statut_refus_metier
 
 
 @extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=r'\S')], responses={
@@ -139,7 +139,7 @@ def scanner_mouvement_view(request):
                 note=donnees.get('note') or '')
     except ValueError as exc:
         return Response({'detail': str(exc)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=statut_refus_metier(exc))
     return Response({
         'id': mouvement.id,
         'produit': mouvement.produit_id,

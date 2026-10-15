@@ -1344,9 +1344,9 @@ class ContratWmsExpeditionTests(ContratListeMixin, WmsBase):
         rep = self.api.post(
             f'{self.BASE}/plans-chargement/{plan["id"]}/unites/', {
                 'unite_logistique': 99999999}, format='json')
-        self.assertEqual(rep.status_code, 400)
-        self.assertMemesCles(rep.json(), contrat['exemple_erreur_400'],
-                             'unites 400')
+        self.assertEqual(rep.status_code, 404)
+        self.assertMemesCles(rep.json(), contrat['exemple_erreur_404'],
+                             'unites 404')
         rep = self.api.get(
             f'{self.BASE}/plans-chargement/{plan["id"]}/verifier-capacite/')
         self.assertEqual(rep.status_code, 200, rep.content)

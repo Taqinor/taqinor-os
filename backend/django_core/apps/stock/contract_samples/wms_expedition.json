@@ -455,7 +455,7 @@
     },
     "plans_chargement_unites": {
       "endpoint": "POST /api/django/stock/plans-chargement/<id>/unites/",
-      "pourquoi": "Ajoute une unité {unite_logistique} et renvoie le contrôle de capacité (201) ; refus → 400 {detail}.",
+      "pourquoi": "Ajoute une unité {unite_logistique} et renvoie le contrôle de capacité (201) ; refus → {detail} : unité inconnue de la société 404, plan déjà chargé 409, corps illisible 400 (ENF11 nocturne 15/10 — `exemple_erreur_400` reste lu par les mocks du front).",
       "exemple": {
         "plan": 4,
         "nb_unites": 1,
@@ -473,6 +473,9 @@
       },
       "exemple_erreur_400": {
         "detail": "Unité logistique introuvable."
+      },
+      "exemple_erreur_404": {
+        "detail": "Plan ou unité logistique introuvable."
       }
     },
     "mouvements_rebut": {

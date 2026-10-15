@@ -275,7 +275,7 @@ class FkAchatsTests(TestCase):
         self._post_compare('/api/django/stock/paiements-fournisseur/', {
             'montant': '10', 'date_paiement': '2026-10-06',
             'mode': 'virement',
-        }, 'facture', self.facture_b.pk)
+        }, 'facture', self.facture_b.pk, statut=404)
         self.assertFalse(PaiementFournisseur.objects.exists())
 
     def test_echeance_facture_autre_societe(self):
