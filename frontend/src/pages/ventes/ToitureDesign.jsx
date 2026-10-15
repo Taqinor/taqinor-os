@@ -524,7 +524,7 @@ function AtelierToiture({
       // 1) Crée le devis depuis le layout (cookie = auth, pas de Bearer).
       //    QJ17 — le backend renvoie 200 si un brouillon identique existe déjà
       //    (idempotency par lead + hash du layout), 201 pour un nouveau devis, et
-      //    422 avec un message FR clair si la composition est invalide (catalogue
+      //    409 (ENF11, refus d'état) avec un message FR clair si la composition est invalide (catalogue
       //    manquant ou sans prix). Dans tous les cas le corps a la même forme.
       let devis
       try {

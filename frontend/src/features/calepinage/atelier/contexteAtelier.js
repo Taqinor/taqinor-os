@@ -240,9 +240,9 @@ export function tailleImagePlan(plan) {
 }
 
 export function httpMessage(status, responseData) {
-  // QJ17 — the backend returns a structured French error for 422 (composition
+  // QJ17 — the backend returns a structured French error for 409 (ENF11, refus d'état) / 422 (composition
   // pre-flight failures). Surface it directly instead of a generic message.
-  if (status === 422) {
+  if (status === 422 || status === 409) {
     const detail = responseData?.detail
     if (detail) return detail
     const errors = responseData?.errors

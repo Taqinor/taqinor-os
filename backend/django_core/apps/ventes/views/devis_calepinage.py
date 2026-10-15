@@ -80,7 +80,8 @@ class DevisCalepinageActionsMixin:
     @extend_schema(request=D.FromLayoutRequest,
                    responses={200: D.FromLayoutResponse,
                               201: D.FromLayoutResponse,
-                              422: D.ErreurFromLayout})
+                              409: D.ErreurFromLayout},
+                   extensions=D.CORPS_FROM_LAYOUT)
     @action(detail=False, methods=['post'], url_path='from-layout',
             permission_classes=[IsResponsableOrAdmin])
     def from_layout(self, request):
@@ -99,7 +100,7 @@ class DevisCalepinageActionsMixin:
         QJ17 — idempotency: if a brouillon devis with the same lead + layout hash
         already exists for this company, it is returned (HTTP 200) instead of
         creating a duplicate.  A pre-flight composition check validates the
-        catalogue before building and returns HTTP 422 with inline French guidance
+        catalogue before building and returns HTTP 409 (refus d état, ENF11) with inline French guidance
         on failure (instead of a PDF error at render time).
         """
         from decimal import Decimal
@@ -131,7 +132,7 @@ class DevisCalepinageActionsMixin:
                            "du calepinage : la variante retenue en est la "
                            "conception courante",
                  'champ': 'calepinage'},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                status=status.HTTP_409_CONFLICT)
         if not isinstance(layout, dict) or not layout:
             return Response(
                 {'detail': 'Layout manquant ou invalide.'},
@@ -198,17 +199,17 @@ class DevisCalepinageActionsMixin:
         # QJ17 — pre-flight composition check: validate catalogue before building.
         # ACAL32 — le pré-vol compose avec la phase et le site isolé du LEAD
         # (déduits par le pré-vol lui-même) ; un site isolé que le catalogue
-        # ne sert pas est un 422 NOMMÉ {hors_reseau: …}.
+        # ne sert pas est un 409 NOMMÉ {hors_reseau: …}.
         try:
             composition_errors = validate_composition_for_layout(
                 layout, company, lead=lead_obj)
         except AutoDevisError as refus:
             return Response({refus.field or 'detail': refus.message},
-                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                            status=status.HTTP_409_CONFLICT)
         if composition_errors:
             return Response(
                 {'detail': composition_errors[0], 'errors': composition_errors},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                status=status.HTTP_409_CONFLICT)
 
         # QJ17 — idempotency: dedupe by lead + layout hash.
         # Re-clicking « Générer » returns the existing brouillon, not a duplicate.
@@ -255,9 +256,9 @@ class DevisCalepinageActionsMixin:
                 **_composition)
         except AutoDevisError as refus:
             # ACAL32 — un refus de composition (site isolé non servable…) est
-            # un 422 NOMMÉ, jamais un 500 ; rien n'a été écrit.
+            # un 409 NOMMÉ, jamais un 500 ; rien n'a été écrit.
             return Response({refus.field or 'detail': refus.message},
-                            status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                            status=status.HTTP_409_CONFLICT)
 
         # QJ17 — persist the layout hash on the newly-created devis so future
         # duplicate requests are caught in O(1).
