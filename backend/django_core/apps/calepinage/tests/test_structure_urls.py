@@ -354,6 +354,37 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
                              2_147_483_647, cle)
         self.assertEqual(corps['properties']['titre']['maxLength'], 200)
 
+    def test_moteur_publie_le_squelette_du_document_du_moteur(self):
+        """Version du moteur, repère, au moins une surface et un kit, paramètres
+        avec au moins un code de kit : ``core/calepinage/schema.json::required``
+        dit au schéma ; ``{}`` n'est plus un document « conforme »."""
+        from core.calepinage.version import SCHEMA_VERSION
+
+        calculer = self.schema['paths'][
+            '/api/django/calepinage/moteur/calculer/']['post']
+        pose = self.schema['paths'][
+            '/api/django/calepinage/moteur/pose/']['post']
+        for operation in (calculer, pose):
+            self.assertIs(operation['requestBody'].get('required'), True)
+        document = self._composant(calculer['requestBody']['content'][
+            'application/json']['schema'])
+        demande = self._composant(
+            self._composant(pose['requestBody']['content'][
+                'application/json']['schema'])['properties']['demande'])
+        for corps in (document, demande):
+            self.assertEqual(
+                sorted(corps['required']),
+                ['kits', 'parametres', 'repere', 'schema_version',
+                 'surfaces'])
+            version = corps['properties']['schema_version']
+            self.assertEqual((version['minimum'], version['maximum']),
+                             (SCHEMA_VERSION, SCHEMA_VERSION))
+            self.assertEqual(corps['properties']['surfaces']['minItems'], 1)
+            self.assertEqual(corps['properties']['kits']['minItems'], 1)
+            parametres = self._composant(corps['properties']['parametres'])
+            self.assertEqual(parametres['required'], ['kits'])
+            self.assertEqual(parametres['properties']['kits']['minItems'], 1)
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']

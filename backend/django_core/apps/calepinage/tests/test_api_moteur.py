@@ -4,8 +4,10 @@ Ce qui est prouvé ici :
 
 * la route est gardée par ``calepinage_gerer`` (et PAS par ``ao_gerer``) : un
   module autonome n'emprunte plus la porte d'un autre domaine ;
-* une entrée INVALIDE rend 400 avec le champ fautif NOMMÉ et le motif français
-  du serveur — jamais un 500 ;
+* un corps absent ou non-objet rend 400 ; un document bien formé que le moteur
+  REFUSE rend 409 avec le champ fautif NOMMÉ et le motif français du serveur
+  — jamais un 500 (ERR-ENF11-FUZZ-CALEPINAGE : la géométrie, les kits référencés,
+  la cohérence du plan sont des faits que le schéma publié ne peut pas dire) ;
 * le corps accepte l'enveloppe ``{"entree": …}`` et le document nu ;
 * la sortie est celle du moteur du dépôt (``moteur_service.calepinage_json``,
   la MÊME sérialisation que la porte AO), plus ``depuis_cache`` ;
@@ -19,6 +21,8 @@ Run :
     python manage.py test apps.calepinage.tests.test_api_moteur -v2
 """
 from unittest import mock
+
+from django.test import SimpleTestCase
 
 from .test_api_liste import BaseApiCalepinage
 
@@ -67,7 +71,7 @@ class PorteMoteurTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('entree', reponse.data)
 
-    def test_entree_invalide_rend_400_avec_le_motif_serveur(self):
+    def test_entree_invalide_rend_409_avec_le_motif_serveur(self):
         from apps.calepinage.moteur_service import (
             erreurs_moteur_calepinage,
         )
@@ -76,7 +80,7 @@ class PorteMoteurTest(BaseApiCalepinage):
         with mock.patch('apps.calepinage.moteur_service.cout_calepinage',
                         side_effect=entree_invalide('Surface absente.')):
             reponse = self.api.post(URL, DOCUMENT, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('entree', reponse.data)
         self.assertIn('Surface absente.', str(reponse.data['entree']))
 
@@ -99,3 +103,16 @@ class PorteMoteurTest(BaseApiCalepinage):
                          'calepinage_gerer')
         self.assertEqual(MoteurCalculerView.read_permission,
                          'calepinage_voir')
+
+
+class RefusDeDocumentTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — le refus du MOTEUR est un 409 dont le
+    corps reste celui d'avant (champ nommé, motif français), sans base."""
+
+    def test_409_et_corps_nomme(self):
+        from apps.calepinage.views.moteur import RefusDeDocument
+
+        refus = RefusDeDocument({'entree': ['Surface absente.']})
+        self.assertEqual(refus.status_code, 409)
+        self.assertEqual(list(refus.detail), ['entree'])
+        self.assertEqual(str(refus.detail['entree'][0]), 'Surface absente.')
