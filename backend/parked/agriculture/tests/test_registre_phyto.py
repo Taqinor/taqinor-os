@@ -21,8 +21,8 @@ from apps.stock.models import Produit
 from .helpers import auth, make_company, make_user
 
 try:
-    import weasyprint  # noqa: F401
-    import fitz  # noqa: F401
+    __import__('weasyprint')
+    import fitz
     _PDF_LIBS_DISPONIBLES = True
 except ImportError:
     _PDF_LIBS_DISPONIBLES = False

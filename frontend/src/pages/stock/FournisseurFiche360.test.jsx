@@ -660,7 +660,7 @@ describe('ASTK226 — onglet Incidents qualité', () => {
     const panel = await screen.findByTestId('f360-tab-incidents')
     expect(await within(panel).findByText('Aucun incident qualité.')).toBeInTheDocument()
     expect(api.get).toHaveBeenCalledWith('/stock/incidents-qualite-fournisseur/',
-      { params: { fournisseur: '12' } })
+      { params: expect.objectContaining({ fournisseur: '12' }) })
 
     await userEvent.click(within(panel).getByRole('button', { name: /Déclarer un incident/ }))
     const dialog = await screen.findByRole('dialog')

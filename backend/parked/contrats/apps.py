@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -25,7 +27,7 @@ class ContratsConfig(AppConfig):
         # contrat signé), sur le patron `qhse.receivers` (émetteur ET
         # abonné = la même app, mais toujours via le bus pour rester
         # ouvert à de futurs abonnés externes).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
         # ARC14 déclarait Contrat comme cible PILOTE des champs personnalisés
         # ici même (customfields.registry.register('contrat', ...)). ARC31 a
         # basculé cette déclaration vers apps/contrats/platform.py

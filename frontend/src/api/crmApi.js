@@ -306,7 +306,7 @@ const crmApi = {
     api.get('/crm/leads/mesure-cadence/', { params }),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
-  getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),
+  getAppointments: (leadId, params) => api.get('/crm/appointments/', { params: { lead: leadId, ...params } }),
   createAppointment: (data) => api.post('/crm/appointments/', data),
   updateAppointment: (id, data) => api.patch(`/crm/appointments/${id}/`, data),
   deleteAppointment: (id) => api.delete(`/crm/appointments/${id}/`),
@@ -321,7 +321,7 @@ const crmApi = {
     api.post(`/crm/appointments/${id}/confirmer-whatsapp/`),
 
   // ZSAL2 — Plans d'activité (checklists commerciales applicables en un clic).
-  getPlansActivite: () => api.get('/crm/plans-activite/'),
+  getPlansActivite: (params) => api.get('/crm/plans-activite/', { params }),
   appliquerPlanActivite: (leadId, planId) =>
     api.post(`/crm/leads/${leadId}/appliquer-plan/`, { plan_id: planId }),
 
@@ -415,7 +415,7 @@ const crmApi = {
   // RÉTROACTIVE du comptage/des alertes, décidée côté serveur). Écriture
   // réservée responsable/admin (403 pour un rôle normal) — le bouton est
   // caché côté écran, la garde réelle reste serveur.
-  getAppareilsEquipe: () => api.get('/crm/appareils-equipe/'),
+  getAppareilsEquipe: (params) => api.get('/crm/appareils-equipe/', { params }),
   createAppareilEquipe: (data) => api.post('/crm/appareils-equipe/', data),
   // QJ-EQUIPE-3 — reconnaissance AUTOMATIQUE : tout navigateur connecté à
   // l'ERP est un appareil équipe (plus besoin du marquage manuel ci-dessus

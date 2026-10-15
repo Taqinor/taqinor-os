@@ -81,9 +81,9 @@ export default function BacklogScreen() {
       .finally(() => setItemsSansLotLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { loadItemsSansLot() }, [loadItemsSansLot])
 
   // Approbation par LOT (bout-en-bout) : le lot passe « approuvé » et quitte la

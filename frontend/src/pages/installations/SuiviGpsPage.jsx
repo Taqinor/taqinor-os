@@ -14,6 +14,7 @@ import { formatDate } from '../../lib/format'
 // importée normalement pour construire les popups.
 import { escapeHtml } from '../../components/MapView'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import crmApi from '../../api/crmApi'
 
 /* ============================================================================
@@ -57,7 +58,7 @@ function useList(fetcher) {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
   return { rows, loading, error, reload: load }
 }
@@ -319,9 +320,10 @@ function HistoriquePresenceTab() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    installationsApi.getInstallations({ page_size: 200 })
-      .catch(() => ({ data: [] }))
-      .then((r) => setChantiers(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getInstallations({ page, page_size: pageSize }).then((r) => r.data))
+      .catch(() => [])
+      .then((rows) => setChantiers(Array.isArray(rows) ? rows : (rows?.results ?? [])))
   }, [])
 
   // Enveloppé dans `useCallback` (même patron que `useList` ci-dessus dans
@@ -341,7 +343,7 @@ function HistoriquePresenceTab() {
       .finally(() => setLoading(false))
   }, [chantierId, typeFiltre])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useList` ci-dessus)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useList` ci-dessus) (D-ENF22)
   useEffect(() => { chargerEvenements() }, [chargerEvenements])
 
   return (

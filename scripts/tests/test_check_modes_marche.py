@@ -17,7 +17,7 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_modes_marche as guard  # noqa: E402
+import check_modes_marche as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 QUATRE_MODES = ["residentiel", "industriel", "commercial", "agricole"]
 

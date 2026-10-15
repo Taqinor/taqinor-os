@@ -173,7 +173,7 @@ export function useDevisEnvoi({
     const apercu = searchParams.get('apercu') === '1'
     if (!envoyer && !apercu) return
     enchaineFait.current = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- enchaînement d'un deep-link, une seule exécution gardée par enchaineFait
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- enchaînement d'un deep-link, une seule exécution gardée par enchaineFait (D-ENF22)
     if (envoyer) handleEnvoyer(highlightedDevis)
     else setPreviewDevis(highlightedDevis)
     setSearchParams((prev) => {
@@ -182,7 +182,7 @@ export function useDevisEnvoi({
       next.delete('apercu')
       return next
     }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- enchaînement à UNE seule exécution
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- enchaînement à UNE seule exécution (D-ENF22)
   }, [highlightId, highlightedDevis, loading])
 
   const closeWaModal = () => {

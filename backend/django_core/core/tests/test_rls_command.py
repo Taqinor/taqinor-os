@@ -11,6 +11,7 @@ from io import StringIO
 from unittest import mock
 
 from django.apps import apps as django_apps
+from django.core.exceptions import FieldDoesNotExist
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection, models as m
@@ -30,7 +31,7 @@ class DiscoveryTests(TestCase):
                 continue
             try:
                 field = meta.get_field('company')
-            except Exception:  # noqa: BLE001
+            except FieldDoesNotExist:
                 continue
             if isinstance(field, m.ForeignKey):
                 expected.add(f"{meta.app_label}.{model.__name__}")

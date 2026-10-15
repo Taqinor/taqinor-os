@@ -102,7 +102,7 @@ class Command(BaseCommand):
                 taux = Decimal(20 if devis.taux_tva is None
                                else devis.taux_tva) / Decimal(100)
                 ttc_apres = ttc + delta_ht * (1 + taux)
-            except Exception:  # noqa: BLE001 — un total illisible est signalé
+            except Exception:  # noqa: BLE001 — un total illisible est signalé (D-ENF22-BLE001)
                 logger.warning(
                     "acal_dryrun_ligne_par_modele.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 ttc, ttc_apres = '?', '?'

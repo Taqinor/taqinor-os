@@ -83,7 +83,7 @@ const signe = (v) => (v > 0 ? `+${formatNumber(v, { decimals: 0 })}` : formatNum
 
 /* Miroir de `SerieQuestions.Canal` (`apps/ao/models.py`) — verrouillé par un
    test qui relit les `TextChoices` du modèle. */
-// eslint-disable-next-line react-refresh/only-export-components -- constante pure co-localisée (testable contre le modèle), même motif que SensibilitesPanel.lignePlancher
+// eslint-disable-next-line react-refresh/only-export-components -- constante pure co-localisée (testable contre le modèle), même motif que SensibilitesPanel.lignePlancher (D-ENF22)
 export const CANAUX = [
   { value: 'email', label: 'Courriel' },
   { value: 'whatsapp', label: 'WhatsApp' },

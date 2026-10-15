@@ -52,7 +52,7 @@ export default function ModelesPage() {
   const [creatingClause, setCreatingClause] = useState(false)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     setLoading(true)
     Promise.all([
       contratsApi.getModeles().then((r) => setModeles(listData(r))),

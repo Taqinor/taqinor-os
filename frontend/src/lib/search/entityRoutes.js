@@ -120,7 +120,7 @@ export function useEntitySearch(term, { enabled = true } = {}) {
     /* eslint-disable react-hooks/set-state-in-effect --
        recherche débouncée : les setState synchrones ci-dessous ne font que
        remettre à zéro / basculer l'état de chargement ; l'appel réseau réel
-       vit dans le setTimeout (250 ms) plus bas. Pas d'état dérivable en rendu. */
+       vit dans le setTimeout (250 ms) plus bas. Pas d'état dérivable en rendu. (D-ENF22) */
     if (term.length < 2) {
       setGroups([])
       setLoading(false)

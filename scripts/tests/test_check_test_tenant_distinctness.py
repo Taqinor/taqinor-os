@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_test_tenant_distinctness as guard  # noqa: E402
+import check_test_tenant_distinctness as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 HEADER = "from authentication.models import Company\n\n\n"

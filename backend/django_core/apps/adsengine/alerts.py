@@ -452,7 +452,7 @@ def notify_meta_leads_sla_breach(company, *, now=None, seuil_heures=None):
                 owner, EventType.HOT_LEAD_UNREAD,
                 'Lead Meta sans premier contact', body=body,
                 link=f'/crm/leads?lead={lead.id}', company=company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning("alerts.notify_meta_leads_sla_breach : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if sent is not None:

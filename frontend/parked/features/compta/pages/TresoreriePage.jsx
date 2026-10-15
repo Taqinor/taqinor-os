@@ -255,7 +255,7 @@ function PositionPanel() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   // NTTRE19 — export du prévisionnel 13 semaines en classeur pour le banquier.
@@ -558,7 +558,7 @@ function CaisseJournalDialog({ caisse, onClose }) {
       .finally(() => setLoading(false))
   }, [caisse.id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   const enregistrerMouvement = async () => {

@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -18,4 +20,4 @@ class ChatConfig(AppConfig):
     def ready(self):
         # S9 — branche les notifications (in-app + Web Push) sur l'envoi d'un
         # message. Import différé pour éviter les imports au chargement de l'app.
-        from . import signals  # noqa: F401
+        import_module(f'{self.name}.signals')

@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components --
+/* eslint-disable react-refresh/only-export-components -- parqué (D-ENF22)
    Module utilitaire (parseur + composant de rendu) volontairement dans le
    même fichier, comme `messaging/richText.jsx` : `extractHeadings` (XKB10
    sommaire) DOIT rester en phase avec les slugs générés par `KbMarkdownBody`

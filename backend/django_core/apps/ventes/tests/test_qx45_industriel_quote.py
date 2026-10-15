@@ -156,7 +156,7 @@ class TestIndustrielPageCount(SimpleTestCase):
     """Rendu PDF réel — exactement 4 pages A4 (QJR620 ; WeasyPrint, CI/Docker)."""
     def test_four_pages(self):
         try:
-            import weasyprint  # noqa: F401
+            __import__('weasyprint')
         except Exception:  # pragma: no cover - skip where native libs absent
             self.skipTest("weasyprint native libs unavailable")
         data = renderer._augment(sample_data.build())

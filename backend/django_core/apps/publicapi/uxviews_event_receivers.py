@@ -30,7 +30,7 @@ def _livrer(company_id, event, payload, contexte):
     from . import delivery
     try:
         delivery.dispatch_event(company_id, event, payload)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception('%s: dispatch webhook échoué (%s)', event, contexte)
 
 

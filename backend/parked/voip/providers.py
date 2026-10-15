@@ -60,7 +60,7 @@ class SipGeneriqueProvider(VoipProvider):
             return None
         try:
             return self._start(numero, parametres)
-        except Exception:  # noqa: BLE001 — un connecteur ne casse JAMAIS l'OS.
+        except Exception:  # noqa: BLE001 — un connecteur ne casse JAMAIS l'OS (D-ENF22-BLE001)
             logger.warning(
                 'SipGeneriqueProvider.start_outbound_call a échoué pour %s '
                 '(no-op).', getattr(parametres, 'company_id', None),

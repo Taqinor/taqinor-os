@@ -384,7 +384,7 @@ def _noter_trace_toit(lead):
                 '« Concevoir la toiture (3D) ».'
             ),
         )
-    except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'website_lead_webhook: note de tracé de toit échouée '
             '(lead #%s) : %s', getattr(lead, 'pk', None), _exc)
@@ -413,7 +413,7 @@ def _emettre_trace_toit_recu(lead):
         from core.events import lead_trace_toit_recu
         lead_trace_toit_recu.send(
             sender=Lead, lead=lead, company=lead.company)
-    except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'website_lead_webhook: émission lead_trace_toit_recu échouée '
             '(lead #%s) : %s', getattr(lead, 'pk', None), _exc)
@@ -2201,7 +2201,7 @@ def _map_and_link_lead(raw, data, company):
                 # gagnante de commiter avant la recherche de doublon
                 # ci-dessous (best-effort, jamais un blocage long).
                 _time.sleep(0.15)
-        except Exception:  # noqa: BLE001 — cache indisponible : no-op
+        except Exception:  # noqa: BLE001 — cache indisponible : no-op (D-ENF22-BLE001)
             logger.warning("map and link lead : échec ignoré, comportement dégradé", exc_info=True)
 
     dup_ids, match_fort = [], False
@@ -2321,7 +2321,7 @@ def _map_and_link_lead(raw, data, company):
         try:
             from .services import recompute_lead_score
             recompute_lead_score(lead)
-        except Exception as _exc:  # noqa: BLE001 — best-effort
+        except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: recompute_lead_score échoué '
                 '(lead #%s) : %s', lead.pk, _exc)
@@ -2359,7 +2359,7 @@ def _map_and_link_lead(raw, data, company):
         server_ref = None
         try:
             server_ref = assign_client_ref(lead)
-        except Exception as _exc:  # noqa: BLE001 — le lead prime sur son code
+        except Exception as _exc:  # noqa: BLE001 — le lead prime sur son code (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: référence client non attribuée '
                 '(lead #%s) : %s', lead.pk, _exc)
@@ -2385,7 +2385,7 @@ def _map_and_link_lead(raw, data, company):
         try:
             from .services import notify_new_lead
             notify_new_lead(lead, sous_seuil=sous_seuil)
-        except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
                 lead.pk, _exc)
@@ -2399,7 +2399,7 @@ def _map_and_link_lead(raw, data, company):
         try:
             from .services import recompute_lead_score
             recompute_lead_score(lead)
-        except Exception as _exc:  # noqa: BLE001 — best-effort
+        except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: recompute_lead_score échoué '
                 '(lead #%s) : %s', lead.pk, _exc)
@@ -2412,7 +2412,7 @@ def _map_and_link_lead(raw, data, company):
         try:
             from .services import enregistrer_consentements_intake_web
             enregistrer_consentements_intake_web(lead)
-        except Exception as _exc:  # noqa: BLE001 — best-effort
+        except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: registre de consentement non écrit '
                 '(lead #%s) : %s', lead.pk, _exc)
@@ -2434,7 +2434,7 @@ def _map_and_link_lead(raw, data, company):
                         fields.get('web_estimate') or {},
                         fields.get('type_installation')),
                 )
-        except Exception as _exc:  # noqa: BLE001 — best-effort
+        except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: note questionnaire échouée '
                 '(lead #%s) : %s', lead.pk, _exc)
@@ -2449,7 +2449,7 @@ def _map_and_link_lead(raw, data, company):
             dup_ids, match_fort = _flag_possible_duplicates(
                 lead, telephone=telephone, email=email, dupes=dupes,
                 inherited_owner=inherited_owner, inherited_from=inherited_from)
-        except Exception as _exc:  # noqa: BLE001 — best-effort
+        except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: détection de doublon échouée '
                 '(lead #%s) : %s', lead.pk, _exc)
@@ -2469,7 +2469,7 @@ def _map_and_link_lead(raw, data, company):
                 continue
             try:
                 reactivate_lead_on_new_touch(doublon, source='site web')
-            except Exception as _exc:  # noqa: BLE001 — best-effort
+            except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
                 logger.warning(
                     'website_lead_webhook: réactivation du doublon #%s '
                     'échouée : %s', doublon.pk, _exc)
@@ -2502,7 +2502,7 @@ def _map_and_link_lead(raw, data, company):
             ip=(getattr(raw, 'remote_addr', '') or ''),
         )
         alerter_appareil_partage(lead)
-    except Exception as _exc:  # noqa: BLE001 — best-effort
+    except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'website_lead_webhook: traçage T-TRACE échoué (lead #%s) : %s',
             lead.pk, _exc)
@@ -2513,7 +2513,7 @@ def _map_and_link_lead(raw, data, company):
     try:
         from .intake_photo import attach_capture_photo
         attach_capture_photo(lead, data)
-    except Exception as _exc:  # noqa: BLE001 — le lead prime sur la photo
+    except Exception as _exc:  # noqa: BLE001 — le lead prime sur la photo (D-ENF22-BLE001)
         logger.warning(
             'website_lead_webhook: photo non jointe (lead #%s) : %s',
             lead.pk, _exc)
@@ -2533,7 +2533,7 @@ def _map_and_link_lead(raw, data, company):
         else:
             from .services import notify_lead_callback_requested
             notify_lead_callback_requested(lead)
-    except Exception as _exc:  # noqa: BLE001 — best-effort
+    except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'website_lead_webhook: notify_lead_callback_requested échoué '
             '(lead #%s) : %s', lead.pk, _exc)
@@ -2546,7 +2546,7 @@ def _map_and_link_lead(raw, data, company):
     try:
         from .services import handle_parrainage_signup
         handle_parrainage_signup(lead)
-    except Exception as _exc:  # noqa: BLE001 — best-effort
+    except Exception as _exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'website_lead_webhook: handle_parrainage_signup échoué '
             '(lead #%s) : %s', lead.pk, _exc)
@@ -2578,7 +2578,7 @@ def _mettre_en_file_devis_automatique(lead, company):
     try:
         from apps.ventes.services import planifier_devis_automatique_pour_lead
         planifier_devis_automatique_pour_lead(lead.pk, company.pk)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour le lead
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le lead (D-ENF22-BLE001)
         logger.warning(
             'website_lead_webhook: mise en file du devis automatique '
             'échouée (lead #%s)', lead.pk, exc_info=True)
@@ -2650,7 +2650,7 @@ def website_lead_webhook(request):
             raw.lead = matched
             raw.processed = True
             raw.save(update_fields=['lead', 'processed'])
-        except Exception:  # noqa: BLE001 — un ping d'engagement ne doit
+        except Exception:  # noqa: BLE001 — un ping d'engagement ne doit (D-ENF22-BLE001)
             # jamais faire échouer le webhook ni polluer le lead.
             logger.exception(
                 'website_lead_webhook: engagement ping (event_type=%s) échoué', event_type)
@@ -2714,7 +2714,7 @@ def website_lead_webhook(request):
                 'client_ref': lead.client_ref}
         body.update(extra)
         return JsonResponse(body, status=201 if created else 200)
-    except Exception as exc:  # noqa: BLE001 — la donnée brute prime
+    except Exception as exc:  # noqa: BLE001 — la donnée brute prime (D-ENF22-BLE001)
         raw.error = f'{type(exc).__name__}: {exc}'
         raw.save(update_fields=['error'])
         logger.exception('website_lead_webhook: mapping échoué (payload #%s)', raw.pk)
@@ -2737,7 +2737,7 @@ def website_lead_webhook(request):
                     link='/crm/payloads-site-web',
                     company=company,
                 )
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'website_lead_webhook: notification founder échouée (payload #%s)',
                 raw.pk)
@@ -2779,7 +2779,7 @@ def replay_website_lead_payload(raw):
         if created:
             _mettre_en_file_devis_automatique(lead, company)
         return True, detail, lead
-    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook
+    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook (D-ENF22-BLE001)
         raw.error = f'{type(exc).__name__}: {exc}'
         raw.save(update_fields=['error'])
         logger.exception(
@@ -2876,7 +2876,7 @@ def fetch_meta_lead_data(leadgen_id, access_token):
 
     leadgen_id = _valider_leadgen_id(leadgen_id)
     url = f'{GRAPH_BASE_URL}/{leadgen_id}?access_token={access_token}'
-    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 — URL contrôlée par la configuration (D-ENF22)
         return json.loads(resp.read().decode('utf-8'))
 
 
@@ -3009,7 +3009,7 @@ def meta_lead_ads_webhook(request):
                         # Récupération Graph en échec : la ligne brute est déjà
                         # consignée et rejouable (CRX2).
                         echecs += 1
-                except Exception as exc:  # noqa: BLE001 — jamais le batch
+                except Exception as exc:  # noqa: BLE001 — jamais le batch (D-ENF22-BLE001)
                     echecs += 1
                     logger.exception(
                         'meta_lead_ads_webhook: entrée %s en échec — les '
@@ -3018,7 +3018,7 @@ def meta_lead_ads_webhook(request):
                         try:
                             raw.error = f'{type(exc).__name__}: {exc}'
                             raw.save(update_fields=['error'])
-                        except Exception:  # noqa: BLE001 — best-effort
+                        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
                             logger.exception(
                                 'meta_lead_ads_webhook: consignation de '
                                 "l'erreur impossible (payload #%s)", raw.pk)
@@ -3055,7 +3055,7 @@ def _process_meta_lead_entry(raw, value, company, access_token):
     form_id = value.get('form_id', '') or ''
     try:
         lead_data = fetch_meta_lead_data(leadgen_id, access_token)
-    except Exception as exc:  # noqa: BLE001 — la ligne brute est déjà en base
+    except Exception as exc:  # noqa: BLE001 — la ligne brute est déjà en base (D-ENF22-BLE001)
         logger.warning(
             'meta_lead_ads_webhook: fetch échoué pour %s : %s',
             leadgen_id, exc)
@@ -3089,7 +3089,7 @@ def _process_meta_lead_entry(raw, value, company, access_token):
             form_id=form_id,
             created_time=value.get('created_time'),
             is_organic=not bool(ad_id))
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'meta_lead_ads_webhook: émission meta_lead_captured '
             'échouée (leadgen %s)', leadgen_id, exc_info=True)
@@ -3117,7 +3117,7 @@ def replay_meta_lead_payload(raw):
     try:
         lead = _process_meta_lead_entry(
             raw, raw.payload or {}, company, access_token)
-    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook
+    except Exception as exc:  # noqa: BLE001 — même contrat que la vue webhook (D-ENF22-BLE001)
         raw.error = f'{type(exc).__name__}: {exc}'
         raw.save(update_fields=['error'])
         logger.exception(
@@ -3246,7 +3246,7 @@ def _rdv_limite_atteinte(id_cle):
         if cache.add(cle_cache, 1, timeout=120):
             return False
         return cache.incr(cle_cache) > limite
-    except Exception:  # noqa: BLE001 — cache indisponible : jamais bloquant
+    except Exception:  # noqa: BLE001 — cache indisponible : jamais bloquant (D-ENF22-BLE001)
         logger.warning('demande_rdv: compteur de limite indisponible')
         return False
 
@@ -3382,7 +3382,7 @@ def _rdv_notifier(lead_id):
         lead = Lead.objects.filter(pk=lead_id).first()
         if lead is not None:
             notify_new_lead(lead)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('demande_rdv: notify_new_lead échoué (lead #%s)',
                        lead_id)
 

@@ -83,6 +83,6 @@ def _notify(company, cle, courant, limite) -> None:
         return
     try:
         _NOTIFIER(company, cle, courant, limite)
-    except Exception:  # noqa: BLE001 — une notif KO ne casse jamais l'appelant
+    except Exception:  # noqa: BLE001 — une notif KO ne casse jamais l'appelant (D-ENF22-BLE001)
         logger.exception('TenantLimit: notifieur en échec (société=%s cle=%s)',
                          getattr(company, 'id', company), cle)

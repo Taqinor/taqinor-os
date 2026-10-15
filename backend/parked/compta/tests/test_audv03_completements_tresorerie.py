@@ -33,7 +33,6 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.compta import receivers  # noqa: F401  (câblage ready())
 from apps.compta import services
 from apps.compta.models import (
     BaremeIndemnite, ComptePortailClient, EcritureComptable, Journal,
@@ -41,6 +40,8 @@ from apps.compta.models import (
 )
 from apps.crm.models import Client
 from core.events import paiement_enregistre
+
+__import__('apps.compta.receivers')  # câblage ready()
 
 User = get_user_model()
 

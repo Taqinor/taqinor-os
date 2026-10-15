@@ -19,7 +19,7 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
 
   useEffect(() => {
     if (!debouncedKey) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence de corps (D-ENF22)
       setDonnees(null)
       setCorpsServi(null)
       setChargement(false)
@@ -57,7 +57,7 @@ export function useApercuServeur(corps, { appeler, erreurParDefaut, delai = 500 
       .finally(() => { if (!cancelled) setChargement(false) })
     return () => { cancelled = true; controller.abort() }
     // `appeler` est une référence stable (méthode de ventesApi) : seul le corps relance.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `appeler` est une référence stable (méthode de ventesApi) : seul le corps relance (D-ENF22)
   }, [debouncedKey])
 
   return { donnees, chargement, erreur, erreurChamp, corpsServi, corpsKey }

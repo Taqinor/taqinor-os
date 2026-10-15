@@ -144,7 +144,7 @@ async function main() {
   try {
     for (const route of ROUTES) {
       process.stderr.write(`Auditing ${route.name}...\n`);
-      // eslint-disable-next-line no-await-in-loop
+      // eslint-disable-next-line no-await-in-loop -- audits Lighthouse séquentiels voulus (un seul Chrome, mesures non concurrentes) (D-ENF22)
       const res = await auditRoute(baseUrl, route, chrome.port);
       results.push(res);
     }

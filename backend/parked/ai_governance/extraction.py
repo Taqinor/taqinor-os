@@ -21,6 +21,8 @@ extraites sont appariées au catalogue produit de la société (via les
 """
 from __future__ import annotations
 
+
+import logging
 from decimal import Decimal, InvalidOperation
 
 from core.ai.registry import is_capability_configured
@@ -162,7 +164,8 @@ def fragments_du_document(document) -> list:
     try:
         chunks = list(document.chunks.order_by('chunk_index')
                       .values_list('texte', flat=True))
-    except Exception:  # noqa: BLE001 — pas de fragments indexés
+    except Exception:  # noqa: BLE001 — pas de fragments indexés (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("extraction.fragments_du_document : erreur ignorée (mode dégradé)", exc_info=True)
         chunks = []
     fragments = [t for t in chunks if (t or '').strip()]
     if fragments:
@@ -255,7 +258,8 @@ def _document_scoped(company, document_id):
         return None
     try:
         from apps.ged.selectors import documents_for_company
-    except Exception:  # noqa: BLE001 — app absente (édition allégée)
+    except Exception:  # noqa: BLE001 — app absente (édition allégée) (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("extraction._document_scoped : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     try:
         return documents_for_company(company).filter(pk=document_id).first()
@@ -276,14 +280,16 @@ def _catalogue_appariement(company) -> list:
     """
     try:
         from apps.stock import selectors as stock_selectors
-    except Exception:  # noqa: BLE001 — module stock absent (édition allégée)
+    except Exception:  # noqa: BLE001 — module stock absent (édition allégée) (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("extraction._catalogue_appariement : erreur ignorée (mode dégradé)", exc_info=True)
         return []
     fournisseur = getattr(stock_selectors, 'catalogue_pour_appariement', None)
     if fournisseur is None:
         return []
     try:
         return list(fournisseur(company))
-    except Exception:  # noqa: BLE001 — un catalogue illisible ≠ un échec
+    except Exception:  # noqa: BLE001 — un catalogue illisible ≠ un échec (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("extraction._catalogue_appariement : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
 

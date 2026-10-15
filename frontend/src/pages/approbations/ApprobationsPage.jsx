@@ -89,7 +89,7 @@ function DelegationsTab() {
   }
 
   // Chargement initial — le setState a lieu dans les callbacks async.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial : setState dans le callback async, jamais synchrone (D-ENF22)
   useEffect(() => { load() }, [])
 
   const create = async (e) => {
@@ -485,7 +485,7 @@ function ApprobationsFileTab() {
         )
       },
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- decider recréé par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- decider recréé par rendu (D-ENF22)
   ], [decidingKey])
 
   const bulkActions = (selectedRows, _selectedKeys, clear) => [
@@ -671,7 +671,7 @@ function DemandesAdHocTab() {
       .catch(() => toast.error('Chargement impossible.'))
       .finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: reuses the shared `load` refresh helper (D-ENF22)
   useEffect(() => { load() }, [])
 
   const creerType = async () => {

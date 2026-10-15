@@ -211,7 +211,7 @@ def rate_limit_status(ad_account_id):
     try:
         from django.core.cache import cache
         state = cache.get(f'{THROTTLE_CACHE_PREFIX}:{ad_account_id}')
-    except Exception:  # noqa: BLE001 — cache indisponible
+    except Exception:  # noqa: BLE001 — cache indisponible (D-ENF22-BLE001)
         logger.warning("meta_client.rate_limit_status : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if not state:
@@ -349,7 +349,7 @@ class MetaClient:
         cache par compte pour ``wiring-health``). Best-effort, jamais bloquant."""
         try:
             state = parse_usage_headers(getattr(resp, 'headers', {}) or {})
-        except Exception:  # noqa: BLE001 — l'usage n'empêche jamais la requête
+        except Exception:  # noqa: BLE001 — l'usage n'empêche jamais la requête (D-ENF22-BLE001)
             logger.warning("meta_client.MetaClient._record_usage : erreur ignorée (mode dégradé)", exc_info=True)
             return
         if state.get('usage_pct') is None and not state.get('insights_throttle'):
@@ -362,7 +362,7 @@ class MetaClient:
             cache.set(
                 f'{THROTTLE_CACHE_PREFIX}:{self.ad_account_id}',
                 state, THROTTLE_CACHE_TTL)
-        except Exception:  # noqa: BLE001 — cache indisponible : no-op
+        except Exception:  # noqa: BLE001 — cache indisponible : no-op (D-ENF22-BLE001)
             logger.warning("meta_client.MetaClient._record_usage : erreur ignorée (mode dégradé)", exc_info=True)
 
     # AACQ17 — l'API Graph n'a AUCUNE idempotence : rejouer un POST dont la

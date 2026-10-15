@@ -34,9 +34,9 @@ export default function PortailContratsPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when token changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when token changes (D-ENF22)
   }, [token])
 
   if (loading) {

@@ -63,7 +63,7 @@ export default function DashboardRetail() {
   }
   const charger = () => { setLoading(true); return load() }
 
-  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const handleExport = () => {
     const base = api.defaults.baseURL || ''

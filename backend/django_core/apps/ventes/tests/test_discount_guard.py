@@ -81,7 +81,7 @@ class TestDiscountGuard(TestCase):
         Devis.objects.filter(pk=d.pk).update(statut='envoye')
         r = self._api(self.resp).patch(f'/api/django/ventes/devis/{d.id}/',
                                        {'remise_globale': '26'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('statut', r.data)
 
     def test_approval_then_responsable_can_send(self):

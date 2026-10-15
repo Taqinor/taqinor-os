@@ -119,4 +119,11 @@ export async function fetchAllPages(
   return results
 }
 
+// ENF15 — forme courte des écrans : `appel(params)` rend la promesse axios d'un
+// wrapper d'API (`(p) => api.liste({ filtre, ...p })`) ; rend le TABLEAU complet
+// de toutes les pages (jamais la page 1 seule).
+export const lireToutesLesPages = (appel) => fetchAllPages(
+  (page, { page_size: pageSize } = {}) => appel({ page, page_size: pageSize }).then((r) => r.data),
+).then((rows) => (Array.isArray(rows) ? rows : (rows?.results ?? [])))
+
 export default fetchAllPages

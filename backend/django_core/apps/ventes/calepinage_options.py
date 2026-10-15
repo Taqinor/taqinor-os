@@ -869,13 +869,13 @@ def capacite_toit_du_devis(devis):
             capacite = capacite_du_layout(
                 layout, _modes_libres(devis), contraintes=layout,
                 contraintes_site=lambda: _contraintes_site_du_devis(devis))
-        except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas
+        except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas (D-ENF22-BLE001)
             # une contenance : on n'en publie aucune.
             logger.warning('capacite_toit indisponible', exc_info=True)
             capacite = None
     try:
         setattr(devis, _MEMO_CAPACITE, (layout, capacite))
-    except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le
+    except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le (D-ENF22-BLE001)
         # mémo, jamais le résultat.
         logger.warning("calepinage_options.capacite_toit_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
     return capacite
@@ -889,7 +889,7 @@ def _contraintes_site_du_devis(devis):
 
         calepinage = calepinage_du_devis(getattr(devis, 'pk', None),
                                          getattr(devis, 'company', None))
-    except Exception:  # noqa: BLE001 — pas de calepinage = pas de contrainte
+    except Exception:  # noqa: BLE001 — pas de calepinage = pas de contrainte (D-ENF22-BLE001)
         logger.warning("calepinage_options._contraintes_site_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
     if calepinage is None:
@@ -1014,7 +1014,7 @@ def _design_stocke(devis):
     try:
         from .electrical_service import conception_electrique_stockee
         design = conception_electrique_stockee(devis)
-    except Exception:  # noqa: BLE001 — pas de conception ⇒ pas de pointeur
+    except Exception:  # noqa: BLE001 — pas de conception ⇒ pas de pointeur (D-ENF22-BLE001)
         logger.warning("calepinage_options._design_stocke : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     return design if isinstance(design, dict) else None
@@ -1147,7 +1147,7 @@ def calepinage_options_publique(devis, offres_tailles, layout_public,
     try:
         return deriver(devis, offres_tailles, layout_public,
                        sld_servi=sld_servi)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('calepinage_options indisponible', exc_info=True)
         return None
 
@@ -1303,6 +1303,6 @@ def parametres_site_publics(devis, layout_public, hypotheses=None,
         if _ombrage_mesure(devis):
             annexe['ombrage'] = {'mesure': True}
         return annexe or None
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('parametres_site indisponible', exc_info=True)
         return None

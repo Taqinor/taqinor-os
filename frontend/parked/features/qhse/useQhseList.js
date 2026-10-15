@@ -47,7 +47,7 @@ export function useQhseList(fetcher, deps = []) {
     }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
   useEffect(() => { load() }, [load, depsKey])
 
   return { rows, loading, error, reload: load }

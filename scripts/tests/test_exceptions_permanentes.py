@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import _exceptions_permanentes as ep  # noqa: E402
+import _exceptions_permanentes as ep  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 CATEGORIES_APPROUVEES = {
     "migration_safety", "safe_migrations", "tenant_exempt_models",

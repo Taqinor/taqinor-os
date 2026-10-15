@@ -121,7 +121,7 @@ def _normaliser(texte):
     try:
         from apps.parametres.villes_maroc import _normaliser as _norm
         return _norm(texte)
-    except Exception:  # noqa: BLE001 — la déduction n'arrête jamais un écran
+    except Exception:  # noqa: BLE001 — la déduction n'arrête jamais un écran (D-ENF22-BLE001)
         logger.warning("normaliser : échec ignoré, comportement dégradé", exc_info=True)
         brut = (texte or '').strip().lower()
         for separateur in ('-', '_', "'", '’', '.'):

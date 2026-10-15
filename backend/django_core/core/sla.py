@@ -222,7 +222,7 @@ def montant_facture_mois(company, periode):
     for facture in qs:
         try:
             total += float(facture.total_ttc or 0)
-        except Exception:  # noqa: BLE001 — best-effort, une facture KO n'en bloque pas d'autres
+        except Exception:  # noqa: BLE001 — best-effort, une facture KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.warning("montant facture mois : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return total
@@ -298,7 +298,7 @@ def _calculer_credit(company, periode, uptime):
     try:
         policy = politique_active(company)
         credit_pct = credit_pct_pour_uptime(float(uptime), policy.paliers)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("calculer credit : échec ignoré, comportement dégradé", exc_info=True)
         return None, None, SlaSnapshot.CreditStatut.NON_APPLICABLE
 
@@ -657,7 +657,7 @@ def _emettre_sla_credit_statut_change(snapshot, ancien_statut, nouveau_statut,
             sender=SlaSnapshot, snapshot=snapshot, company=snapshot.company,
             ancien_statut=ancien_statut, nouveau_statut=nouveau_statut,
             user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre sla credit statut change : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(

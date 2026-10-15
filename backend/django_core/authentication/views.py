@@ -327,7 +327,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         # donnent le même 401 ; avec le bon mot de passe,
         # ``_refus_apres_mot_de_passe`` répond 403 ``sso_required``. Un compte
         # VERROUILLÉ reçoit le même 401, bon mot de passe ou non (ASEC14-revue).
-        raw_uname0 = str((request.data.get('username') if hasattr(request.data, 'get') else '') or '').strip()  # ERR fuzz : liste/nul → 400, pas 500
+        raw_uname0 = str((request.data.get('username') if hasattr(request.data, 'get') else '')
+                         or '').strip()  # ERR fuzz : liste/nul → 400, pas 500
         locked_user = CustomUser.objects.filter(
             username__iexact=raw_uname0).first() if raw_uname0 else None
         # ASEC4-revue — le plancher plateforme verrouille le couple
@@ -1545,7 +1546,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 company, user if getattr(user, 'pk', None) else None,
                 f'Mode présentation {etat} par {actor}.',
                 company=company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
 
     def _log_audit_mode_presentation(self, company, user):
@@ -1565,7 +1566,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 'demo_mode_toggle', instance=company,
                 company=company, user=user,
                 detail=f'Mode présentation {etat}.')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
 
     @extend_schema(request=None, responses=inline_serializer(
@@ -1615,7 +1616,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 user=request.user,
                 detail=f'Société démo "{slug}" réinitialisée par '
                        f'{actor_username}.')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
         recorder.end_request()
         _run_demo_reset(slug)
@@ -1648,7 +1649,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 f'Données de démonstration réinitialisées par '
                 f'{actor_username}.',
                 company=fraiche)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             pass
 
     # ── NTDMO22/23/24 — kit de démonstration (scénario, pas un devis client) ─

@@ -1,6 +1,6 @@
 // ADEV73 - date du jour LOCALE (Africa/Casablanca), jamais UTC.
 //
-// `new Date().toISOString().slice(0, 10)` rend la date UTC : entre minuit et 01 h
+// L'idiome `toISOString` + `slice` des 10 premiers caracteres rend la date UTC : entre minuit et 01 h
 // (heure du Maroc) elle donne la VEILLE. Une date d'acceptation, de paiement ou de
 // relance posee par defaut a « aujourd'hui » etait alors fausse d'un jour. Cette
 // fonction est la forme unique ; la garde `scripts/check_date_jour_utc.py` interdit le

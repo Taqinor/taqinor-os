@@ -1,3 +1,4 @@
+import logging
 import os
 from celery import Celery
 from celery.schedules import crontab
@@ -922,7 +923,7 @@ app.conf.beat_schedule = {
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
 # l'endpoint /metrics. Enregistrés au niveau du signal Celery (pas Django) :
 # fonctionne aussi bien côté worker que côté beat, sans importer d'app métier.
-from celery.signals import task_success, task_failure  # noqa: E402
+from celery.signals import task_success, task_failure  # noqa: E402 — signaux après la config (D-ENF22)
 
 
 def _queue_of(sender):
@@ -930,7 +931,8 @@ def _queue_of(sender):
     try:
         info = getattr(getattr(sender, 'request', None), 'delivery_info', None)
         return (info or {}).get('routing_key') or 'default'
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+        logging.getLogger(__name__).debug('celery : queue illisible, default', exc_info=True)
         return 'default'
 
 
@@ -940,8 +942,8 @@ def _yhard6_on_task_success(sender=None, **kwargs):
         from core import metrics
         metrics.record_task_success()
         metrics.record_task_queue(_queue_of(sender), ok=True)  # NTPLT44
-    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
-        pass
+    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning('celery : compteur de succès non enregistré', exc_info=True)
 
 
 @task_failure.connect
@@ -950,5 +952,5 @@ def _yhard6_on_task_failure(sender=None, **kwargs):
         from core import metrics
         metrics.record_task_failure()
         metrics.record_task_queue(_queue_of(sender), ok=False)  # NTPLT44
-    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery
-        pass
+    except Exception:  # noqa: BLE001 — best-effort, ne doit jamais casser Celery (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning('celery : compteur d\'échec non enregistré', exc_info=True)

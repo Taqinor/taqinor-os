@@ -35,7 +35,7 @@ def aujourdhui() -> dt.date:
     try:
         from zoneinfo import ZoneInfo
         return dt.datetime.now(ZoneInfo("Africa/Casablanca")).date()
-    except Exception:  # noqa: BLE001
+    except (ImportError, KeyError):  # tzdata absent : repli UTC+1
         return dt.datetime.now(dt.timezone(dt.timedelta(hours=1))).date()
 
 

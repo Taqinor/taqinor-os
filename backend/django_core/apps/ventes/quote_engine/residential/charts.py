@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """v2 PROTOTYPE charts (matplotlib -> transparent PNG data-URIs).
 
 v3 elevation: calmer, more premium styling — restrained palette, hairline

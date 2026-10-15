@@ -1146,7 +1146,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # contrat = illimité : aucun avertissement possible dans ce cas.
         if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
             from .models import ContratMaintenance
-            from .selectors import droits_restants
+            from .droits_contrat import droits_restants
             # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
             contrat = ContratMaintenance.valide_pour_client(inst.client_id)
             if contrat is not None:
@@ -1502,6 +1502,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=_sch('SavSimilairesReponse', {
             'results': drf_serializers.ListField(child=drf_serializers.DictField())}))
     @action(detail=True, methods=['get'], url_path='similaires',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[HasPermissionOrLegacy('sav_voir')])
     def similaires(self, request, pk=None):
         """XSAV21 — Tickets RÉSOLUS similaires (même produit > même cause >

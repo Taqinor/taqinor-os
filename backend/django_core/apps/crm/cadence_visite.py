@@ -236,7 +236,7 @@ def _visite_sans_devis(lead):
         from apps.ventes.selectors import lead_a_un_devis
 
         return not lead_a_un_devis(lead)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning('CAD123 : devis du lead #%s illisibles',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return False
@@ -542,7 +542,7 @@ def annuler_rendez_vous_du_lead(lead, user, *, motif='',
         from apps.visites.services import annuler_rendez_vous
 
         annules = annuler_rendez_vous(lead, user, motif=motif)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'SUIVI E21 : rendez-vous de visite non annulé (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)
@@ -600,7 +600,7 @@ def annuler_rendez_vous_sur_arret(lead, user, *, cause):
                 body=(f'Rendez-vous de visite{quand} annulé{prevenu} : '
                       f'{cause}.'))
         return annules
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'SUIVI E21 : rendez-vous non annulé à l’arrêt (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)
@@ -628,7 +628,7 @@ def _lignes_qualification(qualification):
 
         return [ligne for ligne in (phrase(qualification),
                                     conseil(qualification)) if ligne]
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning('VISITE-CADENCE: qualification illisible',
                        exc_info=True)
         return []
@@ -707,7 +707,7 @@ def _plan_du_debrief(qualification, lead=None):
                else CLE_DEBRIEF)
         return (cle, jours_avant_rappel(qualification, defaut=_defaut(cle)),
                 rappel_explicite(qualification))
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning('VISITE-CADENCE: plan de débrief non déduit',
                        exc_info=True)
         return CLE_DEBRIEF, _defaut(CLE_DEBRIEF), False
@@ -821,7 +821,7 @@ def appliquer_retour_visite(lead, user, retour, auteur='',
     # impossible ne doit jamais faire échouer la redescente du terrain.
     try:
         _reprendre_plan_apres_retour_visite(lead, user)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour le retour terrain
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le retour terrain (D-ENF22-BLE001)
         logger.warning(
             'CAD28: reprise du plan non recalée sur le retour (lead #%s)',
             getattr(lead, 'pk', '?'), exc_info=True)

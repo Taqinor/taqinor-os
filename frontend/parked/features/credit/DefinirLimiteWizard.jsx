@@ -54,7 +54,7 @@ export default function DefinirLimiteWizard({ clientId, limite = null, onDone })
         setMontant(String(s.data.suggestion ?? ''))
       })
       .catch(() => setError('Chargement impossible.'))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [clientId, limite?.id])
 
   async function valider() {

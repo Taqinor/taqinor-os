@@ -280,7 +280,7 @@ def _reporter_relance(facture, today):
     try:
         from apps.notifications.calendar_utils import prochain_jour_ouvre
         cible = prochain_jour_ouvre(cible, facture.company)
-    except Exception:  # noqa: BLE001 — calendrier absent → date brute
+    except Exception:  # noqa: BLE001 — calendrier absent → date brute (D-ENF22-BLE001)
         logger.warning("scheduled._reporter_relance : erreur ignorée (mode dégradé)", exc_info=True)
     facture.prochaine_relance = cible
     facture.save(update_fields=['prochaine_relance'])
@@ -414,7 +414,7 @@ def relance_reminders():
             try:
                 from apps.notifications.calendar_utils import prochain_jour_ouvre
                 cible = prochain_jour_ouvre(cible, facture.company)
-            except Exception:  # noqa: BLE001 — calendrier absent → date brute
+            except Exception:  # noqa: BLE001 — calendrier absent → date brute (D-ENF22-BLE001)
                 logger.warning("scheduled.relance_reminders : erreur ignorée (mode dégradé)", exc_info=True)
             facture.prochaine_relance = cible
         else:
@@ -596,7 +596,7 @@ def releve_mensuel_reminders():
         data = _releve_data(client, user=None)
         try:
             solde_du = Decimal(data['totaux']['du'])
-        except Exception:  # noqa: BLE001 — repli prudent si format inattendu
+        except Exception:  # noqa: BLE001 — repli prudent si format inattendu (D-ENF22-BLE001)
             logger.warning("scheduled.releve_mensuel_reminders : erreur ignorée (mode dégradé)", exc_info=True)
             solde_du = Decimal('0')
         if solde_du <= 0:
@@ -659,7 +659,7 @@ def poll_inbound_mailboxes():
             res = poll_mailbox(company)
             fetched += int(res.get('fetched', 0) or 0)
             handled += int(res.get('handled', 0) or 0)
-        except Exception:  # noqa: BLE001 — best-effort par société
+        except Exception:  # noqa: BLE001 — best-effort par société (D-ENF22-BLE001)
             logger.warning('ventes.poll_inbound_mailboxes: échec société %s',
                            getattr(company, 'pk', '?'), exc_info=True)
     logger.info('ventes.poll_inbound_mailboxes: %d relevé(s), %d dispatché(s)',
@@ -779,7 +779,7 @@ def _poser_touche_signal_reouverture(devis):
             SIGNAL_PROPOSITION_ROUVERTE, poser_touche_signal_du_lead_id)
         return poser_touche_signal_du_lead_id(
             lead_id, SIGNAL_PROPOSITION_ROUVERTE, company=devis.company)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('CAD130: touche signal échec devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
         return None
@@ -795,7 +795,7 @@ def _post_engagement_notification(devis, vendeur, key, label):
         try:
             token = ShareLink.for_devis(devis).token
             url = proposition_url(token)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("scheduled._post_engagement_notification : erreur ignorée (mode dégradé)", exc_info=True)
             url = ''
         notify(
@@ -805,6 +805,6 @@ def _post_engagement_notification(devis, vendeur, key, label):
                   f'Proposition : {url or "—"}'),
             link=f'/ventes/devis?devis={devis.id}',
             company=devis.company)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QX30: notification engagement échec devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)

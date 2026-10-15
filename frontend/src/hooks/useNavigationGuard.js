@@ -37,7 +37,7 @@ export function useNavigationGuard(
   // jamais `dirty`.
   let blocker = null
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- cf. commentaire ci-dessus
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- cf. commentaire ci-dessus (D-ENF22)
     blocker = useBlocker(
       ({ currentLocation, nextLocation }) =>
         dirty && currentLocation.pathname !== nextLocation.pathname,

@@ -23,7 +23,7 @@ export default function ChantierSelect({
     if (depuisUrl) onChange(depuisUrl)
     // Une seule fois au montage : un changement ultérieur de l'URL ne doit
     // jamais écraser une sélection déjà faite par l'utilisateur.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [])
 
   return (

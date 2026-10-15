@@ -9,6 +9,7 @@ import {
   Plus, Play, CheckCircle2, XCircle, FileText, Printer, RefreshCw, Wrench,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, Badge, Segmented, Spinner, Skeleton, EmptyState, Input, Textarea,
   Checkbox,
@@ -269,8 +270,9 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
     installationsApi.getEtapesAssemblage(ordre.id)
       .then((r) => setEtapes(Array.isArray(r.data) ? r.data : []))
       .catch(() => {})
-    installationsApi.getLignesAssemblage(ordre.id)
-      .then((r) => setLignes(r.data?.results ?? (Array.isArray(r.data) ? r.data : [])))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getLignesAssemblage(ordre.id, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setLignes(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
   }
   useEffect(() => { load() }, [ordre.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -917,7 +919,7 @@ function RapportRebutsPanel() {
       .finally(() => setBusy(false))
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { charger('', '') }, [])
 
   return (

@@ -39,7 +39,7 @@ export default function FicheInterventionModelesSection() {
       .catch(() => setError('Impossible de charger les modèles de fiche.'))
       .finally(() => setLoading(false))
   }
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial : setState dans le callback async, jamais synchrone (D-ENF22)
   useEffect(() => { load() }, [])
 
   const addTemplate = async () => {

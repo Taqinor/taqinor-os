@@ -534,7 +534,7 @@ def executer_regles(contexte, *, codes=None):
             continue
         try:
             anomalies = item.fonction(contexte) or []
-        except Exception as exc:  # noqa: BLE001 — jamais un vert par accident
+        except Exception as exc:  # noqa: BLE001 — jamais un vert par accident (D-ENF22-BLE001)
             resultats.append({
                 'code_regle': 'AO_REGLE_EN_ERREUR',
                 'severite': AVERTISSEMENT,

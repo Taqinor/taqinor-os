@@ -285,7 +285,7 @@ class GardePorteeVentesTests(TestCase):
         fuites += ['montant %s' % m for m in MONTANTS_HORS if m in compact]
         try:
             donnee = resp.json()
-        except Exception:  # noqa: BLE001 — binaire, PDF ou vide
+        except ValueError:  # binaire, PDF ou vide
             donnee = None
         if isinstance(donnee, (dict, list)):
             if _fiches(donnee, self.d1.pk, (

@@ -21,6 +21,7 @@ import api from '../../api/axios'
 import parametresApi from '../../api/parametresApi'
 import stockApi from '../../api/stockApi'
 import rolesApi from '../../api/rolesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { Button, Card, Input } from '../../ui'
 import { toast } from '../../ui/confirm'
 
@@ -53,9 +54,10 @@ export default function DemarrageWizard() {
         email: r.data?.email ?? '', telephone: r.data?.telephone ?? '',
       }))
       .catch(() => {})
-    rolesApi.getRoles()
-      .then((r) => {
-        const list = r.data?.results ?? r.data ?? []
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      rolesApi.getRoles({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : (rows?.results ?? [])
         setRoles(list)
         const defaut = list.find((rr) => rr.nom === 'Utilisateur') ?? list[0]
         if (defaut) setEquipe((e) => ({ ...e, role: defaut.id }))

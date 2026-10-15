@@ -158,7 +158,7 @@ class TotalUniqueCreationTests(TestCase):
         from apps.ventes.models import Devis
         avant = Devis.objects.filter(company=self.company).count()
         resp = self._creer(etude_params={'cle_inconnue_qah': 1})
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # CI #997 fuzz : atomic, refus d'état / de contenu, 409
         self.assertIn('etude_params', resp.data)
         self.assertEqual(
             Devis.objects.filter(company=self.company).count(), avant)

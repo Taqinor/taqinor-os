@@ -176,8 +176,21 @@ class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
         • Ligne SECTION/NOTE : intertitre/texte sans prix — on NEUTRALISE tout
           produit/prix/quantité éventuellement fournis (jamais comptée dans les
           totaux). Une désignation (le libellé de la section / le texte de la
-          note) reste requise."""
+          note) reste requise.
+
+        CI #997 fuzz — sur une MODIFICATION, un refus qui ne vient que de la
+        ligne EXISTANTE (intitulé, produit ou base légale absents du corps et
+        vides en base) est un refus d'ÉTAT : 409 ``ConflitEtat``, même corps
+        par champ ; le corps lui-même reste jugé en 400."""
         instance = getattr(self, 'instance', None)
+
+        def _refus(champ, message, corps=None):
+            if instance is not None and not any(
+                    c in attrs for c in (corps or (champ,))):
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat({champ: message})
+            raise serializers.ValidationError({champ: message})
+
         type_ligne = attrs.get(
             'type_ligne',
             getattr(instance, 'type_ligne', LigneDevis.TypeLigne.PRODUIT))
@@ -189,23 +202,22 @@ class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
             attrs['taux_tva'] = None
             if not (attrs.get('designation')
                     or getattr(instance, 'designation', '')):
-                raise serializers.ValidationError({
-                    'designation': 'Un intitulé est requis pour une ligne de '
-                                   'section ou de note.'})
+                _refus('designation', 'Un intitulé est requis pour une ligne '
+                                      'de section ou de note.')
         else:
             if attrs.get('produit') is None \
                     and getattr(instance, 'produit_id', None) is None:
-                raise serializers.ValidationError({
-                    'produit': 'Une ligne produit doit référencer un produit.'})
+                _refus('produit',
+                       'Une ligne produit doit référencer un produit.')
             # AGR217 (contrat AGR200) — une ligne enregistrée à 0 % porte sa
             # base légale (création comme modification). Aucun taux changé.
             taux = attrs.get('taux_tva', getattr(instance, 'taux_tva', None))
             base = attrs.get('tva_base_legale',
                              getattr(instance, 'tva_base_legale', ''))
             if taux is not None and taux == 0 and not (base or '').strip():
-                raise serializers.ValidationError({
-                    'tva_base_legale': 'Une base légale est obligatoire pour '
-                                       'un taux de TVA de 0 %.'})
+                _refus('tva_base_legale',
+                       'Une base légale est obligatoire pour un taux de TVA '
+                       'de 0 %.', corps=('taux_tva', 'tva_base_legale'))
             self._poser_marqueurs_saisie(attrs, instance)
         return attrs
 
@@ -1568,6 +1580,13 @@ class PlanCommissionSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
         source='owner.username', read_only=True, allow_null=True)
     base_display = serializers.CharField(
         source='get_base_display', read_only=True, allow_null=True, default=None)
+    # CI #997 fuzz — les paliers PUBLIÉS tels que ``validate_paliers`` les
+    # lit (le schéma vide laissait « conformes » un texte, un objet, un
+    # palier sans taux) : liste d'objets {seuil_atteinte_pct, taux} NOMBRES.
+    paliers = ListeJSON(element=dict, required=False, allow_null=True, items={
+        'type': 'object', 'required': ['seuil_atteinte_pct', 'taux'],
+        'properties': {'seuil_atteinte_pct': {'type': 'number'},
+                       'taux': {'type': 'number'}}})
 
     class Meta:
         model = PlanCommission
@@ -1581,23 +1600,17 @@ class PlanCommissionSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
         """Les paliers d'acceleration sont une LISTE d'objets
         ``{seuil_atteinte_pct, taux}`` - un JSON libre rendrait
         ``PlanCommission.taux_effectif`` imprevisible au moment du calcul."""
-        if value in (None, ''):
+        if value is None:
             return None
-        if not isinstance(value, list):
-            raise serializers.ValidationError(
-                'Les paliers doivent etre une liste.')
         for palier in value:
-            if not isinstance(palier, dict):
-                raise serializers.ValidationError(
-                    'Chaque palier doit etre un objet '
-                    '{seuil_atteinte_pct, taux}.')
             if 'seuil_atteinte_pct' not in palier or 'taux' not in palier:
                 raise serializers.ValidationError(
                     'Chaque palier exige `seuil_atteinte_pct` et `taux`.')
             for cle in ('seuil_atteinte_pct', 'taux'):
-                try:
-                    float(palier[cle])
-                except (TypeError, ValueError):
+                # CI #997 fuzz — un NOMBRE JSON (le schéma le publie) : un
+                # texte (``"5"``) ou un booléen passaient par ``float()``.
+                if isinstance(palier[cle], bool) or not isinstance(
+                        palier[cle], (int, float)):
                     raise serializers.ValidationError(
                         '`%s` doit etre un nombre.' % cle)
         return value

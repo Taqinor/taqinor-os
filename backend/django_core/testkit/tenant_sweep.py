@@ -294,7 +294,7 @@ def modele_dynamique(entree, user):
         with transaction.atomic():
             vue = instancier_vue(entree, requete_drf(user), 'list')
             qs = vue.get_queryset()
-    except Exception:  # noqa: BLE001 — vue calculée : « sans modèle »
+    except Exception:  # noqa: BLE001 — vue calculée : « sans modèle » (D-ENF22-BLE001)
         return None
     return getattr(qs, 'model', None)
 
@@ -601,7 +601,7 @@ class Constructeur:
                     instance = self._instancier(model, pile, profondeur,
                                                 riche, variante, forcer)
                     instance.save()
-            except Exception as exc:  # noqa: BLE001 — essai suivant/repli
+            except Exception as exc:  # noqa: BLE001 — essai suivant/repli (D-ENF22-BLE001)
                 self._cache = cache_avant
                 self.construits = defaultdict(set, construits_avant)
                 if not forcer or derniere is None:
@@ -629,7 +629,7 @@ class Constructeur:
                         model._base_manager.filter(
                             pk__in=self.construits.get(model, ()))
                         .order_by('pk').first())
-            except Exception:  # noqa: BLE001 — pas de repli possible
+            except Exception:  # noqa: BLE001 — pas de repli possible (D-ENF22-BLE001)
                 existante = None
         if existante is not None:
             self.construits[model].add(existante.pk)
@@ -740,7 +740,7 @@ def corps_texte(reponse):
             brut = b''.join(reponse.streaming_content)
         else:
             brut = reponse.content
-    except Exception:  # noqa: BLE001 — corps illisible : aucun oracle
+    except Exception:  # noqa: BLE001 — corps illisible : aucun oracle (D-ENF22-BLE001)
         return ''
     try:
         return brut.decode('utf-8', errors='replace').lower()
@@ -834,7 +834,7 @@ def donnees(reponse):
     try:
         import json
         return json.loads(reponse.content)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — corps non JSON : aucun oracle (D-ENF22-BLE001)
         return None
 
 
@@ -905,7 +905,7 @@ def charge_utile(serializer, instance):
                 attribut = champ.get_attribute(instance)
                 valeur = (None if attribut is None
                           else champ.to_representation(attribut))
-        except Exception:  # noqa: BLE001 — champ calculé : on s'en passe
+        except Exception:  # noqa: BLE001 — champ calculé : on s'en passe (D-ENF22-BLE001)
             continue
         if valeur is None and not getattr(champ, 'allow_null', False):
             continue
@@ -922,7 +922,7 @@ def valeur_absente(model, lookup_field):
     try:
         champ = model._meta.pk if lookup_field == 'pk' else (
             model._meta.get_field(lookup_field))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — champ introuvable : identifiant factice (D-ENF22-BLE001)
         return 987654321
     if isinstance(champ, m.UUIDField):
         return uuid.uuid4()
@@ -970,7 +970,7 @@ def champs_fk_inscriptibles(serializer):
             try:
                 with transaction.atomic():
                     queryset = relation.get_queryset()
-            except Exception:  # noqa: BLE001 — cible non résoluble
+            except Exception:  # noqa: BLE001 — cible non résoluble (D-ENF22-BLE001)
                 continue
         cible = getattr(queryset, 'model', None)
         if cible is None or _est_company(cible) or portee_tenant(cible) is None:

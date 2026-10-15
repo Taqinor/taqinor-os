@@ -394,33 +394,33 @@ def produits_a_renseigner(company):
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.catalogue import (  # noqa: E402
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _has_price,
     catalogue_de_la_societe,
     classer_produit,
 )
-from apps.ventes.domain.geometrie import (  # noqa: E402
+from apps.ventes.domain.geometrie import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     arbitrer_compte_calepinage,
     lire_layout,
     modeles_designes,
 )
-from apps.ventes.domain.pipeline import (  # noqa: E402
+from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     ORIGINE_CALEPINAGE,
     CibleDevis,
     IntentionDevis,
     appliquer,
 )
-from apps.ventes.domain.etape_composer import (  # noqa: E402
+from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     MSG_AUCUN_PANNEAU,
     IntentionComposition,
     verifier,
 )
-from apps.ventes.domain.taille import (  # noqa: E402
+from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     AutoDevisError,
     phase_et_isolement_du_lead,
 )
 # ``_structure_demandee`` reste dans ``creation`` (aussi lu par le devis
 # automatique) ; ``creation`` ne lit ce module que pour le devis automatique.
-from apps.ventes.domain.creation import _structure_demandee  # noqa: E402
+from apps.ventes.domain.creation import _structure_demandee  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

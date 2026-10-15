@@ -346,7 +346,7 @@ def _emit_etape_activee(step, company):
         with transaction.atomic():
             workflow_etape_activee.send(
                 sender='core.workflow', step=step, company=company)
-    except Exception:  # noqa: BLE001 — best-effort, journalisé
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
         logger.warning("emit etape activee : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
@@ -1002,7 +1002,7 @@ def decisions_conformite(company, periode=None):
     for nom, fn in fournisseurs:
         try:
             produites = list(fn(company, periode) or [])
-        except Exception:  # noqa: BLE001 — une source cassée n'emporte pas tout
+        except Exception:  # noqa: BLE001 — une source cassée n'emporte pas tout (D-ENF22-BLE001)
             logger.warning("decisions conformite : échec ignoré, comportement dégradé", exc_info=True)
             rapport['sources_en_erreur'].append(nom)
             continue

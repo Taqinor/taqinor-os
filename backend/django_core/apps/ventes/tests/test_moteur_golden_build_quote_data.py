@@ -259,7 +259,7 @@ class MoteurGoldenBuildQuoteDataTests(TestCase):
                         with rendu_sans_reseau():
                             data = build_quote_data(devis_frais, dict(opts))
                         resultats[cle] = self._empreinte(devis_frais, data)
-                    except Exception as exc:  # noqa: BLE001 — caractérisation
+                    except Exception as exc:  # noqa: BLE001 — caractérisation (D-ENF22-BLE001)
                         resultats[cle] = {'exception': type(exc).__name__}
                     transaction.set_rollback(True)
         return resultats

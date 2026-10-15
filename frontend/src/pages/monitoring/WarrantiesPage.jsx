@@ -199,7 +199,7 @@ export default function WarrantiesPage() {
         </span>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/remove recréés à chaque rendu ; colonnes rafraîchies via nameOf/selected
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- openEdit/remove recréés à chaque rendu ; colonnes rafraîchies via nameOf/selected (D-ENF22)
   ], [nameOf, selected])
 
   const curvePoints = useMemo(() => curve?.points ?? [], [curve])

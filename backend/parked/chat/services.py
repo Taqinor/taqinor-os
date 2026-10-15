@@ -4,6 +4,7 @@ Tout passe par la société de l'appelant, jamais par le corps de requête. Les
 lectures cross-app (cartes lead/devis/chantier) passent par les `selectors.py`
 des apps cibles — jamais par leurs modèles/vues (contrat d'import CI).
 """
+import logging
 import re
 
 from django.db import transaction
@@ -441,7 +442,8 @@ def get_or_create_whatsapp_conversation(company, contact_label):
                 ConversationMember.objects.get_or_create(
                     conversation=conv, user=user)
         return conv
-    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services.get_or_create_whatsapp_conversation : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -588,7 +590,8 @@ def post_system_message(conversation, body, *, record_type=None, record_id=None)
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=['updated_at'])
         return msg
-    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le webhook (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services.post_system_message : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 

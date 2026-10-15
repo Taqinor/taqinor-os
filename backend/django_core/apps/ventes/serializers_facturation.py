@@ -731,7 +731,8 @@ class NoteDebitSerializer(SameCompanyFKSerializerMixin,
         return obj.avoirs_annulation.filter(statut=Avoir.Statut.EMISE).exists()
 
 
-class PromessePaiementSerializer(SameCompanyFKSerializerMixin,
+class PromessePaiementSerializer(ChampsStrictsMixin,
+                                 SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """XFAC5 — engagement de paiement client (« je paie le 15 »).
 
@@ -744,6 +745,9 @@ class PromessePaiementSerializer(SameCompanyFKSerializerMixin,
 
     ENF17 — ``facture`` d'une AUTRE société = id absent (400 « objet
     inexistant »), avant la garde de la vue (« Facture inconnue. »).
+
+    CI #997 fuzz — montant (décimal-chaîne) et note STRICTS ; une date bien
+    formée hors fenêtre du jour répond 409 (voir ``validate``).
     """
     same_company_fields = ('facture',)
     facture_reference = serializers.CharField(
@@ -753,23 +757,29 @@ class PromessePaiementSerializer(SameCompanyFKSerializerMixin,
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
 
-    def validate_date_promise(self, value):
+    def validate(self, attrs):
+        # CI #997 fuzz — la fenêtre ]aujourd'hui ; +horizon] dépend de la DATE
+        # DU JOUR, que le schéma (``format: date``) ne peut pas porter : une
+        # date bien formée hors fenêtre est un refus d'ÉTAT (409, corps
+        # ``{date_promise: [...]}`` et textes inchangés), corps entier valide.
         from datetime import timedelta
 
+        from core.conflit_etat import ConflitEtat
         from .recouvrement import PROMESSE_HORIZON_JOURS_MAX
         from .scheduled import casablanca_today
 
+        value = attrs.get('date_promise')
         today = casablanca_today()
-        if value <= today:
-            raise serializers.ValidationError(
-                "Une promesse de paiement porte sur une date FUTURE.")
+        if value is not None and value <= today:
+            raise ConflitEtat({'date_promise': [
+                "Une promesse de paiement porte sur une date FUTURE."]})
         plafond = today + timedelta(days=PROMESSE_HORIZON_JOURS_MAX)
-        if value > plafond:
-            raise serializers.ValidationError(
+        if value is not None and value > plafond:
+            raise ConflitEtat({'date_promise': [
                 f'Une promesse ne peut pas dépasser {PROMESSE_HORIZON_JOURS_MAX} '
                 f'jours (soit le {plafond.isoformat()}) : au-delà, elle gèle la '
-                f'relance au lieu d\'engager le client.')
-        return value
+                f'relance au lieu d\'engager le client.']})
+        return attrs
 
     class Meta:
         from .models import PromessePaiement
@@ -789,8 +799,9 @@ class RelancerFactureSerializer(serializers.Serializer):
     La société est passée en contexte : un `niveau` est un ORDRE de
     ``FollowupLevel``, résolu et donc scopé à la société de la facture.
     """
-    niveau = serializers.IntegerField(required=False, allow_null=True)
-    note = serializers.CharField(
+    # CI #997 fuzz — entier et texte STRICTS (``"note": 0`` était converti).
+    niveau = EntierStrict(required=False, allow_null=True)
+    note = ChaineStricte(
         required=False, allow_blank=True, trim_whitespace=True,
         max_length=2000)
     prochaine_relance = serializers.DateField(
@@ -798,18 +809,23 @@ class RelancerFactureSerializer(serializers.Serializer):
     # CI #997 (5) : booléen STRICT — `0` était lu False et accepté (schéma : boolean).
     envoyer_email = BooleenStrict(default=False)
 
-    def validate_niveau(self, value):
+    def validate(self, attrs):
+        # CI #997 fuzz — un ``niveau`` bien formé (un ORDRE, pas un id) qui
+        # n'existe pas dans la cadence réglée par la société : refus d'ÉTAT
+        # (409, corps {niveau} inchangé), jugé une fois le corps valide.
+        value = attrs.get('niveau')
         if value is None:
-            return value
+            return attrs
+        from core.conflit_etat import ConflitEtat
         from .models import FollowupLevel
         company = self.context.get('company')
         niveau = FollowupLevel.objects.filter(
             company=company, ordre=value).first()
         if niveau is None:
-            raise serializers.ValidationError(
-                'Niveau de relance inconnu pour cette société.')
+            raise ConflitEtat({'niveau': [
+                'Niveau de relance inconnu pour cette société.']})
         self.context['followup_level'] = niveau
-        return value
+        return attrs
 
 
 class FollowupLevelSerializer(ChampsStrictsMixin,

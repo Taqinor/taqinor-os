@@ -222,7 +222,7 @@ def poser_reveils_saisonniers(company, user=None, *, maintenant=None,
     for lead in dormants:
         try:
             etape = _poser_reveil_saisonnier(lead, user, maintenant=maintenant)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'CAD74 : réveil saisonnier impossible (lead #%s)',
                 getattr(lead, 'pk', '?'), exc_info=True)

@@ -80,7 +80,7 @@ def collecte_quotidienne(job_id=None, company_id=None, user_id=None):
         if job is not None:
             job.marquer_termine()
         return {'arme': True, 'motif': '', 'executions': resultats}
-    except Exception as erreur:  # noqa: BLE001 — toute panne = échec PROPRE
+    except Exception as erreur:  # noqa: BLE001 — toute panne = échec PROPRE (D-ENF22-BLE001)
         logger.exception('veille_ao.collecte_quotidienne : échec')
         if job is not None:
             job.marquer_echec(str(erreur))
@@ -105,7 +105,7 @@ def _collecter_les_societes(company_id=None):
     for company in societes:
         try:
             resultats.extend(collecter_toutes_les_sources(company))
-        except Exception as erreur:  # noqa: BLE001 — société isolée
+        except Exception as erreur:  # noqa: BLE001 — société isolée (D-ENF22-BLE001)
             logger.exception(
                 'veille_ao: collecte de la société %s échouée', company.pk)
             resultats.append({'source_id': None, 'source': '',
@@ -141,7 +141,7 @@ def expirer_avis_depasses():
         try:
             total += AvisMarche.objects.filter(
                 company=company).expirer_les_depasses()
-        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres
+        except Exception:  # noqa: BLE001 — une société ne bloque pas les autres (D-ENF22-BLE001)
             logger.warning(
                 'veille_ao.expirer_avis_depasses : société #%s en échec',
                 getattr(company, 'pk', '?'), exc_info=True)

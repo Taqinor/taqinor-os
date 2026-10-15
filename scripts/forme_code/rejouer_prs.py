@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import check_forme_code as cfc  # noqa: E402
-from forme_code.socle import git  # noqa: E402
+import check_forme_code as cfc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from forme_code.socle import git  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 CLASSES = ("FICHIER_MUR", "FONCTION_NEUVE", "FONCTION_MUR", "FACADE", "REGLAGE", "GARDE_NEUVE",
            "BASELINE_GROSSIT", "CLE_LIGNE", "EXCEPTION")

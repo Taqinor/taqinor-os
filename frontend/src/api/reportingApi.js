@@ -48,7 +48,7 @@ const reportingApi = {
   //   listDashboardConfigs → CRUD ; effectiveDashboardConfig → la config
   //   résolue pour l'utilisateur courant (per-user > palier > défaut Python).
   //   company forcée côté serveur.
-  listDashboardConfigs: () => api.get('/reporting/dashboard-config/'),
+  listDashboardConfigs: (params) => api.get('/reporting/dashboard-config/', { params }),
   effectiveDashboardConfig: () =>
     api.get('/reporting/dashboard-config/effective/'),
   saveDashboardConfig: (id, data) => id
@@ -115,7 +115,7 @@ const reportingApi = {
   updateKpiAlerte: (id, data) => api.patch(`/reporting/kpi-alertes/${id}/`, data),
   deleteKpiAlerte: (id) => api.delete(`/reporting/kpi-alertes/${id}/`),
   // XPLT22 — classeur léger embarqué (mini-spreadsheet BI, données live).
-  listClasseurs: () => api.get('/reporting/classeurs/'),
+  listClasseurs: (params) => api.get('/reporting/classeurs/', { params }),
   getClasseur: (id) => api.get(`/reporting/classeurs/${id}/`),
   createClasseur: (data) => api.post('/reporting/classeurs/', data),
   updateClasseur: (id, data) => api.patch(`/reporting/classeurs/${id}/`, data),

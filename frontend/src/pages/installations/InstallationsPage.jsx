@@ -351,7 +351,7 @@ export default function InstallationsPage() {
     // intentionally narrow: only `annule`/`mine` are server-side dimensions
     // (see comment above); the other filter fields are applied client-side
     // and must NOT retrigger a server refetch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seuls `annule`/`mine` sont des dimensions serveur ; les autres filtres sont appliqués côté client (D-ENF22)
   }, [dispatch, filters.annule, filters.mine])
 
   // VX79 — lien interne partageable : /chantiers?id=<pk> ouvre le panneau du

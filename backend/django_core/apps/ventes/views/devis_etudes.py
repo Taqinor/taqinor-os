@@ -66,7 +66,7 @@ class DevisEtudesActionsMixin:
         try:
             data = build_quote_data(devis, {'pdf_mode': 'full'})
             bloc = deriver(devis, data)
-        except Exception:  # noqa: BLE001 — un écran d'édition ne tombe jamais
+        except Exception:  # noqa: BLE001 — un écran d'édition ne tombe jamais (D-ENF22-BLE001)
             logger.warning(
                 "devis_etudes.DevisEtudesActionsMixin._offres_tailles_reponse "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -266,7 +266,7 @@ class DevisEtudesActionsMixin:
         from ..services import rafraichir_etudes_du_devis
         try:
             rafraichir_etudes_du_devis(devis)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning(
                 "devis_etudes.DevisEtudesActionsMixin._rafraichir_etudes_apres_surcharge "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -368,7 +368,7 @@ class DevisEtudesActionsMixin:
             from ..services import rafraichir_etudes_du_devis
             try:
                 rafraichir_etudes_du_devis(devis)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 logger.warning(
                     "devis_etudes.DevisEtudesActionsMixin.etude_params : erreur ignorée (mode dégradé)", exc_info=True)
         fin_de_geste_devis(devis, request.user, avant=avant_geste,
@@ -448,9 +448,9 @@ class DevisEtudesActionsMixin:
         reponse['updated_at'] = _jeton(devis)
         return Response(reponse)
 
-    @extend_schema(request=D.OffreTailleCleRequest,
+    @extend_schema(request=D.OffreTailleAppliquerRequest,
                    responses={200: D.OffresTaillesResponse,
-                              400: D.ErreurSyncLayout})
+                              409: D.ErreurSyncLayout})
     @action(detail=True, methods=['post'],
             url_path='offres-tailles/appliquer',
             permission_classes=[IsResponsableOrAdmin])
@@ -465,22 +465,22 @@ class DevisEtudesActionsMixin:
         bien que le PDF, les totaux et la page client changent réellement.
 
         Le STATUT n'est jamais écrit (règle #4) : c'est la garde de
-        ``sync_devis_from_layout`` qui décide, et un refus revient en 400 avec
-        son motif EN FRANÇAIS (``revision_possible`` dit si « Réviser » est la
-        bonne suite). Éco et Max sont refusées : ce sont des explorations.
+        ``sync_devis_from_layout`` qui décide, et un refus revient en 409
+        (CI #997 fuzz : refus d'ÉTAT, plus 400) avec son motif EN FRANÇAIS
+        (``revision_possible`` dit si « Réviser » est la bonne suite). Éco et
+        Max ne sont pas publiées : ce sont des explorations (400).
         """
         from ..offres_tailles import ApplicationImpossible, appliquer_au_devis
-        from ..serializers import OffreTailleRegenerationSerializer
+        from ..utils.corps import valider_corps
 
         devis = self.get_object()
+        corps = valider_corps(request, D.OffreTailleAppliquerRequest)
         # QJR545 — verrou optimiste (jeton optionnel).
         refus = _refus_verrou(devis, request)
         if refus is not None:
             return refus
-        serializer = OffreTailleRegenerationSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
         try:
-            resume = appliquer_au_devis(devis, serializer.validated_data['cle'],
+            resume = appliquer_au_devis(devis, corps['cle'],
                                         utilisateur=request.user)
         except ApplicationImpossible as erreur:
             # PAS de ``ValidationError`` ICI, ET C'EST DÉLIBÉRÉ. DRF passe le
@@ -494,7 +494,7 @@ class DevisEtudesActionsMixin:
             return Response(
                 {'detail': erreur.detail,
                  'revision_possible': bool(erreur.revision_possible)},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         from ..domain.verrou_devis import toucher
         toucher(devis)
         devis.refresh_from_db()

@@ -96,7 +96,7 @@ def _chatter_et_ged_on_contrat_signe(sender, contrat, user, company, **kwargs):
             contrat, user,
             f'Contrat {ref} signé — toutes les parties requises ont signé.',
             company=company)
-    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'ARC35 : chatter ARC8 échoué sur contrat_signe pour contrat #%s',
             getattr(contrat, 'pk', '?'), exc_info=True)
@@ -114,7 +114,7 @@ def _chatter_et_ged_on_contrat_signe(sender, contrat, user, company, **kwargs):
         )
         if signature is not None:
             deposer_contrat_signe_en_ged(signature)
-    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'ARC35 : dépôt GED échoué sur contrat_signe pour contrat #%s',
             getattr(contrat, 'pk', '?'), exc_info=True)
@@ -138,7 +138,7 @@ def _chatter_on_contrat_actif(sender, contrat, user, company, **kwargs):
             contrat, user,
             f'Contrat {ref} activé.',
             company=company)
-    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'ARC35 : chatter ARC8 échoué sur contrat_actif pour contrat #%s',
             getattr(contrat, 'pk', '?'), exc_info=True)

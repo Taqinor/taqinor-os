@@ -58,7 +58,7 @@ function coloredIcon(color = '#2563eb', badge = null) {
 // contenant du markup exécuterait sinon du XSS stocké à l'ouverture du popup).
 // Exporté pour que les appelants (CartePage, ParcInstallePage) réutilisent le
 // même helper plutôt que de bâtir du HTML brut.
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur partagé avec les appelants, pas un composant
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur partagé avec les appelants, pas un composant (D-ENF22)
 export const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ))

@@ -65,7 +65,7 @@ logger = logging.getLogger(__name__)
 # ``tests/test_services_surface.py`` reconnaît comme une définition (il lit
 # ``services.py`` par AST, où un import n'est pas une définition). La liste
 # dorée du pin reste donc EXACTE sans être retouchée.
-from apps.ventes.domain import bordereau as _bordereau  # noqa: E402
+from apps.ventes.domain import bordereau as _bordereau  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 BOQ_CATEGORIES = _bordereau.BOQ_CATEGORIES
 BOQ_SUFFIXE_A_CHIFFRER = _bordereau.BOQ_SUFFIXE_A_CHIFFRER
 ajouter_lignes_boq_electrique = _bordereau.ajouter_lignes_boq_electrique
@@ -74,7 +74,7 @@ ajouter_lignes_boq_electrique = _bordereau.ajouter_lignes_boq_electrique
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR69 (1/3) : recouvrement → ``domain/recouvrement.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import recouvrement as _recouvrement  # noqa: E402
+from apps.ventes.domain import recouvrement as _recouvrement  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 RELANCE_AUTO_NOTE = _recouvrement.RELANCE_AUTO_NOTE
 RELANCE_AUTO_NOTE_RESOLUE = _recouvrement.RELANCE_AUTO_NOTE_RESOLUE
 reset_relance_escalation = _recouvrement.reset_relance_escalation
@@ -94,10 +94,10 @@ expire_stale_devis = _recouvrement.expire_stale_devis
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR69 (2/3) : encaissements → ``domain/encaissements.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import encaissements as _encaissements  # noqa: E402
+from apps.ventes.domain import encaissements as _encaissements  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 # ADOC143 — exception du garde loi 31-08, ré-exportée pour qu'un appelant
 # cross-app (portail) puisse la rattraper sans importer ``apps.ventes.models``.
-from apps.ventes import models as _models  # noqa: E402
+from apps.ventes import models as _models  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 AcompteAvantDelaiLegal = _models.AcompteAvantDelaiLegal
 marquer_facture_soldee = _encaissements.marquer_facture_soldee
 enregistrer_paiement = _encaissements.enregistrer_paiement
@@ -121,7 +121,7 @@ consolider_factures = _encaissements.consolider_factures
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR69 (3/3) : facturation → ``domain/facturation_ops.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import facturation_ops as _facturation_ops  # noqa: E402
+from apps.ventes.domain import facturation_ops as _facturation_ops  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 StockInsuffisantError = _facturation_ops.StockInsuffisantError
 EmissionRefusee = _facturation_ops.EmissionRefusee
 emettre_facture = _facturation_ops.emettre_facture
@@ -145,10 +145,10 @@ generer_facture_intervention = _facturation_ops.generer_facture_intervention
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR70 : cycle de vie du devis → ``domain/cycle_vie.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import cycle_vie as _cycle_vie  # noqa: E402
+from apps.ventes.domain import cycle_vie as _cycle_vie  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 # SPL264 — le geste d'envoi (clauses, validité, mark_devis_sent) vit dans
 # ``domain/envoi.py``.
-from apps.ventes.domain import envoi as _envoi  # noqa: E402
+from apps.ventes.domain import envoi as _envoi  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 poser_validite_devis = _envoi.poser_validite_devis
 # CAD57 — validité d'un dossier financé à crédit (réglage société).
 jours_validite_societe = _envoi.jours_validite_societe
@@ -157,7 +157,7 @@ date_validite_credit = _envoi.date_validite_credit
 prolonger_validite_devis = _envoi.prolonger_validite_devis
 # CIQ618 — ouverture automatique du dossier 82-21 d'un site pro (appelée
 # par le récepteur ``devis_accepted`` d'installations).
-from apps.ventes.domain import dossier_8221 as _dossier_8221  # noqa: E402
+from apps.ventes.domain import dossier_8221 as _dossier_8221  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 ouvrir_dossier_8221 = _dossier_8221.ouvrir_dossier_8221
 # CIQ642 — une action posée sur le dossier 82-21 d'un chantier (lue par sav).
 ajouter_action_dossier_8221 = _dossier_8221.ajouter_action_dossier_8221
@@ -184,19 +184,19 @@ AnnulationAcceptationBloquee = _cycle_vie.AnnulationAcceptationBloquee
 raison_blocage_annulation_acceptation = (
     _cycle_vie.raison_blocage_annulation_acceptation)
 # VNT50 — liens de partage et courriel fournisseur dans ``domain/partage.py``.
-from apps.ventes.domain import partage as _partage  # noqa: E402
+from apps.ventes.domain import partage as _partage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 share_link_for_bcf = _partage.share_link_for_bcf
 INSTALLATION_SHARE_UTM_CAMPAIGN = _partage.INSTALLATION_SHARE_UTM_CAMPAIGN
 installation_share_link = _partage.installation_share_link
 bcf_share_url = _partage.bcf_share_url
 contexte_clauses_devis = _envoi.contexte_clauses_devis
 # SPL262 — l'historique de configuration vit dans ``domain/historique_config.py``.
-from apps.ventes.domain import historique_config as _historique_config  # noqa: E402
+from apps.ventes.domain import historique_config as _historique_config  # noqa: E402 — anti-cycle (D-ENF22)
 configuration_devis_contenu = _historique_config.configuration_devis_contenu
 capturer_configuration_devis = _historique_config.capturer_configuration_devis
 diff_configurations_devis = _historique_config.diff_configurations_devis
 # SPL263 — renouvellement / révision dans ``domain/revision.py``.
-from apps.ventes.domain import revision as _revision  # noqa: E402
+from apps.ventes.domain import revision as _revision  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 renouveler_devis = _revision.renouveler_devis
 mark_devis_sent = _envoi.mark_devis_sent
 
@@ -204,7 +204,7 @@ mark_devis_sent = _envoi.mark_devis_sent
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR71 : catalogue → ``domain/catalogue.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import catalogue as _catalogue  # noqa: E402
+from apps.ventes.domain import catalogue as _catalogue  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 marque_preferee = _catalogue.marque_preferee
 LIBELLES_ROLES = _catalogue.LIBELLES_ROLES
 carte_marques_composition = _catalogue.carte_marques_composition
@@ -238,7 +238,7 @@ catalogue_de_la_societe = _catalogue.catalogue_de_la_societe
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR72 : géométrie → ``domain/geometrie.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import geometrie as _geometrie  # noqa: E402
+from apps.ventes.domain import geometrie as _geometrie  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 _azimut_boussole_vers_aspect = _geometrie._azimut_boussole_vers_aspect
 extract_roof_config = _geometrie.extract_roof_config
 # ACAL58 — l'orientation d'un pan, modules POSÉS d'abord (seule lecture).
@@ -264,7 +264,7 @@ zone_toit_depuis_contour = _geometrie.zone_toit_depuis_contour
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR73 : lignes du devis → ``domain/lignes.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import lignes as _lignes  # noqa: E402
+from apps.ventes.domain import lignes as _lignes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 CIBLE_WATT_DEFAUT = _lignes.CIBLE_WATT_DEFAUT
 _lignes_produit = _lignes._lignes_produit
 _classe_ligne = _lignes._classe_ligne
@@ -276,7 +276,7 @@ cible_depuis_lignes = _lignes.cible_depuis_lignes
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR74 : composition → ``domain/composition.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import composition as _composition  # noqa: E402
+from apps.ventes.domain import composition as _composition  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 LigneKit = _composition.LigneKit
 VARIANTE_COMMUNE = _composition.VARIANTE_COMMUNE
 VARIANTE_SANS = _composition.VARIANTE_SANS
@@ -299,7 +299,7 @@ _est_au_prix_catalogue = _composition._est_au_prix_catalogue
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR75 (1/2) : taille → ``domain/taille.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import taille as _taille  # noqa: E402
+from apps.ventes.domain import taille as _taille  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 AutoDevisError = _taille.AutoDevisError
 phase_client_pour_dimensionnement = _taille.phase_client_pour_dimensionnement
 MOTIF_FACTURE_ABSENTE = _taille.MOTIF_FACTURE_ABSENTE
@@ -311,7 +311,7 @@ MOTIF_MOTEUR_INDISPONIBLE = _taille.MOTIF_MOTEUR_INDISPONIBLE
 # ═══════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR75 (2/2) : études → ``domain/etudes.py``
 # ═══════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import etudes as _etudes  # noqa: E402
+from apps.ventes.domain import etudes as _etudes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 rafraichir_etude_horaire = _etudes.rafraichir_etude_horaire
 rafraichir_etude_horaire_devis = _etudes.rafraichir_etude_horaire_devis
 rafraichir_dimensionnement_devis = _etudes.rafraichir_dimensionnement_devis
@@ -323,7 +323,7 @@ refresh_marge_snapshot = _etudes.refresh_marge_snapshot
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : gammes → ``domain/gammes.py``
 # ═════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import gammes as _gammes  # noqa: E402
+from apps.ventes.domain import gammes as _gammes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 GAMME_ENVOI_SEULE = _gammes.GAMME_ENVOI_SEULE
 GAMME_ENVOI_LES_DEUX = _gammes.GAMME_ENVOI_LES_DEUX
 GAMME_ENVOI_DEFAUT = _gammes.GAMME_ENVOI_DEFAUT
@@ -343,7 +343,7 @@ lead_from_source_devis = _gammes.lead_from_source_devis
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : événements catalogue → ``domain/catalogue_events.py``
 # ═════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import catalogue_events as _catalogue_events  # noqa: E402
+from apps.ventes.domain import catalogue_events as _catalogue_events  # noqa: E402 — anti-cycle (D-ENF22)
 LIBELLES_CHAMPS_PRODUIT = _catalogue_events.LIBELLES_CHAMPS_PRODUIT
 resynchroniser_devis_pour_produit = _catalogue_events.resynchroniser_devis_pour_produit
 on_produit_modifie = _catalogue_events.on_produit_modifie
@@ -353,7 +353,7 @@ planifier_resynchronisation_produit = _catalogue_events.planifier_resynchronisat
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : scénario et puissance → ``domain/scenario.py``
 # ═════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import scenario as _scenario  # noqa: E402
+from apps.ventes.domain import scenario as _scenario  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 SCENARIO_SANS_BATTERIE = _scenario.SCENARIO_SANS_BATTERIE
 SCENARIO_AVEC_BATTERIE = _scenario.SCENARIO_AVEC_BATTERIE
 SCENARIO_LES_DEUX = _scenario.SCENARIO_LES_DEUX
@@ -366,7 +366,7 @@ poser_puissance_kwc = _scenario.poser_puissance_kwc
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : tarification → ``domain/tarification.py``
 # ═════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import tarification as _tarification  # noqa: E402
+from apps.ventes.domain import tarification as _tarification  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 prix_applicable = _tarification.prix_applicable
 # QJR539 — la garde de remise T17 unique, appelée AVANT tout envoi.
 RemiseNonApprouvee = _tarification.RemiseNonApprouvee
@@ -413,7 +413,7 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : resynchronisation → ``domain/resynchronisation.py``
 # ═════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import resynchronisation as _resynchronisation  # noqa: E402
+from apps.ventes.domain import resynchronisation as _resynchronisation  # noqa: E402 — anti-cycle (D-ENF22)
 SyncLayoutError = _resynchronisation.SyncLayoutError
 sync_devis_from_layout = _resynchronisation.sync_devis_from_layout
 resynchroniser_conception = _resynchronisation.resynchroniser_conception
@@ -422,17 +422,17 @@ resynchroniser_conception = _resynchronisation.resynchroniser_conception
 # ═════════════════════════════════════════════════════════════════════════
 # RÉ-EXPORTS — QJR76 : création d'un devis → ``domain/creation.py``
 # ═════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import creation as _creation  # noqa: E402
+from apps.ventes.domain import creation as _creation  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 create_draft_devis_from_ocr = _creation.create_draft_devis_from_ocr
 # SPL268 — clonage, duplication et modèles dans ``domain/creation_clone.py``.
-from apps.ventes.domain import creation_clone as _creation_clone  # noqa: E402
+from apps.ventes.domain import creation_clone as _creation_clone  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 dupliquer_devis = _creation_clone.dupliquer_devis
 # SPL266 — le pont calepinage → devis vit dans ``domain/creation_calepinage.py``.
-from apps.ventes.domain import creation_calepinage as _creation_calepinage  # noqa: E402
+from apps.ventes.domain import creation_calepinage as _creation_calepinage  # noqa: E402 — anti-cycle (D-ENF22)
 build_devis_from_layout = _creation_calepinage.build_devis_from_layout
 produits_a_renseigner = _creation_calepinage.produits_a_renseigner
 # SPL267 — le devis automatique vit dans ``domain/creation_auto.py``.
-from apps.ventes.domain import creation_auto as _creation_auto  # noqa: E402
+from apps.ventes.domain import creation_auto as _creation_auto  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 SCENARIOS_DEMANDABLES = _creation_auto.SCENARIOS_DEMANDABLES
 composer_devis_residentiel = _creation_auto.composer_devis_residentiel
 build_devis_auto = _creation_auto.build_devis_auto
@@ -448,7 +448,7 @@ save_devis_as_preset = _creation_clone.save_devis_as_preset
 # RÉ-EXPORTS — NTMIG10/11 : création Devis/Facture depuis une MIGRATION
 # (kits NTMIG8/12/13) → ``domain/imports.py``
 # ═════════════════════════════════════════════════════════════════════════
-from apps.ventes.domain import imports as _imports  # noqa: E402
+from apps.ventes.domain import imports as _imports  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 creer_devis_import = _imports.creer_devis_import
 ajouter_lignes_devis_import = _imports.ajouter_lignes_devis_import
 creer_facture_import = _imports.creer_facture_import
@@ -462,7 +462,7 @@ ajouter_lignes_facture_import = _imports.ajouter_lignes_facture_import
 # présignée 1 h), pour que `apps.calepinage` réutilise ce chemin au lieu d'en
 # ouvrir un second. Règle QJR68 : ce fichier ne porte aucun corps — les corps
 # vivent dans `domain/stockage_toiture.py`.
-from apps.ventes.domain import stockage_toiture as _stockage_toiture  # noqa: E402
+from apps.ventes.domain import stockage_toiture as _stockage_toiture  # noqa: E402 — anti-cycle (D-ENF22)
 SIGNATURES_IMAGE_TOITURE = _stockage_toiture.SIGNATURES_IMAGE_TOITURE
 type_image_toiture = _stockage_toiture.type_image_toiture
 stocker_image_toiture = _stockage_toiture.stocker_image_toiture

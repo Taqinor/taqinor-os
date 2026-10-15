@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """AGR310 — les trois pages du document agricole (D-AGR-2), en HTML.
 
 P1 — l'eau et l'argent ; P2 — comment ça marche ; P3 — équipement, prix,

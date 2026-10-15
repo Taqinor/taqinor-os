@@ -84,7 +84,8 @@ class RemiseApprobationProfondeurTests(TestCase):
         r = self._api(self.resp).patch(
             '/api/django/ventes/devis-lignes/%s/' % ligne.pk,
             {'remise': '60'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        # CI #997 fuzz — profondeur approuvée = état du devis : 409, plus 400.
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('remise', r.json())
         ligne.refresh_from_db()
         self.assertEqual(ligne.remise, Decimal('0'))

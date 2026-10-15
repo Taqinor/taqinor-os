@@ -136,7 +136,7 @@ describe('InstallationDetail — « Autour de ce chantier » (CHT20)', () => {
     await user.click(bouton)
     expect(navigateMock).toHaveBeenCalledWith('/ventes/dossiers-reglementaires')
     expect(mocks.getReglementaire).toHaveBeenCalledWith(
-      'dossiers-reglementaires', { devis: CHANTIER.devis })
+      'dossiers-reglementaires', expect.objectContaining({ devis: CHANTIER.devis }))
   })
 
   it("masque le lien « Dossier réglementaire » quand aucun dossier n'existe", async () => {

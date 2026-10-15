@@ -5,8 +5,6 @@ par ``FactureEncaissementActionsMixin``, déplacées telles quelles depuis
 ``views/facture.py``. Aucune route dans ``urls.py`` : le routeur les découvre
 sur le viewset.
 """
-from datetime import date as _date
-
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -377,71 +375,27 @@ class FactureEncaissementActionsMixin:
             avance XFAC1 explicite (Paiement sans facture, non affecté),
             renvoyée dans la réponse — jamais abandonnée en silence.
         """
-        from decimal import Decimal, InvalidOperation
+        from decimal import Decimal
 
         from apps.crm.selectors import get_company_client
 
-        from core.champs_stricts import entier_ou_400
+        from ..utils.corps import valider_corps
 
         company = request.user.company
-        if not isinstance(request.data, dict):
-            return Response({'detail': 'Corps JSON objet attendu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        # CI #997 — ``client`` non entier (``[null, null]``) : 400 nommé, plus
-        # le TypeError du filtre ``pk=`` (500).
-        client_id = entier_ou_400(request.data.get('client'), 'client')
-        client = (get_company_client(company, client_id)
-                  if client_id is not None else None)
+        # CI #997 fuzz — le corps est validé par le sérialiseur PUBLIÉ (il
+        # était relu à la main, plus souplement : ``"client": "5"``,
+        # ``"reference": 0``, ``"montant": "1.234"`` passaient) → 400 nommé.
+        corps = valider_corps(request, D.EncaissementGroupeRequest)
+        client = get_company_client(company, corps['client'])
         if client is None:
             return Response(
                 {'detail': 'Client introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
-        try:
-            montant = Decimal(str(request.data.get('montant')))
-        except (InvalidOperation, TypeError, ValueError):
-            return Response(
-                {'detail': 'Montant invalide.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        # ENF11 — montant fini et borné (NaN levait InvalidOperation à la
-        # comparaison ci-dessous), mode connu, date lisible, ids entiers :
-        # sinon 500 (InvalidOperation/DataError, ValueError).
-        if not montant.is_finite() or montant >= Decimal('1e10'):
-            return Response(
-                {'detail': 'Montant invalide.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        if montant <= 0:
-            return Response(
-                {'detail': 'Le montant doit être positif.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        mode = str(request.data.get('mode') or 'virement').strip()
-        if mode not in Paiement.Mode.values:
-            return Response(
-                {'detail': 'Mode de paiement inconnu.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        date_paiement = request.data.get('date') or timezone.now().date()
-        if not isinstance(date_paiement, _date):
-            try:
-                date_paiement = _date.fromisoformat(str(date_paiement))
-            except ValueError:
-                return Response(
-                    {'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
-                    status=status.HTTP_400_BAD_REQUEST)
-        reference = str(request.data.get('reference') or '').strip()
-        if len(reference) > 120:
-            return Response(
-                {'detail': 'La référence tient en 120 caractères au plus.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        facture_ids = request.data.get('factures') or []
-        if not isinstance(facture_ids, list) or not facture_ids:
-            return Response(
-                {'detail': "factures (liste d'ids) requis."},
-                status=status.HTTP_400_BAD_REQUEST)
-        try:
-            facture_ids = [int(x) for x in facture_ids]
-        except (TypeError, ValueError):
-            return Response(
-                {'detail': "factures doit être une liste d'ids entiers."},
-                status=status.HTTP_400_BAD_REQUEST)
+        montant = Decimal(corps['montant'])
+        mode = corps.get('mode') or 'virement'
+        date_paiement = corps.get('date') or timezone.now().date()
+        reference = corps.get('reference', '').strip()
+        facture_ids = corps['factures']
 
         # AFAC55 — portée du rôle (`get_queryset`) en plus de la société.
         factures = list(self.get_queryset().filter(id__in=facture_ids))
@@ -461,11 +415,16 @@ class FactureEncaissementActionsMixin:
                 # facture) s'opposent au rapprochement : 409.
                 status=status.HTTP_409_CONFLICT)
 
-        repartition = request.data.get('repartition')
-        if repartition is not None and not isinstance(repartition, dict):
+        repartition = corps.get('repartition')
+        ids_lot = {f.id for f in factures}
+        hors_lot = next((cle for cle in (repartition or {}) if not (
+            cle.isascii() and cle.isdigit() and int(cle) in ids_lot)), None)
+        if hors_lot is not None:
+            # CI #997 fuzz — une clé de répartition qui ne nomme aucune facture
+            # du lot : règle entre champs que le schéma ne porte pas → 409.
             return Response(
-                {'detail': 'repartition doit être un objet {facture_id: montant}.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                {'detail': f'Facture {hors_lot} inconnue dans ce lot.'},
+                status=status.HTTP_409_CONFLICT)
 
         from ..services import affecter_encaissement_groupe
 
@@ -477,8 +436,11 @@ class FactureEncaissementActionsMixin:
                 repartition=repartition,
             )
         except ValueError as exc:
+            # CI #997 fuzz — corps valide : facture non encaissable, Σ des
+            # parts au-delà du montant, part au-delà du reste dû sont des
+            # refus d'ÉTAT ou d'ensemble (409), plus 400.
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
 
         return Response(
             PaiementSerializer(paiements, many=True).data,

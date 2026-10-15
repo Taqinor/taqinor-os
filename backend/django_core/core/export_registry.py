@@ -181,7 +181,7 @@ def export_all_datasets(company):
             csv_bytes, n = _export_data_explorer_dataset(name, company)
             fichiers[f'{name}.csv'] = csv_bytes
             comptes[name] = n
-        except Exception:  # noqa: BLE001 — un dataset KO n'en bloque pas d'autres
+        except Exception:  # noqa: BLE001 — un dataset KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.exception(
                 'export_registry: échec export dataset %r (société %s).',
                 name, company.id)
@@ -192,7 +192,7 @@ def export_all_datasets(company):
             csv_bytes = entry['to_csv_fn'](qs)
             fichiers[f'{app_label}.csv'] = csv_bytes
             comptes[app_label] = len(qs) if hasattr(qs, '__len__') else None
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.exception(
                 'export_registry: échec export bespoke %r (société %s).',
                 app_label, company.id)
@@ -250,7 +250,7 @@ def _emettre_export_reversibilite_declenche(run, user):
         export_reversibilite_declenche.send(
             sender=ExportReversibiliteRun, run=run, company=run.company,
             user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre export reversibilite declenche : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
@@ -328,7 +328,7 @@ def telecharger_export_reversibilite(request, token):
 
     try:
         resolu = signed_download.resoudre_lien(token)
-    except Exception:  # noqa: BLE001 — jamais une 500 sur un jeton KO
+    except Exception:  # noqa: BLE001 — jamais une 500 sur un jeton KO (D-ENF22-BLE001)
         logger.warning("telecharger export reversibilite : échec ignoré, comportement dégradé", exc_info=True)
         resolu = None
     if resolu is None:
@@ -339,7 +339,7 @@ def telecharger_export_reversibilite(request, token):
         client = _minio_client()
         obj = client.get_object(Bucket=bucket, Key=object_key)
         contenu = obj['Body'].read()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise Http404 from exc
     response = HttpResponse(contenu, content_type='application/zip')
     response['Content-Disposition'] = (

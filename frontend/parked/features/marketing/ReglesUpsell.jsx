@@ -31,7 +31,7 @@ export default function ReglesUpsell() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const setField = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))

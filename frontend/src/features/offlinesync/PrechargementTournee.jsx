@@ -11,11 +11,12 @@ import { readCache } from './readCache'
 import {
   doitPrecharger, prechargerTournee, dernierPrechargement,
 } from './prechargeMatinale'
+import { todayLocalIso } from '../../lib/dateLocale'
 
 export default function PrechargementTournee() {
   useEffect(() => {
     const maintenant = new Date()
-    const jour = maintenant.toISOString().slice(0, 10)
+    const jour = todayLocalIso(maintenant)
     const decision = doitPrecharger({
       enLigne: typeof navigator === 'undefined' ? true : navigator.onLine !== false,
       heure: maintenant.getHours(),

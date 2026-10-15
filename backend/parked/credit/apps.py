@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -21,4 +23,4 @@ class CreditConfig(AppConfig):
     def ready(self):
         # NTCRD9/31/33/34 — abonne les récepteurs internes (best-effort,
         # jamais bloquant) une fois l'app chargée.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

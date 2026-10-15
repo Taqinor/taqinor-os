@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_binaires_image as cbi  # noqa: E402
+import check_binaires_image as cbi  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 DOCKERFILE = ("FROM python:3.11\nRUN apt-get update && apt-get install -y --no-install-recommends \\\n"
               "    libcairo2 \\\n%s    && rm -rf /var/lib/apt/lists/*\n")

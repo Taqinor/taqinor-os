@@ -334,6 +334,18 @@ class PuissanceEnWattsTests(TestCase):
         # 150 < seuil 200 : lu tel quel (kW), jamais divisé par mille.
         self.assertEqual(self.lead.equip_piscine_pompe_kw, Decimal('150.00'))
 
+    def test_une_saisie_au_dela_de_100_kw_en_watts_est_refusee(self):
+        # ERR-ENF11-FUZZ-CRM — plafond PUBLIÉ de la saisie en watts (99 999,99) :
+        # au-delà, ``valeur / 1000`` dépasserait les 3 chiffres entiers du champ.
+        resp = self._patch(equip_clim_kw='99999')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.equip_clim_kw, Decimal('100.00'))
+        for valeur in ('123456', 1e9, 'Infinity'):
+            resp = self._patch(equip_clim_kw=valeur)
+            self.assertEqual(resp.status_code, 400, (valeur, resp.data))
+            self.assertIn('equip_clim_kw', resp.data)
+
     def test_vide_reste_inconnu_et_virgule_francaise_acceptee(self):
         resp = self._patch(equip_clim_kw=None, equip_chauffe_eau_kw='2,4')
         self.assertEqual(resp.status_code, 200, resp.data)

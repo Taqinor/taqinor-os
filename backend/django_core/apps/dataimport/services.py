@@ -376,7 +376,7 @@ def proposer_mapping_ia(target, en_tetes_non_mappes):
     try:
         res = get_provider('llm').complete(
             prompt=prompt, system=IA_MAPPING_SYSTEM, max_tokens=300)
-    except Exception:  # noqa: BLE001 — un échec IA ne casse jamais le dry-run.
+    except Exception:  # noqa: BLE001 — un échec IA ne casse jamais le dry-run (D-ENF22-BLE001)
         logger.debug('NTAI33 : proposition de mapping IA échouée',
                      exc_info=True)
         return {}
@@ -675,7 +675,7 @@ def _journaliser_maj(instance, company, user, modifications, filename):
             detail=f'{prefixe} « {filename} » : {resume}'[:2000],
             changes=[{'field': m['champ'], 'old': m['ancienne'],
                       'new': m['nouvelle']} for m in modifications])
-    except Exception:  # noqa: BLE001 — best-effort, ne jamais casser l'import
+    except Exception:  # noqa: BLE001 — best-effort, ne jamais casser l'import (D-ENF22-BLE001)
         logger.debug('audit import échoué', exc_info=True)
 
 

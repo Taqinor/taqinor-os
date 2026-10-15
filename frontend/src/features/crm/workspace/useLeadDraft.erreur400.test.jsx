@@ -79,6 +79,27 @@ describe('ALEA18 — autosave et refus 400', () => {
     expect(onFieldsSaved).toHaveBeenCalledWith(['gps_lat'])
   })
 
+  it('un refus d’ÉTAT (409, règle que le schéma ne dit pas) se lit comme un 400 : une seule requête, champ nommé', async () => {
+    // ERR-ENF11-FUZZ-CRM — « heure de fin avant l'heure de début » répond 409 avec
+    // les mêmes erreurs par champ : l'autosauvegarde ne doit pas réémettre en boucle.
+    crmApi.updateLead.mockImplementation(() => Promise.reject({
+      response: { status: 409, data: { heure_fin: ['« Heure de fin » : elle doit être après l’heure de début.'] } },
+    }))
+    const onFieldErrors = vi.fn()
+    const { result } = renderHook(() => useLeadDraft(LEAD, {
+      mode: 'edit', currentUserId: 42, onFieldErrors,
+    }))
+    act(() => { result.current.setField('heure_fin', '3') })
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+    expect(crmApi.updateLead).toHaveBeenCalledTimes(1)
+    expect(onFieldErrors).toHaveBeenCalledWith({
+      heure_fin: ['« Heure de fin » : elle doit être après l’heure de début.'],
+    })
+    expect(toast.error).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(crmApi.updateLead).toHaveBeenCalledTimes(1)
+  })
+
   it('« Réessayer » (flush forcé) reste possible sur une charge refusée', async () => {
     const { result } = renderHook(() => useLeadDraft(LEAD, { mode: 'edit', currentUserId: 42 }))
     act(() => { result.current.setField('gps_lat', '33.5731104') })

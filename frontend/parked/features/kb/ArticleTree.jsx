@@ -61,7 +61,7 @@ export default function ArticleTree({ onSelect, collapsedByDefault = true }) {
 
   useEffect(() => {
     if (!expanded || loaded) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-expand
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-expand (D-ENF22)
     setLoading(true)
     kbApi.arbre()
       .then((res) => setTree(Array.isArray(res.data) ? res.data : []))

@@ -23,6 +23,8 @@ exception d'``ezdxf`` (ou de simple décodage) est enveloppée dans
 """
 from __future__ import annotations
 
+
+import logging
 import io
 
 #: Garde-fou de taille (~5 Mo) — un DXF de toiture réel tient très large en
@@ -56,7 +58,8 @@ class DxfInvalide(ValueError):
 def _unite_document(doc):
     try:
         code = int(doc.header.get('$INSUNITS', 0) or 0)
-    except Exception:  # noqa: BLE001 — un en-tête bizarre ne doit rien casser
+    except Exception:  # noqa: BLE001 — un en-tête bizarre ne doit rien casser (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("dxf._unite_document : erreur ignorée (mode dégradé)", exc_info=True)
         return 'inconnu'
     return _UNITES_INSUNITS.get(code, 'inconnu')
 
@@ -107,7 +110,7 @@ def analyser_dxf(contenu: bytes) -> dict:
     try:
         flux = io.StringIO(contenu.decode('utf-8', errors='replace'))
         doc = ezdxf.read(flux)
-    except Exception as exc:  # noqa: BLE001 — fichier hostile : jamais un 500
+    except Exception as exc:
         raise DxfInvalide(
             "Ce fichier n'a pas pu être lu comme un DXF (export corrompu ou "
             "incompatible). Vérifiez qu'il s'agit bien d'un export DXF, pas "
@@ -126,7 +129,7 @@ def analyser_dxf(contenu: bytes) -> dict:
             sommets = _sommets_entite(entite)
             if len(sommets) > len(bucket['sommets']):
                 bucket['sommets'] = sommets
-    except Exception as exc:  # noqa: BLE001 — un DXF structurellement valide
+    except Exception as exc:
         # mais illisible en pratique (entité corrompue) reste un refus 400.
         raise DxfInvalide(
             "Ce fichier DXF n'a pas pu être parcouru jusqu'au bout — il est "

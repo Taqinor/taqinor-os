@@ -161,7 +161,7 @@ def _lecture_equipe(link, request):
     try:
         from apps.crm.services import requete_marquee_equipe
         return requete_marquee_equipe(getattr(link, 'company', None), request)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_lecture_equipe', exc_info=True)
         return False
 
@@ -236,7 +236,7 @@ def _tracer_ouverture_publique(link, request):
             token=getattr(link, 'token', ''),
             request=request,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_tracer_ouverture_publique', exc_info=True)
 
 
@@ -286,7 +286,7 @@ def _stamp_view(link):
             ).update(first_viewed_at=now)
         link.refresh_from_db(fields=['view_count', 'last_viewed_at', 'first_viewed_at'])
         return is_first
-    except Exception:  # noqa: BLE001 — best-effort, never break the public GET
+    except Exception:  # noqa: BLE001 — best-effort, never break the public GET (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_stamp_view', exc_info=True)
         return False
 
@@ -316,7 +316,7 @@ def _noter_si_version_remplacee(link):
             from apps.crm.services import noter_version_remplacee_ouverte
             noter_version_remplacee_ouverte(
                 devis.reference, lead, remplacee_par=remplacee_par)
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning("lecture_views._noter_si_version_remplacee : erreur ignorée (mode dégradé)", exc_info=True)
     return True
 
@@ -356,11 +356,11 @@ def _notify_first_open(link, request=None):
                 ip, appareil = (ip_de_requete(request),
                                 appareil_de_requete(request))
             notify_devis_opened(devis_ref, lead, ip=ip, appareil_id=appareil)
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_notify_first_open', exc_info=True)
     try:
         _notifier_variante_consultee(link)
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_notify_first_open', exc_info=True)
 
 
@@ -454,7 +454,7 @@ def _notify_open(link, request=None, *, is_first):
         notify_devis_opened(
             link.devis.reference, lead, ip=ip, appareil_id=appareil,
             reprise=True)
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_notify_open', exc_info=True)
 
 
@@ -530,7 +530,7 @@ def _remonter_signal_lecture_au_lead(link, *, friction_section='', resume=''):
             friction_section=friction_section, resume=resume,
             # ACRM11 — version remplacée : la note « ancienne version » seule.
             remplacee_par=_version_remplacee(devis))
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_remonter_signal_lecture_au_lead', exc_info=True)
 
 
@@ -657,7 +657,7 @@ def proposal_engagement(request, token):
             activity.log_devis_note(
                 link.devis, None,
                 f'Le client a commencé à lire la proposition en détail ({resume}).')
-        except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'proposal_engagement', exc_info=True)
         # CAD135 (audit L3 du 21/09/2026) — le signal remonte AUSSI au LEAD,
         # par le même chemin que « devis ouvert » : écrit dans l'historique du
@@ -673,7 +673,7 @@ def proposal_engagement(request, token):
                 f'Le client relit la section « {label} » de la proposition '
                 f'depuis {slot["visits"]} visites distinctes — signal de '
                 f'friction, un appel peut débloquer la décision.')
-        except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'proposal_engagement', exc_info=True)
         # CAD135 — « un appel peut débloquer la décision » ne sert à rien dans
         # un onglet que personne n'ouvre : le responsable est prévenu.
@@ -708,5 +708,5 @@ def _tracer_engagement_public(link, request, section, seconds):
             token=getattr(link, 'token', ''),
             duree_s=seconds, request=request,
         )
-    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_tracer_engagement_public', exc_info=True)

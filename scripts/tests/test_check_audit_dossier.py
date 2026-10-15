@@ -14,8 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_audit_dossier as cad  # noqa: E402
-import check_taches_cablage as ctc  # noqa: E402
+import check_audit_dossier as cad  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 COUT = "Coût : H0 S1 O1 F0 · jetons sous-agents ≈ 1,2 M · tâches 1."
 LIGNE = ("| C-ZZ-001 | P1.1 | C2 | S2 | `a/b.py::f` | observé → attendu | "

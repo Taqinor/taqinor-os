@@ -88,7 +88,7 @@ export default function NotationFinChantier() {
     return () => { cancelled = true }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   const calculer = async (notation) => {

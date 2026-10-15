@@ -684,7 +684,7 @@ def _site_du_calepinage(devis):
     try:
         from apps.calepinage.selectors import entree_electrique_du_devis
         return entree_electrique_du_devis(devis_id, company)
-    except Exception:  # noqa: BLE001 — cf. docstring
+    except Exception:  # noqa: BLE001 — cf. docstring (D-ENF22-BLE001)
         logger.warning(
             "ACAL165 : calepinage du devis %s illisible — forfaits appliqués",
             getattr(devis, "reference", "?"), exc_info=True)
@@ -1193,7 +1193,7 @@ def _artefact_rejouable(devis):
         # invalide donc explicitement : « ceci n'est pas utilisable, recalcule ».
         devis.electrical_design_hash = None
         rejoue = build_electrical_design(devis)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning(
             "L-1V : rejeu de la conception électrique impossible sur %s",
             getattr(devis, "reference", "?"), exc_info=True)
@@ -1408,7 +1408,7 @@ def rafraichir_conception_electrique_devis(devis):
                 MOTIF_NON_CONFORME % resultat.conformite.bloquants[0])
             return None
         return build_electrical_design(devis)
-    except Exception:  # noqa: BLE001 — une étude ratée n'empêche jamais un
+    except Exception:  # noqa: BLE001 — une étude ratée n'empêche jamais un (D-ENF22-BLE001)
         # enregistrement de devis/lignes (même contrat que les rafraîchisseurs
         # de ``services.py``).
         logger.warning(

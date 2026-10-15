@@ -39,7 +39,7 @@ def _kwc_lignes(devis):
     from apps.ventes.domain.scenario import puissance_kwc_du_devis
     try:
         return float(puissance_kwc_du_devis(devis) or 0)
-    except Exception:  # noqa: BLE001 — un devis illisible est signalé, pas fatal
+    except Exception:  # noqa: BLE001 — un devis illisible est signalé, pas fatal (D-ENF22-BLE001)
         logger.warning("acal_etudes_perimees_dry_run._kwc_lignes : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 

@@ -63,6 +63,7 @@ import { formatDate } from '../../lib/format'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useWakeLock from '../../hooks/useWakeLock'
+import { todayLocalIso } from '../../lib/dateLocale'
 
 // VX105 — clés de persistance de session (survit à un backgrounding suivi d'un
 // rechargement — appel entrant en chantier) : fiche ouverte + onglet visité.
@@ -115,7 +116,7 @@ const HORODATAGE_STATUT = [
  *    une intervention déjà « Terminée ») — reculer reste une action manuelle ;
  *  - rien si le statut est déjà celui déduit.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export function statutDerive(avant, apres) {
   if (!avant || !apres) return null
   let cible = null
@@ -133,7 +134,7 @@ export function statutDerive(avant, apres) {
  * le statut courant. C'est un ordre de LISTE, pas une règle métier : la vraie
  * garde reste `transition_block_reason` côté serveur (VX105).
  */
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export function statutsProposables(statut) {
   const r = interventionStatusRank(statut)
   return INTERVENTION_STATUSES.filter(
@@ -141,9 +142,7 @@ export function statutsProposables(statut) {
 }
 
 function todayISO() {
-  const d = new Date()
-  const tz = d.getTimezoneOffset() * 60000
-  return new Date(d - tz).toISOString().slice(0, 10)
+  return todayLocalIso()
 }
 
 // VX42 — Lien tel: nettoyé (chiffres et + initial), même convention que
@@ -540,7 +539,7 @@ const NEXT_ACTION = {
  * Tant que le compte de photos manquantes est INCONNU (champ non servi), on ne
  * suppose rien : la séquence historique s'applique.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export function prochaineAction(interv) {
   if (!interv) return null
   if (interv.statut === 'sur_site' && interv.photos_obligatoires_manquantes === 0) {

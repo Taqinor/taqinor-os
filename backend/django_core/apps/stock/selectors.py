@@ -3527,7 +3527,7 @@ def recherche_sans_accents_disponible():
             with connection.cursor() as curseur:
                 curseur.execute(_SQL_SONDE_SANS_ACCENTS)
                 disponible = bool(curseur.fetchone()[0])
-        except Exception:  # noqa: BLE001 — jamais bloquant pour une recherche
+        except Exception:  # noqa: BLE001 — jamais bloquant pour une recherche (D-ENF22-BLE001)
             logger.warning(
                 "selectors.recherche_sans_accents_disponible : erreur ignorée (mode dégradé)", exc_info=True)
             disponible = False
@@ -3538,7 +3538,7 @@ def recherche_sans_accents_disponible():
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.
-from .selectors_wms import (  # noqa: E402
+from .selectors_wms import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     classe_abc_produit,
     classes_abc_produits,
     comparer_tarifs_transporteurs,
@@ -3552,7 +3552,7 @@ from .selectors_wms import (  # noqa: E402
     tracabilite_produit,
 )
 # -- Groupe NTWMS (vague 3) -- pilotage d'entrepot (cockpit, capacite) --
-from .selectors_entrepot import (  # noqa: E402
+from .selectors_entrepot import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     cockpit_entrepot,
     remplissage_par_zone,
     simuler_capacite,
@@ -3560,7 +3560,7 @@ from .selectors_entrepot import (  # noqa: E402
     zones_en_surcapacite,
 )
 # -- Groupe NTSCM -- performance fournisseur (OTIF, delais, TCO) --
-from .selectors_fournisseur import (  # noqa: E402
+from .selectors_fournisseur import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     comparer_tco_fournisseurs,
     cout_total_acquisition,
     delai_mesure_vs_annonce,
@@ -3568,7 +3568,7 @@ from .selectors_fournisseur import (  # noqa: E402
     point_de_commande_avec_delai_reel,
 )
 # -- SPL114 -- lecture fiche technique (PV6 / CALX109), déplacée (move only) --
-from .selectors_fiche_technique import (  # noqa: E402
+from .selectors_fiche_technique import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     dimensions_de_pose,
     kit_from_produit,
     produits_modules_qs,

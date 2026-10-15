@@ -65,7 +65,7 @@ def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
     try:
         total_net_option = option_totaux(devis)['ht']
         montant = (total_net_option * taux) / 100
-    except Exception:  # noqa: BLE001 — jamais bloquer l'acceptation du devis
+    except Exception:  # noqa: BLE001 — jamais bloquer l'acceptation du devis (D-ENF22-BLE001)
         logger.exception('NTCRM22 — échec calcul commission deal %s', deal.pk)
         return
     deal.montant_commission_du = montant
@@ -148,7 +148,7 @@ def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
         from apps.ventes.services import installation_share_link
         with transaction.atomic():
             _, url = installation_share_link(devis)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CRX38 : lien de parrainage indisponible pour le devis %s',
             getattr(devis, 'reference', '?'), exc_info=True)
@@ -189,7 +189,7 @@ def _proposer_lien_parrainage_on_devis_accepted(sender, devis, user,
                 link=lien_interne,
                 company=company,
             )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'CRX38 : notification de lien de parrainage échouée '
                 'pour le devis %s', reference, exc_info=True)
@@ -227,7 +227,7 @@ def _suggerer_graine_pub_parrainage(parrainage, user):
             parrain_localisation=getattr(parrain, 'adresse', None))
         log_note(parrain, user, suggestion['reason_fr'],
                  company=parrainage.company)
-    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais la conversion
+    except Exception:  # noqa: BLE001 — best-effort, ne casse jamais la conversion (D-ENF22-BLE001)
         logger.warning(
             'PUB65 : suggestion de graine pub échouée pour parrainage #%s',
             getattr(parrainage, 'pk', '?'), exc_info=True)
@@ -241,7 +241,7 @@ def _generer_playbook_progress_on_stage_change(sender, lead, old_stage,
     de stage déjà actée par l'émetteur."""
     try:
         generer_playbook_progress(lead, new_stage)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'NTCRM12: génération de la progression playbook échouée '
             'pour le lead #%s', getattr(lead, 'pk', '?'), exc_info=True)

@@ -148,7 +148,7 @@ class CookieJWTAuthentication(BaseAuthentication):
         claimed = None
         try:
             claimed = validated.get(ACTIVE_COMPANY_CLAIM)
-        except Exception:  # noqa: BLE001 — jeton sans le claim (legacy/for_user)
+        except Exception:  # noqa: BLE001 — jeton sans le claim (legacy/for_user) (D-ENF22-BLE001)
             logger.debug("cookie_auth : claim de société active illisible", exc_info=True)
             claimed = None
         if claimed is not None and claimed != user.company_id:

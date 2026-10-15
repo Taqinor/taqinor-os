@@ -82,7 +82,7 @@ def _sur_lead_created(sender, lead=None, company=None, **kwargs):
             _identifiants(lead),
             'Nouveau lead créé',
             lien=f'/crm/leads/{getattr(lead, "pk", "")}')
-    except Exception:  # noqa: BLE001 — jamais bloquant pour la création
+    except Exception:  # noqa: BLE001 — jamais bloquant pour la création (D-ENF22-BLE001)
         logger.warning('NTGRC9 : alerte DPO (lead) échouée', exc_info=True)
 
 
@@ -94,5 +94,5 @@ def _sur_devis_accepted(sender, devis=None, **kwargs):
         _alerter_dpo(
             company, _identifiants(cible), 'Devis accepté',
             lien=f'/ventes/devis/{getattr(devis, "pk", "")}')
-    except Exception:  # noqa: BLE001 — jamais bloquant pour l'acceptation
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'acceptation (D-ENF22-BLE001)
         logger.warning('NTGRC9 : alerte DPO (devis) échouée', exc_info=True)

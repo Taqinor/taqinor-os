@@ -120,12 +120,12 @@ def plafond_toit_du_devis(devis):
         _cible_panneaux_du_layout, extract_roof_config)
     try:
         toiture = extract_roof_config(layout) or {}
-    except Exception:  # noqa: BLE001 — un layout illisible n'est pas un plafond
+    except Exception:  # noqa: BLE001 — un layout illisible n'est pas un plafond (D-ENF22-BLE001)
         logger.warning("dimensionnement_devis.plafond_toit_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         toiture = {}
     try:
         cible = int(_cible_panneaux_du_layout(layout, toiture) or 0)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("dimensionnement_devis.plafond_toit_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     return cible if cible > 0 else None
@@ -212,13 +212,13 @@ def plafond_physique_du_devis(devis):
                 if part:
                     total += int(part)
             plafond = total or None
-    except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas un
+    except Exception:  # noqa: BLE001 — une géométrie illisible n'est pas un (D-ENF22-BLE001)
         # plafond : on n'en publie aucun.
         logger.warning('plafond physique du toit indisponible', exc_info=True)
         plafond = None
     try:
         setattr(devis, _MEMO_PLAFOND_PHYSIQUE, (plafond,))
-    except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le
+    except Exception:  # noqa: BLE001 — un objet non mutable ne coûte que le (D-ENF22-BLE001)
         # mémo, jamais le résultat.
         logger.warning(
             "dimensionnement_devis.plafond_physique_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
@@ -363,7 +363,7 @@ def lignes_vendues(devis, option=None):
     devis non sauvegardé n'a pas de lignes)."""
     try:
         lignes = list(devis.lignes.all())
-    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+    except Exception:  # noqa: BLE001 — devis détaché / sans lignes (D-ENF22-BLE001)
         logger.warning("dimensionnement_devis.lignes_vendues : erreur ignorée (mode dégradé)", exc_info=True)
         return []
     from apps.ventes.domain.regles_calcul import calcul_corrige
@@ -427,7 +427,7 @@ def comptes_panneaux_valides(devis, option=None):
 
     try:
         lignes = list(devis.lignes.all())
-    except Exception:  # noqa: BLE001 — devis détaché / sans lignes
+    except Exception:  # noqa: BLE001 — devis détaché / sans lignes (D-ENF22-BLE001)
         logger.warning(
             "dimensionnement_devis.comptes_panneaux_valides : erreur ignorée (mode dégradé)", exc_info=True)
         return set()
@@ -495,7 +495,7 @@ def facteur_remise_du_devis(devis) -> float:
             for ligne in lignes)
         globale = _num(getattr(devis, 'remise_globale', 0))
         facteur = (apres_lignes / brut) * (1.0 - globale / 100.0)
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran (D-ENF22-BLE001)
         logger.warning('facteur de remise illisible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return 1.0
@@ -567,7 +567,7 @@ def capacite_batterie_des_lignes(devis, lignes=None):
                 continue
             total += _num(capacite_utile_batterie(
                 getattr(ligne, 'produit', None), designation)) * quantite
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran (D-ENF22-BLE001)
         logger.warning('capacité batterie des lignes illisible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
@@ -632,7 +632,7 @@ def module_batterie_du_devis(devis):
                 (c for c in capacites if abs(c - nominal) < 1.0), nominal)
             capacites[calibre] = (
                 capacites.get(calibre, 0.0) + nominal * quantite)
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran (D-ENF22-BLE001)
         logger.warning('module batterie du devis illisible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
@@ -732,7 +732,7 @@ def echelle_paliers_batterie(devis):
     """
     try:
         return _echelle_paliers_batterie(devis)
-    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais un écran (D-ENF22-BLE001)
         logger.warning('échelle de paliers batterie indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return []
@@ -818,7 +818,7 @@ def _echelle_paliers_batterie(devis):
             return composer_sonde(
                 sonde_devis, panneaux, avec_batterie=True, cible_kwh=cible,
                 module_kwh=module_devis, avertissements=journal)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('composition impossible à %s panneaux / %s kWh',
                            panneaux, cible, exc_info=True)
             return None
@@ -1074,7 +1074,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
             cout, economie, stockage=True,
             cout_onduleur_ttc=(round(onduleur, 2) if onduleur > 0
                                else None))['payback_years']
-    except Exception:  # noqa: BLE001 — un payback indisponible s'omet
+    except Exception:  # noqa: BLE001 — un payback indisponible s'omet (D-ENF22-BLE001)
         logger.warning("dimensionnement_devis._payback_publie_palier : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -1083,7 +1083,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
 # EN BAS À DESSEIN (voir la docstring du module) : cet import et le bloc de
 # ré-exports de ``dimensionnement.py`` ferment un cycle que seule cette
 # position rend sûre dans les deux ordres de chargement. Ne pas le remonter.
-from apps.ventes.dimensionnement import (  # noqa: E402
+from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     FACTEUR_MAX_FALAISE,
     MAX_PALIERS_STOCKAGE,
     MAX_PANNEAUX_BALAYAGE,

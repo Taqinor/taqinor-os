@@ -182,7 +182,7 @@ def attach_capture_photo(lead, data: dict):
         if capture_ocr_enabled():
             _run_capture_ocr(lead, content, filename, meta.get('mime', ''))
         return attachment
-    except Exception as exc:  # noqa: BLE001 — jamais bloquer le webhook
+    except Exception as exc:  # noqa: BLE001 — jamais bloquer le webhook (D-ENF22-BLE001)
         logger.warning(
             'attach_capture_photo: échec (lead #%s) : %s',
             getattr(lead, 'pk', None), exc)
@@ -240,7 +240,7 @@ def _run_capture_ocr(lead, content: bytes, filename: str, mime: str) -> None:
                     else 'tranche « %s »' % lead.tranche_onee
                     for f in updates),
             )
-    except Exception as exc:  # noqa: BLE001 — l'OCR ne casse jamais la capture
+    except Exception as exc:  # noqa: BLE001 — l'OCR ne casse jamais la capture (D-ENF22-BLE001)
         logger.info('capture OCR: échec silencieux (lead #%s) : %s',
                     getattr(lead, 'pk', None), exc)
 

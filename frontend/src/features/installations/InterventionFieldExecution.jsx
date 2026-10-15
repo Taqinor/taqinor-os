@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import savApi from '../../api/savApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, Badge, Spinner, Checkbox, Progress, toast,
 } from '../../ui'
@@ -265,18 +266,21 @@ function ClientInfoPanel({ intervention }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     if (!installationId) { setLoading(false); return undefined }
     let alive = true
     setLoading(true)
     Promise.allSettled([
-      savApi.getEquipements({ installation: installationId }),
-      savApi.getTickets({ installation: installationId, ouvert: 'tous' }),
+      fetchAllPages((page, { page_size: pageSize } = {}) =>
+        savApi.getEquipements({ installation: installationId, page, page_size: pageSize }).then((r) => r.data)),
+      fetchAllPages((page, { page_size: pageSize } = {}) =>
+        savApi.getTickets({ installation: installationId, ouvert: 'tous', page, page_size: pageSize }).then((r) => r.data)),
       installationsApi.getInstallation(installationId),
     ]).then(([eq, tk, inst]) => {
       if (!alive) return
-      if (eq.status === 'fulfilled') setEquipements(eq.value.data?.results ?? eq.value.data ?? [])
-      if (tk.status === 'fulfilled') setTickets(tk.value.data?.results ?? tk.value.data ?? [])
+      const enListe = (rows) => (Array.isArray(rows) ? rows : (rows?.results ?? []))
+      if (eq.status === 'fulfilled') setEquipements(enListe(eq.value))
+      if (tk.status === 'fulfilled') setTickets(enListe(tk.value))
       if (inst.status === 'fulfilled') setDateMes(inst.value.data?.date_mise_en_service ?? null)
     }).finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }

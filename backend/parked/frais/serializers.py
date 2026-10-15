@@ -7,7 +7,7 @@ anciennes routes ``/api/django/compta/…`` servent les MÊMES classes.
 Le corps sera relogé ici en même temps que celui des vues.
 """
 
-from apps.compta.serializers import (  # noqa: F401
+from apps.compta.serializers import (
     BaremeIndemniteSerializer,
     IndemniteChantierSerializer,
     NoteFraisSerializer,

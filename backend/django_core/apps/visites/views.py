@@ -180,7 +180,7 @@ _CATEGORIES_TOUS_GABARITS = _codes_tous_gabarits(
 
 class MesuresSerializer(serializers.Serializer):
     categorie = serializers.ChoiceField(choices=_CATEGORIES_TOUS_GABARITS)
-    valeurs = serializers.DictField()
+    valeurs = serializers.DictField(help_text='{code du champ: valeur} ; clé inconnue de la catégorie : 409.')
 
 
 class _CoinsCalageSerializer(serializers.Serializer):
@@ -527,10 +527,15 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             visite, categorie, request.data.get('valeurs'))
         if erreurs:
             # Une catégorie de l'union des gabarits mais étrangère à celui de
-            # CETTE visite est un ÉTAT : 409 ; le reste (champ, valeur) : 400.
+            # CETTE visite, ou des clés absentes de la catégorie (le
+            # vocabulaire dépend du gabarit et du contexte de LA visite, que
+            # le schéma ne peut pas énumérer) : un ÉTAT, 409 ; une valeur
+            # refusée pour un champ connu : 400.
             etat = str(erreurs.get('categorie', '')).startswith(
                 services.CATEGORIE_MESURES_INCONNUE) and (
-                categorie in _CATEGORIES_TOUS_GABARITS)
+                categorie in _CATEGORIES_TOUS_GABARITS) or all(
+                str(message).startswith(services.CHAMP_MESURE_INCONNU)
+                for message in erreurs.values())
             return Response({'erreurs': erreurs}, status=(
                 status.HTTP_409_CONFLICT if etat
                 else status.HTTP_400_BAD_REQUEST))

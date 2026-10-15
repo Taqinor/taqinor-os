@@ -166,7 +166,7 @@ def usage_summary(company):
     ):
         try:
             res = calc()
-        except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres
+        except Exception:  # noqa: BLE001 — best-effort, une source KO n'en bloque pas d'autres (D-ENF22-BLE001)
             logger.warning("usage summary : échec ignoré, comportement dégradé", exc_info=True)
             res = None
         if res is not None:

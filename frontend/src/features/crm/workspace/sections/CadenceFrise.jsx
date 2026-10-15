@@ -14,6 +14,7 @@ import { formatDate } from '../../../../lib/format'
 import { toastError } from '../../../../lib/toast'
 import RelanceEtapeRow from '../../relances/RelanceEtapeRow'
 import ToucheMessageDialog from '../../relances/ToucheMessageDialog'
+import { traiterGesteTouche } from '../../relances/refusGeste'
 import { STATUT_VISITE_TONE, visitePassee } from '../../relances/visiteGuidance'
 
 const CADENCE_LABELS = {
@@ -167,7 +168,7 @@ export default function CadenceFrise({
         - (b.due_at ? new Date(b.due_at).getTime() : Infinity))[0] ?? null
     onEtapes(ouvertes.filter((e) => e.overdue || (prochaine && e.id === prochaine.id))
       .map((e) => ({ ...e, enAvance: Boolean(e.due_date) && e.due_date > aujourdhuiLu })))
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `onEtapes` est une fonction du parent recréée à chaque rendu ; la lecture ne dépend que des touches lues.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `onEtapes` est une fonction du parent recréée à chaque rendu ; la lecture ne dépend que des touches lues. (D-ENF22)
   }, [etapes, leadLu, leadId])
 
   useEffect(() => {
@@ -189,34 +190,14 @@ export default function CadenceFrise({
     return () => { active = false }
   }, [leadId, reloadToken])
 
-  const traiter = async (id, action, payload) => {
-    setBusyId(id)
-    try {
-      let res
-      if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
-      else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
-      else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
-      onChanged?.()
-      return res?.data
-    } catch (err) {
-      // CKP4 — voir `RelancesDuJourWidget.jsx` : un canal APPEL sans issue
-      // (400 `{erreurs: {outcome}}`) s'affiche SOUS le contrôle, pas un toast.
-      // SUIVI-REFUS — idem pour Sauter et Reporter, et pour tout refus NOMMÉ
-      // (400 `erreurs`/`detail`, 403 rôle) : l'erreur est relancée à la ligne,
-      // qui l'affiche sous le geste ; le toast ne reste que pour réseau/5xx.
-      // Sur un refus, la frise n'est PAS relue (`onChanged` n'est appelé
-      // qu'après un succès) : la ligne garde son panneau ouvert.
-      const statut = err?.response?.status
-      const donnees = err?.response?.data
-      const refusNomme = statut === 403 || (statut === 400
-        && (Object.keys(donnees?.erreurs ?? {}).length > 0
-          || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
-      if (!refusNomme) toastError('Action impossible pour le moment.')
-      throw err
-    } finally {
-      setBusyId(null)
-    }
-  }
+  // CKP4 / SUIVI-REFUS — voir `traiterGesteTouche` (`relances/refusGeste.js`) :
+  // un refus NOMMÉ s'affiche sous le geste, le toast ne reste que pour
+  // réseau/5xx. Sur un refus, la frise n'est PAS relue (`onChanged` n'est
+  // appelé qu'après un succès) : la ligne garde son panneau ouvert.
+  const traiter = (id, action, payload) => traiterGesteTouche({
+    action, id, payload, setBusyId,
+    surSucces: () => onChanged?.(),
+  })
 
   // RLC1 — le retour arrière d'une touche traitée par erreur. Le serveur
   // tranche seul (fenêtre 24 h, effets encore défaisables) : ici on relaie son

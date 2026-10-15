@@ -89,7 +89,7 @@ def backtest_rule(policy, *, now=None, days=DEFAULT_BACKTEST_DAYS, config=None):
             findings = evaluator(
                 policy.company, policy, template, now=as_of,
                 config=config) or []
-        except Exception:  # noqa: BLE001 — un jour en échec n'arrête pas le rejeu
+        except Exception:  # noqa: BLE001 — un jour en échec n'arrête pas le rejeu (D-ENF22-BLE001)
             logger.warning(
                 'rule_backtest: échec rejeu règle=%s jour=%s',
                 policy.template_key, day, exc_info=True)

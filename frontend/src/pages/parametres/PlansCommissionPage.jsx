@@ -89,7 +89,7 @@ export default function PlansCommissionPage() {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
     charger()
   }, [charger])
 

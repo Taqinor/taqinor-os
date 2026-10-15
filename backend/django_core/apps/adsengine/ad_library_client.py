@@ -84,7 +84,7 @@ class _FiltreSecretsHttpx(logging.Filter):
     def filter(self, record):
         try:
             message = record.getMessage()
-        except Exception:  # noqa: BLE001 — message illisible : on le laisse
+        except Exception:  # noqa: BLE001 — message illisible : on le laisse (D-ENF22-BLE001)
             logger.warning(
                 "ad_library_client._FiltreSecretsHttpx.filter : erreur ignorée (mode dégradé)", exc_info=True)
             return True

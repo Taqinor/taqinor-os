@@ -14,7 +14,7 @@ export function useEquipeMembreIds(equipeId) {
   const [membreIds, setMembreIds] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise le filtre quand `equipeId` est vidé
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialise le filtre quand `equipeId` est vidé (D-ENF22)
     if (!equipeId) { setMembreIds(null); return undefined }
     let alive = true
     crmApi.getEquipes()

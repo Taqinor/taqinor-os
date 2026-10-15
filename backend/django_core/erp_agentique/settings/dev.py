@@ -1,9 +1,10 @@
 """
 Development-specific settings.
 """
+import importlib
 import logging
 
-from .base import *  # noqa: F401, F403
+from .base import *  # noqa: F403 — réglages hérités de base.py, patron Django (D-ENF22)
 
 DEBUG = True
 
@@ -18,10 +19,10 @@ DEBUG = True
 # prod/CI-tests (settings.prod ne l'importe jamais, et le paquet n'est de
 # toute façon pas dans requirements.txt).
 try:
-    import nplusone.ext.django  # noqa: F401
+    importlib.import_module('nplusone.ext.django')
 
-    INSTALLED_APPS = list(INSTALLED_APPS) + ['nplusone.ext.django']  # noqa: F405
-    MIDDLEWARE = list(MIDDLEWARE) + [  # noqa: F405
+    INSTALLED_APPS = list(INSTALLED_APPS) + ['nplusone.ext.django']  # noqa: F405 — hérité de base.py (D-ENF22)
+    MIDDLEWARE = list(MIDDLEWARE) + [  # noqa: F405 — hérité de base.py (D-ENF22)
         'nplusone.ext.django.NPlusOneMiddleware',
     ]
     NPLUSONE_RAISE = False

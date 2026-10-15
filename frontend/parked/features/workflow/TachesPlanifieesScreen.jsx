@@ -44,7 +44,7 @@ export default function TachesPlanifieesScreen() {
     } finally {
       setRunningTask(null)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [runningTask])
 
   const columns = useMemo(() => [

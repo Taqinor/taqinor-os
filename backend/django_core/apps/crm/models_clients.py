@@ -240,8 +240,9 @@ class SoumissionLeadPartenaire(models.Model):
         verbose_name='Société',
     )
     partenaire = models.ForeignKey(
+        # on_delete: SoumissionLeadPartenaire est le détail de Partenaire — n'existe pas sans lui
         Partenaire,
-        on_delete=models.CASCADE,  # on_delete: SoumissionLeadPartenaire est le détail de Partenaire — n'existe pas sans lui
+        on_delete=models.CASCADE,
         related_name='soumissions',
         verbose_name='Partenaire',
     )
@@ -339,10 +340,13 @@ class SalleVente(TenantModel):
 
     ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
     l'identique (related_name + nullabilité historiques)."""
-    company = models.ForeignKey(  # on_delete: salle de vente 100 % fille du tenant — la purge d'une société doit emporter ses salles (et leurs jetons d'accès publics).
+    company = models.ForeignKey(
+        # on_delete: salle de vente 100 % fille du tenant — la purge d'une société doit emporter ses salles
+        # (et leurs jetons d'accès publics).
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
-    lead = models.ForeignKey(  # on_delete: la salle n'existe que pour présenter CE lead ; sans lui elle n'a plus d'objet.
+    lead = models.ForeignKey(
+        # on_delete: la salle n'existe que pour présenter CE lead ; sans lui elle n'a plus d'objet.
         'crm.Lead', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
     client = models.ForeignKey(  # on_delete: idem lead — espace de vente rattaché à ce client, sans existence propre.
@@ -450,7 +454,9 @@ class SalleVenteVue(models.Model):
 
     Une entrée par visite (timestamp + IP HACHÉE — jamais l'IP en clair,
     aucune autre PII). Alimente le compteur/dernière-vue de NTCRM19."""
-    salle = models.ForeignKey(  # on_delete: trace de visite d'une salle ; la salle supprimée, la trace n'est plus rattachable (et ne doit pas survivre).
+    salle = models.ForeignKey(
+        # on_delete: trace de visite d'une salle ; la salle supprimée, la trace n'est plus rattachable (et ne doit pas
+        # survivre).
         SalleVente, on_delete=models.CASCADE, related_name='vues')
     ip_hash = models.CharField(max_length=64, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -568,9 +574,11 @@ class DealEnregistre(TenantModel):
     company = models.ForeignKey(  # on_delete: enregistrement de deal 100 % fille du tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='deals_enregistres')
-    apporteur = models.ForeignKey(  # on_delete: l'enregistrement matérialise l'antériorité DE CET apporteur ; sans lui il n'a plus de titulaire.
+    apporteur = models.ForeignKey(
+        # on_delete: l'enregistrement matérialise l'antériorité DE CET apporteur ; sans lui il n'a plus de titulaire.
         Apporteur, on_delete=models.CASCADE, related_name='deals')
-    lead = models.OneToOneField(  # on_delete: 1-1 avec le lead enregistré ; le lead disparu, la réservation d'antériorité n'a plus d'objet.
+    lead = models.OneToOneField(
+        # on_delete: 1-1 avec le lead enregistré ; le lead disparu, la réservation d'antériorité n'a plus d'objet.
         'crm.Lead', on_delete=models.CASCADE, related_name='deal_enregistre')
     date_enregistrement = models.DateTimeField(auto_now_add=True)
     statut = models.CharField(
@@ -1079,7 +1087,8 @@ class Parrainage(models.Model):
         RECOMPENSE_VERSEE = 'recompense_versee', 'Récompense versée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='parrainages')
     parrain = models.ForeignKey(
         'crm.Client', on_delete=models.PROTECT,
@@ -1164,8 +1173,9 @@ class ObjectifCommercial(models.Model):
     )
     # Responsable optionnel — NULL = objectif d'équipe global.
     owner = models.ForeignKey(
+        # on_delete: objectif attribué à un commercial — l'objectif reste si l'utilisateur est supprimé
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,  # on_delete: objectif attribué à un commercial — l'objectif reste si l'utilisateur est supprimé
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='crm_objectifs',
@@ -1337,7 +1347,8 @@ class PlanActivite(models.Model):
     matérialisée en ``records.Activity`` sur le lead cible.
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='plans_activite')
     nom = models.CharField(max_length=120)
     actif = models.BooleanField(default=True)
@@ -1361,7 +1372,10 @@ class EtapePlanActivite(models.Model):
     même), avec un résumé par défaut et un assigné par défaut optionnel
     (owner du lead si vide, sinon un utilisateur fixe)."""
     plan = models.ForeignKey(
-        PlanActivite, on_delete=models.CASCADE, related_name='etapes')  # on_delete: historique/chatter de PlanActivite — suit son objet
+        # on_delete: historique/chatter de PlanActivite — suit son objet
+        PlanActivite,
+        on_delete=models.CASCADE,
+        related_name='etapes')
     ordre = models.PositiveIntegerField(default=0)
     activity_type = models.ForeignKey(
         'records.ActivityType', on_delete=models.PROTECT,
@@ -1397,11 +1411,13 @@ class EquipeCommerciale(models.Model):
     partout ailleurs, seul le dashboard « Mes équipes » l'ignore).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='equipes_commerciales')
     nom = models.CharField(max_length=120)
     responsable = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: chef d'équipe informatif — l'équipe survit à son départ
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        # on_delete: chef d'équipe informatif — l'équipe survit à son départ
         null=True, blank=True, related_name='equipes_dirigees')
     membres = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name='equipes_commerciales')

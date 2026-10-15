@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -23,4 +25,4 @@ class RhConfig(AppConfig):
         # ARC19 — miroir one-way (interne) rh.DossierEmploye → répertoire
         # unifié tiers.Tiers (l'import câble le récepteur post_save ; pas de
         # rôle commercial, pas de RIB — voir tiers_bridge).
-        from . import tiers_bridge  # noqa: F401
+        import_module(f'{self.name}.tiers_bridge')

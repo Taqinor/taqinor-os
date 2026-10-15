@@ -7,14 +7,18 @@ un champ requis). Le moteur de devis (règle #4) n'est pas touché.
 """
 from decimal import Decimal
 
+from django.core.exceptions import ValidationError as _ErreurDjango
+from django.core.validators import RegexValidator as _RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
 
 from core.champs_stricts import (
-    BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, EntierStrict,
+    BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, DecimalStricte,
+    EntierStrict,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.parseurs import ChoixDocumente
 from ..models import Paiement
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
@@ -28,6 +32,15 @@ from ..serializers_facturation import (
 
 def _ser(name, fields, **kwargs):
     return inline_serializer(name, fields, **kwargs)
+
+
+class _MotifEntier(_RegexValidator):
+    """CI #997 fuzz — ``RegexValidator`` PUBLIÉ tel quel mais appliqué en
+    ``fullmatch`` : ``$`` laisserait passer un saut de ligne final."""
+
+    def __call__(self, value):
+        if not isinstance(value, str) or not self.regex.fullmatch(value):
+            raise _ErreurDjango(self.message, code=self.code)
 
 
 # ---------------------------------------------------------------- devis
@@ -434,7 +447,11 @@ CompositionRequest = {
             'nb_panneaux': {'type': 'integer', 'minimum': 1},
             'panel_watt': {'type': 'number', 'exclusiveMinimum': True,
                            'minimum': 0},
-            'scenario': {'type': 'string'},
+            # CI #997 fuzz — les scénarios que la composition sait servir
+            # (``creation_auto.SCENARIOS_DEMANDABLES`` ; vide = les deux) :
+            # un autre texte était « conforme » puis refusé en 422.
+            'scenario': {'type': 'string',
+                         'enum': ['', 'sans', 'avec', 'les_deux']},
             'structure_produit_id': {'type': 'integer', 'nullable': True},
             'structure_type': {'type': 'string'},
             'taux_tva': {'type': 'number', 'minimum': 0, 'maximum': 100},
@@ -471,19 +488,52 @@ ErreurComposition = _ser('DevisErreurComposition', {
     'field': s.CharField(required=False, allow_null=True),
 })
 
+
+class NombreStrict(s.FloatField):
+    """CI #997 fuzz — nombre JSON RÉEL (``"5"`` et ``true`` étaient lus par
+    ``float()``), fini."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+def _pourcent_souple(**kwargs):
+    """Pourcentage 0-100 à 2 décimales, CHAÎNE (l'écran envoie ``"0"``) ou
+    NOMBRE JSON arrondi au centième (``DecimalSouple``), publié par LE motif
+    de la remise d'en-tête (``conditions_ci.MOTIF_REMISE``, ``-0`` compris) :
+    la règle de ``domain/bornes.pourcentage_saisi``, enfin publiée."""
+    from ..domain.conditions_ci import MOTIF_REMISE, _decimal_borne
+    classe = extend_schema_field(_decimal_borne(
+        MOTIF_REMISE, 100, nullable=True))(
+        type('PourcentSouple', (DecimalSouple,), {}))
+    return classe(max_digits=5, decimal_places=2,
+                  min_value=Decimal('0'), max_value=Decimal('100'),
+                  required=False, allow_null=True, **kwargs)
+
+
 AutoDevisRequest = _ser('DevisAutoRequest', {
-    'lead': s.IntegerField(required=False, allow_null=True),
-    'client': s.IntegerField(required=False, allow_null=True),
-    'target_kwc': s.FloatField(required=False, allow_null=True),
-    'scenario': s.CharField(required=False, allow_blank=True,
-                            allow_null=True),
+    # CI #997 fuzz — corps validé tel que publié (la vue le relisait à la
+    # main) ; « un lead OU un client » publié (``CORPS_LEAD_OU_CLIENT``).
+    'lead': EntierStrict(required=False, allow_null=True, min_value=1),
+    'client': EntierStrict(required=False, allow_null=True, min_value=1),
+    'target_kwc': NombreStrict(required=False, allow_null=True),
+    'scenario': ChaineStricte(required=False, allow_blank=True,
+                              allow_null=True),
     'etude_params': s.DictField(required=False, allow_null=True),
-    'taux_tva': s.FloatField(required=False, allow_null=True),
-    'remise_globale': s.FloatField(required=False, allow_null=True),
-    'structure_produit_id': s.IntegerField(required=False, allow_null=True),
-    'structure_type': s.CharField(required=False, allow_blank=True,
-                                  allow_null=True),
+    'taux_tva': _pourcent_souple(),
+    'remise_globale': _pourcent_souple(),
+    'structure_produit_id': EntierStrict(required=False, allow_null=True),
+    'structure_type': ChaineStricte(required=False, allow_blank=True,
+                                    allow_null=True),
 })
+#: CI #997 fuzz — un devis naît d'un LEAD ou d'un CLIENT (« Un client ou un
+#: lead est requis. ») : règle publiée sur ``POST devis/`` et ``devis/auto/``.
+CORPS_LEAD_OU_CLIENT = corps_resserre({'anyOf': [
+    {'required': ['lead'], 'properties': {'lead': {'type': 'integer'}}},
+    {'required': ['client'], 'properties': {'client': {'type': 'integer'}}},
+]})
 AutoDevisResponse = _ser('DevisAutoResponse', {
     'id': s.IntegerField(),
     'reference': s.CharField(),
@@ -525,7 +575,9 @@ ErreurFromLayout = _ser('DevisErreurFromLayout', {
 #: ``roof_layout`` : document de conception 3D (AreaRecord[] + result +
 #: renderPlan) — objet libre à clés non préfixées ``_`` (cf.
 #: ``resynchronisation._sans_cles_privees``).
-LayoutRequest = {'application/json': {'type': 'object',
+#: CI #997 fuzz — un layout VIDE (``{}``) n'est pas un layout (« Layout
+#: manquant ») : au moins une clé, publiée.
+LayoutRequest = {'application/json': {'type': 'object', 'minProperties': 1,
                                       'additionalProperties': True}}
 LayoutResponse = _ser('DevisLayoutResponse', {
     'roof_layout': s.JSONField(allow_null=True),
@@ -566,6 +618,24 @@ RoofImageRequest = {
         'required': ['image'],
     },
 }
+#: PV47 — réponse de ``ajouter-boq-electrique`` (``domain/bordereau``) :
+#: ``{creees, lignes, manques, deja_presentes}``, clés toujours présentes.
+AjouterBoqResponse = _ser('DevisAjouterBoqResponse', {
+    'creees': s.IntegerField(),
+    'lignes': s.ListField(child=_ser('DevisBoqLigneCreee', {
+        'designation': s.CharField(),
+        'produit': s.IntegerField(allow_null=True),
+        'quantite': s.FloatField(allow_null=True),
+        'type_ligne': s.CharField(),
+        'a_chiffrer': s.BooleanField(),
+    })),
+    'manques': s.ListField(child=_ser('DevisBoqManque', {
+        'designation': s.CharField(),
+        'quantite': s.FloatField(),
+        'spec': s.JSONField(),
+    })),
+    'deja_presentes': s.ListField(child=s.CharField()),
+})
 RoofImageResponse = _ser('DevisRoofImageResponse', {
     'roof_image': s.CharField(),
     'url': s.CharField(),
@@ -809,8 +879,24 @@ ErreurEconomie = _ser('DevisErreurEconomie', {
 })
 
 # --------------------------------------------------------------- facturation
+#: CI #997 fuzz — un paiement DÉJÀ reçu (« Facturer », 0 à 5) publié tel que
+#: ``domain/facturation_ops.valider_paiements_saisis`` le lit : montant
+#: décimal-chaîne > 0 à 2 décimales au plus (10 chiffres entiers, colonne
+#: 12,2), date ``AAAA-MM-JJ``, mode connu, référence de 120 signes au plus.
+#: Une date FUTURE est un refus d'état (dépend du jour) : 409.
+MOTIF_MONTANT_SAISI = (
+    r'^(?:[1-9][0-9]{0,9}(?:\.[0-9]{0,2})?|0?\.(?:0[1-9]|[1-9][0-9]?))$')
+PaiementDejaRecu = _ser('DevisFacturerCompletPaiementSaisi', {
+    'montant': ChaineStricte(trim_whitespace=False, validators=[_MotifEntier(
+        MOTIF_MONTANT_SAISI, message='Montant invalide.')]),
+    'date_paiement': DateStricte(),
+    'mode_paiement': ChoixDocumente(choices=[
+        'especes', 'virement', 'cheque', 'carte', 'prelevement', 'autre']),
+    'reference': ChaineStricte(required=False, allow_blank=True,
+                               allow_null=True, max_length=120),
+})
 FacturerCompletRequest = _ser('DevisFacturerCompletRequest', {
-    'paiements': s.ListField(child=s.DictField(), required=False,
+    'paiements': s.ListField(child=PaiementDejaRecu, required=False,
                              max_length=5),
     'override_credit': BooleenStrict(required=False),
     'override_avertissement': BooleenStrict(required=False),
@@ -880,8 +966,9 @@ ErreurFacturerVente = _ser('DevisFacturerVenteErreur', {
     'code': s.CharField(required=False),
 })
 GenererFactureRequest = _ser('DevisGenererFactureRequest', {
-    'override_credit': s.BooleanField(required=False),
-    'override_avertissement': s.BooleanField(required=False),
+    # CI #997 fuzz — booléens STRICTS (``0`` était lu « faux » et accepté).
+    'override_credit': BooleenStrict(required=False),
+    'override_avertissement': BooleenStrict(required=False),
 })
 
 
@@ -1111,16 +1198,22 @@ CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
     'taux_tva': ChaineStricte(required=False, allow_blank=True),
 })
 LigneRetour = _ser('FactureLigneRetour', {
-    'produit': s.IntegerField(),
+    # CI #997 fuzz — un id de produit (≥ 1, entier JSON) : ``0`` était
+    # conforme puis refusé « produit requis ».
+    'produit': EntierStrict(min_value=1),
     # ENF11 — « Ligne 1 : quantité > 0 requise. » : publiée > 0.
     'quantite': _QuantiteLigne(max_digits=12, decimal_places=2,
                                min_value=Decimal('0.01'),
                                max_value=_MONTANT_LIGNE_MAX),
 })
 RetourClientRequest = _ser('FactureRetourClientRequest', {
-    'motif': s.RegexField(_NON_BLANC),
+    # CI #997 fuzz — texte et booléen STRICTS (``"motif": 0``,
+    # ``"restocker": 0`` étaient convertis) ; « non blanc » publié au sens
+    # de DRF (``ChaineStricte``), plus le ``\S`` que la regex du schéma lit
+    # autrement que ``str.strip``.
+    'motif': ChaineStricte(),
     'lignes': s.ListField(child=LigneRetour, min_length=1),
-    'restocker': s.BooleanField(required=False),
+    'restocker': BooleenStrict(required=False),
 })
 
 RelanceApercuResponse = _ser('FactureRelanceApercu', {
@@ -1145,26 +1238,40 @@ ArrondiCaisseResponse = _ser('FactureArrondiCaisse', {
     'pas': s.CharField(),
 })
 ConsoliderRequest = _ser('FactureConsoliderRequest', {
-    'devis_ids': s.ListField(child=s.IntegerField(min_value=1),
+    # CI #997 fuzz — ids entiers JSON (``"5"`` était relu par ``int()``).
+    'devis_ids': s.ListField(child=EntierStrict(min_value=1),
                              min_length=2),
 })
 #: ENF11 — ``[5, 5]`` consolidait deux fois le même devis : ids DISTINCTS.
 CORPS_DEVIS_IDS_UNIQUES = corps_resserre({
     'properties': {'devis_ids': {'type': 'array', 'uniqueItems': True}}})
+#: CI #997 fuzz — montant encaissé tel que la vue l'ARRONDIT (au centime,
+#: moitié vers le haut, ``quantize_mad``) : décimal-chaîne strictement
+#: positif APRÈS arrondi (``0.005`` → 0,01 ; ``0.0049`` → 0 refusé), 9
+#: chiffres entiers avec décimales libres (le total pré-rempli par l'écran
+#: porte du bruit flottant) ou 10 chiffres et 2 décimales au plus (colonne
+#: 12,2). Validé par ce MÊME motif, en entier et sans rognage.
+MOTIF_MONTANT_ENCAISSE = (
+    r'^(?:[1-9][0-9]{0,8}(?:\.[0-9]*)?|[1-9][0-9]{9}(?:\.[0-9]{0,2})?'
+    r'|0?\.(?:0[1-9]|[1-9])[0-9]*|0?\.00[5-9][0-9]*)$')
+
+
 EncaissementGroupeRequest = _ser('FactureEncaissementGroupeRequest', {
-    'client': s.IntegerField(min_value=1),
-    # Montant STRICTEMENT positif, 2 décimales : le motif exclut "" et "0",
-    # que le décimal générique du schéma laisserait passer.
-    'montant': s.RegexField(
-        r'^(?:[1-9][0-9]{0,9}(?:\.[0-9]{1,2})?|0\.(?:0[1-9]|[1-9][0-9]?))$'),
-    'factures': s.ListField(child=s.IntegerField(min_value=1), min_length=1),
+    # CI #997 fuzz — la vue lit ce corps VALIDÉ (elle le relisait à la main,
+    # plus souplement que publié) : entiers, texte, date et décimaux STRICTS.
+    'client': EntierStrict(min_value=1),
+    'montant': ChaineStricte(trim_whitespace=False, validators=[_MotifEntier(
+        MOTIF_MONTANT_ENCAISSE, message='Montant invalide.')]),
+    'factures': s.ListField(child=EntierStrict(min_value=1), min_length=1),
     'mode': s.ChoiceField(
         choices=['especes', 'virement', 'cheque', 'carte', 'prelevement',
                  'autre'], required=False),
-    'date': s.DateField(required=False),
-    'reference': s.CharField(required=False, allow_blank=True,
-                             max_length=120),
-    'repartition': s.DictField(child=s.DecimalField(
+    'date': DateStricte(required=False),
+    'reference': ChaineStricte(required=False, allow_blank=True,
+                               max_length=120),
+    # Clé = id d'une facture du lot (sinon 409), part en décimal-chaîne ;
+    # une part ≤ 0 est ignorée.
+    'repartition': s.DictField(child=DecimalStricte(
         max_digits=12, decimal_places=2), required=False, allow_null=True),
 })
 BulkRequest = _ser('FactureBulkRequest', {
@@ -1257,6 +1364,18 @@ NoteDebitAnnuleeResponse = _ser('NoteDebitAnnulationResponse', {
 OffreTailleCleRequest = _ser('DevisOffreTailleCleRequest', {
     'cle': s.ChoiceField(choices=['eco', 'recommande', 'max']),
     'expected_updated_at': _JETON,
+})
+#: CI #997 fuzz — ``offres-tailles/appliquer`` : SEULE « Recommandé »
+#: s'applique au devis (Éco et Max étaient « conformes » puis TOUJOURS
+#: refusées) ; jeton en texte STRICT (``0`` était relu « 0 »). Validé par la
+#: vue avant toute autre garde.
+OffreTailleAppliquerRequest = _ser('DevisOffreTailleAppliquerRequest', {
+    'cle': ChoixDocumente(choices=['recommande'], error_messages={
+        'invalid_choice': 'Seule la taille « Recommandé » s\'applique au '
+                          'devis : « {input} » est une taille d\'exploration, '
+                          'montrée au client à côté de l\'offre officielle.'}),
+    'expected_updated_at': ChaineStricte(required=False, allow_blank=True,
+                                         allow_null=True),
 })
 OffreTailleConfigRequest = {
     'application/json': {

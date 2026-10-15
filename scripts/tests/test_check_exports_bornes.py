@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 SCRIPT = ROOT / "scripts" / "check_exports_bornes.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_exports_bornes as guard  # noqa: E402
+import check_exports_bornes as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 class _Arbre(unittest.TestCase):

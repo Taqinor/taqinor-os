@@ -225,7 +225,7 @@ export default function RulesScreen() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   // WIR272/PUB91 — rejeu historique d'une règle EXISTANTE (lecture seule).

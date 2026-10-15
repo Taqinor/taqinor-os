@@ -1217,7 +1217,7 @@ class BulkEditViewSet(viewsets.ViewSet):
             return [IsAuthenticated()]
         try:
             target = (self.request.data or {}).get('target')
-        except Exception:  # noqa: BLE001 — corps illisible → palier par défaut
+        except Exception:  # noqa: BLE001 — corps illisible → palier par défaut (D-ENF22-BLE001)
             target = None
         # ERR-ENF11-FUZZ-CORE — une cible non texte (liste…) levait TypeError
         # ici (500) : seule une chaîne est cherchée dans le registre.
@@ -1953,7 +1953,7 @@ def metrics_view(request):
     if not ip_ok:
         try:
             auth_result = CookieJWTAuthentication().authenticate(request)
-        except Exception:  # noqa: BLE001 — jeton absent/invalide → non-admin
+        except Exception:  # noqa: BLE001 — jeton absent/invalide → non-admin (D-ENF22-BLE001)
             auth_result = None
         if auth_result is not None:
             user, _token = auth_result

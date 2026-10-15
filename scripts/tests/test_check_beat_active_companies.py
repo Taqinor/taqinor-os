@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_beat_active_companies as guard  # noqa: E402
+import check_beat_active_companies as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _findings(src):

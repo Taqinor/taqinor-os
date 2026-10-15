@@ -41,7 +41,7 @@ export function useOfflinePending(module, { champ } = {}) {
   useEffect(() => {
     // Lecture initiale d'un état EXTERNE (IndexedDB) → c'est exactement le rôle
     // d'un effet de synchronisation.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture initiale d'un état externe (IndexedDB) (D-ENF22)
     rafraichir()
     const desabonner = onOfflineOutboxChange(rafraichir)
     if (typeof window === 'undefined') return desabonner

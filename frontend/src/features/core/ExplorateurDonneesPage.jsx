@@ -125,7 +125,7 @@ export default function ExplorateurDonneesPage() {
         setErreur(messageErreur(err, 'Catalogue de jeux de données indisponible.'))
       })
       .finally(() => { if (vivant) setChargement(false) })
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
     chargerRequetes()
     return () => { vivant = false }
   }, [chargerRequetes])

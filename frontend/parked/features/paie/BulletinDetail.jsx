@@ -39,7 +39,7 @@ export default function BulletinDetail() {
       .catch(() => toast.error('Bulletin introuvable.'))
       .finally(() => setLoading(false))
 
-  useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [id]) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const telecharger = async () => {
     setBusy('pdf')
@@ -401,7 +401,7 @@ function RectifierDialog({ bulletin, onClose }) {
     paieApi.getPeriodes({ ordering: '-annee,-mois' })
       .then((r) => setPeriodes(listOf(r.data).filter((p) => p.id !== bulletin.periode)))
       .catch(() => toast.error('Chargement des périodes impossible.'))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [])
 
   const rectifier = async () => {

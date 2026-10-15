@@ -11,6 +11,7 @@
    les contrôles) — aucune logique touchée (LW6 a déjà traité cancel/form). */
 import { useState, useEffect, useCallback } from 'react'
 import crmApi from '../../../api/crmApi'
+import fetchAllPages from '../../../utils/fetchAllPages'
 import { formatDateTime } from '../../../lib/format'
 import { Badge, Button, Input, Label } from '../../../ui'
 // LW6 — toast d'erreur explicite quand l'annulation échoue (import direct,
@@ -48,8 +49,9 @@ export default function AppointmentBooker({ leadId }) {
 
   const load = useCallback(() => {
     if (!leadId) return
-    crmApi.getAppointments(leadId)
-      .then(r => setAppointments(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getAppointments(leadId, { page, page_size: pageSize }).then((r) => r.data))
+      .then(rows => setAppointments(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [leadId])

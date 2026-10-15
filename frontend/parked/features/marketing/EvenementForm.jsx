@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components -- dossier parqué, hors lint (D-ENF22) */
 import { useEffect, useState } from 'react'
 import marketingApi from '../../api/marketingApi'
 
@@ -45,7 +45,7 @@ export default function EvenementForm({ initial, onSave, onCancel, editing }) {
   // WIR162 — modèles disponibles pour le sélecteur (création uniquement).
   const [modeles, setModeles] = useState([])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change (D-ENF22)
   useEffect(() => { setForm(initial || emptyForm()) }, [initial])
 
   useEffect(() => {

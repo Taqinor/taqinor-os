@@ -121,7 +121,7 @@ export default function Composer({
   // Bascule en mode édition : préremplit le texte.
   useEffect(() => {
     if (editing) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- préremplir le texte à l'entrée en mode édition
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- préremplir le texte à l'entrée en mode édition (D-ENF22)
       setText(editing.body || '')
       taRef.current?.focus()
     }
@@ -507,7 +507,7 @@ export default function Composer({
     // fonction async ne pose pas d'état de façon synchrone
     // (react-hooks/set-state-in-effect). Comportement inchangé.
     if (scheduleOpen) Promise.resolve().then(loadScheduledQueue)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargé à l'ouverture du popover uniquement
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargé à l'ouverture du popover uniquement (D-ENF22)
   }, [scheduleOpen, activeId])
 
   const submitSchedule = async () => {

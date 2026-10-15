@@ -27,7 +27,7 @@ export function useApercuServeur(corps, appeler, messageErreur) {
     if (!debouncedKey) {
       // UNE seule dérogation par bloc : la règle ne signale que le PREMIER
       // setState, et une par ligne déclencherait `reportUnusedDisableDirectives`.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence d'ancrage
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète l'absence d'ancrage (D-ENF22)
       setDonnees(null)
       setCorpsServi(null)
       setCorpsEnVol(null)
@@ -66,7 +66,7 @@ export function useApercuServeur(corps, appeler, messageErreur) {
       .finally(() => { if (!cancelled) setChargement(false) })
     return () => { cancelled = true; controller.abort() }
     // `appeler` / `messageErreur` sont des constantes de module côté appelants.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `appeler` et `messageErreur` sont des constantes de module côté appelants (D-ENF22)
   }, [debouncedKey])
 
   return { donnees, chargement, erreur, corpsServi, corpsEnVol, corpsEchoue }

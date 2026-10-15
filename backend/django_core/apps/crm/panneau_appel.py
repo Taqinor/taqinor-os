@@ -574,7 +574,7 @@ def _couches_composables(lead):
 
         from .selectors import equipements_pour_lead
         return set(composer_equipements(equipements_pour_lead(lead)) or {})
-    except Exception:  # noqa: BLE001 — le panneau reste servi
+    except Exception:  # noqa: BLE001 — le panneau reste servi (D-ENF22-BLE001)
         logger.warning('CAD148: couches d\'équipement illisibles (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return set()
@@ -678,7 +678,7 @@ def fenetre_du_jour_servie(lead, *, maintenant=None):
         company = getattr(lead, 'company', None)
         fenetre = horaires.fenetre_du_jour(jour, company, canal='appel')
         ramadan = bool(horaires.est_en_ramadan(jour, company))
-    except Exception:  # noqa: BLE001 — l'horaire n'empêche jamais l'appel
+    except Exception:  # noqa: BLE001 — l'horaire n'empêche jamais l'appel (D-ENF22-BLE001)
         logger.warning('CAD155: fenêtre d\'appel illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return None
@@ -709,7 +709,7 @@ def profil_suppose_servi(lead):
     try:
         from apps.ventes.courbes_journalieres import profil_suppose_du_lead
         return bool(profil_suppose_du_lead(lead))
-    except Exception:  # noqa: BLE001 — le panneau reste servi
+    except Exception:  # noqa: BLE001 — le panneau reste servi (D-ENF22-BLE001)
         logger.warning('CAD172: drapeau de profil illisible (lead #%s)',
                        getattr(lead, 'pk', '?'), exc_info=True)
         return False

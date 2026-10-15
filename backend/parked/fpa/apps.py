@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -21,4 +23,4 @@ class FpaConfig(AppConfig):
     def ready(self):
         # NTFPA27 — audit des changements budgétaires (signaux → AuditLog),
         # câblé DANS l'app FP&A (apps/audit TRACKED_MODELS = plateforme).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

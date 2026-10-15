@@ -35,7 +35,6 @@ from ..utils.client_links import chemin_proposition
 from core.entite_scoping import EntiteScopeMixin  # NTADM2
 from core.idempotency import IdempotentCreateMixin  # YAPIC9
 from ..utils.company_settings import create_numbered
-from ..domain.bornes import pourcentage_saisi as _pourcentage_saisi  # ACAL278, ATOT21
 from .devis_edition import DevisEditionActionsMixin  # SPL135
 from .devis_cycle import DevisCycleActionsMixin  # SPL136
 from .devis_etudes import DevisEtudesActionsMixin  # SPL137
@@ -60,7 +59,8 @@ CONCEVABLE = ['1', 'true']
 
 @extend_schema_view(list=extend_schema(parameters=[
     qint('lead'), qstr('concevable', enum=CONCEVABLE),
-    qstr('statut', enum=Devis.Statut.values), ENTITE]))
+    qstr('statut', enum=Devis.Statut.values), ENTITE]),
+    create=extend_schema(extensions=D.CORPS_LEAD_OU_CLIENT))
 class DevisViewSet(DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
                    DevisEtudesActionsMixin,
@@ -300,7 +300,7 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(request=D.CompositionRequest,
                    responses={200: D.CompositionResponse,
-                              422: D.ErreurComposition})
+                              409: D.ErreurComposition})
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
     def composition(self, request):
@@ -338,7 +338,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         composent EXACTEMENT le même kit — la source de vérité unique promise
         par cet endpoint (U3) vaut aussi pour les deux optimiseurs (L-2OPT).
         """
-        from decimal import Decimal, InvalidOperation
+        from decimal import Decimal
         from ..services import composer_devis_residentiel, AutoDevisError
 
         company = request.user.company
@@ -347,87 +347,52 @@ class DevisViewSet(DevisEditionActionsMixin,
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # CI #997 fuzz — le corps est validé par le schéma PUBLIÉ lui-même
+        # (``D.CompositionRequest``) : nombres JSON (plus ``"5"`` relu par
+        # ``Decimal``), bornes, scénario énuméré, drapeau booléen strict,
+        # ``dimensionnement_avec`` objet de nombres — un écart = 400 nommé.
+        from ..utils.corps import valider_corps_schema
+        corps = valider_corps_schema(request, D.CompositionRequest)
+
         def _nombre(cle, defaut=None):
-            brut = request.data.get(cle)
-            if brut in (None, ''):
-                return defaut
-            try:
-                return Decimal(str(brut))
-            except (InvalidOperation, TypeError, ValueError):
-                raise ValueError(cle)
+            return (Decimal(str(corps[cle])) if corps.get(cle) is not None
+                    else defaut)
 
-        def _dimensionnement_avec(brut):
-            """``None`` | ``{'nb_panneaux'?, 'kwc'?, 'batterie_kwh'?}`` en
-            ``float`` — miroir de ce que ``composer_devis_residentiel``
-            attend. Un corps qui n'est pas un objet, ou vide, vaut « moteur
-            muet sur l'axe batterie » (repli historique, jamais une erreur)."""
-            if not isinstance(brut, dict):
-                return None
-            valeurs = {}
-            for cle in ('nb_panneaux', 'kwc', 'batterie_kwh'):
-                item = brut.get(cle)
-                if item in (None, ''):
-                    continue
-                try:
-                    valeurs[cle] = float(item)
-                except (TypeError, ValueError):
-                    raise ValueError('dimensionnement_avec.%s' % cle)
-            return valeurs or None
+        kwc = _nombre('kwc')
+        nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
+        from ..domain.taille import _AUTO_PANEL_WATT
+        panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
+        # APAR49 — défaut = taux STANDARD de la société, jamais 20 codé.
+        from ..utils.company_settings import tva_standard
+        taux_tva = _nombre('taux_tva', tva_standard(company))
+        mppt_paires = _nombre('mppt_paires', Decimal('1'))
+        # U3COMPOSE — ``{'nb_panneaux'?, 'kwc'?, 'batterie_kwh'?}`` en float
+        # (vide = moteur muet sur l'axe batterie).
+        dimensionnement_avec = {
+            cle: float(valeur) for cle, valeur in (
+                corps.get('dimensionnement_avec') or {}).items()
+            if cle in ('nb_panneaux', 'kwc', 'batterie_kwh')} or None
 
-        try:
-            kwc = _nombre('kwc')
-            nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
-            from ..domain.taille import _AUTO_PANEL_WATT
-            panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
-            # APAR49 — défaut = taux STANDARD de la société, jamais 20 codé.
-            from ..utils.company_settings import tva_standard
-            taux_tva = _nombre('taux_tva', tva_standard(company))
-            mppt_paires = _nombre('mppt_paires', Decimal('1'))
-            dimensionnement_avec = _dimensionnement_avec(
-                request.data.get('dimensionnement_avec'))
-        except ValueError as exc:
-            return Response(
-                {'detail': 'Valeur numérique invalide : %s.' % exc},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        if (kwc is None or kwc <= 0) and nb_panneaux <= 0:
-            return Response(
-                {'detail': 'Renseignez une puissance (kwc) ou un nombre de '
-                           'panneaux (nb_panneaux).'},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        structure = request.data.get('structure_type') or 'acier'
-        # STKCAT1/STKCAT7 — l'id du produit de structure CHOISI. Une valeur non
-        # numérique est IGNORÉE (repli sur le toggle), jamais un 500 ; le
-        # scoping société est celui du CATALOGUE, posé côté composition (un id
-        # d'une autre société n'y résout simplement rien).
-        _brut_structure_id = request.data.get('structure_produit_id')
-        try:
-            structure_produit_id = (
-                int(_brut_structure_id)
-                if _brut_structure_id not in (None, '') else None)
-        except (TypeError, ValueError):
-            structure_produit_id = None
+        structure = corps.get('structure_type') or 'acier'
+        # STKCAT1/STKCAT7 — l'id du produit de structure CHOISI ; le scoping
+        # société est celui du CATALOGUE, posé côté composition (un id d'une
+        # autre société n'y résout simplement rien).
+        structure_produit_id = corps.get('structure_produit_id')
+        structure_produit_id = (int(structure_produit_id)
+                                if structure_produit_id is not None else None)
         # QJR-OFFGRID — drapeau ADDITIF et optionnel : le site est ISOLÉ
         # (onduleur autonome + batterie, option unique). Absent ⇒ dry-run
         # strictement inchangé. Cet endpoint n'a AUCUN lead en portée (il est
         # piloté par les nombres tapés à l'écran) : le repli « raccordement du
         # lead = aucun » vit là où le lead existe, dans ``build_devis_auto``.
-        _brut_hors_reseau = request.data.get('hors_reseau')
-        hors_reseau = (str(_brut_hors_reseau).strip().lower()
-                       in ('1', 'true', 'oui', 'yes')
-                       if _brut_hors_reseau is not None else False)
+        hors_reseau = bool(corps.get('hors_reseau'))
         # QJR604 — la ville du barème transport vient d'un LEAD de la société
         # (404 sinon), résolue côté serveur ; plus jamais d'un texte libre.
         ville = ''
-        if request.data.get('lead') not in (None, ''):
+        if corps.get('lead') is not None:
             from apps.crm.selectors import get_company_lead
             from ..domain.transport import ville_du_lead
-            try:
-                lead_obj = get_company_lead(
-                    company, int(request.data.get('lead')))
-            except (TypeError, ValueError):
-                lead_obj = None
+            lead_obj = get_company_lead(company, int(corps['lead']))
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -438,7 +403,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                 kwc=float(kwc) if kwc is not None else 0,
                 nb_panneaux=int(nb_panneaux),
                 panel_watt=float(panel_watt),
-                scenario=request.data.get('scenario'),
+                scenario=corps.get('scenario'),
                 structure_type=str(structure),
                 structure_produit_id=structure_produit_id,
                 taux_tva=taux_tva,
@@ -448,14 +413,19 @@ class DevisViewSet(DevisEditionActionsMixin,
                 ville=ville,
             )
         except AutoDevisError as exc:
+            # CI #1003 fuzz — corps conforme au schéma : catalogue ou réglage
+            # de la société qui s'y oppose (aucun onduleur autonome tarifé,
+            # marque épinglée absente…) = refus d'ÉTAT, 409 — comme
+            # ``/devis/auto/`` ; le message FRANÇAIS reste lu tel quel.
             return Response(
                 {'detail': exc.message, 'field': exc.field},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                status=status.HTTP_409_CONFLICT)
         return Response(resultat, status=status.HTTP_200_OK)
 
     @extend_schema(request=D.AutoDevisRequest,
                    responses={201: D.AutoDevisResponse,
-                              422: D.ErreurComposition})
+                              409: D.ErreurComposition},
+                   extensions=D.CORPS_LEAD_OU_CLIENT)
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
     def auto(self, request):
@@ -465,7 +435,7 @@ class DevisViewSet(DevisEditionActionsMixin,
 
         Corps : ``{lead}`` (ou ``{client}``, dont on remonte au lead le plus
         récent) + ``taux_tva?`` / ``remise_globale?``. La société est TOUJOURS
-        celle du user ; le lead est borné à cette société (404 sinon). 422 si les
+        celle du user ; le lead est borné à cette société (404 sinon). 409 si les
         données de dimensionnement manquent ou si le marché n'est pas résidentiel
         — l'agent demande alors la donnée / oriente vers le générateur. Aucun
         statut n'est touché : le service renvoie un brouillon (règle #4)."""
@@ -482,15 +452,13 @@ class DevisViewSet(DevisEditionActionsMixin,
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # CI #997 — corps non objet ou id non entier (``[null, null]``) : 400
-        # nommé, plus le TypeError du filtre ``pk=`` (500).
-        from core.champs_stricts import entier_ou_400
-        if not isinstance(request.data, dict):
-            return Response({'detail': 'Corps JSON objet attendu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 fuzz — corps validé par le sérialiseur PUBLIÉ (types JSON
+        # stricts, pourcentages 0-100 en chaîne ou nombre) : 400 nommé.
+        from ..utils.corps import valider_corps
+        corps = valider_corps(request, D.AutoDevisRequest)
         lead_obj = None
-        lead_id = entier_ou_400(request.data.get('lead'), 'lead')
-        client_id = entier_ou_400(request.data.get('client'), 'client')
+        lead_id = corps.get('lead')
+        client_id = corps.get('client')
         if lead_id:
             lead_obj = get_company_lead(company, lead_id)
             if lead_obj is None:
@@ -506,26 +474,23 @@ class DevisViewSet(DevisEditionActionsMixin,
                     {'detail': "Ce client n'a pas de fiche lead avec profil "
                      "énergétique. Complétez le lead (facture d'hiver ou taille "
                      "souhaitée) pour générer l'auto-devis."},
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                    # CI #997 fuzz — l'ÉTAT de la fiche s'oppose : 409.
+                    status=status.HTTP_409_CONFLICT)
         else:
             return Response(
                 {'detail': 'Un lead (ou un client) est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # ACAL278 — UNE règle de module (fini, 0..100, 2 décimales) au lieu
-        # d'un ``_dec`` imbriqué sans borne : 400 NOMMÉ, jamais l'IntegrityError
-        # de ck_devis_remise_globale_0_100 (500).
-        # APAR49 — défaut = taux STANDARD de la société (``tva_standard``).
+        # ACAL278 — UNE règle (fini, 0..100, 2 décimales), désormais PUBLIÉE
+        # par le sérialiseur (CI #997 fuzz) ; APAR49 — défaut = taux STANDARD
+        # de la société (``tva_standard``).
         from ..utils.company_settings import tva_standard
-        taux_tva, erreur = _pourcentage_saisi(
-            request.data, 'taux_tva', tva_standard(company))
-        remise, erreur_remise = _pourcentage_saisi(
-            request.data, 'remise_globale', Decimal('0'))
-        erreur = erreur or erreur_remise
-        if erreur:
-            return Response(
-                dict(erreur, detail=next(iter(erreur.values()))),
-                status=status.HTTP_400_BAD_REQUEST)
+        taux_tva = corps.get('taux_tva')
+        if taux_tva is None:
+            taux_tva = tva_standard(company)
+        remise = corps.get('remise_globale')
+        if remise is None:
+            remise = Decimal('0')
 
         # U3 — trois réglages POUR CE DEVIS-LÀ, qui ne réécrivent JAMAIS la
         # fiche du lead : la puissance cible saisie par le commercial (EZ5), le
@@ -533,11 +498,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         # calculées (factures mensuelles réelles du contrat PACT10). La
         # COMPOSITION, elle, est entièrement serveur : l'appelant n'envoie
         # aucune ligne, aucun prix, aucune marque.
-        etude_extra = request.data.get('etude_params')
-        if etude_extra is not None and not isinstance(etude_extra, dict):
-            return Response(
-                {'detail': 'etude_params doit être un objet.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        etude_extra = corps.get('etude_params')
         # AGR124 — le devis automatique AGRICOLE dépose ici ses alertes
         # (étude pompage + articles « prix à renseigner » omis), rendues à
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
@@ -550,9 +511,12 @@ class DevisViewSet(DevisEditionActionsMixin,
                 scenario=request.data.get('scenario'),
                 etude_extra=etude_extra, journal_auto=journal)
         except AutoDevisError as exc:
+            # CI #997 fuzz — corps valide : donnée de la fiche manquante,
+            # marché ou catalogue qui s'y oppose = refus d'ÉTAT, 409 (le
+            # message FRANÇAIS du serveur reste lu tel quel par les écrans).
             return Response(
                 {'detail': exc.message, 'field': exc.field},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                status=status.HTTP_409_CONFLICT)
 
         link = ShareLink.for_devis(devis)
         return Response(

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Droplets, Plus, Trash2 } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Badge, Button, Card, CardContent, DataTable, EmptyState, IconButton,
   Input, Label, Spinner, Textarea,
@@ -10,13 +11,14 @@ import { formatDate, formatPercent } from '../../lib/format'
 import MonitoringNav from './MonitoringNav'
 import SystemPicker from './SystemPicker'
 import useSupervisedSystems from './useSupervisedSystems'
+import { todayLocalIso } from '../../lib/dateLocale'
 
 /* WR7 — Journal de nettoyages + évaluation de salissure (FG283).
    Liste et enregistre les nettoyages (bornes pour l'estimation d'encrassement)
    d'un système, et affiche l'évaluation de salissure (chute de PR + reco de
    nettoyage) depuis /monitoring/configs/{id}/soiling/. */
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () => todayLocalIso()
 
 export default function CleaningsPage() {
   const { confirmDelete } = useConfirmDialog()
@@ -36,8 +38,9 @@ export default function CleaningsPage() {
 
   const reload = (cfgId, instId) => {
     if (!cfgId || !instId) return
-    monitoringApi.getCleanings({ installation: instId })
-      .then((r) => setCleanings(r.data.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      monitoringApi.getCleanings({ installation: instId, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setCleanings(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => setCleanings([]))
     monitoringApi.getSoiling(cfgId)
       .then((r) => setSoiling(r.data))
@@ -53,11 +56,12 @@ export default function CleaningsPage() {
       setLoading(true)
       try {
         const [c, s] = await Promise.all([
-          monitoringApi.getCleanings({ installation: installationId }),
+          fetchAllPages((page, { page_size: pageSize } = {}) =>
+      monitoringApi.getCleanings({ installation: installationId, page, page_size: pageSize }).then((r) => r.data)),
           monitoringApi.getSoiling(selectedId),
         ])
         if (active) {
-          setCleanings(c.data.results ?? c.data ?? [])
+          setCleanings(Array.isArray(c) ? c : (c?.results ?? []))
           setSoiling(s.data)
         }
       } catch {
@@ -113,7 +117,7 @@ export default function CleaningsPage() {
         </IconButton>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- remove recréé par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- remove recréé par rendu (D-ENF22)
   ], [])
 
   return (

@@ -25,7 +25,7 @@ import { formatNumber } from '../../../lib/format'
 // serveur.
 const CHAMPS_RANGEE = ['y', 'x0', 'x1', 'tables']
 
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function diffRangees(rangeesA = [], rangeesB = []) {
   const parCleA = new Map(rangeesA.map((r) => [r.cle, r]))
   const parCleB = new Map(rangeesB.map((r) => [r.cle, r]))
@@ -46,7 +46,7 @@ export function diffRangees(rangeesA = [], rangeesB = []) {
 }
 
 // Delta de compte : soustraction d'AFFICHAGE entre deux comptes serveur.
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function deltaCompte(planA, planB) {
   const a = planA?.compte_modules
   const b = planB?.compte_modules

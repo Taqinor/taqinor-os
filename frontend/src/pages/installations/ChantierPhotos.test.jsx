@@ -86,7 +86,7 @@ describe('ChantierPhotos — galerie unifiée (APX27)', () => {
     renderPage()
 
     await waitFor(() => expect(installationsApiMock.getInterventions)
-      .toHaveBeenCalledWith({ installation: 42 }))
+      .toHaveBeenCalledWith(expect.objectContaining({ installation: 42 })))
     await screen.findByAltText('chantier-avant.jpg')
     await screen.findByAltText('interv-avant.jpg')
 

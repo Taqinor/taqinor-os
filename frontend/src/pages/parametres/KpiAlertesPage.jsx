@@ -181,7 +181,7 @@ export default function KpiAlertesPage() {
         </div>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- callbacks recréés par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- callbacks recréés par rendu (D-ENF22)
   ], [])
 
   return (

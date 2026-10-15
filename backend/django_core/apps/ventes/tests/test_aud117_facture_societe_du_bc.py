@@ -106,5 +106,5 @@ class TestFactureSocieteDuBonCommande(TestCase):
         resp = self.api.post(
             f'/api/django/ventes/bons-commande/{bc.id}/creer-facture/',
             {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertFalse(Facture.objects.filter(bon_commande=bc).exists())

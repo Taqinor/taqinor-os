@@ -139,7 +139,7 @@ export default function TerminalAtelier() {
       setPostes(rows)
       if (rows.length && !posteId) setPosteId(String(rows[0].id))
     }).finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [])
 
   function recharger() {
@@ -152,7 +152,7 @@ export default function TerminalAtelier() {
 
   // Différé d'un microtask : `recharger` pose `operations` de façon
   // synchrone dans son early-return (react-hooks/set-state-in-effect).
-  useEffect(() => { Promise.resolve().then(recharger) }, [posteId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { Promise.resolve().then(recharger) }, [posteId]) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   return (
     <div className="max-w-2xl mx-auto">

@@ -11,9 +11,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_decisions as cd  # noqa: E402
-import decisions as dec  # noqa: E402
-import plan_lanes  # noqa: E402
+import check_decisions as cd  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import decisions as dec  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import plan_lanes  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 REGISTRE = """version: 1
 decisions:

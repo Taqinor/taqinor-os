@@ -103,7 +103,7 @@ def _conditions_portail(devis):
     try:
         from .quote_engine.builder import build_quote_data
         data = build_quote_data(devis, {'pdf_mode': 'full'})
-    except Exception:  # noqa: BLE001 — best-effort, la liste reste servie
+    except Exception:  # noqa: BLE001 — best-effort, la liste reste servie (D-ENF22-BLE001)
         logger.warning("selectors_portail._conditions_portail : rendu moteur "
                        "impossible pour le devis %s (mode dégradé)",
                        devis.pk, exc_info=True)

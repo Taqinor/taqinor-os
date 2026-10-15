@@ -53,7 +53,7 @@ export default function DunningPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     load()
   }, [])
 
@@ -151,7 +151,7 @@ function JournalContratTab({ contrats }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- vide la liste quand aucun contrat n'est choisi
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- vide la liste quand aucun contrat n'est choisi (D-ENF22)
     if (!contratId) { setEntries([]); return }
     setLoading(true)
     setError(null)

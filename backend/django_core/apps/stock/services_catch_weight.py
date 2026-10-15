@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 def _dec(value):
     try:
         return Decimal(str(value))
-    except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash.
+    except Exception:  # noqa: BLE001 — valeur non numérique -> 0, jamais de crash (D-ENF22-BLE001)
         logger.warning("services_catch_weight._dec : erreur ignorée (mode dégradé)", exc_info=True)
         return Decimal('0')
 

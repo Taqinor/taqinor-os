@@ -227,7 +227,7 @@
 - frontend/src/api/installationsApi.js :: getInterventionPublique -> /api/django/public/installations/intervention/<>
     date_prevue:inconnu, detail:texte, distance_km:inconnu, eta_minutes:inconnu, fenetre_debut:inconnu, fenetre_fin:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, technicien_avatar_url:inconnu, technicien_nom:inconnu
 - frontend/src/api/installationsApi.js :: getInterventionRapportPublic -> /api/django/public/installations/intervention-rapport/<>
-    chantier_reference:inconnu, consommation:inconnu, date_realisee:inconnu, detail:texte, equipe:inconnu, pdf_url:texte, photos:inconnu, reserves:inconnu, serials:inconnu, signataire_nom:inconnu, signe_le:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, type_intervention_display:inconnu
+    chantier_reference:inconnu, consommation:inconnu, date_realisee:inconnu, detail:texte, equipe:inconnu, pdf_url:inconnu, photos:inconnu, reserves:inconnu, serials:inconnu, signataire_nom:inconnu, signe_le:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, type_intervention_display:inconnu
 - frontend/src/api/installationsApi.js :: getLandedCostDossier -> /api/django/installations/dossiers-import/<>/landed-cost
     dossier_id:inconnu, lignes:inconnu, total_fob:nombre, total_frais:nombre, total_landed:nombre
 - frontend/src/api/installationsApi.js :: getLienClientIntervention -> /api/django/installations/interventions/<>/lien-client
@@ -504,6 +504,8 @@
     applicable:inconnu, ecart:texte, montant_arrondi:texte, montant_du:texte, pas:texte
 - frontend/src/api/ventesApi.js :: contacterSuperieur -> /api/django/ventes/devis/<>/contacter-superieur
     detail:texte, recipients:liste
+- frontend/src/api/ventesApi.js :: creerDevisAuto -> /api/django/ventes/devis/auto
+    alertes:liste, detail:inconnu, field:inconnu, id:inconnu, kwc:inconnu, nb_lignes:nombre, proposal_path:inconnu, proposal_token:inconnu, reference:inconnu, statut:inconnu
 - frontend/src/api/ventesApi.js :: deletePreset -> /api/django/ventes/presets/<>
     detail:texte
 - frontend/src/api/ventesApi.js :: demanderSignatureAvenant -> /api/django/ventes/devis/<>/avenant/demander-signature

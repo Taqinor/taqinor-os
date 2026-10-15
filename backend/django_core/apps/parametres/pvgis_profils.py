@@ -813,12 +813,12 @@ def _coordonnees_gazetier(ville):
     """
     try:
         from apps.parametres.villes_maroc import coordonnees_ville
-    except Exception:  # noqa: BLE001 — gazetier indisponible → chaîne inchangée
+    except Exception:  # noqa: BLE001 — gazetier indisponible → chaîne inchangée (D-ENF22-BLE001)
         logger.warning("_coordonnees_gazetier : erreur absorbée, repli dégradé", exc_info=True)
         return None
     try:
         return coordonnees_ville(ville)
-    except Exception:  # noqa: BLE001 — un texte illisible n'est pas une panne
+    except Exception:  # noqa: BLE001 — un texte illisible n'est pas une panne (D-ENF22-BLE001)
         logger.warning('gazetier villes_maroc illisible', exc_info=True)
         return None
 
@@ -930,7 +930,7 @@ def _cache_lire(cle):
     try:
         from core import cache as tenant_cache
         return tenant_cache.get(None, cle)
-    except Exception:  # noqa: BLE001 — pas de Django/cache dispo → pas de cache
+    except Exception:  # noqa: BLE001 — pas de Django/cache dispo → pas de cache (D-ENF22-BLE001)
         logger.debug("_cache_lire : erreur absorbée, repli dégradé", exc_info=True)
         return None
 
@@ -941,7 +941,7 @@ def _cache_ecrire(cle, valeur, ttl=None):
         from core import cache as tenant_cache
         tenant_cache.set(None, cle, valeur,
                          CACHE_TTL_S if ttl is None else ttl)
-    except Exception:  # noqa: BLE001 — cache indisponible → on s'en passe
+    except Exception:  # noqa: BLE001 — cache indisponible → on s'en passe (D-ENF22-BLE001)
         logger.debug('cache pvgis_profils indisponible pour %s', cle)
 
 

@@ -134,7 +134,7 @@ export default function EquipeSection() {
   }
 
   // Chargement initial — le setState a lieu dans le callback async.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial : setState dans le callback async, jamais synchrone (D-ENF22)
   useEffect(() => { load() }, [])
 
   const setSupervisor = async (userId, value) => {

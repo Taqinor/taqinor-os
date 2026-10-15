@@ -78,8 +78,11 @@ def analyser_source(source: str):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
                              ast.ClassDef)):
             pile = pile + [node.name]
-        if isinstance(node, ast.keyword) and node.arg in KEYWORDS                 and not (ast.unparse(node.value) == "seuil"
-                         or "seuil_retard" in ast.unparse(node.value)):
+        if isinstance(
+    node, ast.keyword) and node.arg in KEYWORDS and not (
+        ast.unparse(
+            node.value) == "seuil" or "seuil_retard" in ast.unparse(
+                node.value)):
             out.append((node.value.lineno, ".".join(pile), f"{node.arg}="))
         elif isinstance(node, ast.Compare):
             termes = [node.left] + list(node.comparators)

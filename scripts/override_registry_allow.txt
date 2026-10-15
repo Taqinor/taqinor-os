@@ -23,9 +23,3 @@
 #
 # Regenerer apres une revue :
 #   python scripts/check_override_registry.py --regenerate
-
-# --- backend/django_core/apps/ventes/domain/resynchronisation.py
-backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::etude_params_bloc::verrou.etude_params | Existant 30/08/2026 : la valeur affectee vient DEJA de `etude_schema.fusionner(..., proprietaire=CALEPINAGE, **_modifiees)` -- fusion cle a cle, pas une reconstruction ; seule l'affectation elle-meme reste a deplacer dans `ecrire`.
-
-# --- backend/django_core/apps/ventes/tasks.py
-backend/django_core/apps/ventes/tasks.py::ranger_simulation::etude_params_bloc::devis.etude_params | Existant 30/08/2026 : tache Celery -- copie du bloc + pose de la seule cle `simulation` (resultat de la simulation bancable). Migrera vers etude_schema.ecrire.

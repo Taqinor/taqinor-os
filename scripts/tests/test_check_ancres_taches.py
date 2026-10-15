@@ -14,8 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_ancres_taches as cat  # noqa: E402
-import check_taches_cablage as ctc  # noqa: E402
+import check_ancres_taches as cat  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 class FauxDepot:
@@ -25,7 +25,8 @@ class FauxDepot:
         subprocess.run(["git", "init", "-q"], cwd=self.racine, check=True)
         (self.racine / "docs" / "plans").mkdir(parents=True)
         (self.racine / "scripts").mkdir()
-        (self.racine / "mod.py").write_text("class Foo:\n    def bar(self):\n        return 1\n\n\ndef haut():\n    pass\n",
+        (self.racine / "mod.py").write_text("class Foo:\n    def bar(self):\n        return 1\n\n\ndef haut():\n    "
+                                            "pass\n",
                                             encoding="utf-8")
         subprocess.run(["git", "add", "-A"], cwd=self.racine, check=True)
         self._sauve = ctc.ROOT

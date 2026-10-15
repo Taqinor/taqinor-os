@@ -76,7 +76,7 @@ export default function ReceptionScanPanel({ bonCommandeId }) {
     }
   }
 
-  useMemo(() => { load() }, [bonCommandeId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useMemo(() => { load() }, [bonCommandeId]) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const lignes = bcf?.lignes || []
 

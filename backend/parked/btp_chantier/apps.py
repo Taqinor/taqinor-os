@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -25,7 +27,7 @@ class BtpChantierConfig(AppConfig):
         # visa portant sur ce document. Connexion PARESSEUSE via le registre
         # d'apps (``apps.get_model``) — aucun import statique de
         # ``ged.models`` (frontière cross-app, CLAUDE.md).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
         # NTCON36 — capture terrain hors-ligne : deux op_types enregistrés
         # dans le moteur GÉNÉRIQUE `apps.offlinesync` (NTMOB1), son point
         # d'extension documenté. Aucun second mécanisme hors-ligne.

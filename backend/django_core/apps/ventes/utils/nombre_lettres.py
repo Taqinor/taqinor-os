@@ -13,7 +13,7 @@ de l'arrêté, AOF109) se fait dans `core/nombre_lettres.py`.
 
 Même patron exact que `apps/ventes/utils/references.py` → `core.numbering` (ARC6).
 """
-from core.nombre_lettres import (  # noqa: F401  (ré-export public — importeurs existants)
+from core.nombre_lettres import (  # ré-export public — importeurs existants
     _DIZAINES,
     _TRANCHES,
     _UNITES,
@@ -23,4 +23,7 @@ from core.nombre_lettres import (  # noqa: F401  (ré-export public — importeu
     montant_en_lettres,
 )
 
-__all__ = ['montant_en_lettres']
+__all__ = [
+    'montant_en_lettres', '_DIZAINES', '_TRANCHES', '_UNITES', '_entier_en_lettres',
+    '_moins_de_cent', '_moins_de_mille',
+]

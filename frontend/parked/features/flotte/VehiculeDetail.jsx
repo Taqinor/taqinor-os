@@ -45,10 +45,10 @@ function ComputedTab({ id, fetcher, render, emptyLabel, reloadKey }) {
         }
       })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [id, fetcher, reloadKey])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   if (state.loading) {
@@ -88,7 +88,7 @@ function CycleDeVieTab({ vehicule, onUpdated }) {
     return () => { cancelled = true }
   }, [vehiculeId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { loadHistorique() }, [loadHistorique])
 
   const changerStatut = async (e) => {
@@ -246,7 +246,7 @@ function ContratsTab({ vehiculeId }) {
     return () => { cancelled = true }
   }, [vehiculeId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   if (state.loading) {
@@ -464,7 +464,7 @@ function AccessoiresTab({ vehiculeId }) {
     return () => { cancelled = true }
   }, [vehiculeId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   if (state.loading) {

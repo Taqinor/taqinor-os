@@ -391,6 +391,46 @@ def _cle_du_ledger(fichier):
     return fichier
 
 
+def _liaison_appliquer(portee):
+    """D'où ``portee`` (module ou fonction, sous-fonctions exclues) importe
+    le nom ``appliquer`` : ``True`` depuis ``etude_schema``, ``False`` d'un
+    autre module, ``None`` si elle ne le lie pas (portée englobante)."""
+    a_voir = list(ast.iter_child_nodes(portee))
+    while a_voir:
+        noeud = a_voir.pop()
+        if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef,
+                              ast.Lambda, ast.ClassDef)):
+            continue
+        if isinstance(noeud, ast.ImportFrom) and any(
+                (alias.asname or alias.name) == 'appliquer'
+                for alias in noeud.names):
+            return (noeud.module or '').endswith('etude_schema')
+        a_voir.extend(ast.iter_child_nodes(noeud))
+    return None
+
+
+def _appels_au_pipeline(noeud, homonyme=False):
+    """Nombre d'appels ``appliquer(...)`` sous ``noeud`` qui visent le
+    PIPELINE. ENF15 (3786f483c) a créé un HOMONYME, ``etude_schema.appliquer``
+    (l'unique affectateur d'``etude_params``, sans rapport avec les huit
+    étapes) : un appel lié à lui — import de la portée la plus proche, ou
+    ``etude_schema.appliquer(...)`` — n'est pas une bascule M5."""
+    if isinstance(noeud, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef)):
+        liaison = _liaison_appliquer(noeud)
+        if liaison is not None:
+            homonyme = liaison
+    n = 0
+    if isinstance(noeud, ast.Call):
+        cible = noeud.func
+        if isinstance(cible, ast.Name) and cible.id == 'appliquer':
+            n += 0 if homonyme else 1
+        elif isinstance(cible, ast.Attribute) and cible.attr == 'appliquer':
+            n += 0 if (isinstance(cible.value, ast.Name)
+                       and cible.value.id == 'etude_schema') else 1
+    return n + sum(_appels_au_pipeline(enfant, homonyme)
+                   for enfant in ast.iter_child_nodes(noeud))
+
+
 class LesCheminsBasculesSontDeclares(SimpleTestCase):
     """M5 — on ne branche un chemin qu'en le DÉCLARANT (avec son golden)."""
 
@@ -402,20 +442,12 @@ class LesCheminsBasculesSontDeclares(SimpleTestCase):
                 continue
             if chemin.name.startswith(('test_', 'tests_')):
                 continue
-            if chemin.name == 'pipeline.py':
-                continue  # la définition elle-même
+            if chemin.name in ('pipeline.py', 'etude_schema.py'):
+                continue  # la définition elle-même, et celle de l'homonyme
             arbre = ast.parse(chemin.read_text(encoding='utf-8'),
                               filename=str(chemin))
-            for noeud in ast.walk(arbre):
-                if not isinstance(noeud, ast.Call):
-                    continue
-                cible = noeud.func
-                nom = (cible.id if isinstance(cible, ast.Name)
-                       else cible.attr if isinstance(cible, ast.Attribute)
-                       else '')
-                if nom == 'appliquer':
-                    appels.append(
-                        chemin.relative_to(RACINE_VENTES).as_posix())
+            appels.extend([chemin.relative_to(RACINE_VENTES).as_posix()]
+                          * _appels_au_pipeline(arbre))
 
         constate = {}
         for fichier in appels:

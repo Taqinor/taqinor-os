@@ -55,7 +55,7 @@ function etatLigne(ligne) {
 
 // Lignes du tableau : la RÉFÉRENCE (calcul retenu, `reference_modules`) suivie
 // de chaque sensibilité défavorable rejouée par le serveur (`sensibilites`).
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function lignesSensibilites({ referenceModules = null, engagementModules = null, sensibilites = [] } = {}) {
   if (referenceModules == null) return []
   const tenuReference = engagementModules == null ? null : referenceModules >= engagementModules
@@ -72,7 +72,7 @@ export function lignesSensibilites({ referenceModules = null, engagementModules 
 
 // Ligne(s) au PLANCHER publié par le serveur (`plancher_modules`) — une
 // SÉLECTION parmi des valeurs serveur, jamais un recalcul.
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function lignesPlancher(lignes = [], plancherModules = null) {
   if (plancherModules == null) return []
   return lignes.filter((l) => l.modules === plancherModules)

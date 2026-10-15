@@ -1312,13 +1312,13 @@ def _lire_etude_horaire(bloc, puissance_kwc=None) -> dict | None:
 # AMOT27 (C-AMOT-027) — DÉRIVÉE des poids GHI sourcés
 # (``constants.MOROCCO_SOLAR_MONTHLY_WEIGHTS``, table verrouillée DC9) : la
 # MÊME forme que la production imprimée ; plus aucun littéral recopié.
-from .constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS as _POIDS_GHI  # noqa: E402
+from .constants import MOROCCO_SOLAR_MONTHLY_WEIGHTS as _POIDS_GHI  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 CLE_SOLAIRE_MENSUELLE = tuple(_POIDS_GHI)
 #: Décision fondateur 08/10/2026 (« nouveaux rendus seulement ») — la clé
 #: LITTÉRALE d'avant AMOT27, gardée pour les seuls devis envoyés avant la
 #: correction (``Devis.regles_calcul = 1``) : le client relit ce qu'il a reçu.
-from .constants import CLE_SOLAIRE_MENSUELLE_HISTORIQUE  # noqa: E402,F401
+from .constants import CLE_SOLAIRE_MENSUELLE_HISTORIQUE  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 def repartir_mensuel(total, cle=CLE_SOLAIRE_MENSUELLE):

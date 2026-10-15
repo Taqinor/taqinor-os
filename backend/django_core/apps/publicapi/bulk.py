@@ -84,7 +84,7 @@ def _dispatch_export(job):
     from .tasks import process_bulk_export_job
     try:
         process_bulk_export_job.delay(job.id)
-    except Exception:  # noqa: BLE001 — broker injoignable : jamais un job orphelin
+    except Exception:  # noqa: BLE001 — broker injoignable : jamais un job orphelin (D-ENF22-BLE001)
         logger.exception(
             'BulkJob export %s : envoi Celery impossible, traitement inline',
             job.id)
@@ -176,7 +176,7 @@ def run_export_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 written += 1
             offset += len(chunk)
             job.marquer_progression(traites=offset, succes=written, cursor=offset)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.exception('BulkJob export %s : échec au curseur %s',
                          job.id, job.cursor)
         job.marquer_echec(str(exc))
@@ -252,7 +252,7 @@ def _dispatch_import(job):
     from .tasks import process_bulk_import_job
     try:
         process_bulk_import_job.delay(job.id)
-    except Exception:  # noqa: BLE001 — broker injoignable : jamais un job orphelin
+    except Exception:  # noqa: BLE001 — broker injoignable : jamais un job orphelin (D-ENF22-BLE001)
         logger.exception(
             'BulkJob import %s : envoi Celery impossible, traitement inline',
             job.id)
@@ -356,7 +356,7 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 json.loads(line) for line in previous.decode('utf-8').splitlines()
                 if line.strip()
             ]
-        except Exception:  # noqa: BLE001 — repli : repart d'un journal vide
+        except Exception:  # noqa: BLE001 — repli : repart d'un journal vide (D-ENF22-BLE001)
             logger.warning("bulk.run_import_job : erreur ignorée (mode dégradé)", exc_info=True)
             error_rows = []
 
@@ -378,7 +378,7 @@ def run_import_job(job_id, *, batch_size=DEFAULT_BATCH_SIZE):
                 else:
                     _process_activite_row(job.company, row)
                 succes += 1
-            except Exception as exc:  # noqa: BLE001 — une ligne en erreur n'arrête PAS les suivantes
+            except Exception as exc:  # noqa: BLE001 — une ligne en erreur n'arrête PAS les suivantes (D-ENF22-BLE001)
                 logger.warning("bulk.run_import_job : erreur ignorée (mode dégradé)", exc_info=True)
                 erreurs_count += 1
                 error_rows.append(

@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_acceptation as cacc  # noqa: E402
+import check_acceptation as cacc  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 PLAN = "docs/plans/PLAN_AUDIT_TEST.md"
 SHA = "abcdef1234567890abcdef1234567890abcdef12"

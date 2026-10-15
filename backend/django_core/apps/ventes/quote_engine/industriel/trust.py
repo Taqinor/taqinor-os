@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """quote_engine industriel — PAGE 4 (échéancier en N jalons + décarbonation
 + garanties + conditions + signature).
 

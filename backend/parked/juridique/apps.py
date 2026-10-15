@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -41,4 +43,4 @@ class JuridiqueConfig(AppConfig):
     def ready(self):
         # M6 — abonnements au bus ``core.events`` (import fonction-local pour
         # éviter les cycles au chargement des apps).
-        from . import receivers  # noqa: F401  (branché par NTJUR26)
+        import_module(f'{self.name}.receivers')  # branché par NTJUR26

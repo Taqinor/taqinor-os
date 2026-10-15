@@ -2535,7 +2535,7 @@ class PaymentRunLine(models.Model):
 # tests FG135/136) ; le POSTING COMPTABLE, lui, RESTE ici
 # (``apps.compta.services`` — écritures 6143/4432/trésorerie + verrou de
 # période FG115), c'est la frontière voulue.
-from apps.frais.models import (  # noqa: E402,F401
+from apps.frais.models import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     BaremeIndemnite,
     IndemniteChantier,
     NoteFrais,
@@ -4824,7 +4824,7 @@ class TranchePaiement(models.Model):
 # code/services/migrations historiques (``from apps.compta.models import
 # AppelOffre``, viewsets, serializers) fonctionnels ; à retirer en ODX22 une
 # fois tous les appelants re-pointés sur ``apps.ao``.
-from apps.ao.models import (  # noqa: E402,F401
+from apps.ao.models import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     AppelOffre,
     BordereauPrix,
     CautionSoumission,
@@ -4848,7 +4848,7 @@ from apps.ao.models import (  # noqa: E402,F401
 # ``portail_mon_releve``/``portail_contester_facture``, sélecteur contrats)
 # fonctionnels ; à retirer en ODX22 une fois tous les appelants re-pointés sur
 # ``apps.portail``.
-from apps.portail.models import (  # noqa: E402,F401
+from apps.portail.models import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     AcceptationDevisPortail,
     ComptePortailClient,
     DemandeTicketPortail,
@@ -4870,7 +4870,7 @@ from apps.portail.models import (  # noqa: E402,F401
 # serializers, ``services.enregistrer_commission``/``affecter_territoire``)
 # fonctionnels ; à retirer en ODX22 une fois tous les appelants re-pointés sur
 # ``apps.crm``.
-from apps.crm.models import (  # noqa: E402,F401
+from apps.crm.models import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     CommissionPartenaire,
     Partenaire,
     SoumissionLeadPartenaire,
@@ -4886,7 +4886,7 @@ from apps.crm.models import (  # noqa: E402,F401
 # ré-export garde le code/services/migrations historiques
 # (``from apps.compta.models import AbonnementMonitoring``, viewset, serializer)
 # fonctionnels ; à retirer en ODX22 une fois tous les appelants re-pointés.
-from apps.monitoring.models import AbonnementMonitoring  # noqa: E402,F401
+from apps.monitoring.models import AbonnementMonitoring  # noqa: E402,F401 (D-ENF22)
 
 
 # ── COMPTA2 — Mapping document → compte comptable par société ──────────────
@@ -6304,7 +6304,7 @@ class LigneCompensation(models.Model):
 # code/migrations historiques (``from apps.compta.models import Campagne``,
 # admin, tests) fonctionnels ; à retirer en ODX22 une fois tous les appelants
 # re-pointés sur ``apps.marketing``.
-from apps.marketing.models import (  # noqa: E402,F401
+from apps.marketing.models import (  # noqa: E402,F401 — fin de module (anti-cycle), ré-export de façade (D-ENF22)
     AbonnementListe,
     AppelTelephonique,
     ApprobationEnvoiCampagne,
@@ -8444,7 +8444,7 @@ def pack_pays_societe(company) -> str:
     try:
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         return ''
     if profil is None:
         return ''

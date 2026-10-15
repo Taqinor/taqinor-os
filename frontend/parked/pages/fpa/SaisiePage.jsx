@@ -66,7 +66,7 @@ export default function SaisiePage() {
 
   useEffect(() => {
     if (!cycleId || !departementId) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     setLoading(true)
     fpaApi.getLignesBudget({ cycle: cycleId, departement: departementId })
       .then((res) => {

@@ -115,7 +115,7 @@ def _resynchroniser_instance_appelante(devis, verrou):
         return
     try:
         devis.refresh_from_db()
-    except Exception:  # noqa: BLE001 — la resynchro est déjà validée en base
+    except Exception:  # noqa: BLE001 — la resynchro est déjà validée en base (D-ENF22-BLE001)
         logger.warning('QJR20: instance appelante non rechargeable (devis %s)',
                        getattr(devis, 'pk', '?'), exc_info=True)
         return
@@ -1173,7 +1173,7 @@ def reconcilier(devis, intention):
         # CHANGÉES : une clé héritée d'un devis ancien (et pas encore déclarée
         # au schéma) ne doit pas faire échouer une resynchro qui ne la touche
         # même pas.
-        from apps.ventes.domain.etude_schema import CALEPINAGE, fusionner
+        from apps.ventes.domain.etude_schema import CALEPINAGE, appliquer
         _avant = dict(verrou.etude_params or {})
         _modifiees = {cle: valeur for cle, valeur in etude.items()
                       if cle not in _avant or _avant[cle] != valeur}
@@ -1184,8 +1184,7 @@ def reconcilier(devis, intention):
         # retrait (``None`` = retirer la clé) ; sans cette ligne, le pop
         # d'amont était silencieusement perdu et la valeur périmée reconduite.
         _modifiees.update({cle: None for cle in _avant if cle not in etude})
-        verrou.etude_params = fusionner(
-            _avant, proprietaire=CALEPINAGE, **_modifiees)
+        appliquer(verrou, proprietaire=CALEPINAGE, **_modifiees)
         # `update_fields` EXCLUT `statut` : le statut ne peut pas partir d'ici,
         # même par accident (règle #4).
         verrou.save(update_fields=[
@@ -1386,7 +1385,7 @@ def emettre_layout_finalise(devis, user):
     try:
         layout_finalise.send(sender='ventes.views.devis', devis=devis,
                              user=user)
-    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis (D-ENF22-BLE001)
         logger.warning("resynchronisation.emettre_layout_finalise : erreur ignorée (mode dégradé)", exc_info=True)
         logging.getLogger(__name__).exception(
             'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
@@ -1424,7 +1423,7 @@ def resynchroniser_conception(devis, layout, user=None, *, emettre=True,
         from apps.ventes.domain.stockage_toiture import poser_affiche_depuis
         try:
             poser_affiche_depuis(devis, roof_image)
-        except Exception:  # noqa: BLE001 — cf. docstring : jamais bloquant
+        except Exception:  # noqa: BLE001 — cf. docstring : jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'ACAL98 : affiche du calepinage non copiée sur le devis %s',
                 getattr(devis, 'pk', None), exc_info=True)
@@ -1517,8 +1516,8 @@ def ecrire_conception_du_devis(devis, layout, user=None, *,
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402
-from apps.ventes.domain.catalogue import (  # noqa: E402
+from apps.ventes.domain.bordereau import concevoir_electrique_du_devis  # noqa: E402 — anti-cycle (D-ENF22)
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     SOCLES_PAR_PANNEAU,
     STRUCTURES_PAR_PANNEAU,
     _arrondi_js,
@@ -1537,7 +1536,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402
     metre_cable_dc,
     metre_cable_terre,
 )
-from apps.ventes.domain.composition import (  # noqa: E402
+from apps.ventes.domain.composition import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     VARIANTE_AVEC,
     VARIANTE_SANS,
     _completer_kit_residentiel,
@@ -1545,8 +1544,8 @@ from apps.ventes.domain.composition import (  # noqa: E402
     _refuser_couple_panneau_onduleur_impossible,
     _v_txt,
 )
-from apps.ventes.domain.gammes import gamme_nom  # noqa: E402
-from apps.ventes.domain.geometrie import (  # noqa: E402
+from apps.ventes.domain.gammes import gamme_nom  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.geometrie import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _cible_panneaux_du_layout,
     _watt_du_layout,
     extract_roof_config,
@@ -1554,7 +1553,7 @@ from apps.ventes.domain.geometrie import (  # noqa: E402
     modeles_designes,
     scenario_du_layout,
 )
-from apps.ventes.domain.lignes import (  # noqa: E402
+from apps.ventes.domain.lignes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _classe_ligne,
     _lignes_produit,
     creer_ligne,
@@ -1564,17 +1563,17 @@ from apps.ventes.domain.lignes import (  # noqa: E402
 # a pas de cycle : ``pipeline`` n'importe CE module que depuis l'intérieur de
 # son étape ``reconcilier`` (import fonction-local, délibéré), donc il est
 # toujours complètement chargé quand cette ligne s'exécute.
-from apps.ventes.domain.pipeline import (  # noqa: E402
+from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     MODE_RECONCILIER,
     ORIGINE_RESYNCHRONISATION,
     IntentionDevis,
     appliquer,
 )
-from apps.ventes.domain.etape_composer import (  # noqa: E402
+from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
 )
-from apps.ventes.domain.scenario import (  # noqa: E402
+from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     SCENARIO_LES_DEUX,
     puissance_kwc_du_devis,
     scenario_effectif,

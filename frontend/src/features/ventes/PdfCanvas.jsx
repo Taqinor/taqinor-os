@@ -22,7 +22,7 @@ export default function PdfCanvas({ blob, onError }) {
     let cancelled = false
     let pdf = null
     const host = pagesRef.current
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début d'un rendu PDF déclenché par l'effet (D-ENF22)
     setRendering(true)
 
     const run = async () => {

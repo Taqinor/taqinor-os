@@ -352,3 +352,6 @@ export default {
   formatDate, formatDateTime, formatPhoneMA, canonicalPhoneMA,
   normalizeMaPhone, normalizePhoneE164, formatPersonName, nbsp,
 }
+
+// ENF15 — date du jour LOCALE (Africa/Casablanca) : forme unique, voir lib/dateLocale.js.
+export { todayLocalIso } from './dateLocale.js'

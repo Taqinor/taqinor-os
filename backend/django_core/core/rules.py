@@ -353,7 +353,7 @@ def sequential_actions(
             continue
         try:
             result = runner(step)
-        except Exception as exc:  # noqa: BLE001 — on isole l'action de l'appelant.
+        except Exception as exc:  # noqa: BLE001 — on isole l'action de l'appelant (D-ENF22-BLE001)
             logger.warning("sequential actions : échec ignoré, comportement dégradé", exc_info=True)
             run.outcomes.append(ActionOutcome(step=step, ok=False, error=exc))
             if stop_on_error:

@@ -163,7 +163,7 @@ def notifier_valideurs_visite(visite, acteur=None):
             body=(f'La visite chez « {visite.lead} » est terminée : elle '
                   "attend le feu vert du bureau d'études."),
             link=f'/visites/{visite.pk}', company=visite.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("notifier valideurs visite : échec ignoré, comportement dégradé", exc_info=True)
         return []
 
@@ -198,7 +198,7 @@ def emettre_visite_planifiee(visite, user):
             sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
             user=user, date_prevue=visite.date_prevue,
             commercial_nom=_commercial_nom(visite))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre visite planifiee : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return visite
@@ -230,7 +230,7 @@ def emettre_visite_terminee(visite, user):
             sender=VisiteTerrain, visite=visite, lead_id=visite.lead_id,
             user=user, retour=selectors.retour_visite(visite),
             qualification=visite.qualification)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("emettre visite terminee : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return visite
@@ -1023,6 +1023,9 @@ def marquer_en_cours(visite):
 #: Début du refus « catégorie inconnue de CE gabarit » (la vue y reconnaît un
 #: refus d'ÉTAT, 409, sans le confondre avec un champ nommé ``categorie``).
 CATEGORIE_MESURES_INCONNUE = 'Catégorie de mesures inconnue'
+#: ERR-ENF11-FUZZ-VISITES — début du refus d'une clé de ``valeurs`` absente de
+#: la catégorie (le vocabulaire dépend du gabarit et du contexte de LA visite).
+CHAMP_MESURE_INCONNU = 'Champ inconnu dans la catégorie'
 
 
 def enregistrer_mesures(visite, categorie, valeurs):
@@ -1061,7 +1064,7 @@ def enregistrer_mesures(visite, categorie, valeurs):
             continue
         champ = connus.get(code)
         if champ is None:
-            erreurs[code] = (f'Champ inconnu dans la catégorie '
+            erreurs[code] = (f'{CHAMP_MESURE_INCONNU} '
                              f'« {declaration["libelle"]} ».')
             continue
         valeur, message = valeur_mesure(champ, brute)

@@ -112,7 +112,7 @@ def payload_passe(condition, payload) -> bool:
         return True
     try:
         return bool(evaluate_condition_group(arbre, payload))
-    except Exception:  # noqa: BLE001 — un filtre cassé ne fait jamais taire
+    except Exception:  # noqa: BLE001 — un filtre cassé ne fait jamais taire (D-ENF22-BLE001)
         logger.exception('Filtre webhook illisible — livraison maintenue')
         return True
 

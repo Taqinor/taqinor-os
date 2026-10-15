@@ -290,7 +290,7 @@ class NoteDebitViewSet(viewsets.ReadOnlyModelViewSet):
                 from ..utils.pdf import generate_avoir_pdf
                 generate_avoir_pdf(avoir.id)
                 avoir.refresh_from_db()
-            except Exception:  # noqa: BLE001 — PDF best-effort
+            except Exception:  # noqa: BLE001 — PDF best-effort (D-ENF22-BLE001)
                 logger.warning("avoir.NoteDebitViewSet.annuler : erreur ignorée (mode dégradé)", exc_info=True)
         return Response(
             {'note_debit': NoteDebitSerializer(note_debit).data,

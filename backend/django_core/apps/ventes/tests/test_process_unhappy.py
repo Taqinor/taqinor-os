@@ -55,7 +55,7 @@ class TestDevisRefuseUnhappyPath(TenantAPITestCase):
         resp_bc = api.post(
             f'/api/django/ventes/devis/{devis.id}/convertir-bc/', {},
             format='json')
-        self.assertEqual(resp_bc.status_code, 400, resp_bc.data)
+        self.assertEqual(resp_bc.status_code, 409, resp_bc.data)  # CI #997 fuzz : refus d'état, 409
         self.assertFalse(BonCommande.objects.filter(devis=devis).exists())
 
 
@@ -71,7 +71,7 @@ class TestDevisExpireUnhappyPath(TenantAPITestCase):
         resp = api.post(
             f'/api/django/ventes/devis/{devis.id}/convertir-bc/', {},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertFalse(BonCommande.objects.filter(devis=devis).exists())
 
         # Statut inchangé : rester expiré, jamais basculer vers accepté par

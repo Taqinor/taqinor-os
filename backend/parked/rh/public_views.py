@@ -5,6 +5,7 @@ liens publics WhatsApp FG79 / ``ventes.public_views``) : jeton long,
 imprévisible, expirant (30 j). AUCUNE session, AUCUN login requis. Le PDF
 n'est JAMAIS indexé (X-Robots-Tag: noindex) et throttlé contre le brute-force.
 """
+import logging
 from django.conf import settings
 from django.http import Http404, HttpResponse
 from rest_framework import status
@@ -81,7 +82,8 @@ def public_promesse_pdf(request, token):
         return _not_found()
     try:
         pdf_bytes = render_promesse_embauche_pdf(promesse)
-    except Exception:  # noqa: BLE001 — jamais de fuite de stack au public.
+    except Exception:  # noqa: BLE001 — jamais de fuite de stack au public. (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("public_views.public_promesse_pdf : erreur ignorée (mode dégradé)", exc_info=True)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))

@@ -359,7 +359,7 @@ export default function FactureList() {
     const wantedId = searchParams.get('id')
     if (!wantedId || loading) return
     const match = factures.find(f => String(f.id) === String(wantedId))
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?id=
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?id= (D-ENF22)
     if (match) openEdit(match)
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)

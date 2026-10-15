@@ -65,9 +65,9 @@ export default function LocationPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch on filter change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch on filter change (D-ENF22)
   }, [filter])
 
   const changerStatut = async (ordre, statut, label) => {
@@ -377,7 +377,7 @@ function CreateOrdreDialog({ onClose, onDone }) {
 
   useEffect(() => {
     if (!produitId || !dateEnlevement || !dateRetour) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset dispo quand la fenêtre devient incomplète
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset dispo quand la fenêtre devient incomplète (D-ENF22)
       setDispo(null)
       return
     }

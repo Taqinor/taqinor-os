@@ -2,5 +2,4 @@
 # Une ligne = `fichier::fonction` qui construit un lien client RELATIF
 # (/api/django/public/...) hors _public_url / build_absolute_uri. DETTE : ne
 # peut que RETRECIR (rendre le lien absolu : tache C-AFAC-017+020).
-backend/django_core/apps/installations/selectors.py::intervention_rapport_public_payload  # AFAC94 lien client relatif
 backend/django_core/apps/ventes/public/paiement_views.py::_deposit_success_payload  # AFAC94 lien client relatif

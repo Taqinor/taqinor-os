@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const [campagneOpen, setCampagneOpen] = useState(false)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     setLoading(true)
     Promise.all([
       contratsApi.getTableauBord().then((r) => setBoard(r.data)),
@@ -236,9 +236,9 @@ function MetriquesSaasCard() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (période par défaut serveur)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (période par défaut serveur) (D-ENF22)
     charger()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage (D-ENF22)
 
   const bridge = data?.arr_bridge
   const quickRatio = data?.quick_ratio
@@ -322,9 +322,9 @@ function DeviationsCard() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (lecture seule)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (lecture seule) (D-ENF22)
     charger()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- chargement UNIQUEMENT au montage (D-ENF22)
 
   const ouvrir = async (contratId) => {
     if (ouvert === contratId) { setOuvert(null); setDetail(null); return }

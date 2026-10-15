@@ -61,7 +61,7 @@ export default function ModelesIntegration() {
       })
       .finally(() => { if (vivant) setLoading(false) })
     return () => { vivant = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [reloadTick])
 
   const supprimerElement = async (el) => {

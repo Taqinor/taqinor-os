@@ -131,7 +131,7 @@ class SauterUneTacheTests(_Base):
                             traite_le=GEL, traite_par=self.acteur)
         resp = self.api.post(f'{URL}{etape.pk}/sauter/', {'note': ''},
                              format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data['erreurs']['etape'],
                          MESSAGE_ETAPE_DEJA_TRAITEE)
 

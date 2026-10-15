@@ -5,6 +5,7 @@ import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import stockApi from '../../api/stockApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   ChartFrame, ChartTooltip, CHART_GRID_STYLE, CHART_TOKENS,
   CHART_ANIM_EASING, animationDuration, resolveColor,
@@ -189,10 +190,11 @@ function useFicheTechnique(produitId) {
   const [etat, setEtat] = useState({ id: null, fiche: undefined })
   useEffect(() => {
     let active = true
-    stockApi.getFichesTechniques(produitId)
-      .then((r) => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getFichesTechniques(produitId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => {
         if (!active) return
-        const liste = r.data?.results ?? r.data ?? []
+        const liste = Array.isArray(rows) ? rows : (rows?.results ?? [])
         setEtat({ id: produitId, fiche: liste[0] ?? null })
       })
       .catch(() => { if (active) setEtat({ id: produitId, fiche: null }) })

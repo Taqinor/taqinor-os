@@ -96,6 +96,18 @@ describe('SectionPipeline — AGR535 (résumé à l’associé)', () => {
     expect(await screen.findByText(CONTRAT.exemple_400_devis.devis_id[0])).toBeInTheDocument()
   })
 
+  it('409 (devis jamais envoyé, état) : même message nommé sous « Devis » qu’un 400', async () => {
+    crmApi.resumeAssocie.mockRejectedValue({
+      response: { status: 409, data: CONTRAT.exemple_400_devis },
+    })
+    renderSection()
+    await screen.findByRole('option', { name: 'DEV-2026-0042' })
+    fireEvent.click(screen.getByLabelText('Le client a demandé ou accepté ce partage'))
+    fireEvent.click(bouton())
+    expect(await screen.findByText(CONTRAT.exemple_400_devis.devis_id[0])).toBeInTheDocument()
+    expect(window.open).not.toHaveBeenCalled()
+  })
+
   it('suggestion d’étiquette : rien n’est écrit sans clic, puis la pose', () => {
     const setField = renderSection({ type_installation: 'agricole', tags: '' })
     expect(setField).not.toHaveBeenCalled()

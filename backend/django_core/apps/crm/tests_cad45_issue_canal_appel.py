@@ -80,7 +80,7 @@ class IssueExigeeSurUnAppelTests(_Base):
     def test_sans_issue_ni_message_ouvert_la_cloture_est_refusee(self):
         etape = self._touche_appel()
         resp = self._fait(etape)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         # L'erreur NOMME le champ fautif (règle fondateur 08/09/2026).
         self.assertIn('outcome', resp.data['erreurs'])
         etape.refresh_from_db()
@@ -125,7 +125,7 @@ class TraiteeParEcritTests(_Base):
         journaliser_whatsapp_ouvert(autre, self.acteur)
         etape = self._touche_appel()
         resp = self._fait(etape)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
 
 class IsolationSocieteTests(_Base):
@@ -149,4 +149,4 @@ class IsolationSocieteTests(_Base):
         journaliser_whatsapp_ouvert(etape_autre, autre_resp)
         etape = self._touche_appel()
         resp = self._fait(etape)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)

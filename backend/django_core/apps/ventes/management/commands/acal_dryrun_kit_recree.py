@@ -104,7 +104,7 @@ class Command(BaseCommand):
             nb += 1
             try:
                 ttc = totaux(devis, vue=Vue.NET).ttc
-            except Exception:  # noqa: BLE001 — un total illisible est signalé
+            except Exception:  # noqa: BLE001 — un total illisible est signalé (D-ENF22-BLE001)
                 logger.warning("acal_dryrun_kit_recree.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 ttc = '?'
             for classe, designation, montant in recrees:

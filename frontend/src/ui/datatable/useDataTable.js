@@ -79,7 +79,7 @@ export function useDataTable({
   // fois au montage : ensuite l'état local fait foi et écrit dans l'URL.
   const urlState = useMemo(
     () => (persistToUrl ? decodeState(searchParams, urlKey) : {}),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- état initial lu une seule fois au montage (D-ENF22)
     [],
   )
 
@@ -107,7 +107,7 @@ export function useDataTable({
   // écran (localStorage, `useColumnPrefs`). Non fourni → aucun effet.
   useEffect(() => {
     if (onColumnStateChange) onColumnStateChange(columnState)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'aux changements de columnState, pas à l'identité du callback
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'aux changements de columnState, pas à l'identité du callback (D-ENF22)
   }, [columnState])
 
   // Colonnes balayées par la recherche globale (par défaut : toutes).
@@ -162,7 +162,7 @@ export function useDataTable({
 
   // TanStack Table's `useReactTable()` returns functions the React Compiler
   // cannot safely memoize; this is inherent to the library, not fixable here.
-  // eslint-disable-next-line react-hooks/incompatible-library
+  // eslint-disable-next-line react-hooks/incompatible-library -- API TanStack non mémoïsable par le compilateur React, inhérent à la lib (D-ENF22)
   const table = useReactTable({
     data,
     columns: tableColumns,
@@ -192,14 +192,14 @@ export function useDataTable({
     if (manualFiltering) return data
     return table.getFilteredRowModel().rows.map((r) => r.original)
     // dépendances réelles du modèle filtré :
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- le modèle filtré de react-table se recalcule via ces dépendances réelles (D-ENF22)
   }, [table, data, query, columnFilters, globalIds, accessor, manualFiltering])
 
   // `sorted` : lignes après filtrage + tri (ou `filtered` en tri manuel).
   const sorted = useMemo(() => {
     if (manualSorting) return filtered
     return table.getSortedRowModel().rows.map((r) => r.original)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- le modèle trié de react-table se recalcule via ces dépendances réelles (D-ENF22)
   }, [table, filtered, sorting, manualSorting])
 
   const totalCount = manualPagination ? manualRowCount ?? data.length : sorted.length

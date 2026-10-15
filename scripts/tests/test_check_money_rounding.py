@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_money_rounding as cmr  # noqa: E402
+import check_money_rounding as cmr  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 MODULE_A = "a/module_a.py"

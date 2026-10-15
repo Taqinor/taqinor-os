@@ -20,13 +20,13 @@ from rest_framework.response import Response
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.parametres.models_relance import CADENCES_MOTEUR, Cadence
-from .models import Lead, MessageTemplate, PlanActivite, RelanceEtape
+from .models import Lead, LeadActivity, MessageTemplate, PlanActivite, RelanceEtape
 from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializer
 from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, corps_objet, entier_param
-from .cadence_reponses import TYPES_PIECE_RECUE
+from .cadence_reponses import REPONSES_TOUCHE, TYPES_PIECE_RECUE
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
@@ -50,7 +50,7 @@ def _best_effort(libelle, fn, *args, **kwargs):
     try:
         with transaction.atomic():
             return fn(*args, **kwargs)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('ALEA30: effet secondaire « %s » échoué', libelle,
                        exc_info=True)
         return None
@@ -230,6 +230,9 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                     'type_piece', 'mode', 'due_at', 'raison_attente')
     queryset = RelanceEtape.objects.select_related('lead', 'lead__owner').all()
     serializer_class = RelanceEtapeSerializer
+    # ENF15 — ``list`` est écrit à la main (``{count, results}`` de la file due
+    # complète) : jamais paginé par DRF.
+    pagination_class = None
 
     def get_permissions(self):
         # MRY10/MRY13 — `reporter` et `message` sont listées EXPLICITEMENT :
@@ -321,6 +324,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                                sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER_ID,
                                sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='suivi',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def suivi(self, request):
         """MRY30 — « Suivi des relances » : TOUTES les touches d'une PÉRIODE,
@@ -443,6 +447,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                        'results': serializers.ListField(child=serializers.DictField()),
                    }))
     @action(detail=False, methods=['get'], url_path='cadences-echues',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def cadences_echues(self, request):
         """CAD99 — la liste « cadences échues à clore » (forme
@@ -556,9 +561,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         etape = self.get_object()
         if etape.statut != RelanceEtape.Statut.A_FAIRE:
             # SUIVI E8 — jamais un second « Fait » sur une touche close.
+            # ERR-ENF11-FUZZ-CRM — c'est un ÉTAT (409), pas une erreur de corps.
             return Response(
                 {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # COCKPIT-CONTRÔLE B4 — « Sauter » est refusé sur une TÂCHE, AVANT
         # toute écriture (« déjà traitée » prime, SUIVI E8). La table du
         # parcours ne le propose pas ; le serveur le tient désormais aussi.
@@ -585,7 +591,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         if outcome == 'refuse' and est_etape(etape, CLE_DECIDER_SUITE):
             return Response(
                 {'erreurs': {'outcome': MESSAGE_REFUS_SUR_DECIDER_SUITE}},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # CAD10 — le motif de refus, FACULTATIF : seulement avec l'issue
         # « refus », seulement un motif de la liste paramétrée, et journalisé
         # sur la ligne de chatter de la touche (jamais sur `motif_perte` :
@@ -671,7 +677,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 and not _message_ouvert_sur_touche(etape)):
             return Response(
                 {'erreurs': {'outcome': MESSAGE_ISSUE_APPEL_OBLIGATOIRE}},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # MRY10 — « rappelez-moi jeudi » saisi DEPUIS la touche : elle est
         # reportée, plutôt que marquée faite et oubliée.
         rappel_le = (request.data.get('rappel_le') or '').strip()
@@ -869,11 +875,14 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             # même champ que pour « Fait » / « Sauter » / « Reporter ».
             return Response(
                 {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         refus = refus_reponse_touche(etape, reponse)
         if refus:
-            return Response({'erreurs': {'reponse': refus}},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # Clé hors vocabulaire : 400 ; clé connue mais sans valeur sur CETTE
+            # touche (cadence, étape, canal) : un ÉTAT, 409.
+            return Response({'erreurs': {'reponse': refus}}, status=(
+                status.HTTP_400_BAD_REQUEST if reponse_touche(reponse) is None
+                else status.HTTP_409_CONFLICT))
         spec = reponse_touche(reponse)
         note = (request.data.get('note') or '').strip()
         body = (request.data.get('body') or '').strip()
@@ -885,7 +894,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 etape.company, request.data.get('motif_perte'))
             if refus:
                 return Response({'erreurs': {'motif_perte': refus}},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
         # La date convenue avec le client (« Rappeler le »), quand la réponse
         # en exige une — même lecture, mêmes refus nommés que « À rappeler
         # le… » (format, puis CAD27 : jamais dans le passé).
@@ -896,15 +905,16 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 {'erreurs': {'rappel_le': (
                     '« Rappeler le » : la date convenue avec le client est '
                     f'obligatoire pour « {spec["libelle"]} ».')}},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # CIQ508 — la RAISON de l'attente (liste fermée) est obligatoire :
         # absente ou inconnue, le refus NOMME le champ et LISTE les valeurs.
         raison_attente = (request.data.get('raison_attente') or '').strip()
         if spec.get('raison_requise'):
             refus = refus_raison_attente(raison_attente)
             if refus:
-                return Response({'erreurs': {'raison_attente': refus}},
-                                status=status.HTTP_400_BAD_REQUEST)
+                return Response({'erreurs': {'raison_attente': refus}}, status=(
+                    status.HTTP_409_CONFLICT if not raison_attente
+                    else status.HTTP_400_BAD_REQUEST))
         if rappel_le:
             quand = _parse_rappel(
                 rappel_le, (request.data.get('rappel_heure') or '').strip())
@@ -952,10 +962,13 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 etape, request.user, note=note, body=body)
         return self._reponse_fait(etape)
 
-    @extend_schema(request=sd.corps('CrmRelanceFaitRequest', outcome=serializers.CharField(required=False),
-                                    reponse=serializers.CharField(required=False),
-                                    langue=serializers.CharField(required=False),
-                                    note=serializers.CharField(required=False)), responses=RelanceEtapeSerializer)
+    @extend_schema(request=sd.corps('CrmRelanceFaitRequest',
+                                    outcome=ChoixDocumente(choices=[k for k, _ in LeadActivity.OUTCOMES],
+                                                           required=False),
+                                    reponse=ChoixDocumente(choices=['', *REPONSES_TOUCHE], required=False),
+                                    langue=ChoixDocumente(choices=['', *Lead.LanguePreferee.values], required=False),
+                                    note=ChaineStricte(required=False, allow_blank=True)),
+                   responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     def fait(self, request, pk=None):
         """Marque cette étape FAITE.
@@ -965,7 +978,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         la prise de contact) ; ``rappel_le`` reporte la touche suivante.
 
         CKP2 — ``outcome`` est OBLIGATOIRE sur une touche de canal ``appel``
-        (400 ``{"erreurs": {"outcome": …}}``) : c'est l'issue qui programme le
+        (409 ``{"erreurs": {"outcome": …}}`` : c'est un ÉTAT, le canal de la
+        touche — ERR-ENF11-FUZZ-CRM ; de même touche déjà traitée, réponse
+        sans valeur sur cette touche, motif / date / raison manquants) : c'est
+        l'issue qui programme le
         geste suivant du protocole. Facultatif sur WhatsApp / e-mail / visite.
         Toute issue autre que « joint »/« intéressé »/« refus » fait naître la
         touche suivante de la cadence — de même qu'un saut humain.
@@ -980,6 +996,16 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         (un refus 400 ne change rien). Une langue inconnue est refusée AVANT
         tout, en 400 ``{"erreurs": {"langue": …}}``."""
         from .cadence_messages import definir_langue_preferee, refus_langue_relance
+        # Les quatre textes du corps sont des chaînes (schéma) : ``outcome: true``
+        # levait un ``AttributeError`` (500) à ``.strip()``.
+        if not hasattr(request.data, 'get'):
+            return Response({'erreurs': {'corps': 'Objet JSON attendu.'}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        fautif = [c for c in ('outcome', 'reponse', 'langue', 'note')
+                  if not isinstance(request.data.get(c, ''), str)]
+        if fautif:
+            return Response({'erreurs': {c: 'Texte attendu.' for c in fautif}},
+                            status=status.HTTP_400_BAD_REQUEST)
         langue = (request.data.get('langue') or '').strip()
         if langue:
             refus = refus_langue_relance(langue)
@@ -1286,7 +1312,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             # prochaine.
             return Response(
                 {'erreurs': {'etape': MESSAGE_ETAPE_DEJA_TRAITEE}},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         brut = (request.data.get('due_at') or '').strip()
         quand = None
         if brut:
@@ -1404,7 +1430,7 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             from .visites_rdv import public_booking_url
             try:
                 lien_rdv = public_booking_url(lead, request=request)
-            except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu
+            except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu (D-ENF22-BLE001)
                 logger.warning('%s : échec ignoré (dégradé)', 'render_template', exc_info=True)
                 lien_rdv = ''
         return Response({'texte': tmpl.render(
@@ -1759,6 +1785,7 @@ class LeadCadenceActionsMixin:
     # ── FG31 — File de relance du jour ───────────────────────────────────────
     @extend_schema(parameters=[sd.P_SCOPE], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='relances',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def relances(self, request):
         """File de relance consolidée.

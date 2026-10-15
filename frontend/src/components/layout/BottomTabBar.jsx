@@ -42,7 +42,7 @@ const MAX_APP_TABS = MAX_TABS - 1
  *   ≤ 4 sections → toutes directes, aucun « Plus » (rien à cacher) ;
  *   > 4 sections → 3 directes + « Plus » qui ouvre la liste COMPLÈTE.
  */
-// eslint-disable-next-line react-refresh/only-export-components
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, testé directement (BottomTabBar.test.jsx) (D-ENF22)
 export function splitAppTabs(items) {
   const all = items ?? []
   if (all.length <= MAX_APP_TABS) return { directs: all, more: false }

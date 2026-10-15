@@ -138,7 +138,9 @@ export default function TicketAdvancedPanel({ ticket, onNoteInsert, onSaved }) {
   // ── XSAV23 — macros (réponses types) ──
   const [macros, setMacros] = useState([])
   useEffect(() => {
-    savApi.getReponsesType().then((r) => setMacros(r.data.results ?? r.data ?? [])).catch(() => {})
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      savApi.getReponsesType({ page, page_size: pageSize }).then((r) => r.data))
+      .then((res) => setMacros(Array.isArray(res) ? res : (res?.results ?? []))).catch(() => {})
   }, [])
 
   return (

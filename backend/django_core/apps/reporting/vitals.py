@@ -67,7 +67,8 @@ class WebVitalRequeteSerializer(WebVitalMetricSerializer):
     request=WebVitalRequeteSerializer,
     responses={201: None})
 @api_view(['POST'])
-@parser_classes(PARSEURS_JSON)  # CI #997 fuzz (2) : le beacon est du JSON (valeur = nombre) — un formulaire n'en porte que des chaînes
+# CI #997 fuzz (2) : le beacon est du JSON (valeur = nombre) — un formulaire n'en porte que des chaînes
+@parser_classes(PARSEURS_JSON)
 @permission_classes([IsAuthenticated])
 def collect_vital(request):
     """Beacon POST — une ligne par métrique. `sendBeacon`/`fetch keepalive`

@@ -110,10 +110,10 @@ export function useBrouillonEcran(ctx) {
   const [referenceEcran, setReferenceEcran] = useState(null)
   useEffect(() => {
     if (Date.now() < captureReferenceJusqua.current) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- captureReferenceJusqua : useRef de la coquille reçu du ctx (même effet qu'avant SPL54)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- captureReferenceJusqua : useRef de la coquille reçu du ctx (même effet qu'avant SPL54) (D-ENF22)
       setReferenceEcran(snapshotJson)
     }
-  }, [snapshotJson]) // eslint-disable-line react-hooks/exhaustive-deps -- captureReferenceJusqua est un ref (stable)
+  }, [snapshotJson]) // eslint-disable-line react-hooks/exhaustive-deps -- captureReferenceJusqua est un ref (stable) (D-ENF22)
   const dirty = referenceEcran != null
     ? snapshotJson !== referenceEcran
     : (editId ? false : formulaireNonVierge)
@@ -191,7 +191,7 @@ export function useBrouillonEcran(ctx) {
       dispatchSizing({ type: 'SAISI', champ: 'structureProduit', valeur: d.structureProduitId })
     }
     // AGNR44 — un ancien brouillon peut porter `dayUsage` : ignoré (plus de curseur).
-    // eslint-disable-next-line react-hooks/immutability -- linesInitialized : useRef de la coquille reçu du ctx
+    // eslint-disable-next-line react-hooks/immutability -- linesInitialized : useRef de la coquille reçu du ctx (D-ENF22)
     if (Array.isArray(d.lines)) { setLines(withKeys(d.lines)); linesInitialized.current = true }
     if (d.tauxTva != null) setTauxTva(d.tauxTva)
     if (d.discountPct != null) setDiscountPct(d.discountPct)

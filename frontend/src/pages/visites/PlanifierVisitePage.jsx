@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Button, Card, Input, Label, Spinner,
@@ -39,8 +40,9 @@ export default function PlanifierVisitePage() {
   const abort = useRef(null)
 
   const chargerMembres = useCallback(() => {
-    visitesApi.getMembres()
-      .then((res) => setMembres(res.data?.results ?? res.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      visitesApi.getMembres({ params: { page, page_size: pageSize } }).then((r) => r.data))
+      .then((rows) => setMembres(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       // Le champ « assigner à » reste alors vide et facultatif : le serveur
       // assignera son défaut. On n'invente pas une liste d'utilisateurs.
       .catch(() => setMembres([]))

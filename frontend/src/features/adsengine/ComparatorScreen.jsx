@@ -93,7 +93,7 @@ export default function ComparatorScreen() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de source
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de source (D-ENF22)
   useEffect(() => { load(sourceKey) }, [sourceKey, load])
 
   const toggleSelect = (id) => {

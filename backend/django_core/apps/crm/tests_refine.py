@@ -231,7 +231,7 @@ class TestStageGuardOnUpdate(TestCase):
         r = self.api.patch(
             f'/api/django/crm/leads/{lead.id}/',
             {'stage': 'SIGNED'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         lead.refresh_from_db()
         self.assertEqual(lead.stage, 'QUOTE_SENT')
 
@@ -241,7 +241,7 @@ class TestStageGuardOnUpdate(TestCase):
         r = self.api.patch(
             f'/api/django/crm/leads/{lead.id}/',
             {'stage': 'NEW'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         lead.refresh_from_db()
         self.assertEqual(lead.stage, 'FOLLOW_UP')
 

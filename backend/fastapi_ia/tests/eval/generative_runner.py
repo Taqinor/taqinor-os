@@ -47,7 +47,7 @@ def _tables_interdites() -> set:
     try:  # pragma: no cover - depend de l'environnement
         from app.services import sql_agent_service as svc
         return {str(t).lower() for t in svc._ALLOWED_TABLES}
-    except Exception:  # noqa: BLE001 - degradation volontaire
+    except Exception:  # noqa: BLE001 - degradation volontaire (D-ENF22-BLE001)
         # Sous-ensemble FIGE de l'allowlist reelle (assez pour que le harnais
         # garde ses dents sans les dependances lourdes du service).
         return {"crm_client", "ventes_devis", "ventes_facture",

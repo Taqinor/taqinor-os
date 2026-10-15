@@ -27,8 +27,8 @@ class TestCablageBeat(SimpleTestCase):
         # `autodiscover_tasks()` est PARESSEUX : l'enregistrement a lieu à
         # l'import du module de tâches. On les importe donc explicitement —
         # c'est exactement ce que fait le worker au démarrage.
-        import apps.contrats.scheduled  # noqa: F401
-        import apps.qhse.tasks  # noqa: F401
+        __import__('apps.contrats.scheduled')
+        __import__('apps.qhse.tasks')
         from erp_agentique.celery import app
         for nom in self.NOMS:
             with self.subTest(tache=nom):

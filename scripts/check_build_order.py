@@ -41,8 +41,8 @@ BUILD_ORDER_FILE = ROOT / "docs" / "BUILD_ORDER.yml"
 
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import plan_lanes  # noqa: E402
-import plan_progress  # noqa: E402
+import plan_lanes  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import plan_progress  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _edges_as_pairs(build_order: dict) -> list[tuple[str, str]]:

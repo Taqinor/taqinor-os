@@ -136,7 +136,7 @@ class FactureAdminVerrousTests(TestCase):
         if reponse.status_code != 302:
             try:
                 erreurs = dict(reponse.context['adminform'].form.errors)
-            except Exception:  # noqa: BLE001 — le diagnostic ne casse jamais
+            except (KeyError, AttributeError, TypeError):  # le diagnostic ne casse jamais
                 erreurs = '<erreurs de formulaire illisibles>'
             self.fail(
                 "le formulaire d'admin n'a pas enregistré (HTTP %s au lieu de "

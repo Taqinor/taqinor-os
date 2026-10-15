@@ -54,7 +54,7 @@ def _vendu_du_devis(devis):
         return None, None
     try:
         kwc = puissance_kwc_du_devis(devis)
-    except Exception:  # noqa: BLE001 — un bloc de fiche ne casse jamais le détail
+    except Exception:  # noqa: BLE001 — un bloc de fiche ne casse jamais le détail (D-ENF22-BLE001)
         logger.warning("calepinage_retenu : kWc vendu illisible, bloc dégradé", exc_info=True)
         return None, None
     if not kwc:
@@ -64,7 +64,7 @@ def _vendu_du_devis(devis):
         from apps.ventes.selectors import modules_vendus_du_devis
 
         modules = modules_vendus_du_devis(devis)
-    except Exception:  # noqa: BLE001 — le compte de modules est facultatif
+    except Exception:  # noqa: BLE001 — le compte de modules est facultatif (D-ENF22-BLE001)
         logger.warning("calepinage_retenu : modules du devis illisibles", exc_info=True)
         modules = None
     return round(float(kwc), 2), modules

@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -21,4 +23,4 @@ class MarketingConfig(AppConfig):
     def ready(self):
         # XMKT1 — sortie automatique des séquences de relance à
         # l'acceptation/refus d'un devis lié à un lead (core.events, M6).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

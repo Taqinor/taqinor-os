@@ -59,7 +59,7 @@ function readInsightsCache(companyId) {
 
 /** resetInsightsCache — vide le cache (tests uniquement, même convention que
  * `resetPrefetchCache`). */
-// eslint-disable-next-line react-refresh/only-export-components -- utilitaire de test co-localisé (même motif que STAGE_PROBABILITY, KanbanView.jsx)
+// eslint-disable-next-line react-refresh/only-export-components -- utilitaire de test co-localisé (même motif que STAGE_PROBABILITY, KanbanView.jsx) (D-ENF22)
 export function resetInsightsCache() {
   insightsCache = null
 }
@@ -112,7 +112,7 @@ export function MesChiffresCard({
   const [attainmentError, setAttainmentError] = useState(false)
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- load-on-mount/re-fetch state */
+    /* eslint-disable react-hooks/set-state-in-effect -- load-on-mount/re-fetch state (D-ENF22) */
     if (!userId) { setAttainment([]); return undefined }
     let alive = true
     setAttainment(null)

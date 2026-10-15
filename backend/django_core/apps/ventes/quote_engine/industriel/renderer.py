@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Industriel renderer selection + data augmentation for the single engine.
 
 ``generate_premium_devis_pdf`` builds the quote data once, then asks this module
@@ -47,7 +48,7 @@ def is_industrial(devis, options=None) -> bool:
 
 # CIQ317 — le MÊME lecteur numérique que le renderer commercial (une
 # seule définition : la page équipements est partagée).
-from ..commercial.renderer import _num  # noqa: E402,F401
+from ..commercial.renderer import _num  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _augment(data: dict) -> dict:

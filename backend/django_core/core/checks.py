@@ -361,7 +361,7 @@ def verifier_garantie_rls(app_configs=None, **kwargs):
     role = role_runtime_rls()
     try:
         attributs = lire_attributs_role(role)
-    except Exception as exc:  # noqa: BLE001 — base injoignable : signaler, pas bloquer
+    except Exception as exc:  # noqa: BLE001 — base injoignable : signaler, pas bloquer (D-ENF22-BLE001)
         logger.warning("verifier garantie rls : échec ignoré, comportement dégradé", exc_info=True)
         messages.append(CheckWarning(
             f'POSTGRES_RLS_ENABLED=1 : impossible de vérifier les attributs du '

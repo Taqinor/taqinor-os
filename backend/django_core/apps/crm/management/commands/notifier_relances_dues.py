@@ -75,7 +75,7 @@ def _jour_ouvre(company, aujourdhui):
         from apps.crm import horaires
         return horaires.fenetre_du_jour(
             aujourdhui, company, canal=_CANAL_DIGEST) is not None
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning('notifier_relances_dues: jour ouvré illisible '
                        '(société %s)', getattr(company, 'pk', '?'),
                        exc_info=True)
@@ -109,7 +109,7 @@ def _familles_de_cles():
         # c'est un devis à PRÉPARER, compté comme tel.
         devis = frozenset({cc.CLE_DEVIS, cc.CLE_DEVIS_MODIFIE})
         return visites, devis
-    except Exception:  # noqa: BLE001 — la ventilation est un bonus
+    except Exception:  # noqa: BLE001 — la ventilation est un bonus (D-ENF22-BLE001)
         logger.warning('notifier_relances_dues: clés de familles '
                        'illisibles', exc_info=True)
         return frozenset(), frozenset()
@@ -284,7 +284,7 @@ def notifier_relances_dues(dry_run=False, today=None):
         try:
             orphelins = _compter_leads_sans_responsable(company, aujourdhui)
             responsable_defaut = _responsable_defaut(company)
-        except Exception:  # noqa: BLE001 — jamais bloquant pour les digests
+        except Exception:  # noqa: BLE001 — jamais bloquant pour les digests (D-ENF22-BLE001)
             logger.warning(
                 'notifier_relances_dues: comptage des leads sans responsable '
                 'échoué (société %s)', getattr(company, 'pk', '?'),
@@ -306,7 +306,7 @@ def notifier_relances_dues(dry_run=False, today=None):
                     company, owner, scope='all', owner=owner.pk,
                     today=aujourdhui)
                 n = dues.count()
-            except Exception:  # noqa: BLE001 — un owner en échec n'arrête rien
+            except Exception:  # noqa: BLE001 — un owner en échec n'arrête rien (D-ENF22-BLE001)
                 logger.warning(
                     'notifier_relances_dues: comptage échoué pour %s',
                     owner.pk, exc_info=True)
@@ -348,7 +348,7 @@ def notifier_relances_dues(dry_run=False, today=None):
                     owner, EventType.RELANCE_DUE,
                     title=titre,
                     body=corps, link='/crm/cockpit', company=company)
-            except Exception:  # noqa: BLE001 — best-effort
+            except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
                 logger.warning(
                     'notifier_relances_dues: notification échouée pour %s',
                     owner.pk, exc_info=True)
@@ -372,7 +372,7 @@ def notifier_relances_dues(dry_run=False, today=None):
                             title=f'{orphelins} lead(s) sans responsable',
                             body=_ligne_sans_responsable(orphelins),
                             link='/crm/cockpit', company=company)
-                    except Exception:  # noqa: BLE001 — best-effort
+                    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
                         logger.warning(
                             'notifier_relances_dues: notification « sans '
                             'responsable » échouée pour %s',

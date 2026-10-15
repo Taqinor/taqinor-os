@@ -23,6 +23,8 @@ from apps.installations.models import Installation
 from apps.stock.models import Produit
 from apps.ventes.models import (
     Devis, Facture, FollowupLevel, LigneDevis, LigneFacture)
+import re as _re
+from django.test import SimpleTestCase
 
 User = get_user_model()
 
@@ -404,9 +406,7 @@ class TestFicheRemisePremium(_Base):
 # Test-du-test : remettre ``RELANCE_TONES[3]`` d'origine (« QUINZE (15)
 # JOURS », « fait courir les intérêts de retard ») ⇒
 # ``test_corps_par_defaut_sans_delai_ni_interets`` échoue.
-import re as _re  # noqa: E402
 
-from django.test import SimpleTestCase  # noqa: E402
 
 _RESUME_AMOT55 = {'reference': 'FAC-2026-0001', 'date_echeance': '01/09/2026',
                   'jours_retard': 40, 'montant_du': Decimal('10000'),

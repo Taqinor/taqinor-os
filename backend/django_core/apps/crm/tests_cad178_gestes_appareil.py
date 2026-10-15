@@ -126,7 +126,7 @@ class EnregistrerGesteAppareilTests(TestCase):
         l'appelant — c'est tout le sens du « best-effort »."""
         try:
             mesure_cadence.enregistrer_geste_appareil(None, 'fait', UA_IPHONE)
-        except Exception as exc:  # noqa: BLE001 — l'assertion EST le test
+        except Exception as exc:  # noqa: BLE001 — l'assertion EST le test (D-ENF22-BLE001)
             self.fail(f'enregistrer_geste_appareil a levé : {exc!r}')
 
 

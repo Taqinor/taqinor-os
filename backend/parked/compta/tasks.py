@@ -1,6 +1,8 @@
 """Tâches Celery de l'app compta — auto-découvertes par `erp_agentique.celery`
 (`app.autodiscover_tasks()`), aucun enregistrement manuel requis.
 """
+from importlib import import_module
+
 from celery import shared_task
 
 from .models import Campagne
@@ -93,4 +95,4 @@ def traiter_posts_sociaux_task():
 
 # NTTRE29/31 — enregistre les tâches Beat trésorerie (scheduled.py) auprès de
 # Celery via ce module tasks.py auto-découvert (autodiscover_tasks).
-from . import scheduled  # noqa: E402,F401
+import_module('.scheduled', __package__)

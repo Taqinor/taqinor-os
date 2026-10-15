@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Award, UserCog } from 'lucide-react'
 import api from '../../api/axios'
+import fetchAllPages from '../../utils/fetchAllPages'
 import reportingApi from '../../api/reportingApi'
 import {
   Card, CardContent, EmptyState, Select, SelectTrigger, SelectValue,
@@ -38,8 +39,9 @@ export default function TechnicienScorecardPage() {
 
   useEffect(() => {
     let active = true
-    api.get('/users/')
-      .then((r) => { if (active) setTechniciens(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      api.get('/users/', { params: { page, page_size: pageSize } }).then((r) => r.data))
+      .then((rows) => { if (active) setTechniciens(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => { if (active) setTechniciens([]) })
     return () => { active = false }
   }, [])

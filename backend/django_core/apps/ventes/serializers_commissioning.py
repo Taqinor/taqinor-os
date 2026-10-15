@@ -10,17 +10,25 @@ société reçoit la réponse d'un id absent (400 « objet inexistant »).
 """
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
+from core.champs_stricts import (
+    ChampsStrictsEntiersMixin, ChampsStrictsMixin, IdInconnu404Mixin)
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ListeJSON
 
 from .models import (
     CommissioningTest, IVCurveCapture, AsBuiltPack, AttestationConformite,
     TestPerformanceReception, AttestationRE)
 
 
-class IVCurveCaptureSerializer(SameCompanyFKSerializerMixin,
+class IVCurveCaptureSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,
+                               SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
-    """FG275 — mesure I-V par string ; écart & défaut calculés serveur."""
+    """FG275 — mesure I-V par string ; écart & défaut calculés serveur.
+
+    CI #997 fuzz (ENF11 ventes) — texte, entier et décimaux-chaînes STRICTS
+    (``"string_label": 0`` ou ``"voc_mesure_v": 0`` étaient convertis en
+    silence) ; ``recette`` bien formée mais inconnue (ou d'une autre société,
+    même corps) : 404, plus 400."""
     same_company_fields = ('recette',)
 
     class Meta:
@@ -67,10 +75,17 @@ class CommissioningTestSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMix
         ]
 
 
-class AsBuiltPackSerializer(SameCompanyFKSerializerMixin,
+class AsBuiltPackSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                            SameCompanyFKSerializerMixin,
                             serializers.ModelSerializer):
-    """FG276 — pack documentaire as-built ; ``company`` forcée serveur."""
+    """FG276 — pack documentaire as-built ; ``company`` forcée serveur.
+
+    CI #997 fuzz (ENF11 ventes) — ``pieces`` est une LISTE d'objets
+    (``[{type, libelle, reference}]``), publiée telle quelle : le schéma vide
+    ``{}`` laissait ``null`` « conforme » puis refusé (champ non nul) ; texte
+    strict ; chantier/devis/recette inconnus : 404."""
     same_company_fields = ('chantier', 'devis', 'recette')
+    pieces = ListeJSON(element=dict, required=False)
 
     class Meta:
         model = AsBuiltPack
@@ -81,10 +96,17 @@ class AsBuiltPackSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class AttestationConformiteSerializer(SameCompanyFKSerializerMixin,
+class AttestationConformiteSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                      SameCompanyFKSerializerMixin,
                                       serializers.ModelSerializer):
-    """FG277 — attestation de conformité électrique."""
+    """FG277 — attestation de conformité électrique.
+
+    CI #997 fuzz (ENF11 ventes) — ``mesures`` est une LISTE d'objets
+    (``[{libelle, valeur, unite, conforme}]``), publiée telle quelle (``null``
+    était « conforme » au schéma ``{}`` puis refusé) ; texte strict ;
+    chantier/recette inconnus : 404."""
     same_company_fields = ('chantier', 'recette')
+    mesures = ListeJSON(element=dict, required=False)
     statut_label = serializers.CharField(
         source='get_statut_display', read_only=True)
 

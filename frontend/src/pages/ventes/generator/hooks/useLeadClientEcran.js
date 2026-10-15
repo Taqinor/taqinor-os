@@ -149,7 +149,7 @@ export function useLeadClientEcran(ctx) {
       .catch(() => {})
     // Pré-remplissage au montage uniquement (garde `sitePrefillDone`) ;
     // rejouer à chaque changement d'état écraserait la saisie en cours.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- montage seul
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- montage seul (D-ENF22)
   }, [clientId, leadId])
 
   // ── Devis automatique (bouton « ⚡ Devis auto » du lead) ──

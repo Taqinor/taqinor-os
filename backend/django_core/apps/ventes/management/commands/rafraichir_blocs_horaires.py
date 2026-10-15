@@ -71,7 +71,7 @@ def _chiffres(devis):
             raise _Annuler
     except _Annuler:
         pass
-    except Exception as exc:  # noqa: BLE001 — un devis n'arrête pas le lot
+    except Exception as exc:  # noqa: BLE001 — un devis n'arrête pas le lot (D-ENF22-BLE001)
         logger.warning("rafraichir_blocs_horaires._chiffres : erreur ignorée (mode dégradé)", exc_info=True)
         return {'erreur': f'{type(exc).__name__}: {str(exc)[:160]}'}
     return resultat
@@ -158,7 +158,7 @@ class Command(BaseCommand):
                         raise _Annuler
             except _Annuler:
                 pass
-            except Exception as exc:  # noqa: BLE001 — un devis n'arrête rien
+            except Exception as exc:  # noqa: BLE001 — un devis n'arrête rien (D-ENF22-BLE001)
                 logger.warning(
                     "rafraichir_blocs_horaires.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                 echecs += 1

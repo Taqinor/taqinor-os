@@ -17,8 +17,8 @@ from apps.esg.models import PeriodeReportingESG
 from apps.esg.pdf import BANNIERE, rapport_esg_sections
 
 try:
-    import weasyprint  # noqa: F401
-    import fitz  # noqa: F401
+    __import__('weasyprint')
+    import fitz
     _PDF_LIBS_DISPONIBLES = True
 except ImportError:
     _PDF_LIBS_DISPONIBLES = False

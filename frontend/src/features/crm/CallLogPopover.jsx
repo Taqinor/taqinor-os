@@ -382,7 +382,7 @@ const NUDGE_TIMEOUT_MS = 10 * 60 * 1000
    une gate ne doit pas attendre 45 secondes réelles pour prouver un nudge. */
 const NUDGE_DELAY_MS = 45 * 1000
 
-// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé (dev HMR only)
+// eslint-disable-next-line react-refresh/only-export-components -- hook co-localisé (dev HMR only) (D-ENF22)
 export function useCallEndedNudge({ delayMs = NUDGE_DELAY_MS } = {}) {
   const [nudgeVisible, setNudgeVisible] = useState(false)
   const armedAt = useRef(null)

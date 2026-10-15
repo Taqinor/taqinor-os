@@ -7,7 +7,8 @@ de `services/electrique.py`, et chaque clé des `REGISTRES` de
 consomme ; sans ÉCRIVAIN d'écran (`frontend/src/api/calepinageApi.js` +
 `frontend/src/features/calepinage`) c'est un champ que personne ne peut saisir.
 
-Registres : seul le LECTEUR backend est exigé (l'écran de réglages est générique). Lecture : AST pour extraire les clés ; texte (identifiant de clé entre
+Registres : seul le LECTEUR backend est exigé (l'écran de réglages est générique). Lecture : AST pour extraire les clés
+; texte (identifiant de clé entre
 guillemets ou en mot entier) pour les occurrences. Lecteur backend = occurrence
 de la clé, hors tests, hors de sa propre déclaration. Écrivain d'écran =
 occurrence de la clé dans l'API ou les écrans calepinage (hors tests).
@@ -31,7 +32,7 @@ from pathlib import Path
 TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _cliquet  # noqa: E402
+import _cliquet  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND = Path("backend") / "django_core" / "apps" / "calepinage"

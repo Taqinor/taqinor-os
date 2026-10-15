@@ -811,14 +811,15 @@ export default function StockList() {
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
-    stockApi.getMarques().then(r => setMarques(r.data?.results ?? r.data ?? [])).catch(() => {})
-    stockApi.getEmplacements()
-      .then(r => setEmplacementsList((r.data?.results ?? r.data ?? []).filter(e => !e.archived)))
+    const lireTout = (appel) => fetchAllPages((page, { page_size: pageSize } = {}) =>
+      appel({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => (Array.isArray(rows) ? rows : (rows?.results ?? [])))
+    lireTout((params) => stockApi.getMarques(params)).then(setMarques).catch(() => {})
+    lireTout((params) => stockApi.getEmplacements(params))
+      .then((rows) => setEmplacementsList(rows.filter(e => !e.archived)))
       .catch(() => {})
-    stockApi.getFichesTechniques()
-      .then(r => setFichesTechniques(
-        new Map((r.data?.results ?? r.data ?? []).map((f) => [f.produit, f])),
-      ))
+    lireTout((params) => stockApi.getFichesTechniques(undefined, params))
+      .then((rows) => setFichesTechniques(new Map(rows.map((f) => [f.produit, f]))))
       .catch(() => {})
   }, [dispatch])
 

@@ -351,7 +351,7 @@ function MonitoringDashboard() {
 
   useEffect(() => {
     let vivant = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de fenêtre
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de fenêtre (D-ENF22)
     setLoading(true)
     setError(false)
     publicapiApi.getMonitoring(Number(jours))

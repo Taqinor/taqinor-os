@@ -566,8 +566,8 @@ const installationsApi = {
     `/api/django/installations/ordres-assemblage/${id}/bon-pdf/`,
 
   // XMFG6 — lignes de composant personnalisables (éditables tant que planifié).
-  getLignesAssemblage: (ordreId) =>
-    api.get('/installations/ordre-assemblage-lignes/', { params: { ordre: ordreId } }),
+  getLignesAssemblage: (ordreId, params) =>
+    api.get('/installations/ordre-assemblage-lignes/', { params: { ordre: ordreId, ...params } }),
   createLigneAssemblage: (data) =>
     api.post('/installations/ordre-assemblage-lignes/', data),
   updateLigneAssemblage: (id, data) =>

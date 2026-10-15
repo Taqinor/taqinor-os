@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "tests"))
 
-import check_test_placement as ctp  # noqa: E402
-from test_check_forme_code import Depot as DepotForme, PLAN, _git, tache  # noqa: E402
+import check_test_placement as ctp  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from test_check_forme_code import Depot as DepotForme, PLAN, _git, tache  # noqa: E402 — après sys.path (D-ENF22)
 
 V2 = "scripts/taches_audit_v2.txt"
 BASE = {"apps/x/tests/test_existant.py": "X = 1\n", PLAN: tache("ZZ1", "x", coche=False), V2: "ZZV2\n",

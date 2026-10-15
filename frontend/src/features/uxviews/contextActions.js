@@ -28,6 +28,8 @@
 // que les actions VRAIMENT dépendantes d'un OBJET ouvert (id porté par la
 // query string), qui n'existent nulle part ailleurs.
 
+import { COLD_STAGE } from '../crm/stages.js'
+
 /**
  * contextActionsForRoute — actions contextuelles pour la route courante.
  *
@@ -87,8 +89,8 @@ export function contextActionsForRoute(location, helpers = {}) {
 export function nextStageFor(currentStage, pipelineStages) {
   const stages = Array.isArray(pipelineStages) ? pipelineStages : []
   const idx = stages.indexOf(currentStage)
-  if (idx === -1 || currentStage === 'COLD') return null
+  if (idx === -1 || currentStage === COLD_STAGE) return null
   const next = stages[idx + 1]
-  if (!next || next === 'COLD') return null
+  if (!next || next === COLD_STAGE) return null
   return next
 }

@@ -325,7 +325,7 @@ def enregistrer_geste_appareil(company, geste, user_agent):
         if not cree:
             GesteRelanceAppareil.objects.filter(pk=ligne.pk).update(
                 total=F('total') + 1)
-    except Exception:  # noqa: BLE001 — mesure best-effort, jamais bloquante
+    except Exception:  # noqa: BLE001 — mesure best-effort, jamais bloquante (D-ENF22-BLE001)
         logger.warning("enregistrer geste appareil : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).warning(
             'CAD178: comptage du geste « %s » non enregistré', geste,

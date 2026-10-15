@@ -25,15 +25,16 @@ _DEVIS_INTROUVABLES = 'Un ou plusieurs devis introuvables.'
 
 
 def _statut_refus_consolidation(detail):
-    """404 pour des devis inconnus de la société ; les autres refus restent
-    des 400 — la consolidation est l'une des quatre PORTES de facturation,
-    dont les refus partagent un seul statut (ATOT, VNT65)."""
+    """404 pour des devis inconnus de la société ; les autres refus (client
+    différent, devis non accepté ou déjà facturé) sont des refus d'ÉTAT, 409
+    — la consolidation est l'une des quatre PORTES de facturation, dont les
+    refus partagent un seul statut (ATOT, VNT65 ; CI #997 fuzz : plus 400)."""
     motif = detail.get('devis_ids') if isinstance(detail, dict) else None
     if isinstance(motif, (list, tuple)):
         motif = motif[0] if motif else None
     if str(motif or '') == _DEVIS_INTROUVABLES:
         return status.HTTP_404_NOT_FOUND
-    return status.HTTP_400_BAD_REQUEST
+    return status.HTTP_409_CONFLICT
 
 
 class FactureLotActionsMixin:
@@ -78,14 +79,11 @@ class FactureLotActionsMixin:
         acceptés du MÊME client. Body : ``{devis_ids: [...]}``."""
         from ..services import consolider_factures
 
-        corps = request.data
-        devis_ids = (corps.get('devis_ids') if isinstance(corps, dict)
-                     else None) or []
-        try:
-            devis_ids = [int(x) for x in devis_ids]
-        except (TypeError, ValueError):
-            return Response({'detail': 'devis_ids invalide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 fuzz — corps validé par le sérialiseur PUBLIÉ (ids entiers
+        # JSON ≥ 1, au moins deux) : ``"5"`` ou ``5.0`` étaient relus en
+        # silence par ``int()``.
+        from ..utils.corps import valider_corps
+        devis_ids = valider_corps(request, D.ConsoliderRequest)['devis_ids']
         # ENF11 — ids publiés uniques et positifs : un doublon (consolidait
         # deux fois le même devis) ou un id < 1 est une erreur d'ENTRÉE.
         if len(set(devis_ids)) != len(devis_ids) or any(
@@ -233,7 +231,7 @@ class FactureLotActionsMixin:
                         'task_id': task.id,
                         'reference': facture.reference}
 
-            except Exception as exc:  # noqa: BLE001 — batch: no single failure kills all
+            except Exception as exc:  # noqa: BLE001 — batch: no single failure kills all (D-ENF22-BLE001)
                 logger.warning("facture.FactureViewSet.bulk : erreur ignorée (mode dégradé)", exc_info=True)
                 results[fid_int] = {'ok': False, 'detail': str(exc)}
 

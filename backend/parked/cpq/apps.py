@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -19,7 +21,7 @@ class CpqConfig(AppConfig):
         # NTCPQ11 — fige les clauses/CGV applicables au moment de l'envoi du
         # devis (événement métier découplé core.events.devis_sent). cpq
         # s'abonne ici sans coupler ventes à cpq (miroir du récepteur CRM).
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
         # PACT118 — déclare les cibles RÉELLES d'édition en masse dans le
         # registre du socle (`core.bulk_edit`), jusqu'ici vide en production.
         from . import bulk_targets

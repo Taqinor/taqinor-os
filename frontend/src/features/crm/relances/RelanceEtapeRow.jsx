@@ -688,9 +688,12 @@ export default function RelanceEtapeRow({
   // fondateur « le champ fautif, le message exact ») ; un refus qui n'est pas
   // une erreur de champ (403 rôle, 400 « déjà traitée », réseau) s'affiche
   // sous les réponses, en clair — jamais un toast générique.
+  // ERR-ENF11-FUZZ-CRM — un refus d'ÉTAT (touche déjà traitée, issue d'appel
+  // manquante, réponse sans valeur sur cette touche…) répond 409 avec le MÊME
+  // corps `{erreurs: {champ: message}}` qu'un 400 : on lit les deux.
   const afficherRefus = (err) => {
     const statut = err?.response?.status
-    const erreurs = statut === 400 ? err?.response?.data?.erreurs : null
+    const erreurs = (statut === 400 || statut === 409) ? err?.response?.data?.erreurs : null
     const champ = erreurs?.outcome || erreurs?.reponse || erreurs?.etape
     if (champ) setErreurOutcome(champ)
     // CAD27 — la date refusée par le serveur s'affiche SOUS son champ.
@@ -904,7 +907,8 @@ export default function RelanceEtapeRow({
         rafraichir?.(etape.id, data)
       })
       .catch((err) => {
-        const erreurs = err?.response?.status === 400 ? err?.response?.data?.erreurs : null
+        const statutPiece = err?.response?.status
+        const erreurs = (statutPiece === 400 || statutPiece === 409) ? err?.response?.data?.erreurs : null
         setErreurPiece(
           (erreurs && (erreurs.type_piece || erreurs.fichier || erreurs.etape))
           || 'La pièce n’a pas pu être enregistrée — réessayez.')

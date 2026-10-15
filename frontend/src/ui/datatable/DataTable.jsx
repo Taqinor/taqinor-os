@@ -364,8 +364,6 @@ export const DataTable = forwardRef(function DataTable(
     hideToolbar = false,
     hideMobileCards = false,
     hidePagination = false,
-    // eslint-disable-next-line no-unused-vars
-    expandedPanels,
     // NTUX16 — préférences de colonnes mémorisées par écran/utilisateur
     // (`useColumnPrefs(ecran)`), INDÉPENDANTES des vues nommées (NTUX1/2).
     // Opt-in : non fourni, comportement strictement inchangé.
@@ -663,7 +661,7 @@ export const DataTable = forwardRef(function DataTable(
   // jamais laisser un tiroir ouvert sur zéro ligne.
   useEffect(() => {
     if (selectedKeys.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- referme les tiroirs groupés quand la sélection disparaît
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- referme les tiroirs groupés quand la sélection disparaît (D-ENF22)
       setBulkEditValue(null)
       setBulkNoteOpen(false)
     }

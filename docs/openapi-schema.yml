@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3521}
+counts: {paths: 4814, operations: 7566, components: 3525}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10044,10 +10044,13 @@ components:
 - DevisActionPanier
 - DevisActionRequise
 - DevisActivity
+- DevisAjouterBoqResponse
 - DevisAtomicRequest
 - DevisAutoRequestRequest
 - DevisAutoResponse
 - DevisAvenantSignatureReponse
+- DevisBoqLigneCreee
+- DevisBoqManque
 - DevisCompositionResponse
 - DevisConceptionElectriqueRequestRequest
 - DevisConceptionElectriqueResponse
@@ -10078,6 +10081,7 @@ components:
 - DevisEtatPdfStatutEnum
 - DevisEtudeParamsResponse
 - DevisFacturerCompletPaiement
+- DevisFacturerCompletPaiementSaisiRequest
 - DevisFacturerCompletRequestRequest
 - DevisFacturerCompletResponse
 - DevisFacturerVenteApercu
@@ -10097,6 +10101,7 @@ components:
 - DevisLotCreationRequestRequest
 - DevisLotsResponse
 - DevisNoterRequestRequest
+- DevisOffreTailleAppliquerRequestRequest
 - DevisOffreTailleCleRequestCleEnum
 - DevisOffreTailleCleRequestRequest
 - DevisOffresTailles
@@ -10109,7 +10114,6 @@ components:
 - DevisPrixNegocieRequestRequest
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
-- DevisRequest
 - DevisRevoquerLienPublicResponse
 - DevisRoofImageResponse
 - DevisSavePresetRequestRequest

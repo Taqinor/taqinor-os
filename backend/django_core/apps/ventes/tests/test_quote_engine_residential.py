@@ -277,7 +277,7 @@ class TestResidentialRenderer(TestCase):
         # The textual sign link is ALWAYS present.
         self.assertIn('Signez en ligne', html)
         try:
-            import qrcode  # noqa: F401
+            __import__('qrcode')
         except Exception:
             self.skipTest('qrcode not installed in this environment')
         self.assertIn('Scannez', html)
@@ -1053,7 +1053,7 @@ class TestPageUnQrProposition(SimpleTestCase):
 
     def test_vignette_rendue_pour_un_lien_tokenise(self):
         try:
-            import qrcode  # noqa: F401
+            __import__('qrcode')
         except Exception:
             self.skipTest('qrcode absent de cet environnement')
         html = self._html()
@@ -1079,7 +1079,7 @@ class TestPageUnQrProposition(SimpleTestCase):
         loger la vignette, qui devient alors une bande fine sous le bandeau
         environnemental — là où la page a de la place de reste."""
         try:
-            import qrcode  # noqa: F401
+            __import__('qrcode')
         except Exception:
             self.skipTest('qrcode absent de cet environnement')
         # savings_estimated + ni factures réelles ni conso saisie
@@ -1600,7 +1600,7 @@ class TestPaginationPireCas(SimpleTestCase):
         """Mise en page normale : les nombres de pages documentés tiennent
         AVEC l'affiche de calepinage, la bande production et la vignette QR."""
         try:
-            import weasyprint  # noqa: F401
+            __import__('weasyprint')
         except Exception:
             self.skipTest("weasyprint indisponible dans cet environnement")
         for variante, attendu in self.PAGES_ATTENDUES.items():
@@ -1621,7 +1621,7 @@ class TestPaginationPireCas(SimpleTestCase):
         delta), antérieur à cette lane. Ce qui doit rester vrai, c'est que NOS
         artefacts n'en ajoutent aucune, dans aucune des deux mises en page."""
         try:
-            import weasyprint  # noqa: F401
+            __import__('weasyprint')
         except Exception:
             self.skipTest("weasyprint indisponible dans cet environnement")
         from apps.ventes.quote_engine.residential import sample_data
@@ -1642,7 +1642,7 @@ class TestPaginationPireCas(SimpleTestCase):
         UNE ligne. C'est cette contrainte que l'élargissement de la colonne
         visuelle (32 → 64 mm) cassait ; la rangée de visuels la préserve."""
         try:
-            import weasyprint  # noqa: F401
+            __import__('weasyprint')
         except Exception:
             self.skipTest("weasyprint indisponible dans cet environnement")
         _, doc = self._rendu("deux")
@@ -1659,7 +1659,7 @@ class TestPaginationPireCas(SimpleTestCase):
         colonne. (Le coût du calepinage est la rangée de visuels du dessous,
         elle-même budgétée dans la pagination.)"""
         try:
-            import weasyprint  # noqa: F401
+            __import__('weasyprint')
         except Exception:
             self.skipTest("weasyprint indisponible dans cet environnement")
 
@@ -1688,7 +1688,7 @@ class TestOnepageQrProposition(SimpleTestCase):
 
     def test_entete_porte_le_qr_pour_un_lien_tokenise(self):
         try:
-            import qrcode  # noqa: F401
+            __import__('qrcode')
         except Exception:
             self.skipTest('qrcode absent de cet environnement')
         html = self._html()

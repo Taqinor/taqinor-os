@@ -50,7 +50,7 @@ export default function PlanningLots() {
     return () => { cancelled = true }
   }, [chantierId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement (D-ENF22)
   useEffect(() => charger(), [charger])
 
   const creerLot = async (event) => {

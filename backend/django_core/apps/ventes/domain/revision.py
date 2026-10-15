@@ -30,9 +30,9 @@ def renouveler_devis(devis, *, user=None):
 
     VNT106 (arbitrage 7) — un ACCEPTÉ lève ``ConflitEtat`` (409
     ``deuxieme_affaire``) : le renouveler sur le MÊME lead laissait deux ventes
-    en vigueur. Tout autre état non renouvelable lève ``ValidationError``.
-    Renvoie le nouveau devis."""
-    from rest_framework.exceptions import ValidationError
+    en vigueur. Tout autre état non renouvelable lève aussi ``ConflitEtat``
+    (409 ``{statut}`` — CI #997 fuzz : c'est l'état du devis qui s'oppose,
+    l'appel sans corps est valide). Renvoie le nouveau devis."""
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
@@ -47,7 +47,7 @@ def renouveler_devis(devis, *, user=None):
             'deuxième affaire (nouvelle fiche lead) ; pour changer le prix, '
             'utilisez Réviser ou Prix négocié.')})
     if devis.statut not in RENOUVELABLES:
-        raise ValidationError({'statut': (
+        raise ConflitEtat({'statut': (
             'Seul un devis expiré peut être renouvelé '
             '(un devis en cours se corrige avec « réviser »).')})
 
@@ -104,7 +104,7 @@ def renouveler_devis(devis, *, user=None):
             return prix_applicable(
                 produit=ligne.produit, client=devis.client,
                 quantite=ligne.quantite)['prix']
-        except Exception:  # noqa: BLE001 — repli sur le prix historique
+        except Exception:  # noqa: BLE001 — repli sur le prix historique (D-ENF22-BLE001)
             logger.exception(
                 'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
             return ligne.prix_unitaire
@@ -500,10 +500,10 @@ def rattacher_aval_financier_revision(devis, *, user=None,
 # après toutes les définitions de ce module et visent le module qui PORTE le
 # corps — jamais la façade. ``cloner_devis`` reste un import FONCTION-LOCAL de
 # ``reviser_devis`` (déplacement pur).
-from apps.ventes.domain.etudes import (  # noqa: E402
+from apps.ventes.domain.etudes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     etude_params_pour_copie,
     rafraichir_etudes_du_devis,
 )
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
-from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402
-from apps.ventes.domain.tarification import prix_applicable  # noqa: E402
+from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.tarification import prix_applicable  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

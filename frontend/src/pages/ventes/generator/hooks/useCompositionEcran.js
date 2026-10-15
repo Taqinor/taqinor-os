@@ -402,7 +402,7 @@ export function useCompositionEcran(ctx) {
     // avant une microtâche, et `handleAutoFill` lit la fenêtre `recalcul` par
     // CLÔTURE du rendu qui l'a ouverte — F2 reste satisfait à l'identique.
     queueMicrotask(() => { Promise.resolve(handleAutoFill()).catch(() => {}) })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au compteur de composition du reducer
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au compteur de composition du reducer (D-ENF22)
   }, [recalcDimTick])
 
   return {

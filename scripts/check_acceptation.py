@@ -51,7 +51,8 @@ ligne) : `groupe: <G>`, `amorce: <sha9>`, `ids:` en liste de blocs. Amorcée UNE
 fois par `--amorcer` (à la bascule = l'arrivée de cette garde) ; ne fait que
 rétrécir : un id absent du même fichier à la base git (`--base`, défaut
 origin/main ; en CI la base absente est récupérée par un fetch complet — jamais
-`--depth=1`, qui rendrait le clone shallow pour check_forme_code —, sinon la comparaison est sautée avec un avis) ⇒ ÉCHEC ; un
+`--depth=1`, qui rendrait le clone shallow pour check_forme_code —, sinon la comparaison est sautée avec un avis) ⇒
+ÉCHEC ; un
 `_dette.yml` absent de la base n'est admis que si la base n'a encore AUCUNE
 dette (la bascule) ; un id couvert ou plus coché à preuve ⇒ ÉCHEC jusqu'à
 `--write-baseline` (la mécanique de cliquet de taches_cablage_allow.txt). Un id
@@ -80,8 +81,8 @@ TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (ja
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import check_taches_cablage as ctc  # noqa: E402
-import plan_lanes  # noqa: E402
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import plan_lanes  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 DOSSIER = "docs/audits/acceptation"
 VERDICTS = ("PASS", "FAIL")

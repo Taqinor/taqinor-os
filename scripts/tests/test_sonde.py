@@ -24,7 +24,7 @@ from unittest import mock
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
-import sonde  # noqa: E402
+import sonde  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ENTETE = ('SONDE = {"constat": "C-TST-001", "sha": "abc123", "attendu": "le chiffre vaut 42"}\n'
           'def sonde(ctx):\n    print("ligne imprimee")\n    return {"valeur": 42}\n')

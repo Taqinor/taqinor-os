@@ -80,7 +80,7 @@ def journaliser_transition(instance, *, ancien, nouveau, user=None, motif='',
             field='statut', field_label=libelle,
             old_value=libelle_ancien, new_value=libelle_nouveau,
             body=corps, company=getattr(instance, 'company', None))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('btp_chantier: chatter non écrit (%s #%s)',
                        instance.__class__.__name__, instance.pk,
                        exc_info=True)
@@ -96,7 +96,7 @@ def journaliser_transition(instance, *, ancien, nouveau, user=None, motif='',
             user=user if getattr(user, 'pk', None) else None,
             detail=detail[:2000],
             changes=[{'field': 'statut', 'old': ancien, 'new': nouveau}])
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('btp_chantier: AuditLog non écrit (%s #%s)',
                        instance.__class__.__name__, instance.pk,
                        exc_info=True)
@@ -111,8 +111,8 @@ def _libelle_statut(instance, valeur):
         for code, libelle in (champ.choices or ()):
             if code == valeur:
                 return str(libelle)
-    except Exception:  # noqa: BLE001 — modèle sans champ `statut`
-        pass
+    except Exception:  # noqa: BLE001 — modèle sans champ `statut` (D-ENF22-BLE001)
+        logger.warning("services._libelle_statut : erreur ignorée (mode dégradé)", exc_info=True)
     return str(valeur)
 
 
@@ -146,7 +146,7 @@ def _emettre(signal_nom, **kwargs):
         if signal is None:
             return
         signal.send(sender=None, **kwargs)
-    except Exception:  # noqa: BLE001 - best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('btp_chantier: emission %s echouee', signal_nom,
                        exc_info=True)
 
@@ -181,7 +181,7 @@ def _notifier_equipe_btp(company, event_type_name, titre, corps, *, link=None,
         return notify_many(
             destinataires, event_type, titre, body=corps, link=link,
             company=company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('btp_chantier: notification équipe non envoyée (%s)',
                        event_type_name, exc_info=True)
         return []
@@ -1990,7 +1990,7 @@ def importer_lots(*, company, chantier, fichier_octets, nom_fichier,
 
     try:
         headers, lignes_brutes = iter_rows(fichier_octets, nom_fichier)
-    except Exception as exc:  # noqa: BLE001 — fichier corrompu/illisible
+    except Exception as exc:
         raise ValueError(
             f'Fichier illisible ({nom_fichier}) : {exc}') from exc
 
@@ -2145,7 +2145,7 @@ def _manager_de(user):
         if dossier is None or dossier.manager_id is None:
             return None
         return getattr(dossier.manager, 'user', None)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('btp_chantier: manager hiérarchique non résolu',
                        exc_info=True)
         return None

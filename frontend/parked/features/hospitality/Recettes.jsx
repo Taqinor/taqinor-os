@@ -32,7 +32,7 @@ function IngredientsPanel({ recette }) {
       .catch(() => toast.error('Ingrédients indisponibles.'))
   }
 
-  useEffect(() => { load() }, [recette.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load() }, [recette.id]) // eslint-disable-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
 
   const ajouter = (e) => {
     e.preventDefault()

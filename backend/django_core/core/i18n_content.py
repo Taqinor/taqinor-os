@@ -57,7 +57,7 @@ def translated_value(
             company=company, content_type=content_type,
             object_id=str(instance.pk), locale=locale, field=field,
         ).first()
-    except Exception:  # noqa: BLE001 — lecture best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — lecture best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("translated value : échec ignoré, comportement dégradé", exc_info=True)
         return raw_value
 

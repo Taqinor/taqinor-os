@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { Plus, Archive, ArchiveRestore } from 'lucide-react'
 import { Button, Input, EmptyState, Skeleton, toast } from '../../ui'
+import fetchAllPages from '../../utils/fetchAllPages'
 
 /**
  * Éditeur générique liste simple nom/libellé + archiver/désarchiver, pour les
@@ -26,8 +27,9 @@ export default function SimpleRefListEditor({
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = () => loadFn()
-    .then((r) => setRows(r.data.results ?? r.data ?? []))
+  const load = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    loadFn({ page, page_size: pageSize }).then((r) => r.data))
+    .then((res) => setRows(Array.isArray(res) ? res : (res?.results ?? [])))
     .catch(() => {})
     .finally(() => setLoading(false))
 

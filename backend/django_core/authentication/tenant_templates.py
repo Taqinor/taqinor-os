@@ -110,7 +110,7 @@ def _seed_structure_catalogue(company, *, avec_produits=False):
     from django.core.management import call_command
     try:
         call_command('seed_catalogue', company_slug=company.slug, verbosity=0)
-    except Exception as exc:  # noqa: BLE001 — le gabarit ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — le gabarit ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'SOL10 : catalogue non seedé pour %s : %s', company.slug, exc)
         return {'categories': creees, 'produits': False}
@@ -158,7 +158,7 @@ def appliquer_gabarit_solaire(company, *, user=None, avec_catalogue_produits=Fal
     for nom, etape in etapes:
         try:
             rapport[nom] = etape()
-        except Exception as exc:  # noqa: BLE001 — best-effort, étapes isolées
+        except Exception as exc:  # noqa: BLE001 — best-effort, étapes isolées (D-ENF22-BLE001)
             logger.warning('SOL10 : étape « %s » KO : %s', nom, exc,
                            exc_info=True)
             rapport[nom] = f'erreur: {exc}'

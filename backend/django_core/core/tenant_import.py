@@ -160,7 +160,7 @@ def target_is_empty(company_id):
         try:
             if model.objects.filter(company_id=company_id).exists():
                 return False
-        except Exception:  # noqa: BLE001 — modèle sans company_id → ignore
+        except Exception:  # noqa: BLE001 — modèle sans company_id → ignore (D-ENF22-BLE001)
             logger.warning("target is empty : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return True

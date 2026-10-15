@@ -335,6 +335,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
             'results': type(_TourneeLigne)(many=True),
         }))
     @action(detail=False, methods=['get'], url_path='tournee',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def tournee(self, request):
         """FG88 — File des visites préventives DUES à planifier.
@@ -423,6 +424,7 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
     @extend_schema(responses=inline_serializer('RentabiliteContratsReponse', {
         'results': type(_RentabiliteContrat)(many=True)}))
     @action(detail=False, methods=['get'], url_path='rentabilite',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsResponsableOrAdmin])
     def rentabilite_liste(self, request):
         """XSAV18 — Rentabilité de TOUS les contrats, classée par marge

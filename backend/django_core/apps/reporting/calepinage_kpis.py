@@ -161,7 +161,7 @@ def _compteurs_par_statut(queryset, rangs):
     try:
         choix = queryset.model._meta.get_field('statut').choices or []
         compteurs = {code: 0 for code, _libelle in choix}
-    except Exception:  # noqa: BLE001 — jamais un 500 pour un champ déplacé
+    except Exception:  # noqa: BLE001 — jamais un 500 pour un champ déplacé (D-ENF22-BLE001)
         logger.warning("compteurs par statut : échec ignoré, comportement dégradé", exc_info=True)
         compteurs = {}
     for ligne in rangs:

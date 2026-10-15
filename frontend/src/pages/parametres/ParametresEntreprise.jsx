@@ -380,7 +380,7 @@ export default function ParametresEntreprise() {
     // mount-only: one-time load of every reference list; the `load*` helpers
     // are recreated each render and read via closure, so listing them would
     // re-run every fetch on every render instead of once at mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement unique au montage ; les helpers `load*` sont recréés à chaque rendu (D-ENF22)
   }, [dispatch])
 
   const addEtape = async () => {
@@ -701,7 +701,7 @@ export default function ParametresEntreprise() {
       stock_colisage_actif: profile.stock_colisage_actif ?? true,
       stock_scan_actif: profile.stock_scan_actif ?? true,
     }
-    /* eslint-disable react-hooks/set-state-in-effect -- resynchro depuis `profile` */
+    /* eslint-disable react-hooks/set-state-in-effect -- resynchro depuis `profile` (D-ENF22) */
     setInitialSnapshot(next)
     setForm(next)
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -709,7 +709,7 @@ export default function ParametresEntreprise() {
 
   useEffect(() => {
     if (saveSuccess) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- feedback de sauvegarde temporisé (D-ENF22)
       setSaved(true)
       const t = setTimeout(() => { dispatch(clearSaveSuccess()); setSaved(false) }, 3000)
       return () => clearTimeout(t)

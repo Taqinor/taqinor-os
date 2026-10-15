@@ -53,6 +53,29 @@ def _pire_statut_public(statuts):
     return pire
 
 
+def _poser_statut_composant(nom, statut, now):
+    """Pose le statut courant du composant SYSTÈME ``nom`` et renvoie l'ancien.
+
+    ``(nom, region, company=NULL)`` ne peut PAS être unique en base (NULL
+    distincts) : ``update_or_create`` levait MultipleObjectsReturned dès que
+    deux lignes existaient et le composant ne se rafraîchissait plus. On
+    reprend la plus ancienne ligne, sans jamais en créer une seconde."""
+    ligne = (
+        ComponentStatus.objects
+        .filter(nom=nom, region=PUBLIC_REGION_DEFAUT, company=None)
+        .order_by('pk').first())
+    if ligne is None:
+        ComponentStatus.objects.create(
+            nom=nom, region=PUBLIC_REGION_DEFAUT, company=None,
+            statut=statut, derniere_verification=now)
+        return None
+    ancien = ligne.statut
+    ligne.statut = statut
+    ligne.derniere_verification = now
+    ligne.save(update_fields=['statut', 'derniere_verification', 'updated_at'])
+    return ancien
+
+
 def _logger_changement_statut(nom, region, ancien, nouveau):
     """NTOBS33 — journalise un changement RÉELLEMENT détecté (jamais un tick
     inchangé, jamais bloquant si l'écriture échoue)."""
@@ -60,7 +83,7 @@ def _logger_changement_statut(nom, region, ancien, nouveau):
         ComponentStatusLog.objects.create(
             company=None, composant=nom, region=region,
             ancien_statut=ancien or '', nouveau_statut=nouveau)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("tasks._logger_changement_statut : erreur ignorée (mode dégradé)", exc_info=True)
 
 
@@ -88,7 +111,7 @@ def _accumuler_uptime_jour(nom, region, statut, now):
             'statut_pire_du_jour', 'echantillons_total',
             'echantillons_operationnels', 'pct_disponible_jour', 'updated_at',
         ])
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("tasks._accumuler_uptime_jour : erreur ignorée (mode dégradé)", exc_info=True)
 
 
@@ -99,13 +122,13 @@ def _statut_ia_public():
     exception (best-effort, jamais un statut inventé)."""
     try:
         from core.ai.registry import is_capability_configured
-    except Exception:  # noqa: BLE001 — module IA absent/KO, jamais bloquant
+    except Exception:  # noqa: BLE001 — module IA absent/KO, jamais bloquant (D-ENF22-BLE001)
         logger.warning("tasks._statut_ia_public : erreur ignorée (mode dégradé)", exc_info=True)
         return ComponentStatus.Statut.OPERATIONAL
     for capability in ('llm', 'ocr', 'stt'):
         try:
             is_capability_configured(capability)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning("tasks._statut_ia_public : erreur ignorée (mode dégradé)", exc_info=True)
             return ComponentStatus.Statut.DEGRADED
     return ComponentStatus.Statut.OPERATIONAL
@@ -120,7 +143,7 @@ def rafraichir_composants():
     au scheduler)."""
     try:
         services = check_services()
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("tasks.rafraichir_composants : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
 
@@ -136,38 +159,24 @@ def rafraichir_composants():
         ]
         statut = _pire_statut_public(statuts_public)
         try:
-            ancien = (
-                ComponentStatus.objects
-                .filter(nom=nom, region=PUBLIC_REGION_DEFAUT, company=None)
-                .values_list('statut', flat=True).first())
-            ComponentStatus.objects.update_or_create(
-                nom=nom, region=PUBLIC_REGION_DEFAUT, company=None,
-                defaults={'statut': statut, 'derniere_verification': now},
-            )
+            ancien = _poser_statut_composant(nom, statut, now)
             maj += 1
             if ancien != statut:
                 _logger_changement_statut(
                     nom, PUBLIC_REGION_DEFAUT, ancien, statut)
-        except Exception:  # noqa: BLE001 — un composant en échec n'affecte pas les autres
+        except Exception:  # noqa: BLE001 — un composant en échec n'affecte pas les autres (D-ENF22-BLE001)
             logger.warning("tasks.rafraichir_composants : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         _accumuler_uptime_jour(nom, PUBLIC_REGION_DEFAUT, statut, now)
 
     statut_ia = _statut_ia_public()
     try:
-        ancien_ia = (
-            ComponentStatus.objects
-            .filter(nom='IA', region=PUBLIC_REGION_DEFAUT, company=None)
-            .values_list('statut', flat=True).first())
-        ComponentStatus.objects.update_or_create(
-            nom='IA', region=PUBLIC_REGION_DEFAUT, company=None,
-            defaults={'statut': statut_ia, 'derniere_verification': now},
-        )
+        ancien_ia = _poser_statut_composant('IA', statut_ia, now)
         maj += 1
         if ancien_ia != statut_ia:
             _logger_changement_statut(
                 'IA', PUBLIC_REGION_DEFAUT, ancien_ia, statut_ia)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("tasks.rafraichir_composants : erreur ignorée (mode dégradé)", exc_info=True)
     _accumuler_uptime_jour('IA', PUBLIC_REGION_DEFAUT, statut_ia, now)
 

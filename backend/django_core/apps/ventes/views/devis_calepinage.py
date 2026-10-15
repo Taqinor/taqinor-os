@@ -50,7 +50,10 @@ def _jeton_if_match(request):
 def _ecrire_conception(devis, payload, request):
     """ACAL96 — calepinage lié écrit puis devis resynchronisé ; les refus
     deviennent les réponses existantes (409 ``{detail, revision_possible}``,
-    refus du calepinage tels quels)."""
+    corps du calepinage tels quels). CI #997 fuzz — le corps publié est un
+    objet non vide : tout refus du DOCUMENT (géométrie, zone, nature),
+    d'approbation ou de verdict électrique (400 / 422 du module) est un
+    invariant que le schéma ne porte pas ou un état — 409, même corps."""
     from ..domain.resynchronisation import (
         ConceptionRefusee, ecrire_conception_du_devis)
     from ..services import SyncLayoutError
@@ -65,7 +68,9 @@ def _ecrire_conception(devis, payload, request):
              'revision_possible': exc.revision_possible},
             status=status.HTTP_409_CONFLICT)
     except ConceptionRefusee as refus:
-        return Response(refus.corps, status=refus.statut)
+        return Response(refus.corps, status=(
+            status.HTTP_409_CONFLICT if refus.statut in (400, 422)
+            else refus.statut))
     return Response(resultat)
 
 
@@ -343,8 +348,13 @@ class DevisCalepinageActionsMixin:
                     payload = payload[enveloppe]
                     break
         if not isinstance(payload, dict) or not payload:
+            # CI #997 fuzz — corps vide (ou non objet) : 400 (le schéma exige
+            # une clé) ; enveloppe ``{layout: …}`` au contenu vide ou non
+            # objet : corps conforme, contenu refusé — 409.
+            enveloppe = isinstance(request.data, dict) and bool(request.data)
             return Response({'detail': 'Layout manquant ou invalide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT if enveloppe
+                                    else status.HTTP_400_BAD_REQUEST))
         # ACAL96 (D-ACAL-1) — le layout est écrit dans le CALEPINAGE lié
         # (adopté/créé au besoin), puis l'enveloppe ACAL34 resynchronise le
         # devis depuis CE calepinage : plus d'écriture de Devis.roof_layout
@@ -528,6 +538,11 @@ class DevisCalepinageActionsMixin:
         return Response({'status': 'pending'},
                         status=status.HTTP_202_ACCEPTED)
 
+    # CI #997 fuzz — corps VIDE publié (le défaut de drf-spectacular était le
+    # sérialiseur du devis entier) et réponse publiée telle que rendue.
+    @extend_schema(request=None,
+                   responses={200: D.AjouterBoqResponse,
+                              409: D.ErreurSyncLayout})
     @action(detail=True, methods=['post'],
             url_path='ajouter-boq-electrique',
             permission_classes=[IsResponsableOrAdmin])
@@ -562,10 +577,12 @@ class DevisCalepinageActionsMixin:
                 'Utilisez « Réviser » pour en créer une nouvelle version.')
         design = getattr(devis, 'electrical_design', None)
         if not isinstance(design, dict) or not design.get('bom'):
+            # CI #997 fuzz — l'appel est valide, c'est l'ÉTAT du devis (pas
+            # encore de conception électrique) qui s'oppose : 409.
             return Response(
                 {'detail': "Ce devis n'a pas encore de conception électrique : "
                            'lancez d\'abord « Conception électrique ».'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         resultat = ajouter_lignes_boq_electrique(devis, request.user)
         return Response(resultat)
 
@@ -608,8 +625,12 @@ class DevisCalepinageActionsMixin:
         if isinstance(payload, dict) and set(payload.keys()) == {'roof_layout'}:
             payload = payload['roof_layout']
         if not isinstance(payload, dict):
+            # CI #997 fuzz — enveloppe ``{roof_layout: …}`` non objet : corps
+            # conforme, contenu refusé (409) ; corps non objet : 400.
+            enveloppe = isinstance(request.data, dict) and bool(request.data)
             return Response({'detail': 'Layout manquant ou invalide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT if enveloppe
+                                    else status.HTTP_400_BAD_REQUEST))
         # ACAL96 (D-ACAL-1) — l'écriture brute ``devis.roof_layout = payload``
         # est SUPPRIMÉE : même chemin que sync-layout (calepinage lié écrit,
         # puis resynchro — empreinte, trace « corrigé après envoi » et annonce

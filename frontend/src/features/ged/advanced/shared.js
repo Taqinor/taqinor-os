@@ -72,9 +72,9 @@ export function useChargementGed(fetcher, messageErreur) {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement au montage seulement (D-ENF22)
   }, [])
 
   return { loading, error, load }

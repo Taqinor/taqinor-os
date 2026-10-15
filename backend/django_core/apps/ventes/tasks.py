@@ -65,7 +65,7 @@ def _signaler_pdf_devis_genere(devis_id):
         if devis is not None:
             document_pdf_generated.send(
                 sender=Devis, instance=devis, kind='devis')
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.exception('ADEV22 : audit PDF devis ignoré (devis %s)',
                          devis_id)
 
@@ -480,14 +480,13 @@ def ranger_simulation(devis_id, simulation):
     bouger depuis ce chemin (règle #4). Rend le devis rafraîchi, ou ``None``
     s'il a disparu entre-temps.
     """
+    from .domain.etude_schema import MOTEUR_SIMULATION, appliquer
     from .models import Devis
 
     devis = Devis.objects.filter(pk=devis_id).first()
     if devis is None:
         return None
-    etude = dict(devis.etude_params or {})
-    etude['simulation'] = simulation
-    devis.etude_params = etude
+    appliquer(devis, proprietaire=MOTEUR_SIMULATION, simulation=simulation)
     devis.save(update_fields=['etude_params'])
     return devis
 
@@ -543,7 +542,7 @@ def task_simulate_bankable_study(self, devis_id, company_id, token,
         logger.info('task_simulate_bankable_study OK: devis %s (%d zone(s))',
                     devis_id, len(simulation.get('zones') or []))
         return token
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         cache.set(ckey, {'company_id': company_id, 'devis_id': devis_id,
                          'status': 'error', 'error': str(exc)},
                   SIMULATION_JOB_CACHE_TTL)
@@ -647,7 +646,7 @@ def task_build_async_export(self, company_id, layout, debut_iso, fin_iso, token)
         cache.set(ckey, job, EXPORT_JOB_CACHE_TTL)
         logger.info('task_build_async_export OK: %s', key)
         return key
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         job = cache.get(ckey) or {}
         job.update({'company_id': company_id, 'layout': layout,
                     'status': 'error', 'error': str(exc)})

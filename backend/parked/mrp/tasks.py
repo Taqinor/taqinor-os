@@ -65,7 +65,7 @@ def recalculer_besoins_nocturne():
                 company,
                 stock_securite_pct=parametres.stock_securite_pct_defaut,
                 horizon_jours=parametres.horizon_mrp_jours)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas (D-ENF22-BLE001)
             logger.warning(
                 'mrp.recalculer_besoins_nocturne: échec calcul société %s',
                 company.pk, exc_info=True)
@@ -94,7 +94,7 @@ def recalculer_besoins_nocturne():
                           f'dans l\'horizon MRP.'),
                     link=link, company=company)
                 notifiees += 1
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
                 logger.warning(
                     'mrp.recalculer_besoins_nocturne: notification échouée '
                     'société %s produit %s', company.pk, ligne['produit_id'],
@@ -122,7 +122,7 @@ def archiver_of_prototype_anciens_task():
         try:
             archives = archiver_of_prototype_anciens(company)
             result[company.id] = len(archives)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas (D-ENF22-BLE001)
             logger.warning(
                 'mrp.archiver_of_prototype_anciens: échec société %s',
                 company.pk, exc_info=True)
@@ -147,7 +147,7 @@ def rappeler_entretiens_poste_j7_task():
         try:
             notifiees = notifier_echeances_j7(company)
             result[company.id] = len(notifiees)
-        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas (D-ENF22-BLE001)
             logger.warning(
                 'mrp.rappeler_entretiens_poste_j7: échec société %s',
                 company.pk, exc_info=True)

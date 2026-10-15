@@ -242,7 +242,6 @@ def promouvoir_premier_liste_attente(classe):
 
 def _notifier_promotion_liste_attente(inscription):
     """Notifie la famille de la promotion (best-effort, jamais bloquant)."""
-    from .models import Famille  # noqa: F401 (documentation du type attendu)
 
     famille = inscription.eleve.famille
     recipient = famille.parent1_whatsapp or famille.parent1_telephone

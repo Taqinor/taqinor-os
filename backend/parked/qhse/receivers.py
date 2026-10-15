@@ -98,7 +98,7 @@ def _escalader_incident_critique(sender, incident, company, user, gravite,
             incident, user,
             "⚠️ Incident CRITIQUE déclaré — escalade requise auprès des "
             "responsables QHSE. Référence : %s." % ref)
-    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'QHSE32 : escalade incident critique échouée pour %s : %s',
             getattr(incident, 'pk', '?'), exc)
@@ -116,7 +116,7 @@ def _escalader_incident_critique(sender, incident, company, user, gravite,
             body='Référence : %s.' % ref,
             link='/qhse/incidents?incident=%s' % getattr(incident, 'pk', ''),
             company=company)
-    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'YEVNT12 : notification incident critique échouée pour %s : %s',
             getattr(incident, 'pk', '?'), exc)
@@ -133,7 +133,7 @@ def _escalader_incident_critique(sender, incident, company, user, gravite,
             detail='Incident QHSE critique escaladé (référence %s) — '
                    'notification envoyée aux responsables QHSE.' % ref,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'YEVNT12 : audit incident critique échoué pour %s : %s',
             getattr(incident, 'pk', '?'), exc)
@@ -145,7 +145,7 @@ def _escalader_incident_critique(sender, incident, company, user, gravite,
 # (émetteur = ``stock``, abonné = ``qhse``) : il vit dans ``core.events`` (pas
 # ici). qhse s'y abonne pour ouvrir un ``ControleReception`` par plan actif
 # couvrant les produits reçus — sans jamais importer ``stock.models``.
-from core.events import reception_fournisseur_confirmee  # noqa: E402
+from core.events import reception_fournisseur_confirmee  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 @receiver(
@@ -163,7 +163,7 @@ def _ouvrir_controles_reception(sender, reception, company, user, **kwargs):
 
     try:
         instancier_controles_reception(reception, company)
-    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'XQHS3 : ouverture du contrôle réception échouée pour '
             'réception#%s : %s', getattr(reception, 'pk', '?'), exc)
@@ -176,7 +176,7 @@ def _ouvrir_controles_reception(sender, reception, company, user, **kwargs):
 # ``core/events.py``). qhse se réabonne à SON PROPRE signal bus pour prouver
 # qu'un abonné cross-app recevrait bien l'événement sans importer
 # ``apps.qhse`` — garde YEVNT7/ARC41 (aucun signal sans abonné réel).
-from core.events import incident_declared as incident_declared_bus  # noqa: E402
+from core.events import incident_declared as incident_declared_bus  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 @receiver(
@@ -209,7 +209,7 @@ def _audit_bus_on_incident_declared(sender, incident, company, user, gravite,
             detail='ARC38 — incident QHSE %s (gravité %s) visible sur le bus '
                    'core.events (abonné cross-app).' % (ref, gravite),
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'ARC38 : audit bus incident_declared échoué pour %s : %s',
             getattr(incident, 'pk', '?'), exc)
@@ -221,7 +221,7 @@ def _audit_bus_on_incident_declared(sender, incident, company, user, gravite,
 # s'y abonne pour ouvrir une ``NonConformite`` liée au cycle, sans jamais
 # importer ``apps.sante.models`` — et ``sante`` n'importe jamais
 # ``apps.qhse.models`` en retour (le lien est une FK-chaîne côté NCR).
-from core.events import cycle_sterilisation_non_conforme  # noqa: E402
+from core.events import cycle_sterilisation_non_conforme  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 @receiver(
@@ -246,7 +246,7 @@ def _ouvrir_ncr_cycle_sterilisation(sender, cycle, company, user=None,
                 user is not None
                 and getattr(user, 'is_authenticated', False)) else None,
         )
-    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais
+    except Exception as exc:  # noqa: BLE001 — best-effort, ne casse jamais (D-ENF22-BLE001)
         logger.warning(
             'NTSAN23 : ouverture de la NCR échouée pour le cycle de '
             'stérilisation #%s : %s', getattr(cycle, 'pk', '?'), exc)

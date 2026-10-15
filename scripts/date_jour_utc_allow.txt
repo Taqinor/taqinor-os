@@ -3,17 +3,3 @@
 # ligne). NE PEUT QUE DECROITRE : chaque retrait = un correctif (todayLocalIso() de
 # frontend/src/lib/dateLocale.js) chez le proprietaire du site. Un fichier hors liste qui
 # introduit le motif echoue. Mesure au 08/10/2026 (DevisList.jsx : corrige par ADEV34).
-frontend/src/features/ged/advanced/PlanificationsPage.jsx = 1
-frontend/src/features/offlinesync/PrechargementTournee.jsx = 1
-frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx = 1
-frontend/src/features/offlinesync/mobile/CommercialHome.jsx = 1
-frontend/src/features/offlinesync/mobile/EquipeTerrainHome.jsx = 1
-frontend/src/features/offlinesync/mobile/aFaireItems.js = 1
-frontend/src/lib/dateLocale.js = 1
-frontend/src/lib/hijriDate.js = 2
-frontend/src/pages/installations/PlanificationPage.jsx = 2
-frontend/src/pages/interventions/MaJourneePage.jsx = 1
-frontend/src/pages/monitoring/CleaningsPage.jsx = 1
-frontend/src/pages/monitoring/ProductionPage.jsx = 1
-frontend/src/pages/sav/TicketsPage.jsx = 1
-frontend/src/pages/ventes/DevisGenerator.jsx = 2

@@ -23,7 +23,7 @@ def _comptes_avant(devis):
     from ..domain.lignes import comptes_panneaux_du_devis
     try:
         return comptes_panneaux_du_devis(devis)
-    except Exception:  # noqa: BLE001 — best-effort, comme la re-tarification
+    except Exception:  # noqa: BLE001 — best-effort, comme la re-tarification (D-ENF22-BLE001)
         logger.warning("ligne_devis._comptes_avant : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -47,7 +47,7 @@ def _retarifer_forfaits(devis, comptes_avant=None):
 
     try:
         retarifer_forfaits_par_panneau(devis, comptes_avant=comptes_avant)
-    except Exception:  # noqa: BLE001 — best-effort, comme les études
+    except Exception:  # noqa: BLE001 — best-effort, comme les études (D-ENF22-BLE001)
         logger.warning("ligne_devis._retarifer_forfaits : erreur ignorée (mode dégradé)", exc_info=True)
 
 
@@ -176,9 +176,11 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         """ADEV33 — la garde T17 s'applique aussi aux lignes d'un ENVOYÉ :
         une remise de ligne qui porte la profondeur au-delà du seuil (et de
         la profondeur approuvée) est refusée en 400 nommant ``remise``, sans
-        écriture (transaction annulée). Hors envoyé : simple ``save``."""
+        écriture (transaction annulée). Hors envoyé : simple ``save``.
+        CI #997 fuzz — la profondeur APPROUVÉE est un état du devis : le
+        refus répond 409 (corps ``{remise}`` inchangé), plus 400."""
         from django.db import transaction
-        from rest_framework.exceptions import ValidationError
+        from core.conflit_etat import ConflitEtat
         if devis is None or devis.statut != 'envoye':
             serializer.save()
             return
@@ -193,7 +195,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
                 reverifier_remise_apres_correction(
                     devis, self.request.user, avant=avant)
         except RemiseNonApprouvee as erreur:
-            raise ValidationError({'remise': erreur.message})
+            raise ConflitEtat({'remise': erreur.message})
 
     def perform_create(self, serializer):
         from ..domain.modifiabilite import (

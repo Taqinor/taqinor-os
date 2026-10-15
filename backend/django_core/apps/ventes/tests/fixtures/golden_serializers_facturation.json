@@ -2426,14 +2426,14 @@
      false
     ],
     "montant_promis": [
-     "DecimalField",
+     "DecimalStricte",
      false,
      true,
      null,
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -2532,14 +2532,14 @@
      false
     ],
     "niveau": [
-     "IntegerField",
+     "EntierStrict",
      false,
      false,
      null,
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,

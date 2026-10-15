@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_echeances_reglementaires as cer  # noqa: E402
+import check_echeances_reglementaires as cer  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 class EcheancesRealesTests(unittest.TestCase):
@@ -41,14 +41,16 @@ class FixtureTests(unittest.TestCase):
 
     def test_fin_dans_la_fenetre_est_nommee(self):
         with tempfile.TemporaryDirectory() as tmp:
-            r = self._moteur(tmp, "import datetime as _dt\nTARIF_X_PERIODE = (_dt.date(2026, 1, 1), _dt.date(2026, 12, 1))\n")
+            r = self._moteur(
+    tmp, "import datetime as _dt\nTARIF_X_PERIODE = (_dt.date(2026, 1, 1), _dt.date(2026, 12, 1))\n")
             erreurs = cer.verifier(dt.date(2026, 10, 15), r)
             self.assertEqual(len(erreurs), 1)
             self.assertIn("TARIF_X_PERIODE", erreurs[0])
 
     def test_fin_hors_fenetre_vert(self):
         with tempfile.TemporaryDirectory() as tmp:
-            r = self._moteur(tmp, "import datetime as _dt\nTARIF_X_PERIODE = (_dt.date(2026, 1, 1), _dt.date(2028, 1, 1))\n")
+            r = self._moteur(
+    tmp, "import datetime as _dt\nTARIF_X_PERIODE = (_dt.date(2026, 1, 1), _dt.date(2028, 1, 1))\n")
             self.assertEqual(cer.verifier(dt.date(2026, 10, 15), r), [])
 
     def test_date_de_validite_nommee(self):

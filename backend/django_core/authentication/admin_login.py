@@ -88,7 +88,7 @@ class AdminLoginForm(AdminAuthenticationForm):
         from core.throttling import ip_de_requete
         try:
             return ip_de_requete(request)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.debug("admin_login : IP client illisible", exc_info=True)
             return None
 
@@ -116,7 +116,7 @@ class AdminLoginForm(AdminAuthenticationForm):
                 user_agent=(meta.get('HTTP_USER_AGENT', '') or '')[:400],
                 ip_address=_client_ip(request) if request is not None else None,
             )
-        except Exception:  # noqa: BLE001 — la traçabilité ne bloque jamais
+        except Exception:  # noqa: BLE001 — la traçabilité ne bloque jamais (D-ENF22-BLE001)
             logger.warning("admin_login : UserSession de connexion admin non tracée", exc_info=True)
 
 

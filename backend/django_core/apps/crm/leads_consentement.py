@@ -157,7 +157,7 @@ def enregistrer_base_legale_lead(lead, *, source, base_legale,
             lead, purpose=CONSENT_PURPOSE_PROSPECTION, granted=False,
             source=f'{source} — {base_legale}'[:120],
             occurred_at=occurred_at)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'CAD90 : base légale non écrite au registre pour le lead #%s',
             getattr(lead, 'pk', None), exc_info=True)
@@ -217,7 +217,7 @@ def tracer_levee_opposition_registre(lead, user, *, occurred_at=None):
             lead, granted=True,
             source=CONSENT_SOURCE_OPPOSITION_LEVEE.format(utilisateur=qui),
             occurred_at=occurred_at)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'ACRM59 : levée d\'opposition non écrite au registre (lead #%s)',
             getattr(lead, 'pk', None), exc_info=True)

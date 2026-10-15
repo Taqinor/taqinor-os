@@ -80,7 +80,7 @@ def lecteur_pour(source):
     return lecteur
 
 
-def lecteur_porte_humaine(source, mots_cles):  # noqa: ARG001 — signature du contrat
+def lecteur_porte_humaine(source, mots_cles):  # noqa: ARG001 — signature du contrat (D-ENF22)
     """Lecteur NEUTRE des portes humaines : ne lit rien, ne rend rien.
 
     Il existe pour que le contrat de lecteur soit démontrable sans réseau (un

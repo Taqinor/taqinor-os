@@ -56,7 +56,7 @@ def notifier_calibration_proche(outil, destinataires):
                 company=outil.company)
             if notif is not None:
                 crees += 1
-        except Exception:  # noqa: BLE001 — jamais bloquant, mais journalisé
+        except Exception:  # noqa: BLE001 — jamais bloquant, mais journalisé (D-ENF22-BLE001)
             logger.warning(
                 'ACHT75: notification de calibration échouée '
                 '(outil %s, utilisateur %s)', outil.pk,

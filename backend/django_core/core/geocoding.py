@@ -79,7 +79,7 @@ class NominatimGeocodingProvider(GeocodingProvider):
             return None
         try:
             import requests
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
         try:
@@ -99,7 +99,7 @@ class NominatimGeocodingProvider(GeocodingProvider):
             return GeoPoint(
                 lat=float(first['lat']), lng=float(first['lon']),
                 label=first.get('display_name', ''))
-        except Exception:  # noqa: BLE001 — réseau/format : dégrade en None.
+        except Exception:  # noqa: BLE001 — réseau/format : dégrade en None (D-ENF22-BLE001)
             logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
 
@@ -124,7 +124,7 @@ class GenericKeyedGeocodingProvider(GeocodingProvider):
             return None
         try:
             import requests
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
         try:
@@ -145,7 +145,7 @@ class GenericKeyedGeocodingProvider(GeocodingProvider):
                 return None
             return GeoPoint(lat=float(loc['lat']), lng=float(loc['lng']),
                             label=results[0].get('formatted', ''))
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
 

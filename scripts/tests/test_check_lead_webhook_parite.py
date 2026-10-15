@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_lead_webhook_parite as parite  # noqa: E402
+import check_lead_webhook_parite as parite  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 # --- une reduction FIDELE de apps/crm/webhooks.py (memes formes AST) -------
@@ -230,7 +230,8 @@ class DepotReelTests(unittest.TestCase):
 
     def test_les_73_cles_du_registre_sont_toutes_declarees(self):
         cles = self.contrat["cles"]
-        self.assertEqual(len(cles), 73)  # ACAL20 : + roofLayout (refus en attente de PATCH-T03) ; Google Ads : + gclid, gbraid, wbraid
+        # ACAL20 : + roofLayout (refus en attente de PATCH-T03) ; Google Ads : + gclid, gbraid, wbraid
+        self.assertEqual(len(cles), 73)
         for cle, entree in cles.items():
             self.assertIn(entree["destination"], parite.DESTINATIONS, cle)
 

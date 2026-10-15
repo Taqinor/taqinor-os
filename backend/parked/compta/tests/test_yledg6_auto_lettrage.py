@@ -15,7 +15,7 @@ from apps.stock.models import Produit
 from apps.ventes.models import Facture, LigneFacture, Paiement
 from core.events import paiement_enregistre, paiement_rejete
 
-from apps.compta import receivers  # noqa: F401  (câblage ready())
+__import__('apps.compta.receivers')  # câblage ready()
 
 User = get_user_model()
 

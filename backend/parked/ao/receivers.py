@@ -72,7 +72,7 @@ def _perimer_best_effort(toiture):
         return
     try:
         perimer_variantes_divergentes(toiture)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'AOF29 : péremption en cascade échouée pour la toiture #%s',
             getattr(toiture, 'pk', '?'), exc_info=True)

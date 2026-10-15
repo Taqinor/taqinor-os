@@ -229,7 +229,7 @@ class FamillesOmisesTest(unittest.TestCase):
 
 
 #: Sorties capturées AVANT CALX286 (commit CALX279), mêmes appels.
-AVANT = json.loads(r'''{
+AVANT = json.loads('''{
  "bankable": {
   "annual_variability": 0.06,
   "applied_losses": [
@@ -424,7 +424,8 @@ AVANT = json.loads(r'''{
   "hypotheses": [
    {
     "cle": "escalation_rate",
-    "source": "aucune indexation saisie — projection à tarif constant (décision fondateur QRES54, quote_engine/pricing.py TARIFF_ESCALATION)",
+    "source": "aucune indexation saisie — projection à tarif constant (décision fondateur QRES54, \
+quote_engine/pricing.py TARIFF_ESCALATION)",
     "valeur": 0.0
    }
   ],

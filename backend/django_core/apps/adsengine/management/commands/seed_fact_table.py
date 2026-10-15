@@ -89,7 +89,11 @@ class Command(BaseCommand):
                 tables_created += 1
             for fact in SEED_FACTS:
                 _, was_created = FactEntry.objects.get_or_create(
-                    table=table, cle=fact['cle'],
+                    # `region=''` = le fait NATIONAL : sans elle la recherche
+                    # (table, cle) croisait aussi un fait régional de même clé
+                    # (MultipleObjectsReturned) alors que l'unicité est
+                    # (table, cle, region).
+                    table=table, cle=fact['cle'], region='',
                     defaults={
                         'company': company,
                         'valeur': fact['valeur'],

@@ -191,7 +191,7 @@ class ProprietesAvoirEcheancierTests(_Base):
         def _tout_facturer():
             while True:
                 r = self._generer(devis)
-                self.assertIn(r.status_code, (201, 400), r.data)
+                self.assertIn(r.status_code, (201, 409), r.data)  # CI #997 fuzz : refus d'état, 409
                 if r.status_code != 201:
                     break
 

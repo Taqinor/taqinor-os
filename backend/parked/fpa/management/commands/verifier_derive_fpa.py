@@ -5,6 +5,7 @@ responsable FP&A (best-effort) au-delà du seuil de la société.
 Cron-ready (réutilise le Celery beat existant — aucun scheduler nouveau). Ne
 lève jamais : une notification en échec n'interrompt pas le balayage.
 """
+import logging
 from django.core.management.base import BaseCommand
 
 from apps.fpa.models import CycleBudgetaire, Departement
@@ -36,7 +37,8 @@ class Command(BaseCommand):
                         company=cycle.company,
                     )
                     notifiees += 1
-                except Exception:  # noqa: BLE001 — best-effort
+                except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+                    logging.getLogger(__name__).warning("verifier_derive_fpa.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
                     continue
         self.stdout.write(self.style.SUCCESS(
             f'{notifiees} dérive(s) notifiée(s).'))

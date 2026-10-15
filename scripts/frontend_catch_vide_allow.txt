@@ -28,7 +28,6 @@ frontend/src/features/crm/workspace/QuestionnaireDialog.jsx::copier  1
 frontend/src/features/crm/workspace/SectionsPane.jsx::calculerRepliAuto  1
 frontend/src/features/crm/workspace/SectionsPane.jsx::writeCollapsed  1
 frontend/src/features/crm/workspace/TimelineTab.jsx::writeFilter  1
-frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::traiter  1
 frontend/src/features/crm/workspace/sections/SectionPipeline.jsx::arreter  1
 frontend/src/features/crm/workspace/useLeadDraft.js::clearMirror  1
 frontend/src/features/crm/workspace/useLeadDraft.js::rememberVille  1
@@ -53,8 +52,6 @@ frontend/src/pages/crm/ClientForm.jsx::ecrireCreerUnAutre  1
 frontend/src/pages/crm/ClientList.jsx::bulkDelete  1
 frontend/src/pages/crm/DormantAccountsWidget.jsx::relancer  1
 frontend/src/pages/crm/ParrainagePage.jsx::setStatut  1
-frontend/src/pages/crm/RelancesDuJourWidget.jsx::traiter  1
-frontend/src/pages/crm/RelancesSuiviPage.jsx::traiter  1
 frontend/src/pages/crm/leads/AppointmentBooker.jsx::handleBook  1
 frontend/src/pages/crm/leads/AppointmentBooker.jsx::handleDownloadIcs  1
 frontend/src/pages/crm/leads/LeadDevisPanel.jsx::handleDownload  1

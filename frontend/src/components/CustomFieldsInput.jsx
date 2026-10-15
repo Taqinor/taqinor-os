@@ -17,7 +17,7 @@ export default function CustomFieldsInput({ module, value, onChange, onDefsLoade
         onDefsLoaded?.(actifs)
       })
       .catch(() => { setDefs([]); onDefsLoaded?.([]) })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- onDefsLoaded n'est volontairement pas une dépendance (callback stable côté appelant non garanti)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onDefsLoaded n'est volontairement pas une dépendance (callback stable côté appelant non garanti) (D-ENF22)
   }, [module])
 
   if (!defs.length) return null

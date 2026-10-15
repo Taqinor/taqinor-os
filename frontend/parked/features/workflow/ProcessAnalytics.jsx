@@ -47,7 +47,7 @@ export default function ProcessAnalytics() {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète la sélection courante
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reflète la sélection courante (D-ENF22)
     if (!definitionId) { setAnalyse(null); return }
     let vivant = true
     setLoading(true)

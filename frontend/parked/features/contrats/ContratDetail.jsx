@@ -92,13 +92,13 @@ export default function ContratDetail() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when id changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when id changes (D-ENF22)
   }, [id])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronise l'éditeur avec le contrat chargé/rechargé
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- synchronise l'éditeur avec le contrat chargé/rechargé (D-ENF22)
     setCustomData(contrat?.custom_data || {})
   }, [contrat])
 

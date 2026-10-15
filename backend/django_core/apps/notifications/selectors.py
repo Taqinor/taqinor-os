@@ -58,7 +58,7 @@ class FenetreNotifications(NamedTuple):
 def _jour_ouvre_repli(d, company):
     try:
         return calendar_utils.is_jour_ouvre(d, company)
-    except Exception:  # noqa: BLE001 — repli du repli : lundi-vendredi
+    except Exception:  # noqa: BLE001 — repli du repli : lundi-vendredi (D-ENF22-BLE001)
         logger.warning("jour ouvre repli : échec ignoré, comportement dégradé", exc_info=True)
         return d.weekday() < 5
 
@@ -108,13 +108,13 @@ def fenetre_notifications(company, maintenant=None):
         from apps.crm import horaires
         prochaine = horaires.prochain_creneau_appel(
             maintenant, company, canal=CANAL_NOTIFICATIONS)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'notifications: fenêtre de la société %s illisible, repli '
             '08:30-19:00', getattr(company, 'pk', '?'), exc_info=True)
         try:
             return _fenetre_repli(company, maintenant)
-        except Exception:  # noqa: BLE001 — ne jamais bloquer une notification
+        except Exception:  # noqa: BLE001 — ne jamais bloquer une notification (D-ENF22-BLE001)
             logger.warning("fenetre notifications : échec ignoré, comportement dégradé", exc_info=True)
             return FenetreNotifications(True, maintenant)
     if prochaine is None or prochaine <= maintenant:

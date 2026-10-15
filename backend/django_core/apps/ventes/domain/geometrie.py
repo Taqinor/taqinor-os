@@ -26,6 +26,12 @@ import logging
 import math
 from collections import namedtuple
 
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'CIBLE_WATT_DEFAUT', '_is_hybrid_inverter', '_is_reseau_inverter', '_pick_batterie',
+    '_plage_batterie_de_l_onduleur', '_v_txt',
+]
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -1372,7 +1378,7 @@ def plafond_physique_du_contour(contour, produit_panneau):
     try:
         from apps.stock.selectors import kit_from_produit
         kit = kit_from_produit(produit_panneau)
-    except Exception:  # noqa: BLE001 — un catalogue illisible n'est pas un plafond
+    except Exception:  # noqa: BLE001 — un catalogue illisible n'est pas un plafond (D-ENF22-BLE001)
         logger.warning('Auto-devis: dimensions du panneau illisibles — aucun '
                        'plafond de toit appliqué.', exc_info=True)
         return None
@@ -1468,7 +1474,7 @@ def zone_toit_depuis_contour(lead, *, panneaux, kwc=None):
 # Imports EN BAS DE FICHIER (voir la docstring) : ils s'exécutent après toutes
 # les définitions de ce module, donc l'ordre de chargement ne peut jamais faire
 # lire un module à moitié construit.
-from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _is_hybrid_inverter,
     _is_panel,
     _is_reseau_inverter,
@@ -1476,15 +1482,15 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     _pick_product,
     _plage_batterie_de_l_onduleur,
 )
-from apps.ventes.domain.lignes import (  # noqa: E402,F401
+from apps.ventes.domain.lignes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     CIBLE_WATT_DEFAUT,
     LAYOUT_WATT_REPLI,
     _classe_ligne,
     _lignes_produit,
 )
-from apps.ventes.domain.composition import _v_txt  # noqa: E402,F401
-from apps.ventes.domain.gammes import gamme_nom  # noqa: E402
-from apps.ventes.domain.etape_composer import (  # noqa: E402
+from apps.ventes.domain.composition import _v_txt  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.gammes import gamme_nom  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,

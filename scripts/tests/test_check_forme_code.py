@@ -17,7 +17,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_forme_code as cfc  # noqa: E402
+import check_forme_code as cfc  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 SERVICES = "backend/django_core/apps/crm/services.py"
 PLAN = "docs/plans/PLAN_ZZ.md"
@@ -134,8 +134,11 @@ class FormeCodeTests(unittest.TestCase):
         d = self.depot({"backend/django_core/erp_agentique/settings/base.py": (
             "import os\nA_DECLARE = os.environ.get('A_DECLARE')\nB_ENV = os.environ.get('B_ENV', '')\n"),
             ".env.example": "A_DECLARE=1\n", vue: "from django.conf import settings\n\n\ndef v():\n    return 1\n"})
-        code, sortie = d.scenario({vue: ("from django.conf import settings\n\n\ndef v():\n    return (settings.A_DECLARE, "
-                                         "settings.B_ENV, getattr(settings, 'C_ABSENT', None))\n")})
+        code, sortie = d.scenario(
+            {
+                vue: (
+                    "from django.conf import settings\n\n\ndef v():\n    return (settings.A_DECLARE, "
+                    "settings.B_ENV, getattr(settings, 'C_ABSENT', None))\n")})
         self.assertEqual(code, 1, sortie)
         self.assertIn(f"[REGLAGE] {vue}::B_ENV : réglage B_ENV lu par ce fichier lu depuis l'environnement (B_ENV) "
                       "mais absent de .env.example", sortie)
@@ -181,7 +184,8 @@ class FormeCodeTests(unittest.TestCase):
         code, sortie = d.scenario({"scripts/x_allow.txt": (
             "a::f\nb/c.py:123  # motif\nd.py::g#2  # occurrence\ne.py::h\nf.jsx#L45\n")})
         self.assertEqual(code, 1, sortie)
-        self.assertIn("[CLE_LIGNE] scripts/x_allow.txt : +2 clé(s) par numéro de ligne (b/c.py:123 ; f.jsx#L45)", sortie)
+        self.assertIn("[CLE_LIGNE] scripts/x_allow.txt : +2 clé(s) par numéro de ligne (b/c.py:123 ; "
+                      "f.jsx#L45)", sortie)
         self.assertNotIn("d.py::g#2  #", sortie.split("CLE_LIGNE")[1])
         code, sortie = d.scenario({"scripts/x_allow.txt": "a::f\nd.py::g#2  # occurrence\n"})
         self.assertNotIn("CLE_LIGNE", sortie)

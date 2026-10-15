@@ -9,7 +9,7 @@ des données comptables : montants postés, statuts de remboursement) — ré-ex
 pas duplication.
 """
 
-from apps.compta.selectors import (  # noqa: F401
+from apps.compta.selectors import (
     analyse_notes_frais,
     indemnites_chantier_remboursables_par_paie,
 )

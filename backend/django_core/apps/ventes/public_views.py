@@ -241,7 +241,7 @@ def public_document(request, token):
             # continuer de fonctionner.
             try:
                 key = cle_facture_pdf_a_jour(facture)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 if not facture.fichier_pdf:
                     raise
                 logger.warning(
@@ -306,7 +306,7 @@ def public_bcf_document(request, token):
             link.bon_commande_fournisseur_id)
         if pdf_bytes is None:
             return _not_found()
-    except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
+    except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical (D-ENF22-BLE001)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))
@@ -664,7 +664,7 @@ def _safe_sld_svg(devis, standard=False):
         # PVSLD — une seule vérité : la page client et l'annexe du PDF rendent
         # désormais le MÊME schéma (celui du moteur, avec ses protections).
         return rendre_schema_du_devis(devis, standard=standard)
-    except Exception:  # noqa: BLE001 — un schéma absent ne casse pas la page
+    except Exception:  # noqa: BLE001 — un schéma absent ne casse pas la page (D-ENF22-BLE001)
         logger.warning("PV81 : schéma unifilaire indisponible pour le devis %s",
                        getattr(devis, "pk", None))
         return None
@@ -788,7 +788,7 @@ def _conception_electrique_publique(devis, niveau=ShareLink.NIVEAU_CONFIANCE):
         if not any(public.values()):
             return None
         return public
-    except Exception:  # noqa: BLE001 — un détail absent ne casse pas la page
+    except Exception:  # noqa: BLE001 — un détail absent ne casse pas la page (D-ENF22-BLE001)
         logger.warning(
             "Détail électrique public indisponible pour le devis %s",
             getattr(devis, "pk", None))
@@ -846,7 +846,7 @@ def _offres_tailles_publique(devis, data, est_residentiel, cles_servies=None):
     try:
         from .offres_tailles import offres_tailles_publique
         return offres_tailles_publique(devis, data, cles_servies)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('offres_tailles indisponible', exc_info=True)
         return None
 
@@ -887,7 +887,7 @@ def _calepinage_options_publique(devis, offres_tailles, layout_public,
         return calepinage_options_publique(devis, offres_tailles,
                                            layout_public,
                                            sld_servi=bool(sld_servi))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('calepinage_options indisponible', exc_info=True)
         return None
 
@@ -909,7 +909,7 @@ def _parametres_site_publics(devis, layout_public, hypotheses,
         from .calepinage_options import parametres_site_publics
         return parametres_site_publics(devis, layout_public, hypotheses,
                                        conception_electrique)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('parametres_site indisponible', exc_info=True)
         return None
 
@@ -1865,7 +1865,7 @@ def proposal_data(request, token):
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est
         # complète, donc constatée telle qu'elle part réellement.
         payload['niveau_masque'] = _niveau_masque(payload) if est_standard else []
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         # 404 volontairement muet cote client (jamais de detail interne sur un
         # lien public) — mais TRACE cote serveur : un garde-fou moteur qui
         # refuse un devis ne doit plus se diagnostiquer a l'aveugle (CI 18/08).
@@ -2007,7 +2007,7 @@ def proposal_taille_detail(request, token, cle):
         depuis_cache = cache.get(memo)
         if depuis_cache is not None:
             return _noindex(Response(depuis_cache))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — cache du détail de taille : l'échec = recalcul (D-ENF22-BLE001)
         memo = None
 
     try:
@@ -2017,7 +2017,7 @@ def proposal_taille_detail(request, token, cle):
                                          _tailles_servies(link))
                 if _section_servie(link, 'economies') else None)
         detail = detail_publique(devis, data, bloc, cle, variante)
-    except Exception:  # noqa: BLE001 — un détail indisponible n'est jamais
+    except Exception:  # noqa: BLE001 — un détail indisponible n'est jamais (D-ENF22-BLE001)
         # une erreur serveur pour le client : la page retombe sur la
         # synchronisation des chiffres de tête et propose de réessayer.
         logger.warning('détail de taille indisponible', exc_info=True)
@@ -2028,7 +2028,7 @@ def proposal_taille_detail(request, token, cle):
         try:
             from django.core.cache import cache
             cache.set(memo, detail, CACHE_SECONDES)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'proposal_taille_detail', exc_info=True)
     return _noindex(Response(detail))
 
@@ -2047,14 +2047,14 @@ def _octets_pdf_signe(devis):
         return None
     try:
         sig = devis.signature
-    except Exception:  # noqa: BLE001 — pas de signature liée
+    except AttributeError:  # pas de signature liée (RelatedObjectDoesNotExist)
         return None
     cle = getattr(sig, 'signed_pdf_key', None) or None
     if not cle:
         return None
     try:
         return download_pdf(cle)
-    except Exception:  # noqa: BLE001 — stockage indisponible → re-rendu
+    except Exception:  # noqa: BLE001 — stockage indisponible → re-rendu (D-ENF22-BLE001)
         logger.warning(
             'QJR670: exemplaire signé illisible (devis %s, clé %s) — re-rendu',
             getattr(devis, 'reference', '?'), cle)
@@ -2157,7 +2157,7 @@ def proposal_pdf(request, token):
                 persist=False)
             pdf_bytes = download_pdf(key)
         filename = f'Devis_{link.devis.reference}.pdf'
-    except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
+    except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical (D-ENF22-BLE001)
         return _noindex(Response(
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))

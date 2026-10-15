@@ -76,7 +76,7 @@ def rows_per_table(company_id: int) -> dict:
         try:
             result[entry.label] = count_for_company(
                 entry.table, entry.company_column, company_id)
-        except Exception:  # noqa: BLE001 - une table absente/erreur ne casse rien
+        except Exception:  # noqa: BLE001 — une table absente/erreur ne casse rien (D-ENF22-BLE001)
             logger.warning('metering: comptage échoué pour %s', entry.table)
     return result
 
@@ -97,7 +97,7 @@ def minio_bytes(company_id: int) -> int:
     try:
         from .backup import _minio_client
         client = _minio_client()
-    except Exception:  # noqa: BLE001 - stockage indisponible → 0
+    except Exception:  # noqa: BLE001 — stockage indisponible → 0 (D-ENF22-BLE001)
         logger.warning("minio bytes : échec ignoré, comportement dégradé", exc_info=True)
         return 0
     for bucket in buckets:
@@ -106,7 +106,7 @@ def minio_bytes(company_id: int) -> int:
             for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
                 for obj in page.get('Contents', []) or []:
                     total += int(obj.get('Size', 0) or 0)
-        except Exception:  # noqa: BLE001 - bucket absent/erreur → ignore
+        except Exception:  # noqa: BLE001 — bucket absent/erreur → ignore (D-ENF22-BLE001)
             logger.warning("minio bytes : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return total
@@ -206,6 +206,6 @@ def snapshot_all(jour=None):
         try:
             snapshot_company(company_id, jour=jour)
             done.append(company_id)
-        except Exception:  # noqa: BLE001 - une société KO ne bloque pas le reste
+        except Exception:  # noqa: BLE001 — une société KO ne bloque pas le reste (D-ENF22-BLE001)
             logger.exception('metering: snapshot KO pour société %s', company_id)
     return done

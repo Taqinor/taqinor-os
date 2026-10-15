@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """quote_engine industriel — PAGE 1 (CFO cover : synthèse de direction,
 baseline énergétique titrée par sa source + KPIs).
 

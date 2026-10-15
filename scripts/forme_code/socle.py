@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import audit_tache  # noqa: E402  (empreinte AST du corps : empreinte_corps)
+import audit_tache  # noqa: E402 — empreinte AST du corps : empreinte_corps (D-ENF22)
 
 DJANGO = "backend/django_core/"
 SUFFIXES_CODE = (".py", ".js", ".jsx", ".mjs", ".ts", ".tsx")

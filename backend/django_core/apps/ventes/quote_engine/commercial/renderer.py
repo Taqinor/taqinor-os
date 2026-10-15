@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Commercial renderer selection + data augmentation for the single engine.
 
 ``generate_premium_devis_pdf`` builds the quote data once, then asks this module

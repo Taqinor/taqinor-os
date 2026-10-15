@@ -98,7 +98,7 @@ def assigner_lead_territoire(lead):
                 new_value=getattr(utilisateur, 'username', ''),
                 body=f'auto — territoire « {territoire.nom} »',
             )
-        except Exception:  # noqa: BLE001 — best-effort, ne casse jamais l'assignation
+        except Exception:  # noqa: BLE001 — best-effort, ne casse jamais l'assignation (D-ENF22-BLE001)
             logger.warning(
                 'territoires: chatter non journalisé pour le lead #%s',
                 getattr(lead, 'pk', '?'), exc_info=True)

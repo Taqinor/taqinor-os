@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Industriel render harness — assembles the 4 CFO page modules into one A4 PDF
 (QJR620 : + la page équipements/totaux partagée avec le commercial).
 Driven by ``industriel.renderer`` from the single quote engine. Reuses

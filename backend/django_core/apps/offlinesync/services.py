@@ -281,8 +281,21 @@ def resoudre_conflit(company, user, operation, choix, payload=None):
         raise ValueError(
             f'Arbitrage inconnu « {choix} » '
             f'(attendus : {", ".join(CHOIX_CONFLIT)}).')
-    if operation.statut != OfflineOperation.Statut.CONFLIT:
-        raise ValueError("Cette opération n'est pas en conflit.")
+    # ENF15 — deux arbitrages concurrents du MÊME conflit passaient tous deux la
+    # garde de statut (lue avant la transaction) et appliquaient l'op deux
+    # fois : la ligne du journal est verrouillée et RELUE avant la garde.
+    with transaction.atomic():
+        (OfflineOperation.objects.select_for_update()
+         .filter(pk=operation.pk, company=company).first())
+        operation.refresh_from_db()
+        if operation.statut != OfflineOperation.Statut.CONFLIT:
+            raise ValueError("Cette opération n'est pas en conflit.")
+        return _arbitrer_conflit_verrouille(
+            company, user, operation, choix, payload)
+
+
+def _arbitrer_conflit_verrouille(company, user, operation, choix, payload):
+    """Corps de :func:`resoudre_conflit`, exécuté SOUS le verrou de la ligne."""
     maintenant = timezone.now()
 
     if choix == 'serveur':

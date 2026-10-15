@@ -55,7 +55,7 @@ export default function ItemsCollectionView({ articleId, onSelect }) {
   }, [])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-vue-change
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-vue-change (D-ENF22)
     setLoading(true)
     const params = { vue }
     if (propriete) params.propriete = propriete

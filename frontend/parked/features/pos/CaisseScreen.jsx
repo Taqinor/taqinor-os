@@ -211,7 +211,7 @@ export default function CaisseScreen() {
       onEncaisser: () => { if (cart.length > 0) ouvrirEncaissement() },
       onAnnulerLigne: () => setCart((c) => c.slice(0, -1)),
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [cart])
 
   const parseNumerosSerie = (valeur) =>

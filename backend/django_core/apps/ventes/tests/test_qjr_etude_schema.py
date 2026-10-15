@@ -384,6 +384,23 @@ class FusionnerPureTests(SimpleTestCase):
         with self.assertRaises(ValueError):
             S.fusionner({}, proprietaire=S.ECRAN, chiffre_invente=1)
 
+    def test_enf15_appliquer_fusionne_en_memoire_sans_persister(self):
+        """ENF15 — ``appliquer`` pose le bloc fusionné sur le devis (jamais
+        un remplacement) et ne sauvegarde rien : la tâche de simulation et la
+        resynchro gardent leurs propres ``update_fields``."""
+        devis = _DevisEnMemoire({'gamme': 'premium'})
+        bloc = S.appliquer(devis, proprietaire=S.MOTEUR_SIMULATION,
+                           simulation={'ok': 1})
+        self.assertIs(devis.etude_params, bloc)
+        self.assertEqual(devis.etude_params,
+                         {'gamme': 'premium', 'simulation': {'ok': 1}})
+
+    def test_enf15_appliquer_refuse_une_cle_derivee_d_un_autre(self):
+        devis = _DevisEnMemoire({'gamme': 'premium'})
+        with self.assertRaises(ValueError):
+            S.appliquer(devis, proprietaire=S.ECRAN, simulation={'ok': 1})
+        self.assertEqual(devis.etude_params, {'gamme': 'premium'})
+
 
 class EndpointFusionTests(TestCase):
     """QJR62 — ``PATCH /ventes/devis/<id>/etude-params/`` FUSIONNE.

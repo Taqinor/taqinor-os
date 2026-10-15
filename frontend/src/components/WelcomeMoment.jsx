@@ -41,7 +41,7 @@ export default function WelcomeMoment() {
   useEffect(() => {
     // ADOC120 — jamais « Bienvenue chez Taqinor » à un compte PORTAIL : un client
     // verrait la marque ERP par défaut à la place de celle de son prestataire.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot welcome on first login
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot welcome on first login (D-ENF22)
     if (user && !porteeEnAttente && !isPortalUser(user) && !seenAlready()) setOpen(true)
   }, [user, porteeEnAttente])
 

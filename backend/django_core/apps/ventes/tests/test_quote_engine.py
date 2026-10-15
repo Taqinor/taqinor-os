@@ -21,7 +21,7 @@ modules de test les importent depuis `apps.ventes.tests.test_quote_engine`
 et continuent de fonctionner sans une seule ligne modifiée. Il ne contient
 plus aucun test — ne pas en ajouter ici, choisir la partie ci-dessus.
 """
-from apps.ventes.tests._quote_engine_common import (  # noqa: F401
+from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS,
     User,
     _company_seq,
@@ -32,3 +32,9 @@ from apps.ventes.tests._quote_engine_common import (  # noqa: F401
     make_produit,
     make_user,
 )
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'DEUX_OPTIONS', 'User', '_company_seq', '_residential_sample_data', 'make_client',
+    'make_company', 'make_devis', 'make_produit', 'make_user',
+]

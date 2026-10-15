@@ -36,7 +36,7 @@ export default function MaJourneePage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   // Remplace la visite par l'agrégat renvoyé par l'action (leçon #96 : toutes

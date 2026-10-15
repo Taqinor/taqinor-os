@@ -171,7 +171,7 @@ export default function DoublonsPanel({ onClose, onAnyMerge }) {
 
   useEffect(() => {
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remise à zéro avant rechargement des doublons (D-ENF22)
     setClusters(null)
     setError(null)
     crmApi.getDoublons(includeArchived ? { archived: 1 } : {})

@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Page 2 — VOTRE INSTALLATION : détail du projet + finance.
 
 Restructured vs the old design: the old page 2 carried TWO near-identical

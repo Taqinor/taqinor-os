@@ -195,7 +195,7 @@ def resoudre_lien_rdv(text, lead, *, request=None) -> str:
         return text
     try:
         url = public_booking_url(lead, request=request)
-    except Exception:  # noqa: BLE001 — jamais bloquer l'envoi d'un message
+    except Exception:  # noqa: BLE001 — jamais bloquer l'envoi d'un message (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'resoudre_lien_rdv', exc_info=True)
         url = ''
     return text.replace('{lien_rdv}', url)
@@ -345,7 +345,7 @@ def _notifier_reservation_publique(appointment):
                   f'de réservation (RDV #{appointment.pk}).'),
             link=f'/crm/leads/{lead.pk}',
             company=appointment.company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         _appt_logger.warning(
             'ACRM41 : notification de réservation échouée (RDV #%s)',
             getattr(appointment, 'pk', '?'), exc_info=True)
@@ -404,7 +404,7 @@ def dispatch_appointment_reminder(appointment) -> bool:
             _appt_logger.info(
                 'QJ20 rappel wa.me RDV #%d lead %s → %s',
                 appointment.pk, lead.pk, wa_url)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         _appt_logger.warning(
             'QJ20: wa.me draft échec RDV #%d : %s', appointment.pk, exc)
 
@@ -432,10 +432,10 @@ def dispatch_appointment_reminder(appointment) -> bool:
                     company=appointment.company,
                 )
                 notifies += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 _appt_logger.warning(
                     'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         _appt_logger.warning(
             'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
 
@@ -515,7 +515,7 @@ def send_due_appointment_reminders() -> int:
         try:
             if dispatch_appointment_reminder(appt):
                 sent += 1
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             _appt_logger.warning(
                 'QJ20: erreur rappel RDV #%d : %s', appt.pk, exc)
 

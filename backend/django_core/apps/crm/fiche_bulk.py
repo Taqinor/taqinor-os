@@ -443,7 +443,7 @@ def apply_bulk_action(*, company, user, lead_ids, op, params, queryset=None):
                 from .models import MessageTemplate
                 tpl = MessageTemplate.objects.filter(
                     company=company, id=template_id).first()
-            except Exception:  # noqa: BLE001 — id illisible : corps direct
+            except (ValueError, TypeError):  # id illisible : corps direct
                 tpl = None
         queue = []
         for lead in leads:

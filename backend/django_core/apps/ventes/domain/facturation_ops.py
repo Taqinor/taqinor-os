@@ -1519,7 +1519,14 @@ class AvoirRefuse(Exception):
 class AvoirPlafondDepasse(AvoirRefuse):
     """CI #997 (3) — le montant crédité dépasse le reste créditable de la
     facture : refus d'ÉTAT (le reste dépend des avoirs, notes de débit et
-    abandons déjà posés, jamais du corps seul) — les vues répondent 409."""
+    abandons déjà posés, jamais du corps seul) — les vues répondent 409.
+    CI #997 fuzz (w4) — de même pour une quantité RETOURNÉE au-delà de ce
+    que la facture a vendu, moins les retours déjà actés."""
+
+
+class AvoirProduitInconnu(AvoirRefuse):
+    """CI #997 fuzz (w4) — produit de retour bien formé mais absent de la
+    société : la ressource manque, les vues répondent 404."""
 
 
 def _quantites_retour(facture):
@@ -1559,7 +1566,7 @@ def _lignes_retour(facture, company, demandes):
             raise AvoirRefuse(f'Ligne {i} : produit requis.')
         produit = get_produit_scoped(company, produit_id)
         if produit is None:
-            raise AvoirRefuse(f'Ligne {i} : produit inconnu.')
+            raise AvoirProduitInconnu(f'Ligne {i} : produit inconnu.')
         produit_id = produit.id
         try:
             qte = Decimal(str(ligne.get('quantite')))
@@ -1571,7 +1578,7 @@ def _lignes_retour(facture, company, demandes):
                       - deja.get(produit_id, Decimal('0'))
                       - retour.get(produit_id, Decimal('0')))
         if qte > disponible:
-            raise AvoirRefuse(
+            raise AvoirPlafondDepasse(
                 f'Ligne {i} : quantité retournée ({qte}) supérieure à la '
                 f'quantité vendue restant retournable ({disponible}) pour '
                 f'« {produit.nom} ».')

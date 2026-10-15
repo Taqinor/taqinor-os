@@ -185,5 +185,5 @@ def _journaliser_creation(company, user, admin):
         record(AuditLog.Action.CREATE, user=user, company=company,
                detail=f'Tenant « {company.nom} » créé depuis la console '
                       f'fondateur (admin : {admin.username}).')
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.debug('audit création tenant échoué', exc_info=True)

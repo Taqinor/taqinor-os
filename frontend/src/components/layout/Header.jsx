@@ -74,7 +74,7 @@ export default function Header({ onMenu }) {
   useEffect(() => {
     if (user?.id) enregistrerNavigateurEquipe(user)
   },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- volontaire : ne se redéclenche QUE si l'id utilisateur change (jamais sur un changement d'identité de l'objet `user` qui laisse le même id) — même convention que VisiteursPage.jsx.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- volontaire : ne se redéclenche QUE si l'id utilisateur change (jamais sur un changement d'identité de l'objet `user` qui laisse le même id) — même convention que VisiteursPage.jsx. (D-ENF22)
   [user?.id])
   const t = useT()
   // VX181 — le ThemeToggle segmenté disparaît sous md (voir plus bas) ; ces 3

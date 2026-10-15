@@ -90,7 +90,7 @@ class _AddIndexConcurrentlyBorne(AddIndexConcurrently):
             if postgres:
                 try:
                     schema_editor.execute('RESET lock_timeout;')
-                except Exception:  # noqa: BLE001 — ne masque jamais l'erreur
+                except Exception:  # noqa: BLE001 — ne masque jamais l'erreur (D-ENF22-BLE001)
                     logger.warning("database forwards : échec ignoré, comportement dégradé", exc_info=True)
 
 

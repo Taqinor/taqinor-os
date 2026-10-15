@@ -66,7 +66,7 @@ export default function ServerLocaleSync() {
     // `locale`/`setLocale` volontairement absents des deps : ce useEffect ne
     // doit réagir qu'à un CHANGEMENT DE VALEUR SERVEUR, jamais à un
     // changement local de `locale` (couvert par l'effet ci-dessous).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'à un changement de valeur serveur, jamais à un changement local de `locale` (D-ENF22)
   }, [serverLocale])
 
   useEffect(() => {

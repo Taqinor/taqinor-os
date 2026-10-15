@@ -92,7 +92,7 @@ def _handle_meta_auth_error(conn, exc):
         getattr(company, 'pk', None), conn.pk, exc)
     try:
         conn.mark_token_invalid()
-    except Exception:  # noqa: BLE001 — l'état ne doit pas empêcher l'alerte
+    except Exception:  # noqa: BLE001 — l'état ne doit pas empêcher l'alerte (D-ENF22-BLE001)
         logger.warning(
             'adsengine: échec marquage token invalide société %s',
             getattr(company, 'pk', None), exc_info=True)
@@ -161,7 +161,7 @@ def sync_adset_learning(company, client):
         return 0
     try:
         rows = reader(fields=ADSET_LEARNING_FIELDS)
-    except Exception:  # noqa: BLE001 — l'apprentissage n'empêche jamais la synchro
+    except Exception:  # noqa: BLE001 — l'apprentissage n'empêche jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks.sync_adset_learning : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
     by_id = {
@@ -293,7 +293,7 @@ def check_prepaid_balance(company, conn, client):
         return None
     try:
         info = reader() or {}
-    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro
+    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks.check_prepaid_balance : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -370,7 +370,7 @@ def check_account_health(company, conn, client):
         return None
     try:
         health = reader() or {}
-    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro
+    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks.check_account_health : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -437,19 +437,19 @@ def _sync_company(conn):
         if currency and currency != conn.currency:
             conn.currency = currency
             conn.save(update_fields=['currency'])
-    except Exception:  # noqa: BLE001 — la devise n'empêche jamais la synchro
+    except Exception:  # noqa: BLE001 — la devise n'empêche jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
 
     # PUB97 — surveillance du solde prépayé Meta (best-effort, jamais bloquant).
     try:
         check_prepaid_balance(company, conn, client)
-    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro
+    except Exception:  # noqa: BLE001 — la trésorerie n'empêche jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
 
     # PUB101 — santé du compte lue au sync (best-effort, jamais bloquant).
     try:
         check_account_health(company, conn, client)
-    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro
+    except Exception:  # noqa: BLE001 — la santé n'empêche jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
 
     sync.sync_campaigns(company, client.get_campaigns())
@@ -462,7 +462,7 @@ def _sync_company(conn):
     incremental_available = False
     try:
         incremental_available = client.incremental_attribution_available()
-    except Exception:  # noqa: BLE001 — le probe ne bloque jamais la synchro
+    except Exception:  # noqa: BLE001 — le probe ne bloque jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks._sync_company : erreur ignorée (mode dégradé)", exc_info=True)
         incremental_available = False
 
@@ -611,7 +611,7 @@ def sync_breakdowns_for_campaign_detailed(company, client, campaign_mirror):
                     'time_range': {
                         'since': since.isoformat(), 'until': today.isoformat()},
                 })
-        except Exception as exc:  # noqa: BLE001 — isolé par dimension, JAMAIS muet
+        except Exception as exc:  # noqa: BLE001 — isolé par dimension, JAMAIS muet (D-ENF22-BLE001)
             logger.warning(
                 'adsengine breakdown %s KO (campagne %s) : %s',
                 dimension, campaign_mirror.meta_id, exc)
@@ -707,7 +707,7 @@ def sync_ad_creatives(company, client):
     for ad in AdMirror.objects.filter(company=company):
         try:
             creative = fetch(ad.meta_id)
-        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning("tasks.sync_ad_creatives : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if creative:
@@ -732,7 +732,7 @@ def sync_page_posts(company, conn, client):
         return 0
     try:
         posts = reader()
-    except Exception:  # noqa: BLE001 — les posts n'empêchent jamais la synchro
+    except Exception:  # noqa: BLE001 — les posts n'empêchent jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks.sync_page_posts : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
     ad_ids = set()
@@ -740,7 +740,7 @@ def sync_page_posts(company, conn, client):
     if callable(get_ads):
         try:
             ad_ids = get_ads()
-        except Exception:  # noqa: BLE001 — cross-check best-effort
+        except Exception:  # noqa: BLE001 — cross-check best-effort (D-ENF22-BLE001)
             logger.warning("tasks.sync_page_posts : erreur ignorée (mode dégradé)", exc_info=True)
             ad_ids = set()
     app_id = str((conn.credentials or {}).get('app_id') or '')
@@ -770,7 +770,7 @@ def sync_comments_for_company(company, client):
             return
         try:
             rows = reader(object_meta_id)
-        except Exception:  # noqa: BLE001 — un objet en échec n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — un objet en échec n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning("tasks.sync_comments_for_company._pull : erreur ignorée (mode dégradé)", exc_info=True)
             return
         mirrors = comments_mod.sync_comments(
@@ -813,7 +813,7 @@ def sync_instagram_for_company(company, conn, client):
         if callable(resolver) and (conn.page_id or ''):
             try:
                 ig_id = str(resolver() or '').strip()
-            except Exception:  # noqa: BLE001 — la résolution IG n'arrête pas la synchro
+            except Exception:  # noqa: BLE001 — la résolution IG n'arrête pas la synchro (D-ENF22-BLE001)
                 logger.warning("tasks.sync_instagram_for_company : erreur ignorée (mode dégradé)", exc_info=True)
                 ig_id = ''
             if ig_id:
@@ -826,7 +826,7 @@ def sync_instagram_for_company(company, conn, client):
 
     try:
         media_rows = reader()
-    except Exception:  # noqa: BLE001 — les médias n'empêchent jamais la synchro
+    except Exception:  # noqa: BLE001 — les médias n'empêchent jamais la synchro (D-ENF22-BLE001)
         logger.warning("tasks.sync_instagram_for_company : erreur ignorée (mode dégradé)", exc_info=True)
         return 0
     mirrors = ig.sync_ig_media(company, media_rows)
@@ -836,7 +836,7 @@ def sync_instagram_for_company(company, conn, client):
         for m in mirrors:
             try:
                 rows = get_comments(m.meta_id)
-            except Exception:  # noqa: BLE001 — un média en échec n'arrête pas les autres
+            except Exception:  # noqa: BLE001 — un média en échec n'arrête pas les autres (D-ENF22-BLE001)
                 logger.warning("tasks.sync_instagram_for_company : erreur ignorée (mode dégradé)", exc_info=True)
                 continue
             ig.sync_ig_comments(company, rows, media_meta_id=m.meta_id)
@@ -908,14 +908,14 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
         try:
             leads = (get_leads(ad.meta_id, since_unix=since_unix)
                      if since_unix is not None else get_leads(ad.meta_id))
-        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — une ad en échec n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if not leads:
             continue
         try:
             targeting = client.get_ad_targeting_ids(ad.meta_id)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=True)
             targeting = {'adset_id': '', 'campaign_id': ''}
         for lead_row in leads:
@@ -945,7 +945,7 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
                     access_token=token,
                     created_time=lead_row.get('created_time'),
                     origine='Meta Lead Ads (pull)')
-            except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas
+            except Exception:  # noqa: BLE001 — un lead en échec n'arrête pas (D-ENF22-BLE001)
                 logger.warning(
                     'adsengine.pull_ad_leads: création lead échouée (%s)',
                     leadgen_id, exc_info=True)
@@ -961,7 +961,7 @@ def pull_ad_leads_for_company(company, conn, client, *, name_token='',
                     campaign_id=targeting.get('campaign_id', ''),
                     form_id=form_id, created_time=lead_row.get('created_time'),
                     is_organic=False)
-            except Exception:  # noqa: BLE001 — best-effort
+            except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
                 logger.warning("tasks.pull_ad_leads_for_company : erreur ignorée (mode dégradé)", exc_info=True)
             processed += 1
     return processed
@@ -1019,7 +1019,7 @@ def _alerter_lead_rattrape(company, lead, lead_row):
                   'aux prospects de la Page (voir docs/crm/arrivee_leads.md).'),
             link=f'/crm/leads?lead={getattr(lead, "pk", "")}',
             company=company)
-    except Exception:  # noqa: BLE001 — une alerte n'empêche jamais un lead
+    except Exception:  # noqa: BLE001 — une alerte n'empêche jamais un lead (D-ENF22-BLE001)
         logger.warning(
             'adsengine.pull_meta_leads_recent: alerte de rattrapage échouée',
             exc_info=True)
@@ -1149,21 +1149,21 @@ def backfill_complet(company_id):
     # 1) Historique des insights niveau ad (réutilise le cœur ADSDEEP3).
     try:
         summary['insights'] = backfill_insights_for_connection(conn)
-    except Exception:  # noqa: BLE001 — une étape en échec n'arrête pas les autres
+    except Exception:  # noqa: BLE001 — une étape en échec n'arrête pas les autres (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: insights KO (société %s)',
                        company.pk, exc_info=True)
 
     # 2) Breakdowns de chaque campagne miroir (réutilise le cœur ADSDEEP8).
     try:
         summary['breakdowns'] = sync_breakdowns_for_company(company, client)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: breakdowns KO (société %s)',
                        company.pk, exc_info=True)
 
     # 3) Miroir du créatif LIVE de chaque ad (ADSDEEP11).
     try:
         summary['creatives'] = sync_ad_creatives(company, client)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: créatifs KO (société %s)',
                        company.pk, exc_info=True)
 
@@ -1172,7 +1172,7 @@ def backfill_complet(company_id):
         access_token, _src = _lead_ads_access_token(conn)
         summary['leads'] = pull_ad_leads_for_company(
             company, conn, client, access_token=access_token)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill_complet: leads KO (société %s)',
                        company.pk, exc_info=True)
 
@@ -1461,7 +1461,7 @@ def evaluate_quarter_hourly():
         try:
             evaluated += rules_engine.evaluate_company(
                 company, quarter_hourly=True)
-        except Exception:  # noqa: BLE001 — isolation par société
+        except Exception:  # noqa: BLE001 — isolation par société (D-ENF22-BLE001)
             logger.warning(
                 'adsengine.evaluate_quarter_hourly: échec société %s',
                 getattr(company, 'pk', company), exc_info=True)
@@ -2427,7 +2427,7 @@ def backfill_after_divergence(company, *, campaign_meta_id='', day=None):
     try:
         summary['leads_processed'] = pull_ad_leads_for_company(
             company, conn, client)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill: pull leads échoué (%s)',
                        company.pk, exc_info=True)
 
@@ -2450,7 +2450,7 @@ def backfill_after_divergence(company, *, campaign_meta_id='', day=None):
                     results=row.get('results'), frequency=row.get('frequency'),
                     cpl=row.get('cpl'))
             summary['insights_refreshed'] += 1
-        except Exception:  # noqa: BLE001 — une campagne en échec n'arrête pas
+        except Exception:  # noqa: BLE001 — une campagne en échec n'arrête pas (D-ENF22-BLE001)
             logger.warning("tasks.backfill_after_divergence : erreur ignorée (mode dégradé)", exc_info=True)
             continue
 
@@ -2459,7 +2459,7 @@ def backfill_after_divergence(company, *, campaign_meta_id='', day=None):
         from . import reconciliation
         recon_day = day or today
         reconciliation.run_daily_reconciliation(company, recon_day)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adsengine.backfill: réconciliation échouée (%s)',
                        company.pk, exc_info=True)
 

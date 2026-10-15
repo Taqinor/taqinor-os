@@ -58,7 +58,7 @@ def _srm_deduite(ville):
     try:
         from .srm_regions import srm_depuis_ville
         return srm_depuis_ville(ville)
-    except Exception:  # noqa: BLE001 — une déduction ratée n'arrête rien
+    except Exception:  # noqa: BLE001 — une déduction ratée n'arrête rien (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_srm_deduite', exc_info=True)
         return None
 

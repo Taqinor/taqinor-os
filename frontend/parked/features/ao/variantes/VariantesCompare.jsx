@@ -71,7 +71,7 @@ const HistoriqueVersions = lazy(() => import('./HistoriqueVersions'))
    ========================================================================== */
 
 // Champs d'ÉCONOMIE (interne/directeur). Liste EXACTE — voir l'en-tête.
-// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DevisTab.DEVIS_MINI_TRACK
+// eslint-disable-next-line react-refresh/only-export-components -- constante co-localisée (testable), même motif que DevisTab.DEVIS_MINI_TRACK (D-ENF22)
 export const CLES_ECONOMIE = [
   'economie',
   'prix_vente_ht',
@@ -91,7 +91,7 @@ const MAX_COLONNES = 4
 
 // Retrait RÉCURSIF des champs d'économie (objets + tableaux). Retourne une
 // nouvelle structure : jamais de mutation du payload d'origine.
-// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
+// eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent (D-ENF22)
 export function retirerEconomie(valeur) {
   if (Array.isArray(valeur)) return valeur.map(retirerEconomie)
   if (valeur && typeof valeur === 'object') {

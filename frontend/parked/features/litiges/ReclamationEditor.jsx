@@ -66,7 +66,7 @@ export default function ReclamationEditor({ reclamation, onCancel, onSaved }) {
           label: `Facture #${reclamation.source_id}`,
         }))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule fois, à l'ouverture
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule fois, à l'ouverture (D-ENF22)
   }, [])
 
   const onSearchFacture = (q) =>

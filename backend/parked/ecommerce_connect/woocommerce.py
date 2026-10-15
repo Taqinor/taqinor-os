@@ -66,7 +66,7 @@ def sync_catalogue(company):
                 json=payload, auth=(consumer_key, consumer_secret), timeout=10.0,
             )
             ok = 200 <= resp.status_code < 300
-        except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             ok = False
             logger.warning('WooCommerce: échec push produit %s: %s',
                            ligne.produit_id, exc)

@@ -11,6 +11,7 @@ import {
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
 import ArretCadenceChamps from '../../features/crm/relances/ArretCadenceChamps'
 import { familleCanal } from '../../features/crm/relances/parcours'
+import { traiterGesteTouche } from '../../features/crm/relances/refusGeste'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import { toastError } from '../../lib/toast'
 import { formatNumber } from '../../lib/format'
@@ -297,18 +298,18 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
   useEffect(() => {
     queueMicrotask(() => setLoading(true))
     return charger()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` referme `scope`, déjà en dépendance ; l'ajouter provoquerait la même relecture à chaque rendu sans rien changer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` referme `scope`, déjà en dépendance ; l'ajouter provoquerait la même relecture à chaque rendu sans rien changer. (D-ENF22)
   }, [scope])
 
   const retirer = (id) => setEtapes((prev) => prev.filter((e) => e.id !== id))
 
-  const traiter = async (id, action, payload) => {
-    setBusyId(id)
-    try {
-      let res
-      if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
-      else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
-      else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
+  // CKP4 / SUIVI-REFUS / F2 — voir `traiterGesteTouche` (`features/crm/relances/
+  // refusGeste.js`) : un refus NOMMÉ (400/409 `erreurs`/`detail`, 403 rôle) est
+  // relancé à la ligne qui l'affiche sous le geste (panneau ouvert, touche
+  // gardée) ; réseau, 5xx et réponse sans message restent signalés par le toast.
+  const traiter = (id, action, payload) => traiterGesteTouche({
+    action, id, payload, setBusyId,
+    surSucces: () => {
       // CAD50 — Fait/Sauter : la touche quitte cette liste (retirer), mais
       // reste offerte au retour arrière (`justeTraitees`) — Reporter, lui,
       // ne clôt rien, rien à annuler.
@@ -326,33 +327,8 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
       // MRY9/MRY11 — une action peut faire naître une NOUVELLE touche due
       // (report, clôture de cadence…) : refetch silencieux, jamais bloquant.
       setTimeout(() => { charger() }, 1000)
-      return res?.data
-    } catch (err) {
-      // CKP4 — un canal APPEL clôturé « Fait » sans issue renvoie 400
-      // `{erreurs: {outcome}}` : ce champ s'affiche SOUS le contrôle
-      // (`RelanceEtapeRow`, promesse rejetée ci-dessous), jamais un toast
-      // générique qui masquerait le champ fautif.
-      // SUIVI-REFUS — cette règle vaut désormais pour les TROIS gestes (Fait,
-      // Sauter, Reporter) et pour tout refus NOMMÉ par le serveur : 400
-      // `erreurs` ou `detail` (dont « Cette étape est déjà traitée », SUIVI E8 —
-      // le double clic sur « Reporter » fermait le panneau comme réussi) et 403
-      // rôle. La ligne l'affiche sous le geste (`afficherRefus`) et le panneau
-      // reste ouvert : l'erreur est relancée, jamais avalée.
-      const statut = err?.response?.status
-      const donnees = err?.response?.data
-      const refusNomme = statut === 403 || (statut === 400
-        && (Object.keys(donnees?.erreurs ?? {}).length > 0
-          || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
-      // F2 — l'échec n'est plus MUET : la ligne reste (retirer() jamais
-      // appelé ici) et redevient cliquable (busyId remis à null ci-dessous),
-      // mais l'agent doit être PRÉVENU que son geste n'a rien fait : réseau,
-      // 5xx et réponse sans message restent signalés par le toast.
-      if (!refusNomme) toastError('Action impossible pour le moment.')
-      throw err
-    } finally {
-      setBusyId(null)
-    }
-  }
+    },
+  })
 
   // CAD50 — retour arrière (24h, refus motivé du serveur au-delà — voir
   // `apps/crm/services.py annuler_touche_relance`) : la touche redevient

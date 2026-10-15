@@ -78,12 +78,12 @@ class UndoStageBase(TestCase):
 
 class TestUndoStageChange(UndoStageBase):
     def test_recul_sans_marqueur_reste_refuse(self):
-        """La garde funnel est INCHANGÉE : un recul nu vaut toujours 400."""
+        """La garde funnel est INCHANGÉE : un recul nu vaut toujours un refus (409, état du lead)."""
         api = auth(self.user)
         self.avance(api, stages.CONTACTED)
 
         r = api.patch(self.url(), {'stage': stages.NEW}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('stage', r.data)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.CONTACTED)
@@ -121,7 +121,7 @@ class TestUndoStageChange(UndoStageBase):
         # NEW n'en est pas l'annulation.
         r = api.patch(
             self.url(), {'stage': stages.NEW, 'undo': True}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.QUOTE_SENT)
 
@@ -147,7 +147,7 @@ class TestUndoStageChange(UndoStageBase):
 
         r = api.patch(
             self.url(), {'stage': stages.NEW, 'undo': True}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage, stages.CONTACTED)
 
@@ -160,7 +160,7 @@ class TestUndoStageChange(UndoStageBase):
         api = auth(self.user)
         r = api.patch(
             self.url(), {'stage': stages.NEW, 'undo': True}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_lead_perdu_reste_verrouille_meme_avec_le_marqueur(self):
         """La garde « lead perdu » précède l'exception d'annulation."""
@@ -170,7 +170,7 @@ class TestUndoStageChange(UndoStageBase):
 
         r = api.patch(
             self.url(), {'stage': stages.NEW, 'undo': True}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_undo_ne_franchit_pas_la_frontiere_de_societe(self):
         """Multi-tenant : un lead d'une AUTRE société reste invisible — le
@@ -230,7 +230,7 @@ class TestReculConfirme(UndoStageBase):
         self.avance(api, stages.QUOTE_SENT)
 
         r = api.patch(self.url(), {'stage': stages.CONTACTED}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(
             str(r.data['stage'][0]), "On ne recule pas une étape.")
         self.lead.refresh_from_db()
@@ -301,7 +301,7 @@ class TestReculConfirme(UndoStageBase):
         r = api.patch(
             self.url(), {'stage': stages.CONTACTED, 'confirme_recul': True},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(
             str(r.data['stage'][0]), 'Lead perdu — étape non modifiable.')
         self.lead.refresh_from_db()

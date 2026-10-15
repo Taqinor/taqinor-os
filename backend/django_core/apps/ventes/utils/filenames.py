@@ -47,7 +47,7 @@ def _company_slug(company):
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.get(company=company)
         nom = getattr(profile, 'nom', '') or ''
-    except Exception:  # noqa: BLE001 — repli sur le nom brut de la société
+    except Exception:  # noqa: BLE001 — repli sur le nom brut de la société (D-ENF22-BLE001)
         logger.warning("filenames._company_slug : erreur ignorée (mode dégradé)", exc_info=True)
         nom = ''
     if not nom:

@@ -559,7 +559,7 @@ def verifier(intention):
 # ── PONTS M3/M4 : noms hébergés ailleurs ─────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps — jamais
 # ``pipeline`` (qui importe ce module) ni la façade.
-from apps.ventes.domain.catalogue import (  # noqa: E402
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _has_price,
     _is_hybrid_inverter,
     _is_offgrid_inverter,
@@ -571,14 +571,14 @@ from apps.ventes.domain.catalogue import (  # noqa: E402
     catalogue_de_la_societe,
     ordre_lignes_societe,
 )
-from apps.ventes.domain.composition import (  # noqa: E402
+from apps.ventes.domain.composition import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     CompositionLignes,
     _v_txt,
     composition_deux_optimiseurs,
     composition_residentielle,
 )
-from apps.ventes.domain.taille import _AUTO_PANEL_WATT  # noqa: E402
-from apps.ventes.domain.transport import (  # noqa: E402
+from apps.ventes.domain.taille import _AUTO_PANEL_WATT  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.transport import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     appliquer_bareme_transport,
     ville_du_lead,
 )

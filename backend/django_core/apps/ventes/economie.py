@@ -1455,7 +1455,7 @@ def _donnees_du_devis(devis):
     reference = devis.reference or f'n° {devis.pk}'
     try:
         data = build_quote_data(devis, {'pdf_mode': 'onepage'})
-    except Exception:  # noqa: BLE001 — un devis illisible s'OMET, jamais 500
+    except Exception:  # noqa: BLE001 — un devis illisible s'OMET, jamais 500 (D-ENF22-BLE001)
         logger.warning("economie._donnees_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         return {}, [], [_omission(
             'devis', f"devis {reference} : le moteur de devis n'a pas pu en "

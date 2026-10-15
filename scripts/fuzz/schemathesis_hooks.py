@@ -543,11 +543,20 @@ _FICHIERS_VALIDES = (
      {'fichier': _CSV_METEO}),
     (re.compile(r'^/api/django/imports/(dry-run|commit)/$'), {'POST'},
      {'file': _CSV_IMPORT}),
+    # CI #997 (w4, ventes) — affiche 3D d'un DEVIS : le serveur lit les octets
+    # magiques (PNG ou JPEG), sinon « Image invalide » (400).
+    (re.compile(r'^/api/django/ventes/devis/\{[^}]+\}/roof-image/$'), {'POST'},
+     {'image': _PNG_MINIMAL}),
     # CI #1001 fuzz — réimport d'un CSV de traductions / de jours fériés : des
     # octets quelconques sont « Lecture du fichier impossible » (400), le schéma
     # ne dit que ``format: binary``. Un CSV à en-têtes seuls est lisible.
     (re.compile(r'^/api/django/imports/(traductions|feries)/import/$'), {'POST'},
      {'file': _CSV_IMPORT}),
+    # CI #1003 fuzz — import de vues enregistrées / de favoris : un fichier non
+    # tabulaire (PNG…) est « Lecture du fichier impossible » (400) ; le schéma
+    # ne dit que ``format: binary``. Un CSV à en-têtes seuls est lisible.
+    (re.compile(r'^/api/django/uxviews/(saved-views|favoris)/importer/$'), {'POST'},
+     {'fichier': _CSV_IMPORT}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},

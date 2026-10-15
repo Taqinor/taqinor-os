@@ -25,10 +25,11 @@ export default function ConcurrentsPerte() {
   useEffect(() => {
     if (!recherche.trim()) return
     let cancelled = false
-    crmApi.getLeads({ search: recherche })
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getLeads({ search: recherche, page, page_size: pageSize }).then((r) => r.data))
       .then((res) => {
         if (cancelled) return
-        const rows = res.data?.results ?? res.data ?? []
+        const rows = Array.isArray(res) ? res : (res?.results ?? [])
         setLeads(rows.filter((l) => l.perdu))
       })
       .catch(() => { if (!cancelled) setLeads([]) })

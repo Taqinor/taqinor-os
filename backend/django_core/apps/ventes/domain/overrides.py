@@ -1,5 +1,10 @@
 import logging
 
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'ORIGINE_API', 'ORIGINE_IMPORT', 'registre_du_devis',
+]
+
 logger = logging.getLogger(__name__)
 """QJR57 — LE REGISTRE UNIQUE DES SURCHARGES D'UN DEVIS.
 
@@ -53,7 +58,7 @@ CE QUI RESTE VRAI, ET QUI COMPTE : les fonctions de construction du registre
 le registre RÉSULTANT sans rien écrire. Seule :func:`ecrire_colonne` touche la
 base, et elle ne touche QUE cette colonne.
 """
-from apps.ventes.domain.lecture_overrides import (  # noqa: E402,F401 — ENF20
+from apps.ventes.domain.lecture_overrides import (  # noqa: E402 — ENF20 (D-ENF22)
     ORIGINE_API, ORIGINE_IMPORT, ORIGINE_MANUEL, ORIGINES, _registre,
     effectif, registre_du_devis,
 )
@@ -671,19 +676,19 @@ def autos_du_devis(devis):
                  _autos_du_profil):
         try:
             autos.update(bloc(devis) or {})
-        except Exception:  # noqa: BLE001 — une lecture ratée n'invente rien
+        except Exception:  # noqa: BLE001 — une lecture ratée n'invente rien (D-ENF22-BLE001)
             logger.warning("overrides.autos_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
             continue
     try:
         scenario = _auto_scenario(devis)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("overrides.autos_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         scenario = None
     if scenario:
         autos['scenario'] = scenario
     try:
         jour = _jour_reference_auto(devis)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("overrides.autos_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         jour = None
     if jour is not None:

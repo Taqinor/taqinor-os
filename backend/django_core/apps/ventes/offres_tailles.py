@@ -219,7 +219,7 @@ def _payback_publie(cout, economie, *, stockage=False, part_batterie=None,
             cout, economie, stockage=stockage, part_batterie=part_batterie,
             cout_onduleur_ttc=cout_onduleur_ttc,
             battery_roundtrip=battery_roundtrip)['payback_years']
-    except Exception:  # noqa: BLE001 — un payback indisponible s'omet
+    except Exception:  # noqa: BLE001 — un payback indisponible s'omet (D-ENF22-BLE001)
         logger.warning('payback publiable indisponible', exc_info=True)
         return None
 
@@ -373,7 +373,7 @@ def _role_de_la_ligne(designation):
 
     try:
         role = classer_produit(designation)
-    except Exception:  # noqa: BLE001 — un libellé exotique n'est pas une panne
+    except Exception:  # noqa: BLE001 — un libellé exotique n'est pas une panne (D-ENF22-BLE001)
         logger.warning("offres_tailles._role_de_la_ligne : erreur ignorée (mode dégradé)", exc_info=True)
         role = None
     if role:
@@ -385,7 +385,7 @@ def _role_de_la_ligne(designation):
         try:
             if detecteur(designation):
                 return role_repli
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("offres_tailles._role_de_la_ligne : erreur ignorée (mode dégradé)", exc_info=True)
             continue
     return None
@@ -489,7 +489,7 @@ def _cumul_moteur(prix_ttc, economie_annuelle, *, stockage, part_batterie,
             float(prix_ttc), float(economie_annuelle),
             battery=bool(stockage), battery_share=part_batterie,
             inverter_replace_cost=cout_onduleur_ttc, **_rt)
-    except Exception:  # noqa: BLE001 — un cumul indisponible s'omet
+    except Exception:  # noqa: BLE001 — un cumul indisponible s'omet (D-ENF22-BLE001)
         logger.warning('cumul 25 ans indisponible', exc_info=True)
         return None
     cumul = (resultat or {}).get('cumulative') or []
@@ -547,7 +547,7 @@ def _horizon_et_escalade():
     try:
         from .quote_engine.pricing import CASHFLOW_YEARS, TARIFF_ESCALATION
         return int(CASHFLOW_YEARS), round(float(TARIFF_ESCALATION) * 100.0, 2)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("offres_tailles._horizon_et_escalade : erreur ignorée (mode dégradé)", exc_info=True)
         return None, None
 
@@ -681,7 +681,7 @@ class _Contexte:
             return composer_sonde(
                 self.sonde, nb_panneaux, avec_batterie=avec_batterie,
                 cible_kwh=cible_kwh, module_kwh=self.module_batterie_kwh)
-        except Exception:  # noqa: BLE001 — une taille impossible ne fait pas
+        except Exception:  # noqa: BLE001 — une taille impossible ne fait pas (D-ENF22-BLE001)
             # tomber les deux autres.
             logger.warning('composition de taille impossible à %s panneaux',
                            nb_panneaux, exc_info=True)
@@ -918,7 +918,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                     puissances['ond_decharge_kw'],
                 'batterie_puissance_charge_kw': puissances['charge_kw'],
             }
-        except Exception:  # noqa: BLE001 — sans bornes lues, le moteur
+        except Exception:  # noqa: BLE001 — sans bornes lues, le moteur (D-ENF22-BLE001)
             # retombe sur son régime établi : jamais une borne inventée.
             logger.warning("offres_tailles._carte_moteur : erreur ignorée (mode dégradé)", exc_info=True)
             bornes = {}
@@ -933,7 +933,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
                     lignes_avec, roles=getattr(lignes_avec, 'roles', None))
                 bornes['batterie_rendement'] = _rdt['rendement']
                 bornes['batterie_rendement_source'] = _rdt['source']
-            except Exception:  # noqa: BLE001 — hypothèse déclarée par le moteur
+            except Exception:  # noqa: BLE001 — hypothèse déclarée par le moteur (D-ENF22-BLE001)
                 logger.warning("offres_tailles._carte_moteur : erreur ignorée (mode dégradé)", exc_info=True)
 
     try:
@@ -942,7 +942,7 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
         etude = calculer_etude_horaire(
             kwc=kwc, batterie_kwh_utile=capacite,
             **_source, **bornes, **contexte.etude_kwargs)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('étude horaire indisponible à %s panneaux',
                        nb_panneaux, exc_info=True)
         etude = None
@@ -1118,7 +1118,7 @@ def _remplissage_ok(contexte, kwc, capacite, bornes):
                     'charge_kw': bornes.get('batterie_puissance_charge_kw'),
                 }} if bornes else None),
             **contexte.etude_kwargs)
-    except Exception:  # noqa: BLE001 — un verdict indisponible s'omet
+    except Exception:  # noqa: BLE001 — un verdict indisponible s'omet (D-ENF22-BLE001)
         logger.warning('verdict de remplissage indisponible', exc_info=True)
         return None
     for palier in ((energie or {}).get('paliers') or []):
@@ -1369,7 +1369,7 @@ def _annuel_frais(devis, kwc):
     try:
         if _lire_etude_horaire(bloc, kwc) is None:
             return {}
-    except Exception:  # noqa: BLE001 — un doute vaut une omission
+    except Exception:  # noqa: BLE001 — un doute vaut une omission (D-ENF22-BLE001)
         logger.warning('fraîcheur du bloc horaire illisible', exc_info=True)
         return {}
     return bloc.get('annuel') or {}
@@ -1643,7 +1643,7 @@ def offres_tailles_publique(devis, data, cles_servies=None):
     """
     try:
         bloc = deriver(devis, data)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('offres_tailles indisponible', exc_info=True)
         return None
     if not bloc:

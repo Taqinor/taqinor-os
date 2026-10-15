@@ -1752,7 +1752,7 @@ class ContratMaintenance(models.Model):
         try:
             from apps.notifications.calendar_utils import prochain_jour_ouvre
             return prochain_jour_ouvre(cible, self.company)
-        except Exception:  # noqa: BLE001 — calendrier absent → date brute
+        except ImportError:  # calendrier absent → date brute
             return cible
 
     # ── AUD502 / décision fondateur D13 (03/09/2026) — expiration réelle ────

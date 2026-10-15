@@ -109,13 +109,15 @@ class DevisFacturationActionsMixin:
     )
     def convertir_en_bc(self, request, pk=None):
         devis = self.get_object()
+        # CI #997 fuzz — sans corps : statut du devis et BC déjà créé sont des
+        # refus d'ÉTAT (409), plus 400.
         if devis.statut != Devis.Statut.ACCEPTE:
             return Response(
                 {'detail': (
                     'Le devis doit être au statut '
                     '« Accepté » pour être converti.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AMET6 (C-AMET-008) — LA porte unique `creer_bon_commande` (AMET5) :
         # contrôle « BC existant », numérotation et `bon_commande_cree`
@@ -126,7 +128,7 @@ class DevisFacturationActionsMixin:
             bc = creer_bon_commande(devis, request.user.company, request.user)
         except BonCommandeExistant as exc:
             return Response({'detail': exc.message},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -144,7 +146,8 @@ class DevisFacturationActionsMixin:
     def generer_facture(self, request, pk=None):
         """Émet la PROCHAINE facture de tranche de la vente (acompte, puis
         matériel, puis solde) — VNT65 : enveloppe de « Facturer la vente »
-        (``creer_facture_tranche`` → ``facturation_vente``), refus en 400 ;
+        (``creer_facture_tranche`` → ``facturation_vente``), refus d'état en
+        409 (CI #997 fuzz : corps valide, la vente s'y oppose — plus 400) ;
         la sortie de stock suit l'ÉMISSION (VNT21), jamais la création.
         Retrait programmé dès que le panneau de vente (VNT75/VNT79) la
         remplace."""
@@ -195,7 +198,7 @@ class DevisFacturationActionsMixin:
                  'credit_hold': True}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST,
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT,
             )
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
@@ -271,11 +274,14 @@ class DevisFacturationActionsMixin:
                 paiements=request.data.get('paiements') or [])
         except (FacturationRefusee, EncaissementRefuse,
                 EmissionRefusee) as exc:
+            # CI #997 fuzz — corps validé (paiements publiés) : devis non
+            # accepté, vente déjà facturée, date de paiement future, refus
+            # d'émission ou d'encaissement sont des refus d'ÉTAT (409).
             return Response({'detail': exc.motif},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         except StockInsuffisantError as exc:
             return Response({'detail': exc.message},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         except CreditHoldError as exc:
             return Response(
                 {'detail': f'Client en blocage crédit : {exc.motif}.',

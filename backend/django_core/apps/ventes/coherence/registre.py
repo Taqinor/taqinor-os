@@ -31,6 +31,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from importlib import import_module
 from typing import Callable
 
 GRAVITE_CRITIQUE = 'critique'
@@ -168,7 +169,8 @@ def regles_selectionnees(ids=None):
 
 def charger_regles():
     """Importe les modules de règles (l'import les enregistre)."""
-    from . import (regles_documents, regles_etude, regles_crm,  # noqa: F401
-                   regles_securite, regles_calepinage)
-    # AMOT49 — invariants maison (marge, pompage) : append-only.
-    from . import regles_invariants  # noqa: F401
+    for nom in ('regles_documents', 'regles_etude', 'regles_crm',
+                'regles_securite', 'regles_calepinage',
+                # AMOT49 — invariants maison (marge, pompage) : append-only.
+                'regles_invariants'):
+        import_module(f'{__package__}.{nom}')

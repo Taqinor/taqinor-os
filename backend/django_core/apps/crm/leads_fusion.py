@@ -63,7 +63,7 @@ def reprendre_relances_apres_fusion(absorbed, survivor, user):
     # Best-effort : une fusion n'échoue pas sur un filet.
     try:
         assurer_prochaine_etape_apres_succes(survivor, user)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning(
             'CAD106: filet non posé après fusion (lead #%s)',
             getattr(survivor, 'pk', '?'), exc_info=True)
@@ -87,7 +87,7 @@ def _transferer_calepinages_apres_fusion(absorbed, survivor, user):
         with transaction.atomic():
             transferer_lead(survivor.company, de_lead_id=absorbed.pk,
                             vers_lead_id=survivor.pk, user=user)
-    except Exception:  # noqa: BLE001 — la fusion ne casse jamais ici
+    except Exception:  # noqa: BLE001 — la fusion ne casse jamais ici (D-ENF22-BLE001)
         logger.exception(
             'ACAL177 : calepinages du lead #%s non transférés vers #%s',
             absorbed.pk, survivor.pk)

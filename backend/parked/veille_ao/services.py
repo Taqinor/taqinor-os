@@ -532,7 +532,7 @@ def _collecter_sans_journal(source, company, *, user=None, lecteur=None):
 
     try:
         lignes = list(lecteur(source, mots))
-    except Exception as erreur:  # noqa: BLE001 — toute panne = ÉCHEC FRANC
+    except Exception as erreur:  # noqa: BLE001 — toute panne = ÉCHEC FRANC (D-ENF22-BLE001)
         logger.exception('veille_ao: lecture de la source %s échouée',
                          source.pk)
         rapport['verdict'] = VERDICT_ECHEC
@@ -546,7 +546,7 @@ def _collecter_sans_journal(source, company, *, user=None, lecteur=None):
         try:
             cree, maj, auto_ignore = _enregistrer_un_avis(
                 company, source, dict(donnees or {}), mots, regles, user=user)
-        except Exception as erreur:  # noqa: BLE001 — un avis fautif ne perd
+        except Exception as erreur:  # noqa: BLE001 — un avis fautif ne perd (D-ENF22-BLE001)
             # pas la collecte : il est journalisé et les autres passent.
             logger.warning('veille_ao: avis ignoré (source %s) — %s',
                            source.pk, erreur)

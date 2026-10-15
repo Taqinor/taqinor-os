@@ -278,7 +278,7 @@ export function useLignesEcran(ctx) {
   // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
   // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
   // aucune dépendance réelle.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setProduits est un setState fonctionnel : aucune dépendance réelle (D-ENF22)
   const onProduitCreated = useCallback((p) => setProduits(ps => [...ps, p]), [])
 
   // VX90 — quand une ligne vient d'être ajoutée, focaliser son ProduitPicker et

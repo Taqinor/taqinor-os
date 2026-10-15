@@ -104,7 +104,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (!token || !event) return json({ ok: false }, 400);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- clientPhone kept for API compat, never forwarded (WJ109)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- clientPhone kept for API compat, never forwarded (WJ109) (D-ENF22)
   void clientPhone;
   const payload = buildProposalTrackPayload({ reference, token }, event, appareilId);
   if (!payload) {

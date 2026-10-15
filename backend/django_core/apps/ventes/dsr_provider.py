@@ -176,7 +176,7 @@ def _effacer_copie_toit(devis):
         if cle and not Devis.objects.filter(roof_image=cle).exists():
             try:
                 supprimer_fichier_toiture(cle)
-            except Exception:  # noqa: BLE001 — l'objet stocké est best-effort
+            except Exception:  # noqa: BLE001 — l'objet stocké est best-effort (D-ENF22-BLE001)
                 logger.warning("dsr_provider._effacer_copie_toit : erreur ignorée (mode dégradé)", exc_info=True)
     return count
 

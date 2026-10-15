@@ -270,7 +270,9 @@ class LesReglesMigreesViventCoteServeur(_Base):
         reponse = self.api.post(
             AUTO_URL, {'lead': self.lead(taille_souhaitee_kwc=Decimal('5')).id},
             format='json')
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        # CI #997 fuzz (3dc8d2879) : refus d'ÉTAT de la fiche/du catalogue
+        # publié en 409 par devis/auto/ (ErreurComposition).
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('Trina', reponse.data['detail'])
         self.assertIn('Panneaux', reponse.data['detail'])
         # Et surtout : AUCUN brouillon amputé ne reste derrière l'erreur.
@@ -400,16 +402,16 @@ class LeDryRunComposeLesDeuxOptimiseurs(_Base):
         self.assertEqual(
             reponse.data['nb_panneaux_avec'], reponse.data['nb_panneaux'])
 
-    def test_dimensionnement_avec_pas_un_objet_est_ignore_sans_erreur(self):
-        """Une valeur qui n'est pas un objet vaut « moteur muet sur l'axe
-        batterie » — jamais une erreur 400 sur un aperçu, jamais un chiffre
-        inventé pour combler le trou."""
-        reponse = self.api.post(COMPO_URL, {
-            'kwc': 5, 'panel_watt': 710,
-            'dimensionnement_avec': 'pas un objet',
-        }, format='json')
-        self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertFalse(reponse.data['variantes'])
+    def test_dimensionnement_avec_pas_un_objet_c_est_400(self):
+        """CI #997 fuzz — le schéma publie un OBJET de nombres : une autre
+        valeur (texte, ``null`` dans l'objet) était acceptée en silence alors
+        qu'elle viole le contrat — 400 nommé, jamais un chiffre inventé."""
+        for avec in ('pas un objet', {'batterie_kwh': None}):
+            reponse = self.api.post(COMPO_URL, {
+                'kwc': 5, 'panel_watt': 710, 'dimensionnement_avec': avec,
+            }, format='json')
+            self.assertEqual(reponse.status_code, 400, (avec, reponse.data))
+            self.assertIn('dimensionnement_avec', reponse.data)
 
     def test_dimensionnement_avec_valeur_non_numerique_c_est_400(self):
         reponse = self.api.post(COMPO_URL, {
@@ -426,15 +428,37 @@ class LeDryRunRefuseCeQuIlNeSaitPasComposer(_Base):
         reponse = self.api.post(COMPO_URL, {}, format='json')
         self.assertEqual(reponse.status_code, 400)
 
-    def test_scenario_inconnu_c_est_422(self):
+    def test_scenario_inconnu_c_est_400(self):
+        # CI #997 fuzz — les scénarios servis sont PUBLIÉS (énumération) : un
+        # autre texte viole le schéma (400), il n'était refusé qu'en 422.
         reponse = self.api.post(
             COMPO_URL, {'kwc': 5, 'scenario': 'peut-etre'}, format='json')
-        self.assertEqual(reponse.status_code, 422)
+        self.assertEqual(reponse.status_code, 400)
+        self.assertIn('scenario', reponse.data)
+
+    def test_types_json_stricts_c_est_400(self):
+        # CI #997 fuzz — nombres et drapeau JSON réels (``"5"`` était relu par
+        # ``Decimal``, ``"oui"`` valait vrai).
+        for corps in ({'kwc': '5'}, {'kwc': 5, 'hors_reseau': 'oui'},
+                      {'kwc': 0}, {'nb_panneaux': 1.5}, {'kwc': True}):
+            reponse = self.api.post(COMPO_URL, corps, format='json')
+            self.assertEqual(reponse.status_code, 400, (corps, reponse.data))
 
     def test_valeur_non_numerique_c_est_400(self):
         reponse = self.api.post(
             COMPO_URL, {'kwc': 'beaucoup'}, format='json')
         self.assertEqual(reponse.status_code, 400)
+
+    def test_catalogue_qui_s_y_oppose_c_est_409(self):
+        # CI #1003 fuzz — corps CONFORME au schéma (site isolé demandé) mais
+        # aucun onduleur autonome tarifé au catalogue : refus d'ÉTAT, 409
+        # (était 422, hors des codes d'un corps valide), même corps lu par
+        # l'écran ({detail, field}).
+        reponse = self.api.post(
+            COMPO_URL, {'kwc': 5, 'hors_reseau': True}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['field'], 'hors_reseau')
+        self.assertIn('off-grid', reponse.data['detail'])
 
     def test_authentification_requise(self):
         self.assertEqual(

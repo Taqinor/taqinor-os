@@ -130,7 +130,8 @@ class GardeKwhSaisieEntranteTests(TestCase):
         self.assertEqual(self._etat(), avant)
 
         r_atomic = self._atomic(etude)
-        self.assertEqual(r_atomic.status_code, 400, r_atomic.content)
+        # CI #997 fuzz : atomic, refus d'état / de contenu, 409
+        self.assertEqual(r_atomic.status_code, 409, r_atomic.content)
         self.assertEqual(r_atomic.data['code'], CODE_KWH_INCOHERENT)
         self.assertEqual(
             Devis.objects.filter(company=self.company).count(), nb_devis)

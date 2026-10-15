@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """COMMERCIAL premium renderer — part of the single quote engine.
 
 Selected for ``mode_installation == 'commercial'`` (full/premium format) by

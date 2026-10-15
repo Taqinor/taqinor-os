@@ -53,7 +53,7 @@ export default function LogistiqueCockpit() {
     return () => { cancelled = true }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   // APX22 — chaque tuile est une FILE D'ACTION : « N à traiter » + le lien vers

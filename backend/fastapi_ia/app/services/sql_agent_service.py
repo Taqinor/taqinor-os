@@ -828,7 +828,7 @@ def _apply_tenant_guc(db, company_id: int) -> None:
     cid = int(company_id)
 
     @event.listens_for(engine, "connect")
-    def _set_current_company(dbapi_connection, connection_record):  # noqa: ANN001
+    def _set_current_company(dbapi_connection, connection_record):  # noqa: ANN001 — exception documentée (D-ENF22)
         # set_config(..., false) == SET de session sur CETTE connexion physique ;
         # le moteur etant mono-societe et ephemere, aucune fuite inter-tenant.
         cursor = dbapi_connection.cursor()

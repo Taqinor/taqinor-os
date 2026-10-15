@@ -45,11 +45,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import check_api_contract as cac  # noqa: E402
-import check_duplicats_litteraux as cdl  # noqa: E402
-import check_ownership as cown  # noqa: E402
-import check_services_appeles as csa  # noqa: E402
-import check_taches_cablage as ctc  # noqa: E402
+import check_api_contract as cac  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_duplicats_litteraux as cdl  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_ownership as cown  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_services_appeles as csa  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 DJANGO_REL = "backend/django_core"
 PATHSPECS_PY = ("backend/*.py", "scripts/*.py")

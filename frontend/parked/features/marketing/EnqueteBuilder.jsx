@@ -1,4 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
+/* eslint-disable react-refresh/only-export-components -- dossier parqué, hors lint (D-ENF22) */
 import { useEffect, useState } from 'react'
 import marketingApi from '../../api/marketingApi'
 import {
@@ -43,7 +43,7 @@ export default function EnqueteBuilder({ initial, onSaved, onCancel }) {
   const [testApercu, setTestApercu] = useState(null)
   const [copie, setCopie] = useState(false)
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync le formulaire quand la prop initial change (D-ENF22)
   useEffect(() => { setForm(initial || emptyForm()) }, [initial])
 
   const setTitre = (e) => setForm(f => ({ ...f, titre: e.target.value }))

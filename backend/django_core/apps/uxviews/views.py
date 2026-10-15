@@ -72,6 +72,47 @@ def _identifiant_metier(instance):
     return None, None
 
 
+def _lignes_du_fichier_ou_400(fichier):
+    """Lignes (en-têtes normalisés) du CSV/XLSX déposé, ou 400 « fichier
+    illisible ». CI #1003 (fuzz) — un PNG déposé sous le nom ``fichier`` était
+    lu comme un CSV : ``csv.Error`` (retour chariot isolé) remontait en 500. Un
+    XLSX corrompu (zip, XML) prenait le même chemin. Le schéma ne dit que
+    ``format: binary`` : le refus d'un fichier non tabulaire est un 400 honnête."""
+    import csv
+    import zipfile
+
+    from openpyxl.utils.exceptions import InvalidFileException
+
+    from apps.dataimport.parsing import iter_rows, normalize_header
+
+    try:
+        _headers, raw_rows = iter_rows(fichier.read(), fichier.name)
+    except (csv.Error, zipfile.BadZipFile, InvalidFileException, KeyError,
+            ValueError, OSError, SyntaxError):
+        raise ValidationError({'fichier': (
+            'Lecture du fichier impossible : un CSV ou un XLSX est attendu.')})
+    return [{normalize_header(k): v for k, v in row.items()} for row in raw_rows]
+
+
+def _texte_hors_bornes(valeur, longueur_max):
+    """Vrai si ``valeur`` ne tient pas dans un ``CharField(longueur_max)``
+    PostgreSQL (trop longue, ou portant l'octet NUL qu'il refuse — 500)."""
+    return len(valeur) > longueur_max or chr(0) in valeur
+
+
+def _porte_un_nul(valeur):
+    """Vrai si une chaîne (clé ou valeur) du JSON ``valeur`` porte l'octet NUL
+    (refusé par ``jsonb`` : 500 à l'écriture)."""
+    if isinstance(valeur, str):
+        return chr(0) in valeur
+    if isinstance(valeur, list):
+        return any(_porte_un_nul(element) for element in valeur)
+    if isinstance(valeur, dict):
+        return any(_porte_un_nul(cle) or _porte_un_nul(element)
+                   for cle, element in valeur.items())
+    return False
+
+
 _VIEWS_SAVED_VIEW_VIEW_SET_IMPORTER_REPONSE = inline_serializer('ViewsSavedViewViewSetImporterReponse', {
     'created': drf_serializers.JSONField(allow_null=True),
     'erreurs': drf_serializers.JSONField(allow_null=True),
@@ -112,7 +153,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             try:
                 EcranRecent.objects.update_or_create(
                     company=request.user.company, owner=request.user, ecran=ecran)
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
                 logger.exception(
                     'EcranRecent: mise à jour échouée (%s, %s)',
                     request.user.pk, ecran)
@@ -236,7 +277,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
                 ),
                 company=view.company,
             )
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.exception(
                 'saved_view_shared: notification de modification échouée (%s)',
                 view.pk)
@@ -265,7 +306,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             saved_view_shared.send(
                 sender=SavedView, view=instance, company=self.request.user.company,
                 user=self.request.user, action=action)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.exception('saved_view_shared: envoi du signal échoué (%s)',
                              instance.pk)
 
@@ -417,17 +458,11 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         remplacée. La vue importée devient TOUJOURS personnelle (owner =
         l'utilisateur qui importe, jamais une visibilité équipe automatique —
         le partage reste un acte explicite, cf. `definir_par_defaut_role`)."""
-        from apps.dataimport.parsing import iter_rows, normalize_header
-
         fichier = request.FILES.get('fichier')
         if not fichier:
             raise ValidationError({'fichier': 'Un fichier CSV ou XLSX est requis.'})
 
-        _headers, raw_rows = iter_rows(fichier.read(), fichier.name)
-        rows = [
-            {normalize_header(k): v for k, v in row.items()}
-            for row in raw_rows
-        ]
+        rows = _lignes_du_fichier_ou_400(fichier)
 
         created = []
         erreurs = []
@@ -451,11 +486,30 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
                 })
                 continue
 
+            # CI #1003 (fuzz) — une valeur hors des colonnes (longueur, octet
+            # NUL que PostgreSQL refuse jusque dans un filtre) était un 500 :
+            # la ligne est rejetée et nommée AVANT toute requête.
+            max_ecran = SavedView._meta.get_field('ecran').max_length
+            max_nom = SavedView._meta.get_field('nom').max_length
+            message_bornes = {
+                'ligne': i,
+                'message': f"'ecran' ({max_ecran} signes) ou 'nom' ({max_nom} signes) "
+                           'trop long, ou caractère nul dans la ligne.',
+            }
+            if (_texte_hors_bornes(ecran, max_ecran) or _texte_hors_bornes(nom, max_nom)
+                    or _porte_un_nul(configuration)):
+                erreurs.append(message_bornes)
+                continue
+
             final_nom = nom
             if SavedView.objects.filter(
                 company=request.user.company, owner=request.user, ecran=ecran, nom=nom,
             ).exists():
                 final_nom = f'{nom} (import)'
+            if len(final_nom) > max_nom:
+                # Le suffixe « (import) » ferait déborder la colonne.
+                erreurs.append(message_bornes)
+                continue
 
             view = SavedView.objects.create(
                 company=request.user.company, owner=request.user,
@@ -617,17 +671,11 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         directe, cf. `perform_create`/`get_or_create` ci-dessous)."""
         from django.contrib.contenttypes.models import ContentType
 
-        from apps.dataimport.parsing import iter_rows, normalize_header
-
         fichier = request.FILES.get('fichier')
         if not fichier:
             raise ValidationError({'fichier': 'Un fichier CSV ou XLSX est requis.'})
 
-        _headers, raw_rows = iter_rows(fichier.read(), fichier.name)
-        rows = [
-            {normalize_header(k): v for k, v in row.items()}
-            for row in raw_rows
-        ]
+        rows = _lignes_du_fichier_ou_400(fichier)
 
         importes = 0
         non_resolues = 0
@@ -653,7 +701,7 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
                 try:
                     cible = manager.filter(
                         company=request.user.company, **{champ: valeur}).first()
-                except Exception:  # noqa: BLE001 — champ inconnu sur ce modèle
+                except Exception:  # noqa: BLE001 — champ inconnu sur ce modèle (D-ENF22-BLE001)
                     logger.warning(
                         "views.FavoriUtilisateurViewSet.importer : erreur ignorée (mode dégradé)",
                         exc_info=True)

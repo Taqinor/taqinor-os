@@ -51,7 +51,7 @@ APPS_DIR = DJANGO_CORE / "apps"
 # Reuse the single source of truth for the pure guard logic.
 if str(DJANGO_CORE) not in sys.path:
     sys.path.insert(0, str(DJANGO_CORE))
-from apps.records.platform_guards import (  # noqa: E402
+from apps.records.platform_guards import (  # noqa: E402 — après sys.path/setup() (D-ENF22)
     activity_error_line,
     branding_error_line,
     filefield_error_line,

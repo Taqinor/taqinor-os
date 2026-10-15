@@ -335,6 +335,12 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
         self.assertEqual(corps['client_id'], 1)
 
+    def test_affiche_d_un_devis_recoit_un_png(self):
+        # CI #997 (w4, ventes) — roof-image du devis lit les octets magiques.
+        corps = self._corps('POST', '/api/django/ventes/devis/{id}/roof-image/',
+                            {'image': b''})
+        self.assertTrue(corps['image'].startswith(b'\x89PNG'))
+
     def test_scan_carte_et_photo_de_visite_recoivent_un_png(self):
         # ERR-ENF11-FUZZ-CRM / -VISITES — deux dépôts de PHOTO dont le serveur
         # lit les octets : un cas positif en reçoit un PNG décodable.
@@ -585,6 +591,17 @@ class FichiersPdfTests(unittest.TestCase):
             self.assertEqual(corps['target'], 'leads')
         negatif = self._corps('POST', '/api/django/imports/dry-run/', {'file': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['file'], b'')
+
+    def test_import_uxviews_recoit_un_csv_lisible(self):
+        # CI #1003 fuzz — import de vues / de favoris : un PNG est « Lecture du
+        # fichier impossible » (400) ; un positif porte un CSV à en-têtes seuls.
+        for chemin in ('/api/django/uxviews/saved-views/importer/',
+                       '/api/django/uxviews/favoris/importer/'):
+            corps = self._corps('POST', chemin, {'fichier': b'\x89PNG'})
+            self.assertEqual(corps['fichier'], b'nom,email\r\n', chemin)
+        negatif = self._corps('POST', '/api/django/uxviews/favoris/importer/',
+                              {'fichier': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['fichier'], b'')
 
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')

@@ -48,7 +48,7 @@ def notify(user, event_type, title, body='', link=None, company=None):
     try:
         return _NOTIFY(
             user, event_type, title, body=body, link=link, company=company)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'core.notify_registry.notify: échec pour %s.', event_type)
         return None

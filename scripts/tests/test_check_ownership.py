@@ -30,14 +30,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_ownership as co  # noqa: E402
-import plan_lanes as pl  # noqa: E402
+import check_ownership as co  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import plan_lanes as pl  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 REGISTRE = textwrap.dedent("""\
     version: 1
     roots: [backend/django_core/apps/, backend/django_core/core/, frontend/src/, apps/web/]
-    containers: [backend/django_core/apps/, frontend/src/, frontend/src/features/, frontend/src/pages/, frontend/src/api/]
+    containers: [backend/django_core/apps/, frontend/src/, frontend/src/features/, frontend/src/pages/, \
+frontend/src/api/]
     exempt: [transverse, platform, parked]
     owners:
       devis:
@@ -246,7 +247,8 @@ class PlansTests(unittest.TestCase):
     def test_tache_hors_proprietaire_refusee(self):
         plans = {"docs/plans/PLAN_DEVIS.md": textwrap.dedent("""\
             ## BUILD QUEUE
-            - [ ] SPL1 — **Déplacer** : x. Files: `backend/django_core/apps/ventes/views/devis.py`, `backend/django_core/apps/crm/cadence_temps.py`. (ROUTINE)
+            - [ ] SPL1 — **Déplacer** : x. Files: `backend/django_core/apps/ventes/views/devis.py`, \
+`backend/django_core/apps/crm/cadence_temps.py`. (ROUTINE)
             """)}
         erreurs = co.verifier_plans(self.reg, plans)
         self.assertEqual(len(erreurs), 1, erreurs)
@@ -259,7 +261,8 @@ class PlansTests(unittest.TestCase):
 
     def test_surface_append_only_toleree(self):
         plans = {"docs/plans/PLAN_DEVIS.md": textwrap.dedent("""\
-            - [ ] SPL2 — x. Files: `backend/django_core/apps/ventes/views/devis.py`, `frontend/src/router/index.jsx`, `backend/django_core/apps/crm/migrations/0200_x.py`. (ROUTINE)
+            - [ ] SPL2 — x. Files: `backend/django_core/apps/ventes/views/devis.py`, `frontend/src/router/index.jsx`, \
+`backend/django_core/apps/crm/migrations/0200_x.py`. (ROUTINE)
             """)}
         self.assertEqual(co.verifier_plans(self.reg, plans), [])
 
@@ -315,7 +318,8 @@ class PlansTests(unittest.TestCase):
 
     def test_plan_multi_proprietaires_accepte_son_union(self):
         plans = {"docs/plans/PLAN_CRM_VENTES.md": textwrap.dedent("""\
-            - [ ] NTX1 — x. Files: `backend/django_core/apps/crm/cadence_temps.py`, `backend/django_core/apps/ventes/views/devis.py`. (ROUTINE)
+            - [ ] NTX1 — x. Files: `backend/django_core/apps/crm/cadence_temps.py`, \
+`backend/django_core/apps/ventes/views/devis.py`. (ROUTINE)
             - [ ] NTX2 — x. Files: `apps/web/src/lib/lead.ts`. (ROUTINE)
             """)}
         erreurs = co.verifier_plans(self.reg, plans)
@@ -462,7 +466,8 @@ class PlanLanesIntegrationTests(unittest.TestCase):
             plan.write_text(textwrap.dedent("""\
                 ## BUILD QUEUE
                 - [ ] SPL10 — a. Files: `backend/django_core/apps/ventes/views/devis.py`. (ROUTINE) (@lane: a)
-                - [ ] SPL11 — b. Files: `backend/django_core/apps/ventes/views/devis.py`, `backend/django_core/apps/crm/cadence_temps.py`. (ROUTINE) (@lane: b)
+                - [ ] SPL11 — b. Files: `backend/django_core/apps/ventes/views/devis.py`, \
+`backend/django_core/apps/crm/cadence_temps.py`. (ROUTINE) (@lane: b)
                 """), encoding="utf-8")
             taches = {t["id"]: t for t in pl.parse_tasks(plan)}
         self.assertEqual(taches["SPL10"]["owners"], ["devis"])

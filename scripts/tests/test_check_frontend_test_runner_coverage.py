@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_frontend_test_runner_coverage as guard  # noqa: E402
+import check_frontend_test_runner_coverage as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 class NodeTestGlobParsingTests(unittest.TestCase):

@@ -114,7 +114,7 @@ def _sur(appel):
     """Résultat OU type d'exception : une levée fait partie du comportement."""
     try:
         return appel()
-    except Exception as exc:  # noqa: BLE001 — caractérisation
+    except Exception as exc:  # noqa: BLE001 — caractérisation (D-ENF22-BLE001)
         return f'<{type(exc).__name__}>'
 
 

@@ -519,16 +519,18 @@ function OngletAvoirs({ fournisseurId, canWrite }) {
   const [imputing, setImputing] = useState(null)
 
   const reload = () => {
-    stockApi.getAvoirsFournisseurDe(fournisseurId)
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getAvoirsFournisseurDe(fournisseurId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch((e) => setError(frErr(e, 'Avoirs indisponibles.')))
   }
 
   useEffect(() => {
     let active = true
     reload()
-    stockApi.getFacturesFournisseurDe(fournisseurId)
-      .then((r) => { if (active) setFactures(r.data?.results ?? r.data ?? []) })
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getFacturesFournisseurDe(fournisseurId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => { if (active) setFactures(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => {})
     return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -648,13 +650,14 @@ function OngletContacts({ fournisseurId, canWrite }) {
   const [editing, setEditing] = useState(null)
 
   const reload = () => {
-    stockApi.getContactsFournisseurDe(fournisseurId)
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getContactsFournisseurDe(fournisseurId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch((e) => setError(frErr(e, 'Contacts indisponibles.')))
   }
 
   // `reload` est recréé à chaque rendu ; ne rejouer qu'au changement de fournisseur.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload recréé par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload recréé par rendu (D-ENF22)
   useEffect(() => { reload() }, [fournisseurId])
 
   const supprimer = async (c) => {
@@ -818,8 +821,9 @@ function OngletDocuments({ fournisseurId, canWrite, resume, onConformiteChange }
   const isAdmin = useIsAdmin()
 
   const reload = () => {
-    stockApi.getDocumentsConformiteFournisseur(fournisseurId)
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getDocumentsConformiteFournisseur(fournisseurId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch((e) => setError(frErr(e, 'Documents indisponibles.')))
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1019,8 +1023,9 @@ function OngletIncidents({ fournisseurId, canWrite, onConformiteChange }) {
   const [resolvingId, setResolvingId] = useState(null)
 
   const reload = () => {
-    stockApi.getIncidentsQualiteFournisseurDe(fournisseurId)
-      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getIncidentsQualiteFournisseurDe(fournisseurId, { page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch((e) => setError(frErr(e, 'Incidents indisponibles.')))
   }
   // eslint-disable-next-line react-hooks/exhaustive-deps

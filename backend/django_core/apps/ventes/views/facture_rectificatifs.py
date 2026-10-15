@@ -375,8 +375,9 @@ class FactureRectificatifsActionsMixin:
                 {'detail': 'Un retour ne peut être créé que depuis une '
                            'facture émise (ou payée/en retard).'},
                 status=status.HTTP_409_CONFLICT)
-        motif = valider_corps(request, D.RetourClientRequest)['motif'].strip()
-        restocker = bool(request.data.get('restocker', False))
+        corps = valider_corps(request, D.RetourClientRequest)
+        motif = corps['motif'].strip()
+        restocker = corps.get('restocker', False)
         lignes = request.data.get('lignes')
         if not isinstance(lignes, list) or not lignes:
             return Response(
@@ -388,18 +389,26 @@ class FactureRectificatifsActionsMixin:
         # d'arrondi de la facture (au prorata, le dernier retour porte le
         # solde au centime), plafond SOUS verrou, re-stockage dans la même
         # transaction, `avoir_cree`, recalcul du statut (ATOT8).
-        from ..domain.facturation_ops import AvoirRefuse, creer_avoir_facture
+        from ..domain.facturation_ops import (
+            AvoirPlafondDepasse, AvoirProduitInconnu, AvoirRefuse,
+            creer_avoir_facture,
+        )
         try:
             avoir = creer_avoir_facture(
                 facture=facture, user=request.user, motif=motif,
                 retour_lignes=lignes, restocker=restocker)
-        except AvoirRefuse as exc:
-            # ENF11 — les lignes sont conformes au corps publié (validé plus
-            # haut) : produit inconnu ou non vendu, quantité au-delà du reste
-            # retournable, plafond créditable — l'ÉTAT de la facture s'oppose
-            # au retour : 409.
+        except AvoirPlafondDepasse as exc:
+            # CI #997 (3) — même refus d'ÉTAT que creer-avoir : 409 (montant,
+            # ou quantité au-delà du vendu restant retournable).
             return Response({'detail': exc.motif},
                             status=status.HTTP_409_CONFLICT)
+        except AvoirProduitInconnu as exc:
+            # CI #997 fuzz — produit bien formé mais absent : 404.
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_404_NOT_FOUND)
+        except AvoirRefuse as exc:
+            return Response({'detail': exc.motif},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             from ..utils.pdf import generate_avoir_pdf
             generate_avoir_pdf(avoir.id)

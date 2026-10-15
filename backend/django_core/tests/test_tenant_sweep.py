@@ -266,7 +266,7 @@ class _BalayageTenant:
         try:
             with transaction.atomic():
                 return self._balayer(entree)
-        except Exception as exc:  # noqa: BLE001 — dette du balai, nommée
+        except Exception as exc:  # noqa: BLE001 — dette du balai, nommée (D-ENF22-BLE001)
             # Tout ce que ce viewset a construit vient d'être annulé : le
             # cache des constructeurs ne doit plus pointer ces lignes.
             for cons, cache_avant, construits_avant in etat:
@@ -352,7 +352,7 @@ class _BalayageTenant:
                     try:
                         with transaction.atomic():
                             valeur_apres = apres(reponse)
-                    except Exception:  # noqa: BLE001 — base avortée par la vue
+                    except Exception:  # noqa: BLE001 — base avortée par la vue (D-ENF22-BLE001)
                         valeur_apres = None
                 boite['rep'] = _Reponse(
                     statut=reponse.status_code,
@@ -494,7 +494,7 @@ class _BalayageTenant:
                 serializer = vue.get_serializer()
                 ecrits = [nom for nom, champ in serializer.fields.items()
                           if not champ.read_only and champ.source in noms_fk]
-        except Exception as exc:  # noqa: BLE001 — noté, jamais une fuite
+        except Exception as exc:  # noqa: BLE001 — noté, jamais une fuite (D-ENF22-BLE001)
             res.notes.append(f'sérialiseur de création non instanciable : '
                              f'{type(exc).__name__}')
             return
@@ -574,7 +574,7 @@ class _BalayageTenant:
                 serializer = (vue.get_serializer(obj, data={}, partial=True)
                               if patch else vue.get_serializer())
                 champs = ts.champs_fk_inscriptibles(serializer)
-        except Exception as exc:  # noqa: BLE001 — dette du balai, nommée
+        except Exception as exc:  # noqa: BLE001 — dette du balai, nommée (D-ENF22-BLE001)
             res.ecriture = 'non_exerce'
             res.notes.append(f'écriture : sérialiseur non instanciable '
                              f'({type(exc).__name__})')
@@ -585,7 +585,7 @@ class _BalayageTenant:
             site = ts.site_serialiseur(serializer, nom)
             try:
                 avant = ts.valeur_relation(obj, source)
-            except Exception:  # noqa: BLE001 — source hors modèle
+            except Exception:  # noqa: BLE001 — source hors modèle (D-ENF22-BLE001)
                 res.notes.append(f'écriture : {nom} non relisible en base')
                 continue
             cache_b = dict(self.cons_b._cache)
@@ -594,7 +594,7 @@ class _BalayageTenant:
             try:
                 with transaction.atomic():
                     voisin = self.cons_b.parent(cible)
-            except Exception as exc:  # noqa: BLE001 — construction de B
+            except Exception as exc:  # noqa: BLE001 — construction de B (D-ENF22-BLE001)
                 # Les parents construits puis annulés ne doivent plus être
                 # servis par le cache (même règle que ``_balayer_protege``).
                 self.cons_b._cache = cache_b
@@ -635,14 +635,14 @@ class _BalayageTenant:
                     entree, ts.requete_drf(self.user_a, 'post'), 'create',
                     kwargs=segments)
                 corps = ts.charge_utile(vue.get_serializer(), obj)
-        except Exception:  # noqa: BLE001 — création non rejouable
+        except Exception:  # noqa: BLE001 — création non rejouable (D-ENF22-BLE001)
             return
         corps[nom] = valeur
         filtre = {source: voisin}
         try:
             with transaction.atomic():
                 avant = model._base_manager.filter(**filtre).count()
-        except Exception:  # noqa: BLE001 — relation non filtrable
+        except Exception:  # noqa: BLE001 — relation non filtrable (D-ENF22-BLE001)
             return
         rep = self._requete(
             self.client_a, 'post', chemin, corps,
@@ -713,7 +713,7 @@ class _BalayageTenant:
         par_statut = {}
         for res in resultats:
             par_statut.setdefault(res.statut, []).append(res)
-        print(f'\nQAH4 — tranche {self.INDEX}/{NB_PARTITIONS} : '  # noqa: T201
+        print(f'\nQAH4 — tranche {self.INDEX}/{NB_PARTITIONS} : '  # noqa: T201 (D-ENF22)
               f'{len(resultats)} viewsets, '
               + ', '.join(f'{k}={len(v)}' for k, v in sorted(
                   par_statut.items()))
@@ -721,14 +721,14 @@ class _BalayageTenant:
               f'non sondées={sum(r.non_sondees for r in resultats)}')
         for statut in ('non_exerce', 'sans_modele'):
             for res in par_statut.get(statut, []):
-                print(f'  [{statut}] {res.libelle} '  # noqa: T201
+                print(f'  [{statut}] {res.libelle} '  # noqa: T201 — sortie console voulue (script CLI) (D-ENF22)
                       f'({res.modele or "?"}) : {res.raison}')
         ecriture = {}
         for res in resultats:
             ecriture.setdefault(res.ecriture, []).append(res)
         apiviews = ts.partition(list(_apiviews_ecriture()), self.INDEX,
                                 NB_PARTITIONS)
-        print(f'ASEC18 — écriture tranche {self.INDEX} : '  # noqa: T201
+        print(f'ASEC18 — écriture tranche {self.INDEX} : '  # noqa: T201 — sortie console voulue (script CLI) (D-ENF22)
               + ', '.join(f'{k}={len(v)}' for k, v in sorted(
                   ecriture.items()))
               + f', FK sondées={sum(r.fk_sondees for r in resultats)}, '
@@ -738,14 +738,14 @@ class _BalayageTenant:
             for site, sonde, detail in res.constats_fk:
                 tache = exemption_ecriture(site)
                 etiquette = f'exemptée {tache}' if tache else 'NON EXEMPTÉE'
-                print(f'  [FK VOISINE {etiquette}] {res.libelle} :: '  # noqa: T201
+                print(f'  [FK VOISINE {etiquette}] {res.libelle} :: '  # noqa: T201 (D-ENF22)
                       f'{sonde} — {site} : {detail}')
         for res in resultats:
             for constat in res.constats:
-                print(f'  [FUITE {constat.genre}] {constat.cle} : '  # noqa: T201
+                print(f'  [FUITE {constat.genre}] {constat.cle} : '  # noqa: T201 (D-ENF22)
                       f'{constat.detail}')
             for note in res.notes:
-                print(f'  [note] {res.libelle} : {note}')  # noqa: T201
+                print(f'  [note] {res.libelle} : {note}')  # noqa: T201 — sortie console voulue (script CLI) (D-ENF22)
 
     def _verifier_couverture(self, resultats):
         avec_modele = [r for r in resultats if r.statut != 'sans_modele']

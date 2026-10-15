@@ -41,6 +41,7 @@ from .serializers import (
     TaggedItemSerializer, TagSerializer, CibleIntrouvable, resolve_target,
 )
 from .storage import delete_attachment, fetch_attachment, store_attachment
+import re as _re
 
 logger = logging.getLogger(__name__)
 
@@ -910,7 +911,6 @@ def _appliquer_enchainement(activity, user):
 
 
 # ── Commentaires (FG7) ──────────────────────────────────────────────
-import re as _re  # noqa: E402
 
 # Les identifiants Django autorisent `-`, `.`, `_`, `+`, `@` : le motif de
 # mention doit donc couvrir un username comme « prenom-nom » (sinon `\w+`

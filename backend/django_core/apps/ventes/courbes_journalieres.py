@@ -147,7 +147,7 @@ def _localisation(devis):
     try:
         from apps.crm.selectors import site_location_for_devis
         loc = site_location_for_devis(devis) or {}
-    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien (D-ENF22-BLE001)
         logger.warning("courbes_journalieres._localisation : erreur ignorée (mode dégradé)", exc_info=True)
         return None, None, None
     return loc.get('site_ville'), loc.get('gps_lat'), loc.get('gps_lng')
@@ -159,7 +159,7 @@ def _equipements_lead(devis):
     try:
         from apps.crm.selectors import equipements_pour_devis
         return equipements_pour_devis(devis) or {}
-    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien (D-ENF22-BLE001)
         logger.warning("courbes_journalieres._equipements_lead : erreur ignorée (mode dégradé)", exc_info=True)
         return {}
 
@@ -170,7 +170,7 @@ def _occupation_jour_lead(devis):
     try:
         from apps.crm.selectors import occupation_jour_pour_devis
         return occupation_jour_pour_devis(devis)
-    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien
+    except Exception:  # noqa: BLE001 — un lead absent/illisible n'arrête rien (D-ENF22-BLE001)
         logger.warning("courbes_journalieres._occupation_jour_lead : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -271,7 +271,7 @@ def _occupation(devis, data):
     try:
         from apps.crm.selectors import profil_activite_pour_devis
         profil = profil_activite_pour_devis(devis)
-    except Exception:  # noqa: BLE001 — signal absent → on retombe sur le défaut
+    except Exception:  # noqa: BLE001 — signal absent → on retombe sur le défaut (D-ENF22-BLE001)
         logger.warning("courbes_journalieres._occupation : erreur ignorée (mode dégradé)", exc_info=True)
         profil = None
     if profil in ('day', 'day_evening', 'continuous'):
@@ -1066,7 +1066,7 @@ def _coordonnees_du_chantier(lat, lon, ville):
         coords = _coordonnees_gazetier(ville)
         if coords is not None:
             return coords
-    except Exception:  # noqa: BLE001 — une ville illisible n'est pas une panne
+    except Exception:  # noqa: BLE001 — une ville illisible n'est pas une panne (D-ENF22-BLE001)
         logger.warning('coordonnees ville indisponibles', exc_info=True)
     return None, None
 
@@ -1090,7 +1090,7 @@ def contexte_ramadan_du_mois(jour_reference, lat=None, lon=None, ville=None):
             return None
         return {index + 1: {'part': part, 'fenetre': fenetre}
                 for index, part in enumerate(parts) if part > 0}
-    except Exception:  # noqa: BLE001 — le Ramadan ne casse jamais une étude
+    except Exception:  # noqa: BLE001 — le Ramadan ne casse jamais une étude (D-ENF22-BLE001)
         logger.warning('contexte_ramadan indisponible', exc_info=True)
         return None
 
@@ -1371,7 +1371,7 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
         if batterie_kwh:
             bloc['batterie_kwh'] = round(batterie_kwh, 1)
         return bloc
-    except Exception:  # noqa: BLE001 — le graphe ne casse jamais la page
+    except Exception:  # noqa: BLE001 — le graphe ne casse jamais la page (D-ENF22-BLE001)
         logger.warning('courbes_journalieres indisponibles', exc_info=True)
         return None
 
@@ -1489,6 +1489,6 @@ def construire_courbes_ci(data):
         if consommation:
             bloc['consommation'] = consommation
         return bloc
-    except Exception:  # noqa: BLE001 — le graphe ne casse jamais la page
+    except Exception:  # noqa: BLE001 — le graphe ne casse jamais la page (D-ENF22-BLE001)
         logger.warning('courbes_journalieres C&I indisponibles', exc_info=True)
         return None

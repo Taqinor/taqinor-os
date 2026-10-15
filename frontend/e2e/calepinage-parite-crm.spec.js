@@ -8,7 +8,7 @@
 //   N brouillons → n'en devine AUCUN : le commercial départage
 //                  (`ChoisirDevisPourDesign`, `data-testid=pv22-choix-devis`) ;
 //   0 brouillon  → en CRÉE un via `POST /ventes/devis/auto/` puis l'ouvre ;
-//   422          → le message FRANÇAIS du serveur, tel quel, et la seule sortie
+//   409          → le message FRANÇAIS du serveur, tel quel, et la seule sortie
 //                  est le générateur complet (`pv22-devis-auto-impossible`).
 //
 // La décision D2 du Groupe CAL exige que l'introduction du module autonome ne
@@ -18,7 +18,7 @@
 // POURQUOI LES RÉPONSES SONT INTERCEPTÉES. Les quatre branches dépendent
 // entièrement de ce que le serveur répond à `GET /ventes/devis/?lead=<id>` et à
 // `POST /ventes/devis/auto/`. Fabriquer quatre états de base de données réels
-// (et le 422) demanderait de muter la base partagée et rendrait la spec
+// (et le 409) demanderait de muter la base partagée et rendrait la spec
 // dépendante de l'ordre d'exécution — exactement ce que la configuration
 // (`workers: 1`, une seule base semée) demande d'éviter. On intercepte donc ces
 // DEUX routes, une branche à la fois, et on vérifie le COMPORTEMENT DE L'ÉCRAN :
@@ -111,12 +111,12 @@ test.describe('CAL222 — les quatre branches de `ouvrirConceptionToiture`', () 
     await expect(page.getByTestId('pv22-choix-devis')).toHaveCount(0)
   })
 
-  test('422 → le message du serveur, et la seule sortie est le générateur', async ({ page }) => {
+  test('409 → le message du serveur, et la seule sortie est le générateur', async ({ page }) => {
     await leadOuvert(page, 'CAL222 Refus')
     await servirBrouillons(page, [])
     const messageServeur = 'Ce lead n’a ni facture ni ville : aucun devis ne peut être dimensionné.'
     await page.route(ROUTE_AUTO, (route) => route.fulfill({
-      status: 422,
+      status: 409,
       contentType: 'application/json',
       body: JSON.stringify({ detail: messageServeur }),
     }))

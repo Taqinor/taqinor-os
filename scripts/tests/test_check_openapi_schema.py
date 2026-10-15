@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_openapi_schema as cos  # noqa: E402
+import check_openapi_schema as cos  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 GUESS = ("unable to guess serializer. This is graceful fallback handling for "
          "APIViews. Consider using GenericAPIView as view base class, if view "

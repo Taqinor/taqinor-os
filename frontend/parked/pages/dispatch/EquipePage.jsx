@@ -47,7 +47,7 @@ export default function EquipePage() {
 
   useEffect(() => {
     let vivant = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- remet la liste en chargement avant chaque résolution (changement de zone)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remet la liste en chargement avant chaque résolution (changement de zone) (D-ENF22)
     setEtat({ rows: [], loading: true, error: null })
     const filtre = zone === TOUTES ? undefined : { zone }
     rhApi.getEquipeTerrain(filtre)

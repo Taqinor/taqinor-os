@@ -3,7 +3,6 @@ VNT106 : un devis ACCEPTÉ n'est jamais renouvelé (409 ``deuxieme_affaire``).""
 from decimal import Decimal
 
 from django.test import TestCase
-from rest_framework.exceptions import ValidationError
 
 from core.conflit_etat import ConflitEtat
 from rest_framework.test import APIClient
@@ -87,11 +86,17 @@ class TestRenouvelerDevis(TestCase):
         self.assertEqual(
             Devis.objects.filter(company=self.company).count(), avant)
 
-    def test_refus_400_sur_un_devis_envoye(self):
+    def test_refus_409_sur_un_devis_envoye(self):
+        # CI #997 fuzz — refus d'ÉTAT (409 ``{statut}``), plus 400.
         envoye = DevisFactory(
             company=self.company, statut=Devis.Statut.ENVOYE)
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ConflitEtat) as ctx:
             renouveler_devis(envoye, user=self.user)
+        self.assertIn('statut', ctx.exception.detail)
+        resp = auth(self.user).post(
+            f'/api/django/ventes/devis/{envoye.id}/renouveler/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_reference_unique_jamais_count_plus_un(self):
         n1 = renouveler_devis(self.devis, user=self.user)
@@ -103,7 +108,7 @@ class TestRenouvelerDevis(TestCase):
     def test_refus_sur_un_devis_brouillon(self):
         brouillon = DevisFactory(
             company=self.company, statut=Devis.Statut.BROUILLON)
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ConflitEtat):
             renouveler_devis(brouillon, user=self.user)
 
     def test_endpoint_renouveler(self):

@@ -80,7 +80,7 @@ def _profil(company):
     try:
         from apps.parametres.models import CompanyProfile
         return CompanyProfile.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 — défauts assumés
+    except Exception:  # noqa: BLE001 — défauts assumés (D-ENF22-BLE001)
         logger.warning("profil : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -172,7 +172,7 @@ def _alerter_le_superieur(company, escalades, palier_superieur):
             body=("Aucune prise de contact n'a encore eu lieu. Le plus "
                   f'ancien attend depuis {attente} minute(s) ouvrée(s).'),
             link=lien, company=company)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'escalader_premier_contact: alerte supérieur échouée (société %s)',
             getattr(company, 'pk', '?'), exc_info=True)
@@ -232,7 +232,7 @@ def escalader_premier_contact(dry_run=False, now=None):
                     echeance = horaires.echeance_en_temps_ouvre(
                         lead.date_creation, delai, company,
                         canal=CANAL_PREMIER_CONTACT)
-                except Exception:  # noqa: BLE001 — un lead en échec n'arrête rien
+                except Exception:  # noqa: BLE001 — un lead en échec n'arrête rien (D-ENF22-BLE001)
                     logger.warning(
                         'escalader_premier_contact: calcul échoué (lead %s)',
                         lead.pk, exc_info=True)
@@ -273,7 +273,7 @@ def escalader_premier_contact(dry_run=False, now=None):
                               "contact. L'objectif de la société est de "
                               f'{objectif} minute(s) ouvrée(s).'),
                         link=f'/crm/leads?lead={lead.pk}', company=company)
-                except Exception:  # noqa: BLE001 — best-effort
+                except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
                     logger.warning(
                         'escalader_premier_contact: escalade échouée '
                         '(lead %s)', lead.pk, exc_info=True)

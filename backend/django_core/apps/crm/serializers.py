@@ -1,16 +1,29 @@
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from django.db.models import BooleanField as ModelBooleanField
+from django.db.models import CharField as ModelCharField
 from django.db.models import DecimalField as ModelDecimalField
+from django.db.models import TextField as ModelTextField
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueValidator
 
-from core.champs_stricts import ChampsStrictsBornesMixin, ChampsStrictsMixin
+from core.champs_stricts import (
+    BooleenStrict, ChaineStricte, ChampsStrictsBornesMixin, ChampsStrictsMixin,
+    DecimalSouple,
+)
+from core.conflit_etat import ConflitEtat
+from core.parseurs import ObjetJSON
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import (
     model_is_company_scoped,
     request_company_id,
     scope_related_field,
+)
+from drf_spectacular.drainage import set_override
+
+from .champs_lead import (
+    LienMaps, ListeJours, ListeMois, ReleveConso, TrancheDeclaree, schema_cos_phi,
 )
 from .params_requete import UniciteEn409Mixin
 from .champs_api import (
@@ -305,7 +318,7 @@ def _scope_unique_validators(field):
     ]
 
 
-class LeadDecimalField(serializers.DecimalField):
+class LeadDecimalField(DecimalSouple):
     """ALEA17 — un nombre décimal du LEAD, NORMALISÉ au lieu d'être refusé.
 
     Règle fondateur « normaliser plutôt que refuser » (08/09/2026) : un GPS
@@ -346,6 +359,21 @@ class _PuissanceKwField(LeadDecimalField):
     jamais un chiffre inventé ; une saisie en kW reste intacte."""
 
     SEUIL_WATTS = Decimal('200')
+    #: ERR-ENF11-FUZZ-CRM — plafond de la saisie en WATTS (100 kW), publié :
+    #: au-delà, ``valeur / 1000`` dépasse les 3 chiffres entiers du champ.
+    MAX_WATTS = Decimal('99999.99')
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        branches = [
+            {'type': 'string', 'format': 'decimal', 'pattern': (
+                r'^(?:-\d{1,3}(?:\.\d{0,2})?|-?\.\d{1,2}'
+                r'|\d{1,5}(?:\.\d{0,2})?)$')},
+            {'type': 'number', 'minimum': -999.99,
+             'maximum': float(self.MAX_WATTS)}]
+        set_override(self, 'field', {'anyOf': [
+            dict(b, nullable=True) if self.allow_null else b
+            for b in branches]})
 
     def to_internal_value(self, data):
         brut = data.strip().replace(',', '.') if isinstance(data, str) else data
@@ -353,9 +381,31 @@ class _PuissanceKwField(LeadDecimalField):
             valeur = Decimal(str(brut))
         except (InvalidOperation, TypeError, ValueError):
             return super().to_internal_value(data)
+        if not valeur.is_finite():
+            return super().to_internal_value(data)
+        if valeur > self.MAX_WATTS:
+            self.fail('max_value', max_value=self.MAX_WATTS)
         if valeur >= self.SEUIL_WATTS:
             brut = str((valeur / Decimal('1000')).quantize(Decimal('0.01')))
         return super().to_internal_value(brut)
+
+
+class CosPhiLead(LeadDecimalField):
+    """``Lead.cos_phi`` : le schéma de requête publie ]0 ; 1] (le modèle refuse
+    0) — chaîne OU nombre, comme les autres décimaux du lead."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        set_override(self, 'field', schema_cos_phi(self.allow_null))
+
+
+#: Champs de ``Lead`` dont le schéma de requête est précis (``champs_lead``).
+CHAMPS_LEAD_EXACTS = {
+    'cos_phi': CosPhiLead, 'lien_maps': LienMaps, 'releve_conso': ReleveConso,
+    'mois_irrigation': ListeMois, 'fermeture_mois': ListeMois,
+    'jours_ouverture': ListeJours, 'facture_tranche_declaree': TrancheDeclaree,
+    'reponses_categorie': ObjetJSON,
+}
 
 
 #: AGR405 — libellés des segments dans le message d'incohérence (contrat
@@ -457,10 +507,21 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # ``LeadDecimalField`` (arrondi au nombre de décimales du modèle, virgule
     # acceptée) : la garde ``tests_alea_lead_decimal_normalise`` le vérifie
     # par introspection de ``Lead._meta``.
+    # ERR-ENF11-FUZZ-CRM — texte, booléen et décimal STRICTS (``nom: 5`` ou
+    # ``perdu: 0`` étaient lus ``"5"`` / ``False`` alors que le schéma les
+    # déclare texte / booléen ; un décimal se publie « chaîne OU nombre » et
+    # refuse ``""``, que le formulaire n'envoie jamais — il envoie ``null``).
     serializer_field_mapping = {
         **serializers.ModelSerializer.serializer_field_mapping,
         ModelDecimalField: LeadDecimalField,
+        ModelCharField: ChaineStricte,
+        ModelTextField: ChaineStricte,
+        ModelBooleanField: BooleenStrict,
     }
+
+    def build_standard_field(self, field_name, model_field):
+        classe, kwargs = super().build_standard_field(field_name, model_field)
+        return CHAMPS_LEAD_EXACTS.get(field_name, classe), kwargs
 
     # Relevé fondateur 08/09/2026 — les puissances d'équipement acceptent une
     # saisie en watts (ramenée en kW) au lieu de bloquer l'autosauvegarde.
@@ -589,7 +650,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # serveur `_undo_of_last_stage_change` (le chatter doit porter le
     # mouvement inverse exact, daté de moins de UNDO_WINDOW_SECONDS). La
     # garde funnel reste intégralement en place pour tout autre recul.
-    undo = serializers.BooleanField(write_only=True, required=False)
+    undo = BooleenStrict(write_only=True, required=False)
     # Fenêtre d'annulation, alignée sur la durée d'affichage du toast
     # « Annuler » côté client (VX95) avec une marge confortable.
     UNDO_WINDOW_SECONDS = 300
@@ -606,12 +667,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     #     devis retombe en relance, un « signé » se dénoue), pas un accident.
     # Ce qu'il n'ouvre PAS : le verrou du lead perdu (vérifié AVANT, comme pour
     # ``undo``) et les actions en MASSE (voir la garde funnel plus bas).
-    confirme_recul = serializers.BooleanField(write_only=True, required=False)
+    confirme_recul = BooleenStrict(write_only=True, required=False)
     # CAD158 (décision fondateur du 21/09/2026, Q24) — combien de mois couvre
     # la facture DÉCLARÉE dans ce même corps (`mensuelle` | `bimestrielle`).
     # Jamais stocké (aucun champ « périodicité ») : le montant est ramené au
     # mois dans `validate`, et c'est lui qu'on enregistre et qu'on relit.
-    facture_periodicite = serializers.CharField(
+    facture_periodicite = ChaineStricte(
         write_only=True, required=False, allow_blank=True)
 
     @staticmethod
@@ -826,7 +887,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # Le référentiel peut ne pas être amorcé (lazy seed) : on tolère alors
         # les clés du modèle pour ne pas casser un import/création légitime.
         if not existe and CanalModel.objects.filter(company=company).exists():
-            raise serializers.ValidationError('Canal inconnu.')
+            # Une clé du vocabulaire du modèle (le schéma l'accepte) absente du
+            # référentiel GÉRÉ de la société : un ÉTAT, 409 (ERR-ENF11-FUZZ-CRM).
+            raise ConflitEtat({'canal': ['Canal inconnu.']})
         return value
 
     def _undo_of_last_stage_change(self, current, target):
@@ -900,8 +963,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             motif = (attrs.get('motif_perte')
                      or getattr(self.instance, 'motif_perte', None) or '')
             if not str(motif).strip():
-                raise serializers.ValidationError(
-                    {'motif_perte': 'Motif de perte obligatoire.'})
+                # ÉTAT (motif déjà posé sur l'instance ?) : 409, le schéma ne
+                # peut pas le dire. ``useLeadDraft`` lit 400 et 409 pareil.
+                raise ConflitEtat(
+                    {'motif_perte': ['Motif de perte obligatoire.']})
         # Garde funnel côté serveur (aligné sur la règle bulk _bulk_stage_allowed):
         # en MISE À JOUR, un lead perdu ne change pas d'étape, et un recul dans
         # l'entonnoir doit être EXPLICITEMENT assumé (Froid = parking, jamais
@@ -914,8 +979,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 # Verrou du lead perdu : il PRÉCÈDE toute échappatoire — ni
                 # ``undo`` ni ``confirme_recul`` ne le déverrouillent.
                 if self.instance.perdu:
-                    raise serializers.ValidationError(
-                        {'stage': 'Lead perdu — étape non modifiable.'})
+                    raise ConflitEtat(
+                        {'stage': ['Lead perdu — étape non modifiable.']})
                 if not _bulk_stage_allowed(current, target):
                     # DEUX échappatoires, et deux seulement :
                     # LB39 — l'annulation, validée serveur, du dernier
@@ -930,8 +995,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                     # glisser-déposer maladroit de défaire un pipeline.
                     if not (confirme_recul
                             or (undo and self._undo_of_last_stage_change(current, target))):
-                        raise serializers.ValidationError(
-                            {'stage': "On ne recule pas une étape."})
+                        raise ConflitEtat(
+                            {'stage': ["On ne recule pas une étape."]})
         # ORDRE FONDATEUR (24/08/2026) — le GPS ne doit JAMAIS être écrasé ni
         # supplanté par l'adresse. Le Lead Workspace (LW9, draftCore.js) ne
         # PATCH déjà que les clés réellement modifiées (dirty keys) — éditer
@@ -984,7 +1049,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             debut, fin = _valeur('heure_debut'), _valeur('heure_fin')
             if debut is not None and fin is not None and debut >= fin:
                 champ = 'heure_fin' if 'heure_fin' in attrs else 'heure_debut'
-                raise serializers.ValidationError({champ: [
+                # Règle ENTRE deux nombres (ou avec l'heure déjà enregistrée) :
+                # aucun schéma ne la dit -> 409, jamais un 400 sur un corps
+                # conforme. ``useLeadDraft`` lit 400 et 409 pareil.
+                raise ConflitEtat({champ: [
                     "« Heure de fin » : elle doit être après l'heure de "
                     'début.']})
         # CIQ666 — le bi-horaire n'est ouvert qu'à la force motrice
@@ -994,7 +1062,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                     and _valeur('contrat_electricite') != 'bt_force_motrice'):
                 champ = ('option_tarifaire_bt' if 'option_tarifaire_bt' in attrs
                          else 'contrat_electricite')
-                raise serializers.ValidationError({champ: [
+                raise ConflitEtat({champ: [
                     "« Option tarifaire BT » : le bi-horaire est réservé au "
                     'contrat BT force motrice.']})
         if attrs.get('reponses_categorie') is not None:
@@ -1004,7 +1072,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             permises = (set(cles.get(categorie, ())) if categorie
                         else {c for liste in cles.values() for c in liste})
             if not isinstance(reponses, dict) or set(reponses) - permises:
-                raise serializers.ValidationError({'reponses_categorie': [
+                raise ConflitEtat({'reponses_categorie': [
                     "« Réponses propres à l'activité » : seules les questions "
                     "de la catégorie déclarée sont acceptées."]})
         if attrs.get('releve_conso') is not None:
@@ -1051,7 +1119,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 if 'dossier_subvention_le' in attrs
                 else getattr(instance, 'dossier_subvention_le', None))
         if etat in ('depose', 'accorde', 'refuse') and date is None:
-            raise serializers.ValidationError(
+            raise ConflitEtat(
                 {'dossier_subvention_le': [self.MESSAGE_DATE_SUBVENTION]})
 
     # AGR400 — une valeur de pompage SAISIE dans l'ERP porte sa provenance,

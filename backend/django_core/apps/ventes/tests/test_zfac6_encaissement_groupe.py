@@ -98,7 +98,13 @@ class TestEncaissementGroupe(TestCase):
                       {'mode': 'troc'}, {'date': 'pas-une-date'},
                       {'factures': ['abc']}, {'reference': 'x' * 121},
                       # CI #997 — ``client`` tableau : TypeError (500).
-                      {'client': [None, None]}, {'client': 'abc'}):
+                      {'client': [None, None]}, {'client': 'abc'},
+                      # CI #997 fuzz — corps validé par le sérialiseur
+                      # publié : types JSON stricts, montant au motif.
+                      {'client': str(self.client_obj.id)}, {'reference': 0},
+                      {'montant': 100}, {'montant': ' 100'},
+                      {'factures': [str(self.f1.id)]},
+                      {'repartition': {str(self.f1.id): 100}}):
             resp = api.post(
                 '/api/django/ventes/factures/encaissement-groupe/',
                 dict(base, **patch), format='json')
@@ -192,7 +198,8 @@ class TestAUD120BornesRepartition(TestEncaissementGroupe):
              'repartition': {str(self.f1.id): '3000',
                              str(self.f2.id): '4000'}},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # CI #997 fuzz — corps valide, refus d'ÉTAT / d'ensemble : 409.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(
             Paiement.objects.filter(
                 facture__in=[self.f1, self.f2]).count(), 0)
@@ -207,7 +214,8 @@ class TestAUD120BornesRepartition(TestEncaissementGroupe):
              'factures': [self.f3.id],
              'repartition': {str(self.f3.id): '3000'}},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # CI #997 fuzz — corps valide, refus d'ÉTAT / d'ensemble : 409.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(Paiement.objects.filter(facture=self.f3).count(), 0)
 
     def test_fifo_reliquat_devient_une_avance_tracee(self):

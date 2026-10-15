@@ -193,13 +193,18 @@ class CreerAutoRelayedCallTest(TestCase):
         self.assertGreater(devis.lignes.count(), 0)
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
 
-    def test_auto_missing_data_returns_422_no_devis(self):
+    def test_auto_missing_data_returns_409_no_devis(self):
+        # CI #1003 — donnée de la fiche manquante sur un corps valide = refus
+        # d'ÉTAT, 409 (ENF11, /devis/auto/ publie 409 ErreurComposition).
         lead = Lead.objects.create(
             company=self.company, nom='Vide', prenom='Lead')
         api = auth(self.user)
         resp = api.post(
             CREER_AUTO.endpoint, {'lead': lead.id}, format='json')
-        self.assertEqual(resp.status_code, 422, resp.data)
+        # CI #997 fuzz (3dc8d2879) : donnée de la fiche manquante = refus
+        # d'ÉTAT publié en 409 par devis/auto/ (ErreurComposition).
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data.get('field'), 'facture_hiver')
         self.assertEqual(
             Devis.objects.filter(company=self.company).count(), 0)
 

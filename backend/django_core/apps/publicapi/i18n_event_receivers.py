@@ -44,7 +44,7 @@ def on_langue_changed(sender, company=None, portee=None, client_id=None,
     from . import delivery
     try:
         delivery.dispatch_event(company_id, EVENT_LANGUE_CHANGED, payload)
-    except Exception:  # noqa: BLE001 — best-effort, un webhook ne casse
+    except Exception:  # noqa: BLE001 — best-effort, un webhook ne casse (D-ENF22-BLE001)
         # jamais la bascule de langue elle-même.
         logger.exception(
             '%s: dispatch webhook échoué (portée %s, client %s)',

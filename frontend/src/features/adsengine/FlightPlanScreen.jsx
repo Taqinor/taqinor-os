@@ -135,7 +135,7 @@ export default function FlightPlanScreen() {
     loadSavedPlan()
   }, [loadSavedPlan])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   // Composer : choisir un gabarit charge ses phases 6 mois.

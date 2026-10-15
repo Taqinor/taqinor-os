@@ -38,7 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_api_contract as cac  # noqa: E402
+import check_api_contract as cac  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 MONTAGE = ("api", "django", "crm")
 E2E_DIR = ROOT / "frontend" / "e2e"

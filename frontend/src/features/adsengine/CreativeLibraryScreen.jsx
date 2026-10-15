@@ -67,7 +67,7 @@ export default function CreativeLibraryScreen() {
       .catch(() => { setRules([]); setChecklistFailed(true) })
   ), [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load(); loadChecklist() }, [load, loadChecklist])
 
   const openCheck = (id) => { setCheckingId(id); setConfirmed(new Set()); setMsg('') }

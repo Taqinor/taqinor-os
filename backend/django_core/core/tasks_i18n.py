@@ -71,7 +71,7 @@ def charger_extracteur():
                 'taqinor_extract_i18n_strings', candidat)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-        except Exception:  # noqa: BLE001 — un script illisible ne casse pas le beat
+        except Exception:  # noqa: BLE001 — un script illisible ne casse pas le beat (D-ENF22-BLE001)
             logger.warning(
                 'core.recalculer_couverture_i18n : %s trouvé à %s mais '
                 'non chargeable.', NOM_SCRIPT, candidat)
@@ -132,7 +132,7 @@ def recalculer_couverture_i18n(semaine=None, rapport=None):
             return []
         try:
             rapport = module.build_report()
-        except Exception:  # noqa: BLE001 — jamais casser le beat sur un script
+        except Exception:  # noqa: BLE001 — jamais casser le beat sur un script (D-ENF22-BLE001)
             logger.exception(
                 'core.recalculer_couverture_i18n : build_report() a échoué — '
                 'aucun instantané écrit.')

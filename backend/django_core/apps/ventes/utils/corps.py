@@ -50,3 +50,70 @@ def valider_corps_lignes(request, declare, cle='lignes'):
             'detail': f'Ligne {rang + 1} : '
                       f'{_premier_message(par_ligne[rang])}',
             'code': 'ligne_invalide'})
+
+
+def _type_ok(valeur, attendu):
+    """Type JSON d'un schéma OpenAPI 3.0 (un booléen n'est jamais un nombre ;
+    ``2.0`` compte pour un entier, comme le validateur du schéma)."""
+    if attendu == 'object':
+        return isinstance(valeur, dict)
+    if attendu == 'string':
+        return isinstance(valeur, str)
+    if attendu == 'boolean':
+        return isinstance(valeur, bool)
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return False
+    if valeur != valeur or valeur in (float('inf'), float('-inf')):
+        return False
+    return attendu == 'number' or float(valeur).is_integer()
+
+
+def _erreur_valeur(valeur, schema):
+    """Message du premier écart de ``valeur`` à ``schema`` (sous-ensemble
+    publié : type, nullable, enum, minimum/maximum/exclusiveMinimum,
+    properties), ``None`` si conforme."""
+    if valeur is None:
+        return None if schema.get('nullable') else 'Valeur nulle refusée.'
+    attendu = schema.get('type')
+    if attendu and not _type_ok(valeur, attendu):
+        return f'Type attendu : {attendu}.'
+    if 'enum' in schema and valeur not in schema['enum']:
+        return 'Valeurs acceptées : ' + ', '.join(
+            repr(v) for v in schema['enum']) + '.'
+    mini, maxi = schema.get('minimum'), schema.get('maximum')
+    if mini is not None and (valeur < mini or (
+            schema.get('exclusiveMinimum') and valeur == mini)):
+        return 'Valeur hors plage.'
+    if maxi is not None and valeur > maxi:
+        return 'Valeur hors plage.'
+    for nom, sous in (schema.get('properties') or {}).items():
+        if isinstance(valeur, dict) and nom in valeur:
+            erreur = _erreur_valeur(valeur[nom], sous)
+            if erreur:
+                return f'{nom} — {erreur}'
+    return None
+
+
+def valider_corps_schema(request, schema):
+    """CI #997 fuzz — corps validé par le schéma JSON PUBLIÉ lui-même (corps
+    déclaré en dict, ``{'application/json': {...}}``) : UN prédicat, lu au
+    même endroit que la documentation. Lève ``ValidationError`` (400) nommant
+    le champ ; rend le corps (dict) sinon."""
+    from rest_framework.exceptions import ValidationError
+
+    regle = schema['application/json']
+    donnees = request.data
+    if not isinstance(donnees, dict):
+        raise ValidationError({'detail': 'Corps JSON objet attendu.'})
+    for nom, sous in (regle.get('properties') or {}).items():
+        if nom in donnees:
+            erreur = _erreur_valeur(donnees[nom], sous)
+            if erreur:
+                raise ValidationError({nom: [erreur]})
+    branches = regle.get('anyOf')
+    if branches and not any(
+            all(cle in donnees for cle in b.get('required', ()))
+            for b in branches):
+        raise ValidationError({'detail': regle.get(
+            'description', 'Corps incomplet.')})
+    return donnees

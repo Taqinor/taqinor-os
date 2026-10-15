@@ -28,7 +28,7 @@ def marquer_premier_contact(lead, *, when=None) -> bool:
         lead.first_contacted_at = when or timezone.now()
         lead.save(update_fields=['first_contacted_at'])
         return True
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'marquer_premier_contact', exc_info=True)
         return False
 

@@ -82,7 +82,7 @@ def contraintes_societe(model) -> tuple[tuple[str, ...], ...]:
     contiennent ``company`` — inconditionnelles et sans expression seulement."""
     try:
         model._meta.get_field(CHAMP_SOCIETE)
-    except Exception:  # noqa: BLE001 — modèle sans champ company
+    except Exception:  # noqa: BLE001 — modèle sans champ company (D-ENF22-BLE001)
         logger.warning("contraintes societe : échec ignoré, comportement dégradé", exc_info=True)
         return ()
     groupes: list[tuple[str, ...]] = []

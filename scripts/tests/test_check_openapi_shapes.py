@@ -20,7 +20,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_openapi_shapes as cos  # noqa: E402
+import check_openapi_shapes as cos  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def ecrire(base: Path, chemin: str, texte: str) -> Path:
@@ -208,7 +208,8 @@ class DepotReelTests(unittest.TestCase):
         sortie = io.StringIO()
         # ENF11 (14/10/2026) : le plafond du depot est desormais 0 — le cas
         # « zero face a un plafond eleve » est rejoue sur un plafond fige ici.
-        with mock.patch.object(cos, "PLAFOND_NON_DEVINABLES", 406),                 mock.patch.object(cos, "analyser", return_value=([], [])):
+        with mock.patch.object(cos, "PLAFOND_NON_DEVINABLES", 406), \
+                mock.patch.object(cos, "analyser", return_value=([], [])):
             with mock.patch.object(cos, "compter_non_devinables",
                                    return_value=0):
                 with contextlib.redirect_stdout(sortie):
@@ -222,7 +223,8 @@ class DepotReelTests(unittest.TestCase):
     def test_un_vrai_progres_invite_toujours_a_abaisser_le_plafond(self):
         # Non-regression : le message utile reste imprime sur un compte > 0.
         sortie = io.StringIO()
-        with mock.patch.object(cos, "PLAFOND_NON_DEVINABLES", 14),                 mock.patch.object(cos, "analyser", return_value=([], [])):
+        with mock.patch.object(cos, "PLAFOND_NON_DEVINABLES", 14), \
+                mock.patch.object(cos, "analyser", return_value=([], [])):
             with mock.patch.object(cos, "compter_non_devinables",
                                    return_value=13):
                 with contextlib.redirect_stdout(sortie):

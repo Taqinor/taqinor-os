@@ -87,7 +87,7 @@ function AmortissementDialog({ emprunt, onClose, onChanged }) {
       .finally(() => setLoading(false))
   }, [emprunt.id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (D-ENF22)
   useEffect(() => { charger() }, [charger])
 
   const genererTableau = async () => {

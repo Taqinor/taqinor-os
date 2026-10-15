@@ -132,7 +132,20 @@ class AsBuiltApiTest(TestCase):
         ou = make_user(self.other, 'ab_o')
         od = make_devis(self.other, ou, ref='DEV-AB-OTHER')
         resp = self.api.post(self.url, {'devis': od.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # CI #997 fuzz — devis étranger = devis absent : 404, plus 400.
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertFalse(AsBuiltPack.objects.exists())
+
+    def test_pieces_liste_d_objets(self):
+        # CI #997 fuzz — ``pieces`` est publiée « liste d'objets » : null, un
+        # texte ou un élément non-objet → 400 ; ``titre: 0`` aussi (strict).
+        for corps in ({'pieces': None}, {'pieces': 'x'}, {'pieces': [1]},
+                      {'titre': 0}):
+            resp = self.api.post(self.url, {'devis': self.devis.id, **corps},
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn(next(iter(corps)), resp.data)
+        self.assertFalse(AsBuiltPack.objects.exists())
 
     def test_list_scoped(self):
         AsBuiltPack.objects.create(company=self.company, devis=self.devis)
@@ -167,6 +180,16 @@ class AttestationConformiteApiTest(TestCase):
         rows = resp2.data['results'] if isinstance(
             resp2.data, dict) and 'results' in resp2.data else resp2.data
         self.assertEqual(len(rows), 1)
+
+    def test_mesures_liste_d_objets(self):
+        # CI #997 fuzz — ``mesures`` publiée « liste d'objets » (null était
+        # conforme au schéma ``{}`` puis refusé) ; texte strict.
+        for corps in ({'mesures': None}, {'mesures': {}},
+                      {'mesures': ['x']}, {'reference': 0}):
+            resp = self.api.post(self.url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn(next(iter(corps)), resp.data)
+        self.assertFalse(AttestationConformite.objects.exists())
 
 
 # ─────────────────────── API : PR de réception ───────────────────────

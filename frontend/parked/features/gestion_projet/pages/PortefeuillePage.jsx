@@ -41,7 +41,7 @@ export default function PortefeuillePage() {
     let alive = true
     ;(async () => { if (alive) await load() })()
     return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dossier parqué, hors lint (D-ENF22)
   }, [statut])
 
   const rows = data?.projets ?? []

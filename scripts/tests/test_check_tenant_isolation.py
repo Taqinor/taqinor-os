@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_tenant_isolation as cti  # noqa: E402
+import check_tenant_isolation as cti  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 class TestSurfaceEnumeration(unittest.TestCase):

@@ -102,7 +102,7 @@ export default function VeilleDecouverte({ couverture = [], decouverteId = null,
         if (!couranteRef.current) selectionner(choisie)
       })
       .catch(() => setErrServeur('Découvertes illisibles pour le moment.'))
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage seulement
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage seulement (D-ENF22)
   }, [])
 
   const majLigne = (i, patch) => setLignes(ls => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)))

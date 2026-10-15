@@ -838,7 +838,8 @@ export default function ControleSuiviPanel({ rafraichir = 0 } = {}) {
         if (!active) return
         // 400 `{erreurs: {champ: message}}` : le message s'affiche SOUS le
         // sélecteur fautif (règle « l'erreur nomme le champ »).
-        const erreurs = err?.response?.status === 400 ? err.response.data?.erreurs : null
+        const statutRefus = err?.response?.status
+        const erreurs = (statutRefus === 400 || statutRefus === 409) ? err.response.data?.erreurs : null
         const nomme = erreurs && Object.keys(erreurs).length > 0
         setResultat({
           cle, donnees: null, erreurs: nomme ? erreurs : null, panne: !nomme,

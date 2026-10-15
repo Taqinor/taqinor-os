@@ -71,7 +71,7 @@ export default function EnqueteResultats() {
       .finally(() => setLoading(false))
   }, [id])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const loadParticipations = useCallback(() => {
@@ -86,7 +86,7 @@ export default function EnqueteResultats() {
       .finally(() => setParticipationsLoading(false))
   }, [id, filtreReussi])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de filtre
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de filtre (D-ENF22)
   useEffect(() => { loadParticipations() }, [loadParticipations])
 
   const exporter = async () => {

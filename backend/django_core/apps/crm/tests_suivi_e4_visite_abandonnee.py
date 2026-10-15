@@ -199,7 +199,7 @@ class RefusNommesTests(_Base):
             ordre=2, canal=RelanceEtape.Canal.APPEL,
             libelle="Appel d'ouverture", due_at=GEL, due_date=GEL.date())
         resp = self._abandonner(appel)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('« Ne veut plus de visite »',
                       resp.data['erreurs']['reponse'])
         appel.refresh_from_db()

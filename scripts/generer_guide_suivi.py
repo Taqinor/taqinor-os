@@ -645,19 +645,23 @@ def dessiner_parcours(table: dict, gabarits: dict) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 CSS = """
-@page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
+@page { size: A4; margin: 18mm; @bottom-center { content: "TAQINOR OS — Guide interne · page " counter(page) "/" \
+counter(pages); font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 8pt; color: #888; } }
 * { box-sizing: border-box; }
 html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; line-height: 1.42; margin: 0; }
+body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 10.5pt; color: #1a1a1a; line-height: 1.42; margin: \
+0; }
 h1 { font-size: 20pt; color: #0b3d2e; margin: 0 0 2mm; line-height: 1.15; }
 .sous-titre { color: #555; font-size: 10.5pt; margin: 0 0 1mm; }
 .version { color: #555; font-size: 9.5pt; margin: 0 0 4mm; }
 .lede { font-size: 10.5pt; margin: 0 0 2mm; }
-h2 { font-size: 14pt; color: #0b3d2e; border-bottom: 1.5pt solid #0b3d2e; padding-bottom: 1mm; margin: 8mm 0 3mm; break-after: avoid; page-break-after: avoid; }
+h2 { font-size: 14pt; color: #0b3d2e; border-bottom: 1.5pt solid #0b3d2e; padding-bottom: 1mm; margin: 8mm 0 3mm; \
+break-after: avoid; page-break-after: avoid; }
 h2.nouvelle-page { break-before: page; page-break-before: always; margin-top: 0; }
 p, li { margin: 0 0 1.8mm; }
 ul, ol { margin: 0 0 2mm; padding-left: 6mm; }
-.encadre { background: #f0f6f3; border-left: 3pt solid #0b3d2e; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; page-break-inside: avoid; }
+.encadre { background: #f0f6f3; border-left: 3pt solid #0b3d2e; padding: 3mm 4mm; margin: 3mm 0; break-inside: avoid; \
+page-break-inside: avoid; }
 .encadre ul, .encadre ol { margin-bottom: 0; }
 .encadre li:last-child { margin-bottom: 0; }
 .ecran { font-weight: 600; }
@@ -671,7 +675,8 @@ figure { margin: 2mm 0 3mm; break-inside: avoid; page-break-inside: avoid; }
 figure svg { display: block; width: 100%; height: auto; }
 figcaption { font-size: 8.5pt; color: #555; margin-top: 1.5mm; }
 .famille { break-before: page; page-break-before: always; }
-.famille-titre { font-size: 15pt; color: #fff; background: #0b3d2e; border-radius: 1.5mm; padding: 2mm 4mm; margin: 0 0 3mm; break-after: avoid; page-break-after: avoid; }
+.famille-titre { font-size: 15pt; color: #fff; background: #0b3d2e; border-radius: 1.5mm; padding: 2mm 4mm; margin: 0 \
+0 3mm; break-after: avoid; page-break-after: avoid; }
 .rythmes-titre { font-size: 12.5pt; color: #0b3d2e; margin: 4mm 0 1mm; break-after: avoid; page-break-after: avoid; }
 .rythme { break-inside: avoid; page-break-inside: avoid; margin: 0 0 3mm; }
 .rythme h4 { font-size: 11pt; color: #0b3d2e; margin: 3mm 0 0.5mm; break-after: avoid; page-break-after: avoid; }
@@ -684,16 +689,19 @@ table.touches td:nth-child(3) { width: 17%; }
 .fiche { margin: 0 0 5mm; break-inside: avoid; page-break-inside: avoid; }
 .fiche-tete { background: #f0f6f3; border-left: 3pt solid #0b3d2e; padding: 2mm 4mm 1.8mm; }
 .fiche-tete h4 { margin: 0; font-size: 11.5pt; color: #0b3d2e; line-height: 1.3; }
-.badge { float: right; font-size: 8pt; font-weight: 600; color: #0b3d2e; background: #fff; border: 0.5pt solid #0b3d2e; border-radius: 3mm; padding: 0.2mm 2.4mm; margin-left: 3mm; }
+.badge { float: right; font-size: 8pt; font-weight: 600; color: #0b3d2e; background: #fff; border: 0.5pt solid #0b3d2e;\
+ border-radius: 3mm; padding: 0.2mm 2.4mm; margin-left: 3mm; }
 .exemples { font-size: 8.5pt; color: #666; margin: 0.6mm 0 0; }
 .question { margin: 1.4mm 0 0; font-size: 10pt; }
 .question .q { font-weight: 700; color: #0b3d2e; }
 .aide { margin: 1.2mm 0 0; font-size: 9pt; color: #444; }
 .fiche table { margin: 0; }
 .fiche th:nth-child(1), .fiche td:nth-child(1) { width: 31%; }
-.pastille { display: inline-block; font-size: 7.5pt; font-weight: 400; color: #555; border: 0.4pt solid #aaa; border-radius: 2mm; padding: 0 1.6mm; margin: 0.4mm 0 0 1.4mm; white-space: nowrap; }
+.pastille { display: inline-block; font-size: 7.5pt; font-weight: 400; color: #555; border: 0.4pt solid #aaa; \
+border-radius: 2mm; padding: 0 1.6mm; margin: 0.4mm 0 0 1.4mm; white-space: nowrap; }
 .note { font-size: 9pt; color: #555; margin: 1.5mm 0 0; }
-.pied { margin-top: 8mm; padding-top: 2mm; border-top: 0.5pt solid #bbb; font-size: 9pt; color: #666; break-inside: avoid; page-break-inside: avoid; }
+.pied { margin-top: 8mm; padding-top: 2mm; border-top: 0.5pt solid #bbb; font-size: 9pt; color: #666; break-inside: \
+avoid; page-break-inside: avoid; }
 """
 
 REGLES = (
@@ -989,8 +997,13 @@ def html_ou_trouver() -> str:
 
 
 def html_pied(table: dict) -> str:
-    return ('<p class="pied">Version ' + esc(table['version']) + ' \u2014 ' + date_fr(table['maj'])
-            + ' \u2014 généré depuis la table du parcours ; chaque réponse est rejouée par la garde de parcours (hors cas « dernière touche ») à '
+    return ('<p class="pied">Version ' +
+            esc(table['version']) +
+            ' \u2014 ' +
+            date_fr(table['maj']) +
+            ' \u2014 généré depuis la table du parcours ; chaque réponse est rejouée par la garde de '
+            'parcours (hors cas « '
+            'dernière touche ») à '
             'chaque mise à jour de l\u2019ERP.</p>')
 
 
@@ -1266,7 +1279,8 @@ JAMAIS_PROMIS = (
 
 CSS_POMPAGE = """
 .geste { margin: 0 0 4mm; break-inside: avoid; page-break-inside: avoid; }
-.geste-titre { display: block; background: #f0f6f3; border-left: 3pt solid #0b3d2e; padding: 2mm 4mm; margin: 0 0 1.5mm; font-size: 11.5pt; font-weight: 700; color: #0b3d2e; }
+.geste-titre { display: block; background: #f0f6f3; border-left: 3pt solid #0b3d2e; padding: 2mm 4mm; margin: 0 0 \
+1.5mm; font-size: 11.5pt; font-weight: 700; color: #0b3d2e; }
 .geste-numero { display: inline-block; min-width: 7mm; }
 .geste .ecran-nom { font-size: 8.5pt; color: #666; margin: 0 0 1mm; }
 """
@@ -1310,10 +1324,12 @@ def produire_html_pompage():
             + ''.join(f'<li>{esc_ecran(p)}</li>' for p in JAMAIS_PROMIS) + '</ul></div>',
             '<h2>5. Où trouver quoi</h2>',
             '<table><tr><th style="width:42%">Quoi</th><th>Où</th></tr>'
-            f'<tr><td>Ce guide</td><td>{esc_ecran("Documents (GED) → cabinet « Documentation » → dossier « Guides »")}</td></tr>'
+            f'<tr><td>Ce guide</td><td>'
+            f'{esc_ecran("Documents (GED) → cabinet « Documentation » → dossier « Guides »")}</td></tr>'
             f'<tr><td>Le document client agricole</td><td>{esc_ecran("Liste des devis → bouton « PDF »")}</td></tr>'
             f'<tr><td>Le prix d’une pompe</td><td>{esc_ecran("Stock → fiche du produit")}</td></tr>'
-            f'<tr><td>Le suivi du lead agricole</td><td>{esc_ecran("Fiche du lead → section « Suivi commercial »")}</td></tr>'
+            f'<tr><td>Le suivi du lead agricole</td><td>'
+            f'{esc_ecran("Fiche du lead → section « Suivi commercial »")}</td></tr>'
             '</table>',
             f'<p class="pied">Version {esc(VERSION_POMPAGE)} — {DATE_POMPAGE} — généré par '
             '`scripts/generer_guide_suivi.py devis_pompage` ; les libellés sont ceux de l’écran.</p>',

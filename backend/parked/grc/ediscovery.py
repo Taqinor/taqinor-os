@@ -14,6 +14,9 @@ Lecture seule, scopée société ; chaque périmètre passe par le ``selectors.p
 de l'app cible, jamais par ses modèles.
 """
 
+import logging
+
+
 #: Périmètres interrogeables par la recherche e-discovery. Ensemble FERMÉ :
 #: une app absente d'ici n'est jamais fouillée par accident, et une valeur
 #: inconnue envoyée par l'appelant ne devient pas un scan sauvage.
@@ -85,7 +88,8 @@ def _resultats_ged(user, terme):
             }
             for document in search_documents(user, terme)[:200]
         ]
-    except Exception:  # noqa: BLE001 - GED/plein-texte indisponible
+    except Exception:  # noqa: BLE001 - GED/plein-texte indisponible (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("ediscovery._resultats_ged : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
 

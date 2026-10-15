@@ -156,7 +156,7 @@ class QuestionDePrixTests(_Base):
             ordre=4, canal=RelanceEtape.Canal.APPEL, libelle='Appel 3',
             due_at=quand, due_date=quand.date())
         resp = self._repondre(etape=contact)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('suivi de proposition', resp.data['erreurs']['reponse'])
 
 

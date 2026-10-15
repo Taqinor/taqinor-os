@@ -58,7 +58,7 @@ def administrateurs_du_tenant(company):
         if candidats.exists():
             return candidats
         return qs.none()
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('adminops: résolution des administrateurs échouée',
                        exc_info=True)
         from authentication.models import CustomUser as _U
@@ -124,7 +124,7 @@ def _notifier_demande(demande):
             from apps.notifications.services import notify
             notify(admin, EventType.IMPERSONATION_REQUESTED, titre,
                    body=corps, link=lien, company=demande.company)
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning('adminops: notification impersonation échouée '
                            '(user %s)', getattr(admin, 'pk', None))
 
@@ -140,7 +140,7 @@ def _notifier_demande(demande):
                 recipient_list=emails,
                 fail_silently=True,
             )
-        except Exception:  # noqa: BLE001 — best-effort
+        except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning('adminops: email impersonation échoué', exc_info=True)
 
 
@@ -260,6 +260,6 @@ def session_depuis_requete(request):
         if demande is not None and demande.est_active():
             return demande
         return None
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("impersonation_service.session_depuis_requete : erreur ignorée (mode dégradé)", exc_info=True)
         return None

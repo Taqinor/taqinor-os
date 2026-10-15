@@ -38,117 +38,154 @@ RACINES = ("apps", "core", "authentication")
 
 #: ``fichier::fonction`` -> (date ISO, raison motivée). Ne peut que rétrécir.
 EXCEPTIONS: dict = {
-    "backend/django_core/apps/crm/exports.py::export_clients_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de crm"),
-    "backend/django_core/apps/crm/exports.py::export_defi_classement_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de crm"),
-    "backend/django_core/apps/dataimport/export_views.py::sauvegarde": (
-        "2026-10-09",
-        "sauvegarde ZIP complète de la société, réservée à l'admin : à passer en asynchrone (job) par le propriétaire dataimport"),
-    "backend/django_core/apps/dataimport/management/commands/export_company_data.py::Command.handle": (
-        "2026-10-09",
-        "commande de gestion lancée à la main, hors requête HTTP : aucun délai de requête ni mémoire de worker à protéger"),
-    "backend/django_core/apps/entites/views.py::EntiteViewSet.export": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de entites"),
-    "backend/django_core/apps/parametres/glossaire_export.py::construire_classeur": (
-        "2026-10-09",
-        "glossaire de paramètres : volume fixe borné par le code, indépendant des données de la société"),
-    "backend/django_core/apps/records/xlsx.py::build_workbook": (
-        "2026-10-09",
-        "primitive générique de construction de classeur : la borne appartient à ses appelants (listés ici un par un)"),
-    "backend/django_core/apps/reporting/archive.py::_xlsx_export": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/balance_export.py::balance_agee_export": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/insights.py::_maybe_xlsx": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/rapport_abonnements.py::rendre_abonnement": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/rapport_builder.py::RapportDefinitionViewSet.export": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/reports.py::_maybe_xlsx": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/reports_field.py::field_service_report": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/sav_pivot.py::sav_tickets_pivot": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/sav_sla.py::_maybe_xlsx": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/scheduled_reports.py::_rendre_legacy": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/scheduled_reports.py::_rendre_saved_query": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/technicien_scorecard.py::technicien_scorecard": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/reporting/views.py::dashboard": (
-        "2026-10-09",
-        "rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier par le propriétaire reporting"),
-    "backend/django_core/apps/sav/views.py::sav_fcr_insight": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de sav"),
-    "backend/django_core/apps/sav/views.py::sav_performance_agent_insight": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de sav"),
-    "backend/django_core/apps/stock/services.py::export_analyse_achats_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/stock/services.py::export_inventaire_annuel_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/stock/services.py::export_mouvements_xlsx_bytes": (
-        "2026-10-09",
-        "constructeur d'octets d'APRF34 : seul appelant = la tâche stock.export_mouvements_xlsx, soumise par la vue APRES should_async_export (views/mouvement.py) — borné en amont ; la garde ne suit pas l'appel via core.jobs.submit"),
-    "backend/django_core/apps/stock/services.py::export_prix_fournisseur_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/stock/services.py::export_ras_tva_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/stock/services.py::export_valorisation_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/stock/views/fournisseur.py::FournisseurViewSet.export_conformite": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/stock/views/mouvement.py::MouvementStockViewSet.agregation": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de stock"),
-    "backend/django_core/apps/ventes/exports.py::export_comptable_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de ventes"),
-    "backend/django_core/apps/ventes/exports.py::export_grand_livre_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de ventes"),
-    "backend/django_core/apps/ventes/exports.py::export_journal_ventes": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de ventes"),
-    "backend/django_core/authentication/views.py::CompanyViewSet.demo_kit_export_xlsx": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de authentication"),
-    "backend/django_core/core/views.py::_conformite_xlsx_response": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de core"),
-    "backend/django_core/core/views.py::_couts_xlsx_response": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de core"),
-    "backend/django_core/core/views.py::_sla_export_xlsx_response": (
-        "2026-10-09",
-        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le propriétaire de core"),
+    'backend/django_core/apps/crm/exports.py::export_clients_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de crm'),
+    'backend/django_core/apps/crm/exports.py::export_defi_classement_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de crm'),
+    'backend/django_core/apps/dataimport/export_views.py::sauvegarde': (
+        '2026-10-09',
+        "sauvegarde ZIP complète de la société, réservée à l'admin : à passer en asynchrone (job) par le "
+        'propriétaire dataimport'),
+    'backend/django_core/apps/dataimport/management/commands/export_company_data.py::Command.handle': (
+        '2026-10-09',
+        'commande de gestion lancée à la main, hors requête HTTP : aucun délai de requête ni mémoire de '
+        'worker à protéger'),
+    'backend/django_core/apps/entites/views.py::EntiteViewSet.export': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de entites'),
+    'backend/django_core/apps/parametres/glossaire_export.py::construire_classeur': (
+        '2026-10-09',
+        'glossaire de paramètres : volume fixe borné par le code, indépendant des données de la société'),
+    'backend/django_core/apps/records/xlsx.py::build_workbook': (
+        '2026-10-09',
+        'primitive générique de construction de classeur : la borne appartient à ses appelants (listés '
+        'ici un par un)'),
+    'backend/django_core/apps/reporting/archive.py::_xlsx_export': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/balance_export.py::balance_agee_export': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/insights.py::_maybe_xlsx': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/rapport_abonnements.py::rendre_abonnement': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/rapport_builder.py::RapportDefinitionViewSet.export': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/reports.py::_maybe_xlsx': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/reports_field.py::field_service_report': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/sav_pivot.py::sav_tickets_pivot': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/sav_sla.py::_maybe_xlsx': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/scheduled_reports.py::_rendre_legacy': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/scheduled_reports.py::_rendre_saved_query': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/technicien_scorecard.py::technicien_scorecard': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/reporting/views.py::dashboard': (
+        '2026-10-09',
+        'rapport/agrégat de reporting : borne par période NON vérifiée au build ; à borner ou justifier '
+        'par le propriétaire reporting'),
+    'backend/django_core/apps/sav/views.py::sav_fcr_insight': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de sav'),
+    'backend/django_core/apps/sav/views.py::sav_performance_agent_insight': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de sav'),
+    'backend/django_core/apps/stock/services.py::export_analyse_achats_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de stock'),
+    'backend/django_core/apps/stock/services.py::export_inventaire_annuel_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de stock'),
+    'backend/django_core/apps/stock/services.py::export_mouvements_xlsx_bytes': (
+        '2026-10-09',
+        "constructeur d'octets d'APRF34 : seul appelant = la tâche stock.export_mouvements_xlsx, soumise "
+        'par la vue APRES should_async_export (views/mouvement.py) — borné en amont ; la garde ne suit '
+        "pas l'appel via core.jobs.submit"),
+    'backend/django_core/apps/stock/services.py::export_prix_fournisseur_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de stock'),
+    'backend/django_core/apps/stock/services.py::export_ras_tva_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de stock'),
+    'backend/django_core/apps/stock/services.py::export_valorisation_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de stock'),
+    'backend/django_core/apps/stock/views/fournisseur.py::FournisseurViewSet.export_conformite': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de stock'),
+    'backend/django_core/apps/stock/views/mouvement.py::MouvementStockViewSet.agregation': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de stock'),
+    'backend/django_core/apps/ventes/exports.py::export_comptable_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de ventes'),
+    'backend/django_core/apps/ventes/exports.py::export_grand_livre_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de ventes'),
+    'backend/django_core/apps/ventes/exports.py::export_journal_ventes': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de ventes'),
+    'backend/django_core/authentication/views.py::CompanyViewSet.demo_kit_export_xlsx': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de authentication'),
+    'backend/django_core/core/views.py::_conformite_xlsx_response': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de core'),
+    'backend/django_core/core/views.py::_couts_xlsx_response': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de core'),
+    'backend/django_core/core/views.py::_sla_export_xlsx_response': (
+        '2026-10-09',
+        "export sans plafond ni sélection d'ids constaté au build ; à borner (should_async_export) par le"
+        ' propriétaire de core'),
 }
 
 

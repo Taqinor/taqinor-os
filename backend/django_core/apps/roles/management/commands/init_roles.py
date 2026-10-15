@@ -53,7 +53,7 @@ class Command(BaseCommand):
                 field=f'role:{nom}', field_label=label,
                 old=old, new=new,
             )
-        except Exception:  # noqa: BLE001 — traçabilité best-effort
+        except Exception:  # noqa: BLE001 — traçabilité best-effort (D-ENF22-BLE001)
             logger.warning("init_roles.Command._tracer_realignement : erreur ignorée (mode dégradé)", exc_info=True)
             self.stdout.write(self.style.WARNING(
                 '    (journal des paramètres indisponible — trace non écrite)'))

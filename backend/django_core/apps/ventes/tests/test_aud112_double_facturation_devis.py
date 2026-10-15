@@ -91,7 +91,7 @@ class TestDoubleFacturationDevis(TestCase):
         self.assertEqual(self._emettre(resp.data['id']).status_code, 200)
 
         resp2 = self._facturer_tranche()
-        self.assertEqual(resp2.status_code, 400, resp2.data)
+        self.assertEqual(resp2.status_code, 409, resp2.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(Facture.objects.count(), 1)
 
     # ── Sens 2 : acompte d'échéancier, puis le BC ─────────────────────────
@@ -102,7 +102,7 @@ class TestDoubleFacturationDevis(TestCase):
         self.assertEqual(Facture.objects.count(), 1)
 
         resp2 = self._facturer_bc()
-        self.assertEqual(resp2.status_code, 400, resp2.data)
+        self.assertEqual(resp2.status_code, 409, resp2.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(Facture.objects.count(), 1)
 
     # ── Corollaire : la facture BC porte enfin son devis ──────────────────

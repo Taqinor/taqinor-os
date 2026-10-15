@@ -82,7 +82,7 @@ def figer_periode(periode, *, user=None):
 
     try:
         alerter_derive_trajectoire(periode)
-    except Exception:  # noqa: BLE001 - best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'esg.figer_periode: alerte de dérive trajectoire échouée '
             'pour la période %s', periode.pk, exc_info=True)
@@ -161,7 +161,8 @@ def alerter_derive_trajectoire(periode, *, seuil_pct=None):
             company=company, actif=True):
         try:
             points = trajectoire_vs_realise(objectif)
-        except Exception:  # noqa: BLE001 - dégrade cet objectif uniquement
+        except Exception:  # noqa: BLE001 - dégrade cet objectif uniquement (D-ENF22-BLE001)
+            logger.warning("services.alerter_derive_trajectoire : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         dernier = _dernier_point_reel(points, annee_limite)
         if dernier is None:

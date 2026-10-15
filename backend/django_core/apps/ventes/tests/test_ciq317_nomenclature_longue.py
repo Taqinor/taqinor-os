@@ -68,8 +68,8 @@ class NomenclatureLongue(SimpleTestCase):
 
     def setUp(self):
         try:
-            import fitz  # noqa: F401
-            import weasyprint  # noqa: F401
+            __import__('fitz')
+            __import__('weasyprint')
         except Exception:  # pragma: no cover - libs natives absentes
             self.skipTest("weasyprint / PyMuPDF indisponible")
 

@@ -76,7 +76,7 @@ export default function ConceptionElectrique({ devisId }) {
 
   useEffect(() => {
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- amorçage du chargement, aucune cascade (comme PdfCanvas.jsx)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- amorçage du chargement, aucune cascade (comme PdfCanvas.jsx) (D-ENF22)
     setLoading(true)
     setError(null)
     ventesApi.getConceptionElectrique(devisId)
@@ -96,7 +96,7 @@ export default function ConceptionElectrique({ devisId }) {
   }, [devisId])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- amorçage du chargement, aucune cascade (comme PdfCanvas.jsx)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- amorçage du chargement, aucune cascade (comme PdfCanvas.jsx) (D-ENF22)
     setSvgLoading(true)
     chargerSchema()
     // eslint-disable-next-line react-hooks/exhaustive-deps

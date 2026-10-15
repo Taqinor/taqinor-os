@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Sheet, Plus } from 'lucide-react'
 import { colonneSupprimer } from './colonneSupprimer'
 import reportingApi from '../../api/reportingApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import {
   Button, DataTable, EmptyState, Input, Spinner,
 } from '../../ui'
@@ -21,14 +22,17 @@ export default function ClasseursListPage() {
   const [titre, setTitre] = useState('')
   const [creating, setCreating] = useState(false)
 
-  const reload = () => reportingApi.listClasseurs()
-    .then((r) => setClasseurs(r.data?.results ?? r.data ?? []))
+  const listerTous = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    reportingApi.listClasseurs({ page, page_size: pageSize }).then((r) => r.data))
+
+  const reload = () => listerTous()
+    .then((rows) => setClasseurs(Array.isArray(rows) ? rows : (rows?.results ?? [])))
     .catch(() => setClasseurs([]))
 
   useEffect(() => {
     let active = true
-    reportingApi.listClasseurs()
-      .then((r) => { if (active) setClasseurs(r.data?.results ?? r.data ?? []) })
+    listerTous()
+      .then((rows) => { if (active) setClasseurs(Array.isArray(rows) ? rows : (rows?.results ?? [])) })
       .catch(() => { if (active) setClasseurs([]) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }

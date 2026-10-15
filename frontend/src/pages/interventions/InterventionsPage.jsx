@@ -18,6 +18,7 @@ import {
 } from '@dnd-kit/core'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { hapticTap } from '../../lib/haptics'
 // VX132 — anti-scintillement propagé : un Spinner nu clignotait sur tout
 // chargement (même sous 300 ms). useDelayedLoading (déjà sur InstallationsPage)
@@ -591,8 +592,9 @@ export default function InterventionsPage() {
   // Récupère sans toucher `loading` de façon synchrone (compat règle hooks) :
   // l'état initial est déjà `true`, et un rafraîchissement de fond ne fait pas
   // clignoter le spinner du kanban.
-  const fetchData = () => installationsApi.getInterventions()
-    .then((r) => { setItems(r.data?.results ?? r.data ?? []); setError(null) })
+  const fetchData = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
+    installationsApi.getInterventions({ page, page_size: pageSize }).then((r) => r.data))
+    .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })
     .catch(() => setError('Impossible de charger les interventions. Réessayez.'))
     .finally(() => setLoading(false))
   const reload = () => { setLoading(true); return fetchData() }

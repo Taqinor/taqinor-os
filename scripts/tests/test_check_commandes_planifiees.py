@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_commandes_planifiees as gard  # noqa: E402
+import check_commandes_planifiees as gard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 COMMANDE_BEAT = '''\

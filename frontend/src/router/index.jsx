@@ -1,6 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration du routeur (lazy imports + loaders), pas un module
-   de composants : le fast-refresh ne s'y applique pas. */
 import { createBrowserRouter, redirect, useLocation, useLoaderData } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { store } from '../store'

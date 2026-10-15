@@ -98,7 +98,7 @@ class LesEtudesNeTournentQuUneFois(_Base):
 
     def test_cle_refusee_reste_un_422_nomme(self):
         reponse = self.creer(self.lead(), {'dimensionnement': {'faux': 1}})
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(reponse.data.get('field'), 'etude_params')
 
 

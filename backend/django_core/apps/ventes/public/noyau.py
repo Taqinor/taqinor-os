@@ -56,7 +56,7 @@ class PublicLinkRateThrottle(IdentIpPartageeMixin, SimpleRateThrottle):
             rates = (settings.REST_FRAMEWORK or {}).get(
                 'DEFAULT_THROTTLE_RATES', {})
             return rates.get(self.scope) or self.rate
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'get_rate', exc_info=True)
             return self.rate
 
@@ -275,7 +275,7 @@ def _parse_client_ts(value):
     try:
         from django.utils.dateparse import parse_datetime
         return parse_datetime(str(value))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_parse_client_ts', exc_info=True)
         return None
 

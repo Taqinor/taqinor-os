@@ -1,7 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (donnees + composants lazy), pas un module
-   de composants : le fast-refresh ne s'y applique pas (meme contrat que
-   router/moduleRoutes.jsx). */
 import { lazy } from 'react'
 import {
   FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,

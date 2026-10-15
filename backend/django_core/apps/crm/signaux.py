@@ -72,7 +72,7 @@ def _engagement_proposition(lead):
         from apps.ventes.selectors import engagement_proposition_du_lead
         return engagement_proposition_du_lead(
             getattr(lead, 'pk', None), getattr(lead, 'company', None))
-    except Exception:  # noqa: BLE001 — un score ne fait jamais tomber un lead
+    except Exception:  # noqa: BLE001 — un score ne fait jamais tomber un lead (D-ENF22-BLE001)
         logger.warning("engagement proposition : échec ignoré, comportement dégradé", exc_info=True)
         return vide
 
@@ -90,7 +90,7 @@ def _questionnaire_repondu_le(lead):
                 .filter(lead=lead)
                 .aggregate(dernier=Max('derniere_reponse_at'))
                 .get('dernier'))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("questionnaire repondu le : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -110,7 +110,7 @@ def _derniere_activite_le(lead, *, issues=None):
         if issues is not None:
             qs = qs.filter(outcome__in=issues)
         return qs.aggregate(dernier=Max('created_at')).get('dernier')
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("derniere activite le : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -213,6 +213,6 @@ def annotations_signaux():
     try:
         from apps.ventes.selectors import annotations_engagement_proposition
         annotations.update(annotations_engagement_proposition())
-    except Exception:  # noqa: BLE001 — un score ne fait jamais tomber une liste
+    except Exception:  # noqa: BLE001 — un score ne fait jamais tomber une liste (D-ENF22-BLE001)
         logger.warning("annotations signaux : échec ignoré, comportement dégradé", exc_info=True)
     return annotations

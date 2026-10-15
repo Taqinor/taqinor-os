@@ -58,7 +58,7 @@ class MaintenanceModeMiddleware:
         from .models import MaintenanceMode
         try:
             message = MaintenanceMode.get_solo().message
-        except Exception:  # noqa: BLE001 — DB KO → message générique
+        except Exception:  # noqa: BLE001 — DB KO → message générique (D-ENF22-BLE001)
             logger.warning("maintenance response : échec ignoré, comportement dégradé", exc_info=True)
             message = 'Maintenance en cours.'
         resp = JsonResponse(

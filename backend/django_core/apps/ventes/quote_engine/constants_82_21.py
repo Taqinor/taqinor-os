@@ -22,12 +22,17 @@ import datetime as _dt
 from apps.parametres import tarifs_officiels as _officiels
 
 # Régime 82-21 : RÉ-EXPORTS du noyau (identité, jamais une copie — CIQ612).
-from core.reglementaire.regime_8221 import (  # noqa: F401  (ré-exports)
+from core.reglementaire.regime_8221 import (  # ré-exports
     SEUIL_AUTORISATION_KW,
     SEUIL_DECLARATION_KW,
     regime_8221_suggere,
 )
 import logging
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'SEUIL_AUTORISATION_KW', 'SEUIL_DECLARATION_KW', 'regime_8221_suggere',
+]
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +86,7 @@ def _aujourdhui_casablanca():
     try:
         from zoneinfo import ZoneInfo
         return _dt.datetime.now(ZoneInfo("Africa/Casablanca")).date()
-    except Exception:  # noqa: BLE001 — base tz absente : date UTC
+    except Exception:  # noqa: BLE001 — base tz absente : date UTC (D-ENF22-BLE001)
         logger.warning("constants_82_21._aujourdhui_casablanca : erreur ignorée (mode dégradé)", exc_info=True)
         return _dt.datetime.now(_dt.timezone.utc).date()
 

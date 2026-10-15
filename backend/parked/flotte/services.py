@@ -545,7 +545,7 @@ def telematique_active():
     # no-op. Import GARDÉ — tant qu'aucun module fournisseur n'existe, on reste
     # off (jamais d'appel fantôme, aucune dépendance dure introduite ici).
     try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
-        from . import telematique_provider as provider  # noqa: F401
+        from . import telematique_provider as provider
     except ImportError:
         return False
     return provider is not None  # pragma: no cover
@@ -2112,7 +2112,7 @@ def creer_vehicule_import(company, ligne):
             puissance_fiscale=_to_int(
                 ligne.get('cv') or ligne.get('puissance_fiscale')),
         )
-    except Exception as exc:  # noqa: BLE001 — ligne isolée, jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — ligne isolée, jamais bloquant (D-ENF22-BLE001)
         return 'erreur', str(exc)
 
     return 'cree', None

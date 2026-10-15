@@ -84,7 +84,7 @@ const MONEY_KEYS = new Set([
 // dédiés d'états d'analyse jusqu'ici orphelins (Budgets/Cloture/Immobilisations
 // avancées/RevenuIfrs15) : un seul rendu générique clé/valeur + tableau pour
 // toute réponse de EtatsComptablesViewSet, ici comme là-bas.
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, réutilisé par les écrans hôtes WIR254
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé, réutilisé par les écrans hôtes WIR254 (D-ENF22)
 export function cellValue(key, val) {
   if (val == null) return '—'
   if (typeof val === 'number' && MONEY_KEYS.has(key)) return formatMAD(val)
@@ -221,10 +221,10 @@ function ReleveFournisseurDialog({ tiersId, nom, params, onClose }) {
       .catch(() => { if (active) toast.error('Relevé fournisseur indisponible.') })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- params est un objet mémoïsé côté appelant
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- params est un objet mémoïsé côté appelant (D-ENF22)
   }, [tiersId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => load(), [load])
 
   const lignes = releve?.lignes || []
@@ -326,7 +326,7 @@ export default function EtatsPage() {
   }, [current, exercice, params])
 
   // Recharge à chaque changement d'état / de paramètres.
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
   useEffect(() => { run() }, [run])
 
   // Export CSV via ?export=csv sur les états qui le supportent (balance/GL/etc.).

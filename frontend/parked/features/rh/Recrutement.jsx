@@ -133,7 +133,7 @@ export default function Recrutement() {
     return () => { vivant = false }
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
   useEffect(recharger, [])
 
   const embaucher = async (c) => {
@@ -1605,7 +1605,7 @@ function ActiviteCandidatureDialog({ candidature, onClose }) {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
   useEffect(charger, [candidature.id])
 
   const envoyerNote = async () => {
@@ -1680,7 +1680,7 @@ function EntretiensNotationDialog({ candidature, onClose }) {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount (D-ENF22)
   useEffect(charger, [candidature.id])
 
   return (

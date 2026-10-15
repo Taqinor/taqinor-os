@@ -222,7 +222,7 @@ def _default_transport(url, payload):  # pragma: no cover - réseau réel
     req = urllib.request.Request(
         url, data=payload,
         headers={'Content-Type': 'application/json'}, method='POST')
-    with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=5) as resp:  # noqa: S310 — URL contrôlée par la configuration (D-ENF22)
         return resp.status, resp.read().decode('utf-8', errors='replace')
 
 
@@ -240,7 +240,7 @@ def emit_lead_stage_event(company, lead_id, new_stage, *, old_stage=None,
     try:
         built = build_stage_event(
             company, lead_id, new_stage, old_stage=old_stage, now=now)
-    except Exception:  # noqa: BLE001 — jamais casser le save du lead
+    except Exception:  # noqa: BLE001 — jamais casser le save du lead (D-ENF22-BLE001)
         logger.warning('ADSENG32: construction event CRM-stage échouée',
                        exc_info=True)
         return {'emitted': False, 'reason': 'build_error'}
@@ -296,7 +296,7 @@ def emit_lead_stage_event(company, lead_id, new_stage, *, old_stage=None,
         result['reason'] = 'sent'
         logger.info('ADSENG32: CRM-stage CAPI %s envoyé — status %s',
                     log_ref, status)
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         result['reason'] = 'http_error'
         logger.warning('ADSENG32: CRM-stage CAPI %s échoué : %s',
                        log_ref, exc)
@@ -389,7 +389,7 @@ def emit_appointment_effectue_event(company, lead_id, appointment_id, *,
     try:
         built = build_appointment_event(
             company, lead_id, appointment_id, statut, now=now)
-    except Exception:  # noqa: BLE001 — jamais casser l'appelant
+    except Exception:  # noqa: BLE001 — jamais casser l'appelant (D-ENF22-BLE001)
         logger.warning('PUB30: construction event visite-effectuée échouée',
                        exc_info=True)
         return {'emitted': False, 'reason': 'build_error'}
@@ -445,7 +445,7 @@ def emit_appointment_effectue_event(company, lead_id, appointment_id, *,
         result['reason'] = 'sent'
         logger.info('PUB30: visite-effectuée CAPI %s envoyé — status %s',
                     log_ref, status)
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         result['reason'] = 'http_error'
         logger.warning('PUB30: visite-effectuée CAPI %s échoué : %s',
                        log_ref, exc)
@@ -494,7 +494,7 @@ def _capture_old_stage(sender, instance, **kwargs):
             # company_id (int) évite de charger l'objet Company à chaque save.
             old = lead_current_stage(
                 getattr(instance, 'company_id', None), instance.pk)
-        except Exception:  # noqa: BLE001 — jamais casser le save
+        except Exception:  # noqa: BLE001 — jamais casser le save (D-ENF22-BLE001)
             logger.warning("capi_crm._capture_old_stage : erreur ignorée (mode dégradé)", exc_info=True)
             old = None
     setattr(instance, _STASH_ATTR, old)
@@ -509,7 +509,7 @@ def on_commit_best_effort(fn):
     def _run():
         try:
             fn()
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('CAPI CRM : émission après commit échouée',
                            exc_info=True)
     transaction.on_commit(_run)
@@ -534,7 +534,7 @@ def _emit_on_stage_change(sender, instance, created, **kwargs):
         # et aucun appel réseau (urlopen 5 s) ne part sous verrou.
         on_commit_best_effort(lambda: emit_lead_stage_event(
             company_id, lead_pk, new_stage, old_stage=old_stage))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('ADSENG32: récepteur CRM-stage CAPI échoué',
                        exc_info=True)
 

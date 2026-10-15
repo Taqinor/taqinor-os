@@ -32,7 +32,7 @@ from core.events import (
     paiement_rejete,
 )
 
-from .services import (  # noqa: F401  (ré-export du point d'intégration)
+from .services import (
     _ecriture_existante,
     auto_ecritures_actif,
     auto_lettrer_facture_soldee,
@@ -232,7 +232,7 @@ def _ecriture_pour_mouvement_stock(sender, instance, company, **kwargs):
             quantite=quantite,
             user=getattr(instance, 'created_by', None),
         )
-    except Exception:  # noqa: BLE001 — miroir best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — miroir best-effort, jamais bloquant (D-ENF22-BLE001)
         import logging
         logging.getLogger('compta').warning(
             'WIR85: écriture d\'inventaire permanent impossible pour le '
@@ -367,7 +367,7 @@ def _inscrire_sequences_on_lead_stage_changed(sender, lead, old_stage,
         inscrire_leads_pour_stage(
             company, new_stage, lead_id=lead_id,
             lead_reference=getattr(lead, 'nom', '') or '')
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         import logging
         logging.getLogger('compta').warning(
             'PACT161: inscription aux séquences de relance échouée pour '

@@ -60,8 +60,8 @@ const recordsApi = {
     api.get('/records/attachments/all/', { params }),
 
   // ── Pièces jointes ──
-  getAttachments: (model, id) =>
-    api.get('/records/attachments/', { params: { model, id } }),
+  getAttachments: (model, id, extra) =>
+    api.get('/records/attachments/', { params: { model, id, ...extra } }),
   uploadAttachment: (model, id, file, phase) => {
     const fd = new FormData()
     fd.append('model', model)

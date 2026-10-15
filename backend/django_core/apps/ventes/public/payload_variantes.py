@@ -112,7 +112,7 @@ def _variant_summaries(devis) -> list:
         for s in siblings:
             try:
                 total_ttc = _variant_total_ttc(s)
-            except Exception:  # noqa: BLE001 — un frère illisible n'efface
+            except Exception:  # noqa: BLE001 — un frère illisible n'efface (D-ENF22-BLE001)
                 # pas la bande : il est simplement OMIS (jamais un forfait).
                 logger.warning(
                     "Total de variante illisible pour le devis %s — frère omis",
@@ -126,7 +126,7 @@ def _variant_summaries(devis) -> list:
                 'total_ttc': round(float(total_ttc), 2),
             })
         return out
-    except Exception:  # noqa: BLE001 — best-effort, never break the proposal
+    except Exception:  # noqa: BLE001 — best-effort, never break the proposal (D-ENF22-BLE001)
         logger.warning(
             "Bande des variantes indisponible pour le devis %s",
             getattr(devis, 'pk', None))
@@ -290,7 +290,7 @@ def _gammes_public(devis, est_standard=False):
             },
             'comparatif': _gamme_comparatif(lignes_ici, lignes_soeur),
         }
-    except Exception:  # noqa: BLE001 — jamais casser la proposition
+    except Exception:  # noqa: BLE001 — jamais casser la proposition (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_gammes_public', exc_info=True)
         return None
 

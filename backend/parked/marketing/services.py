@@ -15,7 +15,7 @@ les fonctions ré-exportées, qui référencent lead_id/devis_id opaques).
 
 from decimal import Decimal
 
-from apps.compta.services import (  # noqa: F401
+from apps.compta.services import (
     annuler_campagne,
     appliquer_mouvement_fidelite,
     approuver_envoi_campagne,
@@ -63,6 +63,23 @@ from apps.compta.services import (  # noqa: F401
     variante_pour_langue,
     webhook_brevo_evenement,
 )
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'annuler_campagne', 'appliquer_mouvement_fidelite', 'approuver_envoi_campagne',
+    'campagnes_par_statut', 'compteurs_par_etape', 'cout_total_campagne', 'creer_enquete',
+    'decider_gagnant_ab', 'demander_ou_envoyer_campagne', 'dupliquer_campagne',
+    'enregistrer_ouverture_partage', 'enregistrer_relance_devis_abandonne',
+    'envelopper_liens_campagne', 'envoyer_campagne', 'envoyer_campagnes_planifiees',
+    'envoyer_enquete_nps', 'envoyer_test_campagne', 'executer_etapes_dues',
+    'google_review_url_configuree', 'inscrire_lead_sequence', 'leads_source_roi',
+    'nb_participants_actifs', 'participants_sequence', 'planifier_campagne',
+    'planifier_etapes_sequence', 'pousser_avis_google', 'precheck_sante_campagne',
+    'questions_visibles', 'recalculer_compteurs_campagne', 'rejeter_envoi_campagne',
+    'rendre_pour_lead', 'renvoyer_echecs_campagne', 'reporting_campagnes', 'score_nps',
+    'sortir_inscription', 'sortir_inscriptions_pour_lead', 'suggestions_upsell', 'traces_sequence',
+    'valider_questions_enquete', 'variante_pour_langue', 'webhook_brevo_evenement',
+]
 
 
 # ── WIR64 / FG206 — Capture de lead publique depuis un FormulaireIntake ──────

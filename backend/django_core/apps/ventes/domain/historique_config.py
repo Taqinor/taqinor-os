@@ -108,7 +108,7 @@ def _totaux_contenu(devis):
     try:
         vue = totaux_argent(devis, vue=Vue.NET)
         return {'ht_net': str(vue.ht_net), 'ttc': str(vue.ttc)}
-    except Exception:  # noqa: BLE001 — un total illisible ne bloque rien
+    except Exception:  # noqa: BLE001 — un total illisible ne bloque rien (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_totaux_contenu', exc_info=True)
         return {'ht_net': None, 'ttc': None}
 
@@ -182,7 +182,7 @@ def capturer_configuration_devis(devis, *, user=None, avant_correction=False,
             return ConfigurationDevisSnapshot.objects.create(
                 company=devis.company, devis=devis, contenu=contenu,
                 auteur=user)
-    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'NTCPQ20 : instantané de configuration ignoré (devis %s)',
             devis.pk)
@@ -216,7 +216,7 @@ def instantane_de_geste(devis, *, user=None):
         if frais is None:
             return None
         return capturer_configuration_devis(frais, user=user, envoye=True)
-    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'QJR550 : instantané de geste ignoré (devis %s)',
             getattr(devis, 'pk', '?'))

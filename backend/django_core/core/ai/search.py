@@ -159,7 +159,7 @@ def compute_embedding(texte):
         return None
     try:
         vecteur = _EMBEDDING_PROVIDER.embed(texte)
-    except Exception:  # noqa: BLE001 - best-effort.
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('core.ai.search: embedding indisponible', exc_info=True)
         return None
     from core.models import SEARCH_EMBEDDING_DIM
@@ -177,7 +177,7 @@ def _valeurs(instance, champs):
     for champ in champs:
         try:
             valeur = getattr(instance, champ, None)
-        except Exception:  # noqa: BLE001 - propriété métier en erreur.
+        except Exception:  # noqa: BLE001 — propriété métier en erreur (D-ENF22-BLE001)
             logger.warning("valeurs : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if valeur in (None, ''):
@@ -240,7 +240,7 @@ def indexer(instance) -> bool:
             },
         )
         return True
-    except Exception:  # noqa: BLE001 - indexer ne casse jamais une écriture.
+    except Exception:  # noqa: BLE001 — indexer ne casse jamais une écriture (D-ENF22-BLE001)
         logger.warning('core.ai.search: indexation impossible', exc_info=True)
         return False
 
@@ -259,7 +259,7 @@ def desindexer(instance) -> int:
             company_id=company_id, content_type=label,
             object_id=instance.pk).delete()
         return supprimes
-    except Exception:  # noqa: BLE001 - best-effort.
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('core.ai.search: désindexation impossible',
                        exc_info=True)
         return 0
@@ -288,7 +288,7 @@ def _route_pour(label, object_id):
         if entree is None or not getattr(entree, 'route', ''):
             return None
         return entree.route.replace('{id}', str(object_id))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("route pour : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
@@ -335,7 +335,7 @@ def rechercher(company, question, *, limit=10, modules=None):
             ]
             if resultats:
                 return resultats
-        except Exception:  # noqa: BLE001 - repli plein-texte, jamais d'erreur.
+        except Exception:  # noqa: BLE001 — repli plein-texte, jamais d'erreur (D-ENF22-BLE001)
             logger.warning('core.ai.search: recherche vectorielle indisponible',
                            exc_info=True)
 
@@ -374,7 +374,7 @@ def connect_signals():
     for label in registered_labels():
         try:
             modele = django_apps.get_model(label)
-        except Exception:  # noqa: BLE001 - app non installée : on ignore.
+        except Exception:  # noqa: BLE001 — app non installée : on ignore (D-ENF22-BLE001)
             logger.warning("connect signals : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if modele is None:

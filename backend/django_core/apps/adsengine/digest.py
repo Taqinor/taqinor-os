@@ -95,7 +95,7 @@ def _signatures_for_day(company, day):
     try:
         from .odoo_selectors import signed_deals
         deals = signed_deals(since=day, company=company)
-    except Exception:  # noqa: BLE001 — jamais un 500/crash sur une panne Odoo
+    except Exception:  # noqa: BLE001 — jamais un 500/crash sur une panne Odoo (D-ENF22-BLE001)
         logger.warning(
             'adsdeep62: lecture des signatures Odoo échouée pour %s',
             getattr(company, 'pk', None), exc_info=True)

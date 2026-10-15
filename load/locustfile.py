@@ -25,15 +25,15 @@ try:
     from locust import HttpUser, between, task
 except ImportError:  # pragma: no cover - locust est une dép dev optionnelle
     # Permet d'importer/compiler le fichier sans locust installé (CI lint).
-    def task(*args, **kwargs):  # noqa: D401 - shim no-op
+    def task(*args, **kwargs):  # noqa: D401 — shim no-op (D-ENF22)
         def deco(f):
             return f
         return deco if not (args and callable(args[0])) else args[0]
 
-    def between(a, b):  # noqa: D401 - shim no-op
+    def between(a, b):  # noqa: D401 — shim no-op (D-ENF22)
         return (a, b)
 
-    class HttpUser:  # noqa: D401 - shim no-op
+    class HttpUser:  # noqa: D401 — shim no-op (D-ENF22)
         abstract = True
 
 
@@ -108,7 +108,7 @@ class ErpUser(HttpUser):
             data = resp.json()
             results = data.get("results") or data
             devis_id = results[0]["id"] if results else None
-        except Exception:  # noqa: BLE001 — réponse inattendue → skip
+        except (ValueError, LookupError, TypeError, AttributeError):  # réponse inattendue → skip
             devis_id = None
         if devis_id:
             self.client.get(

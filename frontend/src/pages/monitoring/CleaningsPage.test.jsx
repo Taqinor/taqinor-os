@@ -69,6 +69,6 @@ describe('CleaningsPage (WR7 — nettoyages + salissure)', () => {
     expect(screen.getAllByText('Nettoyage complet').length).toBeGreaterThan(0)
 
     // Le journal a bien été demandé pour l'installation (pas la config).
-    expect(monitoringApi.getCleanings).toHaveBeenCalledWith({ installation: 11 })
+    expect(monitoringApi.getCleanings).toHaveBeenCalledWith(expect.objectContaining({ installation: 11 }))
   })
 })

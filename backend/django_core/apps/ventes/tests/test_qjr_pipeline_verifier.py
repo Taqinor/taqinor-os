@@ -249,7 +249,7 @@ class LesCinqCheminsDisentLaMemePhrase(TestCase):
         lead = self._lead()
         resp = api.post('/api/django/ventes/devis/auto/',
                         {'lead': lead.id}, format='json')
-        self.assertEqual(resp.status_code, 422, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn(etape_composer.MSG_SANS_ONDULEUR_HYBRIDE, str(resp.data))
 
     def test_un_catalogue_complet_ne_refuse_rien(self):

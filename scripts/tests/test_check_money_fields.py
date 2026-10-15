@@ -8,7 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_money_fields as cmf  # noqa: E402
+import check_money_fields as cmf  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 MODELE = ("from django.db import models\n\n\nclass Produit(models.Model):\n"
           "    prix_ht = models.DecimalField(max_digits=12, decimal_places=3)\n")
