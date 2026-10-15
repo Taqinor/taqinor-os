@@ -94,6 +94,7 @@ const serviceJsonLd = {
 const neutralHero = { name: 'crepuscule-penthouse', widths: [1600, 1024, 640], ratio: 4 / 3 };
 const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
 const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
+import InstallationSolaireCityMxAuto6B9C from '../../components/blocs/InstallationSolaireCityMxAuto6B9C.astro';
 ---
 
 <Layout title={title} description={description} ogSlug="accueil">
@@ -151,12 +152,7 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
       </div>
       {/* W328 — the 3–7 year band stays the site-wide figure; nuanced here per
           city via the sunshine already committed, never a new invented figure. */}
-      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
-      {delegataireNote && (
-        <p class="mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
-          {delegataireNote}
-        </p>
-      )}
+      <InstallationSolaireCityMxAuto6B9C delegataireNote={delegataireNote} roiNuance={roiNuance} />
     </section>
 
     <!-- Projects: real in-city, otherwise the closest -->

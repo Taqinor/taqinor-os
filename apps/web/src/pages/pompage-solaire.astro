@@ -118,6 +118,7 @@ const jsonLd = {
 };
 import PompageSolaireG2D36 from '../components/blocs/PompageSolaireG2D36.astro';
 import PompageSolaireDiv9A50 from '../components/blocs/PompageSolaireDiv9A50.astro';
+import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.astro';
 ---
 
 <Layout
@@ -221,14 +222,7 @@ import PompageSolaireDiv9A50 from '../components/blocs/PompageSolaireDiv9A50.ast
           juillet. Le bon point se trouve à l’intersection de quatre variables concrètes, relevées
           sur place avant d’ouvrir le moindre catalogue.
         </p>
-        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
-          {variables.map((v, i) => (
-            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
-              <h3 class="display text-xl text-azur-700">{v.title}</h3>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{v.body}</p>
-            </div>
-          ))}
-        </div>
+        <PompageSolaireDiv3A4E variables={variables} />
         <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Avec ces quatre chiffres en main, le système se dessine presque tout seul. Sans eux —
           quand le débit ou la HMT manquent — on en serait réduit à supposer, et nous ne dimensionnons

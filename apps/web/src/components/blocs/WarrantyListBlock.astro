@@ -1,12 +1,12 @@
 ---
-// ENF19 : bloc partagé (copies identiques) — garanties.astro, équipement.astro
-const { warranties } = Astro.props as Record<string, any>;
+// ENF19 : liste des garanties (années) partagée garanties/équipement fr/en/ar ; `dirYears` = dir de la colonne années (ar : "ltr")
+const { warranties, dirYears } = Astro.props as Record<string, any>;
 ---
         <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
           {warranties.map((w: any, i: any) => (
             <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
               <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
-              <span class="fig whitespace-nowrap text-2xl text-azur-600" dir="ltr" data-tally>{w.years}</span>
+              <span class="fig whitespace-nowrap text-2xl text-azur-600" dir={dirYears} data-tally>{w.years}</span>
             </div>
           ))}
         </div>

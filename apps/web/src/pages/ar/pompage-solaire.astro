@@ -112,6 +112,7 @@ const jsonLd = {
     'دراسة وتحديد مقاس أنظمة الضخ الشمسي للفلاحة والسقي بالمغرب: مضخّة وحقل كهروضوئي محسوبان على الصبيب والـ HMT وحاجات الماء الفعلية.',
 };
 import PompageSolaireG2D36 from '../../components/blocs/PompageSolaireG2D36.astro';
+import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv3A4ESuite.astro';
 ---
 
 <Layout
@@ -213,14 +214,7 @@ import PompageSolaireG2D36 from '../../components/blocs/PompageSolaireG2D36.astr
           مضخّة مفرطة الحجم تُبدّد الألواح؛ ومضخّة ضيّقة جداً تجفّ في عزّ يوليوز. النقطة الصحيحة توجد
           عند تقاطع أربعة متغيرات ملموسة، تُؤخذ ميدانياً قبل فتح أي كاطالوݣ.
         </p>
-        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
-          {variables.map((v, i) => (
-            <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
-              <h3 class="display text-xl text-azur-700">{v.title}</h3>
-              <p class="mt-3 text-sm leading-relaxed text-encre-soft">{v.body}</p>
-            </div>
-          ))}
-        </div>
+        <PompageSolaireDiv3A4ESuite variables={variables} />
         <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
           أعطنا هذه الأرقام الأربعة وينرسم النظام من تلقاء نفسه؛ ينقص الصبيب أو الـ HMT، ويبقى كل شيء
           تخميناً. نفضّل القياس. <a href={devisHref} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">اطلب تشخيصاً <span class="inline-block rtl:-scale-x-100">→</span></a>

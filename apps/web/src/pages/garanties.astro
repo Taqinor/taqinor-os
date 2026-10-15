@@ -131,6 +131,7 @@ const productionGuarantee = {
 import GarantiesOlC1E2 from '../components/blocs/GarantiesOlC1E2.astro';
 import GarantiesDivE50A from '../components/blocs/GarantiesDivE50A.astro';
 import GarantiesSection63F3 from '../components/blocs/GarantiesSection63F3.astro';
+import WarrantyListBlock from '../components/blocs/WarrantyListBlock.astro';
 ---
 
 <Layout
@@ -165,14 +166,7 @@ import GarantiesSection63F3 from '../components/blocs/GarantiesSection63F3.astro
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">Durées de garantie</p>
         <h2 class="display v2-section-title mt-5">Chaque composant porte la sienne</h2>
-        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
-          {warranties.map((w, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
-              <span class="text-sm font-semibold">{w.item}{w.note && <span class="block text-xs font-normal text-encre-faint">{w.note}</span>}</span>
-              <span class="fig whitespace-nowrap text-2xl text-azur-600" data-tally>{w.years}</span>
-            </div>
-          ))}
-        </div>
+        <WarrantyListBlock warranties={warranties} />
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           Le détail qui change tout : ces marques tier-1 sont sourcées chez des distributeurs
           officiels au Maroc. Une garantie ne vaut que si on peut la faire jouer sans rapatrier un

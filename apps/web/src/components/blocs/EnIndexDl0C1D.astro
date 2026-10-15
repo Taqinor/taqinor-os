@@ -1,0 +1,14 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro
+const { trust } = Astro.props as Record<string, any>;
+---
+        <dl class="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-3" data-stagger>
+          {trust.map((t: any, i: any) => (
+            <div class="v2-rise relative min-w-0 border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <dd class="fig fig-lg lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+              <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
+              <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
+            </div>
+          ))}
+        </dl>

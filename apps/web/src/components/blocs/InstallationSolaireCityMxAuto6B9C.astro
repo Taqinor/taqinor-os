@@ -1,0 +1,10 @@
+---
+// ENF19 : bloc partagé (copies identiques) — installation-solaire-[city].astro
+const { delegataireNote, roiNuance } = Astro.props as Record<string, any>;
+---
+      <p class="mx-auto mt-8 max-w-3xl text-sm leading-relaxed text-lune-soft">{roiNuance}</p>
+      {delegataireNote && (
+        <p class="mx-auto mt-4 max-w-3xl border-l-2 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
+          {delegataireNote}
+        </p>
+      )}

@@ -58,7 +58,7 @@ const warranties = [
   { item: 'الهيكل الفولاذي المُجلفن', years: '20 سنة' },
   { item: 'التركيب واليد العاملة تاكينور', years: 'سنتان' },
 ];
-import GarantiesDivEF39 from '../../components/blocs/GarantiesDivEF39.astro';
+import WarrantyListBlock from '../../components/blocs/WarrantyListBlock.astro';
 ---
 
 <Layout
@@ -245,7 +245,7 @@ import GarantiesDivEF39 from '../../components/blocs/GarantiesDivEF39.astro';
           أحادية الخط، حساب مقطع الأسلاك، لائحة الحمايات، إجراء التشغيل وولوج متابعة الإنتاج في
           الوقت الحقيقي للتحقق من الإنتاج بنفسك.
         </p>
-        <GarantiesDivEF39 warranties={warranties} />
+        <WarrantyListBlock warranties={warranties} dirYears="ltr" />
         <p class="mx-auto mt-6 max-w-xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           لا واحدة من هذه المراجع مختارة سلفاً. القدرة المعتمدة، وجود بطارية من عدمه، أحادي أو ثلاثي
           الطور: كل ذلك يخرج من أرقام سطحك.
