@@ -79,7 +79,7 @@ describe('Co2Page (WR7 — suivi CO₂)', () => {
     renderPage(<Co2Page />, { route: '/production/co2?installation=11' })
 
     expect(await screen.findByText('CO₂ évité (système)')).toBeInTheDocument()
-    expect(monitoringApi.getConfigForInstallation).toHaveBeenCalledWith('11')
+    expect(monitoringApi.getConfigForInstallation).toHaveBeenCalledWith('11', expect.objectContaining({ page: 1 }))
     expect(monitoringApi.getCo2).toHaveBeenCalledWith(5)
     expect(monitoringApi.getCo2Fleet).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: /INST-2026-001/ })).toBeInTheDocument()

@@ -10,6 +10,5 @@
 frontend/src/features/crm/companyLookup.js::searchCompanies
 frontend/src/features/offlinesync/mobile/CockpitHome.jsx::CockpitHome
 frontend/src/pages/installations/DemandesAchatList.jsx::pickProduit
-frontend/src/pages/monitoring/Co2Page.jsx::Co2SystemDetail
 frontend/src/pages/stock/StockList.jsx::loadTransferts
 # ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.
