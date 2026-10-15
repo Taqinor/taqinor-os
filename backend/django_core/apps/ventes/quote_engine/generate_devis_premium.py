@@ -4565,22 +4565,8 @@ def _mesure_onepage(html):
         # AMOT20 — la postcondition porte sur le DERNIER bloc de la zone (la
         # ligne Validité/Acompte/TVA ; le bon pour accord agricole est déjà
         # dans ``formes``) : son bloc entier (toutes ses lignes) doit tenir.
-        bas_fin = _bas_bloc_fin(page)
-        if bas_fin is not None and bas_totaux is not None:
-            bas_totaux = max(bas_totaux, bas_fin)
-        elif bas_fin is None and bas_totaux is not None:
-            # CAD177 — le Total TTC est composé mais la ligne de conditions,
-            # présente dans le HTML, est ABSENTE de la page A4 : WeasyPrint a
-            # jeté la fin du flux de la zone ``overflow:hidden`` (nocturne
-            # 14/10 : AMOT20 note ×60 restée intégrale, « Acompte » invisible).
-            # Ignorer ce bloc déclarait « ça tient » ; on le mesure donc sur la
-            # page de mesure haute, comme pour un Total TTC absent.
-            from html import unescape as _unescape
-            _src = html + _unescape(html)
-            if any(forme in _src for forme in _formes_bloc_fin()):
-                bas_haute = _bas_totaux_page_haute(_HTML, html, formes)
-                if bas_haute is not None:
-                    bas_totaux = max(bas_totaux, bas_haute)
+        from .onepage_mesure import bas_avec_conditions
+        bas_totaux = bas_avec_conditions(page, html, formes, bas_totaux, _HTML)
         if bas_totaux is None:
             # CAD177 — le bloc de totaux est ABSENT de la page composée : ce
             # n'est PAS une mesure impossible. WeasyPrint arrête la composition
