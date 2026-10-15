@@ -74,9 +74,20 @@ class TestFormatStrict(ExportBase):
         for url, corps in (
                 ('/api/django/imports/export-object/',
                  {'object': 'clients', 'format': 12}),
+                # ENF11 (api-fuzz) : `format: null` est un type faux, pas une absence.
+                ('/api/django/imports/export-object/',
+                 {'object': 'clients', 'format': None}),
+                ('/api/django/imports/sauvegarde/', {'format': None}),
                 ('/api/django/imports/sauvegarde/', {'format': 'pdf'})):
             resp = self.api.post(url, corps, format='json')
             self.assertEqual(resp.status_code, 400, (url, resp.content))
+
+    def test_format_blanc_retombe_sur_le_defaut(self):
+        # Déclaré `allow_blank` : un format blanc est « inconnu » donc csv.
+        resp = self.api.post(
+            '/api/django/imports/export-object/',
+            {'object': 'clients', 'format': ''}, format='json')
+        self.assertEqual(resp.status_code, 200)
 
     def test_format_absent_utilise_le_defaut(self):
         resp = self.api.post(
@@ -346,3 +357,27 @@ class TestManagementCommand(ExportBase):
 
         with self.assertRaises(CommandError):
             call_command('export_company_data', company_slug='exp-co')
+
+
+class TestCorpsPublies(ExportBase):
+    """CI #1000 fuzz — export-object / sauvegarde valident le corps par le
+    serializer PUBLIÉ : un corps non objet ou un `object` de type faux répondait
+    500 ; une clé vide / inconnue dans `objects` était écartée en silence."""
+
+    def test_export_object_corps_invalide_400_jamais_500(self):
+        for corps in ([None, None], {'object': [None, None], 'format': ''},
+                      {'object': 5}, {'object': ' clients '}, {}):
+            resp = self.api.post(
+                '/api/django/imports/export-object/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_sauvegarde_cles_inconnues_ou_vides_400(self):
+        for corps in ({'objects': ['']}, {'objects': ['clients', 'bogus']},
+                      {'objects': 'clients'}, {'objects': [None]}, [1]):
+            resp = self.api.post(
+                '/api/django/imports/sauvegarde/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        ok = self.api.post('/api/django/imports/sauvegarde/',
+                           {'objects': ['clients'], 'format': 'json'},
+                           format='json')
+        self.assertEqual(ok.status_code, 200)

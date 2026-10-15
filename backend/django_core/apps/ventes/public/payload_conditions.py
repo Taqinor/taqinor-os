@@ -114,6 +114,7 @@ def _acompte_publique(devis, lignes=None):
             'montants': montants,
         }
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('%s : échec ignoré (dégradé)', '_acompte_publique', exc_info=True)
         return None
 
 
@@ -164,6 +165,7 @@ def _conditions_publiques(data, devis=None):
                if txt]
         return out or None
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('%s : échec ignoré (dégradé)', '_conditions_publiques', exc_info=True)
         return None
 
 
@@ -199,6 +201,7 @@ def _date_validite_publique(devis):
         exp = date_expiration(devis)
         return exp.isoformat() if exp else None
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('%s : échec ignoré (dégradé)', '_date_validite_publique', exc_info=True)
         return None
 
 
@@ -247,4 +250,5 @@ def _confirmation_email_publique(devis):
         client = getattr(devis, 'client', None)
         return bool((getattr(client, 'email', '') or '').strip())
     except Exception:  # noqa: BLE001 — best-effort
+        logger.warning('%s : échec ignoré (dégradé)', '_confirmation_email_publique', exc_info=True)
         return False

@@ -129,7 +129,7 @@ class PorteeActionsPaiementsTests(TestCase):
         api = self._api(self.autre)
         r = api.post(f'{PAIEMENTS}{avance.id}/ventiler/', {
             'facture': self.facture.id, 'montant': '300'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertEqual(r.data['detail'], 'Facture introuvable.')
         self.assertFalse(AffectationPaiement.objects.filter(
             facture=self.facture).exists())

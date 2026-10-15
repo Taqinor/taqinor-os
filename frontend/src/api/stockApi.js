@@ -112,7 +112,7 @@ const stockApi = {
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // N15 — Stock multi-emplacements (dépôt principal + camionnette …).
   // Le total produit reste inchangé ; un transfert ne fait que ventiler.
-  getEmplacements: () => api.get('/stock/emplacements/'),
+  getEmplacements: (params) => api.get('/stock/emplacements/', { params }),
   saveEmplacement: (id, data) => id
     ? api.patch(`/stock/emplacements/${id}/`, data)
     : api.post('/stock/emplacements/', data),

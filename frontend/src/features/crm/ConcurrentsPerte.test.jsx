@@ -77,7 +77,7 @@ describe('ConcurrentsPerte (PACT103)', () => {
     const bouton = (await screen.findAllByRole('button', { name: /Ahmed Alami/ }))[0]
     await user.click(bouton)
 
-    await waitFor(() => expect(getConcurrentsPerte).toHaveBeenCalledWith({ lead: 42 }))
+    await waitFor(() => expect(getConcurrentsPerte).toHaveBeenCalledWith(expect.objectContaining({ lead: 42 })))
     expect((await screen.findAllByText('SunTech')).length).toBeGreaterThan(0)
   })
 

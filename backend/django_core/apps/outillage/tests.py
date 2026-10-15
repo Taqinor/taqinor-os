@@ -88,7 +88,7 @@ class OutillageTests(TestCase):
         resp = api.post('/api/django/outillage/outils/', {
             'nom': 'Visseuse', 'emplacement': self.depot_b.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_filter_by_statut_and_emplacement(self):
         Outillage.objects.create(
@@ -179,10 +179,10 @@ class OutillageTests(TestCase):
         resp = api.post('/api/django/outillage/kit-items/', {
             'kit': kit.id, 'outil': foreign.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_enf17_kit_item_fk_etrangere_comme_id_absent(self):
-        """ENF17 — kit / outil d'une autre société : 400 nommant le champ,
+        """ENF17 — kit / outil d'une autre société : 404 nommant le champ (ERR-ENF11-FUZZ : id bien formé inconnu),
         réponse identique à celle d'un id absent (aucun oracle d'existence)."""
         kit = KitOutillage.objects.create(company=self.co_a, nom='Kit Z')
         tool = Outillage.objects.create(company=self.co_a, nom='Clé Z')
@@ -196,7 +196,7 @@ class OutillageTests(TestCase):
                 corps = {'kit': kit.id, 'outil': tool.id}
                 resp = api.post('/api/django/outillage/kit-items/',
                                 {**corps, champ: etranger.id}, format='json')
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 404, resp.data)
                 self.assertEqual(resp.data[champ][0].code, 'does_not_exist')
                 absent = api.post('/api/django/outillage/kit-items/',
                                   {**corps, champ: 99999999}, format='json')
@@ -214,3 +214,44 @@ class OutillageTests(TestCase):
         resp = api.get('/api/django/outillage/kits/')
         match = next(r for r in rows(resp) if r['id'] == kit.id)
         self.assertEqual(match['type_intervention_label'], 'Pose')
+
+    # ── CI #1000 fuzz — champs stricts (texte/entier/date), filtres de liste à
+    # énumération publiée et débordement de calendrier ──
+
+    def test_kit_type_intervention_non_texte_400(self):
+        api = auth(self.admin_a)
+        for corps in ({'nom': 'K', 'type_intervention': 0},
+                      {'nom': 'K', 'ordre': '1'}, {'nom': 5}):
+            resp = api.post('/api/django/outillage/kits/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        ok = api.post('/api/django/outillage/kits/',
+                      {'nom': 'K', 'type_intervention': 'pose'}, format='json')
+        self.assertEqual(ok.status_code, 201, ok.content)
+
+    def test_outil_entier_et_date_stricts_400(self):
+        api = auth(self.admin_a)
+        for corps in ({'nom': 'O', 'intervalle_calibration_mois': '5'},
+                      {'nom': 'O', 'date_achat': '20000101'},
+                      {'nom': 'O', 'categorie': 0}):
+            resp = api.post('/api/django/outillage/outils/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_outil_calibration_hors_calendrier_409(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/outillage/outils/', {
+            'nom': 'O', 'date_derniere_calibration': '9999-12-31',
+            'intervalle_calibration_mois': 12}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertFalse(Outillage.objects.filter(nom='O').exists())
+
+    def test_filtres_liste_invalides_400(self):
+        api = auth(self.admin_a)
+        for url in ('/api/django/outillage/outils/?a_calibrer=AAA',
+                    '/api/django/outillage/outils/?a_calibrer=',
+                    '/api/django/outillage/outils/?emplacement=abc',
+                    '/api/django/outillage/kit-items/?kit=abc'):
+            resp = api.get(url)
+            self.assertEqual(resp.status_code, 400, (url, resp.content))
+        self.assertEqual(
+            api.get('/api/django/outillage/outils/?a_calibrer=true').status_code,
+            200)

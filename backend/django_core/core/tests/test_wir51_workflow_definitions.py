@@ -122,11 +122,19 @@ class WorkflowDefinitionCrudTests(TenantAPITestCase):
     def test_step_viewset_scoped_and_rejects_foreign_definition(self):
         other_def = WorkflowDefinition.objects.create(
             company=self.other_company, code='autre2', nom='Autre2')
-        # Rattacher une étape à une définition d'un AUTRE tenant → refusé.
+        # Rattacher une étape à une définition d'un AUTRE tenant → refusé, en
+        # 404 « objet inexistant » comme un id absent (ERR-ENF11-FUZZ-CORE).
         r = self._admin().post(STEPS, {
             'definition': other_def.id, 'ordre': 1, 'nom': 'Injection',
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
+        self.assertIn('definition', r.data)
+        for inconnu in (0, 987654321):
+            r = self._admin().post(STEPS, {
+                'definition': inconnu, 'ordre': 1, 'nom': 'Injection',
+            }, format='json')
+            self.assertEqual(r.status_code, 404, r.content)
+            self.assertIn('definition', r.data)
         # La liste des étapes est scopée à la société de l'appelant.
         WorkflowStepDefinition.objects.create(
             definition=other_def, ordre=2, nom='Etape autre')

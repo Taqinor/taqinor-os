@@ -28,13 +28,15 @@ from drf_spectacular.utils import (
     extend_schema_field, extend_schema_view, inline_serializer,
 )
 from rest_framework.parsers import JSONParser
-from rest_framework import serializers, status
+from rest_framework import serializers, status
+
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from . import dossiers as dossiers_service
-from .champs_stricts import BooleenStrict, ChaineStricte, TexteLie
+from .champs_stricts import (
+    BooleenStrict, ChaineStricte, ChampsStrictsMixin, TexteLie)
 from .mixins import SameCompanyFKSerializerMixin
 from .parseurs import corps_valide
 from .models import (
@@ -94,7 +96,7 @@ class DossierWorkflowChecklistItemSerializer(CompanyScopedRelationsMixin, serial
                             'created_at', 'updated_at']
 
 
-class DossierSerializer(SameCompanyFKSerializerMixin,
+class DossierSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                         serializers.ModelSerializer):
     # ASEC18 — le propriétaire est un utilisateur de LA société de la requête :
     # l'id d'un utilisateur voisin échoue comme un id absent (POST et PATCH).

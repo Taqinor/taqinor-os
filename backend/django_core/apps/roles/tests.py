@@ -15,6 +15,7 @@ import json
 
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -171,6 +172,81 @@ class RolesRbacTest(TestCase):
                 self.assertIn('permissions', resp.data)
         role.refresh_from_db()
         self.assertEqual(role.permissions, ['stock_voir'])
+
+    def test_code_permission_schema_et_serveur_un_seul_predicat(self):
+        # CI #1000 — le schéma publie le motif des codes (catalogue OU
+        # « app visible ») que le serveur applique : « 00 » conforme à
+        # « chaîne » ne l'est plus, et chaque code du catalogue passe.
+        import re
+        from apps.roles.serializers import (
+            MOTIF_CODE_PERMISSION, RoleSerializer)
+        motif = re.compile(MOTIF_CODE_PERMISSION)
+        champ = RoleSerializer().fields['permissions'].child
+        for code in ('0', '00', 'stock', 'app_crm', 'stock_voir\n'):
+            self.assertIsNone(motif.fullmatch(code), code)
+            with self.assertRaises(DRFValidationError):
+                champ.run_validation(code)
+        for code in (ALL_PERMISSIONS[0], 'app_crm_voir'):
+            self.assertIsNotNone(motif.fullmatch(code), code)
+            self.assertEqual(champ.run_validation(code), code)
+        resp = self.api.post(
+            '/api/django/roles/',
+            {'nom': 'Zero', 'permissions': ['00']}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('permissions', resp.data)
+
+    def test_code_permission_reponse_chaine_libre_requete_motif(self):
+        # CI #1000 (2) — un rôle stocké porte des codes hors motif (hérités,
+        # semés : ``portail_client_acces``) : la RÉPONSE les lit sans les
+        # refuser, donc le schéma de réponse est une chaîne libre ; seule la
+        # REQUÊTE publie le motif des codes acceptés.
+        from apps.roles.serializers import (
+            MOTIF_CODE_PERMISSION, CodePermission, _CodePermission)
+        ext = _CodePermission(CodePermission())
+        self.assertEqual(ext.map_serializer_field(None, 'response'),
+                         {'type': 'string'})
+        self.assertEqual(
+            ext.map_serializer_field(None, 'request'),
+            {'type': 'string', 'pattern': MOTIF_CODE_PERMISSION})
+        role = Role.objects.create(
+            company=self.company, nom='Herite',
+            permissions=['portail_client_acces'])
+        resp = self.api.get(f'/api/django/roles/{role.id}/')
+        self.assertEqual(resp.json()['permissions'], ['portail_client_acces'])
+
+    def test_nom_de_99_signes_cree_sans_500_et_cle_audit_bornee(self):
+        # CI #1000 (2) — ``role:<nom>`` (5 + 99 signes) débordait la colonne
+        # ``SettingsAuditLog.field`` (100) : 500 APRÈS la création. La clé
+        # d'audit est bornée ; le nom de 100 signes (max du modèle) passe aussi.
+        for longueur in (99, 100):
+            nom = '0' * longueur
+            resp = self.api.post(
+                '/api/django/roles/',
+                {'nom': nom, 'permissions': [], 'entites_visibles': [],
+                 'perimetre': None}, format='json')
+            self.assertEqual(resp.status_code, 201, resp.content)
+            ligne = SettingsAuditLog.objects.filter(
+                section='roles', field__startswith='role:00').last()
+            self.assertEqual(len(ligne.field), 100)
+        resp = self.api.post(
+            '/api/django/roles/',
+            {'nom': '0' * 101, 'permissions': []}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('nom', resp.data)
+
+    def test_entites_visibles_liste_sinon_400(self):
+        # ENF11 (api-fuzz) — `entites_visibles` est une liste d'identifiants :
+        # `{}` / texte / nombre = 400 (DRF lisait `{}` comme « liste vide »).
+        role = Role.objects.create(
+            company=self.company, nom='Perimetre', permissions=['stock_voir'])
+        url = f'/api/django/roles/{role.id}/'
+        for mauvais in ({}, 'x', 3):
+            resp = self.api.patch(
+                url, {'entites_visibles': mauvais}, format='json')
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+            self.assertIn('entites_visibles', resp.data)
+        resp = self.api.patch(url, {'entites_visibles': []}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
 
     def test_company_is_forced_server_side_on_create(self):
         other = Company.objects.create(nom='Autre', slug='autre-co')

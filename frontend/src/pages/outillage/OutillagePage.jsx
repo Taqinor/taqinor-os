@@ -93,8 +93,9 @@ export default function OutillagePage() {
   }
   useEffect(() => {
     load()
-    stockApi.getEmplacements()
-      .then((r) => setEmplacements((r.data.results ?? r.data).filter((e) => !e.archived)))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      stockApi.getEmplacements({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setEmplacements((Array.isArray(rows) ? rows : (rows?.results ?? [])).filter((e) => !e.archived)))
       .catch(() => {})
   }, [])
 

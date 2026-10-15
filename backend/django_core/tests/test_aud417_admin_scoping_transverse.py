@@ -119,59 +119,39 @@ class AucunAdminNonScopeNeSubsiste(SimpleTestCase):
         self.assertGreater(len(_admins_a_scoper()), 15)
 
 
-class LesDeuxSurfacesLesPlusSensiblesSontFiltrees(SimpleTestCase):
-    """Le `Done =` nommé par la tâche : paie et RH, en priorité."""
+class LeFiltreSocieteDuMixinEstAppliqueSurLesAdminsReels(SimpleTestCase):
+    """Comportemental, sans base, sur les `ModelAdmin` réellement montés.
 
-    CIBLES = (('paie', 'BulletinPaie'), ('rh', 'DossierEmploye'),
-              ('rh', 'DocumentEmploye'))
+    ENF23 — paie et rh sont des coquilles (plus de modèles ni d'admin depuis
+    SOLMVP) : les trois tests qui les ciblaient se sautaient en permanence.
+    Ils sont retirés ; le mixin est désormais sondé sur TOUT admin monté qui
+    l'utilise, sans liste écrite à la main.
+    """
 
-    def _admin_de(self, app_label, nom_modele):
-        from django.apps import apps as registre_apps
-        try:
-            modele = registre_apps.get_model(app_label, nom_modele)
-        except LookupError:  # app parquée par l'édition (SOL3)
-            return None
-        return admin.site._registry.get(modele)
+    def _admins_mixin(self):
+        return [adm for _modele, adm in _admins_a_scoper()
+                if isinstance(adm, CompanyScopedAdminMixin)]
 
-    def test_les_surfaces_paie_et_rh_sont_scopees(self):
-        vues = 0
-        for app_label, nom_modele in self.CIBLES:
-            adm = self._admin_de(app_label, nom_modele)
-            if adm is None:
-                continue
-            vues += 1
-            with self.subTest(modele=f'{app_label}.{nom_modele}'):
-                self.assertTrue(
-                    isinstance(adm, CompanyScopedAdminMixin),
-                    f'{app_label}.{nom_modele} : la liste des salaires / '
-                    "dossiers RH doit être bornée à la société de l'appelant.")
-        if not vues:
-            # ERR-QAH-TESTS-RACINE (28/09/2026) — paie ET rh sont toutes deux
-            # parquées par l'édition SOLMVP courante (même state que les
-            # `skipTest` des deux tests comportementaux ci-dessus, pour la
-            # même raison) : aucune des 3 cibles n'est montée, donc rien à
-            # vérifier ici. PAS un `assertTrue` qui rougirait sans rapport
-            # avec une vraie régression — le test se réactive de lui-même dès
-            # que paie ou rh revient dans l'édition.
-            self.skipTest(
-                "paie et rh sont parquées par l'édition courante (SOLMVP) — "
-                "aucune des surfaces ciblées n'est montée.")
+    def test_le_perimetre_mixin_nest_pas_vide(self):
+        self.assertTrue(
+            self._admins_mixin(),
+            'aucun ModelAdmin monté ne porte le mixin de scope société.')
 
     def test_le_filtre_est_reellement_applique(self):
-        """Comportemental, sans base : le WHERE gagne une clause société."""
-        adm = self._admin_de('paie', 'BulletinPaie')
-        if adm is None:
-            self.skipTest('paie parquée par l\'édition courante')
-        avec = adm.get_queryset(_requete(company_id=42))
-        sans = adm.get_queryset(_requete(company_id=None))
-        self.assertGreater(
-            len(avec.query.where.children), len(sans.query.where.children),
-            'aucune clause de société ajoutée : le mixin ne filtre pas.')
+        """Le WHERE gagne une clause société pour un compte rattaché."""
+        for adm in self._admins_mixin():
+            with self.subTest(modele=adm.model.__name__):
+                avec = adm.get_queryset(_requete(company_id=42))
+                sans = adm.get_queryset(_requete(company_id=None))
+                self.assertGreater(
+                    len(avec.query.where.children),
+                    len(sans.query.where.children),
+                    'aucune clause de société ajoutée : le mixin ne filtre '
+                    'pas.')
 
     def test_un_compte_sans_societe_garde_le_comportement_historique(self):
         """Opérateur plateforme (`company` NULL) : aucun filtre, comme avant."""
-        adm = self._admin_de('paie', 'BulletinPaie')
-        if adm is None:
-            self.skipTest('paie parquée par l\'édition courante')
-        sans = adm.get_queryset(_requete(company_id=None))
-        self.assertEqual(len(sans.query.where.children), 0)
+        for adm in self._admins_mixin():
+            with self.subTest(modele=adm.model.__name__):
+                sans = adm.get_queryset(_requete(company_id=None))
+                self.assertEqual(len(sans.query.where.children), 0)

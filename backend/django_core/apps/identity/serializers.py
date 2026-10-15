@@ -1,39 +1,101 @@
 """Sérialiseurs de la fondation Identité & accès."""
-import ipaddress
+import re
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.champs_stricts import (
     MOTIF_URL_HTTP_SOUPLE, URL_HTTP_SOUPLE_MAX, ChampsStrictsMixin,
-    UrlHttpSouple)
+    IdInconnu404Mixin, UrlHttpSouple)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ObjetJSON
 
 from .models import IdentityProvider, IpAllowRule, NetworkPolicy, TrustedDevice
 
 
-class IpAllowRuleSerializer(SameCompanyFKSerializerMixin,
+#: CI #1000 — plage CIDR en notation « adresse[/préfixe] » : IPv4 pointée
+#: (octets 0-255 sans zéro de tête, préfixe 0-32) ou IPv6 hexadécimale (préfixe
+#: 0-128). C'est LE MÊME prédicat côté serveur (``ValideCidr``) et côté schéma
+#: (``pattern``) : le schéma ne disait que « chaîne » alors que ``ip_network``
+#: refusait ``"0"`` (400 sur un corps « conforme »). Tout ce que ce motif
+#: accepte, ``ipaddress.ip_network(strict=False)`` l'accepte (vérifié par un
+#: tirage aléatoire de 500 000 chaînes) : le middleware relit donc la valeur sans
+#: surprise. Hors motif : masques décimaux (``/255.0.0.0``), IPv6 à IPv4
+#: embarquée, identifiant de zone.
+_OCTET = r'(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'
+_H16 = r'[0-9A-Fa-f]{1,4}'
+_V4 = rf'{_OCTET}(?:\.{_OCTET}){{3}}(?:/(?:3[0-2]|[12]?[0-9]))?'
+_V6 = '(?:' + '|'.join([
+    r'(?:H:){7}H', r'(?:H:){1,7}:', r'(?:H:){1,6}:H', r'(?:H:){1,5}(?::H){1,2}',
+    r'(?:H:){1,4}(?::H){1,3}', r'(?:H:){1,3}(?::H){1,4}',
+    r'(?:H:){1,2}(?::H){1,5}', r'H:(?::H){1,6}', r':(?:(?::H){1,7}|:)',
+]).replace('H', _H16) + r')(?:/(?:12[0-8]|1[01][0-9]|[1-9]?[0-9]))?'
+MOTIF_CIDR = f'^(?:{_V4}|{_V6})$'
+CIDR_MAX = 64
+_RE_CIDR = re.compile(MOTIF_CIDR)
+
+
+class ValideCidr:
+    """Validateur dont l'acceptation égale EXACTEMENT ``MOTIF_CIDR`` +
+    ``maxLength`` 64 (``fullmatch`` : ``$`` Python tolérerait un ``\\n``)."""
+
+    code = 'invalid'
+    message = 'Plage CIDR invalide (ex. 10.0.0.0/8).'
+
+    def __call__(self, value):
+        if (not isinstance(value, str) or len(value) > CIDR_MAX
+                or not _RE_CIDR.fullmatch(value)):
+            raise DjangoValidationError(self.message, code=self.code)
+
+    def __eq__(self, autre):
+        return isinstance(autre, ValideCidr)
+
+    def __hash__(self):
+        return hash(ValideCidr)
+
+
+class PlageCidr(serializers.CharField):
+    """Plage CIDR : pas de rognage (une plage à blancs de bord est HORS motif,
+    pas corrigée) ; validateur et schéma partagent ``MOTIF_CIDR``."""
+    default_validators = [ValideCidr()]
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('max_length', CIDR_MAX)
+        kwargs.setdefault('trim_whitespace', False)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class _PlageCidr(OpenApiSerializerFieldExtension):
+    target_class = 'apps.identity.serializers.PlageCidr'
+
+    def map_serializer_field(self, auto_schema, direction):
+        if direction == 'request':
+            return {'type': 'string', 'minLength': 1, 'maxLength': CIDR_MAX,
+                    'pattern': MOTIF_CIDR}
+        return {'type': 'string', 'maxLength': CIDR_MAX}
+
+
+class IpAllowRuleSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                            SameCompanyFKSerializerMixin,
                             serializers.ModelSerializer):
+    # ENF11 (api-fuzz) : politique inconnue (0 compris) = 404 ; texte strict.
     # ENF15 : la politique référencée naît bornée à la société de l'appelant.
     same_company_fields = ('policy',)
+    # CI #1000 : plage au motif publié (sinon « 0 » conforme → 400, et un id de
+    # politique inconnu mêlé à ce 400 ne pouvait plus répondre 404).
+    cidr = PlageCidr()
 
     class Meta:
         model = IpAllowRule
         fields = ['id', 'policy', 'cidr', 'label', 'created_at']
         read_only_fields = ['id', 'created_at']
-
-    def validate_cidr(self, value):
-        # Valider ICI (DRF → 400) et non seulement dans ``IpAllowRule.clean()``
-        # (django ValidationError au save → 500). Normalise aussi la saisie.
-        cidr = (value or '').strip()
-        try:
-            ipaddress.ip_network(cidr, strict=False)
-        except (ValueError, AttributeError):
-            raise serializers.ValidationError(
-                'Plage CIDR invalide (ex. 10.0.0.0/8).')
-        return cidr
 
 
 class NetworkPolicySerializer(serializers.ModelSerializer):

@@ -1,4 +1,5 @@
-"""Filet de sécurité après réponse : prochaine étape, paliers sans réponse, visite à planifier, rappel FDA (SPL12, extrait de crm/services.py : déplacement pur).
+"""Filet de sécurité après réponse : prochaine étape, paliers sans réponse, visite à planifier, rappel FDA (SPL12,
+extrait de crm/services.py : déplacement pur).
 
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).

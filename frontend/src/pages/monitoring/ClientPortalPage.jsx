@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Coins, Leaf, Sun, Zap } from 'lucide-react'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import monitoringApi from '../../api/monitoringApi'
 import {
   EmptyState, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Spinner,
@@ -26,8 +27,9 @@ export default function ClientPortalPage() {
 
   useEffect(() => {
     let active = true
-    crmApi.getClients({ page: 1 })
-      .then((r) => { if (active) setClients(r.data.results ?? r.data ?? []) })
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getClients({ page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => { if (active) setClients((Array.isArray(rows) ? rows : (rows?.results ?? []))) })
       .catch(() => { if (active) setClients([]) })
       .finally(() => { if (active) setLoadingClients(false) })
     return () => { active = false }

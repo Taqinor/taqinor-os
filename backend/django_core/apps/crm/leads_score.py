@@ -27,6 +27,7 @@ def recompute_lead_score(lead) -> int:
         maybe_assign_mql(lead)
         return score
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', 'recompute_lead_score', exc_info=True)
         return 0
 
 
@@ -100,7 +101,7 @@ def _seuil_mql_for(company) -> int:
         if profile is not None and profile.seuil_mql:
             return int(profile.seuil_mql)
     except Exception:
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_seuil_mql_for', exc_info=True)
     return 0
 
 
@@ -199,7 +200,8 @@ def maybe_assign_mql(lead) -> bool:
                         company=lead.company,
                     )
             except Exception:
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', 'maybe_assign_mql', exc_info=True)
         return True
     except Exception:
+        logger.warning('%s : échec ignoré (dégradé)', 'maybe_assign_mql', exc_info=True)
         return False

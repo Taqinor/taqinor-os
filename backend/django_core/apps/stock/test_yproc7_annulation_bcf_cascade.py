@@ -150,7 +150,7 @@ class TestCascadeAnnulationBcf(Yproc7Base):
         bc = self._bcf(statut=BonCommandeFournisseur.Statut.RECU)
         resp = self.api.post(
             f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_annuler_deux_fois_idempotent_sur_receptions(self):
         bc = self._bcf(statut=BonCommandeFournisseur.Statut.ENVOYE)

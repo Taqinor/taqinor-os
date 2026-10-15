@@ -14,10 +14,12 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from core.mixins import company_qs
+from core.conflit_etat import ConflitEtat
 from core.parseurs import corps_valide
 from ..models import Facture, Paiement, RetenueSubie
 from ..serializers_facturation import (
     FactureSerializer, PaiementSerializer, AffectationPaiementSerializer,
+    PaiementEnvoyerRecuRequestSerializer, PaiementVentilerRequestSerializer,
     RetenueSubieSerializer,
 )
 from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
@@ -30,6 +32,15 @@ import logging
 logger = logging.getLogger(__name__)
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
+
+
+def _refus_etat(exc):
+    """CI #1001 — refus d'un service qui dépend de l'ÉTAT stocké (corps déjà
+    validé par le sérialiseur publié) : 409 ``ConflitEtat`` portant ``detail``
+    (forme publiée ``ErreurDetail``) et les clés de champ d'origine."""
+    corps = dict(exc.detail)
+    corps.setdefault('detail', next(iter(corps.values())))
+    return ConflitEtat(corps)
 
 
 def _refus_si_rejete(paiement):
@@ -320,7 +331,9 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             PaiementSerializer(paiement).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=D.VentilerRequest, responses={201: AffectationPaiementSerializer})
+    @extend_schema(request=PaiementVentilerRequestSerializer,
+                   responses={201: AffectationPaiementSerializer,
+                              404: D.ErreurDetail, 409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='ventiler')
     def ventiler(self, request, pk=None):
         """XFAC1 — ventile une avance non affectée sur UNE facture ouverte du
@@ -329,17 +342,20 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         from ..services import ventiler_avance as _ventiler_avance
 
         paiement = self.get_object()
-        facture = self._facture_visible(request.data.get('facture'))
+        entree = PaiementVentilerRequestSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
+        facture = self._facture_visible(entree.validated_data['facture'])
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND)
         try:
             affectation = _ventiler_avance(
                 paiement=paiement, facture=facture,
-                montant=request.data.get('montant'), user=request.user,
+                montant=entree.validated_data['montant'], user=request.user,
             )
         except ValidationError as exc:
-            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+            raise _refus_etat(exc)
         return Response(
             AffectationPaiementSerializer(affectation).data,
             status=status.HTTP_201_CREATED)
@@ -348,7 +364,8 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         parameters=[OpenApiParameter('facture_id', OpenApiTypes.INT,
                                      OpenApiParameter.PATH)],
         request=PaiementAvecRetenueEntreeSerializer,
-        responses={201: D.PaiementAvecRetenueResponse},
+        responses={201: D.PaiementAvecRetenueResponse,
+                   409: D.ErreurDetail},
         # ENF11 — montant publié strictement positif (« Le montant doit être
         # positif. »), comme le sérialiseur d'entrée le valide (min 0.01).
         extensions=D.CORPS_MONTANT_POSITIF)
@@ -390,7 +407,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                 created_by=request.user,
             )
         except ValidationError as exc:
-            return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+            raise _refus_etat(exc)
         return Response({
             'paiement': PaiementSerializer(paiement).data,
             'retenue': RetenueSubieSerializer(retenue).data,
@@ -481,7 +498,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             f'inline; filename="Quittance_{assurer_numero_recu(paiement)}.pdf"')
         return resp
 
-    @extend_schema(request=D.EnvoyerRecuRequest,
+    @extend_schema(request=PaiementEnvoyerRecuRequestSerializer,
                    responses={201: D.EnvoyerRecuResponse,
                               409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='envoyer-recu',
@@ -497,9 +514,12 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         conflit = _refus_si_rejete(paiement)
         if conflit is not None:
             return conflit
+        entree = PaiementEnvoyerRecuRequestSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
         log = send_recu_email(
             paiement, user=request.user,
-            to_email=request.data.get('to_email'))
+            to_email=entree.validated_data.get('to_email'))
         return Response({
             'statut': log.statut, 'to_email': log.to_email,
             'erreur': log.erreur,

@@ -3,15 +3,17 @@ tenant, formats ouverts). Aucun champ interne-only (``prix_achat``) ne doit
 JAMAIS apparaître dans un dataset exporté."""
 from unittest import mock
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
 from authentication.models import Company
-from apps.roles.models import Role
 
 from core import export_registry, signed_download
 from core.tasks import export_reversibilite_tenant
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

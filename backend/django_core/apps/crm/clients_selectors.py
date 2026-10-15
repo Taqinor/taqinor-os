@@ -11,6 +11,9 @@ Note : `client_label` appelle `get_company_client` de CE module ; un
 from .leads_selectors import (
     normalize_phone_key,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def client_base_qs(company=None):
@@ -486,6 +489,7 @@ def ca_signe_periode(company, membre_ids, debut, fin):
             try:
                 total += Decimal(str(devis.total_ttc or 0))
             except Exception:
+                logger.warning('%s : échec ignoré (dégradé)', 'ca_signe_periode', exc_info=True)
                 continue
     return total
 

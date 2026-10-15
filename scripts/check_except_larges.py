@@ -54,7 +54,14 @@ def est_large(handler: ast.ExceptHandler) -> bool:
 def _racine(node):
     while isinstance(node, ast.Attribute):
         node = node.value
-    return node.id if isinstance(node, ast.Name) else None
+    if isinstance(node, ast.Call):  # logging.getLogger(__name__).warning(...)
+        f = node.func
+        if isinstance(f, ast.Attribute) and f.attr == "getLogger":
+            return _racine(f)
+    nom = node.id if isinstance(node, ast.Name) else None
+    if nom and nom.lower().strip("_").endswith(("logger", "log")):  # _appt_logger, _LOG...
+        return "logger"
+    return nom
 
 
 def journalise(handler: ast.ExceptHandler) -> bool:

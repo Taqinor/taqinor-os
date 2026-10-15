@@ -14,6 +14,7 @@ Couvre :
 Découplage : le dataset de test porte sur un modèle de FONDATION (Company /
 CustomUser) — aucun import d'app domaine.
 """
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework import status
@@ -85,7 +86,7 @@ class CatalogueEnrichiTests(TestCase):
             data_explorer.describe_dataset('ntdata5_absent')
 
     def test_champ_sous_permission_absent_du_catalogue(self):
-        from apps.roles.models import Role
+        Role = django_apps.get_model('roles', 'Role')
 
         data_explorer.register_dataset(
             'ntdata5_gated', 'Gated', ['id', 'username'], _provider,

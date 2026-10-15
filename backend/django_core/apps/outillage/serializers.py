@@ -2,18 +2,37 @@ from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import (
+    ChampsStrictsEntiersMixin, DateStricte, IdInconnu404Mixin, TexteLie)
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Outillage, KitOutillage, KitOutillageItem
 
 
-class OutillageSerializer(serializers.ModelSerializer):
+#: Champs typés STRICTS d'un ``ModelSerializer`` outillage : texte, booléen et
+#: ENTIER de modèle n'acceptent que leur type JSON déclaré (``0`` pour un texte,
+#: ``"5"`` pour un entier → 400) et les dates sont ``AAAA-MM-JJ`` exactes
+#: (DRF lisait aussi ``20000101``).
+_MAPPING_STRICT = {
+    **ChampsStrictsEntiersMixin.serializer_field_mapping,
+    models.DateField: DateStricte,
+}
+
+
+class OutillageSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,
+                          SameCompanyFKSerializerMixin,
+                          serializers.ModelSerializer):
+    # ENF11 (api-fuzz) : emplacement inconnu OU d'une autre société = 404
+    # (même réponse, aucun oracle) ; champs stricts.
+    serializer_field_mapping = _MAPPING_STRICT
+    same_company_fields = ('emplacement',)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
-    emplacement_nom = serializers.CharField(
-        source='emplacement.nom', read_only=True, allow_null=True, default=None,
-        required=False)  # ENF11 — absent d'une réponse PATCH (default + partial)
+    # ENF11 — TexteLie : la clé reste servie (null) dans une réponse PATCH, que
+    # DRF saute sinon sur un sérialiseur partiel alors que le schéma l'exige.
+    emplacement_nom = TexteLie(
+        source='emplacement.nom', read_only=True, allow_null=True, default=None)
 
     # FG80 — badge « à calibrer » : intervalle > 0 ET date dépassée.
     a_calibrer = serializers.SerializerMethodField()
@@ -33,6 +52,28 @@ class OutillageSerializer(serializers.ModelSerializer):
         read_only_fields = ['date_creation', 'date_modification',
                             'date_prochaine_calibration']
 
+    def validate(self, attrs):
+        # La prochaine échéance = dernière calibration + N mois : une date en
+        # fin de calendrier (9999) + un grand intervalle sort du calendrier
+        # (OverflowError au save → 500). Combinaison que le schéma, champ par
+        # champ, ne sait pas exclure : refus d'ÉTAT (409), jamais un 400.
+        attrs = super().validate(attrs)
+        derniere = attrs.get(
+            'date_derniere_calibration',
+            getattr(self.instance, 'date_derniere_calibration', None))
+        intervalle = attrs.get(
+            'intervalle_calibration_mois',
+            getattr(self.instance, 'intervalle_calibration_mois', 0))
+        if derniere is not None and intervalle:
+            from dateutil.relativedelta import relativedelta
+            try:
+                derniere + relativedelta(months=intervalle)
+            except (OverflowError, ValueError):
+                raise ConflitEtat(
+                    'La prochaine calibration sortirait du calendrier : '
+                    "réduisez l'intervalle ou avancez la dernière date.")
+        return attrs
+
     @extend_schema_field(serializers.BooleanField())
     def get_a_calibrer(self, obj):
         """FG80 — True si une calibration est due (date passée ou pas encore faite
@@ -45,16 +86,9 @@ class OutillageSerializer(serializers.ModelSerializer):
         import datetime
         return obj.date_prochaine_calibration <= datetime.date.today()
 
-    def validate_emplacement(self, value):
-        # Un emplacement ne peut appartenir qu'à la société de l'utilisateur.
-        request = self.context.get('request')
-        if value is not None and request is not None:
-            if value.company_id != request.user.company_id:
-                raise serializers.ValidationError("Emplacement inconnu.")
-        return value
 
-
-class KitOutillageItemSerializer(SameCompanyFKSerializerMixin,
+class KitOutillageItemSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin,
+                                 SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     # ENF17 — le kit ET l'outil d'une AUTRE société = id absent (400 « objet
     # inexistant », plus de message propre qui trahissait leur existence).
@@ -67,12 +101,11 @@ class KitOutillageItemSerializer(SameCompanyFKSerializerMixin,
         fields = ['id', 'kit', 'outil', 'outil_nom', 'ordre']
 
 
-class KitOutillageSerializer(serializers.ModelSerializer):
-    # ENF11 — `actif` strictement booléen (0 / "oui" étaient coercés en silence).
-    serializer_field_mapping = {
-        **serializers.ModelSerializer.serializer_field_mapping,
-        models.BooleanField: BooleenStrict,
-    }
+class KitOutillageSerializer(ChampsStrictsEntiersMixin,
+                             serializers.ModelSerializer):
+    # ENF11 — texte, booléen et entier STRICTS : `type_intervention: 0` était
+    # coercé en "0" (accepté alors que le schéma exige une chaîne), `actif`
+    # 0 / "oui" aussi.
     items = KitOutillageItemSerializer(many=True, read_only=True)
     type_intervention_label = serializers.SerializerMethodField()
 

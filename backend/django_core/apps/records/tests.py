@@ -1391,10 +1391,14 @@ class TaggedItemTagBorneTests(TestCase):
     def test_patch_tag_etranger_400(self):
         api = auth(self.resp_a)
         url = f'/api/django/records/tagged-items/{self.item.pk}/'
+        # ERR-ENF11-FUZZ-RECORDS : id bien formé mais inconnu de la société
+        # (autre société = absent) -> 404, plus 400.
         r = api.patch(url, {'tag': self.tag_b.pk}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertIn('tag', r.data)
         self.assertNotIn('TAG-B-SECRET', str(r.data))
+        r0 = api.put(url, {'tag': 0}, format='json')
+        self.assertEqual(r0.status_code, 404, r0.data)
         self.item.refresh_from_db()
         self.assertEqual(self.item.tag_id, self.tag_a.pk)
         r_ok = api.patch(url, {'tag': self.tag_a2.pk}, format='json')
@@ -1516,6 +1520,22 @@ class Enf11Records2eTourTests(TestCase):
             self.assertEqual(r.status_code, 400, (corps, r.content))
         r = self.api.patch(url, {'phase': 3}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+
+    def test_attachments_count_model_vide_400(self):
+        # ERR-ENF11-FUZZ-RECORDS : ``?model=`` (présent mais vide) viole
+        # l'énumération du schéma -> 400 nommant le paramètre (c'était 200).
+        for qs in ('?model=', '?model=crm.lead&id='):
+            r = self.api.get(
+                '/api/django/records/attachments-count/' + qs)
+            self.assertEqual(r.status_code, 400, (qs, r.content))
+
+    def test_attachments_all_model_sans_point_sans_500(self):
+        # ERR-ENF11-FUZZ-RECORDS : ``model`` sans « . » -> ValueError au split
+        # puis ``ContentType`` non lié dans le ``except`` (UnboundLocalError).
+        r = self.api.get('/api/django/records/attachments/all/',
+                         {'model': 'fournisseur'})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['count'], 0)
 
     def test_attachments_all_since_borne_sans_500(self):
         base = '/api/django/records/attachments/all/'

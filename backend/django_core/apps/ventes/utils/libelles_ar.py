@@ -251,7 +251,11 @@ TEXTES_AR = {
     'Relance': 'تذكير',
     'facture': 'الفاتورة',
     'Madame, Monsieur,': 'سيدتي، سيدي،',
-    'Sauf erreur de notre part, la facture ci-dessous reste en attente de règlement. Nous vous remercions de bien vouloir procéder à son paiement.': 'ما لم يكن هناك خطأ من جانبنا، فإن الفاتورة أدناه لا تزال في انتظار الأداء. نشكركم على التفضل بأدائها.',
+    'Sauf erreur de notre part, la facture ci-dessous reste en attente de règlement. '
+    'Nous vous remercions de bien vouloir procéder à son paiement.': (
+        'ما لم يكن هناك خطأ من جانبنا، فإن الفاتورة أدناه لا تزال في انتظار الأداء. '
+        'نشكركم على التفضل بأدائها.'
+    ),
     'Facture': 'الفاتورة',
     'Échéance': 'تاريخ الاستحقاق',
     'en retard de': 'متأخرة بـ',

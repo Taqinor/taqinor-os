@@ -30,7 +30,7 @@ def _nom_societe(company):
         if nom:
             return nom
     except Exception:  # noqa: BLE001 — un envoi ne casse jamais sur ce point
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_nom_societe', exc_info=True)
     return (getattr(company, 'nom', '') or '').strip()
 
 
@@ -2172,7 +2172,7 @@ def _version_integrity_hash(version):
         if not err and data:
             return compute_checksum(data)
     except Exception:
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_version_integrity_hash', exc_info=True)
     # 2) Repli : le checksum déjà enregistré sur la version (SHA-256 hex).
     return version.checksum or ''
 
@@ -2985,7 +2985,7 @@ def url_publique_signature(jeton, mode='demande', *, request=None):
         try:
             return request.build_absolute_uri(chemin)
         except Exception:  # pragma: no cover - requête sans hôte exploitable.
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'url_publique_signature', exc_info=True)
     # Hors requête (signature séquentielle, relances Celery) : l'origine HTTPS
     # de l'ERP déclarée dans CSRF_TRUSTED_ORIGINS (toujours posée en prod),
     # pour ne pas perdre l'e-mail quand PUBLIC_BASE_URL n'est pas configuré.
@@ -4227,7 +4227,7 @@ def empreinte_certificat(demande):
             parties.append(
                 f'signataire:{s.pk}:{s.nom}:{s.email or ""}:{s.statut}')
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'empreinte_certificat', exc_info=True)
     return hashlib.sha256('|'.join(parties).encode('utf-8')).hexdigest()
 
 
@@ -4524,7 +4524,7 @@ def classer_signature_completee(demande, *, created_by=None):
                     content_type=lien.content_type, object_id=lien.object_id,
                     defaults={'created_by': created_by})
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'classer_signature_completee', exc_info=True)
 
     return {
         'document_signe': document_signe,
@@ -4791,7 +4791,7 @@ def _notifier_alteration_archives(company, archivages_alteres):
             except Exception:  # pragma: no cover - best-effort.
                 continue
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_notifier_alteration_archives', exc_info=True)
 
 
 def dossier_preuve_archivage(archivage):
@@ -5009,11 +5009,11 @@ def apres_depot(document, user=None):
     try:
         matcher_depot_demandes(document)
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'apres_depot', exc_info=True)
     try:
         appliquer_regles_dossier(document, user=user)
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'apres_depot', exc_info=True)
 
 
 def matcher_depot_demandes(document):
@@ -5086,7 +5086,7 @@ def relancer_demande_document(demande, *, now=None):
                      f'« {demande.folder.nom} ».',
                 company=demande.company)
         except Exception:  # pragma: no cover - défensif.
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'relancer_demande_document', exc_info=True)
     demande.nombre_relances = F('nombre_relances') + 1  # ENF28 : incrément atomique
     demande.derniere_relance_le = now or _tz.now()
     demande.save(update_fields=['nombre_relances', 'derniere_relance_le', 'updated_at'])
@@ -5237,7 +5237,7 @@ def _appliquer_tag_expediteur(document, *, company, from_email, alias):
             company=company, slug=slug, defaults={'nom': label})
         assign_tag(document, tag)
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', '_appliquer_tag_expediteur', exc_info=True)
 
 
 def importer_message_email(raw_bytes, *, company):
@@ -5784,7 +5784,7 @@ def notifier_planifications_echues(company, *, today=None):
                     body=f'Document « {planif.document.nom} ».',
                     company=company)
             except Exception:  # pragma: no cover - défensif.
-                pass
+                logger.warning('%s : échec ignoré (dégradé)', 'notifier_planifications_echues', exc_info=True)
         planif.notifiee = True
         planif.save(update_fields=['notifiee'])
         notifiees.append(planif)
@@ -6368,7 +6368,7 @@ def caviarder_document(version, zones, *, created_by=None):
         try:
             doc.del_xml_metadata()
         except Exception:  # pragma: no cover - selon la version PyMuPDF.
-            pass
+            logger.warning('%s : échec ignoré (dégradé)', 'caviarder_document', exc_info=True)
         # garbage=4 : les objets orphelins (texte retiré) quittent le fichier.
         out_bytes = doc.tobytes(garbage=4, deflate=True)
     finally:
@@ -6617,7 +6617,7 @@ def router_document_module(source, *, company, file, filename='',
     try:
         file.seek(0)
     except Exception:  # pragma: no cover - flux non repositionnable.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'router_document_module', exc_info=True)
     contenu = file.read() or b''
     if isinstance(contenu, str):
         contenu = contenu.encode('utf-8')
@@ -6761,7 +6761,7 @@ def reinitialiser_echecs_signature(token):
         from django.core.cache import cache
         cache.delete(_cle_echecs_signature(str(token)))
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'reinitialiser_echecs_signature', exc_info=True)
 
 
 def enregistrer_echec_signature_publique(token, *, document=None,
@@ -6857,7 +6857,7 @@ def surveiller_reutilisation_suspecte(adresse_ip, company):
                       "Vérifiez les demandes de signature en cours."),
                 company=company)
     except Exception:  # pragma: no cover - défensif, jamais bloquant.
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'surveiller_reutilisation_suspecte', exc_info=True)
     return True
 
 

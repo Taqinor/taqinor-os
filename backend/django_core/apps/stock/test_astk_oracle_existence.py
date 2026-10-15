@@ -98,8 +98,11 @@ class OracleExistenceTests(TestCase):
         avant = modele.objects.count()
         r_etranger = self.api.post(url, corps(pk_etranger), format='json')
         r_absent = self.api.post(url, corps(ID_ABSENT), format='json')
-        self.assertEqual(r_etranger.status_code, 400, r_etranger.content)
-        self.assertEqual(r_absent.status_code, 400, r_absent.content)
+        # ENF11 / vague 3 : un id d'une autre société et un id absent répondent le
+        # MÊME statut (404 via IdInconnu404Mixin là où il est posé, sinon 400) et
+        # le même corps — l'oracle est l'indistinguabilité, jamais un statut figé.
+        self.assertIn(r_etranger.status_code, (400, 404), r_etranger.content)
+        self.assertEqual(r_absent.status_code, r_etranger.status_code, r_absent.content)
         texte = r_etranger.content.decode('utf-8')
         self.assertNotIn('hors de votre entreprise', texte)
         self.assertNotIn('SECRET', texte)

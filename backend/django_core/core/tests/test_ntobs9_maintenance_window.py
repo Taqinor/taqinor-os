@@ -2,15 +2,17 @@
 avant qu'elles n'arrivent."""
 from unittest import mock
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from authentication.models import Company
-from apps.roles.models import Role
 
 from core.maintenance_windows import MaintenanceWindow, notifier_fenetres_a_venir
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

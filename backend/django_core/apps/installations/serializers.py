@@ -1,7 +1,16 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict, ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, ListesStrictesMixin, TexteLie  # ENF11
+from core.champs_stricts import (  # ENF11
+    BooleenStrict,
+    ChaineStricte,
+    ChampsStrictsEntiersMixin,
+    ChampsStrictsMixin,
+    ChampsStrictsSansDecimalMixin,
+    IdInconnu404Mixin,
+    ListesStrictesMixin,
+    TexteLie,
+)
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .serializers_stage import refus_protege, valider_unicite_societe
@@ -81,7 +90,8 @@ from .models import (
 )
 
 
-class ChecklistEtapeModeleSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ChecklistEtapeModeleSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+                                     serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('template',)
 

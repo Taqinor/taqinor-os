@@ -1401,7 +1401,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── XFSM22 — durée & pièces suggérées par l'historique ──────────────────
     @oa.extend_schema(
-        parameters=[oa.qs('type_intervention', required=True, pattern=r'\S'), oa.qidv('technicien'), oa.qs('type_installation')],
+        parameters=[oa.qs('type_intervention', required=True, pattern=r'\S'), oa.qidv('technicien'),
+                    oa.qs('type_installation')],
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['get'], url_path='suggestions-creation',

@@ -18,12 +18,14 @@ import ast
 import fnmatch
 from pathlib import Path
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from authentication.models import Company
-from apps.roles.models import Role
 from core.permissions import SENSITIVE_FIELDS
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 
@@ -64,7 +66,6 @@ class ProduitLeakTests(TestCase):
     def test_low_priv_role_never_sees_prix_achat_or_marge(self):
         import importlib
 
-        from django.apps import apps as django_apps
         from rest_framework.test import APIRequestFactory
         from rest_framework.request import Request
 

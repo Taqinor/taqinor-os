@@ -1,5 +1,6 @@
 """T9 — endpoints d'import réutilisable (dry-run + commit). Multi-tenant :
 la société vient toujours du serveur, jamais du corps."""
+import copy
 import csv
 import io
 import logging
@@ -11,7 +12,9 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, parser_classes
-from core.parseurs import PARSEURS_JSON
+from core.champs_stricts import ChaineStricte
+from core.parametres_requete import choix_ou_400
+from core.parseurs import PARSEURS_JSON, corps_valide
 from rest_framework.response import Response
 from rest_framework.parsers import FormParser, MultiPartParser
 
@@ -20,10 +23,12 @@ from django.http import Http404
 from authentication.permissions import (
     IsResponsableOrAdmin, HasPermissionAndRole,
 )
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.selectors import get_company_object
 
 from . import services
 from .models import ImportJob
+from .schema_fields import BooleenFormulaire
 from .holidays_import import exporter_feries_csv, importer_feries_csv
 from .translations_i18n import exporter_traductions_csv, importer_traductions_csv
 from rest_framework import serializers as drf_serializers
@@ -70,20 +75,40 @@ _CIBLES = sorted(services.TARGETS)
 _MODES = ['creer', 'maj', 'upsert']
 
 
-def _corps_import(nom, avec_rollback=False):
+class _OptionsImport(serializers.Serializer):
+    """Champs FACULTATIFS du corps multipart de dry-run/commit : LE prédicat,
+    à la fois publié au schéma (``_corps_import``) et appliqué par la vue
+    (``_options_import``). ``file`` et ``target`` restent lus par ``_read``."""
+    mapping = ChaineStricte(required=False, allow_blank=True)
+    mode = serializers.ChoiceField(choices=_MODES, required=False)
+    ecraser = BooleenFormulaire(required=False)
+    external_system = ChaineStricte(required=False, allow_blank=True)
+
+
+class _OptionsCommit(_OptionsImport):
+    rollback_on_error = BooleenFormulaire(required=False)
+
+
+def _corps_import(nom, options=_OptionsImport):
     """Corps multipart de dry-run/commit (``file`` + ``target`` obligatoires)."""
     champs = {
         'file': serializers.FileField(),
         'target': serializers.ChoiceField(choices=_CIBLES),
-        'mapping': serializers.CharField(required=False, allow_blank=True),
-        'mode': serializers.ChoiceField(choices=_MODES, required=False),
-        'ecraser': serializers.BooleanField(required=False),
-        'external_system': serializers.CharField(
-            required=False, allow_blank=True),
+        **{cle: copy.deepcopy(champ)
+           for cle, champ in options._declared_fields.items()},
     }
-    if avec_rollback:
-        champs['rollback_on_error'] = serializers.BooleanField(required=False)
     return {'multipart/form-data': inline_serializer(nom, champs)}
+
+
+def _options_import(request, options):
+    """Options du formulaire validées par le serializer publié : ``mode`` hors
+    liste, drapeau autre que ``true``/``false`` (``{}``, ``1``…) ou texte à
+    caractère nul → 400 nommant le champ, jamais pris pour une valeur par
+    défaut. Le corps multipart est lu en dict SIMPLE (dernière valeur d'une clé
+    répétée) pour que ``ecraser=`` vide soit une valeur et non une absence."""
+    serializer = options(data=request.data.dict(), context={'request': request})
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
 
 
 # ERR53 — Bornes anti-DoS : un upload trop gros (en octets) ou un fichier de
@@ -91,11 +116,6 @@ def _corps_import(nom, avec_rollback=False):
 # avec un 400 clair plutôt qu'une erreur générique avalée.
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 Mo
 MAX_ROWS = 10000
-
-
-def _bool(valeur):
-    """Drapeau de formulaire multipart (toujours reçu en texte)."""
-    return str(valeur or '').strip().lower() in ('1', 'true', 'on', 'oui')
 
 
 def _read(request):
@@ -148,10 +168,11 @@ def dry_run(request):
     f, target, err = _read(request)
     if err:
         return err
-    mapping_name = request.data.get('mapping') or None
-    mode = (request.data.get('mode') or 'creer').strip().lower()
-    ecraser = _bool(request.data.get('ecraser'))
-    external_system = request.data.get('external_system') or None
+    options = _options_import(request, _OptionsImport)
+    mapping_name = options.get('mapping') or None
+    mode = options.get('mode', 'creer')
+    ecraser = options.get('ecraser', False)
+    external_system = options.get('external_system') or None
     try:
         result = services.dry_run(
             f.read(), f.name, target, company=request.user.company,
@@ -187,7 +208,7 @@ _VIEWS_COMMIT_REPONSE = inline_serializer('ViewsCommitReponse', {
 
 
 @extend_schema(
-    request=_corps_import('ImportCommitRequete', avec_rollback=True),
+    request=_corps_import('ImportCommitRequete', _OptionsCommit),
     responses=_VIEWS_COMMIT_REPONSE)
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
@@ -211,16 +232,17 @@ def commit(request):
     # XPLT1 — mode d'import optionnel (creer=défaut, maj, upsert), jamais lu
     # ailleurs que le body du formulaire (la société, elle, reste forcée
     # côté serveur via request.user.company).
-    mode = (request.data.get('mode') or 'creer').strip().lower()
-    external_system = request.data.get('external_system') or None
+    options = _options_import(request, _OptionsCommit)
+    mode = options.get('mode', 'creer')
+    external_system = options.get('external_system') or None
     # XPLT2 — mapping sauvegardé optionnel + choix commit partiel (défaut,
     # comportement historique) vs rollback atomique total si une ligne échoue.
-    mapping_name = request.data.get('mapping') or None
-    rollback_on_error = _bool(request.data.get('rollback_on_error'))
+    mapping_name = options.get('mapping') or None
+    rollback_on_error = options.get('rollback_on_error', False)
     # Garde-fou : sans ``ecraser=true`` explicite, un import ne peut que
     # RENSEIGNER un champ vide — jamais remplacer une valeur déjà saisie. Le
     # défaut sûr est donc l'absence du drapeau.
-    ecraser = _bool(request.data.get('ecraser'))
+    ecraser = options.get('ecraser', False)
     try:
         result = services.commit(
             f.read(), f.name, target, request.user.company, request.user,
@@ -254,12 +276,8 @@ def commit(request):
 def list_mappings(request):
     """XPLT2 — mappings sauvegardés de la société courante (sélecteur), filtrés
     optionnellement par cible (``?target=leads``)."""
-    target = request.query_params.get('target') or None
-    if target is not None and target not in services.TARGETS:
-        cibles = ', '.join(sorted(services.TARGETS))
-        return Response(
-            {'detail': f'Cible invalide (valeurs possibles : {cibles}).'},
-            status=400)
+    # ``?target=`` vide ou hors liste → 400 (l'énumération est publiée).
+    target = choix_ou_400(request, 'target', _CIBLES)
     mappings = services.list_mappings(request.user.company, target=target)
     return Response([
         {'id': m.pk, 'target': m.entity, 'nom': m.nom, 'mapping': m.mapping}
@@ -267,11 +285,23 @@ def list_mappings(request):
     ])
 
 
+NOM_MAPPING_MAX = 150  # ``ImportMapping.nom`` (varchar 150)
+
+#: Corps de ``POST mapping/`` : LE prédicat publié ET appliqué (``corps_valide``).
+#: ``nom`` / valeurs : textes stricts (un nombre n'est plus « converti » en
+#: texte) ; le plafond de ``nom`` est celui de la colonne.
+_MAPPING_REQUETE = inline_serializer('ImportMappingRequete', {
+    'target': serializers.ChoiceField(choices=_CIBLES),
+    'nom': ChaineStricte(max_length=NOM_MAPPING_MAX),
+    'mapping': serializers.DictField(child=ChaineStricte())})
+
+
 @extend_schema(
-    request=inline_serializer('ImportMappingRequete', {
-        'target': serializers.ChoiceField(choices=_CIBLES),
-        'nom': serializers.CharField(),
-        'mapping': serializers.DictField()}),
+    # ENF11 (api-fuzz) : un mapping vide est refusé (400) — le corps publié exige
+    # au moins une paire colonne→champ, de texte à texte.
+    extensions={EXTENSION_CORPS_RESSERRE: {
+        'type': 'object', 'properties': {'mapping': {'minProperties': 1}}}},
+    request=_MAPPING_REQUETE,
     responses=inline_serializer('ImportMappingEnregistre', {
         'id': serializers.IntegerField(),
         'target': serializers.CharField(),
@@ -283,19 +313,20 @@ def list_mappings(request):
 def save_mapping(request):
     """XPLT2 — sauvegarde (ou remplace) un mapping colonne→champ nommé pour une
     cible, réapplicable au prochain dry-run/commit via ``mapping=<nom>``."""
-    target = request.data.get('target')
-    nom = (request.data.get('nom') or '').strip()
-    mapping = request.data.get('mapping')
-    if target not in services.TARGETS:
-        cibles = ', '.join(sorted(services.TARGETS))
-        return Response(
-            {'detail': f'Cible invalide (valeurs possibles : {cibles}).'},
-            status=400)
-    if not nom:
-        return Response({'detail': 'Nom de mapping requis.'}, status=400)
-    if not isinstance(mapping, dict) or not mapping:
+    # ENF11 — le corps est validé par le serializer PUBLIÉ : un corps non objet
+    # (``[null, null]``), un type faux ou un ``nom`` trop long répondent 400
+    # (la lecture à la main levait AttributeError → 500).
+    corps = corps_valide(request, _MAPPING_REQUETE)
+    target, nom, mapping = corps['target'], corps['nom'], corps['mapping']
+    if not mapping:
         return Response(
             {'detail': 'Mapping invalide (dict colonne→champ attendu).'},
+            status=400)
+    # Une colonne portant un caractère nul ne peut pas être stockée en JSON
+    # (jsonb le refuse → 500) et ne correspond à aucun en-tête de fichier.
+    if any('\x00' in colonne for colonne in mapping):
+        return Response(
+            {'mapping': ['Nom de colonne invalide (caractère nul).']},
             status=400)
     # AANA9 — un champ hors ``FIELD_MAPS[target]`` (company_id, owner_id…)
     # est refusé en 400 lisible, jamais enregistré.

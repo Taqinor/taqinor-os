@@ -24,6 +24,9 @@ from .devis_auto import (
     champs_manquants_detail, champs_requis, message_manquants,
     source_conso, visite_avant_devis, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ── LW29/CRX19 — PII du lead : une SEULE liste, un SEUL masquage ────────────
@@ -385,7 +388,8 @@ def incoherence_segment(type_lead, devis):
     l'inverse, le lead est agricole et TOUS ses devis sont résidentiels.
     CIQ409 (contrat ``lead_pro.json``) étend la règle au C&I : un devis
     commercial/industriel sur un lead qui n'est ni l'un ni l'autre, ou un
-    lead pro dont tous les devis sont résidentiels. Fonction PURE sur la lecture mince ``devis`` de ventes ; elle n'écrit
+    lead pro dont tous les devis sont résidentiels. Fonction PURE sur la lecture mince ``devis`` de ventes ; elle
+    n'écrit
     rien — le commercial change le type à la main."""
     type_lead = type_lead or ''
     par_mode = {}
@@ -710,6 +714,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 'summary': act.summary or act.activity_type.nom,
             }
         except Exception:
+            logger.warning('%s : échec ignoré (dégradé)', 'get_next_activity', exc_info=True)
             return None
 
     @extend_schema_field(serializers.CharField(allow_null=True))
@@ -795,6 +800,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
                 ref = make_aware(ref)
             return (now - ref).days
         except Exception:
+            logger.warning('%s : échec ignoré (dégradé)', 'get_stage_since_days', exc_info=True)
             return None
 
     def validate_owner(self, value):

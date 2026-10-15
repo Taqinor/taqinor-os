@@ -33,6 +33,18 @@ class TestSavedMapping(ImportBase):
         }, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_save_mapping_types_faux_400_jamais_500(self):
+        # ENF11 (api-fuzz) : nom / target non texte, mapping vide ou à valeurs
+        # non texte répondaient 500 ou passaient — tous 400 désormais.
+        for corps in (
+                {'target': 'leads', 'nom': [None, None], 'mapping': {'A': 'nom'}},
+                {'target': ['leads'], 'nom': 'X', 'mapping': {'A': 'nom'}},
+                {'target': 'leads', 'nom': 'X', 'mapping': {}},
+                {'target': 'leads', 'nom': 'X', 'mapping': {'A': 3}}):
+            resp = self.api.post(
+                '/api/django/imports/mapping/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
 
 class TestImportJobLog(ImportBase):
     def test_commit_creates_job_with_row_errors(self):
@@ -125,3 +137,50 @@ class TestRollbackChoice(ImportBase):
         job = ImportJob.objects.get(pk=resp.data['job_id'])
         self.assertEqual(job.statut, ImportJob.Statut.ECHEC)
         self.assertEqual(job.created_count, 0)
+
+    def test_save_mapping_corps_non_objet_nom_long_et_colonne_nulle_400(self):
+        # CI #1000 fuzz : `[null, null]` levait AttributeError (500) ; un `nom`
+        # nombre était converti en texte ; un `nom` > 150 caractères débordait
+        # la colonne ; une colonne à caractère nul est refusée par jsonb.
+        for corps in (
+                [None, None],
+                {'target': 'leads', 'nom': 0, 'mapping': {'A': 'nom'}},
+                {'target': 'leads', 'nom': 'x' * 151, 'mapping': {'A': 'nom'}},
+                {'target': 'leads', 'nom': 'X', 'mapping': {'A\x00': 'nom'}}):
+            resp = self.api.post(
+                '/api/django/imports/mapping/', corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_list_mappings_cible_vide_ou_inconnue_400(self):
+        for cible in ('', 'AAA'):
+            resp = self.api.get(f'/api/django/imports/mappings/?target={cible}')
+            self.assertEqual(resp.status_code, 400, (cible, resp.content))
+        self.assertEqual(
+            self.api.get('/api/django/imports/mappings/?target=leads').status_code,
+            200)
+
+    def test_dry_run_et_commit_options_stricts_400(self):
+        # CI #1000 fuzz : `ecraser={}` / `rollback_on_error={}` étaient lus
+        # comme « faux » en silence alors que le schéma les publie booléens ;
+        # `mode` hors liste (casse comprise) retombait sur le défaut.
+        url_dry = '/api/django/imports/dry-run/'
+        url_commit = '/api/django/imports/commit/'
+        for url, extra in (
+                (url_dry, {'ecraser': '{}'}), (url_dry, {'ecraser': '1'}),
+                (url_dry, {'ecraser': ''}), (url_dry, {'mode': 'CREER'}),
+                (url_commit, {'rollback_on_error': '{}'}),
+                (url_commit, {'rollback_on_error': 'on'}),
+                (url_commit, {'mode': ''})):
+            corps = {'file': self._csv('Nom\nKarim\n'), 'target': 'leads', **extra}
+            resp = self.api.post(url, corps, format='multipart')
+            self.assertEqual(resp.status_code, 400, (url, extra, resp.content))
+
+    def test_dry_run_et_commit_drapeaux_true_false_acceptes(self):
+        for url, extra in (
+                ('/api/django/imports/dry-run/', {'ecraser': 'False', 'mode': 'maj'}),
+                ('/api/django/imports/commit/',
+                 {'ecraser': 'true', 'rollback_on_error': 'False',
+                  'mode': 'upsert'})):
+            corps = {'file': self._csv('Nom\nKarim\n'), 'target': 'leads', **extra}
+            resp = self.api.post(url, corps, format='multipart')
+            self.assertEqual(resp.status_code, 200, (url, extra, resp.content))

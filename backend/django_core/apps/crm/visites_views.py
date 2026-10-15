@@ -251,10 +251,15 @@ class LeadVisitesActionsMixin:
             'rappel_juridique': avertissement['rappel_juridique'],
         })
 
-    @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False), date_prevue=serializers.CharField(), etape=serializers.CharField(required=False), note_etape=serializers.CharField(required=False), notes=serializers.CharField(required=False), replanifier=serializers.BooleanField(required=False)), responses={201: inline_serializer('CrmLeadVisitePlanifiee', {
-        'visite': serializers.DictField(),
-        'prochaine_touche': serializers.DictField(allow_null=True),
-    })})
+    @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False),
+                                    date_prevue=serializers.CharField(), etape=serializers.CharField(required=False),
+                                    note_etape=serializers.CharField(required=False),
+                                    notes=serializers.CharField(required=False),
+                                    replanifier=serializers.BooleanField(required=False)),
+                   responses={201: inline_serializer('CrmLeadVisitePlanifiee', {
+                       'visite': serializers.DictField(),
+                       'prochaine_touche': serializers.DictField(allow_null=True),
+                   })})
     @action(detail=True, methods=['post'], url_path='visites/planifier',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def planifier_visite(self, request, pk=None):
@@ -344,10 +349,12 @@ class LeadVisitesActionsMixin:
                              _prochaine_touche_a_faire(lead))},
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[sd.param('cle', enum=[*CLES_MESSAGE_VISITE], required=True, description='Clé du message.')], responses=inline_serializer('CrmLeadMessageVisite', {
-        'corps_fr': serializers.CharField(),
-        'corps_darija': serializers.CharField(),
-    }))
+    @extend_schema(parameters=[sd.param('cle', enum=[*CLES_MESSAGE_VISITE], required=True,
+                                        description='Clé du message.')],
+                   responses=inline_serializer('CrmLeadMessageVisite', {
+                       'corps_fr': serializers.CharField(),
+                       'corps_darija': serializers.CharField(),
+                   }))
     @action(detail=True, methods=['get'], url_path='message-visite',
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def message_visite(self, request, pk=None):
@@ -381,12 +388,16 @@ class LeadVisitesActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(rendu)
 
-    @extend_schema(request=sd.corps('CrmMessageVisiteOuvertRequest', cle=ChoixDocumente(choices=CLES_MESSAGE_VISITE + CLES_MESSAGE_DOSSIER), etape=serializers.RegexField(r'^[0-9]+$', required=False), langue=ChoixDocumente(choices=LANGUES_MESSAGE_VISITE, required=False)), responses=inline_serializer('CrmMessageVisiteOuvert', {
-        'journalise': serializers.BooleanField(),
-        'cle': serializers.CharField(),
-        'langue': serializers.CharField(),
-        'etape': serializers.IntegerField(allow_null=True),
-    }))
+    @extend_schema(request=sd.corps('CrmMessageVisiteOuvertRequest',
+                                    cle=ChoixDocumente(choices=CLES_MESSAGE_VISITE + CLES_MESSAGE_DOSSIER),
+                                    etape=serializers.RegexField(r'^[0-9]+$', required=False),
+                                    langue=ChoixDocumente(choices=LANGUES_MESSAGE_VISITE, required=False)),
+                   responses=inline_serializer('CrmMessageVisiteOuvert', {
+                       'journalise': serializers.BooleanField(),
+                       'cle': serializers.CharField(),
+                       'langue': serializers.CharField(),
+                       'etape': serializers.IntegerField(allow_null=True),
+                   }))
     @action(detail=True, methods=['post'], url_path='message-visite/ouvert',
             permission_classes=[IsResponsableOrAdmin])
     def message_visite_ouvert(self, request, pk=None):

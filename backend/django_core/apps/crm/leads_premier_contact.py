@@ -6,6 +6,9 @@ module racine ; ``services`` réexporte ce qu'il faut (façade).
 from django.utils import timezone
 
 from . import stages
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def marquer_premier_contact(lead, *, when=None) -> bool:
@@ -26,6 +29,7 @@ def marquer_premier_contact(lead, *, when=None) -> bool:
         lead.save(update_fields=['first_contacted_at'])
         return True
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('%s : échec ignoré (dégradé)', 'marquer_premier_contact', exc_info=True)
         return False
 
 
@@ -39,7 +43,7 @@ def maybe_set_first_contacted_at(old_lead, new_lead):
         if old_lead.stage == stages.NEW and new_lead.stage != stages.NEW:
             marquer_premier_contact(new_lead)
     except Exception:
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'maybe_set_first_contacted_at', exc_info=True)
 
 
 def lead_sla_hours(company) -> int:
@@ -52,7 +56,7 @@ def lead_sla_hours(company) -> int:
         if profile is not None:
             return profile.lead_sla_hours
     except Exception:
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'lead_sla_hours', exc_info=True)
     return 24
 
 

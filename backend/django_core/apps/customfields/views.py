@@ -5,6 +5,9 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
+from core.champs_stricts import EntierStrict, entier_ou_400
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.parseurs import corps_valide
 from core.viewsets import CompanyScopedModelViewSet
 from apps.parametres.models import SettingsAuditLog
 from .audit_plateforme import AuditPlateformeMixin
@@ -14,7 +17,7 @@ from .models import (
 from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
     FieldRolePermissionSerializer, ReordonnerDefinitionsSerializer,
-    _module_model,
+    _module_model, corps_definition_resserre,
 )
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
@@ -88,8 +91,20 @@ def _champ_formulaire(field_def, niveau_role=None):
     }
 
 
-@extend_schema_view(list=extend_schema(parameters=[
-    OpenApiParameter('module', OpenApiTypes.STR, required=False)]))
+#: Corps de ``POST definitions/<id>/generer/`` : LE prédicat publié ET appliqué
+#: (identifiant borné à l'entier 32 bits des clés primaires).
+_GENERER_REQUETE = inline_serializer('CustomFieldGenererRequete', {
+    'record_id': EntierStrict(min_value=1, max_value=2147483647)})
+
+
+_CORPS_DEFINITION = extend_schema(extensions={
+    EXTENSION_CORPS_RESSERRE: corps_definition_resserre()})
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[
+        OpenApiParameter('module', OpenApiTypes.STR, required=False)]),
+    create=_CORPS_DEFINITION, update=_CORPS_DEFINITION)
 class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
     """Définitions de champs personnalisés (Paramètres). Lecture tout rôle
     (les formulaires en ont besoin), écriture admin. Filtre ?module=lead.
@@ -209,8 +224,7 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({'ok': True, 'count': len(defs)})
 
     @extend_schema(
-        request=inline_serializer('CustomFieldGenererRequete', {
-            'record_id': drf_serializers.IntegerField()}),
+        request=_GENERER_REQUETE,
         responses=inline_serializer('CustomFieldGenererReponse', {
             'configured': drf_serializers.BooleanField(),
             'ok': drf_serializers.BooleanField(),
@@ -233,10 +247,9 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
         if field_def.type != 'ia':
             return Response(
                 {'detail': "Ce champ n'est pas de type IA."}, status=400)
-        record_id = request.data.get('record_id')
-        if not record_id:
-            return Response(
-                {'detail': 'record_id requis.'}, status=400)
+        # Corps validé par le serializer PUBLIÉ (``.get`` sur un corps liste
+        # levait AttributeError → 500 ; un type faux passait jusqu'au filtre).
+        record_id = corps_valide(request, _GENERER_REQUETE)['record_id']
 
         from .services import generate_ia_value
         company = request.user.company
@@ -296,8 +309,10 @@ class FieldRolePermissionViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        field_def = self.request.query_params.get('field_def')
-        if field_def:
+        # ``?field_def=abc`` levait ValueError (500) : entier ou 400.
+        field_def = entier_ou_400(
+            self.request.query_params.get('field_def'), 'field_def')
+        if field_def is not None:
             qs = qs.filter(field_def_id=field_def)
         return qs
 

@@ -802,7 +802,9 @@ def resume_sauvegardes(company):
 
     rto_annonce_heures = None
     try:
-        from apps.parametres.models import CompanyProfile
+        from django.apps import apps as django_apps
+        # ENF20 : profil résolu par libellé, aucune arête statique core -> apps.
+        CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
         profile = CompanyProfile.objects.filter(company=company).first()
         if profile is not None:
             rto_annonce_heures = profile.rto_annonce_heures

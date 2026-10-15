@@ -1,4 +1,5 @@
-"""Rendu des messages de touche : gabarits, placeholders, validité, segments, identité (SPL9, extrait de crm/services.py : déplacement pur).
+"""Rendu des messages de touche : gabarits, placeholders, validité, segments, identité (SPL9, extrait de crm/services.py
+: déplacement pur).
 
 Module de type (a) de la scission : il n'importe ni ``.services`` ni un
 module racine ; ``services`` réexporte ce qu'il faut (façade).
@@ -214,6 +215,7 @@ def _nom_affiche_marque(lead):
         from apps.parametres.models import CompanyProfile
         profile = CompanyProfile.objects.filter(company=company).first()
     except Exception:  # noqa: BLE001 — un profil illisible ne bloque jamais l'envoi
+        logger.warning('%s : échec ignoré (dégradé)', '_nom_affiche_marque', exc_info=True)
         profile = None
     nom = (getattr(profile, 'nom', '') or '').strip()
     if nom:

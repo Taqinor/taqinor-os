@@ -128,7 +128,14 @@ class DevisPdfActionsMixin:
             'date': job.get('at') if statut == 'echec' else None,
         })
 
-    @extend_schema(parameters=[OpenApiParameter('pdf_mode', OpenApiTypes.STR, required=False, enum=['full', 'onepage']), OpenApiParameter('show_monthly', OpenApiTypes.STR, required=False), OpenApiParameter('devis_final', OpenApiTypes.STR, required=False), OpenApiParameter('include_etude', OpenApiTypes.STR, required=False), OpenApiParameter('include_calepinage', OpenApiTypes.STR, required=False), OpenApiParameter('include_note_calcul', OpenApiTypes.STR, required=False), OpenApiParameter('langue', OpenApiTypes.STR, required=False)], responses={(200, 'application/pdf'): OpenApiTypes.BINARY, 409: D.ErreurDetail})
+    @extend_schema(parameters=[OpenApiParameter('pdf_mode', OpenApiTypes.STR, required=False, enum=['full', 'onepage']),
+                               OpenApiParameter('show_monthly', OpenApiTypes.STR, required=False),
+                               OpenApiParameter('devis_final', OpenApiTypes.STR, required=False),
+                               OpenApiParameter('include_etude', OpenApiTypes.STR, required=False),
+                               OpenApiParameter('include_calepinage', OpenApiTypes.STR, required=False),
+                               OpenApiParameter('include_note_calcul', OpenApiTypes.STR, required=False),
+                               OpenApiParameter('langue', OpenApiTypes.STR, required=False)],
+                   responses={(200, 'application/pdf'): OpenApiTypes.BINARY, 409: D.ErreurDetail})
     @action(
         detail=True,
         methods=['get'],

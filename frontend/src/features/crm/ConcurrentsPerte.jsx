@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Swords } from 'lucide-react'
 import { Badge, Button, toast } from '../../ui'
 import crmApi from '../../api/crmApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { frenchError } from '../../lib/frenchError'
 
 /* ============================================================================
@@ -41,8 +42,9 @@ export default function ConcurrentsPerte() {
 
   const chargerConcurrents = (leadId) => {
     setChargementConcurrents(true)
-    crmApi.getConcurrentsPerte({ lead: leadId })
-      .then((res) => setConcurrents(res.data?.results ?? res.data ?? []))
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      crmApi.getConcurrentsPerte({ lead: leadId, page, page_size: pageSize }).then((r) => r.data))
+      .then((rows) => setConcurrents((Array.isArray(rows) ? rows : (rows?.results ?? []))))
       .catch(() => setConcurrents([]))
       .finally(() => setChargementConcurrents(false))
   }

@@ -22,7 +22,8 @@ from rest_framework.decorators import (
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole
-from core.parseurs import PARSEURS_JSON
+from core.champs_stricts import ChaineStricte
+from core.parseurs import PARSEURS_JSON, corps_valide
 
 from .schema_fields import champ_choix
 from .exporters import (
@@ -47,17 +48,21 @@ def _company_of(user):
 
 
 def _clean_objects(raw):
-    """Garde uniquement les clés connues, dans l'ordre du registre.
+    """Clés demandées (DÉJÀ validées par ``SauvegardeRequete`` : toutes
+    connues), dans l'ordre du registre.
 
     Liste vide / absente -> défaut (tous les objets).
     """
     if not raw:
         return list(DEFAULT_OBJECTS)
-    if isinstance(raw, str):
-        raw = [s.strip() for s in raw.split(',') if s.strip()]
-    requested = {k for k in raw if k in REGISTRY}
+    requested = set(raw)
     keys = [k for k in REGISTRY if k in requested]
     return keys or list(DEFAULT_OBJECTS)
+
+
+#: ENF11 (api-fuzz) — « format absent » ≠ « format: null » : seule l'ABSENCE de
+#: la clé retombe sur le défaut ; `null` (type faux) est refusé comme tout type faux.
+_ABSENT = object()
 
 
 def _clean_format(raw, repli=False):
@@ -66,7 +71,7 @@ def _clean_format(raw, repli=False):
     lieu d'être remplacée en silence par le défaut. ``repli`` : export d'UN
     objet, où une chaîne inconnue retombe sur le défaut (comportement
     documenté et déclaré) ; un type faux reste refusé."""
-    if raw is None:
+    if raw is _ABSENT:
         return DEFAULT_FORMAT
     if not isinstance(raw, str):
         return None
@@ -94,13 +99,26 @@ def export_objects_list(request):
     })
 
 
-@extend_schema(
-    request=inline_serializer('ExportObjetRequete', {
-        'object': champ_choix(REGISTRY),
-        'format': serializers.CharField(
-            required=False,
-            help_text='csv, xlsx ou json ; valeur inconnue ⇒ csv.')}),
-    responses=_FICHIERS_EXPORT)
+#: Corps de ``POST export-object/`` : LE prédicat publié ET appliqué
+#: (``corps_valide``) — un corps non objet, un ``object`` de type faux ou
+#: inconnu répondent 400 (la lecture à la main levait AttributeError → 500).
+_EXPORT_OBJET_REQUETE = inline_serializer('ExportObjetRequete', {
+    'object': champ_choix(REGISTRY),
+    # allow_blank : une valeur blanche est « inconnue » donc ramenée à csv
+    # (ENF11 api-fuzz : le schéma n'exige plus un caractère visible).
+    'format': ChaineStricte(
+        required=False, allow_blank=True,
+        help_text='csv, xlsx ou json ; valeur inconnue ⇒ csv.')})
+
+#: Corps de ``POST sauvegarde/`` : chaque clé de ``objects`` doit être connue
+#: (une clé inconnue ou vide était écartée en silence).
+_SAUVEGARDE_REQUETE = inline_serializer('SauvegardeRequete', {
+    'objects': serializers.ListField(
+        child=champ_choix(REGISTRY), required=False),
+    'format': champ_choix(FORMATS, required=False)})
+
+
+@extend_schema(request=_EXPORT_OBJET_REQUETE, responses=_FICHIERS_EXPORT)
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
 @parser_classes(PARSEURS_JSON)
@@ -110,10 +128,9 @@ def export_object(request):
     if company is None:
         return Response({'detail': 'Aucune société rattachée.'}, status=403)
 
-    key = (request.data.get('object') or '').strip()
-    if key not in REGISTRY:
-        return Response({'detail': 'Objet inconnu.'}, status=400)
-    fmt = _clean_format(request.data.get('format'), repli=True)
+    corps = corps_valide(request, _EXPORT_OBJET_REQUETE)
+    key = corps['object']
+    fmt = _clean_format(corps.get('format', _ABSENT), repli=True)
     if fmt is None:
         return Response(_FORMAT_INVALIDE, status=400)
 
@@ -127,10 +144,7 @@ def export_object(request):
 
 
 @extend_schema(
-    request=inline_serializer('SauvegardeRequete', {
-        'objects': serializers.ListField(
-            child=champ_choix(REGISTRY), required=False),
-        'format': champ_choix(FORMATS, required=False)}),
+    request=_SAUVEGARDE_REQUETE,
     responses={(200, 'application/zip'): OpenApiTypes.BINARY})
 @api_view(['POST'])
 @permission_classes([IsAdminRole])
@@ -145,8 +159,9 @@ def sauvegarde(request):
     if company is None:
         return Response({'detail': 'Aucune société rattachée.'}, status=403)
 
-    keys = _clean_objects(request.data.get('objects'))
-    fmt = _clean_format(request.data.get('format'))
+    corps = corps_valide(request, _SAUVEGARDE_REQUETE)
+    keys = _clean_objects(corps.get('objects'))
+    fmt = _clean_format(corps.get('format', _ABSENT))
     if fmt is None:
         return Response(_FORMAT_INVALIDE, status=400)
     stamp = datetime.date.today().isoformat()

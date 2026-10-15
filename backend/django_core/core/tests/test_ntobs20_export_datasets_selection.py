@@ -12,13 +12,15 @@ import io
 import zipfile
 from unittest import mock
 
+from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.roles.models import Role
 from authentication.models import Company
 from core.tasks import export_reversibilite_tenant
+
+Role = django_apps.get_model('roles', 'Role')
 
 User = get_user_model()
 

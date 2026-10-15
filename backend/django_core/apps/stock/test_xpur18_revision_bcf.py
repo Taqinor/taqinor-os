@@ -219,3 +219,15 @@ class TestHausseInvalideApprobation(Xpur18Base):
             lignes=[{'id': ligne.id, 'quantite': 10,
                      'prix_achat_unitaire': Decimal('700')}])
         self.assertFalse(reapprobation_requise)
+
+    def test_endpoint_reviser_bcf_brouillon_409(self):
+        """ENF11 — refus d'ÉTAT : 409 (plus 400), même corps ``{'detail': …}``."""
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-X18-BR3',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.BROUILLON)
+        resp = self.api.post(
+            f'/api/django/stock/bons-commande-fournisseur/{bc.id}/reviser/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('révisé', resp.data['detail'])

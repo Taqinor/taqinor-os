@@ -27,6 +27,7 @@ from . import delivery as delivery_service
 from rest_framework.parsers import JSONParser
 
 from core.champs_stricts import ChaineStricte, EntierStrict
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_NON_BLANC
 from core.parseurs import PARSEURS_JSON
 
 
@@ -165,6 +166,30 @@ class SandboxEssaiSerializer(drf_serializers.Serializer):
     resource = drf_serializers.ChoiceField(choices=['leads'], required=False)
 
 
+#: ENF11 (api-fuzz « rejected schema-compliant request ») — le service CRM crée
+#: le lead depuis le nom du `fournisseur` OU, à défaut, du `client` : `fields`
+#: doit porter l'un des deux, en texte non blanc (sinon 400 « aucun nom
+#: exploitable »). Le corps publié le dit ; les composants de réponse ne bougent pas.
+_NOM_OCR = {'type': 'string', 'pattern': MOTIF_NON_BLANC}
+REGLE_CORPS_OCR = {
+    'type': 'object',
+    'required': ['fields'],
+    'properties': {'fields': {'anyOf': [
+        {'type': 'object', 'required': ['fournisseur'],
+         'properties': {'fournisseur': _NOM_OCR}},
+        {'type': 'object', 'required': ['client'],
+         'properties': {'client': _NOM_OCR}},
+    ]}},
+}
+
+
+_OCR_REPONSE = inline_serializer('OcrToCrmReponse', {
+    'mode': drf_serializers.CharField(),
+    'lead_id': drf_serializers.IntegerField(),
+    'devis_id': drf_serializers.IntegerField(required=False),
+    'devis_reference': drf_serializers.CharField(required=False)})
+
+
 class OcrToCrmView(APIView):
     """FG106 — passerelle « Créer un lead / brouillon de devis depuis ce document ».
 
@@ -178,12 +203,9 @@ class OcrToCrmView(APIView):
     permission_classes = [IsAdminOrResponsableTier]
     parser_classes = PARSEURS_JSON  # ENF11 — D2 : vue sans fichier = JSON seul
 
-    @extend_schema(request=OcrToCrmSerializer, responses={201: inline_serializer(
-        'OcrToCrmReponse', {
-            'mode': drf_serializers.CharField(),
-            'lead_id': drf_serializers.IntegerField(),
-            'devis_id': drf_serializers.IntegerField(required=False),
-            'devis_reference': drf_serializers.CharField(required=False)})})
+    @extend_schema(request=OcrToCrmSerializer,
+                   extensions={EXTENSION_CORPS_RESSERRE: REGLE_CORPS_OCR},
+                   responses={201: _OCR_REPONSE})
     def post(self, request):
         # Imports paresseux locaux : pas d'import des models/views des apps cibles.
         from apps.crm.services import create_draft_lead_from_ocr

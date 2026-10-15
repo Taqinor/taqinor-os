@@ -306,7 +306,8 @@ def references_avoirs(company):
 def encours_clients_par_tiers(company):
     """YLEDG13 — encours documentaire (reste dû) par client, factures NON
     annulées d'une société. Point d'entrée cross-app sanctionné
-    (rapprochement auxiliaire, jamais un import direct de ``ventes.models``). Renvoie une liste de dicts ``{'tiers_id', 'nom',
+    (rapprochement auxiliaire, jamais un import direct de ``ventes.models``). Renvoie une liste de dicts ``{'tiers_id',
+    'nom',
     'encours', 'references'}`` (encours > 0 seulement, ``references`` = les
     factures ouvertes de ce client). Lecture seule."""
     from decimal import Decimal
@@ -625,7 +626,8 @@ def jours_impaye_facture(facture_id, company):
     """ZCTR2 — Nombre de jours DEPUIS lesquels une facture est impayée.
 
     Point d'entrée cross-app en LECTURE SEULE (clôture automatique des
-    contrats impayés) — jamais un import direct de ``apps.ventes.models``. Renvoie ``0`` si la facture est introuvable (id
+    contrats impayés) — jamais un import direct de ``apps.ventes.models``. Renvoie ``0`` si la facture est introuvable
+    (id
     NULL/inconnu, autre société), déjà payée, annulée, ou sans
     ``date_echeance`` (rien à mesurer) : dans tous ces cas rien n'est dû,
     cohérent avec ``Facture.jours_retard``. Sinon renvoie le nombre de jours

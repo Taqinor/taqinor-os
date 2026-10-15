@@ -16,15 +16,16 @@ from authentication.permissions import IsResponsableOrAdmin
 from ..permissions import PeutVoirPrixAchat
 
 
-@extend_schema(parameters=[P('debut', DATE_OU_VIDE), P('fin', DATE_OU_VIDE)], responses=inline_serializer('TableauBordAchats', {
-    'debut': drf_serializers.CharField(allow_null=True),
-    'fin': drf_serializers.CharField(allow_null=True),
-    'budgets_departement': drf_serializers.JSONField(),
-    'top_fournisseurs': drf_serializers.JSONField(),
-    'delai_demande_bcf_jours': drf_serializers.FloatField(allow_null=True),
-    'delai_bcf_reception_jours': drf_serializers.FloatField(allow_null=True),
-    'exceptions_3voies': drf_serializers.JSONField(),
-}))
+@extend_schema(parameters=[P('debut', DATE_OU_VIDE), P('fin', DATE_OU_VIDE)],
+               responses=inline_serializer('TableauBordAchats', {
+                   'debut': drf_serializers.CharField(allow_null=True),
+                   'fin': drf_serializers.CharField(allow_null=True),
+                   'budgets_departement': drf_serializers.JSONField(),
+                   'top_fournisseurs': drf_serializers.JSONField(),
+                   'delai_demande_bcf_jours': drf_serializers.FloatField(allow_null=True),
+                   'delai_bcf_reception_jours': drf_serializers.FloatField(allow_null=True),
+                   'exceptions_3voies': drf_serializers.JSONField(),
+               }))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin, PeutVoirPrixAchat])  # ERR-STK-PRIX-ACHAT-SUITE
 def tableau_bord_achats_view(request):

@@ -258,6 +258,7 @@ def _noter_conception_on_layout_finalise(sender, devis, user=None, **kwargs):
         from .selectors import conception_3d_du_lead
         kwc = (conception_3d_du_lead(lead) or {}).get('kwc')
     except Exception:  # noqa: BLE001 — une puissance illisible ne bloque rien
+        logger.warning('%s : échec ignoré (dégradé)', '_noter_conception_on_layout_finalise', exc_info=True)
         kwc = None
     if kwc:
         corps = ('Conception 3D finalisée — %s kWc'

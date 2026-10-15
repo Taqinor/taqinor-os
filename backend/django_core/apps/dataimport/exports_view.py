@@ -6,7 +6,8 @@ from rest_framework.decorators import (
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
-from core.parseurs import PARSEURS_JSON
+from core.champs_stricts import EntierStrict
+from core.parseurs import PARSEURS_JSON, corps_valide
 from apps.crm.exports import build_xlsx_response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
@@ -58,11 +59,13 @@ def _factures_rows(user, ids, company_id=None):
     qs = _co_qs(Facture, user, company_id).select_related('client')
     if ids:
         qs = qs.filter(id__in=ids)
-    headers = ['Référence', 'Client', 'Statut', 'Échéance', 'Créée le']
+    # ``Facture`` n'a pas de ``date_creation`` (AttributeError → 500 dès qu'une
+    # facture existait) : sa date de référence est ``date_emission``.
+    headers = ['Référence', 'Client', 'Statut', 'Échéance', 'Émise le']
     rows = [[
         f.reference, getattr(f.client, 'nom', '') or '', f.get_statut_display(),
         f.date_echeance.isoformat() if f.date_echeance else '',
-        f.date_creation.strftime('%Y-%m-%d') if f.date_creation else '',
+        f.date_emission.strftime('%Y-%m-%d') if f.date_emission else '',
     ] for f in qs.order_by('-id')]
     return 'factures.xlsx', headers, rows, 'Factures'
 
@@ -118,14 +121,22 @@ _BUILDERS = {
 }
 
 
+#: Corps de ``POST export/<entity>/`` : LE prédicat publié ET appliqué. Les
+#: identifiants sont bornés à l'entier 32 bits des clés primaires (un entier
+#: plus grand n'existe pas) ; un corps non objet répond 400 (``.get`` sur une
+#: liste levait AttributeError → 500).
+_ID_MAX = 2147483647
+_EXPORT_LISTE_REQUETE = inline_serializer('ExportListeRequete', {
+    'ids': serializers.ListField(
+        child=EntierStrict(min_value=1, max_value=_ID_MAX), required=False),
+    'company': EntierStrict(min_value=1, max_value=_ID_MAX, required=False)})
+
+
 @extend_schema(
     parameters=[OpenApiParameter(
         'entity', OpenApiTypes.STR, OpenApiParameter.PATH,
         enum=sorted(_BUILDERS))],
-    request=inline_serializer('ExportListeRequete', {
-        'ids': serializers.ListField(
-            child=serializers.IntegerField(), required=False),
-        'company': serializers.IntegerField(required=False)}),
+    request=_EXPORT_LISTE_REQUETE,
     responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
@@ -141,23 +152,26 @@ def export_list(request, entity):
     builder = _BUILDERS.get(entity)
     if builder is None:
         return Response({'detail': 'Entité inconnue.'}, status=400)
+    corps = corps_valide(request, _EXPORT_LISTE_REQUETE)
     company_id = None
     if not request.user.company_id and request.user.is_superuser:
-        company_id = request.data.get('company')
+        company_id = corps.get('company')
         if not company_id:
             return Response(
                 {'company': 'Sélecteur de société obligatoire : un compte sans '
                             'société doit désigner la société à exporter.'},
                 status=400)
-    ids = request.data.get('ids') or []
+    ids = corps.get('ids') or []
     # APRF15 (C-APRF-028) — comme le jumeau leads (``export-xlsx``), l'export
     # des devis exporte une SÉLECTION : ``ids`` vide n'exporte plus toute la
     # société (aucune borne) mais répond 400. Les autres entités sont
-    # inchangées ici (garde APRF28).
+    # inchangées ici (garde APRF28). ENF11 (api-fuzz) : la règle dépend de
+    # l'entité du chemin, que le schéma d'un corps partagé ne sait pas dire —
+    # c'est un refus d'ÉTAT de la sélection (409), plus une requête malformée.
     if entity == 'devis' and not ids:
         return Response(
             {'detail': 'Sélection requise : sélectionnez au moins un devis '
                        'à exporter.'},
-            status=400)
+            status=409)
     filename, headers, rows, title = builder(request.user, ids, company_id)
     return build_xlsx_response(filename, headers, rows, sheet_title=title)

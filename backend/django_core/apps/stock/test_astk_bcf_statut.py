@@ -1,7 +1,7 @@
 """ASTK22 — un BCF n'atteint ENVOYE ou RECU que par ses gestes.
 
 Rejoue BCF-4 (audit stock 06/10/2026) avec un seuil d'approbation actif :
-`envoyer` = 400 MAIS PATCH {statut:'envoye'} = 200, PATCH {statut:'recu'} =
+`envoyer` = 409 MAIS PATCH {statut:'envoye'} = 200, PATCH {statut:'recu'} =
 200 sans mouvement, annulé → brouillon par PATCH = 200, envoyer-email = 200
 (statut envoyé), réception créée sur un BCF brouillon = 201.
 
@@ -83,7 +83,7 @@ class BcfStatutTests(TestCase):
 
     def test_envoyer_refuse_sans_approbation(self):
         rep = self._post(self.brouillon, 'envoyer')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)
         self.assertEqual(self._statut(self.brouillon),
                          BonCommandeFournisseur.Statut.BROUILLON)
 
@@ -105,7 +105,7 @@ class BcfStatutTests(TestCase):
     def test_email_sans_approbation_refuse(self):
         envoyer = self._post(self.brouillon, 'envoyer')
         rep = self._post(self.brouillon, 'envoyer-email')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)
         self.assertEqual(rep.data['detail'], envoyer.data['detail'])
         self.assertEqual(self._statut(self.brouillon),
                          BonCommandeFournisseur.Statut.BROUILLON)
@@ -115,7 +115,7 @@ class BcfStatutTests(TestCase):
     def test_whatsapp_sans_approbation_refuse(self):
         envoyer = self._post(self.brouillon, 'envoyer')
         rep = self._post(self.brouillon, 'whatsapp')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)
         self.assertEqual(rep.data['detail'], envoyer.data['detail'])
         self.assertNotIn('wa_url', rep.data)
         self.assertEqual(self._statut(self.brouillon),

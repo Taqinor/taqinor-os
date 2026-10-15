@@ -921,6 +921,21 @@ class OcrToCrmBridgeTests(TestCase):
                         {'mode': 'lead', 'fields': {}}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_regle_publiee_alignee_sur_le_service(self):
+        # ENF11 (api-fuzz) — le corps publié exige `fournisseur` OU `client`
+        # non blanc dans `fields` : exactement ce que le service CRM lit.
+        from apps.publicapi.views import REGLE_CORPS_OCR
+        self.assertEqual(REGLE_CORPS_OCR['required'], ['fields'])
+        exiges = sorted(
+            b['required'][0]
+            for b in REGLE_CORPS_OCR['properties']['fields']['anyOf'])
+        self.assertEqual(exiges, ['client', 'fournisseur'])
+        api = session_auth(self.admin)
+        for fields in ({'x': 1}, {'fournisseur': '  '}, {'client': ''}):
+            resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                            {'mode': 'lead', 'fields': fields}, format='json')
+            self.assertEqual(resp.status_code, 400, (fields, resp.content))
+
     def test_non_admin_forbidden(self):
         api = session_auth(self.normal)
         resp = api.post('/api/django/publicapi/ocr-to-crm/',

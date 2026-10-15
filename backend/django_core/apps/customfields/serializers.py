@@ -1,6 +1,11 @@
+from django.db import models
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import (
+    BooleenStrict, ChampsStrictsEntiersMixin, IdInconnu404Mixin,
+    MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL)
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ObjetJSON
 from .models import (
     CustomFieldDef, CustomObjectDef, CustomRecord, FieldRolePermission,
 )
@@ -9,13 +14,135 @@ from .models import (
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
 
 
+class SlugStrict(serializers.SlugField):
+    """``SlugField`` qui n'accepte que de vraies chaînes JSON, SANS rognage :
+    DRF convertissait ``0`` en ``"0"`` (slug valide) et rognait les blancs
+    autour, alors que le schéma publie ``^[-a-zA-Z0-9_]+$`` sur une chaîne —
+    un entier ou ``" a "`` étaient acceptés (api-fuzz, ``code``)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('trim_whitespace', False)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+#: Mapping de champs STRICTS des sérialiseurs de ce module : texte, booléen et
+#: entier de modèle n'acceptent que leur type JSON déclaré ; un ``SlugField``
+#: (``code``) est une vraie chaîne au motif publié.
+_MAPPING_STRICT = {
+    **ChampsStrictsEntiersMixin.serializer_field_mapping,
+    models.SlugField: SlugStrict,
+}
+
+
+class OptionsChamp(serializers.JSONField):
+    """CI #1000 (api-fuzz « rejected schema-compliant request ») — ``options``
+    d'un champ personnalisé : le schéma publiait « tout JSON » (``{}``) alors que
+    ``validate_options`` refusait ``0``/``true``/un texte. UN SEUL prédicat,
+    publié ET appliqué : liste de CHAÎNES (sans caractère nul), ``""`` ou
+    ``null`` (aucune option) ; tout autre type JSON répond 400. L'exigence
+    « un champ Choix porte au moins une option » dépend du ``type`` : elle est
+    publiée sur le corps de création/remplacement (``corps_definition_resserre``)."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+
+        super().__init__(**kwargs)
+        set_override(self, 'field', {'anyOf': [
+            {'type': 'array', 'nullable': True,
+             'items': {'type': 'string', 'pattern': MOTIF_SANS_NUL}},
+            {'type': 'string', 'enum': ['']},
+        ]})
+
+    def to_internal_value(self, data):
+        if data != '' and not (isinstance(data, list) and all(
+                isinstance(o, str) and '\x00' not in o for o in data)):
+            raise serializers.ValidationError('Liste d’options attendue.')
+        return super().to_internal_value(data)
+
+
+def corps_definition_resserre():
+    """Règles du corps de CRÉATION / REMPLACEMENT d'une définition que le
+    composant partagé ne peut pas porter (elles dépendent du ``type``) :
+    un champ Choix exige au moins une option non vide ; un champ Relation, un
+    module cible connu ; un champ calculé, une formule non vide. Combinées en
+    ``allOf`` au corps de CETTE opération (``EXTENSION_CORPS_RESSERRE``)."""
+    from . import registry
+    types = CustomFieldDef.FieldType.values
+
+    def autre_que(type_):
+        return {'properties': {'type': {
+            'type': 'string', 'enum': [t for t in types if t != type_]}}}
+
+    def exige(type_, **proprietes):
+        return {'anyOf': [autre_que(type_), {
+            'required': ['type', *proprietes],
+            'properties': {'type': {'type': 'string', 'enum': [type_]},
+                           **proprietes}}]}
+
+    cibles = sorted(m for m in CustomFieldDef.Module.values
+                    if registry.get_model(m) is not None)
+    return {'allOf': [
+        exige('choice', options={
+            'type': 'array', 'minItems': 1,
+            'items': {'type': 'string',
+                      'pattern': MOTIF_NON_BLANC_SANS_NUL}}),
+        exige('relation', relation_module={'type': 'string', 'enum': cibles}),
+        exige('formula', formule={
+            'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}),
+    ]}
+
+
+class ModuleChamp(serializers.CharField):
+    """ENF11 (api-fuzz) — ``module`` d'une définition de champ : chaîne libre
+    côté DRF (un objet personnalisé pose ``custom:<code>``), mais le schéma
+    publie les modules RÉELLEMENT acceptés (natifs + registre) ou le préfixe
+    ``custom:`` — plus n'importe quelle chaîne que ``validate_module`` refuse."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str):  # ``0`` n'est pas un module, c'est un entier
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class _ModulePublie(OpenApiSerializerFieldExtension):
+    target_class = 'apps.customfields.serializers.ModuleChamp'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+        from . import registry
+        modules = sorted(
+            {m for m in CustomFieldDef.Module.values
+             if len(m) <= 20} | {m for m in registry.registered_module_keys()
+                                 if len(m) <= 20})
+        schema = dict(schema)
+        schema['anyOf'] = [
+            {'type': 'string', 'enum': modules},
+            {'type': 'string', 'pattern': r'^custom:[^\u0000]+$'},
+        ]
+        return schema
+
+
 class CustomFieldDefSerializer(serializers.ModelSerializer):
+    serializer_field_mapping = _MAPPING_STRICT
     # XPLT16 — `module` reste un CharField explicite (pas un ChoiceField
     # auto-dérivé des choices du modèle) : un objet personnalisé pose ses
     # définitions sous ``custom:<code>`` (préfixe validé dans `validate`, la
     # liste fixe `Module.choices` reste par ailleurs le catalogue des modules
     # natifs — voir `validate` pour la double vérification).
-    module = serializers.CharField(max_length=20)
+    module = ModuleChamp(max_length=20)
+    # ``JSONField`` publié `{}` (tout) alors que `validate` exige un objet :
+    # `conditions: 1` était « conforme » puis refusé. Objet JSON ou null.
+    conditions = ObjetJSON(required=False, allow_null=True)
+    options = OptionsChamp(required=False, allow_null=True)
+    rollup_config = ObjetJSON(required=False, allow_null=True)
 
     class Meta:
         model = CustomFieldDef
@@ -54,15 +181,26 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         raise serializers.ValidationError('Module inconnu.')
 
     def validate_options(self, value):
-        # Normalise les options en liste de chaînes non vides (tolère un dict
-        # ou des espaces parasites côté entrée).
+        # Normalise les options en liste de chaînes non vides (tolère les
+        # espaces parasites côté entrée) ; ``OptionsChamp`` a déjà exigé une
+        # liste de chaînes, ``""`` ou ``null``.
         if value in (None, ''):
             return value
-        if isinstance(value, dict):
-            value = list(value.values())
-        if not isinstance(value, list):
-            raise serializers.ValidationError('Liste d’options attendue.')
-        return [str(o).strip() for o in value if str(o).strip()]
+        propres = [o.strip() for o in value if o.strip()]
+        # Un champ Choix dont une option est blanche est refusé (le schéma de
+        # création publie « chaque option non vide ») — au lieu de l'écarter.
+        if (self._type_vise() == CustomFieldDef.FieldType.CHOICE
+                and len(propres) != len(value)):
+            raise serializers.ValidationError(
+                'Une option de choix ne peut pas être vide.')
+        return propres
+
+    def _type_vise(self):
+        """Type de la définition en cours d'écriture (corps, sinon instance)."""
+        brut = getattr(self, 'initial_data', None)
+        if hasattr(brut, 'get') and 'type' in brut:
+            return brut['type']
+        return getattr(self.instance, 'type', CustomFieldDef.FieldType.TEXT)
 
     def validate(self, attrs):
         # L816 — un champ de type « choice » exige au moins une option : un
@@ -330,9 +468,12 @@ def _validate_fichier_value(field_def, val):
     raise ValidationError({field_def.code: 'Fichier attendu.'})
 
 
-class FieldRolePermissionSerializer(SameCompanyFKSerializerMixin,
+class FieldRolePermissionSerializer(IdInconnu404Mixin,
+                                    SameCompanyFKSerializerMixin,
                                     serializers.ModelSerializer):
     """NTEXT9 — permission de champ par palier de rôle (admin)."""
+
+    serializer_field_mapping = _MAPPING_STRICT
 
     # ENF17 — FK inscriptible bornée à la société : un id d'ailleurs reçoit la
     # réponse d'un id absent (400), à la création comme au PATCH.
@@ -367,6 +508,7 @@ class FieldRolePermissionSerializer(SameCompanyFKSerializerMixin,
 # --- XPLT16 — objets personnalisés no-code ----------------------------------
 
 class CustomObjectDefSerializer(serializers.ModelSerializer):
+    serializer_field_mapping = _MAPPING_STRICT  # ``code`` (slug) = vraie chaîne
     actif = BooleenStrict(required=False)  # ENF11 : `0`/`"oui"` = 400
 
     class Meta:
@@ -384,6 +526,10 @@ class ReordonnerDefinitionsSerializer(serializers.Serializer):
 
 
 class CustomRecordSerializer(serializers.ModelSerializer):
+    # ``data`` est un objet {code_champ: valeur} (publié `{}` = tout, alors que
+    # `validate_custom_data` refuse tout non-objet).
+    data = ObjetJSON(required=False)
+
     class Meta:
         model = CustomRecord
         fields = ['id', 'objet', 'data', 'created_by',

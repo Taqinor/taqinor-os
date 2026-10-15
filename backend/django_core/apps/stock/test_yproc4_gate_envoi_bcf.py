@@ -4,7 +4,7 @@ Couvre :
   * société SANS seuil configuré : `envoyer` se comporte exactement comme
     avant (aucune régression) ;
   * société AVEC seuil actif : un BCF au-dessus du palier requis, SANS
-    approbation, ne peut pas être envoyé (400 explicite) ;
+    approbation, ne peut pas être envoyé (409 explicite) ;
   * une approbation au bon palier couvrant le montant permet l'envoi ;
   * une hausse du total du BCF au-dessus du montant approuvé invalide
     l'approbation existante (refus) ;
@@ -102,7 +102,7 @@ class TestAvecSeuilGateEnvoi(Yproc4Base):
         # approbation existante.
         bc = self._bcf_brouillon()
         resp = self._envoyer(bc)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         bc.refresh_from_db()
         self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.BROUILLON)
 
@@ -112,7 +112,7 @@ class TestAvecSeuilGateEnvoi(Yproc4Base):
         # elle, l'envoi est refusé.
         bc = self._bcf_brouillon(prix_unitaire=Decimal('100'), quantite=1)
         resp = self._envoyer(bc)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_bcf_approuve_au_bon_palier_peut_etre_envoye(self):
         bc = self._bcf_brouillon()  # total 2000 -> palier admin
@@ -134,7 +134,7 @@ class TestAvecSeuilGateEnvoi(Yproc4Base):
             produit=self.produit, quantite=5,
             prix_achat_unitaire=Decimal('1000'))
         resp = self._envoyer(bc)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_approbation_palier_responsable_ne_couvre_pas_palier_admin(self):
         bc = self._bcf_brouillon()  # total 2000 -> palier admin requis
@@ -142,7 +142,7 @@ class TestAvecSeuilGateEnvoi(Yproc4Base):
             company=self.company, bcf=bc, palier=PALIER_RESPONSABLE,
             montant_approuve=Decimal('2000'), approuve_par=self.user)
         resp = self._envoyer(bc)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
 
 class TestMultiTenant(Yproc4Base):

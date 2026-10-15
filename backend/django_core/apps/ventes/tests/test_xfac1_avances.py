@@ -12,13 +12,13 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
-from apps.ventes.models import Facture, Paiement
+from apps.ventes.models import AffectationPaiement, Facture, Paiement
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -166,7 +166,7 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/paiements/{avance.id}/ventiler/',
             {'facture': f1.id, 'montant': '1500'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_ventiler_cannot_exceed_facture_montant_du(self):
         avance = Paiement.objects.create(
@@ -179,7 +179,7 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/paiements/{avance.id}/ventiler/',
             {'facture': f1.id, 'montant': '3000'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     # ── 4. Multi-tenant : cross-company 404 ──
     def test_ventiler_cross_company_facture_404(self):
@@ -201,7 +201,25 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/paiements/{avance.id}/ventiler/',
             {'facture': other_facture.id, 'montant': '500'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
+
+    def test_ventiler_sans_montant_400_jamais_500(self):
+        """CI #1001 (fuzz) — `{"facture": id}` sans `montant` : 400 sous le
+        champ, plus de `Decimal(None)` → 500 ; rien n'est affecté."""
+        avance = Paiement.objects.create(
+            company=self.company, client=self.client_obj, facture=None,
+            statut_affectation=Paiement.StatutAffectation.NON_AFFECTE,
+            montant=Decimal('500'), date_paiement=timezone.now().date(),
+            mode='virement', created_by=self.admin,
+        )
+        f1 = self._facture('2000')
+        r = self.api.post(
+            f'/api/django/ventes/paiements/{avance.id}/ventiler/',
+            {'facture': f1.id}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('montant', r.data)
+        self.assertFalse(AffectationPaiement.objects.filter(
+            paiement=avance).exists())
 
     def test_ventiler_cross_company_paiement_404(self):
         other_company = make_company(slug='xfac1-other2', nom='Other Co 2')
@@ -236,3 +254,21 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.get('/api/django/ventes/paiements/avances-non-affectees/')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(len(r.data), 1)
+
+
+class VentilerEntreeTests(SimpleTestCase):
+    """CI #1001 (fuzz) — l'entrée de `ventiler` est validée par son
+    sérialiseur publié (sans base)."""
+
+    def _erreurs(self, corps):
+        from apps.ventes.serializers_facturation import (
+            PaiementVentilerRequestSerializer)
+        entree = PaiementVentilerRequestSerializer(data=corps)
+        return None if entree.is_valid() else entree.errors
+
+    def test_montant_requis_et_positif_facture_entiere(self):
+        self.assertIn('montant', self._erreurs({'facture': 2}))
+        self.assertIn('montant', self._erreurs({'facture': 2, 'montant': '0'}))
+        self.assertIn('facture', self._erreurs({'facture': '2', 'montant': '5'}))
+        self.assertIsNone(self._erreurs({'facture': 2, 'montant': '10.50'}))
+        self.assertIsNone(self._erreurs({'facture': 2, 'montant': 10}))

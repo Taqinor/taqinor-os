@@ -264,3 +264,24 @@ class TestGenericExport(ImportBase):
     def test_unknown_entity_400(self):
         resp = self.api.post('/api/django/imports/export/bogus/', {}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_export_factures_xlsx_sans_date_creation(self):
+        """CI #1000 fuzz — ``Facture`` n'a pas de ``date_creation`` : l'export
+        des factures levait AttributeError (500) dès qu'une facture existait."""
+        from apps.facturation.models import Facture
+        c = Client.objects.create(company=self.company, nom='C')
+        Facture.objects.create(
+            company=self.company, reference='FAC-EXP-1', client=c,
+            statut=Facture.Statut.EMISE)
+        resp = self.api.post('/api/django/imports/export/factures/',
+                             {'ids': [], 'company': 1}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        corps = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(corps.startswith(b'PK'))
+
+    def test_export_liste_corps_invalide_400_jamais_500(self):
+        for corps in ([1], {'ids': {}}, {'ids': [2 ** 40]}, {'ids': ['1']},
+                      {'company': 'x'}):
+            resp = self.api.post('/api/django/imports/export/factures/',
+                                 corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))

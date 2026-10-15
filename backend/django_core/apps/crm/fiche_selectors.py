@@ -7,6 +7,9 @@ inter-apps). N'importe jamais `.selectors` au niveau module.
 from .portee_selectors import (
     leads_visibles, lead_signe_q,
 )
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_company_lead(company, lead_id, avec_corbeille=False):
@@ -97,7 +100,7 @@ def lead_card(lead_id, company):
     try:
         parts.append(lead.get_stage_display())
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning('%s : échec ignoré (dégradé)', 'lead_card', exc_info=True)
     if lead.ville:
         parts.append(lead.ville)
     return {
@@ -422,6 +425,7 @@ def _lead_provenance_valeurs(lead):
         try:
             relation = lead._meta.get_field(f).is_relation
         except Exception:  # noqa: BLE001 — champ absent : None des deux côtés
+            logger.warning('%s : échec ignoré (dégradé)', '_lead_provenance_valeurs', exc_info=True)
             relation = False
         v = getattr(lead, f'{f}_id', None) if relation else getattr(lead, f, None)
         valeurs[f] = str(v) if isinstance(v, Decimal) else v
