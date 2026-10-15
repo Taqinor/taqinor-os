@@ -134,7 +134,7 @@ class ContratMaintenanceSerializer(ListesStrictesMixin,
 
     @extend_schema_field(serializers.DictField())
     def get_droits_restants(self, obj):
-        from .selectors import droits_restants
+        from .droits_contrat import droits_restants
         return droits_restants(obj)
 
     @extend_schema_field(serializers.ListField(child=serializers.DictField()))

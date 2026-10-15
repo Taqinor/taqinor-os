@@ -1801,7 +1801,8 @@ def _delai_intervention_societe(company):
     from apps.parametres.models import CompanyProfile
     try:
         return CompanyProfile.get(company=company).delai_intervention_suivi_heures
-    except Exception:  # noqa: BLE001 — profil absent : non engagé
+    except Exception:  # noqa: BLE001 — profil absent : non engagé (D-ENF22-BLE001)
+        logger.warning('sav.services : profil société illisible, délai non engagé', exc_info=True)
         return None
 
 
@@ -2539,7 +2540,7 @@ def repondre_par_email(ticket, *, corps, sujet='', destinataire='',
         email.extra_headers['References'] = f'<{thread_root}>'
     try:
         email.send(fail_silently=True)
-    except Exception:  # noqa: BLE001 — un envoi raté ne casse jamais le ticket
+    except Exception:  # noqa: BLE001 — un envoi raté ne casse jamais le ticket (D-ENF22-BLE001)
         logger.warning('NTSRV1: envoi e-mail sortant ticket %s échoué',
                        getattr(ticket, 'pk', '?'), exc_info=True)
 

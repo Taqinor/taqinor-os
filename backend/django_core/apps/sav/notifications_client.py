@@ -100,14 +100,14 @@ def notify_ticket_transition(ticket, statut, *, request=None):
                     getattr(settings, 'DEFAULT_FROM_EMAIL', None),
                     [email_addr], fail_silently=True)
                 result['email_sent'] = True
-            except Exception:  # noqa: BLE001 — best-effort, jamais fatal
+            except Exception:  # noqa: BLE001 — best-effort, jamais fatal (D-ENF22-BLE001)
                 logger.warning(
                     'XSAV4: envoi email transition ticket %s échoué',
                     ticket.pk, exc_info=True)
 
         result['sent'] = bool(result['wa_draft_url'] or result['email_sent'])
         return result
-    except Exception:  # noqa: BLE001 — best-effort, jamais fatal
+    except Exception:  # noqa: BLE001 — best-effort, jamais fatal (D-ENF22-BLE001)
         logger.warning(
             'XSAV4: notification transition ticket %s échouée',
             getattr(ticket, 'pk', '?'), exc_info=True)

@@ -257,7 +257,7 @@ def ticket_public_satisfaction(request, token):
             company_id=ticket.company_id,
             ticket=ticket, note=note, commentaire=commentaire,
             sous_notes=sous_notes)
-    except Exception:  # noqa: BLE001 — filet de course (OneToOne race)
+    except Exception:  # noqa: BLE001 — filet de course (OneToOne race) (D-ENF22-BLE001)
         logger.warning("ticket public satisfaction : échec ignoré, comportement dégradé", exc_info=True)
         return _noindex(Response(
             {'detail': 'Une réponse a déjà été enregistrée pour ce ticket.'},

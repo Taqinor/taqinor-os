@@ -29,6 +29,7 @@ FG85 — Jeton QR EQUIP:<id> sur Equipement + action étiquettes.
 FG87 — Base de connaissances SAV (KbArticle).
 FG90 — nb_tickets_12m (équipement « citron ») — computed, pas de colonne DB.
 """
+import logging
 import secrets
 
 from django.conf import settings
@@ -1752,7 +1753,9 @@ class ContratMaintenance(models.Model):
         try:
             from apps.notifications.calendar_utils import prochain_jour_ouvre
             return prochain_jour_ouvre(cible, self.company)
-        except Exception:  # noqa: BLE001 — calendrier absent → date brute
+        except Exception:  # noqa: BLE001 — calendrier absent → date brute (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning(
+                'ContratMaintenance : calendrier ouvré indisponible, date brute', exc_info=True)
             return cible
 
     # ── AUD502 / décision fondateur D13 (03/09/2026) — expiration réelle ────
