@@ -50,8 +50,6 @@ frontend/src/pages/crm/leads/AppointmentBooker.jsx::AppointmentBooker
 frontend/src/pages/crm/leads/PlanActiviteDialog.jsx::PlanActiviteDialog
 frontend/src/pages/crm/leads/SigneDialog.jsx::SigneDialog
 frontend/src/pages/installations/AteliersPage.jsx::load
-frontend/src/pages/installations/ChantierPhotos.jsx::load
-frontend/src/pages/installations/ChantierPhotos.jsx::loadInterventionPhotos
 frontend/src/pages/installations/DemandesAchatList.jsx::pickProduit
 frontend/src/pages/installations/InstallationDetail.jsx::loadContrats
 frontend/src/pages/installations/InstallationDetail.jsx::loadDossierReglementaire

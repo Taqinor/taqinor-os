@@ -2,7 +2,7 @@
 // une galerie simple par phase. Réutilise les pièces jointes génériques
 // (apps.records, cible installations.installation).
 // J43 — porté sur le système de design (Button, IconButton, AlertDialog).
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import recordsApi from '../../api/recordsApi'
 import installationsApi from '../../api/installationsApi'
+import fetchAllPages from '../../utils/fetchAllPages'
 import { formatDate } from '../../lib/format'
 import { compressPhotoForUpload } from '../preferences/prefs'
 import DataSaverThumb from '../../features/pwa/DataSaverThumb'
@@ -127,22 +128,26 @@ export default function ChantierPhotos({ installationId }) {
   const thumbSize = THUMB_SIZE[density]
   const fileRefs = { avant: useRef(null), pendant: useRef(null), apres: useRef(null) }
 
-  const load = useCallback(() => {
-    recordsApi.getAttachments('installations.installation', installationId)
-      .then((r) => setItems(r.data.results ?? r.data ?? [])).catch(() => {})
-  }, [installationId])
-  useEffect(() => { load() }, [load])
+  const load = () => {
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      recordsApi.getAttachments('installations.installation', installationId, { page, page_size: pageSize })
+        .then((r) => r.data))
+      .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
+  }
+  useEffect(() => { load() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // APX27 — charge les photos des interventions rattachées à ce chantier
   // (mêmes clés de phase que ci-dessus, `installationsApi.getPhotos` déjà
   // servi par F7/F8) et les aplatit en une seule liste taguée `origin`.
   // Best-effort : une intervention dont les photos ne chargent pas ne bloque
   // pas les autres (Promise.all sur des promesses déjà `.catch()`ées).
-  const loadInterventionPhotos = useCallback(() => {
+  const loadInterventionPhotos = () => {
     if (!installationId) { setInterventionPhotos([]); return }
-    installationsApi.getInterventions({ installation: installationId })
-      .then((r) => {
-        const list = r.data?.results ?? r.data ?? []
+    fetchAllPages((page, { page_size: pageSize } = {}) =>
+      installationsApi.getInterventions({ installation: installationId, page, page_size: pageSize })
+        .then((r) => r.data))
+      .then((rows) => {
+        const list = Array.isArray(rows) ? rows : (rows?.results ?? [])
         return Promise.all(list.map((interv) => installationsApi.getPhotos(interv.id)
           .then((pr) => ({ interv, groupes: pr.data?.groupes ?? {} }))
           .catch(() => ({ interv, groupes: {} }))))
@@ -170,11 +175,11 @@ export default function ChantierPhotos({ installationId }) {
         setInterventionPhotos(flat)
       })
       .catch(() => setInterventionPhotos([]))
-  }, [installationId])
+  }
   // Chargement des photos d'intervention au changement de chantier (motif de
   // fetch standard : l'etat est pose dans les callbacks de la promesse).
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de chantier : setState dans les callbacks de la promesse (D-ENF22)
-  useEffect(() => { loadInterventionPhotos() }, [loadInterventionPhotos])
+  useEffect(() => { loadInterventionPhotos() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const upload = async (phase, file) => {
     if (!file) return
