@@ -166,7 +166,7 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/paiements/{avance.id}/ventiler/',
             {'facture': f1.id, 'montant': '1500'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_ventiler_cannot_exceed_facture_montant_du(self):
         avance = Paiement.objects.create(
@@ -179,7 +179,7 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/paiements/{avance.id}/ventiler/',
             {'facture': f1.id, 'montant': '3000'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     # ── 4. Multi-tenant : cross-company 404 ──
     def test_ventiler_cross_company_facture_404(self):
@@ -201,7 +201,7 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/paiements/{avance.id}/ventiler/',
             {'facture': other_facture.id, 'montant': '500'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
 
     def test_ventiler_sans_montant_400_jamais_500(self):
         """CI #1001 (fuzz) — `{"facture": id}` sans `montant` : 400 sous le

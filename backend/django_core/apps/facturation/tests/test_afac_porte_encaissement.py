@@ -171,7 +171,7 @@ class PorteEncaissementTests(TestCase):
             {'montant': '1000', 'date_paiement': str(timezone.localdate()),
              'mode': 'virement', 'type_retenue': 'ras_tva', 'taux': '75'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(self._nb_paiements(f), 0)
 
     # ── ventilation d'avance ────────────────────────────────────────────
@@ -185,7 +185,7 @@ class PorteEncaissementTests(TestCase):
             mode='virement', created_by=self.user)
         r = self.api.post(f'/api/django/ventes/paiements/{avance.id}/ventiler/',
                           {'facture': f.id, 'montant': '500'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertFalse(AffectationPaiement.objects.filter(
             facture=f).exists())
 
@@ -208,7 +208,7 @@ class PorteEncaissementTests(TestCase):
         du_avant = f.montant_du
         r = self.api.post(f'/api/django/ventes/paiements/{avance.id}/ventiler/',
                           {'facture': f.id, 'montant': '5000'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertFalse(AffectationPaiement.objects.filter(
             paiement=avance).exists())
         f.refresh_from_db()
