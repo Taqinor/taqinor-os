@@ -291,6 +291,17 @@ class CorpsProposerPublieTest(SimpleTestCase):
             self.assertFalse(valide, corps)
             self.assertIn(champ, erreurs)
 
+    def test_le_corps_ne_se_donne_qu_en_json(self):
+        # CI #1001 : en multipart / urlencoded un sous-document (objet, liste)
+        # ne se transporte pas (liste vide = aucune part) — le schéma publié
+        # ne déclare donc QUE ``application/json``.
+        from rest_framework.parsers import JSONParser
+
+        from apps.calepinage.views.consommation import proposer_consommation
+
+        self.assertEqual(proposer_consommation.kwargs['parser_classes'],
+                         [JSONParser])
+
     def test_classes_saisissables_et_schema_oneof(self):
         from apps.calepinage.serializers_conso import classes_tarifaires
         from apps.parametres.tariff import CLASSES_INVERSION

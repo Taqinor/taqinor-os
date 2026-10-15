@@ -16,6 +16,7 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -99,7 +100,8 @@ FORME_PROPOSITION = inline_serializer('CalepinageConsommationProposee', {
 @corps_obligatoire
 @action(detail=True, methods=['post'], url_path='consommation/proposer',
         url_name='consommation-proposer',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage],
+        parser_classes=[JSONParser])  # sous-documents imbriqués : JSON seul
 def proposer_consommation(self, request, pk=None):
     """ACAL310 — ``POST /calepinages/<pk>/consommation/proposer/``.
 
