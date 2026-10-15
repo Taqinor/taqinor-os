@@ -387,8 +387,11 @@ class TestSurfaceScannee(unittest.TestCase):
         self.assertTrue(all(hors_ventes))
 
     def test_le_scan_reel_nest_pas_vide(self):
-        # Un glob casse rendrait la garde silencieusement inoffensive.
-        self.assertGreater(len(_real_sites()), 0)
+        # Un glob casse rendrait la garde silencieusement inoffensive. ENF15 :
+        # la base est videe (0 site d'ecriture) ; la preuve que le scan n'est
+        # pas vacant porte donc sur les FICHIERS scannes et le contrat lu.
+        self.assertGreater(len(list(cor.iter_scanned_files())), 0)
+        self.assertGreater(len(cor.load_registry_paths()), 0)
 
 
 # ------------------------------------------------------------------- cles
