@@ -64,7 +64,7 @@ class ElementSupprimeSerializer(SameCompanyFKSerializerMixin,
         try:
             from django.contrib.auth import get_user_model
             responsable = get_user_model().objects.filter(pk=responsable_id).first()
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 "serializers.ElementSupprimeSerializer.get_avertissement_restauration : erreur ignorée (mode dégradé)",
                 exc_info=True)

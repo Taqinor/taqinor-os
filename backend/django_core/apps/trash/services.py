@@ -134,7 +134,7 @@ def restaurer(element, *, user=None, now=None):
         record_restored.send(
             sender=ElementSupprime, element=element, obj=obj,
             company=element.company, user=user)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.exception(
             'record_restored: envoi du signal échoué (%s)', element.pk)
     return obj
