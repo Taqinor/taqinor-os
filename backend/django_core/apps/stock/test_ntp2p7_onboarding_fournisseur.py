@@ -286,6 +286,12 @@ class ProgressionEtValidationTests(TestCase):
                              {'dossier': self.dossier.pk, 'type_document': 'rc', 'reference': 'RC-1'},
                              format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
+        # CI #997 fuzz (5) : le schéma publie du JSON ; un formulaire (qui lisait
+        # `date_expiration=` comme null) est un 415, plus un 201 hors schéma.
+        resp = self.api.post(f'{STOCK}/documents-fournisseur/',
+                             {'dossier': self.dossier.pk, 'type_document': 'rc', 'date_expiration': ''},
+                             format='multipart')
+        self.assertEqual(resp.status_code, 415, resp.content)
 
     def test_endpoint_onboarding_sur_le_fournisseur(self):
         resp = self.api.get(

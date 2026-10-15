@@ -338,8 +338,9 @@ class ContratWmsPickingTests(WmsBase):
         self.assertMemesCles(corps['results'][0], contrat['exemple_element'],
                              'vague de la liste')
         rep = self.api.post(self.URL, {'besoins': []}, format='json')
-        self.assertEqual(rep.status_code, 400)
-        self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
+        # CI #997 fuzz — « rien à regrouper » est un état (409), pas une saisie.
+        self.assertEqual(rep.status_code, 409)
+        self.assertEqual(rep.json(), contrat['exemple_erreur_409'])
 
     def test_lancer_et_prelever(self):
         vague = self._creer_vague()
@@ -1135,10 +1136,9 @@ class ContratKitsStockTests(WmsBase):
             'nom': self.kit.nom, 'sku': self.kit.sku,
             'composants': [{'composant_kit': self.kit.id, 'quantite': 1}]},
             format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
-        self.assertEqual(texte(rep.json()['composants']),
-                         contrat['exemple_erreur_400_auto_reference'][
-                             'composants'])
+        # CI #997 fuzz — corps conforme au schéma, état qui s'oppose : 409.
+        self.assertEqual(rep.status_code, 409, rep.content)
+        self.assertErreurContrat(rep, contrat['exemple_erreur_409_auto_reference'])
 
         etrangere = Company.objects.get_or_create(
             slug='astk-contrats-autre', defaults={'nom': 'ASTK autre'})[0]
