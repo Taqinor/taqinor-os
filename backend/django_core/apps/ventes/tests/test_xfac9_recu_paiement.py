@@ -12,7 +12,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -108,6 +108,15 @@ class XFAC9RecuPaiementTests(TestCase):
         self.assertIsNotNone(log)
         self.assertIn('Quittance', log.sujet)
 
+    def test_envoyer_recu_to_email_non_chaine_400(self):
+        """CI #1001 (fuzz) — `{"to_email": {}}` était accepté (201)."""
+        r = self.api.post(
+            f'/api/django/ventes/paiements/{self.paiement.id}/envoyer-recu/',
+            {'to_email': {}}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('to_email', r.data)
+        self.assertFalse(EmailLog.objects.filter(facture=self.facture).exists())
+
     def test_envoyer_recu_no_destinataire_logs_echec(self):
         self.client_obj.email = ''
         self.client_obj.save(update_fields=['email'])
@@ -127,3 +136,19 @@ class XFAC9RecuPaiementTests(TestCase):
         r = self.api.get(
             f'/api/django/ventes/paiements/{avance.id}/recu-pdf/')
         self.assertEqual(r.status_code, 200)
+
+
+class EnvoyerRecuEntreeTests(SimpleTestCase):
+    """CI #1001 (fuzz) — `to_email` : vraie chaîne, `null` ou absent (sans base)."""
+
+    def _valide(self, corps):
+        from apps.ventes.serializers_facturation import (
+            PaiementEnvoyerRecuRequestSerializer)
+        return PaiementEnvoyerRecuRequestSerializer(data=corps).is_valid()
+
+    def test_to_email_chaine_null_ou_absent_seulement(self):
+        self.assertTrue(self._valide({}))
+        self.assertTrue(self._valide({'to_email': None}))
+        self.assertTrue(self._valide({'to_email': 'a@b.ma'}))
+        self.assertFalse(self._valide({'to_email': {}}))
+        self.assertFalse(self._valide({'to_email': 5}))

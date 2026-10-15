@@ -87,7 +87,8 @@ class TestKitComposantXor(TenantAPITestCase):
         resp = self.client_as(role='responsable').patch(
             f'/api/django/stock/kits/{kit.id}/', payload,
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        # CI #997 fuzz — corps conforme, état opposé (le kit EST celui de l'URL) : 409.
+        self.assertEqual(resp.status_code, 409)
 
 
 class TestExplosionRecursive(TenantAPITestCase):

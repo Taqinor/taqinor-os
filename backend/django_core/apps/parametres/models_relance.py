@@ -404,6 +404,13 @@ CADENCE_VISITE_DEFAUT = [
 #: (le démarrage d'une cadence les refuse), seulement la configuration des
 #: étapes qu'il pose.
 CADENCES_MOTEUR = (Cadence.APRES_CONTACT, Cadence.VISITE)
+#: CI #1001 fuzz — plafonds MÉTIER d'un barreau, publiés au schéma ET tenus par
+#: le sérialiseur : le schéma annonçait tout l'entier 32 bits, si bien qu'un
+#: ``ordre`` posé à 2147483647 faisait déborder le rang « suivant » du POST
+#: suivant (``max + 1`` → 500) et qu'un ``delai_jours`` géant faisait déborder
+#: ``timedelta`` à l'initialisation du plan d'un lead.
+ORDRE_ETAPE_MAX = 1000
+DELAI_JOURS_ETAPE_MAX = 3650
 
 #: Cadence -> gabarit par défaut. ``generique`` garde EXACTEMENT les 5
 #: barreaux historiques (aucune réécriture rétroactive).

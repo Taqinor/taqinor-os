@@ -15,7 +15,10 @@ from core.unicite import ConflitUnicite
 from .requetes_strictes import TypageStrictParametres
 
 from .models_payment_terms import ConditionPaiement
-from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
+from .models_relance import (
+    CADENCES_MOTEUR, DELAI_JOURS_ETAPE_MAX, ORDRE_ETAPE_MAX, Cadence,
+    CadenceRelanceEtape,
+)
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 
@@ -178,13 +181,17 @@ class CadenceRelanceEtapeSerializer(TypageStrictParametres, UniciteSocieteMixin,
         # absent du contrat laissait le fuzz envoyer 2147483647 « conforme » et
         # recevoir 400. Au-delà de 1439, l'appelant voulait dire « un jour de
         # plus » (MRY4) ; un négatif tombait en 500 selon le moteur (CAD29).
-        extra_kwargs = {'delai_minutes': {
-            'min_value': 0, 'max_value': 1439,
-            'error_messages': {
-                'max_value': 'Le délai en minutes doit rester sous 1440 '
-                             '(24 h) — au-delà, utiliser le délai en jours.',
-                'min_value': 'Le délai en minutes ne peut pas être négatif '
-                             '— il va de 0 à 1439.'}}}
+        extra_kwargs = {
+            # CI #1001 fuzz — plafonds métier (voir ``ORDRE_ETAPE_MAX``).
+            'ordre': {'max_value': ORDRE_ETAPE_MAX},
+            'delai_jours': {'max_value': DELAI_JOURS_ETAPE_MAX},
+            'delai_minutes': {
+                'min_value': 0, 'max_value': 1439,
+                'error_messages': {
+                    'max_value': 'Le délai en minutes doit rester sous 1440 '
+                                 '(24 h) — au-delà, utiliser le délai en jours.',
+                    'min_value': 'Le délai en minutes ne peut pas être négatif '
+                                 '— il va de 0 à 1439.'}}}
 
     def validate(self, attrs):
         # PARAM-CADENCE — un barreau à clé moteur appartient à SA cadence : le

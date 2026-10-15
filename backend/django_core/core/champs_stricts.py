@@ -545,18 +545,22 @@ class ListesStrictesMixin:
 
 def _ids_inconnus_seulement(erreurs, champs):
     """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
-    sur des champs de relation par clé primaire."""
+    sur des champs de relation par clé primaire — ou le refus d'unicité
+    (``unique``) d'une telle relation (``OneToOne``), deux refus d'ÉTAT qu'un
+    schéma ne peut pas exprimer : un id inconnu l'emporte (404) sur le doublon."""
     if not isinstance(erreurs, dict) or not erreurs:
         return False
+    inconnu = False
     for nom, details in erreurs.items():
         champ = champs.get(nom)
         relation = getattr(champ, 'child_relation', champ)
         if not isinstance(relation, serializers.PrimaryKeyRelatedField):
             return False
-        if not isinstance(details, list) or not details or any(
-                getattr(d, 'code', None) != 'does_not_exist' for d in details):
+        codes = {getattr(d, 'code', None) for d in details} if isinstance(details, list) else set()
+        if not codes or not codes <= {'does_not_exist', 'unique'}:
             return False
-    return True
+        inconnu = inconnu or 'does_not_exist' in codes
+    return inconnu
 
 
 class IdInconnu404Mixin:

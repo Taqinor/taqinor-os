@@ -181,7 +181,8 @@ class VisiteCiTests(VisiteTerrainBase):
     def test_un_slot_residentiel_est_refuse_sur_une_visite_ci(self):
         visite_id = self.creer_visite()
         resp = self.poster_photo(visite_id, 'onduleur_mur')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ENF11 (visites) : slot d'un autre gabarit = 409, même corps `erreurs`.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('slot_code', resp.data['erreurs'])
 
     def test_une_liste_invalide_est_refusee_en_nommant_le_champ(self):

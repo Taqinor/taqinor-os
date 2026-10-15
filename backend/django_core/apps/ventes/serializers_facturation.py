@@ -15,7 +15,7 @@ from .models import (
 from .serializers import _fallback_taux_tva
 from core.champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsMixin,
-    ChampsStrictsSansDecimalMixin, EntierStrict,
+    ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
@@ -320,6 +320,25 @@ class RetenueSubieSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
                             'paiement']
+
+
+class PaiementVentilerRequestSerializer(serializers.Serializer):
+    """CI #1001 (fuzz) — ENTRÉE de `ventiler` : `facture` entier et `montant`
+    décimal > 0 requis, validés ICI (400 sous le champ fautif) au lieu d'un
+    `Decimal(None)` → 500."""
+
+    facture = EntierStrict()
+    montant = DecimalSouple(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        error_messages={'min_value': 'Le montant ventilé doit être positif.'})
+
+
+class PaiementEnvoyerRecuRequestSerializer(serializers.Serializer):
+    """CI #1001 (fuzz) — ENTRÉE de `envoyer-recu` : `to_email` est une vraie
+    chaîne (ou absent / `null`) ; `{}` ou un nombre était accepté en silence."""
+
+    to_email = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True)
 
 
 class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):

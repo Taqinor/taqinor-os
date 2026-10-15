@@ -413,10 +413,6 @@ EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
                              max_length=120),
     'note': s.CharField(required=False, allow_blank=True),
 })
-VentilerRequest = _ser('PaiementVentilerRequest', {
-    'facture': s.IntegerField(),
-    'montant': s.DecimalField(max_digits=12, decimal_places=2),
-})
 
 
 # =============================================================== ENF11 — devis
@@ -1295,10 +1291,6 @@ AttestationRecueRequest = _ser('PaiementAttestationRecueRequest', {
     'attestation_date': s.DateField(required=False),
     'attestation_fichier': s.CharField(required=False, allow_blank=True,
                                        max_length=500),
-})
-EnvoyerRecuRequest = _ser('PaiementEnvoyerRecuRequest', {
-    'to_email': s.CharField(required=False, allow_blank=True,
-                            allow_null=True),
 })
 EnvoyerRecuResponse = _ser('PaiementEnvoyerRecuResponse', {
     'statut': s.CharField(),

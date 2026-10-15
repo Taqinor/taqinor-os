@@ -25,6 +25,7 @@ from .models import CustomUser, Company, UserSession
 from .serializers import (
     MeSerializer,
     RegisterSerializer,
+    UserCreationSerializer,
     UserModificationSerializer,
     UserSerializer,
     CompanySerializer,
@@ -1087,6 +1088,7 @@ _ACTIONS_ECRITURE_COMPTES = frozenset({
 
 
 @extend_schema_view(create=extend_schema(
+    request=UserCreationSerializer,
     responses={201: UserSerializer, 400: REPONSE_400_COMPTE}),
     **{action_detail: extend_schema(parameters=ID_COMPTE) for action_detail in (
         'retrieve', 'destroy')},

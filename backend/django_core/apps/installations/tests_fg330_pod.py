@@ -100,6 +100,16 @@ class TestPreuveLivraison(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 409, resp.content)
 
+    def test_photo_inconnue_et_doublon_donnent_404(self):
+        # Corps conforme au schéma : deux refus d'ÉTAT (photo absente, preuve
+        # déjà posée) — l'id inconnu l'emporte (404), jamais un 400.
+        PreuveLivraison.objects.create(
+            company=self.company, livraison=self.liv, signataire_nom='Premier')
+        resp = self.api.post(f'{BASE}/preuves-livraison/', {
+            'livraison': self.liv.id, 'photo': 987654,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
 
 class TestScopingAndRoles(TestCase):
     def setUp(self):
