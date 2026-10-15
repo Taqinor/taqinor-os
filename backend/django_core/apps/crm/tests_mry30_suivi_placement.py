@@ -283,6 +283,12 @@ class SuiviActionTests(_Base):
     def test_un_responsable_negatif_est_refuse_sans_erreur_serveur(self):
         resp = self._get(owner='-5')
         self.assertEqual(resp.status_code, 400)
+        # CI #1001 fuzz : le schéma publie ``minimum: 1`` — ``0`` ou un texte
+        # sont refusés (400), jamais lus comme « tous les responsables ».
+        for refuse in ('0', 'abc', '2.5'):
+            resp = self._get(owner=refuse)
+            self.assertEqual(resp.status_code, 400, (refuse, resp.content))
+        self.assertEqual(self._get(owner='1').status_code, 200)
 
     def test_soixante_deux_jours_passent(self):
         resp = self._get(date_debut='2026-09-01', date_fin='2026-11-02')

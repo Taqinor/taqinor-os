@@ -27,7 +27,7 @@ from .cadence_selectors import STATUTS_SUIVI
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, corps_objet, entier_param
 from .cadence_reponses import TYPES_PIECE_RECUE
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
 from authentication.permissions import (
@@ -385,18 +385,16 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 {'statut': 'Statut inconnu. Choisir parmi : '
                            + ', '.join(STATUTS_SUIVI) + '.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        owner = (request.query_params.get('owner') or '').strip()
-        if owner and not owner.isdigit():
-            # Un identifiant non numérique atteindrait le `filter()` et y
-            # lèverait une ValueError — un 500 pour une faute de frappe.
-            return Response(
-                {'owner': 'Identifiant de responsable invalide.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # Entier >= 1 comme le publie ``P_OWNER_ID`` : un texte atteindrait le
+        # `filter()` (ValueError -> 500) et ``0`` passait alors que le schéma le
+        # refuse (CI #1001 fuzz « accepted schema-violating request »).
+        owner = entier_ou_400(
+            request.query_params.get('owner'), 'owner', mini=1)
 
         etapes, resume = relance_etapes_periode(
             request.user.company, request.user,
             date_debut=date_debut, date_fin=date_fin,
-            owner=owner or None, statut=statut or None)
+            owner=owner, statut=statut or None)
         lignes = self.get_serializer(etapes, many=True).data
         return Response({
             'count': len(lignes),
