@@ -38,6 +38,14 @@ class _CsvOrJSONRenderer(JSONRenderer):
 DEFAULT_DORMANT_DAYS = 90
 
 
+def _cle_audit(nom):
+    """Clé ``role:<nom>`` du journal d'audit, bornée à la colonne
+    ``SettingsAuditLog.field`` (100) : un nom de rôle de 96 à 100 signes (valide
+    pour ``Role.nom``) faisait déborder la colonne → 500 APRÈS la création
+    (CI #1000, POST roles/ avec un nom de 99 signes)."""
+    return f'role:{nom}'[:100]
+
+
 def _perms_diff(old_perms, new_perms):
     """VX234 — diff structuré des permissions (set-difference), stocké en JSON
     dans old_value/new_value (TextField) : {"nom": ..., "ajoutees": [...],
@@ -145,7 +153,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, **extra)
         ajoutees, _retirees = _perms_diff([], instance.permissions)
         self._audit(
-            field=f'role:{instance.nom}',
+            field=_cle_audit(instance.nom),
             label='Rôle créé',
             old=None,
             new=json.dumps({
@@ -189,7 +197,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         if old_perms != new_perms or old_nom != instance.nom:
             ajoutees, retirees = _perms_diff(old_perms, new_perms)
             self._audit(
-                field=f'role:{instance.nom}',
+                field=_cle_audit(instance.nom),
                 label='Rôle modifié',
                 old=json.dumps({'nom': old_nom, 'total': len(old_perms)}),
                 new=json.dumps({
@@ -212,7 +220,7 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         perms_count = len(instance.permissions or [])
         instance.delete()
         self._audit(
-            field=f'role:{nom}',
+            field=_cle_audit(nom),
             label='Rôle supprimé',
             old=json.dumps({'nom': nom, 'total': perms_count}),
             new=None,
