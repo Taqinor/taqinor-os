@@ -172,7 +172,8 @@ class Calepinage(TenantModel):
     #: .appliquer_systeme`` (même refus pour un id absent ou étranger).
     systeme_fixation = models.ForeignKey(
         'SystemeFixation',
-        on_delete=models.SET_NULL,  # on_delete: un système retiré du catalogue laisse le calepinage sans choix, jamais détruit
+        on_delete=models.SET_NULL,
+        # on_delete: un système retiré du catalogue laisse le calepinage sans choix, jamais détruit
         null=True, blank=True,
         related_name='calepinages',
         verbose_name='Système de fixation',
@@ -1101,7 +1102,8 @@ class GabaritDossierReglementaire(TenantModel):
     #: Le FICHIER de gabarit déposé par la société (``records``, ARC26).
     fichier = models.ForeignKey(
         'records.Attachment',
-        on_delete=models.SET_NULL,  # on_delete: le gabarit survit au retrait de son fichier (il devient « à redéposer »)
+        on_delete=models.SET_NULL,
+        # on_delete: le gabarit survit au retrait de son fichier (il devient « à redéposer »)
         null=True, blank=True,
         related_name='gabarits_dossier_calepinage',
         verbose_name='Fichier de gabarit',
