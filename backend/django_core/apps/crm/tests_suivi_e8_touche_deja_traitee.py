@@ -136,7 +136,9 @@ class CorpsDuFaitTests(_Base):
         for champ in ('outcome', 'reponse', 'langue', 'note'):
             resp = self._post(etape, 'fait', {champ: True})
             self.assertEqual(resp.status_code, 400, (champ, resp.data))
-            self.assertIn(champ, resp.data['erreurs'])
+            # Le garde de corps du viewset (``CorpsTexteMixin.initial``) répond
+            # avant la vue : corps DRF par champ, sans enveloppe ``erreurs``.
+            self.assertIn(champ, resp.data)
         resp = self._post(etape, 'fait', {'note': None})
         self.assertEqual(resp.status_code, 400, resp.data)
         etape.refresh_from_db()
@@ -148,7 +150,8 @@ class CorpsDuFaitTests(_Base):
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/', [1],
             format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertIn('corps', resp.data['erreurs'])
+        # Garde ``CorpsTexteMixin.initial`` : ``{'detail': …}``.
+        self.assertIn('detail', resp.data)
 
 
 class TemoinsTests(_Base):
