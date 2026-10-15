@@ -9,11 +9,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const VISITE_INCOMPLETE = {
   id: 7, lead: 118, statut: 'en_cours', date_prevue: '2026-09-15', date_realisee: null,
@@ -116,6 +112,7 @@ vi.mock('../../ui/confirm', async (importOriginal) => {
 import VisiteWizardPage from './VisiteWizardPage'
 import { MESURES_SCHEMA, MESURES_SCHEMA_CI } from './visiteHelpers'
 import { documentContrat } from '../../test/fixtures/contractSamples'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 function withProviders() {
   return render(

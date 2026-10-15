@@ -7,15 +7,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    record-scopé /audit/objets/<content_type>/<id>/history/. On teste ici le
    composant réutilisable posé sur les fiches lead/devis/ticket. Réseau mocké. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const { getObjectHistory } = vi.hoisted(() => ({ getObjectHistory: vi.fn() }))
 
@@ -24,6 +16,7 @@ vi.mock('../../api/auditApi', () => ({
 }))
 
 import ObjectHistoryButton from './ObjectHistoryButton'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 function withProviders(ui) {
   return render(<ThemeProvider>{ui}</ThemeProvider>)

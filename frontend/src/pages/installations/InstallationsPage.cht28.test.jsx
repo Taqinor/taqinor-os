@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -22,50 +23,26 @@ import installationsReducer from '../../features/installations/store/installatio
    `getByRole('heading', /chantier/i)` générique.
    ========================================================================== */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const mocks = vi.hoisted(() => ({
   getInstallations: vi.fn(),
 }))
 
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/installationsApi', async () => ({
   default: {
+    ...(await import('../../test/selectNatif')).installationsLecturesVides,
     getInstallations: (...args) => mocks.getInstallations(...args),
     // Appelés au montage de InstallationDetail (deep-link) — voir
     // InstallationDetail.cht20/21/22.test.jsx pour le même patron.
-    getHistorique: () => Promise.resolve({ data: [] }),
-    getTypesIntervention: () => Promise.resolve({ data: [] }),
   },
 }))
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: () => Promise.resolve({ data: [] }),
-  },
-}))
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
 
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
-    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
-  },
-}))
+vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
 
 import InstallationsPage from './InstallationsPage'
 

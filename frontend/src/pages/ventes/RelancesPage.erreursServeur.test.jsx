@@ -6,11 +6,7 @@ import { MemoryRouter } from 'react-router-dom'
 /* AFAC61 — les refus serveur des gestes de relance s'AFFICHENT (raison réelle),
    la modale reste ouverte, le lot donne un bilan « n consignée(s), m refusée(s) ». */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const ROWS = [
   { id: 1, reference: 'FAC-001', client_id: 42, client_nom: 'ACME SARL', montant_du: 1000, niveau: null },
@@ -31,6 +27,7 @@ vi.mock('../../ui/confirm', async () => (await import('../../test/mocksVentesEcr
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import RelancesPage from './RelancesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 beforeEach(() => {
   api.get.mockImplementation((url) => Promise.resolve({

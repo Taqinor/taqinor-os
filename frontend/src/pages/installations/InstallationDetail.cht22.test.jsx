@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
+import { renderInstallationDetail } from '../../test/installationDetailHarness'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
    CHT22 — Un seul niveau de qualité pour changer le statut.
@@ -25,79 +23,37 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    "ch-statut") est reporté sur le <select> natif rendu par le mock.
    ========================================================================== */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../ui', async (importActual) => (await import('../../test/selectNatif'))
   .avecSelectNatifSimple(await importActual(), { role: 'combobox', idDuTrigger: true }))
 
 const RAISON = "Le pack de remise client n'est pas complet."
 
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/installationsApi', async () => ({
   default: {
-    getHistorique: () => Promise.resolve({ data: [] }),
-    getTypesIntervention: () => Promise.resolve({ data: [] }),
+    ...(await import('../../test/selectNatif')).installationsLecturesVides,
     updateInstallation: vi.fn(() => Promise.reject({
       response: { data: { statut: [RAISON] } },
     })),
   },
 }))
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
 
-vi.mock('../../api/crmApi', () => ({
-  default: { getAssignableUsers: () => Promise.resolve({ data: [] }) },
-}))
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
 
-vi.mock('../../api/ventesApi', () => ({
-  default: {
-    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
-    getReglementaire: () => Promise.resolve({ data: { results: [] } }),
-  },
-}))
+vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
 
 import InstallationDetail from './InstallationDetail'
 import installationsApi from '../../api/installationsApi'
-
-function makeStore() {
-  return configureStore({
-    reducer: {
-      stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state,
-    },
-  })
-}
-
-function renderDetail(installation) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={['/chantiers']}>
-        <ThemeProvider>
-          <InstallationDetail installation={installation} onClose={() => {}} onSaved={() => {}} />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('InstallationDetail — statut bloqué : raisons visibles (CHT22)', () => {
   it('affiche la liste à puces des raisons (format ch6-blocked-reasons) au lieu d\'un message brut', async () => {
     const user = userEvent.setup()
-    renderDetail({
+    renderInstallationDetail({
       id: 801, reference: 'CH-CHT22-801', statut: 'signe', annule: false,
     })
 
@@ -117,7 +73,7 @@ describe('InstallationDetail — statut bloqué : raisons visibles (CHT22)', () 
 describe('InstallationDetail — AGR604 hors réseau', () => {
   const enregistrerSansToucher = async (user, chantier) => {
     installationsApi.updateInstallation.mockResolvedValueOnce({ data: { id: chantier.id } })
-    const rendu = renderDetail(chantier)
+    const rendu = renderInstallationDetail(chantier)
     await screen.findByLabelText('Régime')
     await user.click(screen.getByRole('button', { name: 'Mettre à jour' }))
     await waitFor(() => expect(installationsApi.updateInstallation).toHaveBeenCalled())
@@ -127,7 +83,7 @@ describe('InstallationDetail — AGR604 hors réseau', () => {
   it('offre le régime hors réseau et le raccordement, envoyés au PATCH', async () => {
     installationsApi.updateInstallation.mockResolvedValueOnce({ data: { id: 901 } })
     const user = userEvent.setup()
-    renderDetail({ id: 901, reference: 'CH-901', statut: 'signe', annule: false })
+    renderInstallationDetail({ id: 901, reference: 'CH-901', statut: 'signe', annule: false })
 
     const regime = await screen.findByLabelText('Régime')
     expect(screen.getByRole('option', {

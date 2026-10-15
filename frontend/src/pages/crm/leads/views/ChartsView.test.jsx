@@ -3,6 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import { configureStore } from '@reduxjs/toolkit'
 import { Provider } from 'react-redux'
 import ChartsView from './ChartsView'
+import { polyfillResizeObserver } from '../../../../test/selectNatif'
 
 /* VX144(e) — les 4 graphiques de ChartsView pesaient tous pareil (grille 2×2
    stricte) ; l'entonnoir « Leads par étape » (le plus lu du module) passe en
@@ -37,13 +38,7 @@ vi.mock('../../../../api/crmApi', async (importOriginal) => {
 
 // jsdom n'implémente pas ResizeObserver (mesuré par recharts ResponsiveContainer).
 beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
+  polyfillResizeObserver()
   window.matchMedia = window.matchMedia || ((query) => ({
     matches: false, media: query, onchange: null,
     addEventListener: () => {}, removeEventListener: () => {},

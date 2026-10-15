@@ -9,15 +9,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    affichait rien : ni badge « à calibrer », ni bouton pour enregistrer une
    calibration. Réseau mocké (client API), aucune dépendance à un backend réel. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const OUTIL_A_CALIBRER = {
   id: 1, nom: 'Multimètre Fluke', categorie: 'Mesure', asset_tag: 'OUT-001',
@@ -58,6 +50,7 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 import OutillagePage from './OutillagePage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 beforeEach(() => { vi.clearAllMocks() })
 

@@ -8,11 +8,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const MOTIF = 'La remise doit être comprise entre 0 et 100 %'
 
@@ -64,6 +60,7 @@ vi.mock('../../api/ventesApi', () => ({
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import authReducer from '../../features/auth/store/authSlice'
 import FactureForm from './FactureForm'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const ligne = (n, extra = {}) => ({
   produit: 3, designation: `Ligne ${n}`, quantite: '1', prix_unitaire: '100',

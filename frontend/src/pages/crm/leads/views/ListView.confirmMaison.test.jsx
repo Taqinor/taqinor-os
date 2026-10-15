@@ -26,12 +26,9 @@ vi.mock('../../../../lib/toast', async (importOriginal) => {
 })
 
 import ListView from './ListView'
+import { polyfillResizeObserver } from '../../../../test/selectNatif'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const LEAD = {
   id: 9, nom: 'Benali', prenom: 'Aziz', stage: 'NEW', is_archived: false,

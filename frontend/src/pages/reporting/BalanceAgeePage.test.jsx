@@ -2,11 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../api/ventesApi', () => ({
   default: {
@@ -26,6 +22,7 @@ vi.mock('../../api/reportingApi', () => ({
 }))
 
 import BalanceAgeePage from './BalanceAgeePage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* VX112 — drill-down « Relancer » depuis la balance âgée vers les relances
    filtrées sur le client (?client=<id>), miroir du ?produit= de

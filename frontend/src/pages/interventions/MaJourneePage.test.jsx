@@ -6,15 +6,7 @@ import MaJourneePage from './MaJourneePage'
 
 // jsdom n'implémente pas ResizeObserver (mesuré par certains primitifs UI) —
 // polyfill local pour que l'écran se monte proprement.
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 // NB : la factory `vi.mock` est hoistée — pas de référence à une variable
 // top-level déclarée après. On construit la liste du jour directement ici.
@@ -53,6 +45,7 @@ vi.mock('../../api/installationsApi', () => ({
 }))
 
 import installationsApi from '../../api/installationsApi'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 // getMaTournee est désormais partagé par les deux blocs (VX42 + VX226) : sans
 // reset, ses compteurs d'appels s'accumulent d'un test à l'autre et cassent les

@@ -3,11 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -42,6 +38,7 @@ vi.mock('../../api/axios', () => ({
 
 import reportingApi from '../../api/reportingApi'
 import KpiAlertesPage from './KpiAlertesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('KpiAlertesPage (XPLT6 — alertes de seuil sur KPI agrégés)', () => {
   it('liste les alertes existantes', async () => {

@@ -8,11 +8,7 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    décimales (« 1234.567 ») n'est plus bloqué par une bulle navigateur : la
    requête PART, et un refus serveur s'affiche SOUS le champ. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const { getLeads, getConcurrentsPerte, createConcurrentPerte } = vi.hoisted(() => ({
   getLeads: vi.fn(),
@@ -29,6 +25,7 @@ vi.mock('../../api/crmApi', () => ({
 }))
 
 import ConcurrentsPerte from './ConcurrentsPerte'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 beforeEach(() => {
   vi.clearAllMocks()

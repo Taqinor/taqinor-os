@@ -15,13 +15,10 @@ vi.mock('../../lib/monitoring', () => ({
   bindCompany: () => {},
 }))
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 import { ReferentielBlock } from './peComponents'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 function rendre(onDelete) {
   return render(

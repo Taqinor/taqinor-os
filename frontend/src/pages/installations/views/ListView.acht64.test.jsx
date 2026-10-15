@@ -12,11 +12,7 @@ import installationsReducer from '../../../features/installations/store/installa
    lot. Composant réel (InstallationsPage + ListView) devant un faux serveur qui
    renvoie le 400 réel `{statut: [raison]}` des chantiers sans acompte. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../../ui', async (importActual) => (
   (await import('../../../test/selectNatif')).avecSelectNatif(await importActual())
@@ -47,6 +43,7 @@ vi.mock('../../../api/crmApi', () => ({
 }))
 
 import InstallationsPage from '../InstallationsPage'
+import { polyfillResizeObserver } from '../../../test/selectNatif'
 
 const rendre = () => render(
   <Provider store={configureStore({

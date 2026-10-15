@@ -8,15 +8,7 @@ import userEvent from '@testing-library/user-event'
    supprimer. */
 
 beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-
-      unobserve() {}
-
-      disconnect() {}
-    }
-  }
+  polyfillResizeObserver()
 })
 
 const getReglesApprobationAchat = vi.fn()
@@ -34,6 +26,7 @@ vi.mock('../../api/installationsApi', () => ({
 }))
 
 import ReglesApprobationAchatSection from './ReglesApprobationAchatSection'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const REGLE_EXISTANTE = {
   id: 1, libelle: 'Règle générique', montant_min: null, montant_max: null,

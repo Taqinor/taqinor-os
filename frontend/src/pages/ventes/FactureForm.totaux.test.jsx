@@ -6,11 +6,7 @@ import { render, screen, within, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../api/axios', () => ({
   default: {
@@ -24,6 +20,7 @@ vi.mock('../../api/stockApi', async () => (await import('../../test/mocksVentesE
 import ventesReducer from '../../features/ventes/store/ventesSlice'
 import authReducer from '../../features/auth/store/authSlice'
 import FactureForm from './FactureForm'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 // Forme réelle FactureSerializer : 1,33 × 10,01 à 20 % ⇒ serveur HT 13,31 / TVA 2,66 / TTC 15,97.
 const FACTURE = {

@@ -9,11 +9,7 @@ import { dirname, join } from 'node:path'
    jamais toute la facture), annuler (admin), télécharger le PDF. Les réponses
    simulées de création viennent du contrat `note_debit_creation.json`. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const ICI = dirname(fileURLToPath(import.meta.url))
 const CONTRAT = JSON.parse(readFileSync(join(
@@ -44,6 +40,7 @@ vi.mock('../../utils/pdfBlob', () => ({
 import ventesApi from '../../api/ventesApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import NoteDebitDialog from './NoteDebitDialog'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const FACTURE = { id: 11, reference: 'FAC-202607-0001', montant_du: '12000.00' }
 const bouton = () => screen.getByRole('button', { name: /Créer la note de débit/ })

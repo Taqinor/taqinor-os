@@ -25,11 +25,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 import { reponseContrat } from '../../test/fixtures/contractSamples'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const { getMaJournee, getVisite, getVisites, terminerVisite } = vi.hoisted(() => ({
   getMaJournee: vi.fn(),
@@ -55,6 +51,7 @@ vi.mock('../../api/visitesApi', () => ({
 import AppLauncher from '../../components/layout/AppLauncher'
 import MaJourneePage from '../../pages/visites/MaJourneePage'
 import VisiteWizardPage from '../../pages/visites/VisiteWizardPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 // Le rôle « Commercial terrain » de VTA4, tel que le serveur le sert :
 // palier `normal`, permissions visites + le marqueur de liste blanche ODY26.
