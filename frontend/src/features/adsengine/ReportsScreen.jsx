@@ -1,14 +1,13 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { BarChart3, Download, ClipboardList, Printer, Scale } from 'lucide-react'
+import { BarChart3, Download, ClipboardList, Scale } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeVariants, normalizeFunnel, normalizeCohorts, normalizeLeaderboard,
   normalizeScatter, hasRetentionData, formatMAD, formatNumber, formatPercent,
 } from './adsengine'
 import DataWindowNotice from './DataWindowNotice'
-import AlertCenter from './AlertCenter'
-import CommandPalette from './CommandPalette'
+import ActionsConsole from './ActionsConsole'
 import MetricHelp from './MetricHelp'
 import { todayLocalIso } from '../../lib/dateLocale.js'
 
@@ -279,15 +278,7 @@ export default function ReportsScreen() {
         {/* PUB47 — impression navigateur (feuille globale print.css, VX80) :
             PDF imprimable propre (A4), zéro dépendance nouvelle. Distinct des
             PDF WeasyPrint client (règle #4). */}
-        <button type="button" className="btn btn-light" data-testid="ae-reports-print"
-          onClick={() => window.print()}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-          <Printer size={15} aria-hidden="true" /> Imprimer / PDF
-        </button>
-        {/* PUB48 — centre de notifications persistant de la console */}
-        <AlertCenter />
-        {/* PUB51 — palette de commandes (Ctrl-K) */}
-        <CommandPalette />
+        <ActionsConsole printTestId="ae-reports-print" />
       </div>
 
       {failedZones.length > 0 && (
