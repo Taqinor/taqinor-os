@@ -61,6 +61,22 @@ class JeuDeReglagesInconnu(CreationRefusee):
     statut_http = 404
 
 
+class RattachementIntrouvable(CreationRefusee):
+    """Le lead, le client ou le devis visé n'existe pas (ou pas dans CETTE
+    société — même refus, aucun oracle) : un id bien formé qui ne désigne rien
+    est introuvable (404), pas mal formé. Lu par ``depuis-modele``."""
+
+    statut_http = 404
+
+
+class RattachementEnConflit(CreationRefusee):
+    """Le rattachement existe mais l'état de la donnée s'y oppose (devis déjà
+    lié à un calepinage, liaison perdue en course) : refus d'ÉTAT que le
+    schéma ne peut pas dire, 409. Lu par ``depuis-modele``."""
+
+    statut_http = 409
+
+
 class DevisTenuParUnArchive(CreationRefusee):
     """Refus 409 NOMMÉ : le devis est déjà tenu par un calepinage ARCHIVÉ
     (contrainte ``calepinage_un_par_devis`` ; l'archivé est caché par
@@ -302,7 +318,7 @@ def adopter_ou_creer_pour_devis(devis_id, company, *, user=None, titre='',
 
     devis = get_devis_by_pk(devis_id)
     if devis is None or devis.company_id != company.pk:
-        raise CreationRefusee(
+        raise RattachementIntrouvable(
             f"Devis introuvable (#{devis_id}).", champ='devis')
 
     existant = calepinage_du_devis(devis_id, company)
@@ -430,7 +446,7 @@ def creer_pour_lead(lead_id, company, *, user=None, titre='',
 
     lead = get_company_lead(company, lead_id)
     if lead is None:
-        raise CreationRefusee(
+        raise RattachementIntrouvable(
             f"Lead introuvable (#{lead_id}).", champ='lead')
     _exiger_responsable(company, responsable)
     if responsable is None:
@@ -488,7 +504,7 @@ def creer_pour_client(client_id, company, *, user=None, titre='',
 
     client = get_company_client(company, client_id)
     if client is None:
-        raise CreationRefusee(
+        raise RattachementIntrouvable(
             f"Client introuvable (#{client_id}).", champ='client')
     _exiger_responsable(company, responsable)
 
@@ -678,8 +694,8 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
     if devis_id:
         devis = get_devis_by_pk(devis_id)
         if devis is None or devis.company_id != company.pk:
-            raise CreationRefusee(f"Devis introuvable (#{devis_id}).",
-                                  champ='devis_id')
+            raise RattachementIntrouvable(
+                f"Devis introuvable (#{devis_id}).", champ='devis_id')
         # ACAL33 — un devis déjà rattaché est refusé AVANT toute copie : la
         # base n'admet qu'un calepinage par devis, et le refus nomme le
         # calepinage qui le tient.
@@ -688,10 +704,14 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
 
         deja = calepinage_du_devis(devis.pk, company)
         if deja is not None:
-            raise CreationRefusee(_message_deja_lie(devis, deja),
-                                  champ='devis_id')
+            raise RattachementEnConflit(_message_deja_lie(devis, deja),
+                                        champ='devis_id')
         lead_id = getattr(devis, 'lead_id', None) or lead_id
         client_id = getattr(devis, 'client_id', None) or client_id
+        if not lead_id and not client_id:
+            raise RattachementEnConflit(
+                "Ce devis n'a ni lead ni client : rattachez-le d'abord, la "
+                "copie n'aurait aucun rattachement.", champ='devis_id')
 
     # Lot 2 critique #15 — le jeu est appliqué à la conception AVANT la
     # copie : la version « Conception d'origine » déposée par ``dupliquer``
@@ -718,6 +738,7 @@ def demarrer_depuis_modele(modele, company, *, user=None, lead_id=None,
             try:
                 lier_devis(copie, devis.pk, user=user)
             except LiaisonRefusee as refus:
-                raise CreationRefusee(str(refus), champ='devis_id') from None
+                raise RattachementEnConflit(
+                    str(refus), champ='devis_id') from None
     _noter_jeu(copie, jeu, regles, user=user)
     return copie

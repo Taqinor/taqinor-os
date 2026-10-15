@@ -3,8 +3,8 @@
 Quatre portes, toutes contre la base réelle (aucun mock) :
 
 * le CRUD (PATCH ``{devis}``) ne touche plus le champ — il est LU seulement ;
-* ``depuis-modele`` avec un devis déjà rattaché rend un 400 NOMMÉ et ne crée
-  aucune copie ;
+* ``depuis-modele`` avec un devis déjà rattaché rend un 409 NOMMÉ (refus
+  d'état que le schéma ne peut pas dire) et ne crée aucune copie ;
 * ``lier_devis`` refuse de re-pointer un calepinage lié à un devis ACTIF en
   nommant les DEUX références, mais re-pointe un ancien devis INACTIF
   (remplacé par une révision — prérequis D-ACAL-3) ;
@@ -57,7 +57,7 @@ class LierDevisSeulEcrivainTest(BaseApiCalepinage):
         self.a.refresh_from_db()
         self.assertEqual(self.a.devis_id, self.devis.pk)
 
-    def test_depuis_modele_devis_deja_lie_400(self):
+    def test_depuis_modele_devis_deja_lie_409(self):
         modele = Calepinage.objects.create(
             company=self.company, lead_id=self.lead.pk, titre='Modèle villa',
             roof_layout=copy.deepcopy(DOCUMENT))
@@ -66,7 +66,7 @@ class LierDevisSeulEcrivainTest(BaseApiCalepinage):
         reponse = self.api.post(URL_DEPUIS_MODELE, {
             'modele_id': modele.pk, 'lead_id': self.lead.pk,
             'devis_id': self.devis.pk}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         message = str(reponse.data['devis_id'])
         self.assertIn('DEV-202610-3301', message)
         self.assertIn('Villa A', message)

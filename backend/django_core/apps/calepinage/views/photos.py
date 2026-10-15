@@ -31,6 +31,9 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte, DateStricte
+
+from ..models import PhotoSite
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..serializers import forme_reponse
 
@@ -75,6 +78,41 @@ _CHAMPS_PHOTO = {
 _FORME_PHOTO = forme_reponse('CalepinagePhotoSite', 'photo', 'photos')
 
 
+# ``ChoiceField`` pour un corps multipart : DRF y lit une valeur VIDE d'un champ
+# facultatif comme « absent » (``Field.get_value``) — un genre ``''``, hors
+# énumération publiée, passait donc pour un genre omis (201). La valeur vide est
+# ici transmise telle quelle, et refusée (400).
+class _ChoixDeFormulaire(serializers.ChoiceField):
+    def get_value(self, dictionary):
+        return dictionary.get(self.field_name, serializers.empty)
+
+
+# ERR-ENF11-FUZZ-CALEPINAGE (w4) — les champs TEXTE du dépôt d'une photo : UN
+# seul prédicat, publié au schéma ET appliqué par le serveur.
+#   * ``prise_le`` : date ``AAAA-MM-JJ`` OBLIGATOIRE (« saisie, jamais déduite
+#     de la date d'import ») ; une date FUTURE dépend du jour du serveur, le
+#     schéma ne peut pas la dire : 409 (``PhotoEnConflit``) ;
+#   * ``genre`` : l'une des valeurs de ``PhotoSite.Genre`` (absent ⇒ drone) ;
+#   * ``legende`` : texte libre sans caractère nul (tronqué à 200).
+# (Commentaire et non docstring : une docstring fuiterait dans la description
+# OpenAPI.)
+class PhotoSiteChampsSerializer(serializers.Serializer):
+    genre = _ChoixDeFormulaire(choices=PhotoSite.Genre.choices,
+                               required=False)
+    prise_le = DateStricte(error_messages={
+        'required': ("La date de prise de vue est obligatoire : elle est "
+                     "SAISIE, jamais déduite de la date d'import."),
+        'invalid': "Date de prise de vue illisible : attendu AAAA-MM-JJ.",
+        'null': ("La date de prise de vue est obligatoire : elle est "
+                 "SAISIE, jamais déduite de la date d'import.")})
+    legende = ChaineStricte(required=False, allow_blank=True)
+
+
+# Le corps publié du dépôt : les champs ci-dessus et le fichier.
+class PhotoSiteCorpsSerializer(PhotoSiteChampsSerializer):
+    photo = serializers.ImageField()
+
+
 class PhotosSiteMixin:
     """``GET``/``POST`` ``calepinages/<pk>/photos/`` — les photos du site."""
 
@@ -82,15 +120,16 @@ class PhotosSiteMixin:
                    responses=forme_reponse('CalepinagePhotosSite', 'photos'))
     @extend_schema(
         methods=['POST'],
-        request=inline_serializer('CalepinagePhotoCorps', {
-            'photo': serializers.ImageField(), **_CHAMPS_PHOTO}),
+        request=PhotoSiteCorpsSerializer,
         responses={201: _FORME_PHOTO})
     @action(detail=True, methods=['get', 'post'], url_path='photos',
             permission_classes=[PeutLireOuEcrireCalepinage],
             parser_classes=[MultiPartParser, FormParser])
     def photos(self, request, pk=None):
         from ..selectors import photos_site
-        from ..services.photos import PhotoRefusee, ajouter_photo_site
+        from ..services.photos import (
+            PhotoEnConflit, PhotoRefusee, ajouter_photo_site,
+        )
 
         # L'OBJET D'ABORD (CAL29) : borné société par ``get_queryset``.
         calepinage = self.get_object()
@@ -98,15 +137,21 @@ class PhotosSiteMixin:
         if request.method.lower() == 'get':
             return Response({'photos': photos_site(calepinage)})
 
+        champs = PhotoSiteChampsSerializer(data=request.data)
+        champs.is_valid(raise_exception=True)
+        valides = champs.validated_data
         try:
             photo = ajouter_photo_site(
                 calepinage,
                 request.FILES.get('photo') or request.FILES.get('file'),
-                genre=request.data.get('genre'),
-                prise_le=request.data.get('prise_le'),
-                legende=request.data.get('legende') or '',
+                genre=valides.get('genre'),
+                prise_le=valides['prise_le'],
+                legende=valides.get('legende') or '',
                 user=request.user,
             )
+        except PhotoEnConflit as refus:
+            return Response({refus.champ or 'detail': str(refus)},
+                            status=status.HTTP_409_CONFLICT)
         except PhotoRefusee as refus:
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)

@@ -384,8 +384,10 @@ FORME_SUGGESTION_PENTE = inline_serializer('CalepinageSuggestionPenteReponse', d
 ))
 FORME_SUGGESTION_PENTE_DEMANDE = inline_serializer('CalepinageSuggestionPenteDemande', dict(
     roof_layout=inline_serializer('CalepinageSuggestionPenteDocument', dict(
+        # ``min_length=1`` PUBLIE ``minItems: 1`` (``allow_empty=False`` seul ne
+        # l'écrit pas au schéma) : le serveur refuse un document sans pan.
         zones=serializers.ListField(
-            child=serializers.DictField(), allow_empty=False),
+            child=serializers.DictField(), allow_empty=False, min_length=1),
     )),
 ))
 
@@ -444,7 +446,12 @@ class SuggestionPenteIGNView(APIView):
             document = donnees.get('roof_layout')
             if not isinstance(document, dict):
                 document = donnees
-        if not isinstance(document, dict) or not document.get('zones'):
+        # UN prédicat avec le schéma publié : ``zones`` est une liste NON VIDE
+        # de pans (objets). Une valeur d'un autre type n'est jamais « lue vide »
+        # par le service (société en France : 200 à tort).
+        zones = document.get('zones') if isinstance(document, dict) else None
+        if not (isinstance(zones, list) and zones
+                and all(isinstance(zone, dict) for zone in zones)):
             return Response(
                 {'roof_layout': "Document de conception manquant : aucun pan "
                                 "(« zones ») à analyser."},

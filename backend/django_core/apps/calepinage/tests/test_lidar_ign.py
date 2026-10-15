@@ -353,3 +353,13 @@ class EndpointTest(TestCase):
         reponse = self.api.post(URL, {'roof_layout': {}}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('roof_layout', reponse.data)
+
+    def test_post_zones_mal_formees_refusees_avant_tout_appel(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE (w4) — UN prédicat avec le schéma publié
+        (``zones`` : liste NON VIDE d'objets) : une valeur d'un autre type
+        n'est jamais « lue vide » par le service, même en France (200 à tort)."""
+        for zones in ([], 'AAA', {}, 0, None, [0], [None], ['AAA'], [{}, 5]):
+            reponse = self.api.post(
+                URL, {'roof_layout': {'zones': zones}}, format='json')
+            self.assertEqual(reponse.status_code, 400, zones)
+            self.assertIn('roof_layout', reponse.data)

@@ -27,16 +27,19 @@ ailleurs (marquer/démarquer, action de ``services.modeles``).
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.extensions import OpenApiSerializerExtension
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte
+
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import (
     FORME_DETAIL_CALEPINAGE, CalepinageLectureSerializer, CalepinageSerializer,
-    forme_reponse,
+    corps_obligatoire, forme_reponse,
 )
 from ..services.modeles import ModeleInvalide, calepinages_modeles
 from ..services.modeles import demarquer_modele as service_demarquer
@@ -74,10 +77,6 @@ def modeles(self, request):
 _FORME_BASCULE = forme_reponse(
     'CalepinageModeleBascule', calepinage=drf_serializers.IntegerField(),
     modele=drf_serializers.BooleanField())
-
-
-def _corps(request):
-    return request.data if isinstance(request.data, dict) else {}
 
 
 def _identifiant(brut):
@@ -149,18 +148,64 @@ def _refus_nomme(refus):
                                    status.HTTP_400_BAD_REQUEST))
 
 
+#: Plus grand identifiant d'une clé primaire entière (``AutoField`` PostgreSQL,
+#: entier 32 bits) : au-delà, la requête ne peut désigner aucune ligne.
+ID_MAX = 2_147_483_647
+
+#: Les identifiants qui désignent LE rattachement du calepinage créé : au moins
+#: l'un des trois est exigé (le ``modele_id`` seul n'en est pas un).
+RATTACHEMENTS = ('lead_id', 'client_id', 'devis_id')
+
+
+# ERR-ENF11-FUZZ-CALEPINAGE (w4) — le corps de ``depuis-modele``, UN seul
+# prédicat publié ET appliqué : identifiants entiers >= 1 (``0`` n'a jamais
+# désigné quoi que ce soit), titre au plus 200 signes (la colonne), ``preset_id``
+# texte ; AU MOINS un rattachement (lead, client ou devis) — dit au schéma par
+# ``anyOf`` (extension ci-dessous). Ce que la forme ne peut pas dire — l'id
+# désigne-t-il une ligne de la société ? le devis est-il déjà lié ? — est un 404
+# / 409. (Commentaire et non docstring : elle fuiterait dans l'OpenAPI.)
+class CalepinageDepuisModeleCorpsSerializer(drf_serializers.Serializer):
+    modele_id = drf_serializers.IntegerField(
+        required=False, min_value=1, max_value=ID_MAX)
+    lead_id = drf_serializers.IntegerField(
+        required=False, min_value=1, max_value=ID_MAX)
+    client_id = drf_serializers.IntegerField(
+        required=False, min_value=1, max_value=ID_MAX)
+    devis_id = drf_serializers.IntegerField(
+        required=False, min_value=1, max_value=ID_MAX)
+    titre = ChaineStricte(required=False, allow_blank=True, max_length=200,
+                          trim_whitespace=False)
+    preset_id = ChaineStricte(required=False, allow_blank=True,
+                              allow_null=True)
+
+    def validate(self, attrs):
+        if not any(attrs.get(cle) for cle in RATTACHEMENTS):
+            raise drf_serializers.ValidationError({
+                'client_id': ["Aucun client n'a été indiqué : choisissez le "
+                              "client dont vous concevez la toiture."]})
+        return attrs
+
+
+class _RattachementExigePublie(OpenApiSerializerExtension):
+    """« Au moins un rattachement » PUBLIÉ : sans cela ``{}`` (ou ``{titre}``)
+    était un corps « conforme » refusé en 400."""
+    target_class = CalepinageDepuisModeleCorpsSerializer
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+        return {**schema, 'anyOf': [{'required': [cle]}
+                                    for cle in RATTACHEMENTS]}
+
+
 @extend_schema(
-    request=inline_serializer('CalepinageDepuisModeleCorps', {
-        'modele_id': drf_serializers.IntegerField(required=False),
-        'lead_id': drf_serializers.IntegerField(required=False),
-        'client_id': drf_serializers.IntegerField(required=False),
-        'devis_id': drf_serializers.IntegerField(required=False),
-        'titre': drf_serializers.CharField(required=False, allow_blank=True),
-        'preset_id': drf_serializers.CharField(
-            required=False, allow_blank=True, allow_null=True)}),
+    request=CalepinageDepuisModeleCorpsSerializer,
     # CI #993 api-fuzz — ``preset_id`` est l'identifiant TEXTE d'un jeu :
     # inconnu ⇒ 404 nommant ``preset_id`` ; non-texte (objet, nombre) ⇒ 400.
     responses={200: FORME_DETAIL_CALEPINAGE, 201: FORME_DETAIL_CALEPINAGE})
+@corps_obligatoire
 @action(detail=False, methods=['post'], url_path='depuis-modele',
         permission_classes=[PeutGererCalepinage])
 def depuis_modele(self, request):
@@ -180,17 +225,15 @@ def depuis_modele(self, request):
     )
     from .calepinages import detail_calepinage
 
-    corps = _corps(request)
+    champs = CalepinageDepuisModeleCorpsSerializer(data=request.data)
+    champs.is_valid(raise_exception=True)
+    corps = champs.validated_data
     company = getattr(request.user, 'company', None)
-    lead_id = _identifiant(corps.get('lead_id'))
-    client_id = _identifiant(corps.get('client_id'))
-    devis_id = _identifiant(corps.get('devis_id'))
-    titre = str(corps.get('titre') or '')
+    lead_id = corps.get('lead_id')
+    client_id = corps.get('client_id')
+    devis_id = corps.get('devis_id')
+    titre = corps.get('titre') or ''
     preset_id = corps.get('preset_id')
-    if preset_id is not None and not isinstance(preset_id, str):
-        return Response(
-            {'preset_id': 'Identifiant de jeu de réglages attendu (texte).'},
-            status=status.HTTP_400_BAD_REQUEST)
     brut_modele = corps.get('modele_id')
     cree = True
     try:

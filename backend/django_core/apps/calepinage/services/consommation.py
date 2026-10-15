@@ -32,6 +32,7 @@ LES RÈGLES POSÉES ICI
 """
 from __future__ import annotations
 
+import inspect
 import math
 
 __all__ = ['AVIS_KWH_NON_CONVERTIS', 'ImportCourbeInvalide',
@@ -1119,7 +1120,23 @@ def _depuis_appareils(corps):
             raise ProfilInvalide(
                 f'Charge inconnue : « {nom} » (admises : '
                 f'{", ".join(fabriques)}).', champ=f'charges.{nom}')
-        blocs.append(fabrique(**dict(parametres or {})))
+        # ERR-ENF11-FUZZ-CALEPINAGE (w4) — des paramètres qui ne sont pas un
+        # objet, ou qui nomment un argument que la charge ne connaît pas, sont
+        # un refus nommé (jamais un ``TypeError`` en 500).
+        if parametres is not None and not isinstance(parametres, dict):
+            raise ProfilInvalide(
+                f'Les paramètres de la charge « {nom} » se donnent en objet '
+                f'(reçu : {type(parametres).__name__}).',
+                champ=f'charges.{nom}')
+        parametres = dict(parametres or {})
+        inconnus = sorted(set(parametres) - set(
+            inspect.signature(fabrique).parameters))
+        if inconnus:
+            raise ProfilInvalide(
+                f'Paramètre inconnu de la charge « {nom} » : « {inconnus[0]} » '
+                f'(admis : {", ".join(inspect.signature(fabrique).parameters)}).',
+                champ=f'charges.{nom}.{inconnus[0]}')
+        blocs.append(fabrique(**parametres))
     if blocs:
         cumul = ajouter_charges(courbe, blocs)
         courbe = cumul['courbe']

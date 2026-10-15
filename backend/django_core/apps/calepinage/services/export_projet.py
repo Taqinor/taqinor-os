@@ -515,11 +515,18 @@ MOTIF_FORMAT_1 = (
 
 
 class ImportProjetRefuse(ValueError):
-    """La réimportation refuse le fichier — et NOMME le chemin fautif."""
+    """La réimportation refuse le fichier — et NOMME le chemin fautif.
 
-    def __init__(self, message, *, champ=''):
+    ``statut`` est celui de la porte HTTP : 409 par défaut (un refus de
+    CONTENU — conception, poste, variante, coût, saisie — est un fait du
+    fichier que le schéma publié ne peut pas dire), 400 pour une faute de FORME
+    que ce schéma dit (fichier non objet, version inconnue, rattachement ni
+    lead ni client), 404 pour un lead / client introuvable."""
+
+    def __init__(self, message, *, champ='', statut=409):
         super().__init__(message)
         self.champ = champ
+        self.statut = statut
 
 
 def _chemin_layout(prefixe, champ):
@@ -777,7 +784,7 @@ def _analyser_projet(document):
     if not isinstance(document, dict):
         raise ImportProjetRefuse(
             'Le fichier de projet doit être un objet JSON (reçu : %s).'
-            % type(document).__name__, champ='projet')
+            % type(document).__name__, champ='projet', statut=400)
     version = document.get('format_version')
     if isinstance(version, bool) or version not in FORMATS_IMPORTABLES:
         raise ImportProjetRefuse(
@@ -786,7 +793,7 @@ def _analyser_projet(document):
             'Réexportez le projet depuis une version à jour.'
             % (_json_court(version),
                ', '.join(str(v) for v in FORMATS_IMPORTABLES)),
-            champ='format_version')
+            champ='format_version', statut=400)
 
     montants = sorted(_chemins(document, '',
                                lambda cle, _valeur: _cle_de_montant(cle)))
@@ -923,7 +930,7 @@ def importer_projet(document, company, *, user=None, lead_id=None,
     if bool(lead_id) == bool(client_id):
         raise ImportProjetRefuse(
             'Indiquez le lead OU le client de votre société auquel rattacher '
-            'le projet importé (un seul des deux).', champ='lead')
+            'le projet importé (un seul des deux).', champ='lead', statut=400)
     _trier_produits(plan, company)
     if apercu:
         return _resume(plan, ecrit=False)
@@ -959,7 +966,9 @@ def importer_projet(document, company, *, user=None, lead_id=None,
                 _creer_variantes(calepinage, plan['variantes'], user=user))
     except CreationRefusee as refus:
         champ = refus.champ or ('lead' if lead_id else 'client')
-        raise ImportProjetRefuse(str(refus), champ=champ) from refus
+        raise ImportProjetRefuse(
+            str(refus), champ=champ,
+            statut=getattr(refus, 'statut_http', 409)) from refus
     except LayoutRefuse as refus:
         raise ImportProjetRefuse(
             str(refus), champ=refus.champ or 'roof_layout') from refus

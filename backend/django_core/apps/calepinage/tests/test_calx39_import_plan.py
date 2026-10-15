@@ -257,10 +257,31 @@ class RefusNommesTest(SimpleTestCase):
         self.assertEqual(reponse.data, _contrat()['refus_fichier_image'])
 
     def test_un_calque_inconnu_liste_les_calques_disponibles(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE (w4) : l'existence d'un calque est un fait
+        # du fichier déposé que le schéma ne peut pas porter -> 404 (le corps
+        # du contrat est inchangé).
         reponse = _appeler(calque='ENVELOPE')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         self.assertEqual(reponse.data, _contrat()['refus_calque'])
         self.assertIn(CALQUE, reponse.data['calque'])
+
+    def test_une_entite_inexistante_est_404_un_rang_mal_forme_400(self):
+        reponse = _appeler(calque=CALQUE, entite='2')
+        self.assertEqual(reponse.status_code, 404)
+        self.assertEqual(list(reponse.data), ['entite'])
+        # Le rang se juge même sans calque (jamais ignoré en silence).
+        for entite in ('0', '-1', 'x', '', '1.5'):
+            reponse = _appeler(entite=entite)
+            self.assertEqual(reponse.status_code, 400, entite)
+            self.assertEqual(list(reponse.data), ['entite'])
+        self.assertEqual(_appeler(entite='1').status_code, 200)
+        self.assertEqual(_appeler(calque=CALQUE, entite='1').status_code, 200)
+
+    def test_un_calque_sans_contour_ferme_est_un_refus_de_contenu_409(self):
+        # Le calque « COTES » ne porte qu'un segment isolé.
+        reponse = _appeler(calque=CALQUE_COTES)
+        self.assertEqual(reponse.status_code, 409)
+        self.assertEqual(list(reponse.data), ['calque'])
 
     def test_un_dxf_illisible_est_refuse_et_jamais_un_500(self):
         reponse = _appeler(b'ce fichier n est pas un plan' * 10)

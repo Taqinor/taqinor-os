@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """ACAL184 (D-ACAL-12, C-ACAL-007) — « depuis un modèle » n'a qu'UNE porte :
 ``POST calepinages/depuis-modele/``. La copie reprend le client du lead, un
-couple lead/client incohérent est refusé, un lead déjà ouvert répond 409 ;
+couple lead/client incohérent est refusé (409 : état de la donnée), un lead
+déjà ouvert répond 409 ;
 ``creer-depuis-modele`` n'existe plus.
 
 HTTP réel, base réelle ; le modèle est MARQUÉ par le service réel.
@@ -64,7 +65,7 @@ class PorteUniqueModele(BaseApiCalepinage):
         avant = Calepinage.objects.count()
         reponse = self._depuis_modele({'lead_id': self.lead_l.pk,
                                        'client_id': self.client_a.pk})
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('client_id', reponse.data)
         self.assertEqual(Calepinage.objects.count(), avant)
 

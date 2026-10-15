@@ -19,18 +19,6 @@ API rejected schema-compliant request|PATCH /api/django/parametres/email-templat
 API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
 API rejected schema-compliant request|POST /api/django/agent/actions/automation-draft/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/depuis-modele/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/import-projet/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/consommation/proposer/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/fond-plan/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/image-document/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/importer-plan/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/meteo-fichier/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/photos/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/roof-image/
-API rejected schema-compliant request|POST /api/django/calepinage/moteur/calculer/
-API rejected schema-compliant request|POST /api/django/calepinage/moteur/pose/
-API rejected schema-compliant request|POST /api/django/calepinage/parametres/suggestion-pente/
 API rejected schema-compliant request|POST /api/django/crm/leads/
 API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/fait/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
@@ -103,10 +91,8 @@ API rejected schema-compliant request|PATCH /api/django/ventes/devis/{id}/
 # gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (les deux 500 crm = vrais bugs à corriger à la cause).
 # PR #984, 2e tirage (12/10/2026) — 2 constats PRÉ-EXISTANTS supplémentaires (variance de couverture du job PR),
 # gelés ; portés par ERR-ENF11-FUZZ-CALEPINAGE / ERR-ENF11-FUZZ-CRM (leads/{id}/merge = vrai 500 crm à corriger à la cause).
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/schema-unifilaire/
 # PR #984, 3e tirage (12/10/2026) — 17 constats PRÉ-EXISTANTS (variance de couverture du job PR : 198 opérations revues au 3e tirage contre 154 au 1er),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
-API rejected schema-compliant request|PUT /api/django/calepinage/parametres/profils-types/
 # PR #985, 1er tirage (12/10/2026) — 1 constat PRÉ-EXISTANT (ventes non touchée par la PR ; périmètre élargi par un test ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/ajouter-boq-electrique/

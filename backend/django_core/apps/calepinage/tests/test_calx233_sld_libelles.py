@@ -37,8 +37,8 @@ from core.electrique.types import (
 )
 
 from apps.calepinage.services.sld import (
-    CLE_EDITION, SldRefuse, edition_sld, enregistrer_edition_sld,
-    rendu_du_schema,
+    CLE_EDITION, SldEnConflit, SldRefuse, edition_sld,
+    enregistrer_edition_sld, rendu_du_schema,
 )
 
 MODULE = SpecModule(vmp_v=34.0, voc_v=41.0, isc_a=13.8, imp_a=13.0,
@@ -201,6 +201,52 @@ class ClefInconnueTest(ScenarioSld):
         with self.assertRaises(SldRefuse) as refus:
             self._poser({'libelles': {'ddr': '   '}})
         self.assertEqual(refus.exception.champ, 'edition.libelles.ddr')
+
+
+class NatureDuRefusTest(ScenarioSld):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — la NATURE du refus décide du statut.
+
+    Ce que le schéma publié de l'édition dit (type, texte vide / trop long /
+    nul, position négative) reste ``SldRefuse`` (400) ; ce qu'il ne peut pas
+    dire — bloc non dessiné, mot d'argent, position hors planche — est
+    ``SldEnConflit`` (409)."""
+
+    def test_etat_de_la_planche_et_garde_de_contenu_sont_des_conflits(self):
+        largeur = self.dessin['largeur']
+        cas = ({'libelles': {'coffret_ac': 'Coffret AC'}},
+               {'reperes': {'batterie': 'BAT1'}},
+               {'libelles': {'': None}}, {'reperes': {'': 'Q1'}},
+               {'positions': {'': None}},
+               {'libelles': {'ddr': 'Différentiel (prix révisé)'}},
+               {'positions': {'tgbt': {'x': largeur + 50, 'y': 0}}})
+        for corps in cas:
+            with self.assertRaises(SldEnConflit):
+                self._poser(corps)
+        self.assertEqual(self.calepinage.sauvegardes, [])
+
+    def test_la_forme_fautive_reste_un_refus_de_forme(self):
+        cas = (None, [], 'texte', {'libelles': 0}, {'libelles': [1]},
+               {'positions': 'x'}, {'libelles': {'ddr': 5}},
+               {'libelles': {'ddr': ''}}, {'libelles': {'ddr': ' \t '}},
+               {'libelles': {'ddr': 'a' * 121}},
+               {'libelles': {'ddr': 'a\x00b'}},
+               {'positions': {'tgbt': {'x': '10', 'y': 0}}},
+               {'positions': {'tgbt': {'x': True, 'y': 0}}},
+               {'positions': {'tgbt': {'x': float('nan'), 'y': 0}}},
+               {'positions': {'tgbt': {'x': -1, 'y': 0}}},
+               {'positions': {'tgbt': {'x': 1}}}, {'positions': {'tgbt': 3}})
+        for corps in cas:
+            with self.assertRaises(SldRefuse) as refus:
+                self._poser(corps)
+            self.assertNotIsInstance(refus.exception, SldEnConflit, corps)
+
+    def test_le_texte_a_la_borne_et_l_effacement_restent_admis(self):
+        edition = self._poser({'libelles': {'ddr': 'a' * 120},
+                               'reperes': {'ddr': None, 'inconnu': None}})
+        self.assertEqual(len(edition['libelles']['ddr']), 120)
+        # ``null`` EFFACE la clef (même d'un organe non dessiné) : rien n'est
+        # stocké, rien n'est refusé.
+        self.assertEqual(edition['reperes'], {})
 
 
 class TableauInchangeTest(ScenarioSld):

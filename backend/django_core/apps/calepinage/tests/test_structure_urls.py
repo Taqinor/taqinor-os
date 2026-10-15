@@ -246,6 +246,182 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
             'properties']['ids']
         self.assertEqual((ids['minItems'], ids['maxItems']), (1, 5))
 
+    def _corps_multipart(self, suffixe):
+        schema = self._operation('post', suffixe)['requestBody']['content'][
+            'multipart/form-data']['schema']
+        return self.schema['components']['schemas'][
+            schema['$ref'].rsplit('/', 1)[-1]]
+
+    def test_depots_de_fichier_publient_le_predicat_du_serveur(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE (w4) — photo, fond de plan et série météo :
+        le schéma dit EXACTEMENT ce que le serveur exige (date saisie, genre
+        énuméré, jeton / fournisseur non blancs) ; sans cela le fuzz envoyait
+        une valeur « conforme » (``" "``, genre libre) et recevait 400."""
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
+        composants = self.schema['components']['schemas']
+        photo = self._corps_multipart('{id}/photos/')
+        self.assertEqual(sorted(photo['required']), ['photo', 'prise_le'])
+        self.assertEqual(photo['properties']['prise_le'],
+                         {'type': 'string', 'format': 'date'})
+        genre = composants[
+            photo['properties']['genre']['$ref'].rsplit('/', 1)[-1]]
+        self.assertEqual(genre['enum'], ['drone', 'oblique', 'sol'])
+        fond = self._corps_multipart('{id}/fond-plan/')
+        self.assertEqual(fond['properties']['base_empreinte']['pattern'],
+                         MOTIF_NON_BLANC_SANS_NUL)
+        meteo = self._corps_multipart('{id}/meteo-fichier/')
+        self.assertEqual(meteo['properties']['fournisseur']['pattern'],
+                         MOTIF_NON_BLANC_SANS_NUL)
+
+    def test_importer_plan_publie_le_rang_et_le_calage_du_serveur(self):
+        """Le rang d'entité (≥ 1) et le calage (deux points, distance dans les
+        bornes) sont publiés tels que ``lire_calage`` les juge : un seul
+        prédicat (le ``CalageSerializer``)."""
+        from apps.calepinage.services.import_plan import (
+            DISTANCE_CALAGE_MIN_M, ROTATION_CALAGE_MAX_DEG,
+        )
+
+        composants = self.schema['components']['schemas']
+        corps = self._corps_multipart('{id}/importer-plan/')
+        self.assertEqual(corps['required'], ['fichier'])
+        self.assertEqual(corps['properties']['entite'],
+                         {'type': 'integer', 'minimum': 1})
+        calage = composants[
+            corps['properties']['calage']['$ref'].rsplit('/', 1)[-1]]
+        self.assertEqual(sorted(calage['required']),
+                         ['distanceM', 'pointA', 'pointB'])
+        self.assertEqual(calage['properties']['pointA']['minItems'], 2)
+        self.assertEqual(calage['properties']['distanceM']['minimum'],
+                         DISTANCE_CALAGE_MIN_M)
+        rotation = calage['properties']['rotationDeg']
+        self.assertEqual(rotation['maximum'], ROTATION_CALAGE_MAX_DEG)
+        self.assertIs(rotation['nullable'], True)
+        self.assertNotIn('rotationDeg', calage['required'])
+
+    def _composant(self, schema):
+        return self.schema['components']['schemas'][
+            schema['$ref'].rsplit('/', 1)[-1]]
+
+    def test_suggestion_pente_publie_au_moins_un_pan(self):
+        """``zones`` : liste NON VIDE (``minItems: 1``) — le serveur refuse un
+        document sans pan ; publié libre, ``[]`` était un cas « conforme »."""
+        operation = self.schema['paths'][
+            '/api/django/calepinage/parametres/suggestion-pente/']['post']
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        document = self._composant(corps['properties']['roof_layout'])
+        self.assertEqual(document['required'], ['zones'])
+        self.assertEqual(document['properties']['zones']['minItems'], 1)
+
+    def test_edition_du_schema_unifilaire_publie_ce_que_le_service_juge(self):
+        """Textes non blancs sans nul d'au plus 120 signes, positions {x, y}
+        positives : le prédicat de ``services/sld.py``, dit au schéma."""
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
+        from apps.calepinage.services.sld import LONGUEUR_TEXTE_MAX
+
+        operation = self._operation('post', '{id}/schema-unifilaire/')
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(sorted(corps['properties']),
+                         ['libelles', 'positions', 'reperes'])
+        for rubrique in ('libelles', 'reperes'):
+            texte = corps['properties'][rubrique]['additionalProperties']
+            self.assertEqual(texte['maxLength'], LONGUEUR_TEXTE_MAX)
+            self.assertEqual(texte['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+            self.assertIs(texte['nullable'], True)
+        position = self._composant(
+            corps['properties']['positions']['additionalProperties'][
+                'allOf'][0])
+        self.assertEqual(position['required'], ['x', 'y'])
+        self.assertEqual(position['properties']['x']['minimum'], 0)
+
+    def test_depuis_modele_publie_un_rattachement_et_des_identifiants_bornes(self):
+        """Au moins un de lead / client / devis (``anyOf``), identifiants
+        entiers de 1 à 2^31-1, titre de 200 signes au plus, corps obligatoire :
+        ce que le serveur exige, dit au schéma."""
+        operation = self._operation('post', 'depuis-modele/')
+        self.assertIs(operation['requestBody'].get('required'), True)
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(corps['anyOf'], [{'required': ['lead_id']},
+                                          {'required': ['client_id']},
+                                          {'required': ['devis_id']}])
+        for cle in ('modele_id', 'lead_id', 'client_id', 'devis_id'):
+            self.assertEqual(corps['properties'][cle]['minimum'], 1, cle)
+            self.assertEqual(corps['properties'][cle]['maximum'],
+                             2_147_483_647, cle)
+        self.assertEqual(corps['properties']['titre']['maxLength'], 200)
+
+    def test_moteur_publie_le_squelette_du_document_du_moteur(self):
+        """Version du moteur, repère, au moins une surface et un kit, paramètres
+        avec au moins un code de kit : ``core/calepinage/schema.json::required``
+        dit au schéma ; ``{}`` n'est plus un document « conforme »."""
+        from core.calepinage.version import SCHEMA_VERSION
+
+        calculer = self.schema['paths'][
+            '/api/django/calepinage/moteur/calculer/']['post']
+        pose = self.schema['paths'][
+            '/api/django/calepinage/moteur/pose/']['post']
+        for operation in (calculer, pose):
+            self.assertIs(operation['requestBody'].get('required'), True)
+        document = self._composant(calculer['requestBody']['content'][
+            'application/json']['schema'])
+        demande = self._composant(
+            self._composant(pose['requestBody']['content'][
+                'application/json']['schema'])['properties']['demande'])
+        for corps in (document, demande):
+            self.assertEqual(
+                sorted(corps['required']),
+                ['kits', 'parametres', 'repere', 'schema_version',
+                 'surfaces'])
+            version = corps['properties']['schema_version']
+            self.assertEqual((version['minimum'], version['maximum']),
+                             (SCHEMA_VERSION, SCHEMA_VERSION))
+            self.assertEqual(corps['properties']['surfaces']['minItems'], 1)
+            self.assertEqual(corps['properties']['kits']['minItems'], 1)
+            parametres = self._composant(corps['properties']['parametres'])
+            self.assertEqual(parametres['required'], ['kits'])
+            self.assertEqual(parametres['properties']['kits']['minItems'], 1)
+
+    def test_import_projet_publie_un_seul_rattachement_et_la_version_du_fichier(self):
+        """Exactement un de lead / client (``oneOf``), ``format_version`` du
+        fichier bornée aux formats relus, ``apercu`` booléen, corps obligatoire."""
+        from apps.calepinage.services.export_projet import FORMATS_IMPORTABLES
+
+        operation = self._operation('post', 'import-projet/')
+        self.assertIs(operation['requestBody'].get('required'), True)
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(corps['oneOf'], [{'required': ['lead']},
+                                          {'required': ['client']}])
+        self.assertIn('projet', corps['required'])
+        self.assertEqual(corps['properties']['apercu']['type'], 'boolean')
+        for cle in ('lead', 'client'):
+            self.assertEqual(corps['properties'][cle]['minimum'], 1, cle)
+        projet = self._composant(corps['properties']['projet'])
+        version = projet['properties']['format_version']
+        self.assertEqual((version['minimum'], version['maximum']),
+                         (min(FORMATS_IMPORTABLES), max(FORMATS_IMPORTABLES)))
+        self.assertEqual(projet['required'], ['format_version'])
+
+    def test_consommation_proposer_publie_une_source_et_son_document(self):
+        """Source connue, classe énumérée, un ``oneOf`` par source qui exige
+        le sous-document de la source choisie (``lead`` n'en exige aucun)."""
+        operation = self._operation('post', '{id}/consommation/proposer/')
+        self.assertIs(operation['requestBody'].get('required'), True)
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(corps['required'], ['source'])
+        branches = corps['oneOf']
+        self.assertEqual(
+            [b['properties']['source']['anyOf'][0]['enum'][0]
+             for b in branches], ['lead', 'factures', 'appareils', 'csv'])
+        self.assertEqual([b.get('required') for b in branches],
+                         [None, ['factures'], ['appareils'], ['csv']])
+        self.assertEqual(corps['properties']['appareils']['type'], 'array')
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']
