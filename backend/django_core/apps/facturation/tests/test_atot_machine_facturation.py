@@ -20,11 +20,12 @@ Après CHAQUE règle (relecture en base, jamais l'objet en mémoire) :
    version courante du devis ET pour chaque devis partenaire de consolidée
    (une consolidée compte pour chaque devis au prorata de son
    ``FactureSource.sous_total_ht``) ;
-2. aucune réponse 5xx — un refus est un 400 ;
+2. aucune réponse 5xx — un refus de porte est un 409 (refus d'ÉTAT,
+   ea003bef8 / CI #997 fuzz : les quatre portes partagent ce statut) ;
 3. ``solde_devis(...)['porte_facturation']`` (contrat ``devis_solde.json``,
    ATOT18) PRÉDIT le geste suivant : une porte « libre » accepte n'importe
    quelle porte (201), « tranche » n'accepte que ``generer-facture``,
-   « aucune » refuse tout (400).
+   « aucune » refuse tout (409).
 
 Échoue sur le pré-correctif d'ATOT2 (complète puis tranche = 240 000 pour un
 devis de 150 000) et d'ATOT5 (500 au solde). Test-du-test : retirer
@@ -147,7 +148,7 @@ class MachineFacturation(RuleBasedStateMachine):
         """La porte DITE par le serveur prédit l'issue du geste."""
         ouvert = porte == 'libre' or (porte == 'tranche'
                                       and geste == 'tranche')
-        attendu = 201 if ouvert else 400
+        attendu = 201 if ouvert else 409
         assert resp.status_code == attendu, (
             f'porte « {porte} » : {geste} → {resp.status_code} '
             f'(attendu {attendu}) {resp.data}')
@@ -159,7 +160,7 @@ class MachineFacturation(RuleBasedStateMachine):
         porte = self._porte(devis)
         r = self.api.post(f'{BASE}/devis/{devis.id}/generer-facture/', {},
                           format='json')
-        self._verifier_reponse(r, (201, 400))
+        self._verifier_reponse(r, (201, 409))
         self._predire(porte, 'tranche', r)
 
     @rule()
@@ -168,7 +169,7 @@ class MachineFacturation(RuleBasedStateMachine):
         porte = self._porte(devis)
         r = self.api.post(f'{BASE}/devis/{devis.id}/facturer-complet/',
                           {'paiements': []}, format='json')
-        self._verifier_reponse(r, (201, 400))
+        self._verifier_reponse(r, (201, 409))
         self._predire(porte, 'complete', r)
 
     @rule()
@@ -181,7 +182,7 @@ class MachineFacturation(RuleBasedStateMachine):
         if bc is None:
             r = self.api.post(f'{BASE}/devis/{devis.id}/convertir-bc/', {},
                               format='json')
-            self._verifier_reponse(r, (201, 400))
+            self._verifier_reponse(r, (201, 409))
             if r.status_code != 201:
                 self._predire(porte, 'bc', r)
                 return
@@ -196,7 +197,7 @@ class MachineFacturation(RuleBasedStateMachine):
         deja = Facture.objects.filter(bon_commande=bc).exists()
         r = self.api.post(f'{BASE}/bons-commande/{bc.id}/creer-facture/', {},
                           format='json')
-        self._verifier_reponse(r, (201, 400))
+        self._verifier_reponse(r, (201, 409))
         self._predire('aucune' if deja else porte, 'bc', r)
 
     @rule()
@@ -207,7 +208,7 @@ class MachineFacturation(RuleBasedStateMachine):
         r = self.api.post(f'{BASE}/factures/consolider/',
                           {'devis_ids': [devis.id, partenaire.id]},
                           format='json')
-        self._verifier_reponse(r, (201, 400))
+        self._verifier_reponse(r, (201, 409))
         self._predire(porte, 'consolidee', r)
         if r.status_code == 201:
             self.partenaires.append(partenaire.pk)
