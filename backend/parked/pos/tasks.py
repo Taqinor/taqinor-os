@@ -33,7 +33,7 @@ def liberer_reservations_expirees_task():
     from . import services
     try:
         return services.liberer_reservations_expirees()
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'pos.liberer_reservations_expirees: échec du balayage',
             exc_info=True)
