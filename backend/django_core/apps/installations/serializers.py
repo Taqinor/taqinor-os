@@ -150,7 +150,12 @@ class ChecklistTemplateSerializer(ChampsStrictsSansDecimalMixin, serializers.Mod
         return value or None
 
 
-class FicheInterventionChampSerializer(IdInconnu404Mixin, UniciteEn409Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class FicheInterventionChampSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    ChampsStrictsSansDecimalMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('template',)
 
@@ -1027,7 +1032,11 @@ class TypeInterventionPlanSerializer(serializers.ModelSerializer):
 
 # ── FG291 — Programme / Projet multi-chantiers ───────────────────────────────
 
-class ProjetChantierSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetChantierSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG291 — rattachement d'un chantier à un programme. La société est posée
     côté serveur ; le chantier est validé tenant côté vue."""
     # ACHT53 — FK inscriptibles bornées à la société.
@@ -1046,7 +1055,11 @@ class ProjetChantierSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompany
         read_only_fields = ['date_creation']
 
 
-class ProjetDevisSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetDevisSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG291 — rattachement d'un devis à un programme (string-FK, statut intact)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('projet', 'devis')
@@ -1064,7 +1077,11 @@ class ProjetDevisSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKS
         read_only_fields = ['date_creation']
 
 
-class ProjetTicketSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetTicketSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG291 — rattachement d'un ticket SAV à un programme (string-FK, statut
     intact)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -1126,7 +1143,11 @@ class ProjetSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMix
 
 # ── FG292 — Tâches & sous-tâches de projet avec dépendances ───────────────────
 
-class ProjetTacheSerializer(ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ProjetTacheSerializer(
+    ChampsStrictsSansDecimalMixin,
+    IdInconnu404Mixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG292 — tâche/sous-tâche de programme avec dépendances. La société est
     posée côté serveur ; `projet`, `parent`, `predecesseur` et `assigne` sont
     validés tenant côté vue. Le statut est PROPRE à la tâche (jamais
@@ -1209,7 +1230,11 @@ class BudgetEngagementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin
         return attrs
 
 
-class BudgetProjetSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BudgetProjetSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG294 — budget d'un programme (enveloppes par catégorie + seuil d'alerte).
     La société et `created_by` sont posés côté serveur ; le `projet` est validé
     tenant côté vue. Ne touche aucun statut. La synthèse vs réel (engagé/dépensé,
@@ -1242,7 +1267,11 @@ class BudgetProjetSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFK
         return value
 
 
-class EquipeSerializer(ListesStrictesMixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class EquipeSerializer(
+    ListesStrictesMixin,
+    ChampsStrictsSansDecimalMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """DC40 — équipe terrain CANONIQUE. La société et `created_by` sont posés
     côté serveur (jamais lus du corps) ; les `membres` (M2M → utilisateurs) et
     le `chef` doivent appartenir à la société de l'utilisateur (validé côté
@@ -1437,7 +1466,11 @@ class DemandeAchatLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixi
         return attrs
 
 
-class DemandeAchatSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DemandeAchatSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG310 — réquisition d'achat soumise à approbation. La référence, la
     société et `created_by` sont posés CÔTÉ SERVEUR ; `reference` est
     anti-collision (`DA-YYYYMM-NNNN`). Le `statut`, l'approbateur et la date de
@@ -1490,7 +1523,11 @@ class DemandeAchatSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyF
         return value
 
 
-class RegleApprobationAchatSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RegleApprobationAchatSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsSansDecimalMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """NTP2P2 — règle d'approbation des demandes d'achat (seuil de montant +
     périmètre chantier/programme optionnel). La société est posée CÔTÉ
     SERVEUR (jamais lue du corps)."""
@@ -1675,7 +1712,11 @@ class AppelCommandeSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, s
         return value
 
 
-class DossierImportSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DossierImportSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG315 — dossier d'import / dédouanement d'un conteneur. La référence et la
     société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
     (`IMP-YYYYMM-NNNN`). Le `statut_douane` avance via l'action `avancer`."""
@@ -1711,7 +1752,11 @@ class DossierImportSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompany
         return value
 
 
-class FraisImportSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class FraisImportSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG316 — frais imputé à un dossier d'import (fret/douane/TVA import/
     transit…). La société et `created_by` sont posés CÔTÉ SERVEUR. Montant
     INTERNE."""
@@ -1857,7 +1902,11 @@ class ContratPrixFournisseurSerializer(ChampsStrictsSansDecimalMixin, SameCompan
         return value
 
 
-class BinAffectationSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BinAffectationSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG319 — affectation produit ↔ casier (quantité indicative)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('bin', 'produit')
@@ -1873,7 +1922,11 @@ class BinAffectationSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompany
         read_only_fields = ['date_creation', 'date_modification']
 
 
-class BinLocationSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BinLocationSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsSansDecimalMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG319 — casier de rangement adressable sous un `EmplacementStock`. La
     societe et `created_by` sont poses COTE SERVEUR. Les affectations produit
     sont imbriquees en lecture."""
@@ -1959,7 +2012,11 @@ class PickListLigneSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['pick_list', 'ordre']
 
 
-class PickListSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class PickListSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsSansDecimalMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG321 - bon de prelevement d'un chantier. La reference, la societe et
     `created_by` sont poses COTE SERVEUR ; les lignes sont generees serveur
     depuis les reservations (action `generer`) et imbriquees en lecture."""
@@ -2006,7 +2063,11 @@ class ColisLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, seri
         return attrs
 
 
-class ColisSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ColisSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG322 - colis de preparation d'un chantier. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `controler`/`expedier` (qui posent
     `controle_par`/date). Lignes imbriquees en lecture."""
@@ -2029,7 +2090,11 @@ class ColisSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyF
         ]
 
 
-class SerieEntrepotSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class SerieEntrepotSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG323 - n0 de serie suivi en entrepot. La societe et `created_by` sont
     poses COTE SERVEUR ; le statut avance via les actions `reserver`/`sortir`
     (ou par mise a jour du `bin`)."""
@@ -2458,7 +2523,11 @@ class ControleQualiteItemModeleSerializer(SameCompanyFKSerializerMixin, serializ
         ]
 
 
-class ControleQualiteModeleSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class ControleQualiteModeleSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """XMFG13 - modèle de checklist QC par kit. Société posée COTE SERVEUR."""
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('kit',)
@@ -2522,7 +2591,11 @@ class OrdreDemontageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, 
         ]
 
 
-class EtapeAssemblageSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class EtapeAssemblageSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsSansDecimalMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """XMFG14 - étape de la gamme (mode opératoire) d'un kit."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('kit', 'piece_jointe')
@@ -2566,7 +2639,11 @@ class EtapeOrdreSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerial
         read_only_fields = ['fait_par', 'fait_le']
 
 
-class LivraisonLigneSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LivraisonLigneSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG329 - article d'une livraison (SKU + quantite)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('livraison', 'produit')
@@ -2591,7 +2668,11 @@ class LivraisonLigneSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, Sam
         return attrs
 
 
-class LivraisonSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LivraisonSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG329 - livraison planifiee depot -> site. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via les actions
     `expedier`/`livrer`/`annuler`. Lignes imbriquees en lecture."""
@@ -2626,7 +2707,12 @@ class LivraisonSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameComp
         ]
 
 
-class PreuveLivraisonSerializer(IdInconnu404Mixin, UniciteEn409Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class PreuveLivraisonSerializer(
+    IdInconnu404Mixin,
+    UniciteEn409Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """FG330 - preuve de livraison (signature + photo + GPS horodate). La
     societe et `created_by` sont poses COTE SERVEUR. Une seule preuve par
     livraison (OneToOne)."""
@@ -2685,7 +2771,11 @@ class RetourMaterielLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMi
         read_only_fields = ['stock_applique']
 
 
-class RetourMaterielSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourMaterielSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsSansDecimalMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """YSTCK4 - retour de materiel non pose, d'un chantier vers le depot.
     Societe/`created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture."""
@@ -2750,7 +2840,11 @@ class RetourLivraisonLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerM
         return attrs
 
 
-class RetourLivraisonSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourLivraisonSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """ZSTK8 - retour client genere depuis une Livraison livree. Societe/
     `created_by` poses COTE SERVEUR ; le statut avance via l'action
     `valider`. Lignes imbriquees en lecture, pre-remplies a la generation."""
@@ -2795,7 +2889,11 @@ class CategorieStockageSerializer(ChampsStrictsMixin, serializers.ModelSerialize
         return value
 
 
-class RegleRangementSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RegleRangementSerializer(
+    IdInconnu404Mixin,
+    ChampsStrictsEntiersMixin,
+    SameCompanyFKSerializerMixin,
+        serializers.ModelSerializer):
     """ZSTK9 - regle de rangement configurable (produit ou categorie produit
     -> casier cible, par priorite). Societe posee COTE SERVEUR."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
