@@ -810,3 +810,155 @@ class CodesGrilleAppliquesTests(TestCase):
             f'/api/django/sav/tickets/{ticket.pk}/reaffecter-equipe/',
             {'equipe': self.equipe_b.pk}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
+
+    # ── inventaire complété le 15/10/2026 ───────────────────────────────
+    def test_ventes_export_exports_comptables(self):
+        """Journal des ventes, export comptable (+ statut de l'export
+        asynchrone) et analyse de facturation ``?export=csv``."""
+        base = ['ventes_voir', 'ventes_modifier']
+        sans, avec = self._paire(base, 'ventes_export')
+        for url in ('/api/django/ventes/journal-ventes/?month=2026-10',
+                    '/api/django/ventes/export-comptable/?month=2026-10',
+                    '/api/django/ventes/export/status/inconnu/',
+                    '/api/django/ventes/etats/analyse-facturation/'
+                    '?month=2026-10&export=csv'):
+            with self.subTest(url=url):
+                self._refus(sans.get(url), 'ventes_export')
+                self.assertNotEqual(avec.get(url).status_code, 403)
+        # La lecture JSON du même écran reste ouverte sans le code.
+        self.assertEqual(sans.get(
+            '/api/django/ventes/etats/analyse-facturation/?month=2026-10'
+        ).status_code, 200)
+
+    def test_ventes_supprimer_bon_commande(self):
+        from apps.ventes.models import BonCommande
+        bc = BonCommande.objects.create(
+            company=self.company, reference='BC-ASEC50-1',
+            client=self.client_obj, statut=BonCommande.Statut.EN_ATTENTE)
+        url = f'/api/django/ventes/bons-commande/{bc.pk}/'
+        sans, avec = self._paire(['ventes_voir', 'roles_gerer'],
+                                 'ventes_supprimer')
+        self._refus(sans.delete(url), 'ventes_supprimer')
+        self.assertTrue(BonCommande.objects.filter(pk=bc.pk).exists())
+        self.assertNotEqual(avec.delete(url).status_code, 403)
+
+    def test_reporting_export_telechargements_des_rapports(self):
+        """Chaque écran du module reporting qui sert un téléchargement
+        (``?export=xlsx|pdf``, export de la balance âgée) exige
+        ``reporting_export`` ; la lecture JSON reste ouverte."""
+        r = '/api/django/reporting/'
+        responsable = (['reporting_voir', 'crm_modifier'], (
+            'reports/sales/?export=xlsx', 'reports/sales/?export=pdf',
+            'reports/stock/?export=xlsx', 'reports/service/?export=xlsx',
+            'insights/recurring-revenue/?export=xlsx',
+            'insights/audit-log/?export=xlsx',
+            'insights/analytics/?export=xlsx',
+            'insights/sales-leaderboard/?export=xlsx',
+            'insights/cf-group-by/?export=xlsx',
+            'insights/cohorts/?export=xlsx',
+            f'archive/client/{self.client_obj.pk}/?export=xlsx',
+            f'archive/chantier/{self.chantier.pk}/?export=xlsx',
+            'reports/field/?export=xlsx', 'insights/sav-sla/?export=xlsx',
+            'insights/sav-tickets-pivot/?export=xlsx',
+            'insights/technicien-scorecard/?export=xlsx',
+            'balance-agee/export/'))
+        admin = (['reporting_voir', 'roles_gerer'], (
+            'insights/job-costing/?export=xlsx',
+            'insights/commissions/?export=xlsx',
+            'insights/profitability/?export=xlsx'))
+        for base, chemins in (responsable, admin):
+            sans, avec = self._paire(base, 'reporting_export')
+            for chemin in chemins:
+                with self.subTest(url=chemin):
+                    self._refus(sans.get(r + chemin), 'reporting_export')
+                    if not chemin.endswith('export=pdf'):
+                        self.assertNotEqual(
+                            avec.get(r + chemin).status_code, 403)
+        sans, _avec = self._paire(responsable[0], 'reporting_export')
+        self.assertEqual(sans.get(r + 'reports/sales/').status_code, 200)
+
+    def test_sav_reassign_technicien_actions_groupees_et_patch(self):
+        from apps.sav.models import Ticket
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ASEC50-TECH',
+            client=self.client_obj, statut=Ticket.Statut.NOUVEAU)
+        sans, avec = self._paire(['sav_voir', 'sav_gerer'], 'sav_reassign')
+        masse = '/api/django/sav/tickets/actions-groupees/'
+        corps = {'ids': [ticket.pk], 'operation': 'technicien',
+                 'technicien': self.collegue.pk}
+        self._refus(sans.post(masse, corps, format='json'), 'sav_reassign')
+        url = f'/api/django/sav/tickets/{ticket.pk}/'
+        self._refus(sans.patch(url, {'technicien_responsable': self.collegue.pk},
+                               format='json'), 'sav_reassign')
+        ticket.refresh_from_db()
+        self.assertIsNone(ticket.technicien_responsable_id)
+        # Une autre opération groupée n'est pas une réaffectation.
+        self.assertEqual(sans.post(masse, {
+            'ids': [ticket.pk], 'operation': 'priorite',
+            'priorite': 'urgente'}, format='json').status_code, 200)
+        resp = avec.post(masse, corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.technicien_responsable_id, self.collegue.pk)
+
+    def test_technicien_assign_creation_intervention(self):
+        from apps.installations.models import Intervention
+        sans, avec = self._paire(['installation_voir', 'installation_gerer'],
+                                 'technicien_assign')
+        url = '/api/django/installations/interventions/'
+        corps = {'installation': self.chantier.pk, 'type_intervention': 'pose'}
+        avant = Intervention.objects.filter(company=self.company).count()
+        self._refus(sans.post(url, dict(corps, technicien=self.collegue.pk),
+                              format='json'), 'technicien_assign')
+        self.assertEqual(
+            Intervention.objects.filter(company=self.company).count(), avant)
+        # Créer SANS technicien n'est pas une affectation.
+        resp = sans.post(url, corps, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        resp = avec.post(url, dict(corps, technicien=self.collegue.pk),
+                         format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['technicien'], self.collegue.pk)
+
+    def test_roles_systeme_suivent_la_grille(self):
+        """Rôles SYSTÈME réels (``CANONICAL_SYSTEM_ROLES``) : le refus ne
+        tombe que sur un rôle qui ne porte pas le code dans la grille."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.sav.models import Ticket
+        grille = dict(CANONICAL_SYSTEM_ROLES)
+
+        def api(nom):
+            role = Role.objects.create(
+                company=self.company, nom=nom, est_systeme=True,
+                permissions=list(grille[nom]))
+            user = User.objects.create_user(
+                username=f'asec50-sys-{nom}', password='x',
+                company=self.company, role=role)
+            client = APIClient()
+            client.force_authenticate(user)
+            return client
+
+        rapport = '/api/django/reporting/reports/sales/?export=xlsx'
+        self.assertNotIn('reporting_export', grille['Commercial'])
+        self._refus(api('Commercial').get(rapport), 'reporting_export')
+        self.assertNotEqual(api('Directeur').get(rapport).status_code, 403)
+
+        ticket = Ticket.objects.create(
+            company=self.company, reference='SAV-ASEC50-SYS',
+            client=self.client_obj, statut=Ticket.Statut.NOUVEAU)
+        masse = {'ids': [ticket.pk], 'operation': 'technicien',
+                 'technicien': self.collegue.pk}
+        interv = {'installation': self.chantier.pk, 'type_intervention': 'pose',
+                  'technicien': self.collegue.pk}
+        technicien = api('Technicien')
+        self.assertNotIn('sav_reassign', grille['Technicien'])
+        self.assertNotIn('technicien_assign', grille['Technicien'])
+        self._refus(technicien.post('/api/django/sav/tickets/actions-groupees/',
+                                    masse, format='json'), 'sav_reassign')
+        self._refus(technicien.post('/api/django/installations/interventions/',
+                                    interv, format='json'), 'technicien_assign')
+        chef = api('Technicien responsable')
+        self.assertEqual(chef.post('/api/django/sav/tickets/actions-groupees/',
+                                   masse, format='json').status_code, 200)
+        self.assertEqual(chef.post('/api/django/installations/interventions/',
+                                   interv, format='json').status_code, 201)
