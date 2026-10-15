@@ -292,6 +292,9 @@ class TestJsonShapeValidation(ProfileValidationBase):
                                           'solde': 10}}}, format='json')
         self.assertEqual(resp.status_code, 409)
         self.assertIn('payment_terms', resp.data['detail'])
+        # L'écran Devis lit l'erreur de l'échéancier PAR CHAMP à la racine du
+        # corps (``profileError.payment_terms``) : le 409 la garde.
+        self.assertIn('payment_terms', resp.data)
 
     def test_payment_terms_non_numeric_rejected(self):
         resp = self.api.patch(

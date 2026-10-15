@@ -378,6 +378,8 @@ class TariffApiTest(TestCase):
             PUT_URL, {'indexation_tarif_pct_an': '4'}, format='json')
         self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('indexation_source', r.data['detail'])
+        # Les refus restent rangés PAR CHAMP à la racine (lus par l'écran).
+        self.assertIn('indexation_source', r.data)
         self.assertEqual(
             TariffSettings.get(company=self.company).version, 1)
         r = self.api.patch(PUT_URL, {

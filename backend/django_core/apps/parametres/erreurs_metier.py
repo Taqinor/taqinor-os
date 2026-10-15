@@ -88,11 +88,18 @@ def message_de_conflit(erreurs):
 
 def valider_ou_conflit(serializer):
     """``serializer.is_valid(raise_exception=True)`` où un refus fait UNIQUEMENT
-    de règles métier répond 409 (message = les refus, un par champ nommé), pas
-    400."""
+    de règles métier répond 409, pas 400.
+
+    Le corps du 409 garde la forme que lisent les écrans de Paramètres : les
+    refus PAR CHAMP à la racine (``{champ: [message]}``, comme un 400 de
+    validation) ET ``detail`` — le texte unique qui les joint, champ nommé."""
     if serializer.is_valid():
         return
     erreurs = serializer.errors
-    if que_des_regles_metier(erreurs):
-        raise ConflitEtat(message_de_conflit(erreurs))
-    raise serializers.ValidationError(erreurs)
+    if not que_des_regles_metier(erreurs):
+        raise serializers.ValidationError(erreurs)
+    corps = {'detail': message_de_conflit(erreurs)}
+    if isinstance(erreurs, dict):
+        for champ, valeur in erreurs.items():
+            corps[champ] = [str(f) for f in _feuilles(valeur)]
+    raise ConflitEtat(corps)
