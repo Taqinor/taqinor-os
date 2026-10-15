@@ -1,11 +1,11 @@
 from rest_framework import serializers
 
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
 
 from .models import Entite
 
 
-class EntiteSerializer(serializers.ModelSerializer):
+class EntiteSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     parent_nom = serializers.CharField(source='parent.nom', read_only=True, allow_null=True)
     actif = BooleenStrict(required=False)
 
