@@ -22,7 +22,7 @@ class LeadFigeTests(VisiteTerrainBase):
 
         resp = self.api.patch(f'/api/django/visites/visites/{visite_id}/',
                               {'lead': autre.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF11 : état de la visite
         self.assertEqual(resp.data['lead'], [MESSAGE])
 
         visite = VisiteTerrain.objects.get(pk=visite_id)

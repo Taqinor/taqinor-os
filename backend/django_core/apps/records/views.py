@@ -825,7 +825,9 @@ def _log_done_to_chatter(activity, user):
     Best-effort par type de cible ; n'échoue jamais la requête.
     """
     ct = activity.content_type
-    label = activity.activity_type.nom
+    # ENF11 (nocturne 15/10) — une activité SANS type (champ nullable) faisait un
+    # AttributeError (500) au « Fait » : libellé générique.
+    label = getattr(activity.activity_type, 'nom', None) or activity.summary or 'Activité'
     actor = getattr(user, 'username', '?')
     body = f"Activité « {label} » faite par {actor}"
     try:

@@ -68,16 +68,24 @@ class DashboardConfigSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         return value
 
     def validate(self, attrs):
-        user = attrs.get('user')
-        menu_tier = attrs.get('menu_tier', '')
+        # ENF11 (nocturne 15/10) — en MODIFICATION la règle porte sur la config
+        # EN PLACE complétée par le corps (un PATCH ``{}`` d'une config valide
+        # était refusé) ; une combinaison invalide y est un refus d'état (409).
+        instance = self.instance
+        user = attrs.get('user', getattr(instance, 'user', None))
+        menu_tier = attrs.get('menu_tier', getattr(instance, 'menu_tier', '') or '')
+        message = None
         if user and menu_tier:
-            raise serializers.ValidationError(
-                "Fournir user ET menu_tier ensemble est invalide : "
-                "une config est soit per-user (user non-null, menu_tier vide) "
-                "soit de palier (user null, menu_tier non-vide).")
-        if not user and not menu_tier:
-            raise serializers.ValidationError(
-                "Fournir au moins user ou menu_tier.")
+            message = ("Fournir user ET menu_tier ensemble est invalide : "
+                       "une config est soit per-user (user non-null, menu_tier vide) "
+                       "soit de palier (user null, menu_tier non-vide).")
+        elif not user and not menu_tier:
+            message = "Fournir au moins user ou menu_tier."
+        if message and instance is not None:
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(message)
+        if message:
+            raise serializers.ValidationError(message)
         return attrs
 
 

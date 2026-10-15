@@ -2,10 +2,11 @@ import datetime
 
 from drf_spectacular.utils import extend_schema_field
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+    ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
 )
 from rest_framework import serializers
 
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .actions import (
@@ -319,7 +320,7 @@ class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
         ).values('decided_by_id').distinct().count()
 
 
-class ApprovalDelegationSerializer(SameCompanyFKSerializerMixin,
+class ApprovalDelegationSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
     # ASEC30 — délégant et suppléant d'une autre société = id absent (400).
     same_company_fields = ('delegant', 'suppleant')
@@ -351,7 +352,7 @@ class ApprovalDelegationSerializer(SameCompanyFKSerializerMixin,
         debut = attrs.get('date_debut', getattr(self.instance, 'date_debut', None))
         fin = attrs.get('date_fin', getattr(self.instance, 'date_fin', None))
         if debut and fin and fin < debut:
-            raise serializers.ValidationError({
+            raise ConflitEtat({  # ENF11 (nocturne 15/10) : règle croisée = 409
                 'date_fin': 'La date de fin précède la date de début.'})
         return attrs
 

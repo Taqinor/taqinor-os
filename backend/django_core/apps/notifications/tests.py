@@ -879,6 +879,14 @@ class RoutingRuleTests(TestCase):
             {'event_type': EventType.FACTURE_OVERDUE},
             format='json')
         self.assertEqual(res.status_code, 400)
+        # ENF11 (nocturne 15/10) — en MODIFICATION la cible en place compte :
+        # PATCH ``{}`` d'une règle valide = 200 ; retirer sa seule cible = 409.
+        regle = NotificationRoutingRule.objects.create(
+            company=self.admin.company, event_type=EventType.FACTURE_OVERDUE,
+            target_user=self.admin)
+        url = f'/api/django/notifications/routing-rules/{regle.pk}/'
+        self.assertEqual(api.patch(url, {}, format='json').status_code, 200)
+        self.assertEqual(api.patch(url, {'target_user': None}, format='json').status_code, 409)
 
 
 # ENF8 — schéma OpenAPI exact de l'app notifications (décision D2 : JSON seul).

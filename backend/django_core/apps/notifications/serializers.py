@@ -119,9 +119,18 @@ class NotificationRoutingRuleSerializer(ChampsStrictsBornesMixin,
         return value
 
     def validate(self, data):
-        if not data.get('target_role') and not data.get('target_user'):
-            raise serializers.ValidationError(
-                'Une règle de routage doit cibler soit un rôle, soit un utilisateur.')
+        # ENF11 (nocturne 15/10) — en MODIFICATION, la cible EN PLACE compte (un
+        # PATCH ``{}`` d'une règle valide était refusé) ; une règle qui perdrait
+        # toute cible est un refus d'état (409).
+        instance = self.instance
+        role = data.get('target_role', getattr(instance, 'target_role', None))
+        cible = data.get('target_user', getattr(instance, 'target_user', None))
+        if not role and not cible:
+            message = 'Une règle de routage doit cibler soit un rôle, soit un utilisateur.'
+            if instance is not None:
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat(message)
+            raise serializers.ValidationError(message)
         return data
 
 
