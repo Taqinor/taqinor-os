@@ -6,9 +6,11 @@ import installationsApi from '../../api/installationsApi'
 import { DataTable, EmptyState, Spinner } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
-import { formatNumber, timeAgo } from '../../lib/format'
+import { formatNumber } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
+import useVisibilityAwarePoll from './useVisibilityAwarePoll'
+import FreshnessBadge from './FreshnessBadge'
 
 /* WR7 — Suivi CO₂ évité (FG286) : CO₂ évité cumulé sur le parc + par système,
    depuis GET /monitoring/configs/co2-fleet/. Rend uniquement ce que renvoie le
@@ -27,26 +29,6 @@ import MonitoringNav from './MonitoringNav'
 // Cf. FleetPage.jsx — même patron, dupliqué ici volontairement (pas de nouveau
 // fichier hors du périmètre Files de la tâche VX30).
 const CO2_POLL_MS = 5 * 60 * 1000
-
-function useVisibilityAwarePoll(callback, intervalMs) {
-  const cbRef = useRef(callback)
-  useEffect(() => { cbRef.current = callback }, [callback])
-  useEffect(() => {
-    const tick = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      cbRef.current()
-    }
-    const iv = setInterval(tick, intervalMs)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') cbRef.current()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [intervalMs])
-}
 
 export default function Co2Page() {
   const [searchParams] = useSearchParams()
@@ -170,16 +152,7 @@ function Co2Fleet() {
           (jamais la même couleur/forme qu'un état périmé). */}
       {lastUpdated && (
         <div className="mb-4 flex justify-end">
-          <span
-            className={
-              stale
-                ? 'inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning'
-                : 'text-xs text-muted-foreground'
-            }
-          >
-            {stale ? 'Hors-ligne — ' : 'Actualisé '}
-            {timeAgo(lastUpdated)}
-          </span>
+          <FreshnessBadge stale={stale} lastUpdated={lastUpdated} />
         </div>
       )}
 

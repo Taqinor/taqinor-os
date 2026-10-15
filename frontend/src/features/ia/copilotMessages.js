@@ -58,3 +58,13 @@ export function canSendQuestion(text, loading) {
   if (loading) return false
   return typeof text === 'string' && text.trim().length > 0
 }
+
+// Entrée (sans Maj) envoie la question.
+export function enterSubmits(handleSubmit) {
+  return (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+  }
+}
