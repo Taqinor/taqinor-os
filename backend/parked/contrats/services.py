@@ -55,7 +55,7 @@ from django.utils import timezone
 
 from core.pdf import render_pdf
 
-from .machine_etats import (  # noqa: F401 — réexport (point d'entrée services)
+from .machine_etats import (  # noqa: F401 — réexport (point d'entrée services) (D-ENF22)
     TRANSITIONS_AUTORISEES,
     TransitionInterdite,
     changer_statut,
@@ -101,7 +101,7 @@ def emettre_changement_statut_automation(contrat, *, ancien_statut, user=None):
 _changer_statut_machine = changer_statut
 
 
-def changer_statut(contrat, statut_cible, *, persister=True, user=None):  # noqa: F811 — enveloppe ARC34 du réexport ci-dessus
+def changer_statut(contrat, statut_cible, *, persister=True, user=None):
     """ARC34 — enveloppe du point d'entrée services : applique la transition
     GARDÉE (``machine_etats.changer_statut`` — mêmes gardes, mêmes exceptions,
     comportement inchangé) puis émet le déclencheur automation générique sur un
@@ -2779,7 +2779,7 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=None):
         from apps.ventes.services import debiter_mandat_pour_facture
         debiter_mandat_pour_facture(
             facture=facture, periode=ligne.date_echeance.isoformat())
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'XCTR22 : débit mandat indisponible pour la facture %s',
             facture.reference, exc_info=True)
