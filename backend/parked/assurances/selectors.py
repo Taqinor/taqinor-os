@@ -4,6 +4,7 @@ Point d'entrée des LECTURES cross-app entrantes (aucune autre app n'a besoin
 de lire ``assurances`` pour l'instant, ce module reste donc côté LECTEUR :
 il importe PARESSEUSEMENT les selectors des autres apps — jamais leurs
 ``models`` — pour résoudre des libellés d'actifs transverses (NTASS7/20)."""
+import logging
 import datetime
 
 from .models import ActifCouvert, AttestationAssurance, PoliceAssurance
@@ -27,7 +28,8 @@ def resoudre_libelle_actif(company, type_actif, actif_ref):
                     'actif_flotte').first()
             if assurance and assurance.actif_flotte_id:
                 return assurance.actif_flotte.label
-        except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
+        except Exception:  # noqa: BLE001 - dégradation gracieuse défensive (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("selectors.resoudre_libelle_actif : erreur ignorée (mode dégradé)", exc_info=True)
             return None
         return None
     # SITE/EQUIPEMENT/AUTRE : pas encore de selector propriétaire (futur
@@ -93,7 +95,8 @@ def libelle_risque(risque_ref):
         return None
     try:
         return grc_selectors.libelle_risque(risque_ref)
-    except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
+    except Exception:  # noqa: BLE001 - dégradation gracieuse défensive (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors.libelle_risque : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
@@ -150,7 +153,8 @@ def couverture_par_actif(company, type_actif, actif_ref):
                     'assureur': assur.assureur,
                     'date_echeance': assur.date_echeance,
                 })
-        except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
+        except Exception:  # noqa: BLE001 - dégradation gracieuse défensive (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("selectors.couverture_par_actif : erreur ignorée (mode dégradé)", exc_info=True)
             polices_flotte = []
 
     return {
@@ -237,7 +241,8 @@ def libelle_employe_couvert(company, employe_ref):
     try:
         from apps.rh import selectors as rh_selectors
         fiche = rh_selectors.fiche_identite_employe(company, employe_ref)
-    except Exception:  # noqa: BLE001 - dégradation gracieuse défensive
+    except Exception:  # noqa: BLE001 - dégradation gracieuse défensive (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("selectors.libelle_employe_couvert : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if not fiche:
         return None
