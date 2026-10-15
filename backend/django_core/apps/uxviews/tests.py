@@ -97,6 +97,16 @@ class SavedViewApiTests(TestCase):
                     self.BASE, self._payload(configuration=configuration), format='json')
                 self.assertEqual(resp.status_code, 400, resp.data)
                 self.assertIn('configuration', resp.data)
+        # CI #1003 (fuzz, 2e passe) — `nom: 0` était converti en "0" (201) :
+        # `ecran`/`nom` sont de vraies chaînes, de longueur BRUTE bornée.
+        for champ, valeur in (('nom', 0), ('ecran', 0), ('nom', True),
+                              ('nom', 'x' * 120 + '  ')):
+            with self.subTest(champ=champ, valeur=valeur):
+                resp = auth(self.commercial1).post(
+                    self.BASE, self._payload(**{champ: valeur}), format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn(champ, resp.data)
+        self.assertFalse(SavedView.objects.exists())
         payload = self._payload()
         del payload['configuration']
         resp = auth(self.commercial1).post(self.BASE, payload, format='json')
@@ -337,14 +347,21 @@ class SavedViewApiTests(TestCase):
     def test_importer_ligne_hors_bornes_rejetee_sans_500(self):
         # CI #1003 (fuzz) — nom > 120 signes ou octet NUL : la colonne
         # PostgreSQL refusait l'écriture (500) ; la ligne est rejetée, nommée.
+        # Le NUL était refusé dès le filtre « vue homonyme ? » (ValueError
+        # psycopg) : les bornes sont vérifiées AVANT toute requête.
+        SavedView.objects.create(company=self.co_a, owner=self.directeur,
+                                 ecran='crm.leads', nom='y' * 115)
         fichier = self._csv([('crm.leads', 'x' * 121, '{}'),
                              ('crm.leads', 'a' + chr(0) + 'b', '{}'),
+                             ('e' * 81, 'Écran trop long', '{}'),
+                             # homonyme : « (import) » ferait 124 signes
+                             ('crm.leads', 'y' * 115, '{}'),
                              ('crm.leads', 'Valide', '{}')])
         resp = auth(self.directeur).post(
             f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual([e['ligne'] for e in resp.data['erreurs']], [1, 2])
-        self.assertEqual(len(resp.data['created']), 1)
+        self.assertEqual([e['ligne'] for e in resp.data['erreurs']], [1, 2, 3, 4])
+        self.assertEqual([v['nom'] for v in resp.data['created']], ['Valide'])
 
     def test_importer_rejects_malformed_configuration_structure(self):
         bad = json.dumps({'colonnes_visibles': 'pas-une-liste'}).replace('"', '""')

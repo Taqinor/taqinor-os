@@ -6,6 +6,9 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound
 
+from apps.records.champs_stricts import (
+    ChampsStrictsBornesMixin as TextesBornesStrictsMixin,
+)
 from core.champs_stricts import BooleenStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
@@ -71,8 +74,11 @@ class ConfigurationVueField(serializers.JSONField):
 # publiait pour `/uxviews/saved-views/` le contrat de l'autre (ecran/nom jamais
 # exigés, champs `name`/`page`), d'où des POST « conformes » refusés (400).
 @extend_schema_serializer(component_name='UxSavedView')
-class SavedViewSerializer(SameCompanyFKSerializerMixin,
+class SavedViewSerializer(TextesBornesStrictsMixin, SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
+    # CI #1003 (fuzz) — `ecran`/`nom` sont de VRAIES chaînes JSON (`nom: 0`
+    # était converti en "0" et la vue créée, 201) dont la longueur BRUTE
+    # respecte `maxLength` (`ChaineBornee`, mixin de `apps.records`).
     # AANA17 — le rôle d'une vue est un rôle de LA société (les ids de rôle
     # sont devinables), même garde que `UxParametresSerializer`.
     same_company_fields = ('role',)
