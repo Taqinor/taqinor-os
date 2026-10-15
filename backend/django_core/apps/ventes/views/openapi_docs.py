@@ -866,7 +866,7 @@ PaiementDejaRecu = _ser('DevisFacturerCompletPaiementSaisi', {
     'montant': ChaineStricte(trim_whitespace=False, validators=[_MotifEntier(
         MOTIF_MONTANT_SAISI, message='Montant invalide.')]),
     'date_paiement': DateStricte(),
-    'mode_paiement': s.ChoiceField(choices=[
+    'mode_paiement': ChoixDocumente(choices=[
         'especes', 'virement', 'cheque', 'carte', 'prelevement', 'autre']),
     'reference': ChaineStricte(required=False, allow_blank=True,
                                allow_null=True, max_length=120),
