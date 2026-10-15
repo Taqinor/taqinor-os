@@ -685,7 +685,7 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
         from .services import divergence_devis_chantier
         return divergence_devis_chantier(obj)
 
-    @extend_schema_field(serializers.DictField())
+    @extend_schema_field(serializers.DictField(allow_null=True))  # APRF37 : null en liste
     def get_dossier_8221_resume(self, obj):
         return bloc_dossier_8221_resume(self, obj)  # APRF37 : null en liste
 
@@ -701,7 +701,7 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
     def get_statut_canonique(self, obj):
         return Installation.canonical_statut(obj.statut)
 
-    @extend_schema_field(serializers.DictField())
+    @extend_schema_field(serializers.DictField(allow_null=True))  # APRF37 : null en liste
     def get_regime_suggere(self, obj):
         return bloc_regime_suggere(self, obj)  # APRF37 : null en liste
 

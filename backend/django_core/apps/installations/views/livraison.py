@@ -261,17 +261,18 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         les lignes livrées. Refuse si la livraison n'est pas LIVREE (rien à
         retourner tant qu'elle n'est pas arrivée)."""
         liv = self.get_object()
+        # CI #1004 (api-fuzz) — corps conforme refusé par l'ÉTAT de la
+        # livraison (pas livrée, ou déjà intégralement retournée) : 409, plus
+        # 400 ; seul un ``motif`` non textuel reste une erreur de forme (400).
+        motif = request.data.get('motif') if hasattr(request.data, 'get') else None
+        if motif is not None and not isinstance(motif, str):
+            raise ValidationError({'motif': ['Texte attendu.']})
         if liv.statut != Livraison.Statut.LIVREE:
-            return Response(
-                {'detail': 'Seule une livraison livrée peut générer un '
-                 'retour.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        motif = (request.data.get('motif') or '').strip()
+            raise ConflitEtat({'detail': 'Seule une livraison livrée peut générer un retour.'})
         try:
-            retour = generer_retour_livraison(liv, request.user, motif=motif)
+            retour = generer_retour_livraison(liv, request.user, motif=(motif or '').strip())
         except ValueError as exc:  # ACHT21 — « Rien à retourner »
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise ConflitEtat({'detail': str(exc)})
         return Response(
             RetourLivraisonSerializer(retour).data,
             status=status.HTTP_201_CREATED)

@@ -129,9 +129,16 @@ class TestClotureRemise(Xfsm19TestBase):
         r1 = api.post(
             f'/api/django/ventes/remises-encaissement/{remise.id}/cloturer/')
         self.assertEqual(r1.status_code, 200, r1.data)
+        remise.refresh_from_db()
+        cloture_le = remise.date_cloture
         r2 = api.post(
             f'/api/django/ventes/remises-encaissement/{remise.id}/cloturer/')
-        self.assertEqual(r2.status_code, 400)
+        # ENF11 (nocturne 15/10) — remise déjà clôturée : refus d'ÉTAT, 409 ;
+        # la première clôture reste intacte.
+        self.assertEqual(r2.status_code, 409, str(r2.content))
+        remise.refresh_from_db()
+        self.assertEqual(remise.statut, 'cloturee')
+        self.assertEqual(remise.date_cloture, cloture_le)
 
     def test_technicien_ne_peut_pas_cloturer(self):
         remise = self._creer_remise()

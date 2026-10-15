@@ -1061,8 +1061,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         programmée supprimée, avance d'étape défaite) — le service
         ``annuler_touche_relance`` porte toute la règle.
 
-        Refus MOTIVÉ en 400 ``{"erreurs": {champ: message}}`` (même forme que
-        ``fait``) : passé 24 h, devis parti, dossier parqué au froid, lead
+        Refus MOTIVÉ en 409 ``{"erreurs": {champ: message}}`` (même forme que
+        ``fait``, refus d'ÉTAT — ENF11) : passé 24 h, devis parti, dossier parqué au froid, lead
         signé/perdu, étape suivante déjà traitée. Écriture → garde
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions`` (jamais
         listée parmi les lectures)."""
