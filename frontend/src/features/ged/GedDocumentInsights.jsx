@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Clock, ShieldCheck, MessageSquare, Download, Star, Plus, Trash2 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 import rolesApi from '../../api/rolesApi'
@@ -71,7 +71,7 @@ export default function GedDocumentInsights({ document, onClose }) {
     herite: true,
   })
 
-  const reloadAcl = () => {
+  const reloadAcl = useCallback(() => {
     if (!document) return
     gedApi.getPermissionsEffectives(document.id)
       .then((r) => setAcl(toArray(r.data)))
@@ -80,7 +80,7 @@ export default function GedDocumentInsights({ document, onClose }) {
     toutesLesPages(gedApi.getAcls, { document: document.id })
       .then((r) => setEntries(toArray(r.data)))
       .catch(() => setEntries([]))
-  }
+  }, [document])
 
   useEffect(() => {
     if (!document) return
@@ -92,8 +92,7 @@ export default function GedDocumentInsights({ document, onClose }) {
       .catch(() => setUsers([]))
     rolesApi.getRoles().then((r) => setRoles(toArray(r.data)))
       .catch(() => setRoles([]))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document])
+  }, [document, reloadAcl])
 
   const addAcl = async () => {
     if (!draft.principalId) {
