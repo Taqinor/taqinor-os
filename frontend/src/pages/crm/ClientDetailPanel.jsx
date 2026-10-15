@@ -7,7 +7,6 @@ import ventesApi from '../../api/ventesApi'
 import { toastError } from '../../lib/toast'
 import {
   Badge, Button, Spinner, RelationCounters,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -21,6 +20,7 @@ import PlanComptePage from './comptes/PlanComptePage'
 // CRX36 — un seul formateur de date dans l'application (lib/format).
 import { formatDate, formatMAD } from '../../lib/format'
 import { telHref, waHref } from '../../lib/contactLinks'
+import ApercuWhatsAppDialog from '../../components/ApercuWhatsAppDialog'
 
 // Panneau détail client (L4) — lecture seule : devis, factures et chantiers
 // liés au client, avec référence / statut / total (montants client-facing
@@ -265,30 +265,10 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
         </div>
       {/* VX245(c) — Aperçu du rappel WhatsApp avant ouverture de wa.me (même
           patron que RelancesPage/FactureList — jamais un envoi automatique). */}
-      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Aperçu du rappel WhatsApp — {waPreview?.reference}</DialogTitle>
-            <DialogDescription>Vérifiez le texte et le lien, puis ouvrez WhatsApp.</DialogDescription>
-          </DialogHeader>
-          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
-               style={{ fontFamily: 'inherit' }}>
-            {waPreview?.message}
-          </pre>
-          {waPreview?.url && (
-            <p className="mt-2 break-words text-xs text-muted-foreground">
-              Lien public : {waPreview.url}
-            </p>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
-            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
-                    onClick={ouvrirWhatsApp}>
-              <MessageCircle /> Ouvrir WhatsApp
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ApercuWhatsAppDialog apercu={waPreview}
+        titre={<>Aperçu du rappel WhatsApp — {waPreview?.reference}</>}
+        description="Vérifiez le texte et le lien, puis ouvrez WhatsApp."
+        onFermer={() => setWaPreview(null)} onOuvrir={ouvrirWhatsApp} />
     </ResponsiveDialog>
   )
 }

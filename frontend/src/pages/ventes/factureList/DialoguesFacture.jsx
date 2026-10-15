@@ -2,7 +2,6 @@
 // annulation, abandon du solde, retour client, consolidation, encaissement
 // groupé, aperçu WhatsApp) : JSX déplacé tel quel (move only) depuis
 // FactureList.jsx, qui le monte au même endroit — DOM inchangé.
-import { MessageCircle } from 'lucide-react'
 import {
   Button, Input, Checkbox,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -12,6 +11,7 @@ import {
 import { formatMAD, toNumber } from '../../../lib/format'
 import { AnnulationFactureDialog } from './AnnulationFactureDialog'
 import { TableauLignes } from '../../../ui/TableauDefilant'
+import ApercuWhatsAppDialog from '../../../components/ApercuWhatsAppDialog'
 
 // ATOT36 — types d'avoir choisis à l'émission (contrat `avoir.json`) ; le
 // « retour » est posé par l'action retour-client, jamais ici.
@@ -354,33 +354,14 @@ export default function DialoguesFacture({ gestes, lot, docs, factures }) {
       </Dialog>
 
       {/* ── L852 — Aperçu du message WhatsApp avant ouverture de wa.me ── */}
-      <Dialog open={!!waPreview} onOpenChange={(o) => { if (!o) setWaPreview(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Aperçu du message WhatsApp — {waPreview?.reference}</DialogTitle>
-            <DialogDescription>
-              {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
-              {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
-            </DialogDescription>
-          </DialogHeader>
-          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
-               style={{ fontFamily: 'inherit' }}>
-            {waPreview?.message}
-          </pre>
-          {waPreview?.url && (
-            <p className="mt-2 break-words text-xs text-muted-foreground">
-              Lien public : {waPreview.url}
-            </p>
-          )}
-          <FormActions sticky={false}>
-            <Button type="button" variant="ghost" onClick={() => setWaPreview(null)}>Annuler</Button>
-            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
-                    onClick={ouvrirWhatsApp}>
-              <MessageCircle /> Ouvrir WhatsApp
-            </Button>
-          </FormActions>
-        </DialogContent>
-      </Dialog>
+      <ApercuWhatsAppDialog apercu={waPreview}
+        titre={<>Aperçu du message WhatsApp — {waPreview?.reference}</>}
+        description={<>
+          {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
+          {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
+        </>}
+        onFermer={() => setWaPreview(null)} onOuvrir={ouvrirWhatsApp}
+        pied={FormActions} piedProps={{ sticky: false }} />
     </>
   )
 }

@@ -48,7 +48,6 @@
 0ada0f516c93|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 0b98a906ac8c|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro
 0c9e7a8115a5|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/nos-solutions.astro
-0ccdd8ef605c|frontend/src/pages/crm/ClientDetailPanel.jsx,frontend/src/pages/ventes/RelancesPage.jsx,frontend/src/pages/ventes/factureList/DialoguesFacture.jsx
 0cf451320fb5|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
 0d7dc9ce2f00|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 0d87c4336d22|apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/preview/toiture-3d-pro-11.astro
@@ -93,7 +92,6 @@
 1c5fef599324|apps/web/src/pages/en/mentions-legales.astro,apps/web/src/pages/mentions-legales.astro
 1d0f8efae56b|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/en/contact.astro
 1d26c66648ed|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
-1eaaebe21ab6|frontend/src/pages/crm/ClientDetailPanel.jsx,frontend/src/pages/ventes/RelancesPage.jsx
 1ecd3d1998e5|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 1eee6fd2ed15|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
 1f140a5c2f07|frontend/src/pages/crm/leads/urlFilters.js,frontend/src/pages/crm/leads/urlFilters.test.mjs
@@ -183,7 +181,6 @@
 4521c0619415|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 45ed255d030d|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 4640d022fa00|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
-46699a22811f|frontend/src/pages/crm/ClientDetailPanel.jsx,frontend/src/pages/ventes/RelancesPage.jsx,frontend/src/pages/ventes/factureList/DialoguesFacture.jsx
 467d92a50bdb|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/équipement.astro
 46ad5d065066|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/professionnel.astro
 470e5dd20bca|apps/web/src/lib/proposalChart.ts,apps/web/src/lib/proposition.ts
@@ -422,7 +419,6 @@ a09bc042357f|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pag
 a0d81455b089|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
 a20c512e4037|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 a28a7fd9629f|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
-a2f2a6e80867|frontend/src/pages/crm/ClientDetailPanel.jsx,frontend/src/pages/ventes/RelancesPage.jsx,frontend/src/pages/ventes/factureList/DialoguesFacture.jsx
 a394b1001bed|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx
 a3c994fbff89|apps/web/src/components/InstallCounter.astro,apps/web/src/components/V2Enhance.astro
 a3cf965119a8|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
