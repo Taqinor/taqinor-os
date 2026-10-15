@@ -84,14 +84,18 @@ class BcMandatRelanceRemiseTests(TestCase):
         self.assertIsNone(self.bc.devis_id)
         self.assertIsNone(self.bc.lead_id)
 
-    def test_relance_responsable_etranger_400(self):
+    def test_relance_responsable_etranger_404(self):
+        # ENF11 (nocturne 15/10) — ParametrageRelanceClientSerializer porte
+        # IdInconnu404Mixin : FK d'une autre société = id inconnu, 404 de même
+        # corps qu'un id absent, sans écriture.
         url = (f'/api/django/ventes/parametrages-relance-client/'
                f'{self.relance.id}/')
         for champ, valeur in (('responsable', self.user_b.pk),
                               ('client', self.client_b.pk)):
             with self.subTest(champ=champ):
                 r = self.api.patch(url, {champ: valeur}, format='json')
-                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.data[champ][0].code, 'does_not_exist', r.data)
         self.relance.refresh_from_db()
         self.assertEqual(self.relance.responsable_id, self.user.pk)
         self.assertEqual(self.relance.client_id, self.client_a.pk)

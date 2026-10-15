@@ -141,10 +141,21 @@ class FkCorpsTenantTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
 
     def test_programme_responsable(self):
+        # ENF11 (nocturne 15/10) — ProjetSerializer porte IdInconnu404Mixin :
+        # un responsable d'une autre société est « inconnu » (champ borné), 404
+        # de même corps qu'un id absent (aucun oracle), sans écriture.
+        avant = self.api.get(f'{BASE}/programmes/').data
         r = self.api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'responsable': self.user_b.id},
             format='json')
-        self._refus(r, 'responsable')
+        self._refus(r, 'responsable', 404)
+        absent = self.api.post(f'{BASE}/programmes/', {
+            'nom': 'Programme', 'responsable': ID_ABSENT}, format='json')
+        self._refus(absent, 'responsable', 404)
+        self.assertEqual(
+            str(r.data['responsable']).replace(str(self.user_b.id), 'N'),
+            str(absent.data['responsable']).replace(str(ID_ABSENT), 'N'))
+        self.assertEqual(self.api.get(f'{BASE}/programmes/').data, avant)
         r = self.api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'responsable': self.user_a.id},
             format='json')

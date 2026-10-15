@@ -145,9 +145,18 @@ class ScopingSocieteTests(VisiteTerrainBase):
             [ligne['id'] for ligne in liste.data], [])
 
     def test_creer_une_visite_sur_le_lead_dune_autre_societe_est_refuse(self):
+        # ENF11 (nocturne 15/10) — lead borné à la société : celui d'une autre
+        # société est « inconnu », 404 de même corps qu'un lead absent.
         resp = self.api.post('/api/django/visites/visites/',
                              {'lead': self.lead_etranger.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertEqual(resp.data['lead'][0].code, 'does_not_exist', resp.data)
+        absent = self.api.post('/api/django/visites/visites/',
+                               {'lead': 99999999}, format='json')
+        self.assertEqual(absent.status_code, 404, absent.data)
+        self.assertEqual(str(resp.data['lead']).replace(str(self.lead_etranger.id), 'N'),
+                         str(absent.data['lead']).replace('99999999', 'N'))
+        self.assertFalse(VisiteTerrain.objects.filter(lead=self.lead_etranger).exists())
 
     def test_la_societe_est_forcee_cote_serveur(self):
         visite_id = self.creer_visite()
@@ -681,7 +690,11 @@ class ModificationSansLeadTests(VisiteTerrainBase):
         autre = Lead.objects.create(company=self.company, nom='Autre dossier')
         resp = self.api.put(f'/api/django/visites/visites/{visite_id}/',
                             {'lead': autre.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ENF11 (nocturne 15/10) — la visite EN PLACE s'oppose (dossier figé) :
+        # 409, même corps ``{lead: [message]}`` ; la visite garde son lead.
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('lead', resp.data)
+        self.assertNotEqual(VisiteTerrain.objects.get(pk=visite_id).lead_id, autre.id)
 
 
 class SchemaVisitesPublieTests(SimpleTestCase):

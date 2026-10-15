@@ -428,13 +428,13 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 if ligne_devis_id is None or quantite is None:
                     return Response(
                         {'detail': 'Chaque ligne requiert ligne_devis et quantite.'},
-                        status=status.HTTP_404_NOT_FOUND,
+                        status=status.HTTP_400_BAD_REQUEST,
                     )
                 reliquat_ligne = reliquats.get(int(ligne_devis_id))
                 if reliquat_ligne is None:
                     return Response(
                         {'detail': f'Ligne de devis {ligne_devis_id} inconnue sur ce BC.'},
-                        status=status.HTTP_400_BAD_REQUEST,
+                        status=status.HTTP_404_NOT_FOUND,
                     )
                 quantite = Decimal(str(quantite))
                 if quantite <= 0 or quantite > reliquat_ligne['reliquat']:
