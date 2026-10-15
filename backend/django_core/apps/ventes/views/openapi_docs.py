@@ -1185,10 +1185,6 @@ AttestationRecueRequest = _ser('PaiementAttestationRecueRequest', {
     'attestation_fichier': s.CharField(required=False, allow_blank=True,
                                        max_length=500),
 })
-EnvoyerRecuRequest = _ser('PaiementEnvoyerRecuRequest', {
-    'to_email': s.CharField(required=False, allow_blank=True,
-                            allow_null=True),
-})
 EnvoyerRecuResponse = _ser('PaiementEnvoyerRecuResponse', {
     'statut': s.CharField(),
     'to_email': s.CharField(allow_blank=True, allow_null=True),

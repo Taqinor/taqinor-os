@@ -18,7 +18,8 @@ from core.parseurs import corps_valide
 from ..models import Facture, Paiement, RetenueSubie
 from ..serializers_facturation import (
     FactureSerializer, PaiementSerializer, AffectationPaiementSerializer,
-    PaiementVentilerRequestSerializer, RetenueSubieSerializer,
+    PaiementEnvoyerRecuRequestSerializer, PaiementVentilerRequestSerializer,
+    RetenueSubieSerializer,
 )
 from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
 from authentication.permissions import (
@@ -484,7 +485,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             f'inline; filename="Quittance_{assurer_numero_recu(paiement)}.pdf"')
         return resp
 
-    @extend_schema(request=D.EnvoyerRecuRequest,
+    @extend_schema(request=PaiementEnvoyerRecuRequestSerializer,
                    responses={201: D.EnvoyerRecuResponse,
                               409: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='envoyer-recu',
@@ -500,9 +501,12 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         conflit = _refus_si_rejete(paiement)
         if conflit is not None:
             return conflit
+        entree = PaiementEnvoyerRecuRequestSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
         log = send_recu_email(
             paiement, user=request.user,
-            to_email=request.data.get('to_email'))
+            to_email=entree.validated_data.get('to_email'))
         return Response({
             'statut': log.statut, 'to_email': log.to_email,
             'erreur': log.erreur,
