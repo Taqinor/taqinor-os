@@ -46,7 +46,7 @@ def _usage_counts(company):
         from apps.ventes import selectors as ventes_selectors
         devis = ventes_selectors.compter_devis(company)
         factures = ventes_selectors.compter_factures(company)
-    except Exception:  # noqa: BLE001 — un selector KO ne casse pas la console
+    except Exception:  # noqa: BLE001 — un selector KO ne casse pas la console (D-ENF22-BLE001)
         logger.warning("console : compteurs ventes indisponibles", exc_info=True)
     return {'users': users, 'devis': devis, 'factures': factures}
 
@@ -63,12 +63,12 @@ def _plan_et_sieges(company):
     try:
         from apps.parametres.feature_flags import plan_code_for_company
         infos['plan_code'] = plan_code_for_company(company) or ''
-    except Exception:  # noqa: BLE001 — lane plan pas encore fondue
+    except Exception:  # noqa: BLE001 — lane plan pas encore fondue (D-ENF22-BLE001)
         logger.debug("console : code de plan indisponible", exc_info=True)
     try:
         from authentication import services
         infos['sieges_utilises'] = services.sieges_utilises(company)
-    except Exception:  # noqa: BLE001 — idem
+    except Exception:  # noqa: BLE001 — idem (D-ENF22-BLE001)
         logger.debug("console : sièges utilisés indisponibles", exc_info=True)
     return infos
 
@@ -79,7 +79,7 @@ def _sante_et_licence(company):
     try:
         from apps.adminops.health_score import calculer_health_score
         infos['health_score'] = calculer_health_score(company).get('score')
-    except Exception:  # noqa: BLE001 — un module absent ne casse pas la console
+    except Exception:  # noqa: BLE001 — un module absent ne casse pas la console (D-ENF22-BLE001)
         logger.warning("console : health score indisponible", exc_info=True)
     try:
         from apps.adminops.models import FactureLicence
@@ -87,7 +87,7 @@ def _sante_et_licence(company):
             statut=FactureLicence.Statut.PAYEE)
         infos['licences_impayees'] = impayees.count()
         infos['licences_du_ttc'] = sum(f.montant_ttc for f in impayees)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("console : licences impayées indisponibles", exc_info=True)
     return infos
 

@@ -108,7 +108,7 @@ def _plancher_verrouille(user, ip):
     from django.core.cache import cache
     try:
         return bool(cache.get(_cle_plancher(user, ip, 'verrou')))
-    except Exception:  # noqa: BLE001 — cache en panne : pas de verrou
+    except Exception:  # noqa: BLE001 — cache en panne : pas de verrou (D-ENF22-BLE001)
         logger.warning("password_policy : cache indisponible, verrou plancher ignoré", exc_info=True)
         return False
 
@@ -152,7 +152,7 @@ def _plancher_echec(user, ip):
         cache.set(_cle_plancher(user, ip, 'verrou'), 1, timeout=minutes * 60)
         cache.delete(cle)
         return True
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("password_policy : cache indisponible, compteur plancher ignoré", exc_info=True)
         return False
 
@@ -215,7 +215,7 @@ def reset_failed_login(user, ip=None):
     try:
         from django.core.cache import cache
         cache.delete(_cle_plancher(user, ip, 'echecs'))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("password_policy : cache indisponible, compteur plancher non remis à zéro", exc_info=True)
     if (user.failed_login_count or 0) == 0 and user.locked_until is None:
         return

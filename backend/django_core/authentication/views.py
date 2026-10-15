@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.http import HttpResponse
 from django.utils.text import slugify
@@ -1546,8 +1548,8 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 company, user if getattr(user, 'pk', None) else None,
                 f'Mode présentation {etat} par {actor}.',
                 company=company)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning('mode présentation : chatter non écrit', exc_info=True)
 
     def _log_audit_mode_presentation(self, company, user):
         """NTDMO40 — ``audit.AuditLog`` (journal plateforme), en plus du
@@ -1566,8 +1568,8 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 'demo_mode_toggle', instance=company,
                 company=company, user=user,
                 detail=f'Mode présentation {etat}.')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning('mode présentation : audit non écrit', exc_info=True)
 
     @extend_schema(request=None, responses=inline_serializer(
         'ResetDemoReponse', {
@@ -1616,8 +1618,8 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 user=request.user,
                 detail=f'Société démo "{slug}" réinitialisée par '
                        f'{actor_username}.')
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning('réinitialisation démo : audit non écrit', exc_info=True)
         recorder.end_request()
         _run_demo_reset(slug)
         request.user = AnonymousUser()
@@ -1649,8 +1651,8 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 f'Données de démonstration réinitialisées par '
                 f'{actor_username}.',
                 company=fraiche)
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-            pass
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning('réinitialisation démo : chatter non écrit', exc_info=True)
 
     # ── NTDMO22/23/24 — kit de démonstration (scénario, pas un devis client) ─
     def _demo_kit_contexte(self, company):
