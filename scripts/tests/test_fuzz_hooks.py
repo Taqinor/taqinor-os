@@ -572,6 +572,7 @@ class FichiersPdfTests(unittest.TestCase):
             self.assertTrue(corps['file'].startswith(b'\x89PNG\r\n\x1a\n'), chemin)
         negatif = self._corps(chemin='/api/django/parametres/upload-logo/',
                               corps={'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
 
     def test_import_generique_recoit_un_csv_lisible(self):
         # ENF11 imports : dry-run/commit lisent un CSV (en-têtes seuls) ; des
