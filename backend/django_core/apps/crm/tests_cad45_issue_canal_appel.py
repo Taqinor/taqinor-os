@@ -125,7 +125,7 @@ class TraiteeParEcritTests(_Base):
         journaliser_whatsapp_ouvert(autre, self.acteur)
         etape = self._touche_appel()
         resp = self._fait(etape)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
 
 class IsolationSocieteTests(_Base):
@@ -149,4 +149,4 @@ class IsolationSocieteTests(_Base):
         journaliser_whatsapp_ouvert(etape_autre, autre_resp)
         etape = self._touche_appel()
         resp = self._fait(etape)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
