@@ -300,7 +300,7 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(request=D.CompositionRequest,
                    responses={200: D.CompositionResponse,
-                              422: D.ErreurComposition})
+                              409: D.ErreurComposition})
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
     def composition(self, request):
@@ -413,9 +413,13 @@ class DevisViewSet(DevisEditionActionsMixin,
                 ville=ville,
             )
         except AutoDevisError as exc:
+            # CI #1003 fuzz — corps conforme au schéma : catalogue ou réglage
+            # de la société qui s'y oppose (aucun onduleur autonome tarifé,
+            # marque épinglée absente…) = refus d'ÉTAT, 409 — comme
+            # ``/devis/auto/`` ; le message FRANÇAIS reste lu tel quel.
             return Response(
                 {'detail': exc.message, 'field': exc.field},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                status=status.HTTP_409_CONFLICT)
         return Response(resultat, status=status.HTTP_200_OK)
 
     @extend_schema(request=D.AutoDevisRequest,
@@ -431,7 +435,7 @@ class DevisViewSet(DevisEditionActionsMixin,
 
         Corps : ``{lead}`` (ou ``{client}``, dont on remonte au lead le plus
         récent) + ``taux_tva?`` / ``remise_globale?``. La société est TOUJOURS
-        celle du user ; le lead est borné à cette société (404 sinon). 422 si les
+        celle du user ; le lead est borné à cette société (404 sinon). 409 si les
         données de dimensionnement manquent ou si le marché n'est pas résidentiel
         — l'agent demande alors la donnée / oriente vers le générateur. Aucun
         statut n'est touché : le service renvoie un brouillon (règle #4)."""
