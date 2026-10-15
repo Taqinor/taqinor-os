@@ -152,7 +152,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
 
-class RegisterSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+class RegisterSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
+                         serializers.ModelSerializer):
+    # CI api-fuzz : un nom d'utilisateur déjà pris = 409 ``unique_conflict`` ;
+    # un mot de passe refusé par la politique (Django + société FG22) = 409
+    # aussi — la politique dépend de la configuration de la société, le schéma
+    # ne peut pas l'exprimer (corps conforme, état de la société en conflit).
     password = ChaineStricte(write_only=True)
     role = serializers.PrimaryKeyRelatedField(
         required=False,
@@ -193,7 +198,8 @@ class RegisterSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         errors = validate_new_password(
             value, self.context.get('company'), user=candidate)
         if errors:
-            raise serializers.ValidationError(errors)
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'password': errors})
         return value
 
     def create(self, validated_data):
