@@ -219,7 +219,7 @@ def _nb_lignes_agregees(company, user, definition):
             definition.dataset, company, user,
             {'filters': dict(definition.filtres or {}),
              'aggregates': [{'alias': 'nb', 'fn': 'count', 'field': 'id'}]})
-    except Exception:  # noqa: BLE001 — le lignage ne doit jamais lever
+    except Exception:  # noqa: BLE001 — le lignage ne doit jamais lever (D-ENF22-BLE001)
         logger.debug("semantic : comptage du lignage indisponible", exc_info=True)
         return None
     if not lignes:

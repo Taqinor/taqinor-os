@@ -83,7 +83,7 @@ def detecter_anomalies_metriques(company=None):
                 points = semantic_selectors.periodes_completes(
                     semantic_selectors.serie_temporelle(
                         societe, None, definition.cle))
-            except Exception:  # noqa: BLE001 — une métrique ne bloque pas le reste
+            except Exception:  # noqa: BLE001 — une métrique ne bloque pas le reste (D-ENF22-BLE001)
                 logger.exception(
                     'NTDATA42 : série indisponible pour « %s » (société %s)',
                     definition.cle, societe.pk)
@@ -114,7 +114,7 @@ def detecter_anomalies_metriques(company=None):
                 flags = record_outliers(
                     candidats, company=societe,
                     subject_type=SUBJECT_TYPE, metric=definition.cle[:80])
-            except Exception:  # noqa: BLE001 — défensif par métrique
+            except Exception:  # noqa: BLE001 — défensif par métrique (D-ENF22-BLE001)
                 logger.exception(
                     'NTDATA42 : signalement impossible pour « %s » '
                     '(société %s)', definition.cle, societe.pk)
