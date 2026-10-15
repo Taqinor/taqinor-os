@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """TAQINOR quote engine — AGRICOLE (pompage solaire).
 
 AGR310 (D-AGR-2, 02/10/2026) — LE DOCUMENT AGRICOLE DÉDIÉ DE 3 PAGES REVIENT,

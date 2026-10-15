@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """AGRICOLE agronomy — RÉ-EXPORT du moteur FAO-56 du noyau ``core.pompage``.
 
 AGR112 — le moteur agronomique (série MENSUELLE FAO-56, besoin de pointe) a

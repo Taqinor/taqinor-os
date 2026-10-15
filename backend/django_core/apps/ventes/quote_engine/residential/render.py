@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Residential render harness — assembles the 3 page modules into one A4 PDF.
 Driven by `residential.renderer` from the single quote engine."""
 from __future__ import annotations

@@ -1,4 +1,5 @@
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 """Shared installation-photo library for the quote covers.
 
 Picks the real installation photo whose power (kWc) is NEAREST the quote,

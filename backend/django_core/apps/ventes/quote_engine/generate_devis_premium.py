@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — moteur de devis vendoré (règle #4 de CLAUDE.md), non réécrit pour le lint.
 # Vendored from RedaSolar/devis-simulator (founder's quote engine), adapted for
 # the OS: fonts/logo bundled locally (no runtime network), matplotlib config dir.
 """
