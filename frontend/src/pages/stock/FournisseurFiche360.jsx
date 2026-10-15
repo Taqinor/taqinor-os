@@ -1107,7 +1107,7 @@ function OngletAcces({ fournisseurId }) {
   const [confirmation, setConfirmation] = useState(null) // { kind: 'acces' } | { kind: 'jeton', jeton }
   const [copie, setCopie] = useState(null)
 
-  const reload = useCallback(() => {
+  const reload = useCallback(function reload() {
     stockApi.getPortailTokensFournisseur(fournisseurId)
       .then((r) => setJetons(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
       .catch((e) => setError(frErr(e, 'Liens du portail indisponibles.')))

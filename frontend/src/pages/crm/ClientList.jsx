@@ -125,7 +125,8 @@ export default function ClientList() {
       next.delete('new')
       return next
     }, { replace: true })
-  }, [searchParams, setSearchParams])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- ouverture one-shot de la liste clients pilotée par ?new=1; setSearchParams ne doit pas la rejouer (D-ENF22)
+  }, [searchParams])
 
   const openReleve = async (c) => {
     try {
