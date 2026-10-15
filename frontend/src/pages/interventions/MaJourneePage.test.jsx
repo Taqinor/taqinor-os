@@ -21,26 +21,12 @@ function todayISO() {
 // montés). Chaque panneau appelle son endpoint de chargement au montage — on
 // les stub en rejet gracieux (chaque panneau a son propre `.catch`) pour
 // éviter un throw synchrone sur une méthode manquante du mock.
-// `vi.mock` est hoistée au-dessus des `const` du module : on définit `rejected`
-// via `vi.hoisted` pour qu'il soit initialisé avant l'exécution de la factory.
-const { rejected } = vi.hoisted(() => ({
-  rejected: () => Promise.reject(new Error('non mocké')),
-}))
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/installationsApi', async () => ({
   default: {
     // VX88 — Ma journée consomme désormais « Ma tournée » (ordre géographique).
     getMaTournee: vi.fn(),
     getInterventions: vi.fn(),
-    getPreparation: vi.fn(rejected),
-    getPhotos: vi.fn(rejected),
-    getSerials: vi.fn(rejected),
-    getConsommation: vi.fn(rejected),
-    getMemos: vi.fn(rejected),
-    getReserves: vi.fn(rejected),
-    getSafety: vi.fn(rejected),
-    getToolReturn: vi.fn(rejected),
-    getCode: vi.fn(rejected),
-    compteRenduUrl: vi.fn(() => ''),
+    ...(await import('../../test/mocksMaJournee')).panneauxRejetes(),
   },
 }))
 

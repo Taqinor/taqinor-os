@@ -279,7 +279,6 @@
 5607a5919666|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 5614ef794d45|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 56c160e3691d|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-571ed58891c8|frontend/src/pages/crm/ClientDetailPanel.DossierDocumentaire.test.jsx,frontend/src/pages/crm/ClientDetailPanel.OwnerChain.test.jsx,frontend/src/pages/crm/ClientDetailPanel.PlanCompte.test.jsx
 574392d084b2|apps/web/src/pages/api/proposition-accept.ts,apps/web/src/pages/api/proposition-engagement.ts
 579f24532b4b|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 57eccfdb7a11|frontend/src/pages/crm/leads/SigneDialog.jsx,frontend/src/pages/crm/leads/SigneDialog.test.mjs
@@ -570,7 +569,6 @@ ba5e387374c0|frontend/src/pages/installations/InstallationDetail.jsx,frontend/sr
 bb739021e242|apps/web/src/scripts/roofPro11/mapDraw.ts,apps/web/src/scripts/roofPro11/obstaclesUi.ts
 bb7e9f253fa8|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 bbebef7b1b10|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro,apps/web/src/pages/financement.astro
-bbf0ef896c9a|frontend/src/pages/interventions/MaJourneePage.test.jsx,frontend/src/pages/interventions/MaJourneeStatutAuto.test.jsx
 bc169378c563|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 bc1c4a167c1d|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 bc2bf03fc773|apps/web/src/pages/ar/maintenance-monitoring.astro,apps/web/src/pages/en/maintenance-monitoring.astro,apps/web/src/pages/maintenance-monitoring.astro
