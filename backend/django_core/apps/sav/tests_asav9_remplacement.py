@@ -97,9 +97,9 @@ class RemplacementTests(TestCase):
         self.assertEqual(neuf.date_fin_garantie,
                          add_months(self.today, 60))
 
-    def test_serie_neuve_doublon_400(self):
+    def test_serie_neuve_doublon_409(self):
         r = self._post(serie_neuve='SN-A')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF11 : état du parc
         self.assertIn('serie_neuve', r.data)
         self.ancien.refresh_from_db()
         self.assertEqual(self.ancien.statut, Equipement.Statut.EN_SERVICE)

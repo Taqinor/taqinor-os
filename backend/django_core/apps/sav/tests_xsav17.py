@@ -149,4 +149,4 @@ class XSAV17ReleveCompteurTest(TestCase):
         resp = api.post(
             f'/api/django/sav/equipements/{equip.id}/releves-compteur/',
             {'type': 'heures', 'valeur': '50', 'date': '2026-01-02'})
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)  # ENF11 : état du compteur

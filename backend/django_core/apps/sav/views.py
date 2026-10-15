@@ -808,7 +808,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 type_releve=type_releve, valeur=valeur,
                 date_releve=date_releve, created_by=request.user)
         except ReleveDecroissantError as exc:
-            return Response({'detail': str(exc)}, status=400)
+            return Response({'detail': str(exc)}, status=409)  # ENF11 : le dernier relevé s'oppose
 
         payload = ReleveCompteurEquipementSerializer(releve).data
         payload['ticket_genere'] = (
@@ -1763,7 +1763,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             equipe = EquipeMaintenance.objects.filter(
                 pk=equipe_id, company=request.user.company).first()
             if equipe is None:
-                return Response({'equipe': 'Équipe inconnue.'}, status=400)
+                return Response({'equipe': 'Équipe inconnue.'}, status=404)  # ENF11 : id inconnu
         try:
             _reaffecter(ticket, equipe, user=request.user)
         except ValueError as exc:
@@ -2136,14 +2136,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     numero_serie=serie_neuve).exists():
                 return Response(
                     {'serie_neuve': ['Ce numéro de série est déjà au parc.']},
-                    status=400)
+                    status=409)  # ENF11 : état du parc
             if not numero_serie or not Equipement.objects.filter(
                     company=ticket.company,
                     numero_serie=numero_serie).exists():
                 return Response(
                     {'serie_neuve': ["Le numéro de série de l'appareil "
                                      'remplacé doit exister au parc.']},
-                    status=400)
+                    status=409)  # ENF11 : état du parc
         equipement_neuf = None
         try:
             with transaction.atomic():
@@ -2401,7 +2401,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     numero_serie=numero_serie, date_sortie=date_sortie,
                     date_retour_prevue=date_retour_prevue, user=request.user)
         except PretEquipementError as exc:
-            return Response({'detail': str(exc)}, status=400)
+            return Response({'detail': str(exc)}, status=409)  # ENF11 : stock insuffisant = état
         activity.log_note(
             ticket, request.user,
             f'Prêt équipement {produit.nom} sorti (retour prévu : '

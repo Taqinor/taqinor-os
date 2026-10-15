@@ -81,7 +81,7 @@ class ZMFG1EquipeMaintenanceTest(TestCase):
         r = self.api.post('/api/django/sav/equipes-maintenance/', {
             'nom': 'Équipe Sud', 'membres': [self.other_user.id],
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)  # ENF11 : membre hors société = inconnu
 
     def test_ticket_filtrable_et_affectable_par_equipe(self):
         equipe = EquipeMaintenance.objects.create(
