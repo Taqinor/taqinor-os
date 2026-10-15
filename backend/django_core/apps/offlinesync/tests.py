@@ -185,6 +185,16 @@ class OfflineSyncBatchTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(self.notes().count(), 0)
 
+    def test_op_type_manquant_refuse(self):
+        # CI api-fuzz : ``op_type`` est requis par le schéma publié -> 400,
+        # jamais un 200 portant une erreur « op_type inconnu : . ».
+        resp = self.api.post(BATCH, {'ops': [
+            {'client_op_id': 'sans-type', 'payload': {}, 'queued_at': ''}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(
+            OfflineOperation.objects.filter(client_op_id='sans-type').exists())
+
     def test_ops_absent_ou_invalide_repond_400(self):
         self.assertEqual(self.api.post(BATCH, {}, format='json').status_code, 400)
         self.assertEqual(

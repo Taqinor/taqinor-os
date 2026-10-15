@@ -312,8 +312,21 @@ class ManagementEndpointTests(TestCase):
         resp = api.post('/api/django/publicapi/webhooks/', {
             'target_url': 'https://169.254.169.254/latest/meta-data/',
             'events': [EVENT_LEAD_CREATED]}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # Corps conforme au schéma (``https://…``) ; l'hôte public/résolvable
+        # est un état du réseau, non exprimable : 409 (api-fuzz), pas 400.
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('target_url', resp.data)
+
+    def test_create_webhook_url_conforme_refusee_par_la_garde_409_jamais_500(self):
+        api = session_auth(self.admin)
+        for url in ('https://0', 'https://[::1', 'https://a:99999/',
+                    'https://:443/'):
+            resp = api.post('/api/django/publicapi/webhooks/', {
+                'target_url': url, 'events': [EVENT_LEAD_CREATED]},
+                format='json')
+            self.assertEqual(resp.status_code, 409, (url, resp.content))
+            self.assertIn('target_url', resp.data)
+        self.assertFalse(Webhook.objects.filter(company=self.co).exists())
 
     def test_create_webhook_rejects_loopback_host(self):
         # ERR46 — une cible loopback (127.0.0.1) est refusée.
@@ -321,7 +334,7 @@ class ManagementEndpointTests(TestCase):
         resp = api.post('/api/django/publicapi/webhooks/', {
             'target_url': 'https://127.0.0.1:9000/',
             'events': [EVENT_LEAD_CREATED]}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('target_url', resp.data)
 
     def test_catalogue(self):

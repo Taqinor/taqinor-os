@@ -46,6 +46,23 @@ def _erreur(code, message, *, param=None, statut=status.HTTP_401_UNAUTHORIZED,
         status=statut)
 
 
+# RFC 6749 §5.2 : ``invalid_client`` = 401, requête mal formée / grant refusé =
+# 400. Corps = enveloppe d'erreur publique NTAPI3 (``errors.py``), déclarée ici
+# parce que le crochet ``ErreurApi`` ne décrit que l'enveloppe interne.
+_ERREUR_PUBLIQUE = inline_serializer('PublicApiErreur', {
+    'error': inline_serializer('PublicApiErreurDetail', {
+        'type': serializers.CharField(),
+        'code': serializers.CharField(),
+        'message': serializers.CharField(),
+        'param': serializers.CharField(allow_null=True),
+        'doc_url': serializers.CharField(),
+        'request_id': serializers.CharField(allow_null=True),
+    }),
+})
+
+_CHAMPS_TEXTE = ('grant_type', 'client_id', 'client_secret', 'scope')
+
+
 @extend_schema(
     summary='Jeton OAuth2 client_credentials (NTAPI19).',
     request=inline_serializer('PublicOAuthTokenRequest', {
@@ -54,12 +71,18 @@ def _erreur(code, message, *, param=None, statut=status.HTTP_401_UNAUTHORIZED,
         'client_secret': serializers.CharField(),
         'scope': serializers.CharField(required=False),
     }),
-    responses=inline_serializer('PublicOAuthToken', {
-        'access_token': serializers.CharField(),
-        'token_type': serializers.CharField(),
-        'expires_in': serializers.IntegerField(),
-        'scope': serializers.CharField(),
-    }),
+    # 429 (débit) et 500 viennent du crochet ``ErreurApi`` ; 400/401 sont ceux
+    # que la vue sert elle-même (corps de l'enveloppe publique).
+    responses={
+        200: inline_serializer('PublicOAuthToken', {
+            'access_token': serializers.CharField(),
+            'token_type': serializers.CharField(),
+            'expires_in': serializers.IntegerField(),
+            'scope': serializers.CharField(),
+        }),
+        400: _ERREUR_PUBLIQUE,
+        401: _ERREUR_PUBLIQUE,
+    },
 )
 class PublicOAuthTokenView(PublicApiResponseMixin, APIView):
     """``POST /api/public/v1/oauth/token/`` — délivre un jeton court."""
@@ -74,6 +97,15 @@ class PublicOAuthTokenView(PublicApiResponseMixin, APIView):
 
     def post(self, request):
         corps = request.data or {}
+        # Corps non objet, champ non texte ou à caractère nul (refusé par
+        # PostgreSQL) : 400 — c'étaient des 500 (``.strip()`` sur un nombre).
+        if not hasattr(corps, 'get') or any(
+                not isinstance(corps.get(c) or '', str)
+                or '\x00' in (corps.get(c) or '') for c in _CHAMPS_TEXTE):
+            return _erreur(
+                'invalid_request',
+                'Corps invalide : des champs texte sont attendus.',
+                statut=status.HTTP_400_BAD_REQUEST, request=request)
         grant = (corps.get('grant_type') or '').strip()
         if grant != GRANT_TYPE:
             return _erreur(

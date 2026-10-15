@@ -85,6 +85,35 @@ class Ntapi19TokenEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.json()['error']['code'], 'unsupported_grant_type')
 
+    def test_corps_mal_forme_renvoie_400_jamais_500(self):
+        """Champ non texte, caractère nul ou corps non objet : 400 (c'étaient
+        des 500 : ``.strip()`` sur un nombre, NUL refusé par PostgreSQL)."""
+        for surcharge in ({'grant_type': 5}, {'client_id': 7},
+                          {'client_secret': ['x']}, {'scope': 1},
+                          {'client_id': 'a\x00b'}):
+            resp = self._demander(**surcharge)
+            self.assertEqual(resp.status_code, 400, (surcharge, resp.content))
+            self.assertEqual(resp.json()['error']['code'], 'invalid_request')
+        resp = APIClient().post(
+            '/api/public/v1/oauth/token/', ['client_credentials'],
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_schema_declare_le_401_et_le_400_de_l_enveloppe_publique(self):
+        """Le 401 ``invalid_client`` (RFC 6749 §5.2) est un statut servi :
+        publié avec le corps de l'enveloppe publique (api-fuzz « Undocumented
+        HTTP status code »)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/public/v1/', include('apps.publicapi.public_urls'))]
+        ).get_schema(request=None, public=True)
+        reponses = schema['paths']['/api/public/v1/oauth/token/']['post'][
+            'responses']
+        for code in ('400', '401'):
+            ref = reponses[code]['content']['application/json']['schema']
+            self.assertEqual(ref, {'$ref': '#/components/schemas/PublicApiErreur'})
+
     def test_scope_demande_est_un_sous_ensemble_jamais_une_elevation(self):
         resp = self._demander(scope=f'{SCOPE_READ_LEADS} read:factures')
         accordes = resp.json()['scope'].split()
