@@ -5,9 +5,11 @@ import monitoringApi from '../../api/monitoringApi'
 import { Badge, Card, DataTable, EmptyState, IconButton, Segmented } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
-import { formatNumber, formatPercent, timeAgo } from '../../lib/format'
+import { formatNumber, formatPercent } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
+import useVisibilityAwarePoll from './useVisibilityAwarePoll'
+import FreshnessBadge from './FreshnessBadge'
 
 /* WR6 — Vue PARC / FLOTTE multi-systèmes (FG281) : production totale, kWc
    installés, PR moyen pondéré et alertes de sous-performance ouvertes sur tous
@@ -47,26 +49,6 @@ function prStatus(prPct) {
 // même garde minimale que `useApprobationsCount` (jamais un `setInterval` nu
 // qui cogne l'API en onglet caché) et pourra migrer sur VX56 telle quelle.
 const FLEET_POLL_MS = 5 * 60 * 1000
-
-function useVisibilityAwarePoll(callback, intervalMs) {
-  const cbRef = useRef(callback)
-  useEffect(() => { cbRef.current = callback }, [callback])
-  useEffect(() => {
-    const tick = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      cbRef.current()
-    }
-    const iv = setInterval(tick, intervalMs)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') cbRef.current()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [intervalMs])
-}
 
 export default function FleetPage() {
   const navigate = useNavigate()
@@ -237,16 +219,7 @@ export default function FleetPage() {
           {/* VX30 — badge de fraîcheur : distinct visuellement d'un « 0 » de
               production (jamais la même couleur/forme qu'une carte périmée). */}
           {lastUpdated && (
-            <span
-              className={
-                stale
-                  ? 'inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning'
-                  : 'text-xs text-muted-foreground'
-              }
-            >
-              {stale ? 'Hors-ligne — ' : 'Actualisé '}
-              {timeAgo(lastUpdated)}
-            </span>
+            <FreshnessBadge stale={stale} lastUpdated={lastUpdated} />
           )}
           <Segmented
             size="sm"

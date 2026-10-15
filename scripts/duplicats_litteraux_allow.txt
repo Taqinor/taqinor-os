@@ -108,7 +108,6 @@
 1a99ab96df4b|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 1ab746c03817|frontend/src/features/calepinage/atelier/PanneauSeries.test.jsx,frontend/src/features/calepinage/electrique/CheminementCables.test.jsx,frontend/src/features/calepinage/electrique/EquipementsElectriques.test.jsx,frontend/src/features/calepinage/electrique/Raccordement.test.jsx
 1b09f6cb82e1|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
-1b2c8609e6cb|frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/FleetPage.jsx
 1b8c2c8da620|apps/web/src/scripts/roofPro11/cablageLot2.test.ts,apps/web/src/scripts/roofPro11/layoutEditor.test.ts
 1beebc4cc062|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 1c5fef599324|apps/web/src/pages/en/mentions-legales.astro,apps/web/src/pages/mentions-legales.astro
@@ -534,7 +533,6 @@
 8e741b38fa9f|apps/web/src/components/Header.astro,apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 8e8745299bf3|apps/web/src/scripts/roofPro11/entreeMoteur.test.ts,apps/web/src/scripts/roofPro11/mapDraw.ts,frontend/src/features/calepinage/__tests__/panneau_calques.test.jsx
 8ec89c205103|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-8ed89501840b|frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/FleetPage.jsx
 8f4b562de902|apps/web/src/pages/api/roof-estimate.ts,apps/web/src/pages/api/roof-production.ts,apps/web/src/pages/api/roof-yield.ts
 8f57e504c5a9|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 8f82ae4a8f38|apps/web/src/pages/guides/loi-82-21-expliquee.astro,apps/web/src/pages/loi-82-21.astro,apps/web/src/pages/regularization-article-33.astro
@@ -570,7 +568,6 @@
 97369a71e431|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
 9771618f16f7|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 97a7c33e3790|frontend/src/pages/parametres/KpiAlertesPage.test.jsx,frontend/src/pages/reporting/ClasseursListPage.test.jsx
-986109c41e12|frontend/src/features/crm/workspace/sections/CadenceFrise.jsx,frontend/src/pages/crm/RelancesDuJourWidget.jsx,frontend/src/pages/crm/RelancesSuiviPage.jsx
 9875d3dbe61e|apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 988f51a59de4|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 98a49990bbbb|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
@@ -757,7 +754,6 @@ d0952be1f4a8|frontend/src/pages/monitoring/WarrantiesPage.jsx,frontend/src/pages
 d0efac4f257a|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 d1059f3a0900|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 d16e46d70e5d|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-d1c21d8fe1e6|frontend/src/features/crm/workspace/sections/CadenceFrise.jsx,frontend/src/pages/crm/RelancesDuJourWidget.jsx,frontend/src/pages/crm/RelancesSuiviPage.jsx
 d1dd0aa29210|frontend/src/pages/installations/PlanificationGrille.test.jsx,frontend/src/pages/installations/PlanificationPage.test.jsx
 d215f4d09123|frontend/src/pages/stock/CockpitEntrepot.jsx,frontend/src/pages/ventes/PaiementsPage.jsx
 d2f5356e92fc|apps/web/src/pages/api/proposition-engagement.ts,apps/web/src/pages/api/proposition-track.ts
@@ -905,7 +901,6 @@ fc7bd05d3ab3|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 fc9982d80bc3|frontend/src/features/offlinesync/mobile/CommercialHome.jsx,frontend/src/features/offlinesync/mobile/EquipeTerrainHome.jsx
 fcc42fee51fd|apps/web/src/pages/ar/financement.astro,apps/web/src/pages/en/financement.astro
 fd2b20432cf9|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-fd2d820c4dd4|frontend/src/features/crm/workspace/sections/CadenceFrise.jsx,frontend/src/pages/crm/RelancesDuJourWidget.jsx,frontend/src/pages/crm/RelancesSuiviPage.jsx
 fd70b5f3867e|apps/web/src/pages/api/funnel-beacon.ts,apps/web/src/pages/api/visite.ts
 fd894f47837a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 fda88e381fa4|apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/realisations/index.astro
