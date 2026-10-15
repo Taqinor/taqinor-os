@@ -1187,6 +1187,27 @@ class ConfigSchemathesisTests(unittest.TestCase):
                          ['2xx', '401', '403', '404', '409', '410', '429',
                           '5xx'])
 
+    def test_503_admis_pour_la_seule_route_scan_carte_sans_cle_ocr(self):
+        # CI #1001 (fuzz crm) — XSAL8 : sans clé OCR, 503 douce voulue.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        visees = [op for op in config['operations']
+                  if 'not_a_server_error' in op.get('checks', {})]
+        self.assertEqual(len(visees), 1)
+        op = visees[0]
+        self.assertEqual(
+            {k for k in op if k.startswith(('include-', 'exclude-'))},
+            {'include-name'})
+        self.assertEqual(op['include-name'],
+                         'POST /api/django/crm/leads/scan-carte/')
+        self.assertNotIn('enabled', op)
+        attendus = op['checks']['not_a_server_error']['expected-statuses']
+        # Les défauts de Schemathesis 4.28 gardés, 503 ajouté.
+        self.assertEqual(sorted(str(s) for s in attendus),
+                         ['2xx', '3xx', '4xx', '503'])
+
 
 if __name__ == '__main__':
     unittest.main()
