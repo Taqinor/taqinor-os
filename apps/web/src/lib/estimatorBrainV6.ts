@@ -44,23 +44,9 @@
  */
 import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
-import {
-  PANEL2_WATT,
-  type ConfigFamily,
-  type PackResult,
-  type PanelGrid,
-  type TariffGrid,
-  annualSavingsMad,
-  aspectForAzimuth,
-  billToAnnualKwh,
-  neededPanelsForTarget,
-  optimalSouthTiltDeg,
-  packConfig,
-  roofDominantAzimuthDeg,
-  specificYield,
-  tariffForCity,
-} from './estimatorBrainV2';
+import { PANEL2_WATT, type ConfigFamily, type PackResult, type PanelGrid, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import { type YieldFn, type YieldSource } from './estimatorBrainV4';
+import type { EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
 export type { YieldFn, YieldSource };
@@ -300,7 +286,7 @@ export type AxisOrient = 'portrait' | 'landscape';
 export type AxisMargin = 'keep' | 'remove';
 export type AzimuthAxis = 'south' | 'aligned' | 'span';
 
-export interface MatrixEvalV6 {
+export interface MatrixEvalV6 extends EvalProductionSourced {
   family: ConfigFamily;
   tiltDeg: number;
   /** Azimut de face réel (boussole) du pavage. */
@@ -310,15 +296,6 @@ export interface MatrixEvalV6 {
   orientation: AxisOrient;
   margin: AxisMargin;
   azimuthAxis: AzimuthAxis;
-  fitCount: number;
-  placedCount: number;
-  kwc: number;
-  annualKwh: number;
-  pctOfTarget: number;
-  savingsLow: number;
-  savingsHigh: number;
-  perPanelYield: number;
-  yieldSource: YieldSource;
   /** Libellé d'orientation FR (« plein sud », « orienté sud-ouest (210°) », « Est-Ouest »). */
   orientationLabel: string;
   /** Libellé de pose FR (« portrait » / « paysage »). */

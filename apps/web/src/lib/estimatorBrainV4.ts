@@ -33,34 +33,15 @@
  */
 import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M } from './roofPro2';
-import {
-  PANEL2_WATT,
-  type ConfigFamily,
-  type TariffGrid,
-  annualSavingsMad,
-  aspectForAzimuth,
-  billToAnnualKwh,
-  neededPanelsForTarget,
-  optimalSouthTiltDeg,
-  packConfig,
-  roofDominantAzimuthDeg,
-  specificYield,
-  tariffForCity,
-} from './estimatorBrainV2';
+import { PANEL2_WATT, type ConfigFamily, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
+import type { EvalProductionSourced, YieldFn, YieldSource } from './estimatorBrainCommun';
 
 export type { AxisAzimuth, AxisOrient, AxisMargin, FlatConfig } from './estimatorBrainV3';
 export { PANEL2_WATT };
+export type { YieldFn, YieldSource };
 
 const EVAL_EPS = 1e-6;
-
-/** Rendement spécifique PVGIS au GPS exact : (tilt°, aspect PVGIS) → kWh/kWc/an,
- *  ou null si indisponible pour ce couple (la table committée prend le relais).
- *  Convention aspect : Sud=0, Est=−90, Ouest=+90, Nord=180. */
-export type YieldFn = (tiltDeg: number, aspectDeg: number) => number | null;
-
-/** Source du chiffre de production retenu. */
-export type YieldSource = 'pvgis' | 'estimate';
 
 /**
  * Mappe un azimut BOUSSOLE (0=N, 90=E, 180=S, 270=O) vers l'aspect PVGIS
@@ -176,18 +157,9 @@ function configProduction(
   return { kwh: kwc * s.value, perPanelYield: s.value, source: s.source };
 }
 
-export interface FlatEvalV4 extends FlatConfig {
+export interface FlatEvalV4 extends FlatConfig, EvalProductionSourced {
   azimuthDeg: number;
   setbackM: number;
-  fitCount: number;
-  placedCount: number;
-  kwc: number;
-  annualKwh: number;
-  pctOfTarget: number;
-  savingsLow: number;
-  savingsHigh: number;
-  perPanelYield: number;
-  yieldSource: YieldSource;
 }
 
 export function evalFlatConfigV4(

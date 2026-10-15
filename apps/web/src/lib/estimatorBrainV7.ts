@@ -32,23 +32,9 @@
 import { type LngLat } from './roof';
 import { PERIMETER_SETBACK_M, cotesDePavage, type Panel2Module, type PerimeterSetbacks } from './roofPro2';
 import { rognerParArete } from './roofSetbackEdge'; // CALX95 câblage
-import {
-  PANEL2_WATT,
-  type ConfigFamily,
-  type PackResult,
-  type EastWestGeometry,
-  type TariffGrid,
-  annualSavingsMad,
-  aspectForAzimuth,
-  billToAnnualKwh,
-  neededPanelsForTarget,
-  optimalSouthTiltDeg,
-  packConfig,
-  roofDominantAzimuthDeg,
-  specificYield,
-  tariffForCity,
-} from './estimatorBrainV2';
+import { PANEL2_WATT, type ConfigFamily, type PackResult, type EastWestGeometry, type TariffGrid, annualSavingsMad, aspectForAzimuth, billToAnnualKwh, neededPanelsForTarget, optimalSouthTiltDeg, packConfig, roofDominantAzimuthDeg, specificYield, tariffForCity } from './estimatorBrainV2';
 import { matrixTiltGrid, type YieldFn, type YieldSource } from './estimatorBrainV6';
+import type { EvalProductionSourced } from './estimatorBrainCommun';
 
 export { PANEL2_WATT };
 export type { YieldFn, YieldSource };
@@ -164,7 +150,7 @@ export interface AxisLocks {
 }
 
 /** Une configuration évaluée (un point de l'espace d'axes), production PVGIS/estimé. */
-export interface LiveConfigEval {
+export interface LiveConfigEval extends EvalProductionSourced {
   orientation: OrientationAxis;
   family: ConfigFamily;
   /** Azimut de face réel (boussole) du pavage. */
@@ -174,15 +160,6 @@ export interface LiveConfigEval {
   tiltDeg: number;
   layout: LayoutAxis;
   margin: MarginAxis;
-  fitCount: number;
-  placedCount: number;
-  kwc: number;
-  annualKwh: number;
-  pctOfTarget: number;
-  savingsLow: number;
-  savingsHigh: number;
-  perPanelYield: number;
-  yieldSource: YieldSource;
   orientationLabel: string;
   layoutLabel: string;
   label: string;
