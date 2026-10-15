@@ -113,7 +113,7 @@ def _acompte_publique(devis, lignes=None):
             'option': effective,
             'montants': montants,
         }
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_acompte_publique', exc_info=True)
         return None
 
@@ -164,7 +164,7 @@ def _conditions_publiques(data, devis=None):
                                for puce in cgv_imprimees(data or {})["puces"])
                if txt]
         return out or None
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_conditions_publiques', exc_info=True)
         return None
 
@@ -183,7 +183,7 @@ def _conditions_titre_publique(data):
     try:
         from ..quote_engine.clauses_cgv import cgv_imprimees
         return _html.unescape(str(cgv_imprimees(data or {})["titre"])).strip()
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("payload_conditions._conditions_titre_publique : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
@@ -200,7 +200,7 @@ def _date_validite_publique(devis):
         from ..utils.expiry import date_expiration
         exp = date_expiration(devis)
         return exp.isoformat() if exp else None
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_date_validite_publique', exc_info=True)
         return None
 
@@ -249,6 +249,6 @@ def _confirmation_email_publique(devis):
             return False
         client = getattr(devis, 'client', None)
         return bool((getattr(client, 'email', '') or '').strip())
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_confirmation_email_publique', exc_info=True)
         return False

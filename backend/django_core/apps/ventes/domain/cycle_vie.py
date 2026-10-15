@@ -47,6 +47,12 @@ import os
 # QJR146 (i) — comparaison d'OTP à temps constant (``compare_digest``).
 import secrets
 
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'EntrepriseInvalide', '_build_acceptance_wa_url', 'divergence_ice',
+    'lire_entreprise_acceptation', 'verifier_empreinte_signature',
+]
+
 logger = logging.getLogger("apps.ventes.services")
 
 
@@ -225,7 +231,7 @@ def activate_optional_line(*, devis, ligne_id, user=None):
             devis, user,
             f'Option activée par le client : « {ligne.designation} » '
             '— désormais incluse dans le total.')
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning("cycle_vie.activate_optional_line : erreur ignorée (mode dégradé)", exc_info=True)
     return ligne
 
@@ -242,13 +248,13 @@ def _geste_option_client(devis, *, user, avant, fin_de_geste):
         appliquer(devis, IntentionDevis(
             origine=ORIGINE_ECRAN, mode=MODE_RAFRAICHIR,
             company=devis.company))
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.exception('ADEV19 : rafraîchissement ignoré (devis %s)',
                          devis.pk)
     try:
         from apps.ventes.domain.historique_config import instantane_de_geste
         instantane_de_geste(devis, user=user)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.exception('ADEV19 : instantané ignoré (devis %s)', devis.pk)
     fin_de_geste(devis, user, avant=avant, objet='option client')
     from apps.ventes.domain.verrou_devis import toucher
@@ -344,7 +350,7 @@ def _plafond_demandes_otp_atteint(prefixe, link_token):
         # suivantes (un TTL repoussé serait un plafond qui ne finit jamais).
         cache.add(cle, 0, timeout=OTP_DEMANDES_TTL)
         compte = cache.incr(cle)
-    except Exception:  # noqa: BLE001 — cache absent/illisible ⇒ échec FERMÉ
+    except Exception:  # noqa: BLE001 — cache absent/illisible ⇒ échec FERMÉ (D-ENF22-BLE001)
         logger.warning(
             'QJR147: compteur de demandes OTP illisible (%s) — demande '
             'refusée par précaution.', cle, exc_info=True)
@@ -676,7 +682,7 @@ def _send_otp_email(email, code, devis_ref, company=None):
         )
         send_mail(sujet, corps, from_email, [email], fail_silently=False)
         return True
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('QJ11: email OTP échec : %s', exc)
         return False
 
@@ -734,7 +740,7 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
             devis.reference, content_hash[:16])
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('QJ10: échec DevisSignature pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
@@ -748,7 +754,7 @@ def signature_entreprise(devis):
         return None
     try:
         sig = devis.signature
-    except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist
+    except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'signature_entreprise', exc_info=True)
         return None
     if sig is None or not (sig.raison_sociale or sig.signataire_qualite
@@ -784,7 +790,7 @@ def _copier_exemplaire_signe(cle_rendu, *, devis):
     try:
         from apps.ventes.utils.pdf import _upload_pdf, download_pdf
         _upload_pdf(download_pdf(cle_rendu), cle_signee)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning(
             'QJR670: copie de l\'exemplaire signé impossible (devis %s) : %s',
             getattr(devis, 'reference', '?'), exc)
@@ -818,7 +824,7 @@ def _store_signed_pdf(*, devis):
         logger.info(
             'QJ22: PDF signé stocké pour devis %s → %s',
             devis.reference, key)
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'QJ22: échec stockage PDF signé pour devis %s : %s',
             getattr(devis, 'reference', '?'), exc)
@@ -857,7 +863,7 @@ def _acceptance_deposit_block(devis, lignes=None):
                 "Une fois le virement effectué, signalez-le depuis votre "
                 "espace proposition pour informer votre conseiller.")
         return '\n'.join(lignes) + '\n\n'
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_acceptance_deposit_block', exc_info=True)
         return ''
 
@@ -903,7 +909,7 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
         try:
             from apps.ventes.models import DevisSignature
             preuve = DevisSignature.objects.filter(devis=devis).exists()
-        except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien
+        except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', '_send_acceptance_emails', exc_info=True)
             preuve = False
         bloc_signature = (
@@ -935,13 +941,13 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
                 attach_pdf=True,
                 log_activity=False,  # l'acceptation a déjà son propre chatter
             )
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QJ10: email client échec pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
     # Notification vendeur (in-app via notifications.services.notify).
     try:
         _notify_seller_accepted(devis=devis, user=user)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QJ10: notif vendeur échec pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
@@ -1256,7 +1262,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
             nb_options = qd.get('nb_options', 1)
             scenario = qd.get('scenario', '')
-        except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
+        except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser (D-ENF22-BLE001)
             logger.exception(
                 'QJR133 : détection des options indisponible sur le devis %s '
                 "— l'acceptation sans option explicite est refusée.",
@@ -1342,7 +1348,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             # QJR421 — POINT DE SAUVEGARDE (même raison que ci-dessous).
             with transaction.atomic():
                 lignes_devis = list(devis.lignes.select_related('produit').all())
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('%s : échec ignoré (dégradé)', 'accept_devis', exc_info=True)
             lignes_devis = None
 
@@ -1374,7 +1380,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                         devis.client_id, devis.company,
                         raison_sociale=entreprise.get('raison_sociale'),
                         ice=entreprise.get('ice'))
-            except Exception:  # noqa: BLE001 — best-effort, journalisé
+            except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
                 logger.exception(
                     'CIQ319 : identité entreprise non remontée au client '
                     '(devis %s)', getattr(devis, 'reference', '?'))
@@ -1401,7 +1407,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             # bloc best-effort, jamais un par ligne de devis.
             with transaction.atomic():
                 _persist_attribution(devis=devis)
-        except Exception as exc:  # noqa: BLE001 — best-effort
+        except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
             logger.warning(
                 'QJ9: _persist_attribution échoué pour devis %s : %s',
                 getattr(devis, 'reference', '?'), exc)
@@ -1434,7 +1440,7 @@ def _rattacher_revision_au_mieux(devis, *, user):
     try:
         with transaction.atomic():
             rattacher_aval_financier_revision(devis, user=user)
-    except Exception:  # noqa: BLE001 — best-effort, journalisé
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
         logger.exception(
             'QJR560 : aval financier de révision non rattaché (devis %s)',
             getattr(devis, 'reference', '?'))
@@ -1456,13 +1462,13 @@ def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
     # signé manquant).
     try:
         devis.refresh_from_db(fields=['fichier_pdf'])
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.debug('QX9: fichier_pdf non relu pour devis %s',
                      getattr(devis, 'reference', '?'))
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
     try:
         _send_acceptance_emails(devis=devis, user=user, lignes=lignes)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
@@ -1470,7 +1476,7 @@ def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
     # ADSENG2 — thread ip/user_agent (EMQ) déjà reçus par accept_devis.
     try:
         _fire_capi_signed_quote(devis=devis, ip=ip, user_agent=user_agent)
-    except Exception as exc:  # noqa: BLE001 — best-effort
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 
@@ -1683,17 +1689,17 @@ def annuler_acceptation(*, devis, user, motif=''):
 # jamais la façade, dont les ré-exports s'exécutent dans l'ordre des tâches.
 # SPL263 — QJR560 : ``accept_devis`` rattache l'aval financier d'une V2 ;
 # le corps vit dans ``domain/revision.py`` (qui n'importe jamais ce module).
-from apps.ventes.domain.revision import (  # noqa: E402
+from apps.ventes.domain.revision import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     rattacher_aval_financier_revision,
 )
 # VNT50 — l'émetteur CAPI SignedQuote vit dans ``domain/capi_signee.py``
 # (déplacé tel quel) ; ``accept_devis`` l'appelle et les tests l'importent et
 # le patchent encore ici (``cycle_vie._fire_capi_signed_quote``).
-from apps.ventes.domain.capi_signee import (  # noqa: E402
+from apps.ventes.domain.capi_signee import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _fire_capi_signed_quote,
 )
 # VNT54 / VNT57 — la préparation d'une acceptation (vente unique, gel).
-from apps.ventes.domain.negociation import preparer_acceptation  # noqa: E402
+from apps.ventes.domain.negociation import preparer_acceptation  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 # VNT50 (budget) — déplacés tels quels : identité d'entreprise et sceau
 # (``domain/identite_entreprise.py``), notification vendeur
@@ -1701,13 +1707,13 @@ from apps.ventes.domain.negociation import preparer_acceptation  # noqa: E402
 # ``signature_entreprise`` et ``_send_acceptance_emails`` les appellent par ce
 # nom (un patch sur ``cycle_vie._notify_seller_accepted`` intercepte encore) ;
 # vues, portail et tests les importent encore ici.
-from apps.ventes.domain.identite_entreprise import (  # noqa: E402
+from apps.ventes.domain.identite_entreprise import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _champs_signature_entreprise, exige_identite_entreprise,
 )
-from apps.ventes.domain.identite_entreprise import (  # noqa: E402, F401
+from apps.ventes.domain.identite_entreprise import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     EntrepriseInvalide, divergence_ice, lire_entreprise_acceptation,
     verifier_empreinte_signature,
 )
-from apps.ventes.domain.notifications_acceptation import (  # noqa: E402, F401
+from apps.ventes.domain.notifications_acceptation import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _build_acceptance_wa_url, _notify_seller_accepted,
 )

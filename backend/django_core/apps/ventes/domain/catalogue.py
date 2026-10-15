@@ -38,6 +38,11 @@ from apps.ventes import solar_classification as _sc
 from core.product_roles import est_panneau as _est_panneau
 import logging
 
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    '_parse_kwh',
+]
+
 logger = logging.getLogger(__name__)
 
 
@@ -446,7 +451,7 @@ def _onduleur_complet(produit) -> bool:
     try:
         from apps.stock.selectors import onduleur_specs_manquantes
         return not onduleur_specs_manquantes(produit)
-    except Exception:  # noqa: BLE001 — jamais bloquer une composition
+    except Exception:  # noqa: BLE001 — jamais bloquer une composition (D-ENF22-BLE001)
         logger.warning("catalogue._onduleur_complet : erreur ignorée (mode dégradé)", exc_info=True)
         return True
 
@@ -745,7 +750,7 @@ _KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)
 _KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
 _TRI_RE = re.compile(r"tri\s*phas", re.IGNORECASE)
 # ENF20 — lecteur de kWh unique, défini dans la feuille pure ``lignes_classement``.
-from apps.ventes.domain.kwh_lecture import _parse_kwh  # noqa: E402,F401  (ré-export SPL162)
+from apps.ventes.domain.kwh_lecture import _parse_kwh  # noqa: E402 — ré-export SPL162 (D-ENF22)
 
 
 def _sans_accents(texte):

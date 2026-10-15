@@ -312,7 +312,7 @@ def _echelle_paliers_batterie_publique(devis, data, est_residentiel):
             return None
         paliers = fonction(devis)
         return list(paliers) if paliers else []
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('paliers_batterie indisponible', exc_info=True)
         return None
 
@@ -431,7 +431,7 @@ def _couverture_batterie_publique(devis, data, est_residentiel, balayage):
             # QJR406 — les mêmes douze jours types que l'étude persistée :
             # la date vient du DEVIS, jamais de l'horloge du rendu.
             jour_reference=_jour_reference_publique(devis))
-    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques
+    except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques (D-ENF22-BLE001)
         logger.warning('couverture_batterie indisponible', exc_info=True)
         return None
 
@@ -503,6 +503,6 @@ def _fiche_batterie_publique(devis):
                 None if rendement_pct is not None
                 else MOTIF_SIMULATION_OMISE),
         }
-    except Exception:  # noqa: BLE001 — voir _couverture_batterie_publique
+    except Exception:  # noqa: BLE001 — voir _couverture_batterie_publique (D-ENF22-BLE001)
         logger.warning('fiche_batterie indisponible', exc_info=True)
         return None

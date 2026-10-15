@@ -12,7 +12,7 @@ l'ordre de chargement, dans les DEUX sens) :
   — donc après que TOUTES ses définitions restantes existent ;
 * un module de ``domain/`` qui a encore besoin d'un nom hébergé par
   ``services.py`` l'importe EN BAS DE FICHIER, après ses propres définitions
-  (``# noqa: E402``). Que l'un ou l'autre soit importé le premier, chaque
+  (``noqa E402``). Que l'un ou l'autre soit importé le premier, chaque
   attribut lu à l'import existe déjà.
 
 IMPORTS RELATIFS RE-ANCRÉS D'UN NIVEAU. Un corps qui descend d'un cran dans
@@ -32,6 +32,11 @@ le nom sous lequel une ligne de journal est émise.
 from decimal import Decimal
 import logging
 import re
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'refresh_marge_snapshot',
+]
 
 logger = logging.getLogger("apps.ventes.services")
 
@@ -394,6 +399,6 @@ def concevoir_electrique_du_devis(devis, *, origine=''):
 # (QJR75 a sorti ``refresh_marge_snapshot`` vers ``domain/etudes.py``) et non la
 # façade : les ré-exports de ``services.py`` s'exécutent dans l'ordre des
 # tâches, donc le bloc QJR68 ne porte pas encore les noms de QJR75.
-from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402,F401
+from apps.ventes.domain.etudes import refresh_marge_snapshot  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
-from apps.ventes.domain.lignes import creer_ligne  # noqa: E402
+from apps.ventes.domain.lignes import creer_ligne  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

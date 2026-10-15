@@ -222,7 +222,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
         return (int(recommandation['panneaux']),
                 recommandation.get('panel_watt'), 'moteur_horaire',
                 _recommandation_avec_rendue(resultat.get('recommandation_avec')))
-    except Exception:  # noqa: BLE001 — l'appelant REFUSE le devis (il n'y a
+    except Exception:  # noqa: BLE001 — l'appelant REFUSE le devis (il n'y a (D-ENF22-BLE001)
         # plus de règle de repli) : on ne masque pas la panne, on la nomme.
         logger.warning('dimensionnement horaire indisponible', exc_info=True)
         return 0, None, MOTIF_MOTEUR_INDISPONIBLE, None
@@ -281,4 +281,4 @@ def _residential_panel_count(*, taille_kwc=None, panel_watt=_AUTO_PANEL_WATT):
 
 # ── PONT M3 : nom hébergé ailleurs ───────────────────────────────────────────
 # Import EN BAS DE FICHIER, visant le module qui PORTE le corps.
-from apps.ventes.domain.catalogue import plafond_panneaux  # noqa: E402
+from apps.ventes.domain.catalogue import plafond_panneaux  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

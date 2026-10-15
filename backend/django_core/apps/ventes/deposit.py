@@ -42,7 +42,7 @@ def _read_rate() -> Decimal:
             rate = Decimal(raw)
             if Decimal("0") < rate <= Decimal("1"):
                 return rate
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("deposit._read_rate : erreur ignorée (mode dégradé)", exc_info=True)
     return DEFAULT_RATE
 

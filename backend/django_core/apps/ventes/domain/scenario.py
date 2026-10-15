@@ -88,7 +88,7 @@ def scenario_effectif(devis, auto):
               SCENARIO_LES_DEUX)
     try:
         valeur, source = effectif(devis, 'scenario', auto)
-    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien (D-ENF22-BLE001)
         logger.warning("scenario.scenario_effectif : erreur ignorée (mode dégradé)", exc_info=True)
         return auto
     if source == 'auto' or valeur not in connus:
@@ -108,7 +108,7 @@ def recommended_option_effective(devis, auto):
     connus = (SCENARIO_SANS_BATTERIE, SCENARIO_AVEC_BATTERIE)
     try:
         valeur, source = effectif(devis, 'recommended_option', auto)
-    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien (D-ENF22-BLE001)
         logger.warning("scenario.recommended_option_effective : erreur ignorée (mode dégradé)", exc_info=True)
         return auto
     if source == 'auto' or valeur not in connus:
@@ -214,7 +214,7 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
         )
         if deux_options_declarees(devis):
             lignes_kwc = filter_lines_for_option(lignes, AVEC_BATTERIE)
-    except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais
+    except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais (D-ENF22-BLE001)
         logger.warning("scenario.puissance_kwc_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         lignes_kwc = lignes
     nb_lu, watt_lu = panneaux_et_watt_lu(lignes_kwc)
@@ -310,7 +310,7 @@ def poser_puissance_kwc(devis):
     try:
         ecrire(devis, proprietaire=CALEPINAGE,
                puissance_kwc=puissance_kwc_du_devis(devis))
-    except Exception:  # noqa: BLE001 — un cache raté ne casse jamais un devis
+    except Exception:  # noqa: BLE001 — un cache raté ne casse jamais un devis (D-ENF22-BLE001)
         logger.warning('puissance_kwc non posée sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
     # QJR669 — le prix / kWc suit le kWc ET le total que ce geste vient de
@@ -339,7 +339,7 @@ def poser_prix_par_kwc(devis):
         return None
     try:
         return devis.rafraichir_prix_par_kwc()
-    except Exception:  # noqa: BLE001 — une mesure BI ne casse jamais un devis
+    except Exception:  # noqa: BLE001 — une mesure BI ne casse jamais un devis (D-ENF22-BLE001)
         logger.warning('prix_par_kwc non recalculé sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return getattr(devis, 'prix_par_kwc', None)

@@ -80,7 +80,7 @@ class SolarDesignSansOrphelin(SimpleTestCase):
         for nom in ('_BATTERY_DEFAULT_DOD', '_BATTERY_BACKUP_PEAK_FACTOR',
                     '_BATTERY_DEFAULT_NIGHT_FRACTION'):
             self.assertTrue(hasattr(sd, nom), nom)
-        from apps.calepinage.services import batterie  # noqa: F401 — importable
+        __import__('apps.calepinage.services.batterie')  # importable
 
     def test_aucune_fonction_publique_de_solar_design_sans_appelant_de_production(self):
         cites = _noms_cites_en_production()

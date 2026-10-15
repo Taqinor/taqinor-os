@@ -89,7 +89,7 @@ class DevisNonModifiable(Exception):
 def _libelle_statut(devis):
     try:
         return devis.get_statut_display()
-    except Exception:  # noqa: BLE001 — objet léger sans choices
+    except Exception:  # noqa: BLE001 — objet léger sans choices (D-ENF22-BLE001)
         logger.warning("modifiabilite._libelle_statut : erreur ignorée (mode dégradé)", exc_info=True)
         return str(getattr(devis, 'statut', '') or '')
 
@@ -99,7 +99,7 @@ def _reference_successeur(devis):
         return None
     try:
         return devis.superseded_by.reference
-    except Exception:  # noqa: BLE001 — successeur supprimé entre-temps
+    except Exception:  # noqa: BLE001 — successeur supprimé entre-temps (D-ENF22-BLE001)
         logger.warning("modifiabilite._reference_successeur : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -470,7 +470,7 @@ def debut_de_geste_devis(devis, user=None):
         frais = Devis.objects.get(pk=devis.pk)
         capturer_configuration_devis(frais, user=user, avant_correction=True)
         return empreinte_visible(frais)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("modifiabilite.debut_de_geste_devis : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
@@ -499,7 +499,7 @@ def fin_de_geste_devis(devis, user=None, *, avant=None, objet=''):
             resume = '%s (%s)' % (_OBJETS_NOMMES[objet], resume)
         return consigner_correction_apres_envoi(
             devis, user=user, objet=objet, resume=resume)
-    except Exception:  # noqa: BLE001 — jamais bloquant
+    except Exception:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning("modifiabilite.fin_de_geste_devis : erreur ignorée (mode dégradé)", exc_info=True)
         import logging
         logging.getLogger(__name__).exception(
@@ -560,7 +560,7 @@ def consigner_correction_apres_envoi(devis, *, user=None, objet='',
             from apps.crm.services import noter_devis_corrige
             noter_devis_corrige(frais.reference, frais.lead, (
                 f'{libelle}, après acceptation' if accepte else libelle))
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 "modifiabilite.consigner_correction_apres_envoi : erreur ignorée (mode dégradé)", exc_info=True)
     return entree

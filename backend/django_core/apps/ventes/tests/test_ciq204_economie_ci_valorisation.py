@@ -76,7 +76,9 @@ class PosteHoraireTest(SimpleTestCase):
             pointe = range(17, 22) if m in (1, 2, 3, 10, 11, 12) else range(18, 23)
             return [60.0 if h in pointe else (10.0 if 9 <= h < 16 else 2.0)
                     for h in range(24)]
-        auto = lambda _m: [10.0 if 9 <= h < 16 else 0.0 for h in range(24)]  # noqa: E731
+
+        def auto(_m):
+            return [10.0 if 9 <= h < 16 else 0.0 for h in range(24)]
         res = eco.valoriser(_apercu(auto, charge, 'mt'), TARIF_MT_REPLI)
         par_poste = res['economie_annee1']['par_poste']
         self.assertEqual([p['poste'] for p in par_poste], ['pleines'])

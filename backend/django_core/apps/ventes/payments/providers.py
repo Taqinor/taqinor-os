@@ -169,7 +169,7 @@ class HostedGatewayProvider(PaymentProvider):
             # import httpx  # déjà une dépendance — importé seulement si câblé.
             # ... créer une session hébergée et renvoyer son URL + ref ...
             return NoOpProvider().create_session(link)  # squelette inerte
-        except Exception:  # noqa: BLE001 — un connecteur ne casse jamais l'OS.
+        except Exception:  # noqa: BLE001 — un connecteur ne casse jamais l'OS (D-ENF22-BLE001)
             logger.warning('HostedGateway create_session a échoué (no-op).',
                            exc_info=True)
             return NoOpProvider().create_session(link)
@@ -182,7 +182,7 @@ class HostedGatewayProvider(PaymentProvider):
         try:
             # ... vérifier la signature de la notification, lire le montant ...
             return {'paid': False, 'provider_ref': '', 'montant': None}
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('HostedGateway verify_webhook a échoué (no-op).',
                            exc_info=True)
             return {'paid': False, 'provider_ref': '', 'montant': None}
@@ -194,7 +194,7 @@ class HostedGatewayProvider(PaymentProvider):
         try:
             # ... créer une session de tokenisation hébergée (CMI) ...
             return {'tokenize_url': '', 'provider_ref': ''}
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('HostedGateway tokenize a échoué (no-op).',
                            exc_info=True)
             return {'tokenize_url': '', 'provider_ref': ''}
@@ -209,7 +209,7 @@ class HostedGatewayProvider(PaymentProvider):
         try:
             # ... débiter le token via l'API CMI ...
             return {'ok': False, 'provider_ref': '', 'motif_echec': ''}
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning('HostedGateway charge a échoué (no-op).',
                            exc_info=True)
             return {

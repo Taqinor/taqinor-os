@@ -79,12 +79,12 @@ ASSET_DIR = BASE_DIR / "assets"
 _RENDER_LOCK = threading.RLock()
 
 
-from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402
-from .identite import (  # noqa: E402
+from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .identite import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     LEGALE_TAQINOR_LEGACY, mentions_legales as _mentions_legales,
     profil_renseigne as _profil_renseigne)
 # AMOT57 — « est-ce un onduleur ? » : LE classifieur partagé (« Deye off-Grid »).
-from apps.ventes.solar_classification import is_inverter  # noqa: E402
+from apps.ventes.solar_classification import is_inverter  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _esc(value):
@@ -329,7 +329,7 @@ CALEPINAGE_EMPREINTE = ""
 SIGNE_AU_DOMICILE = False
 # AMOT23 — délai légal : UNE source (annexe_domicile, partagée avec le
 # gabarit résidentiel).
-from .annexe_domicile import (  # noqa: E402
+from .annexe_domicile import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     DELAI_RETRACTATION_DOMICILE_JOURS,
     corps_annexe_domicile as _corps_annexe_domicile,
 )
@@ -934,7 +934,7 @@ def _tva_note_par_defaut(tva_pct, langue=None):
 # DEFAULT_DOC_TEXTS, _esc, _pct_echeance et _tva_note_par_defaut
 # que ``clauses_cgv`` relit en FIN de module : le cycle d'import se résout
 # dans les deux ordres de chargement.
-from .clauses_cgv import (  # noqa: E402
+from .clauses_cgv import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _conditions_echappees, _puces_cgv, remplir_cgv_bullets)
 
 
@@ -1684,8 +1684,8 @@ def _garanties_du_devis():
                     return n
         return None
 
-    _pan = lambda d: "panneau" in d or "module" in d      # noqa: E731
-    _bat = lambda d: "batterie" in d                      # noqa: E731
+    _pan = lambda d: "panneau" in d or "module" in d
+    _bat = lambda d: "batterie" in d
 
     out = []
     n = _premier(is_inverter, "garantie_mois")
@@ -2923,7 +2923,7 @@ def _bankable_pct(valeur):
 #: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
 #: panneau de plus pèse déjà bien davantage).
 # AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
-from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402
+from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _bankable_decrit_ce_champ(bank):
@@ -2947,7 +2947,7 @@ def _bankable_decrit_ce_champ(bank):
 #: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
 #: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
 #: l'entier de la carte, jamais les ~10 % que produisait le double derate.
-from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401
+from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _bankable_concorde_avec_la_page(bank):
@@ -4543,7 +4543,7 @@ def _mesure_onepage(html):
     """
     try:
         from weasyprint import HTML as _HTML
-    except Exception:  # noqa: BLE001 \u2014 pas de WeasyPrint : aucune mesure
+    except Exception:  # noqa: BLE001 — \u2014 pas de WeasyPrint : aucune mesure (D-ENF22-BLE001)
         logger.warning("generate_devis_premium._mesure_onepage : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     try:
@@ -4586,7 +4586,7 @@ def _mesure_onepage(html):
             hauteurs.sort()
             hauteur_ligne = hauteurs[len(hauteurs) // 2]
         return (max(0.0, bas_totaux - limite), hauteur_ligne)
-    except Exception:  # noqa: BLE001 \u2014 un PDF ne casse jamais sur une mesure
+    except Exception:  # noqa: BLE001 — \u2014 un PDF ne casse jamais sur une mesure (D-ENF22-BLE001)
         logger.warning("generate_devis_premium._mesure_onepage : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -4860,7 +4860,7 @@ def apply_quote_data(data: dict) -> None:
         try:
             from .agricole.synthese import synthese_agricole
             SYNTHESE_AGRICOLE = synthese_agricole(data)
-        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
             logger.warning("generate_devis_premium.apply_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             SYNTHESE_AGRICOLE = None
     # CIQ210 (complément) — le une-page C&I lit production, économie et
@@ -4874,7 +4874,7 @@ def apply_quote_data(data: dict) -> None:
         try:
             from .ci.synthese import chiffres_cles, synthese_ci
             CHIFFRES_CI = chiffres_cles(synthese_ci(data) or {})
-        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
             logger.warning("generate_devis_premium.apply_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             CHIFFRES_CI = {}
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))

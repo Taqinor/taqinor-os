@@ -5,7 +5,7 @@ de création de lignes.
 Sept points, aucun changement de nombre monétaire :
 
 (a) ``domain/pipeline`` — trois noms importés jamais utilisés, sous un
-    ``# noqa: F401`` global qui garantissait qu'aucun linter ne le dirait
+    ``noqa F401`` global qui garantissait qu'aucun linter ne le dirait
     jamais. Retirés ; le ``noqa`` restreint à ``E402``.
 (b) ``domain/pipeline.decider_taille`` — l'étape 2 déclarait un paramètre
     ``entrees`` qu'elle ne LISAIT pas : la chaîne documentée

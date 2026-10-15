@@ -425,7 +425,7 @@ class AffectationPaiement(models.Model):
         return f'{self.montant} MAD — {self.paiement_id} → {self.facture.reference}'
 
 
-from apps.facturation.totaux import TotauxDocumentMixin  # noqa: E402
+from apps.facturation.totaux import TotauxDocumentMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 class NoteDebit(TotauxDocumentMixin, models.Model):

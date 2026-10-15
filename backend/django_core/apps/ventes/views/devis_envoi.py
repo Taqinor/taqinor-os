@@ -299,7 +299,7 @@ class DevisEnvoiActionsMixin:
             key = generate_premium_devis_pdf(devis.id, opts, persist=False)
             attachment = download_pdf(key)
             attachment_name = f'Devis_{devis.reference}.pdf'
-        except Exception:  # noqa: BLE001 — PDF indisponible n'empêche pas l'envoi
+        except Exception:  # noqa: BLE001 — PDF indisponible n'empêche pas l'envoi (D-ENF22-BLE001)
             logger.warning(
                 "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
 
@@ -329,7 +329,7 @@ class DevisEnvoiActionsMixin:
                 try:
                     from apps.crm.services import public_booking_url
                     lien_rdv = public_booking_url(devis.lead, request=request)
-                except Exception:  # noqa: BLE001 — jamais bloquer l'envoi
+                except Exception:  # noqa: BLE001 — jamais bloquer l'envoi (D-ENF22-BLE001)
                     logger.warning(
                         "devis_envoi.DevisEnvoiActionsMixin.envoyer_email "
                         ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -348,7 +348,7 @@ class DevisEnvoiActionsMixin:
         # Envoi + EmailLog via le service centralisé. attach_pdf=False car on
         # a déjà le contenu — on passe attachment/attachment_name directement.
         from ..email_service import _send, _from_email, _chatter_note
-        from ..models import EmailLog  # noqa: F811 — local import shadows class-level
+        from ..models import EmailLog
 
         client = devis.client
         dest = (to_email or (getattr(client, 'email', '') or '')).strip()
@@ -406,7 +406,7 @@ class DevisEnvoiActionsMixin:
             try:
                 from apps.crm.services import noter_devis_envoye
                 noter_devis_envoye(reference, devis.lead)
-            except Exception:  # noqa: BLE001 — best-effort, ne bloque jamais l'envoi
+            except Exception:  # noqa: BLE001 — best-effort, ne bloque jamais l'envoi (D-ENF22-BLE001)
                 logger.warning(
                     "devis_envoi.DevisEnvoiActionsMixin.envoyer_email : erreur ignorée (mode dégradé)", exc_info=True)
 

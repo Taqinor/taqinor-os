@@ -250,7 +250,7 @@ def jours_types_publics(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
                     recouvrement.get('surplus_kwh') or 0.0, 2),
             }
         return out
-    except Exception:  # noqa: BLE001 — un jeu jour-type ne casse jamais la page
+    except Exception:  # noqa: BLE001 — un jeu jour-type ne casse jamais la page (D-ENF22-BLE001)
         logger.warning('jours_types_publics indisponible', exc_info=True)
         return None
 
@@ -612,7 +612,7 @@ def couverture_batterie_publique(*, kwc, conso_kwh_mensuelles,
             'pas': pas,
             'autonomie_complete': autonomie,
         }
-    except Exception:  # noqa: BLE001 — un bloc d'affichage ne casse pas la page
+    except Exception:  # noqa: BLE001 — un bloc d'affichage ne casse pas la page (D-ENF22-BLE001)
         logger.warning('couverture_batterie indisponible', exc_info=True)
         return None
 
@@ -642,7 +642,7 @@ def production_annuelle_pour_kwc(kwc, *, ville=None, lat=None, lon=None):
         valeurs, _source = mensuel
         total = sum(_num(v) for v in valeurs) * kwc_f * PRODUCTION_DERATE
         return round(total) if total > 0 else None
-    except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais
+    except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais (D-ENF22-BLE001)
         logger.warning('production_annuelle_pour_kwc indisponible', exc_info=True)
         return None
 
@@ -672,7 +672,7 @@ def production_journaliere_par_saison(kwc, *, ville=None, lat=None, lon=None):
             return {}
         # QJR611 — une seule boucle : on délègue à courbes_journalieres.
         return production_par_saison(kwc_f, mensuel, ville, lat, lon)
-    except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais
+    except Exception:  # noqa: BLE001 — un bloc d'affichage ne leve jamais (D-ENF22-BLE001)
         logger.warning(
             'production_journaliere_par_saison indisponible', exc_info=True)
         return {}

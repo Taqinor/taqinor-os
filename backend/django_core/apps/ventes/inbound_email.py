@@ -134,7 +134,7 @@ def _notify_devis_reply(devis, from_email, subject):
             kind=DevisActivity.Kind.NOTE,
             body=(f'Réponse email reçue de {from_email or "?"} : '
                   f'« {(subject or "").strip()[:120]} »'))
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("inbound_email._notify_devis_reply : erreur ignorée (mode dégradé)", exc_info=True)
     try:
         from apps.notifications.services import notify
@@ -147,7 +147,7 @@ def _notify_devis_reply(devis, from_email, subject):
                 body=(subject or '')[:200],
                 link=f'/ventes/devis?devis={devis.id}',
                 company=devis.company)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning("inbound_email._notify_devis_reply : erreur ignorée (mode dégradé)", exc_info=True)
 
 

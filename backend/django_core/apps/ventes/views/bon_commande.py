@@ -19,7 +19,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
-from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
 from ..domain.facturation_ops import StockInsuffisantError
 import logging
 

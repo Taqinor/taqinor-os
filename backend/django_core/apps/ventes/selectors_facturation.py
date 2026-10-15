@@ -428,7 +428,7 @@ def ca_devis_factures_par_clients(company, client_ids):
         })
         try:
             entry['ca_devis'] += Decimal(str(devis.total_ttc or 0))
-        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation (D-ENF22-BLE001)
             logger.warning(
                 "selectors_facturation.ca_devis_factures_par_clients : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_devis'] += 1
@@ -444,7 +444,7 @@ def ca_devis_factures_par_clients(company, client_ids):
         })
         try:
             entry['ca_factures'] += Decimal(str(facture.total_ttc or 0))
-        except Exception:  # noqa: BLE001 — jamais casser la consolidation
+        except Exception:  # noqa: BLE001 — jamais casser la consolidation (D-ENF22-BLE001)
             logger.warning(
                 "selectors_facturation.ca_devis_factures_par_clients : erreur ignorée (mode dégradé)", exc_info=True)
         entry['nb_factures'] += 1

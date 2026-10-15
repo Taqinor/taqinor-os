@@ -70,9 +70,9 @@ from apps.ventes.quote_engine import i18n_labels
 from apps.ventes.tests import _moteur_fixtures as F
 
 try:
-    import weasyprint  # noqa: F401
+    __import__('weasyprint')
     _WEASY = True
-except Exception:  # noqa: BLE001 — bibliothèques Pango absentes (hôte)
+except (ImportError, OSError):  # bibliothèques Pango absentes (hôte)
     _WEASY = False
 
 DOSSIER = Path(__file__).resolve().parent / 'golden' / 'moteur' / 'legacy'
@@ -98,7 +98,7 @@ def _etat_donnees():
             continue
         try:
             etat[nom] = copy.deepcopy(valeur)
-        except Exception:  # noqa: BLE001 — RLock & co : jamais réécrits
+        except (TypeError, copy.Error):  # RLock & co : jamais réécrits
             continue
     return etat
 
@@ -110,7 +110,7 @@ def _restaurer(etat):
         if _est_donnee(nom, valeur) and nom not in etat:
             try:
                 copy.deepcopy(valeur)
-            except Exception:  # noqa: BLE001 — non copiable : jamais pris
+            except (TypeError, copy.Error):  # non copiable : jamais pris
                 continue
             delattr(moteur, nom)
     for nom, valeur in etat.items():
@@ -343,7 +343,7 @@ def rendre_sequence():
             data = F.donnees_legacy(variante, **copy.deepcopy(surcharges))
             try:
                 html = moteur.render_html_for(data)
-            except Exception as exc:  # noqa: BLE001 — caractérisation
+            except Exception as exc:  # noqa: BLE001 — caractérisation (D-ENF22-BLE001)
                 resultats[nom] = {'exception': type(exc).__name__}
                 continue
             resultats[nom] = empreinte(html)

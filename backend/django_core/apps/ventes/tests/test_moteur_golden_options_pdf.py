@@ -78,7 +78,7 @@ def capturer(clean_pdf_options, default_pdf_options, langues, variantes):
     for nom, entree in MATRICE:
         try:
             cas[nom] = clean_pdf_options(entree)
-        except Exception as exc:  # noqa: BLE001 — caractérisation
+        except Exception as exc:  # noqa: BLE001 — caractérisation (D-ENF22-BLE001)
             cas[nom] = '<%s>' % type(exc).__name__
     return {
         'DEFAULT_PDF_OPTIONS': dict(default_pdf_options),

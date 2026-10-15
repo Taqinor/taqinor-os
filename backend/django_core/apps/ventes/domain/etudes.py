@@ -108,7 +108,7 @@ def rafraichir_etude_horaire(devis, *, kwc=None, batterie_kwh_utile=None,
         ecrire(devis, proprietaire=MOTEUR_HORAIRE, etude_horaire=bloc,
                **{CLE_ETUDE_HORAIRE_SANS: bloc_sans})
         return bloc
-    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis
+    except Exception:  # noqa: BLE001 — jamais bloquant pour un devis (D-ENF22-BLE001)
         logger.warning('etude_horaire non rafraîchie sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
@@ -176,7 +176,7 @@ def _bloc_horaire_deja_a_jour(devis, kwc, cle='etude_horaire'):
         if not empreinte or bloc.get('_empreinte_entrees') != empreinte:
             return False
         return True
-    except Exception:  # noqa: BLE001 — au moindre doute, on recalcule
+    except Exception:  # noqa: BLE001 — au moindre doute, on recalcule (D-ENF22-BLE001)
         logger.warning("etudes._bloc_horaire_deja_a_jour : erreur ignorée (mode dégradé)", exc_info=True)
         return False
 
@@ -205,7 +205,7 @@ def bloc_horaire_enregistre_pour(devis, kwc):
                     and _bloc_horaire_deja_a_jour(devis, kwc, cle=cle)
                     and _lire_etude_horaire(bloc, kwc) is not None):
                 return bloc
-    except Exception:  # noqa: BLE001 — au moindre doute, l'aperçu recalcule
+    except Exception:  # noqa: BLE001 — au moindre doute, l'aperçu recalcule (D-ENF22-BLE001)
         logger.warning('bloc_horaire_enregistre_pour indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
     return None
@@ -366,7 +366,7 @@ def blocs_horaires_perimes(devis):
         elif kwc_sans:
             perimes.append((CLE_ETUDE_HORAIRE_SANS, None, kwc_sans))
         return perimes
-    except Exception:  # noqa: BLE001 — lecture de diagnostic, jamais bloquante
+    except Exception:  # noqa: BLE001 — lecture de diagnostic, jamais bloquante (D-ENF22-BLE001)
         logger.warning('blocs_horaires_perimes indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return []
@@ -433,7 +433,7 @@ def rafraichir_etude_horaire_devis(devis, *, force=False):
         if not force and _blocs_horaires_deja_a_jour(devis, kwc, kwc_sans):
             return (devis.etude_params or {}).get('etude_horaire')
         return rafraichir_etude_horaire(devis, kwc=kwc, kwc_sans=kwc_sans)
-    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
+    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche (D-ENF22-BLE001)
         # jamais une sauvegarde de devis/ligne.
         logger.warning('rafraichir_etude_horaire_devis indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
@@ -523,7 +523,7 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
         ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
                dimensionnement=resultat)
         return resultat
-    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche
+    except Exception:  # noqa: BLE001 — un rafraîchissement raté n'empêche (D-ENF22-BLE001)
         # jamais une sauvegarde de devis/ligne.
         logger.warning('rafraichir_dimensionnement_devis indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
@@ -631,7 +631,7 @@ def _rafraichir_etude_ci(devis, *, force=False):
 # (``_card_if``, ``ind_masquer_economies``). C'est la règle « zéro chiffre
 # inventé » appliquée à la copie : mieux vaut recalculer, ou taire.
 
-from apps.ventes.domain.etude_schema import (  # noqa: E402
+from apps.ventes.domain.etude_schema import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     CLES_RETIREES_CI_V1 as _CLES_RETIREES_CI_V1,
     DERIVEE as _DERIVEE, MOTEUR_POMPAGE as _MOTEUR_POMPAGE,
     SCHEMA as _SCHEMA_ETUDE)
@@ -762,11 +762,11 @@ def compute_marge_snapshot(devis):
     try:
         from apps.ventes.utils.options import option_lines
         lignes = option_lines(devis)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("etudes.compute_marge_snapshot : erreur ignorée (mode dégradé)", exc_info=True)
         try:
             lignes = list(devis.lignes.select_related('produit').all())
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("etudes.compute_marge_snapshot : erreur ignorée (mode dégradé)", exc_info=True)
             return None
     ht = Decimal('0')
@@ -775,7 +775,7 @@ def compute_marge_snapshot(devis):
     for li in lignes:
         try:
             ht += Decimal(str(li.total_ht))
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("etudes.compute_marge_snapshot : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         produit = getattr(li, 'produit', None)
@@ -796,7 +796,7 @@ def refresh_marge_snapshot(devis):
         if devis.marge_snapshot != marge:
             devis.marge_snapshot = marge
             devis.save(update_fields=['marge_snapshot'])
-    except Exception as exc:  # noqa: BLE001 — jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — jamais bloquant (D-ENF22-BLE001)
         logger.warning('QX23: marge_snapshot échoué pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
 

@@ -1269,7 +1269,7 @@ def rafraichir_etude_pompage_devis(devis, *, force=False):
         if a_ecrire:
             ecrire(devis, proprietaire=MOTEUR_POMPAGE, **a_ecrire)
         return derivees
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('rafraichir_etude_pompage_devis indisponible sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None

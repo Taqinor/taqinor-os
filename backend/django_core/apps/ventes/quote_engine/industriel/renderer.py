@@ -47,7 +47,7 @@ def is_industrial(devis, options=None) -> bool:
 
 # CIQ317 — le MÊME lecteur numérique que le renderer commercial (une
 # seule définition : la page équipements est partagée).
-from ..commercial.renderer import _num  # noqa: E402,F401
+from ..commercial.renderer import _num  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _augment(data: dict) -> dict:

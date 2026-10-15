@@ -441,7 +441,7 @@ def _ombrage_du_calepinage(devis):
         if not devis_id or company is None:
             return None
         return ombrage_servi(devis_id, company)
-    except Exception:  # noqa: BLE001 — une étude ne tombe jamais sur une lecture
+    except Exception:  # noqa: BLE001 — une étude ne tombe jamais sur une lecture (D-ENF22-BLE001)
         logger.warning("ACAL144 : ombrage du calepinage illisible pour le "
                        "devis %s", getattr(devis, 'pk', None), exc_info=True)
         return None

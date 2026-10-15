@@ -958,7 +958,7 @@ def auto_devis_tunnel_actif(company):
     try:
         from apps.parametres.models import CompanyProfile
         profil = CompanyProfile.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 — table absente / migration en cours
+    except Exception:  # noqa: BLE001 — table absente / migration en cours (D-ENF22-BLE001)
         logger.warning(
             'Auto-devis: profil de société illisible (company %s) — '
             'création automatique désactivée par prudence.',
@@ -991,7 +991,7 @@ def _liberer_marque_auto_devis(company, lead_id):
         ProcessedWebhookEvent.objects.filter(
             company=company, source=_MARQUE_AUTO_DEVIS,
             event_id=str(lead_id)).delete()
-    except Exception:  # noqa: BLE001 — jamais au-dessus de l'erreur d'origine
+    except Exception:  # noqa: BLE001 — jamais au-dessus de l'erreur d'origine (D-ENF22-BLE001)
         logger.warning(
             'Auto-devis: marque de dédup non relâchée pour le lead %s — un '
             'prochain essai sera refusé.', lead_id, exc_info=True)
@@ -1033,7 +1033,7 @@ def _noter_refus_auto_devis(company, lead_id, lead, exc):
             company=company, lead_id=lead_id,
             user=getattr(lead, 'owner', None),
             body=corps_note_refus_auto_devis(exc))
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'Auto-devis: note d\'abstention non posée sur le lead %s.',
             lead_id, exc_info=True)
@@ -1168,7 +1168,7 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
         # identique ; un motif DIFFÉRENT, lui, mérite bien sa note.
         _noter_refus_auto_devis(company, lead_id, lead, exc)
         return None
-    except Exception:  # noqa: BLE001 — relâcher AVANT de laisser remonter
+    except Exception:
         _liberer_marque_auto_devis(company, lead_id)
         raise
 
@@ -1196,7 +1196,7 @@ def creer_devis_automatique_depuis_lead(*, lead_id, company_id):
         from apps.crm.services import ajouter_note_lead
         ajouter_note_lead(company=company, lead_id=lead_id,
                           user=getattr(lead, 'owner', None), body=corps)
-    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning(
             'Auto-devis %s: note d\'historique échouée sur le lead %s.',
             devis.reference, lead_id, exc_info=True)
@@ -1226,7 +1226,7 @@ def planifier_devis_automatique_pour_lead(lead_id, company_id):
     try:
         task_devis_automatique_depuis_lead.apply_async(
             args=[lead_id, company_id], retry=False)
-    except Exception as exc:  # noqa: BLE001 — courtier indisponible
+    except Exception as exc:  # noqa: BLE001 — courtier indisponible (D-ENF22-BLE001)
         logger.warning(
             'Auto-devis: file Celery indisponible (%s) — le lead %s n\'aura '
             'pas de devis automatique (création manuelle inchangée).',
@@ -1235,24 +1235,24 @@ def planifier_devis_automatique_pour_lead(lead_id, company_id):
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.catalogue import _libelle_role  # noqa: E402
-from apps.ventes.domain.etudes import rafraichir_etudes_du_devis  # noqa: E402
-from apps.ventes.domain.geometrie import (  # noqa: E402
+from apps.ventes.domain.catalogue import _libelle_role  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.etudes import rafraichir_etudes_du_devis  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.geometrie import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _panneau_pour_calepinage,
     contour_client_lnglat,
     extract_roof_config,
     plafond_physique_du_contour,
     zone_toit_depuis_contour,
 )
-from apps.ventes.domain.entrees import entrees_depuis_lead  # noqa: E402
-from apps.ventes.domain.pipeline import (  # noqa: E402
+from apps.ventes.domain.entrees import entrees_depuis_lead  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     ORIGINE_AUTO,
     ORIGINE_TUNNEL,
     CibleDevis,
     IntentionDevis,
     appliquer,
 )
-from apps.ventes.domain.etape_composer import (  # noqa: E402
+from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     COMPOSITION_AVEC,
     COMPOSITION_LES_DEUX,
     COMPOSITION_SANS,
@@ -1260,13 +1260,13 @@ from apps.ventes.domain.etape_composer import (  # noqa: E402
     composer,
     verifier,
 )
-from apps.ventes.domain.scenario import (  # noqa: E402
+from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     SCENARIO_AVEC_BATTERIE,
     SCENARIO_LES_DEUX,
     SCENARIO_SANS_BATTERIE,
     scenario_effectif,
 )
-from apps.ventes.domain.taille import (  # noqa: E402
+from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     AutoDevisError,
     _panneaux_dimensionnement_horaire,
     _refus_dimensionnement,
@@ -1274,8 +1274,8 @@ from apps.ventes.domain.taille import (  # noqa: E402
     phase_client_pour_dimensionnement,
     phase_et_isolement_du_lead,
 )
-from apps.ventes.domain.creation import _structure_demandee  # noqa: E402
-from apps.ventes.domain.creation_calepinage import (  # noqa: E402
+from apps.ventes.domain.creation import _structure_demandee  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.creation_calepinage import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _arbitrage_du_calepinage,
     _calepinage_range,
 )

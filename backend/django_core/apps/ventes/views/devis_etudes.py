@@ -66,7 +66,7 @@ class DevisEtudesActionsMixin:
         try:
             data = build_quote_data(devis, {'pdf_mode': 'full'})
             bloc = deriver(devis, data)
-        except Exception:  # noqa: BLE001 — un écran d'édition ne tombe jamais
+        except Exception:  # noqa: BLE001 — un écran d'édition ne tombe jamais (D-ENF22-BLE001)
             logger.warning(
                 "devis_etudes.DevisEtudesActionsMixin._offres_tailles_reponse "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -266,7 +266,7 @@ class DevisEtudesActionsMixin:
         from ..services import rafraichir_etudes_du_devis
         try:
             rafraichir_etudes_du_devis(devis)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning(
                 "devis_etudes.DevisEtudesActionsMixin._rafraichir_etudes_apres_surcharge "
                 ": erreur ignorée (mode dégradé)", exc_info=True)
@@ -363,7 +363,7 @@ class DevisEtudesActionsMixin:
             from ..services import rafraichir_etudes_du_devis
             try:
                 rafraichir_etudes_du_devis(devis)
-            except Exception:  # noqa: BLE001
+            except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
                 logger.warning(
                     "devis_etudes.DevisEtudesActionsMixin.etude_params : erreur ignorée (mode dégradé)", exc_info=True)
         fin_de_geste_devis(devis, request.user, avant=avant_geste,

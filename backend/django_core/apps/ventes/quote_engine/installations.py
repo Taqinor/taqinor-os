@@ -68,6 +68,6 @@ def pick_b64(kwc=None, mode=None) -> str:
     best = min(ents, key=lambda e: _score(e, kwc, mode))
     try:
         return base64.b64encode(best["path"].read_bytes()).decode()
-    except Exception:  # noqa: BLE001 — a cover must never break on a bad file
+    except Exception:  # noqa: BLE001 — a cover must never break on a bad file (D-ENF22-BLE001)
         logger.warning("installations.pick_b64 : erreur ignorée (mode dégradé)", exc_info=True)
         return ""

@@ -71,7 +71,7 @@ def lire_fichier_toiture(cle):
 
     try:
         return download_roof_image(cle)
-    except Exception:  # noqa: BLE001 — cf. docstring : absence, pas erreur
+    except Exception:  # noqa: BLE001 — cf. docstring : absence, pas erreur (D-ENF22-BLE001)
         logger.warning("stockage_toiture.lire_fichier_toiture : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 

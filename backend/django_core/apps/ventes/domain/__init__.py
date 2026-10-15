@@ -19,7 +19,7 @@ LES DEUX RÈGLES D'IMPORT — NE PAS LES DÉFAIRE (QJR68-QJR76)
    une pure façade d'affectations de ré-export, et le sens de la dépendance est
    à sens unique — ``services`` → ``domain``, jamais l'inverse.
 2. **Un module de ``domain/`` qui lit un nom d'un AUTRE module l'importe EN BAS
-   de son propre fichier** (``# noqa: E402``), et il vise le module qui PORTE le
+   de son propre fichier** (``noqa E402``), et il vise le module qui PORTE le
    corps — JAMAIS la façade. Deux raisons, toutes deux vérifiées en vrai :
    * la façade ré-exporte dans l'ORDRE des tâches ; un import croisé passant
      par elle lit un nom pas encore ré-exporté (QJR73 a cassé l'import de tout

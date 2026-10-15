@@ -33,6 +33,11 @@ pas le nom sous lequel une ligne de journal est émise.
 from decimal import Decimal
 import logging
 
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    '_is_offgrid_inverter',
+]
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,7 +101,7 @@ def _pmax_wc_du_produit(produit):
         return None
     try:
         from apps.stock import selectors as _stock_selectors
-    except Exception:  # noqa: BLE001 — app absente / import cassé : on ignore
+    except Exception:  # noqa: BLE001 — app absente / import cassé : on ignore (D-ENF22-BLE001)
         logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     lire = getattr(_stock_selectors, 'specs_for_produit', None)
@@ -108,10 +113,10 @@ def _pmax_wc_du_produit(produit):
         # Le sélecteur peut attendre un id plutôt que l'objet.
         try:
             specs = lire(getattr(produit, 'id', None))
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
             logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
             return None
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("lignes._pmax_wc_du_produit : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if specs is None:
@@ -1322,7 +1327,7 @@ def noter_ligne_ajoutee(ligne):
 # Imports EN BAS DE FICHIER (voir la docstring) : ils s'exécutent après toutes
 # les définitions de ce module, donc l'ordre de chargement ne peut jamais faire
 # lire un module à moitié construit.
-from apps.ventes.domain.catalogue import (  # noqa: E402,F401
+from apps.ventes.domain.catalogue import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _is_battery,
     _is_hybrid_inverter,
     _is_offgrid_inverter,
@@ -1331,7 +1336,7 @@ from apps.ventes.domain.catalogue import (  # noqa: E402,F401
     porte_bareme_par_panneau,
     prix_forfait_ht,
 )
-from apps.ventes.domain.composition import (  # noqa: E402
+from apps.ventes.domain.composition import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     VARIANTE_AVEC,
     VARIANTE_COMMUNE,
     VARIANTE_SANS,

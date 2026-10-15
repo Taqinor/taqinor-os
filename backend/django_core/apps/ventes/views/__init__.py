@@ -38,43 +38,22 @@ from .parametres_gammes import ParametresGammesView  # PVMRQ
 from .plan_commission import PlanCommissionViewSet  # WIR281/XSAL6
 
 __all__ = [
-    'DevisViewSet',
-    'LigneDevisViewSet',
-    'BonCommandeViewSet',
-    'FactureViewSet',
-    'AvoirViewSet',
-    'NoteDebitViewSet',
-    'PaiementViewSet',
-    'LigneFactureViewSet',
-    'email_config',
-    'client_credit_warning',
-    'releve_dry_run',
-    'releve_commit',
-    'roof_config',
-    'DevisPresetViewSet',
-    'RegulatoryDossierViewSet',
-    'DossierChecklistItemViewSet',
-    'DossierExchangeViewSet',
-    'SubventionDossierViewSet',
-    'Regularisation8221ViewSet',
-    'CommissioningTestViewSet',
-    'IVCurveCaptureViewSet',
-    'AsBuiltPackViewSet',
-    'AttestationConformiteViewSet',
-    'TestPerformanceReceptionViewSet',
-    'AttestationREViewSet',
-    'RemiseEncaissementViewSet',
-    'ListePrixViewSet',
-    'prix_applicable_view',
-    'ParametresGammesView',
-    'PlanCommissionViewSet',
+    'DevisViewSet', 'LigneDevisViewSet', 'BonCommandeViewSet', 'FactureViewSet', 'AvoirViewSet',
+    'NoteDebitViewSet', 'PaiementViewSet', 'LigneFactureViewSet', 'email_config',
+    'client_credit_warning', 'releve_dry_run', 'releve_commit', 'roof_config', 'DevisPresetViewSet',
+    'RegulatoryDossierViewSet', 'DossierChecklistItemViewSet', 'DossierExchangeViewSet',
+    'SubventionDossierViewSet', 'Regularisation8221ViewSet', 'CommissioningTestViewSet',
+    'IVCurveCaptureViewSet', 'AsBuiltPackViewSet', 'AttestationConformiteViewSet',
+    'TestPerformanceReceptionViewSet', 'AttestationREViewSet', 'RemiseEncaissementViewSet',
+    'ListePrixViewSet', 'prix_applicable_view', 'ParametresGammesView', 'PlanCommissionViewSet',
+    '_economie_action', '_economie_pompage_action', '_economie_ci_action',
 ]
 # CALX288 — rattache l'action ``economie`` au ``DevisViewSet`` (import DERNIER,
 # exécuté avant ``router.register`` puisque ``urls.py`` importe ce paquet).
-from . import economie as _economie_action  # noqa: F401,E402
+from . import economie as _economie_action
 # AGR206 — rattache l'action ``economie_pompage`` au ``DevisViewSet`` (même
 # patron : import DERNIER, avant ``router.register``).
-from . import economie_pompage as _economie_pompage_action  # noqa: F401,E402
+from . import economie_pompage as _economie_pompage_action
 # CIQ210 — rattache l'action ``economie_ci`` au ``DevisViewSet`` (même
 # patron : import DERNIER, avant ``router.register``).
-from . import economie_ci as _economie_ci_action  # noqa: F401,E402
+from . import economie_ci as _economie_ci_action

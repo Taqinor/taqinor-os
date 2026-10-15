@@ -277,9 +277,9 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
 
 # ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
 # Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
-from apps.ventes.domain.etudes import (  # noqa: E402
+from apps.ventes.domain.etudes import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     etude_params_pour_copie,
     rafraichir_etudes_du_devis,
 )
 # QJR84 — l'écrivain unique des lignes (le seul constructeur de LigneDevis).
-from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402
+from apps.ventes.domain.lignes import cloner_lignes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)

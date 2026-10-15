@@ -632,7 +632,7 @@ def dates_prevues_par_creneau(devis):
         return None
     try:
         tranches = tranches_normalisees(devis)
-    except Exception:  # noqa: BLE001 — best-effort, rendu sans date
+    except Exception:  # noqa: BLE001 — best-effort, rendu sans date (D-ENF22-BLE001)
         logger.warning("echeancier.dates_prevues_par_creneau : erreur ignorée (mode dégradé)", exc_info=True)
         return None
     if not any(t.get('date_prevue') for t in tranches):
@@ -689,7 +689,7 @@ def termes_paiement_devis(devis, termes_defaut, lignes=None, *,
         return slots
     try:
         tranches = pourcentages_echeancier(devis, lignes=lignes)
-    except Exception:  # noqa: BLE001 — best-effort, société en repli
+    except Exception:  # noqa: BLE001 — best-effort, société en repli (D-ENF22-BLE001)
         logger.warning("echeancier.termes_paiement_devis : erreur ignorée (mode dégradé)", exc_info=True)
         tranches = []
     if not tranches:

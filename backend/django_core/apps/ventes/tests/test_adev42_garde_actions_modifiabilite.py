@@ -26,9 +26,10 @@ from rest_framework.test import APIClient
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, DevisActivity, LigneDevis, LotDevis
-from apps.ventes import urls as _urls  # noqa: F401 — actions greffées
 from apps.ventes.views import DevisViewSet
 from authentication.models import Company
+
+__import__('apps.ventes.urls')  # actions greffées
 
 User = get_user_model()
 BASE = '/api/django/ventes/devis/'

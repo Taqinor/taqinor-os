@@ -99,7 +99,7 @@ def garanties_des_items(items, mode, langue='fr'):
         if (mode or '').strip().lower() == MODE_AGRICOLE:
             return _garanties_pompage(lignes, lg)
         return _garanties_solaire(lignes, lg)
-    except Exception:  # noqa: BLE001 — jamais une garantie inventée
+    except Exception:  # noqa: BLE001 — jamais une garantie inventée (D-ENF22-BLE001)
         logger.warning('garanties_des_items : erreur ignorée (liste vide)',
                        exc_info=True)
         return []
@@ -116,7 +116,7 @@ def garanties_de_la_vente(devis, langue='fr'):
         from apps.ventes.utils.options import option_lines
         items = [_line_to_item(li, devis.taux_tva)
                  for li in option_lines(devis)]
-    except Exception:  # noqa: BLE001 — jamais une garantie inventée
+    except Exception:  # noqa: BLE001 — jamais une garantie inventée (D-ENF22-BLE001)
         logger.warning('garanties_de_la_vente : erreur ignorée (liste vide)',
                        exc_info=True)
         return []

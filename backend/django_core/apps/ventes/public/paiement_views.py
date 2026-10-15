@@ -67,7 +67,7 @@ def _deposit_success_payload(devis, token):
             payload['pourcentage'] = tr['pourcentage']
             payload['message'] = deposit_protection_message(
                 acompte, reference=devis.reference)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_deposit_success_payload', exc_info=True)
     return payload
 
@@ -106,7 +106,7 @@ def proposal_virement_declare(request, token):
                 'detail': 'Votre déclaration a bien été prise en compte.',
                 'already': True,
             }))
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'proposal_virement_declare', exc_info=True)
     # Chatter + notification vendeur (best-effort).
     try:
@@ -114,7 +114,7 @@ def proposal_virement_declare(request, token):
         activity.log_devis_note(
             devis, None,
             'Le client déclare avoir effectué le virement de l\'acompte.')
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'proposal_virement_declare', exc_info=True)
     try:
         from apps.notifications.services import notify
@@ -128,7 +128,7 @@ def proposal_virement_declare(request, token):
                      'l\'acompte. À vérifier sur le compte bancaire.',
                 link=f'/ventes/devis?devis={devis.id}',
                 company=devis.company)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'proposal_virement_declare', exc_info=True)
     return _noindex(Response({
         'detail': 'Merci ! Votre déclaration a été transmise à votre '

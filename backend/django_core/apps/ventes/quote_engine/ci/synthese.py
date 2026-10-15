@@ -493,7 +493,7 @@ def _garanties(data):
     try:
         from ..residential import theme
         bande = theme.warranties_for(data) or []
-    except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici
+    except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
         logger.warning("synthese._garanties : erreur ignorée (mode dégradé)", exc_info=True)
         return []
     sortie = []

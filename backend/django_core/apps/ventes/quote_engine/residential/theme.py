@@ -106,7 +106,7 @@ def _png_b64(uri: str) -> str:
         buf = io.BytesIO()
         img.convert("RGBA").save(buf, "PNG")
         return base64.b64encode(buf.getvalue()).decode()
-    except Exception:  # noqa: BLE001 — SVG / corrompu : traité comme absent
+    except Exception:  # noqa: BLE001 — SVG / corrompu : traité comme absent (D-ENF22-BLE001)
         logger.warning("theme._png_b64 : erreur ignorée (mode dégradé)", exc_info=True)
         return ""
 
@@ -391,7 +391,7 @@ def warranties_for(d):
         # ``apps.ventes.utils.options.texte_classement``), importée au lieu
         # d'être recopiée ici.
         from apps.ventes.utils.options import texte_classement
-    except Exception:  # noqa: BLE001 — jamais casser le rendu d'un PDF
+    except Exception:  # noqa: BLE001 — jamais casser le rendu d'un PDF (D-ENF22-BLE001)
         logger.warning("theme.warranties_for : erreur ignorée (mode dégradé)", exc_info=True)
         return list(WARRANTIES)
     rows = _composition_rows(d)

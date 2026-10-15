@@ -550,7 +550,7 @@ def deux_options_declarees(devis) -> bool:
     try:
         lignes = [li for li in lignes_avec_produit(devis)
                   if li.compte_dans_totaux]
-    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici
+    except Exception:  # noqa: BLE001 — l'aval ne doit jamais casser ici (D-ENF22-BLE001)
         logger.warning("options.deux_options_declarees : erreur ignorée (mode dégradé)", exc_info=True)
         return False
     scenario = scenario_declare(devis)
@@ -597,7 +597,7 @@ def scenario_declare(devis):
         impose, source = effectif(devis, 'scenario', stocke)
         if source != 'auto' and impose:
             return impose
-    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien
+    except Exception:  # noqa: BLE001 — un registre illisible ne décide rien (D-ENF22-BLE001)
         logger.warning("options.scenario_declare : erreur ignorée (mode dégradé)", exc_info=True)
     return stocke
 

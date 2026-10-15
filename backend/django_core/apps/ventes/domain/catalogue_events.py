@@ -436,14 +436,14 @@ def planifier_resynchronisation_produit(produit_id, company_id, champs,
         task_resync_devis_apres_produit_modifie.delay(
             produit_id, company_id, champs, user_id)
         return
-    except Exception as exc:  # noqa: BLE001 — courtier indisponible
+    except Exception as exc:  # noqa: BLE001 — courtier indisponible (D-ENF22-BLE001)
         logger.warning(
             'PVSYNC: file Celery indisponible (%s) — resynchronisation du '
             'produit %s jouée en ligne.', exc, produit_id)
     try:
         task_resync_devis_apres_produit_modifie(
             produit_id, company_id, champs, user_id)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'écriture stock (D-ENF22-BLE001)
         logger.exception(
             'PVSYNC: resynchronisation en ligne du produit %s échouée.',
             produit_id)

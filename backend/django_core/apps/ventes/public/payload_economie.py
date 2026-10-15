@@ -406,7 +406,7 @@ def _economies_mensuelles_publiques(devis, data, synthese,
         return None
     try:
         return _economies_mensuelles_calcul(devis, data, niveau)
-    except Exception:  # noqa: BLE001 — voir ci-dessous
+    except Exception:  # noqa: BLE001 — voir ci-dessous (D-ENF22-BLE001)
         # UN BLOC D'AFFICHAGE ADDITIF NE FAIT JAMAIS TOMBER LA PAGE CLIENT.
         # Cet appel vit dans le grand ``try`` de ``proposal_data``, dont le
         # ``except`` répond 404 « Proposition indisponible » : sans cette garde,
