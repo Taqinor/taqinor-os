@@ -142,6 +142,78 @@ class ChampsDuCorpsTest(SimpleTestCase):
             'client': 'client_id', 'devis': 'devis_id'})
 
 
+class CorpsPublieTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — le corps de ``depuis-modele`` : UN
+    seul prédicat, publié au schéma ET appliqué par le serveur."""
+
+    @staticmethod
+    def _valider(corps):
+        from apps.calepinage.views.bibliotheque import (
+            CalepinageDepuisModeleCorpsSerializer,
+        )
+
+        champs = CalepinageDepuisModeleCorpsSerializer(data=corps)
+        return champs.is_valid(), dict(champs.errors)
+
+    def test_au_moins_un_rattachement_parmi_lead_client_devis(self):
+        for corps in ({}, {'modele_id': 3}, {'titre': 'Nu'},
+                      {'preset_id': None}, {'lead_id': 3, 'client_id': 0}):
+            valide, erreurs = self._valider(corps)
+            self.assertFalse(valide, corps)
+            self.assertIn('client_id', erreurs)
+        for corps in ({'lead_id': 1}, {'client_id': 1}, {'devis_id': 1},
+                      {'modele_id': 2, 'lead_id': 1, 'titre': ' x ',
+                       'preset_id': ''}):
+            self.assertTrue(self._valider(corps)[0], corps)
+
+    def test_formes_fautives_refusees_en_nommant_le_champ(self):
+        base = {'lead_id': 1}
+        fautifs = (('lead_id', 0), ('lead_id', -1), ('lead_id', 'AAA'),
+                   ('lead_id', True), ('lead_id', None), ('lead_id', 2.5),
+                   ('lead_id', 2 ** 31), ('modele_id', 0),
+                   ('devis_id', [1]), ('client_id', {}), ('titre', 5),
+                   ('titre', None), ('titre', 'x' * 201), ('titre', 'a\x00b'),
+                   ('preset_id', 0), ('preset_id', {}), ('preset_id', 'a\x00b'))
+        for champ, valeur in fautifs:
+            valide, erreurs = self._valider({**base, champ: valeur})
+            self.assertFalse(valide, (champ, valeur))
+            self.assertIn(champ, erreurs)
+        # La borne est atteignable, et le titre garde ses blancs saisis.
+        valide, _ = self._valider({'lead_id': 2 ** 31 - 1,
+                                   'titre': 'x' * 200})
+        self.assertTrue(valide)
+
+    def test_le_titre_garde_ses_blancs_et_le_corps_non_objet_est_refuse(self):
+        from apps.calepinage.views.bibliotheque import (
+            CalepinageDepuisModeleCorpsSerializer,
+        )
+
+        champs = CalepinageDepuisModeleCorpsSerializer(
+            data={'lead_id': 1, 'titre': '  Villa  '})
+        self.assertTrue(champs.is_valid())
+        self.assertEqual(champs.validated_data['titre'], '  Villa  ')
+        for corps in (None, [], 'AAA', 0):
+            self.assertFalse(
+                CalepinageDepuisModeleCorpsSerializer(data=corps).is_valid())
+
+    def test_statuts_des_refus_de_rattachement(self):
+        from apps.calepinage.services import creation, modeles
+
+        for classe, code, parent in (
+                (creation.RattachementIntrouvable, 404,
+                 creation.CreationRefusee),
+                (creation.RattachementEnConflit, 409,
+                 creation.CreationRefusee),
+                (modeles.RattachementDuModeleIntrouvable, 404,
+                 modeles.ModeleInvalide),
+                (modeles.ModeleEnConflit, 409, modeles.ModeleInvalide)):
+            self.assertEqual(classe.statut_http, code)
+            self.assertTrue(issubclass(classe, parent))
+        # Les appelants qui ne lisent pas ``statut_http`` gardent leur 400.
+        self.assertFalse(hasattr(creation.CreationRefusee, 'statut_http'))
+        self.assertFalse(hasattr(modeles.ModeleInvalide, 'statut_http'))
+
+
 # ── ORM — la CI est la gate de ces classes ─────────────────────────────────
 
 URL_DEPUIS_MODELE = f'{URL}depuis-modele/'
@@ -286,3 +358,49 @@ class DepuisModeleEnBase(BaseApiCalepinage):
         reponse = self.api.post(URL_DEPUIS_MODELE, {}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('client_id', reponse.data)
+        # Le modèle seul, ou un corps qui n'a que titre / jeu, n'est pas un
+        # rattachement non plus (le schéma publié l'exige : ``anyOf``).
+        for corps in ({'modele_id': self.modele.pk}, {'titre': 'Nu'},
+                      {'preset_id': 'villa'}):
+            reponse = self.api.post(URL_DEPUIS_MODELE, corps, format='json')
+            self.assertEqual(reponse.status_code, 400, corps)
+            self.assertIn('client_id', reponse.data)
+
+    def test_forme_fautive_400_avant_toute_ecriture(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE (w4) — les identifiants sont des entiers
+        >= 1 (32 bits), le titre un texte de 200 signes au plus : une valeur
+        ailleurs n'est plus ignorée ni coercée (un identifiant illisible
+        laissait passer le reste du corps)."""
+        avant = Calepinage.objects.count()
+        base = {'modele_id': self.modele.pk, 'lead_id': self.lead_2.pk}
+        fautifs = ({'lead_id': 0}, {'lead_id': -3}, {'lead_id': 'AAA'},
+                   {'lead_id': True}, {'lead_id': None}, {'lead_id': 2.5},
+                   {'client_id': 2 ** 31}, {'devis_id': 0},
+                   {'modele_id': 0}, {'titre': 5}, {'titre': None},
+                   {'titre': 'x' * 201}, {'titre': 'a\x00b'},
+                   {'preset_id': 'a\x00b'})
+        for surcharge in fautifs:
+            reponse = self.api.post(URL_DEPUIS_MODELE, {**base, **surcharge},
+                                    format='json')
+            self.assertEqual(reponse.status_code, 400, (surcharge,
+                                                        reponse.data))
+            self.assertIn(next(iter(surcharge)), reponse.data)
+        self.assertEqual(Calepinage.objects.count(), avant)
+
+    def test_rattachement_introuvable_404_jamais_400(self):
+        """Un identifiant bien formé qui ne désigne rien (ou une ligne d'une
+        autre société) est introuvable : 404 nommant le champ du corps."""
+        avant = Calepinage.objects.count()
+        for corps, champ in (({'lead_id': 987654}, 'lead_id'),
+                             ({'client_id': 987654}, 'client_id'),
+                             ({'devis_id': 987654}, 'devis_id'),
+                             ({'modele_id': self.modele.pk,
+                               'lead_id': 987654}, 'lead_id'),
+                             ({'modele_id': self.modele.pk,
+                               'client_id': 987654}, 'client_id'),
+                             ({'modele_id': self.modele.pk,
+                               'devis_id': 987654}, 'devis_id')):
+            reponse = self.api.post(URL_DEPUIS_MODELE, corps, format='json')
+            self.assertEqual(reponse.status_code, 404, (corps, reponse.data))
+            self.assertIn(champ, reponse.data)
+        self.assertEqual(Calepinage.objects.count(), avant)

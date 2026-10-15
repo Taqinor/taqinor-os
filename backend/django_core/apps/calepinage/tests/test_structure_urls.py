@@ -337,6 +337,23 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
         self.assertEqual(position['required'], ['x', 'y'])
         self.assertEqual(position['properties']['x']['minimum'], 0)
 
+    def test_depuis_modele_publie_un_rattachement_et_des_identifiants_bornes(self):
+        """Au moins un de lead / client / devis (``anyOf``), identifiants
+        entiers de 1 à 2^31-1, titre de 200 signes au plus, corps obligatoire :
+        ce que le serveur exige, dit au schéma."""
+        operation = self._operation('post', 'depuis-modele/')
+        self.assertIs(operation['requestBody'].get('required'), True)
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(corps['anyOf'], [{'required': ['lead_id']},
+                                          {'required': ['client_id']},
+                                          {'required': ['devis_id']}])
+        for cle in ('modele_id', 'lead_id', 'client_id', 'devis_id'):
+            self.assertEqual(corps['properties'][cle]['minimum'], 1, cle)
+            self.assertEqual(corps['properties'][cle]['maximum'],
+                             2_147_483_647, cle)
+        self.assertEqual(corps['properties']['titre']['maxLength'], 200)
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']

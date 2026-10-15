@@ -48,6 +48,21 @@ class ModeleInvalide(ValueError):
         self.champ = champ
 
 
+class RattachementDuModeleIntrouvable(ModeleInvalide):
+    """Le lead ou le client de la copie n'existe pas dans cette société : 404
+    (lu par ``depuis-modele`` ; les autres appelants gardent ``ModeleInvalide``)."""
+
+    statut_http = 404
+
+
+class ModeleEnConflit(ModeleInvalide):
+    """Refus d'ÉTAT que le schéma du corps ne peut pas dire (modèle archivé ou
+    non marqué, couple lead / client qui se contredit, lead sans repère toit) :
+    409 (lu par ``depuis-modele``)."""
+
+    statut_http = 409
+
+
 def _tag_modele(company, *, creer=False):
     from apps.records.models import Tag
 
@@ -164,11 +179,11 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
 
     if est_archive(modele):
         # ACAL118 — un modèle archivé ne sert plus de départ.
-        raise ModeleInvalide(
+        raise ModeleEnConflit(
             'Ce modèle est archivé : restaurez-le avant de vous en servir.',
             champ='modele')
     if not est_modele(modele):
-        raise ModeleInvalide(
+        raise ModeleEnConflit(
             "Ce calepinage n'est pas marqué comme modèle réutilisable.",
             champ='modele')
     if not lead_id and not client_id:
@@ -181,15 +196,15 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
         from apps.crm.selectors import get_company_client
 
         if get_company_client(modele.company, client_id) is None:
-            raise ModeleInvalide('Client introuvable dans cette société.',
-                                 champ='client')
+            raise RattachementDuModeleIntrouvable(
+                'Client introuvable dans cette société.', champ='client')
     if lead_id:
         from apps.crm.selectors import get_company_lead, repere_toit
 
         lead = get_company_lead(modele.company, lead_id)
         if lead is None:
-            raise ModeleInvalide('Lead introuvable dans cette société.',
-                                 champ='lead')
+            raise RattachementDuModeleIntrouvable(
+                'Lead introuvable dans cette société.', champ='lead')
         # ACAL184 — le client de la copie est CELUI du lead : un couple
         # lead/client qui se contredit est refusé en nommant ``client`` (UNE
         # règle, partagée avec Dupliquer).
@@ -197,15 +212,15 @@ def creer_depuis_modele(modele, *, user=None, lead_id=None, client_id=None,
 
         client_du_lead = getattr(lead, 'client_id', None)
         if client_id and client_du_lead and int(client_id) != client_du_lead:
-            raise ModeleInvalide(MESSAGE_CLIENT_PAS_CELUI_DU_LEAD,
-                                 champ='client')
+            raise ModeleEnConflit(MESSAGE_CLIENT_PAS_CELUI_DU_LEAD,
+                                  champ='client')
         client_id = client_du_lead or client_id
         # ACAL117 (D-ACAL-15) — le modèle emporte ses réglages et son
         # implantation RELATIVE : la conception est translatée sur le repère
         # toit du lead cible ; sans repère, refus nommé, rien n'est créé.
         pin, _source, _contour = repere_toit(lead)
         if pin is None:
-            raise ModeleInvalide(
+            raise ModeleEnConflit(
                 "Le lead n'a pas de repère toit (GPS ou point de toit) : "
                 "placez-le d'abord", champ='lead')
     else:
