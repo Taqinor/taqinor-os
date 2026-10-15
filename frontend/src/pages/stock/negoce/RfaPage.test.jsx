@@ -90,11 +90,11 @@ describe('ASTK222 — RfaPage', () => {
 
   it('un second POST refusé par le serveur affiche son message', async () => {
     api.post.mockRejectedValue({
-      response: { status: 400, data: R.accord_rfa_generer_avoir.exemple_erreur_400 },
+      response: { status: 409, data: R.accord_rfa_generer_avoir.exemple_erreur_409 },
     })
     monter()
     fireEvent.click(await screen.findByRole('button', { name: /Générer l'avoir/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(R.accord_rfa_generer_avoir.exemple_erreur_400.detail)
+    expect(await screen.findByRole('alert')).toHaveTextContent(R.accord_rfa_generer_avoir.exemple_erreur_409.detail)
   })
 
   it('crée un accord avec le corps attendu', async () => {
@@ -113,7 +113,7 @@ describe('ASTK222 — RfaPage', () => {
   })
 
   it('une erreur de validation à la création est affichée telle quelle', async () => {
-    api.post.mockRejectedValue({ response: { status: 400, data: R.accords_rfa_fournisseur.exemple_erreur_400 } })
+    api.post.mockRejectedValue({ response: { status: 409, data: R.accords_rfa_fournisseur.exemple_erreur_409 } })
     monter()
     fireEvent.change(await screen.findByLabelText('Fournisseur'), { target: { value: '5' } })
     fireEvent.change(screen.getByLabelText('Début de période'), { target: { value: '2026-01-01' } })

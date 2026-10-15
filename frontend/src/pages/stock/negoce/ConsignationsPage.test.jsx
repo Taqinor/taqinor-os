@@ -83,15 +83,15 @@ describe('ASTK221 — ConsignationsPage', () => {
     expect(api.post).not.toHaveBeenCalled()
   })
 
-  it('une consommation supérieure au restant affiche le 400 serveur', async () => {
+  it('une consommation supérieure au restant affiche le 409 serveur', async () => {
     api.post.mockRejectedValue({
-      response: { status: 400, data: R.consignation_declarer_consommation.exemple_erreur_400 },
+      response: { status: 409, data: R.consignation_declarer_consommation.exemple_erreur_409 },
     })
     monter()
     fireEvent.change(await screen.findByLabelText('Quantité consommée dépôt 6'), { target: { value: '99' } })
     fireEvent.click(screen.getByRole('button', { name: /Déclarer la consommation/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      R.consignation_declarer_consommation.exemple_erreur_400.detail)
+      R.consignation_declarer_consommation.exemple_erreur_409.detail)
   })
 
   it('crée un dépôt avec le corps attendu', async () => {

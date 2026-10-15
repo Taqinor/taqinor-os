@@ -346,7 +346,7 @@
     },
     "unites_logistiques_sceller": {
       "endpoint": "POST /api/django/stock/unites-logistiques/<id>/sceller/",
-      "pourquoi": "Fige le contenu et rend l'étiquette imprimable ; 200 + l'unité (statut `scelle`, `est_figee` true, `date_scellage`, `scelle_par` posés). ValueError → 400 {detail}.",
+      "pourquoi": "Fige le contenu et rend l'étiquette imprimable ; 200 + l'unité (statut `scelle`, `est_figee` true, `date_scellage`, `scelle_par` posés). Unité vide → 409 {detail} (ENF11 nocturne 15/10, `exemple_erreur_409`).",
       "exemple": {
         "id": 12,
         "type_unite": "colis",
@@ -378,7 +378,7 @@
         "created_at": "2026-10-12T09:00:00Z",
         "updated_at": "2026-10-12T09:00:00Z"
       },
-      "exemple_erreur_400": {
+      "exemple_erreur_409": {
         "detail": "Cette unité logistique est vide : rien à sceller."
       }
     },
@@ -455,7 +455,7 @@
     },
     "plans_chargement_unites": {
       "endpoint": "POST /api/django/stock/plans-chargement/<id>/unites/",
-      "pourquoi": "Ajoute une unité {unite_logistique} et renvoie le contrôle de capacité (201) ; refus → {detail} : unité inconnue de la société 404, plan déjà chargé 409, corps illisible 400 (ENF11 nocturne 15/10 — `exemple_erreur_400` reste lu par les mocks du front).",
+      "pourquoi": "Ajoute une unité {unite_logistique} et renvoie le contrôle de capacité (201) ; refus → {detail} : unité inconnue de la société 404, plan déjà chargé 409, corps illisible 400 (ENF11 nocturne 15/10 ; `exemple_erreur_404` ci-dessous, aucun lecteur front ne lit l'ancien 400).",
       "exemple": {
         "plan": 4,
         "nb_unites": 1,
@@ -470,9 +470,6 @@
       },
       "exemple_corps": {
         "unite_logistique": 12
-      },
-      "exemple_erreur_400": {
-        "detail": "Unité logistique introuvable."
       },
       "exemple_erreur_404": {
         "detail": "Plan ou unité logistique introuvable."
@@ -655,7 +652,7 @@
     },
     "retours_client_inspecter": {
       "endpoint": "POST /api/django/stock/retours-client/<id>/inspecter/",
-      "pourquoi": "Acte le contrôle qualité {lignes:[{ligne, etat_constate, bin?, note?}]} ; 200 + le retour complet ; refus → 400 {detail}.",
+      "pourquoi": "Acte le contrôle qualité {lignes:[{ligne, etat_constate, bin?, note?}]} ; 200 + le retour complet ; retour non réceptionné → 409 {detail} (ENF11 nocturne 15/10, `exemple_erreur_409`) ; lignes refusées par le service → 400 {detail}.",
       "exemple": {
         "id": 2,
         "reference": "RET-2026-0002",
@@ -693,8 +690,8 @@
           }
         ]
       },
-      "exemple_erreur_400": {
-        "detail": "Ce retour n'est pas réceptionné."
+      "exemple_erreur_409": {
+        "detail": "Le retour doit être réceptionné avant d'être inspecté."
       }
     }
   }
