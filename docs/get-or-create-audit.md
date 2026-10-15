@@ -24,7 +24,7 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/adsengine/instagram.py::sync_ig_media::InstagramMediaMirror` | update_or_create | InstagramMediaMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/management/commands/seed_adsengine.py::Command._seed_guardrails::GuardrailConfig` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/management/commands/seed_adsengine.py::Command._seed_rule_policies::RulePolicy` | get_or_create | RulePolicy.objects | company, template_key |
-| `backend/django_core/apps/adsengine/management/commands/seed_fact_table.py::Command.handle::FactEntry` | get_or_create | FactEntry.objects | cle, table |
+| `backend/django_core/apps/adsengine/management/commands/seed_fact_table.py::Command.handle::FactEntry` | get_or_create | FactEntry.objects | cle, region, table |
 | `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py::generate_synthetic_account::AdCampaignMirror` | update_or_create | AdCampaignMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py::generate_synthetic_account::AdMirror` | update_or_create | AdMirror.objects | company, meta_id |
 | `backend/django_core/apps/adsengine/management/commands/seed_synthetic_account.py::generate_synthetic_account::AdSetMirror` | update_or_create | AdSetMirror.objects | company, meta_id |
@@ -32,7 +32,6 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/adsengine/models.py::InsightBreakdown.upsert::cls` | update_or_create | cls.objects | company, content_type, date, dimension, key, object_id |
 | `backend/django_core/apps/adsengine/models.py::PacingState.upsert::cls` | update_or_create | cls.objects | company, period_start |
 | `backend/django_core/apps/adsengine/policy.py::ensure_default_policy::CreativePolicy` | get_or_create | CreativePolicy.objects | company |
-| `backend/django_core/apps/adsengine/posterior_drift.py::flag_dead_branches::EngineAlert` | get_or_create | EngineAlert.objects | company, entity_key, resolved |
 | `backend/django_core/apps/adsengine/receivers.py::on_meta_lead_captured::MetaLeadMirror` | update_or_create | MetaLeadMirror.objects | company, leadgen_id |
 | `backend/django_core/apps/adsengine/reconciliation.py::run_daily_reconciliation::RS` | update_or_create | RS.objects | campaign, company, date |
 | `backend/django_core/apps/adsengine/rule_templates.py::seed_default_policies::RulePolicy` | get_or_create | RulePolicy.objects | company, template_key |
@@ -170,8 +169,6 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/sav/views.py::TicketViewSet.checklist::TicketChecklistItem` | get_or_create | TicketChecklistItem.objects | cle, ticket |
 | `backend/django_core/apps/sav/views.py::TicketViewSet.suivre::TicketFollower` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/statuspage/tasks.py::_accumuler_uptime_jour::UptimeDayBucket` | get_or_create | UptimeDayBucket.objects | company, composant, date, region |
-| `backend/django_core/apps/statuspage/tasks.py::rafraichir_composants::ComponentStatus` | update_or_create | ComponentStatus.objects | company, nom, region |
-| `backend/django_core/apps/statuspage/tasks.py::rafraichir_composants::ComponentStatus` | update_or_create | ComponentStatus.objects | company, nom, region |
 | `backend/django_core/apps/statuspage/views.py::public_abonner::StatusSubscriber` | get_or_create | StatusSubscriber.objects | email |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py::Command.handle::UniteMesure` | get_or_create | UniteMesure.objects | code, company |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py::Command.handle.get_categorie::Categorie` | get_or_create | Categorie.objects | company, nom |
