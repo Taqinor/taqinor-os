@@ -37,7 +37,12 @@ from .fields import EncryptedJSONField
 
 # FG282 — garantie de production (modèle additif en module dédié, re-exporté ici
 # pour que `monitoring.models.ProductionWarranty` reste l'import canonique).
-from .models_warranty import ProductionWarranty  # noqa: F401
+from .models_warranty import ProductionWarranty
+
+# Noms ré-exportés volontairement (façade) : pas la surface complète du module.
+__all__ = [
+    'ProductionWarranty',
+]
 
 
 class MonitoringConfig(models.Model):
