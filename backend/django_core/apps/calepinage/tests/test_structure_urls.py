@@ -385,6 +385,27 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
             self.assertEqual(parametres['required'], ['kits'])
             self.assertEqual(parametres['properties']['kits']['minItems'], 1)
 
+    def test_import_projet_publie_un_seul_rattachement_et_la_version_du_fichier(self):
+        """Exactement un de lead / client (``oneOf``), ``format_version`` du
+        fichier bornée aux formats relus, ``apercu`` booléen, corps obligatoire."""
+        from apps.calepinage.services.export_projet import FORMATS_IMPORTABLES
+
+        operation = self._operation('post', 'import-projet/')
+        self.assertIs(operation['requestBody'].get('required'), True)
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(corps['oneOf'], [{'required': ['lead']},
+                                          {'required': ['client']}])
+        self.assertIn('projet', corps['required'])
+        self.assertEqual(corps['properties']['apercu']['type'], 'boolean')
+        for cle in ('lead', 'client'):
+            self.assertEqual(corps['properties'][cle]['minimum'], 1, cle)
+        projet = self._composant(corps['properties']['projet'])
+        version = projet['properties']['format_version']
+        self.assertEqual((version['minimum'], version['maximum']),
+                         (min(FORMATS_IMPORTABLES), max(FORMATS_IMPORTABLES)))
+        self.assertEqual(projet['required'], ['format_version'])
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']

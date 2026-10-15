@@ -16,7 +16,8 @@ Ce qui est prouvé ici :
 * en base (CI) : un export puis un import dans une société VIDE restitue le
   même nombre de modules, les mêmes postes de pertes et les mêmes variantes ;
   la porte ``POST calepinages/import-projet/`` crée (201), prévisualise sans
-  écrire (200), refuse en 400 nommé, et exige la permission de gestion.
+  écrire (200), refuse en nommant le champ (400 forme, 404 introuvable, 409
+  contenu du fichier), et exige la permission de gestion.
 
 Run :
     python manage.py test apps.calepinage.tests.test_calx370_projet_json -v2
@@ -410,6 +411,55 @@ class AllerRetourEnBaseTest(BaseApiCalepinage):
         self.assertEqual(capture.exception.champ, 'client')
 
 
+class CorpsImportProjetTest(unittest.TestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — la forme du corps d'import et les
+    statuts des refus, sans base."""
+
+    @staticmethod
+    def _valider(corps):
+        from apps.calepinage.views.projet_json import (
+            ImportProjetChampsSerializer,
+        )
+
+        champs = ImportProjetChampsSerializer(data=corps)
+        return champs.is_valid(), dict(champs.errors)
+
+    def test_exactement_un_rattachement_entier_positif(self):
+        for corps in ({}, {'titre': 'x'}, {'lead': 1, 'client': 2},
+                      {'lead': 0}, {'client': -1}, {'lead': 2 ** 31}):
+            valide, erreurs = self._valider(corps)
+            self.assertFalse(valide, corps)
+            self.assertTrue({'lead', 'client'} & set(erreurs), corps)
+        for corps in ({'lead': 1}, {'client': 2 ** 31 - 1},
+                      {'lead': 3, 'apercu': True, 'titre': ' x ' * 60}):
+            self.assertTrue(self._valider(corps)[0], corps)
+
+    def test_apercu_booleen_strict_et_titre_borne(self):
+        for champ, valeur in (('apercu', 'true'), ('apercu', 1),
+                              ('apercu', None), ('titre', 5), ('titre', None),
+                              ('titre', 'x' * 201), ('titre', 'a\x00b')):
+            valide, erreurs = self._valider({'lead': 1, champ: valeur})
+            self.assertFalse(valide, (champ, valeur))
+            self.assertIn(champ, erreurs)
+
+    def test_statuts_des_refus_du_service(self):
+        # Faute de FORME : 400 ; contenu du fichier : 409 ; introuvable : 404.
+        for document, attendu in (([], 400), ({}, 400),
+                                  ({'format_version': 9}, 400),
+                                  ({'format_version': True}, 400)):
+            with self.assertRaises(ImportProjetRefuse) as capture:
+                importer_projet(document, None, lead_id=1, apercu=True)
+            self.assertEqual(capture.exception.statut, attendu, document)
+        with self.assertRaises(ImportProjetRefuse) as capture:
+            importer_projet({'format_version': 1}, None, apercu=True)
+        self.assertEqual(capture.exception.statut, 400)
+        document = fichier()
+        document['variantes'][0]['resultat']['prix_achat'] = 1
+        with self.assertRaises(ImportProjetRefuse) as capture:
+            importer_projet(document, None, lead_id=1, apercu=True)
+        self.assertEqual(capture.exception.statut, 409)
+
+
 class EndpointImportProjetEnBaseTest(BaseApiCalepinage):
     """``POST …/import-projet/`` — câblage, société, permission (CI)."""
 
@@ -446,27 +496,57 @@ class EndpointImportProjetEnBaseTest(BaseApiCalepinage):
         self.assertIn('format_version', reponse.data)
         self.assertIn('9', str(reponse.data['format_version']))
 
-    def test_un_document_de_pose_invalide_400_chemin_nomme(self):
+    def test_un_document_de_pose_invalide_409_chemin_nomme(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE (w4) : le CONTENU du fichier est un fait que
+        # le schéma publié ne peut pas dire -> 409 (la forme reste 400).
         casse = fichier()
         casse['roof_layout']['zones'][0]['vertices'] = 'x'
         reponse = self._post({'projet': casse, 'lead': self.lead.pk})
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('roof_layout.zones.0.vertices', reponse.data)
 
-    def test_une_cle_de_cout_400_en_la_nommant(self):
+    def test_une_cle_de_cout_409_en_la_nommant(self):
         document = fichier()
         document['variantes'][0]['resultat']['prix_achat'] = 1
         reponse = self._post({'projet': document, 'lead': self.lead.pk})
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertTrue(any('prix_achat' in cle for cle in reponse.data))
 
-    def test_un_lead_d_une_autre_societe_est_refuse(self):
+    def test_un_lead_d_une_autre_societe_est_introuvable_404(self):
         from apps.crm.models import Lead
 
         etranger = Lead.objects.create(company=self.autre, nom='Voisin')
         reponse = self._post({'projet': fichier(), 'lead': etranger.pk})
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         self.assertIn('lead', reponse.data)
+        reponse = self._post({'projet': fichier(), 'client': 987654})
+        self.assertEqual(reponse.status_code, 404)
+        self.assertIn('client', reponse.data)
+
+    def test_la_forme_du_corps_est_jugee_avant_le_fichier_400(self):
+        """Exactement un de lead / client (entiers >= 1), ``apercu`` un vrai
+        booléen, ``titre`` un texte de 200 signes au plus : refusés en nommant
+        le champ, rien n'est écrit."""
+        from apps.calepinage.models import Calepinage
+
+        avant = Calepinage.objects.count()
+        base = {'projet': fichier(), 'lead': self.lead.pk}
+        fautifs = (({}, 'lead'), ({'projet': fichier()}, 'lead'),
+                   ({**base, 'client': 1}, 'lead'),
+                   ({**base, 'lead': 0}, 'lead'),
+                   ({**base, 'apercu': 'oui'}, 'apercu'),
+                   ({**base, 'apercu': 1}, 'apercu'),
+                   ({**base, 'titre': 5}, 'titre'),
+                   ({**base, 'titre': 'x' * 201}, 'titre'),
+                   ({'lead': self.lead.pk}, 'projet'),
+                   ({**base, 'projet': [fichier()]}, 'projet'),
+                   ({**base, 'projet': fichier(format_version=0)},
+                    'format_version'))
+        for corps, champ in fautifs:
+            reponse = self._post(corps)
+            self.assertEqual(reponse.status_code, 400, (champ, reponse.data))
+            self.assertIn(champ, reponse.data)
+        self.assertEqual(Calepinage.objects.count(), avant)
 
     def test_sans_permission_de_gestion_c_est_403(self):
         reponse = self._post({'projet': fichier(), 'lead': self.lead.pk},
