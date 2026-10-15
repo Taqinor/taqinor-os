@@ -1,3 +1,4 @@
+import re
 import copy
 import operator
 from functools import reduce
@@ -1350,6 +1351,13 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         lecture seule."""
         from ..selectors import tracabilite_produit
 
+        # CI #1001 fuzz — un paramètre PRÉSENT mais vide/blanc/avec caractère de
+        # contrôle viole le motif publié : 400 nommé, jamais lu comme « absent ».
+        for nom in ('lot', 'serie'):
+            brut = request.query_params.get(nom)
+            if brut is not None and not re.fullmatch(MOTIF_NON_BLANC_SANS_NUL, brut):
+                return Response({nom: ['Numéro vide, blanc ou avec caractère de contrôle.']},
+                                status=status.HTTP_400_BAD_REQUEST)
         lot = (request.query_params.get('lot') or '').strip()
         serie = (request.query_params.get('serie') or '').strip()
         if not lot and not serie:
