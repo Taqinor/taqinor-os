@@ -102,10 +102,6 @@ API rejected schema-compliant request|POST /api/django/installations/retour-mate
 API rejected schema-compliant request|POST /api/django/installations/retours-livraison/
 API rejected schema-compliant request|POST /api/django/installations/retours-materiel/
 API rejected schema-compliant request|POST /api/django/installations/sessions-comptage/
-API rejected schema-compliant request|POST /api/django/monitoring/cleanings/
-API rejected schema-compliant request|POST /api/django/monitoring/configs/
-API rejected schema-compliant request|POST /api/django/monitoring/readings/
-API rejected schema-compliant request|POST /api/django/monitoring/warranties/
 API rejected schema-compliant request|POST /api/django/parametres/cadence-relance/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/

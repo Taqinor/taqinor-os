@@ -1425,3 +1425,60 @@ class TestFuzz997TypesEtRegles(TestCase):
             format='json')
         self.assertEqual(r.status_code, 400, r.data)
         self.assertIn('compensation_mad_par_jour_indispo', r.data)
+
+
+class TestFuzzMonitoringW4(TestCase):
+    """ERR-ENF11-FUZZ-MONITORING (vague 4) — conflits d'unicité en 409, bornes
+    publiées (période, énergie), identifiants en objet."""
+
+    def setUp(self):
+        self.company = make_company('mon-w4-co', 'Mon W4 Co')
+        self.user = User.objects.create_user(
+            username='mon_w4_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='CHT-W4-1')
+
+    def test_config_deja_creee_pour_le_systeme_409(self):
+        MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst)
+        r = self.api.post('/api/django/monitoring/configs/', {
+            'installation': self.inst.id, 'credentials': {}},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+
+    def test_identifiants_publies_en_objet(self):
+        r = self.api.post('/api/django/monitoring/configs/', {
+            'installation': self.inst.id, 'credentials': None},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('credentials', r.data)
+        r = self.api.post('/api/django/monitoring/configs/', {
+            'installation': self.inst.id, 'credentials': {'station': '7'}},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        config = MonitoringConfig.objects.get(installation=self.inst)
+        self.assertEqual(config.credentials, {'station': '7'})
+
+    def test_garantie_en_double_409(self):
+        corps = {'installation': self.inst.id, 'guaranteed_year1_kwh': '9000',
+                 'degradation_pct_per_year': '0.5', 'start_year': 2026,
+                 'compensation_mad_per_kwh': '1', 'tolerance_pct': '5',
+                 'note': ''}
+        r = self.api.post('/api/django/monitoring/warranties/', corps,
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.post('/api/django/monitoring/warranties/', corps,
+                          format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+
+    def test_periode_et_energie_publiees(self):
+        import re
+
+        from apps.monitoring.serializers import (
+            MOTIF_ENERGIE_KWH, ProductionReadingSerializer)
+        champ = ProductionReadingSerializer().fields['period_days']
+        self.assertEqual(champ.min_value, 1)
+        self.assertTrue(re.fullmatch(MOTIF_ENERGIE_KWH, '12.50'))
+        self.assertIsNone(re.fullmatch(MOTIF_ENERGIE_KWH, '-1'))
+        self.assertIsNone(re.fullmatch(MOTIF_ENERGIE_KWH, '1.'))
