@@ -31,6 +31,7 @@ import { CarteProfilCi } from './BlocEtudeReseau'
 import { GenCardHeader } from './CarteMetrique'
 // CIQ223 — la carte « Économies » servie par le serveur (`economie_ci`).
 import CarteEconomieCi from './CarteEconomieCi'
+import { TableauLignes } from '../../../ui/TableauDefilant'
 
 const CLE = 'industriel'
 
@@ -99,32 +100,30 @@ export function CarteIndustrielleMt({ profilCi, setChampCi, apercuCi }) {
 
         <fieldset className="grid gap-2">
           <legend className="text-sm font-semibold">Registres de la facture MT (12 mois)</legend>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs" data-testid="ci-registres-mt">
+          <TableauLignes enveloppe="overflow-x-auto" className="w-full text-xs" data-testid="ci-registres-mt"
+            tete={(
               <thead>
                 <tr>
                   <th className="text-left">Mois</th>
                   {COLONNES_REGISTRE_MT.map((c) => <th key={c.cle}>{c.libelle}</th>)}
                 </tr>
               </thead>
-              <tbody>
-                {MONTHS_FR.map((m, i) => (
-                  <tr key={m}>
-                    <td>{m}</td>
-                    {COLONNES_REGISTRE_MT.map((c) => (
-                      <td key={c.cle}>
-                        <input type="number" min="0" step="any" className="form-control form-control-sm"
-                               aria-label={`${c.libelle} ${m}`}
-                               data-testid={`gen-ci-reg-${i}-${c.cle}`}
-                               value={p.registresMt?.[i]?.[c.cle] ?? ''}
-                               onChange={(e) => setChampCi(`registresMt.${i}.${c.cle}`, e.target.value)} />
-                      </td>
-                    ))}
-                  </tr>
+            )}>
+            {MONTHS_FR.map((m, i) => (
+              <tr key={m}>
+                <td>{m}</td>
+                {COLONNES_REGISTRE_MT.map((c) => (
+                  <td key={c.cle}>
+                    <input type="number" min="0" step="any" className="form-control form-control-sm"
+                           aria-label={`${c.libelle} ${m}`}
+                           data-testid={`gen-ci-reg-${i}-${c.cle}`}
+                           value={p.registresMt?.[i]?.[c.cle] ?? ''}
+                           onChange={(e) => setChampCi(`registresMt.${i}.${c.cle}`, e.target.value)} />
+                  </td>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            ))}
+          </TableauLignes>
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="grid gap-1.5">
               <Label htmlFor="gen-ci-cos-phi">cos φ connu</Label>

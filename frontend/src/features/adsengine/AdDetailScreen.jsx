@@ -11,6 +11,7 @@ import SyncStatusBanner from './SyncStatusBanner'
 // PUB55 — fil de chatter (notes manuelles + événements auto) de CETTE ad.
 import AdChatter from './AdChatter'
 import { fatigueTone } from './fatigueTone'
+import { chargerDevise } from './devise'
 
 /* ============================================================================
    PUB44 — Fiche « histoire complète » d'une ad (``/publicite/ad/:id``).
@@ -51,12 +52,7 @@ export default function AdDetailScreen() {
         else setLoadError(true)
       })
       .finally(() => setLoading(false))
-    const connGet = adsengineApi.connection?.get
-    if (connGet) {
-      connGet()
-        .then(r => setCurrency(r?.data?.currency || 'MAD'))
-        .catch(() => {})
-    }
+    chargerDevise(setCurrency)
   }, [metaId])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement d'id (D-ENF22)

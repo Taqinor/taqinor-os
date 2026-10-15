@@ -113,6 +113,7 @@ const waCaseStudy = whatsappLink(
   WHATSAPP_LEADS,
   caseStudyWhatsappText({ ville: r.ville, kwc: r.kwc, ref: r.ref }),
 );
+import RealisationsSlugP5E85 from '../../components/blocs/RealisationsSlugP5E85.astro';
 ---
 
 <Layout
@@ -295,15 +296,7 @@ const waCaseStudy = whatsappLink(
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-lune">Le matériel posé</p>
         <h2 class="display v2-section-title mt-5 text-white">Ce qui est réellement sur le toit</h2>
-        <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
-        <div class="mt-8 border-t-2 border-white/20" data-stagger>
-          {equipment.map((e, i) => (
-            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
-              <span class="tech-label text-lune-faint">{e.label}</span>
-              <span class="text-right font-display text-base font-bold text-white">{e.value}</span>
-            </div>
-          ))}
-        </div>
+        <RealisationsSlugP5E85 cs={cs} equipment={equipment} />
         <p class="mt-5 text-sm text-lune-soft">
           Marques tier-1 sourcées via des distributeurs officiels au Maroc — garanties locales
           activables. <a href="/équipement" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">Voir tout l'équipement →</a>

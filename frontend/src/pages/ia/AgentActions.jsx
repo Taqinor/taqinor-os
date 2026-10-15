@@ -3,10 +3,11 @@ import { useHasPermission, useIsAdmin } from '../../hooks/useHasPermission'
 import { Zap, ShieldAlert, ArrowRightLeft, Lock, History, Undo2 } from 'lucide-react'
 import iaApi from '../../api/iaApi'
 import {
-  Badge, Card, CardContent, EmptyState, Input, Spinner,
+  Badge, Card, CardContent, EmptyState, Input,
   Tabs, TabsList, TabsTrigger, TabsContent, Button,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
+import { ChargementPage, ErreurChargement } from '../../ui/ChargementPage'
 
 /* WR8 — Catalogue des actions agentiques (AG1). Liste, dans l'assistant, les
    actions pilotées par le registre que l'utilisateur courant a le droit
@@ -62,14 +63,10 @@ function ActionsCatalogue() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error ? (
-        <EmptyState
-          icon={Lock}
-          title="Impossible de charger les actions"
-          description="Une erreur est survenue lors du chargement du catalogue d’actions."
-          className="my-6"
-        />
+        <ErreurChargement icon={Lock} title="Impossible de charger les actions"
+          description="Une erreur est survenue lors du chargement du catalogue d’actions." />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon={Zap}
@@ -185,7 +182,7 @@ function ActionsHistorique() {
   }
 
   if (loading) return (
-    <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+    <ChargementPage />
   )
   if (error) {
     return (

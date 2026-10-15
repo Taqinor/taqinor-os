@@ -2,11 +2,8 @@
 // motif que le bouton dossier chantier d'InstallationDetail.jsx:883 (route
 // /reporting/archive/client/:id déjà enregistrée, N32).
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn() },
@@ -23,6 +20,7 @@ vi.mock('react-router-dom', async (orig) => ({
 
 import api from '../../api/axios'
 import ClientDetailPanel from './ClientDetailPanel'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -32,14 +30,7 @@ function renderPanel(client) {
     if (url.includes('/consolidation/')) return Promise.resolve({ data: { filiales: [] } })
     return Promise.resolve({ data: {} })
   })
-  const store = configureStore({ reducer: { auth: (state = { role: 'admin' }) => state } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ClientDetailPanel client={client} onClose={() => {}} onNewDevis={() => {}} onChanged={() => {}} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderAvecAuth(<ClientDetailPanel client={client} onClose={() => {}} onNewDevis={() => {}} onChanged={() => {}} />, { role: 'admin' })
 }
 
 const client = { id: 21, nom: 'Tazi', prenom: 'Nabil' }

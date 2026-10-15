@@ -7,16 +7,10 @@ import { render, screen, cleanup } from '@testing-library/react'
 import { initState } from '../draftCore'
 import TraceToitClient from './TraceToitClient'
 import SectionSite from './SectionSite'
+import { CONTOUR } from '../../../../test/contourToit'
 
 afterEach(cleanup)
 
-// Carré ≈ 20 m de côté à Casablanca, dans l'ordre d'axes de `Lead.roof_outline`.
-const CONTOUR = [
-  [33.589, -7.603],
-  [33.589, -7.602784],
-  [33.58918, -7.602784],
-  [33.58918, -7.603],
-]
 const EPINGLE = { lat: 33.58909, lng: -7.602892 }
 
 describe('TraceToitClient', () => {

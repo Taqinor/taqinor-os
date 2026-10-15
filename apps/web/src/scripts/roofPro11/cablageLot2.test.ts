@@ -9,22 +9,11 @@ import { createZones } from './zones';
 import { couleursAretes, EDGE_COLOR_BY_TYPE, type EdgeDeductionZone } from './edges';
 import { deserializeLayout, serializeLayout } from './prefill';
 import { etiquette, registreAtelier, reinitialiserNumerotation } from './numerotation';
-import { createLayoutEditor, type LayoutEditorDeps } from './layoutEditor';
+import { createLayoutEditor } from './layoutEditor';
 import { type Ctx } from './context';
-import { panDeTest, ctxDeBase } from './harnaisAtelier';
+import { panDeTest, ctxDeBase, ptM, LNG0, LAT0, carteEditeurFactice, depsEditeur } from './harnaisAtelier';
 import { type AreaRecord, type LayoutPlan } from './types';
 import { type LngLat } from '../../lib/roof';
-
-const DEG2RAD = Math.PI / 180;
-const DEG2M = DEG2RAD * 6378137;
-const LAT0 = 33.59;
-const LNG0 = -7.6;
-
-/** Point donné en MÈTRES autour de (LNG0, LAT0) — x vers l'est, y vers le nord. */
-function ptM(x: number, y: number): LngLat {
-  const cosLat = Math.cos(LAT0 * DEG2RAD);
-  return [LNG0 + x / (DEG2M * cosLat), LAT0 + y / DEG2M];
-}
 
 const CARRE: LngLat[] = [ptM(-5, -5), ptM(5, -5), ptM(5, 5), ptM(-5, 5)];
 
@@ -264,16 +253,7 @@ describe('CALX113 câblage — une symétrie survit au rechargement (l’orienta
 
     const conteneur = document.createElement('div');
     document.body.appendChild(conteneur);
-    const map = {
-      getContainer: () => conteneur,
-      boxZoom: { disable: vi.fn(), enable: vi.fn() },
-      dragPan: { enable: vi.fn(), disable: vi.fn() },
-      getCanvas: () => ({ style: {} }) as unknown as HTMLCanvasElement,
-      on: vi.fn(),
-      unproject: () => ({ lng: 0, lat: 0 }),
-      easeTo: vi.fn(),
-      jumpTo: vi.fn(),
-    } as unknown as LayoutEditorDeps['map'];
+    const map = carteEditeurFactice(conteneur);
     const ctxNeuf = {
       ...(makeCtx([zone('area-1', [...CARRE])]) as unknown as Record<string, unknown>),
       layoutMode: true,
@@ -283,17 +263,7 @@ describe('CALX113 câblage — une symétrie survit au rechargement (l’orienta
       freeMode: false,
       freeState: null,
     } as unknown as Ctx;
-    const editor = createLayoutEditor(ctxNeuf, {
-      map,
-      renderScene: vi.fn(),
-      prodConfigFromState: () => null,
-      updateProductionWindow: vi.fn(),
-      snapshotActiveAreaResult: vi.fn(),
-      renderAreasPanel: vi.fn(),
-      renderActive: vi.fn(),
-      isObstacleMode: () => false,
-      setPanelHighlight: vi.fn(),
-    });
+    const editor = createLayoutEditor(ctxNeuf, depsEditeur(map));
 
     expect(editor.hydrateLayout(geo.panels, geo.origin, 'free')).toBe(true);
     const reposes = editor.freePanels();

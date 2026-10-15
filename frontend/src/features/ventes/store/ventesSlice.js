@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import ventesApi from '../../../api/ventesApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { createCancellableThunk, dedupeInFlight } from '../../../lib/thunkHelpers'
+import { pending, settleLoading, rejected } from '../../../lib/reducersChargement'
 
 // VX164 — garde anti-course PAR RESSOURCE sur les `update*/patch*.fulfilled` :
 // deux PATCH rapides du MÊME devis/BC/facture, résolus dans l'ordre INVERSE
@@ -351,23 +352,7 @@ const ventesSlice = createSlice({
     clearError(state) { state.error = null },
   },
   extraReducers: (builder) => {
-    // VX165 — `pending` incrémente le compteur PARTAGÉ ; `settleLoading`
-    // (appelé par CHAQUE fulfilled/rejected sœur) le décrémente et redérive
-    // `loading` — le premier résolu n'éteint plus le spinner pendant que
-    // `fetchDevis`/`fetchBonsCommande`/`fetchFactures` sœurs chargent encore.
-    const pending = (state) => {
-      state.pendingCount = (state.pendingCount || 0) + 1
-      state.loading = true
-      state.error = null
-    }
-    const settleLoading = (state) => {
-      state.pendingCount = Math.max(0, (state.pendingCount || 0) - 1)
-      state.loading = state.pendingCount > 0
-    }
-    const rejected = (state, action) => {
-      settleLoading(state)
-      state.error = action.payload
-    }
+    // VX165 — compteur `pendingCount` partagé : voir lib/reducersChargement.js.
 
     builder
       // Devis

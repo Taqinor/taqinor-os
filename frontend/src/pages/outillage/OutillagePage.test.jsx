@@ -1,23 +1,13 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* WIR28 (FG80) — le backend calcule déjà `a_calibrer`/`date_prochaine_calibration`
    et expose l'action `outils/{id}/calibrer/`, mais `OutillagePage.jsx` n'en
    affichait rien : ni badge « à calibrer », ni bouton pour enregistrer une
    calibration. Réseau mocké (client API), aucune dépendance à un backend réel. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const OUTIL_A_CALIBRER = {
   id: 1, nom: 'Multimètre Fluke', categorie: 'Mesure', asset_tag: 'OUT-001',
@@ -37,7 +27,8 @@ const OUTIL_NON_SUIVI = {
   a_calibrer: false,
 }
 
-const { calibrer } = vi.hoisted(() => ({
+const { calibrer, lireOutils } = vi.hoisted(() => ({
+  lireOutils: { fn: null },
   // Résolution par défaut sans intérêt — chaque test surcharge via
   // `mockResolvedValueOnce` avant d'agir.
   calibrer: vi.fn(() => Promise.resolve({ data: {} })),
@@ -45,7 +36,7 @@ const { calibrer } = vi.hoisted(() => ({
 
 vi.mock('../../api/outillageApi', () => ({
   default: {
-    getOutils: () => Promise.resolve({ data: [OUTIL_A_CALIBRER, OUTIL_NON_SUIVI] }),
+    getOutils: (...args) => (lireOutils.fn ? lireOutils.fn(...args) : Promise.resolve({ data: [OUTIL_A_CALIBRER, OUTIL_NON_SUIVI] })),
     getOutil: () => Promise.resolve({ data: OUTIL_A_CALIBRER }),
     createOutil: () => Promise.resolve({ data: {} }),
     updateOutil: () => Promise.resolve({ data: {} }),
@@ -58,16 +49,10 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 import OutillagePage from './OutillagePage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
+import { withProviders } from '../../test/renderAvecProviders'
 
 beforeEach(() => { vi.clearAllMocks() })
-
-function withProviders(ui) {
-  return render(
-    <MemoryRouter>
-      <ThemeProvider>{ui}</ThemeProvider>
-    </MemoryRouter>,
-  )
-}
 
 describe('OutillagePage — calibration (WIR28/FG80)', () => {
   it('affiche le badge « À calibrer » pour un outil en retard, jamais pour un outil non suivi', async () => {
@@ -93,5 +78,26 @@ describe('OutillagePage — calibration (WIR28/FG80)', () => {
     await waitFor(() => expect(calibrer).toHaveBeenCalledWith(1))
     // La calibration recalculée (a_calibrer=false) retire le badge de la ligne.
     await waitFor(() => expect(screen.queryByText('À calibrer')).not.toBeInTheDocument())
+  })
+})
+
+describe('OutillagePage — ACHT62 pages complètes', () => {
+  it('trouve par la recherche un outil de la 2e page (SONDE-054) — faux serveur DRF paginé à 50', async () => {
+    const outils = Array.from({ length: 55 }, (_, i) => ({
+      ...OUTIL_NON_SUIVI, id: 100 + i, nom: `Outil ${i}`, asset_tag: `SONDE-${String(i).padStart(3, '0')}`,
+    }))
+    lireOutils.fn = ({ page = 1 } = {}) => {
+      const debut = (page - 1) * 50
+      return Promise.resolve({
+        data: { count: 55, next: debut + 50 < 55 ? `?page=${page + 1}` : null, results: outils.slice(debut, debut + 50) },
+      })
+    }
+    try {
+      const user = userEvent.setup()
+      withProviders(<OutillagePage />)
+      await waitFor(() => expect(screen.getByText('Outil 0')).toBeInTheDocument())
+      await user.type(screen.getByPlaceholderText(/Rechercher/), 'SONDE-054')
+      await waitFor(() => expect(screen.getByText('Outil 54')).toBeInTheDocument())
+    } finally { lireOutils.fn = null }
   })
 })

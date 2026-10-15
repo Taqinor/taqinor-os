@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { mount } from '../../test/relancesWidgetHarness'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
 
 /* SUIVI-BLOCAGE (30/09/2026) — « après le script d'appel, ça bloque ».
@@ -18,17 +18,11 @@ import { exempleContrat } from '../../test/fixtures/contractSamples'
 const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 const APPEL = { ...ETAPES.find((e) => e.canal === 'appel' && e.cadence === 'contact') }
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesDues: vi.fn(),
-    marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
-    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
-    reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: { statut: 'a_faire' } })),
+vi.mock('../../api/crmApi', async () => (await import('../../test/cadenceFriseMocks')).crmApiFrise({
     getRelanceEtapeMessage: vi.fn(() => Promise.resolve({ data: { message: 'Bonjour', langue: 'fr' } })),
     getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
     planifierVisiteLead: vi.fn(() => Promise.resolve({ data: { visite: { id: 1 }, prochaine_touche: null } })),
     getPanneauAppel: vi.fn(() => Promise.reject(new Error('indisponible'))),
-  },
 }))
 vi.mock('../../lib/toast', () => ({
   toastError: vi.fn(), toastInfo: vi.fn(), toastSuccess: vi.fn(),
@@ -36,17 +30,13 @@ vi.mock('../../lib/toast', () => ({
 
 import crmApi from '../../api/crmApi'
 import { toastError } from '../../lib/toast'
-import RelancesDuJourWidget from './RelancesDuJourWidget'
+import { ouvrirPlanificationVisite } from '../../test/parcoursVisiteAcceptee'
 
 const jourCasa = (decalage) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
 }).format(new Date(Date.now() + decalage * 24 * 3600 * 1000))
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function mount() {
-  return render(<MemoryRouter><RelancesDuJourWidget /></MemoryRouter>)
-}
 
 describe('SUIVI-BLOCAGE — cockpit « Relances du jour »', () => {
   beforeEach(() => {
@@ -58,10 +48,7 @@ describe('SUIVI-BLOCAGE — cockpit « Relances du jour »', () => {
   it('« Visite acceptée » confirmée → la fenêtre de planification est à l’écran, rien n’est encore envoyé', async () => {
     mount()
     await waitFor(() => expect(screen.getByTestId('relance-etape-row')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+    await ouvrirPlanificationVisite()
     expect(crmApi.marquerRelanceEtapeFait).not.toHaveBeenCalled()
     // La date saisie : UNE requête de planification, qui porte la touche
     // (`etape`) — le serveur la clôt « visite acceptée » lui-même.

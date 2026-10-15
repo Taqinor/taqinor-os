@@ -4,11 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import APERCU from '../../../../backend/django_core/apps/ventes/contract_samples/facture_relance_apercu.json'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const ROWS = [{
   id: 118, reference: 'FAC-2026-10-0007', client_id: 42, client_nom: 'ACME SARL',
@@ -35,6 +31,7 @@ vi.mock('../../ui/confirm', () => {
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import RelancesPage from './RelancesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 beforeEach(() => {
   api.get.mockImplementation((url) => (url === '/users/'

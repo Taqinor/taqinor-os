@@ -2,7 +2,7 @@
 // une galerie simple par phase. Réutilise les pièces jointes génériques
 // (apps.records, cible installations.installation).
 // J43 — porté sur le système de design (Button, IconButton, AlertDialog).
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import {
@@ -128,20 +128,20 @@ export default function ChantierPhotos({ installationId }) {
   const thumbSize = THUMB_SIZE[density]
   const fileRefs = { avant: useRef(null), pendant: useRef(null), apres: useRef(null) }
 
-  const load = () => {
+  const load = useCallback(function load() {
     fetchAllPages((page, { page_size: pageSize } = {}) =>
       recordsApi.getAttachments('installations.installation', installationId, { page, page_size: pageSize })
         .then((r) => r.data))
       .then((rows) => setItems(Array.isArray(rows) ? rows : (rows?.results ?? []))).catch(() => {})
-  }
-  useEffect(() => { load() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [installationId])
+  useEffect(() => { load() }, [load])
 
   // APX27 — charge les photos des interventions rattachées à ce chantier
   // (mêmes clés de phase que ci-dessus, `installationsApi.getPhotos` déjà
   // servi par F7/F8) et les aplatit en une seule liste taguée `origin`.
   // Best-effort : une intervention dont les photos ne chargent pas ne bloque
   // pas les autres (Promise.all sur des promesses déjà `.catch()`ées).
-  const loadInterventionPhotos = () => {
+  const loadInterventionPhotos = useCallback(function loadInterventionPhotos() {
     if (!installationId) { setInterventionPhotos([]); return }
     fetchAllPages((page, { page_size: pageSize } = {}) =>
       installationsApi.getInterventions({ installation: installationId, page, page_size: pageSize })
@@ -175,11 +175,11 @@ export default function ChantierPhotos({ installationId }) {
         setInterventionPhotos(flat)
       })
       .catch(() => setInterventionPhotos([]))
-  }
+  }, [installationId])
   // Chargement des photos d'intervention au changement de chantier (motif de
   // fetch standard : l'etat est pose dans les callbacks de la promesse).
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de chantier : setState dans les callbacks de la promesse (D-ENF22)
-  useEffect(() => { loadInterventionPhotos() }, [installationId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadInterventionPhotos() }, [loadInterventionPhotos])
 
   const upload = async (phase, file) => {
     if (!file) return

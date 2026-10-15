@@ -8,10 +8,11 @@
 // passe la valeur décodée à l'endpoint existant (stock resolve / recherche
 // produit ou série). Ce composant ne fait AUCUN appel réseau lui-même.
 import { useEffect } from 'react'
-import { ScanLine, CameraOff, X } from 'lucide-react'
+import { ScanLine, X } from 'lucide-react'
 import { Button } from '../../ui'
 import useBarcodeScanner from './useBarcodeScanner'
 import useWakeLock from '../../hooks/useWakeLock'
+import { RepliNonSupporte } from './RepliNonSupporte'
 
 const ERROR_MESSAGES = {
   'non-supporte':
@@ -43,22 +44,18 @@ export default function BarcodeScanner({
   useEffect(() => {
     if (autoStart && supported) start()
     return () => stop()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- démarrage/arrêt caméra au montage et au changement de support seulement; start/stop changent avec les callbacks du parent (D-ENF22)
   }, [autoStart, supported])
 
   // Repli : fonctionnalité absente sur cet appareil / ce navigateur.
   if (!supported) {
     return (
-      <div
-        role="alert"
-        className={`flex flex-col items-center gap-2 rounded-xl border border-border bg-muted/40 p-4 text-center text-sm text-muted-foreground ${className}`}
-      >
-        <CameraOff className="size-6" aria-hidden="true" />
+      <RepliNonSupporte className={className}>
         <span>{ERROR_MESSAGES['non-supporte']}</span>
         {onClose && (
           <Button size="sm" variant="ghost" onClick={onClose}>Fermer</Button>
         )}
-      </div>
+      </RepliNonSupporte>
     )
   }
 

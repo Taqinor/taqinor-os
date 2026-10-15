@@ -305,7 +305,6 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         if not isinstance(request.data, dict):
             return Response({'detail': 'Corps JSON objet attendu.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        liens = _relations_scopees(self, request, ['parent', 'vague'])
         # Types / longueurs des champs simples validés par le sérialiseur
         # (une `dimensions` trop longue levait une 500 en base).
         # CI #997 fuzz (2) : valeurs TELLES QUE REÇUES (un `null` n'est plus
@@ -314,6 +313,9 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             cle: request.data[cle] for cle in ('type_unite', 'poids_kg', 'dimensions')
             if cle in request.data})
         simples.is_valid(raise_exception=True)
+        # CI #1004 — puis parent/vague : id étranger ou absent → 404 de même
+        # corps, comme le PATCH (IdInconnu404Mixin du sérialiseur).
+        liens = _relations_scopees(self, request, ['parent', 'vague'], inconnu_en_404=True)
         try:
             unite = creer_unite_logistique(
                 company=company,
@@ -498,7 +500,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             sceller_unite_logistique(unite=unite, user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)  # seul refus : unité vide (état)
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data)
 
@@ -945,11 +947,12 @@ class BlocageQualiteViewSet(CompanyScopedModelViewSet):
         la marchandise est là, elle n'est plus disponible)."""
         from ..services import mettre_en_quarantaine
         company = request.user.company
-        # ASTK6 — FK bornées société ; un id étranger répond 400.
-        liens = _relations_scopees(
-            self, request, ['produit', 'bin', 'lot', 'reception'])
         # CI #997 fuzz — `motif: 5` faisait un 500 (.strip()), `quantite: "5"` passait.
-        types_corps_ou_400(request.data, textes=('motif',), entiers=('quantite',), nuls=())
+        types_corps_ou_400(corps_objet(request), textes=('motif',), entiers=('quantite',), nuls=())
+        # ASTK6 / CI #1004 — FK bornées société ; id étranger ou absent → 404
+        # de même corps, comme le PATCH (IdInconnu404Mixin du sérialiseur).
+        liens = _relations_scopees(
+            self, request, ['produit', 'bin', 'lot', 'reception'], inconnu_en_404=True)
         try:
             blocage = mettre_en_quarantaine(
                 company=company, produit=liens['produit'],
@@ -1035,13 +1038,14 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
     def create(self, request, *args, **kwargs):
         from ..services import creer_plan_chargement
         company = request.user.company
-        # ASTK6 — FK bornées société ; un id étranger répond 400.
-        liens = _relations_scopees(self, request, ['livraison', 'expedition'])
         # ENF11 — corps validé par le sérialiseur strict (texte/booléens) :
         # une note entière répond 400 au lieu d'un 500 sur .strip().
         corps = self.get_serializer(data=request.data, partial=True)
         corps.is_valid(raise_exception=True)
         valides = corps.validated_data
+        # ASTK6 / CI #1004 — FK bornées société ; id étranger ou absent → 404
+        # de même corps, comme le PATCH (IdInconnu404Mixin du sérialiseur).
+        liens = _relations_scopees(self, request, ['livraison', 'expedition'], inconnu_en_404=True)
 
         plan = creer_plan_chargement(
             company=company, user=request.user,
@@ -1094,9 +1098,19 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         de capacité — l'avertissement AVANT validation."""
         from ..services import ajouter_unite_plan_chargement
         plan = self.get_object()
+        # ENF11 (nocturne 15/10) — forme du corps (400) ≠ unité inconnue de la
+        # société (404) ≠ plan déjà chargé (409, état).
+        brut = corps_objet(request).get('unite_logistique')
+        if isinstance(brut, bool) or not isinstance(brut, int):
+            raise ValidationError({'unite_logistique': ['Entier attendu.']})
         unite = UniteLogistique.objects.filter(
-            id=request.data.get('unite_logistique'),
-            company=request.user.company).first()
+            id=id_corps(brut), company=request.user.company).first()
+        if unite is None:
+            return Response({'detail': 'Plan ou unité logistique introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if plan.statut == PlanChargement.Statut.CHARGE:
+            return Response({'detail': 'Ce plan est déjà chargé : il ne bouge plus.'},
+                            status=status.HTTP_409_CONFLICT)
         try:
             controle = ajouter_unite_plan_chargement(plan=plan, unite=unite)
         except ValueError as exc:
@@ -1258,6 +1272,12 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         bin?, note?}]}``."""
         from ..services import inspecter_retour_client
         retour = self.get_object()
+        if retour.statut not in (RetourClient.Statut.RECEPTIONNE,
+                                 RetourClient.Statut.INSPECTE):
+            # ENF11 (nocturne 15/10) — refus d'ÉTAT : 409, plus 400.
+            return Response(
+                {'detail': "Le retour doit être réceptionné avant d'être inspecté."},
+                status=status.HTTP_409_CONFLICT)
         try:
             inspecter_retour_client(
                 retour=retour, lignes=request.data.get('lignes'),

@@ -1,4 +1,5 @@
 import calepinageApi from '../../../api/calepinageApi'
+import { rendreImageHd } from '../rendreImageHd.js'
 
 /* ============================================================================
    CALX302 — DÉPOSER UNE IMAGE PRODUITE PAR LE NAVIGATEUR.
@@ -71,19 +72,11 @@ export async function deposerImageDocument(calepinageId, { genre, blob }) {
  * ``exportImage.js``), puis ``deposerImageDocument(..., genre: 'ombrage')``.
  */
 export async function deposerCarteDeChaleur(calepinageId, builderApi, { scale = 2 } = {}) {
-  const api = builderApi?.current ?? builderApi
-  if (!api || typeof api.renderImageHd !== 'function') {
-    return { ok: false, motif: 'Outil non prêt — ouvrez la conception puis réessayez.' }
-  }
-  let rendu = null
-  try {
-    rendu = await api.renderImageHd(scale)
-  } catch {
-    return { ok: false, motif: 'Le rendu de la carte de chaleur a échoué sur ce navigateur.' }
-  }
-  if (!rendu || !rendu.blob) {
-    return { ok: false, motif: 'Scène non rendable ici (3D indisponible) — aucune carte produite.' }
-  }
+  const { rendu, echec } = await rendreImageHd(builderApi, scale, {
+    motifEchec: 'Le rendu de la carte de chaleur a échoué sur ce navigateur.',
+    motifVide: 'Scène non rendable ici (3D indisponible) — aucune carte produite.',
+  })
+  if (echec) return echec
   return deposerImageDocument(calepinageId, { genre: 'ombrage', blob: rendu.blob })
 }
 

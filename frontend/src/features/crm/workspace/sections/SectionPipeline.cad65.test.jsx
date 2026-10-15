@@ -9,14 +9,7 @@ import { initState, SECTION_FIELDS, TRACKED_KEYS, buildCreateDefaults } from '..
 import fieldLabels from '../fieldLabels'
 import SectionPipeline from './SectionPipeline'
 
-vi.mock('../../../../api/crmApi', () => ({
-  default: {
-    initialiserRelance: vi.fn(),
-    arreterCadence: vi.fn(),
-    getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
-    getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
+vi.mock('../../../../api/crmApi', async () => (await import('../../../../test/sectionPipelineMocks')).crmApiPipeline())
 
 const CONTRAT = documentContrat('crm', 'lead_civilite')
 const REF_DATA = { users: [], tagOptions: [], motifOptions: [] }

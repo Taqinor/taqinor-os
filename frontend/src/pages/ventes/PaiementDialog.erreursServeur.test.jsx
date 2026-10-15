@@ -5,11 +5,7 @@ import userEvent from '@testing-library/user-event'
 /* AFAC61 — un refus 400 du serveur à l'encaissement s'affiche SOUS le champ
    Montant (message du serveur, saisie conservée), jamais un toast générique. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../api/ventesApi', () => ({
   default: {
@@ -23,6 +19,7 @@ vi.mock('../../api/axios', () => ({
 
 import ventesApi from '../../api/ventesApi'
 import PaiementDialog from './PaiementDialog'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const FACTURE = {
   id: 7, reference: 'FAC-007', client_nom: 'ACME', montant_du: '1000.00',

@@ -2,9 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join, resolve } from 'node:path'
+import { documentContrat } from '../../../test/fixtures/contractSamples'
 
 /* ============================================================================
    CALX6 — LE PANNEAU « SÉRIES », ET LE CONTRAT QU'IL PARTAGE AVEC LE SERVEUR.
@@ -24,26 +22,9 @@ import { dirname, join, resolve } from 'node:path'
    raison de le faire traverser le bundler.
    ========================================================================== */
 
-const ICI = dirname(fileURLToPath(import.meta.url))
+const CONTRAT = documentContrat('calepinage', 'calepinage_serie_horaire')
 
-function racineDepot() {
-  let dossier = resolve(ICI)
-  for (let i = 0; i < 10; i += 1) {
-    try {
-      readFileSync(join(dossier, 'backend', 'django_core', 'manage.py'))
-      return dossier
-    } catch { dossier = dirname(dossier) }
-  }
-  throw new Error(`Racine du depot introuvable depuis ${ICI}`)
-}
-
-const CONTRAT = JSON.parse(readFileSync(join(
-  racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
-  'contract_samples', 'calepinage_serie_horaire.json'), 'utf8'))
-
-const CONTRAT_METEO = JSON.parse(readFileSync(join(
-  racineDepot(), 'backend', 'django_core', 'apps', 'calepinage',
-  'contract_samples', 'calepinage_meteo_fichier.json'), 'utf8'))
+const CONTRAT_METEO = documentContrat('calepinage', 'calepinage_meteo_fichier')
 
 const exportCsv = vi.fn()
 const deposerMeteoFichier = vi.fn()

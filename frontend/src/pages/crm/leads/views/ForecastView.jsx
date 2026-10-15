@@ -7,17 +7,7 @@
 // d'Odoo — réutilise @dnd-kit déjà installé (aucune nouvelle dépendance).
 import { memo, useCallback, useMemo, useState } from 'react'
 import { CalendarClock } from 'lucide-react'
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors } from '@dnd-kit/core'
 import {
   formatMAD, isPerdu, latestDevisTotal, CONVERSION_STAGE,
 } from '../../../../features/crm/stages'
@@ -31,6 +21,7 @@ import { toast } from '../../../../ui/confirm'
 import { EmptyState } from '../../../../ui'
 import { STAGE_PROBABILITY } from './KanbanView'
 import LeadCard from './LeadCard'
+import BoutonChargerPlus from './BoutonChargerPlus'
 
 const MONTH_LABELS = [
   'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
@@ -419,15 +410,7 @@ export default function ForecastView({
                   onCommitDate={commitDate}
                 />
               ))}
-              {restants > 0 && (
-                <button
-                  type="button"
-                  className="kb-charger-plus"
-                  onClick={() => chargerPlus(col.key)}
-                >
-                  Charger plus ({restants} restant{restants > 1 ? 's' : ''})
-                </button>
-              )}
+              <BoutonChargerPlus restants={restants} onClick={() => chargerPlus(col.key)} />
             </MonthColumn>
           )
         })}

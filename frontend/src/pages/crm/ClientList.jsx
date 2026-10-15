@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Pencil, FileText, Trash2, Upload, Plus, FilePlus } from 'lucide-react'
@@ -26,6 +26,8 @@ import { useSavedViews } from '../../hooks/useSavedViews'
 // rendait « Invalid Date » sur une date absente ou mal formée au lieu du
 // tiret cadratin du reste de l'application.
 import { formatDate, formatMAD } from '../../lib/format'
+import { useDeepLinkId } from '../../hooks/useDeepLinkId'
+import { useOuvrirNouveauParUrl } from '../../hooks/useOuvrirNouveauParUrl'
 
 const CL_SAVED_VIEWS_KEY = 'taqinor.crm.clients.savedViews'
 
@@ -70,20 +72,7 @@ export default function ClientList() {
   // TicketsPage.jsx) : la palette de commandes (⌘K) ouvre désormais le CLIENT
   // exact plutôt que la liste. État DÉRIVÉ (aucun effet) — un id absent des
   // clients chargés reste simplement sans panneau (jamais une page blanche).
-  const wantedId = searchParams.get('id')
-  const deepClient = useMemo(() => {
-    if (!wantedId) return null
-    return (clients ?? []).find(c => String(c.id) === String(wantedId)) ?? null
-  }, [wantedId, clients])
-  const clearDeepLink = () => {
-    if (searchParams.has('id')) {
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev)
-        next.delete('id')
-        return next
-      }, { replace: true })
-    }
-  }
+  const { deepItem: deepClient, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, clients)
   // Panneau ouvert : sélection manuelle OU client ciblé par le lien profond.
   const detailItem = detailClient ?? deepClient
 
@@ -128,17 +117,7 @@ export default function ClientList() {
   // vers /crm?new=1 : câblage MINIMAL du paramètre — ouvre directement le
   // formulaire de création (périmètre réduit, @coord NTUX9/10 — cf. LeadsPage.jsx
   // même patron). Le paramètre est retiré une fois lu.
-  useEffect(() => {
-    if (searchParams.get('new') !== '1') return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1 (D-ENF22)
-    openNew()
-    setSearchParams(prev => {
-      const next = new URLSearchParams(prev)
-      next.delete('new')
-      return next
-    }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  useOuvrirNouveauParUrl(searchParams, setSearchParams, openNew)
 
   const openReleve = async (c) => {
     try {
@@ -212,8 +191,8 @@ export default function ClientList() {
   // L151 — bascule optimiste du type de client (Particulier ↔ Entreprise),
   // seul « statut » persisté du client. Passe par le thunk updateClient
   // existant ; rollback automatique si le PATCH échoue.
-  const saveType = (c, next) =>
-    dispatch(updateClient({ id: c.id, data: { type_client: next } })).unwrap()
+  const saveType = useCallback((c, next) =>
+    dispatch(updateClient({ id: c.id, data: { type_client: next } })).unwrap(), [dispatch])
 
   const columns = useMemo(() => [
     {
@@ -338,8 +317,7 @@ export default function ClientList() {
       ),
       exportValue: (c) => (c.date_creation ? formatDate(c.date_creation) : ''),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [])
+  ], [navigate, saveType])
 
   const rowActions = (c) => {
     const actions = [

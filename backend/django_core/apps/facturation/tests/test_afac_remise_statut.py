@@ -126,7 +126,8 @@ class RemiseStatutTests(TestCase):
         r = self.api_resp.post(f'{URL}{rid}/cloturer/')
         self.assertEqual(r.status_code, 200, r.data)
         r = self.api_resp.delete(f'{URL}{rid}/')
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', None))
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', None))  # ENF11 : état
+        self.assertEqual(self.api_resp.post(f'{URL}{rid}/cloturer/').status_code, 409)
         self.assertTrue(RemiseEncaissement.objects.filter(pk=rid).exists())
         self.assertTrue(LigneRemiseEncaissement.objects.filter(
             remise_id=rid).exists())

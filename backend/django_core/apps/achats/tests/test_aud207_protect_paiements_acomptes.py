@@ -61,10 +61,10 @@ class TestAUD207ProtectPaiementFournisseur(TestCase):
             company=self.company, reference=reference,
             fournisseur=self.fournisseur, montant_ttc=Decimal('1000.00'))
 
-    def test_facture_avec_paiement_reel_suppression_refusee_400(self):
+    def test_facture_avec_paiement_reel_suppression_refusee_409(self):
         """Test ROUGE d'abord (avant AUD207) : ce DELETE renvoyait 204 et
         effaçait en CASCADE le paiement réellement versé — la ligne
-        financière disparaissait sans trace. APRÈS : 400 explicite, rien
+        financière disparaissait sans trace. APRÈS : 409 explicite, rien
         n'est supprimé."""
         from apps.achats.models import FactureFournisseur, PaiementFournisseur
         facture = self._facture()
@@ -73,7 +73,7 @@ class TestAUD207ProtectPaiementFournisseur(TestCase):
 
         r = self.api.delete(f'/api/django/stock/factures-fournisseur/{facture.id}/')
 
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertTrue(
             FactureFournisseur.objects.filter(id=facture.id).exists(),
             "la facture a été supprimée malgré un paiement réel")
@@ -118,9 +118,9 @@ class TestAUD207ProtectAcompteFournisseur(TestCase):
             company=self.company, reference=reference,
             fournisseur=self.fournisseur)
 
-    def test_bcf_avec_acompte_reel_suppression_refusee_400(self):
+    def test_bcf_avec_acompte_reel_suppression_refusee_409(self):
         """Test ROUGE d'abord (avant AUD207) : ce DELETE renvoyait 204 et
-        effaçait en CASCADE l'acompte réellement versé. APRÈS : 400
+        effaçait en CASCADE l'acompte réellement versé. APRÈS : 409
         explicite, rien n'est supprimé."""
         from apps.achats.models import BonCommandeFournisseur
         from apps.stock.models import AcompteFournisseur
@@ -130,7 +130,7 @@ class TestAUD207ProtectAcompteFournisseur(TestCase):
 
         r = self.api.delete(f'/api/django/stock/bons-commande-fournisseur/{bcf.id}/')
 
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertTrue(
             BonCommandeFournisseur.objects.filter(id=bcf.id).exists(),
             "le BCF a été supprimé malgré un acompte réel")

@@ -6,20 +6,11 @@
 // SANS toucher au câblage du drag (dnd-kit) : la structure kb-* est conservée.
 import { useMemo, useState } from 'react'
 import { MapPin, Zap, CalendarDays } from 'lucide-react'
-import {
-  DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, useDraggable, useSensor, useSensors } from '@dnd-kit/core'
 import {
   INSTALLATION_STATUSES,
   STATUS_LABELS,
+  statusLabel,
   STATUS_COLORS,
   canonicalStatus,
   canMoveStatus,
@@ -42,15 +33,13 @@ import {
 } from '../../../ui'
 import { formatDate } from '../../../lib/format'
 import { usePrefersReducedMotion } from '../../../hooks/usePrefersReducedMotion'
+import { ColonneStatut, SelectReaffectation } from '../../../ui/kanbanAffectation'
 
 // VX135 — dropAnimation dnd-kit par défaut désalignée des tokens de
 // mouvement de l'app ; alignée --motion-*/--ease-out (tokens.css). Sous
 // reduced-motion, quasi instantanée (dnd-kit exige une durée > 0).
 const DROP_ANIMATION = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
 const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
-
-// Sentinelle « aucun installateur » (le Select du design system n'accepte pas '').
-const NO_TECH = '__none__'
 
 // VX192 — alternative CLAVIER au glisser-déposer pour les chantiers (miroir du
 // StageMover du kanban leads). Un <select> natif sous chaque carte n'offre que
@@ -83,7 +72,7 @@ export function StatusMover({ inst, onChangeStatus }) {
         }}
       >
         {options.map((s) => (
-          <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+          <option key={s} value={s}>{statusLabel(s)}</option>
         ))}
       </select>
     </div>
@@ -96,30 +85,9 @@ export function StatusMover({ inst, onChangeStatus }) {
 // frère du bouton dans DraggableCard.
 function ChantierReassign({ inst, users, onReassign }) {
   if (!onReassign) return null
-  const techValue = inst.technicien_responsable ? String(inst.technicien_responsable) : NO_TECH
   return (
-    <div
-      className="kc-reassign"
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Select
-        value={techValue}
-        onValueChange={(v) => onReassign(inst, v === NO_TECH ? null : v)}
-      >
-        <SelectTrigger className="h-8 text-xs" aria-label="Installateur">
-          <SelectValue placeholder="Installateur" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NO_TECH}>— Installateur —</SelectItem>
-          {(users ?? []).map((u) => (
-            <SelectItem key={u.id} value={String(u.id)}>
-              {u.username ?? u.nom ?? `#${u.id}`}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
+    <SelectReaffectation valeur={inst.technicien_responsable} users={users} label="Installateur"
+      onChange={(tech) => onReassign(inst, tech)} />
   )
 }
 
@@ -130,7 +98,7 @@ function ChantierCard({ inst, isNew }) {
         <span className="kc-card-ref">{inst.reference}</span>
         {/* VX218 — badge « Nouveau » : chantier assigné depuis ma dernière visite. */}
         {isNew && <Badge tone="success">Nouveau</Badge>}
-        <StatusPill status={inst.statut} label={STATUS_LABELS[canonicalStatus(inst.statut)]} dot={false} />
+        <StatusPill status={inst.statut} label={statusLabel(canonicalStatus(inst.statut))} dot={false} />
       </div>
       <div className="kc-card-sub">{inst.client_nom ?? '—'}</div>
       <div className="kc-chips">
@@ -188,26 +156,6 @@ function DraggableCard({ inst, users, onReassign, isNew, onOpen, onChangeStatus 
   )
 }
 
-function StatusColumn({ col, children }) {
-  const { setNodeRef, isOver } = useDroppable({ id: col.key })
-  return (
-    <section ref={setNodeRef} className={isOver ? 'kb-col kb-over' : 'kb-col'}
-             style={{ '--kb-accent': col.color }}>
-      <header className="kb-col-header">
-        <div className="kb-col-title-row">
-          <span className="kb-col-title">{col.label}</span>
-          <span className="kb-col-count">{col.items.length}</span>
-        </div>
-      </header>
-      <div className="kb-col-body">
-        {col.items.length === 0 ? (
-          <div className="kb-col-empty">Aucun chantier</div>
-        ) : children}
-      </div>
-    </section>
-  )
-}
-
 export default function KanbanView({ items, onOpen, onChangeStatus, users, onReassign, nouveauxIds }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -232,7 +180,7 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
       else (byCol[INSTALLATION_STATUSES[0]]).push(it)
     }
     return INSTALLATION_STATUSES.map((s) => ({
-      key: s, label: STATUS_LABELS[s], color: STATUS_COLORS[s], items: byCol[s],
+      key: s, label: statusLabel(s), color: STATUS_COLORS[s], items: byCol[s],
     }))
   }, [items])
 
@@ -241,7 +189,7 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
   const announcements = useMemo(() => {
     const byId = new Map((items ?? []).map((it) => [it.id, it]))
     const labelFor = (id) => {
-      if (STATUS_LABELS[id]) return STATUS_LABELS[id]
+      if (STATUS_LABELS[id]) return statusLabel(id)
       const it = byId.get(id)
       return it?.reference ?? String(id)
     }
@@ -283,14 +231,14 @@ export default function KanbanView({ items, onOpen, onChangeStatus, users, onRea
       )}
       <div className="kb-board">
         {columns.map((col) => (
-          <StatusColumn key={col.key} col={col}>
+          <ColonneStatut key={col.key} col={col} vide="Aucun chantier">
             {col.items.map((inst) => (
               <DraggableCard key={inst.id} inst={inst} users={users}
                              onReassign={onReassign} onOpen={onOpen}
                              onChangeStatus={onChangeStatus}
                              isNew={nouveauxIds?.has(inst.id)} />
             ))}
-          </StatusColumn>
+          </ColonneStatut>
         ))}
       </div>
       <DragOverlay dropAnimation={prefersReducedMotion ? DROP_ANIMATION_REDUCED : DROP_ANIMATION}>

@@ -141,10 +141,21 @@ class FkCorpsTenantTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
 
     def test_programme_responsable(self):
+        # ENF11 (nocturne 15/10) — ProjetSerializer porte IdInconnu404Mixin :
+        # un responsable d'une autre société est « inconnu » (champ borné), 404
+        # de même corps qu'un id absent (aucun oracle), sans écriture.
+        avant = self.api.get(f'{BASE}/programmes/').data
         r = self.api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'responsable': self.user_b.id},
             format='json')
-        self._refus(r, 'responsable')
+        self._refus(r, 'responsable', 404)
+        absent = self.api.post(f'{BASE}/programmes/', {
+            'nom': 'Programme', 'responsable': ID_ABSENT}, format='json')
+        self._refus(absent, 'responsable', 404)
+        self.assertEqual(
+            str(r.data['responsable']).replace(str(self.user_b.id), 'N'),
+            str(absent.data['responsable']).replace(str(ID_ABSENT), 'N'))
+        self.assertEqual(self.api.get(f'{BASE}/programmes/').data, avant)
         r = self.api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'responsable': self.user_a.id},
             format='json')
@@ -307,16 +318,16 @@ class FkInstallationsBorneesSocieteTests(TestCase):
 
     # ── bout en bout ─────────────────────────────────────────────────────
 
-    def _refus(self, r, champ):
-        self.assertEqual(r.status_code, 400, r.data)
+    def _refus(self, r, champ, statut=400):
+        self.assertEqual(r.status_code, statut, r.data)
         self.assertIn(champ, r.data)
         self.assertNotIn('SECRET', str(r.data))
 
-    def test_programme_client_etranger_400(self):
+    def test_programme_client_etranger_404(self):
         api = _api(self.a.user)
         r = api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'client': self.b.client.pk}, format='json')
-        self._refus(r, 'client')
+        self._refus(r, 'client', 404)  # ENF11 : IdInconnu404Mixin
         r = api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'client': self.a.client.pk}, format='json')
         self.assertEqual(r.status_code, 201, r.data)

@@ -48,14 +48,8 @@ vi.mock('../../api/savApi', () => ({
 
 import savApi from '../../api/savApi'
 import RegistreGarantiesDialog from './RegistreGarantiesDialog'
+import { mockMatchMedia } from '../../test/matchMedia'
 
-function mockMatchMedia() {
-  window.matchMedia = (query) => ({
-    matches: false, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

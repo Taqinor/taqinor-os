@@ -10,7 +10,6 @@ import {
   canMoveStatus,
   canonicalStatus,
   INSTALLATION_STATUSES,
-  STATUS_LABELS,
 } from '../../../features/installations/statuses'
 import {
   DataTable, StatusPill, Button, Badge,
@@ -22,6 +21,7 @@ import { formatDate } from '../../../lib/format'
 import importApi, { downloadXlsx } from '../../../api/importApi'
 import OfflinePendingBadge from '../../../components/offline/OfflinePendingBadge'
 import { useOfflinePending } from '../../../components/offline/useOfflinePending'
+import { ItemsUtilisateurs } from '../../../ui/kanbanAffectation'
 
 const NONE = '__none__'
 
@@ -95,7 +95,7 @@ function BulkActionDialog({ kind, rows, users, onApply, onDone, onClose }) {
                 <SelectTrigger aria-label="Nouveau statut"><SelectValue placeholder="Choisir un statut…" /></SelectTrigger>
                 <SelectContent>
                   {INSTALLATION_STATUSES.map((k) => (
-                    <SelectItem key={k} value={k}>{STATUS_LABELS[k]}</SelectItem>
+                    <SelectItem key={k} value={k}>{statusLabel(k)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -104,11 +104,7 @@ function BulkActionDialog({ kind, rows, users, onApply, onDone, onClose }) {
                 <SelectTrigger aria-label="Installateur"><SelectValue placeholder="Choisir un installateur…" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>— Aucun —</SelectItem>
-                  {(users ?? []).map((u) => (
-                    <SelectItem key={u.id} value={String(u.id)}>
-                      {u.username ?? u.nom ?? `#${u.id}`}
-                    </SelectItem>
-                  ))}
+                  <ItemsUtilisateurs users={users} />
                 </SelectContent>
               </Select>
             )}

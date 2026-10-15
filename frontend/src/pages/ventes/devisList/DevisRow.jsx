@@ -38,6 +38,7 @@ import { peutFacturerAcompte, peutFacturerSolde, peutFacturerComplete } from '..
 import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis.js'
 import { STATUT_DISPLAY } from './devisListConstants.js'
 import HistoriqueActivitesListe from '../HistoriqueActivitesListe'
+import { TableauLignes } from '../../../ui/TableauDefilant'
 
 // VX132 — chargement long CONSCIENT : la génération du devis PDF premium est
 // la latence connue la plus longue de l'app (schémas, produits, chiffrage) ;
@@ -843,9 +844,9 @@ export default function DevisRow({ d, ctx }) {
                 Ce devis n’appartient à aucun groupe de variantes.
               </p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse text-sm"
-                       aria-label={`Comparaison des variantes de ${d.reference}`}>
+              <TableauLignes enveloppe="overflow-x-auto" className="w-full border-collapse text-sm"
+                     aria-label={`Comparaison des variantes de ${d.reference}`}
+                tete={(
                   <thead>
                     <tr className="border-b border-border">
                       <th scope="col" className="px-2 py-1 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Référence</th>
@@ -854,36 +855,34 @@ export default function DevisRow({ d, ctx }) {
                       <th scope="col" className="px-2 py-1 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total TTC</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {variantesEtat.rows.map(v => (
-                      <tr key={v.id}
-                          data-source={v.id === d.id ? 'true' : undefined}
-                          className="border-b border-border/60 last:border-b-0">
-                        <td className="px-2 py-1">
-                          <strong>{v.reference}</strong>
-                          {v.id === d.id && (
-                            <span className="ml-2 text-xs text-primary">(source)</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-1 text-muted-foreground">
-                          {/* Aucun libellé n'est INVENTÉ : le nom de gamme s'il
-                              existe, sinon le rang de version servi par le
-                              serveur. */}
-                          {v.etude_params?.gamme?.nom || `v${v.version || 1}`}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {v.total_ht != null ? formatMAD(v.total_ht) : '—'}
-                        </td>
-                        <td className="px-2 py-1 text-right tabular-nums">
-                          {(v.total_affiche ?? v.total_ttc) != null
-                            ? formatMAD(v.total_affiche ?? v.total_ttc)
-                            : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                )}>
+                {variantesEtat.rows.map(v => (
+                  <tr key={v.id}
+                      data-source={v.id === d.id ? 'true' : undefined}
+                      className="border-b border-border/60 last:border-b-0">
+                    <td className="px-2 py-1">
+                      <strong>{v.reference}</strong>
+                      {v.id === d.id && (
+                        <span className="ml-2 text-xs text-primary">(source)</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-muted-foreground">
+                      {/* Aucun libellé n'est INVENTÉ : le nom de gamme s'il
+                          existe, sinon le rang de version servi par le
+                          serveur. */}
+                      {v.etude_params?.gamme?.nom || `v${v.version || 1}`}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums">
+                      {v.total_ht != null ? formatMAD(v.total_ht) : '—'}
+                    </td>
+                    <td className="px-2 py-1 text-right tabular-nums">
+                      {(v.total_affiche ?? v.total_ttc) != null
+                        ? formatMAD(v.total_affiche ?? v.total_ttc)
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </TableauLignes>
             )}
           </div>
         </td>

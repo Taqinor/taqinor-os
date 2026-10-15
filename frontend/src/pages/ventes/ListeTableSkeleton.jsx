@@ -1,4 +1,5 @@
 import { Card, SkeletonTableRow } from '../../ui'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* Squelette PARTAGÉ des listes Devis / Factures : reprend les colonnes du vrai
    tableau pour que la mise en page ne saute pas à l'arrivée des données.
@@ -7,8 +8,8 @@ import { Card, SkeletonTableRow } from '../../ui'
 export default function ListeTableSkeleton({ largeurSelection, entetes }) {
   return (
     <Card className="mt-4 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="data-table">
+      <TableauLignes enveloppe="overflow-x-auto" className="data-table"
+        tete={(
           <thead>
             <tr>
               <th className={largeurSelection} />
@@ -17,13 +18,11 @@ export default function ListeTableSkeleton({ largeurSelection, entetes }) {
               ))}
             </tr>
           </thead>
-          <tbody>
-            {Array.from({ length: 6 }).map((unused, i) => (
-              <SkeletonTableRow key={i} columns={8} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+        )}>
+        {Array.from({ length: 6 }).map((unused, i) => (
+          <SkeletonTableRow key={i} columns={8} />
+        ))}
+      </TableauLignes>
     </Card>
   )
 }

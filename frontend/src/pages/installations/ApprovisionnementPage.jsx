@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
 import { PackageSearch } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
-  Badge, Spinner, EmptyState,
+  Badge,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { formatMAD, formatDate } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
 // NTI18N1 — rollout i18n : premier écran Chantiers/Installations migré.
 import { useT } from '../../i18n'
+import { useFilteredList } from '../../features/installations/chargementListe'
+import ListShell from '../../features/installations/ListeEtat'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    WIR110 — Approvisionnement avancé (consultation, `/chantiers/approvisionnement`).
@@ -26,8 +28,8 @@ import { useT } from '../../i18n'
 // déclaratives { key, label, render? }.
 function SimpleTable({ columns, rows, rowKey = (r) => r.id }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="w-full text-sm">
+    <TableauLignes enveloppe="overflow-x-auto rounded-xl border border-border" className="w-full text-sm"
+      tete={(
         <thead>
           <tr className="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
             {columns.map((c) => (
@@ -35,60 +37,28 @@ function SimpleTable({ columns, rows, rowKey = (r) => r.id }) {
             ))}
           </tr>
         </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={rowKey(r)} className="border-b border-border/60 last:border-0">
-              {columns.map((c) => (
-                <td key={c.key} className="px-3 py-2 align-top">
-                  {c.render ? c.render(r) : (r[c.key] ?? '—')}
-                </td>
-              ))}
-            </tr>
+      )}>
+      {rows.map((r) => (
+        <tr key={rowKey(r)} className="border-b border-border/60 last:border-0">
+          {columns.map((c) => (
+            <td key={c.key} className="px-3 py-2 align-top">
+              {c.render ? c.render(r) : (r[c.key] ?? '—')}
+            </td>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </tr>
+      ))}
+    </TableauLignes>
   )
 }
 
 // Onglet générique : charge via `fetcher`, montre spinner/erreur/vide/tableau.
 function ResourceTab({ fetcher, columns, rowKey, emptyLabel }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const load = useCallback(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetcher()
-      .then((res) => {
-        if (cancelled) return
-        const payload = res?.data
-        setRows(Array.isArray(payload) ? payload : (payload?.results ?? []))
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setError(err?.response?.data?.detail || 'Chargement impossible.')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
-  useEffect(() => load(), [load])
-
-  if (loading) return (
-    <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
+  const { rows, loading, error } = useFilteredList(fetcher)
+  return (
+    <ListShell loading={loading} error={error} icon={PackageSearch} empty={emptyLabel}>
+      {rows.length > 0 && <SimpleTable columns={columns} rows={rows} rowKey={rowKey} />}
+    </ListShell>
   )
-  if (error) return <EmptyState title="Impossible de charger" description={error} className="py-6" />
-  if (rows.length === 0) {
-    return <EmptyState icon={PackageSearch} title={emptyLabel} className="py-6" />
-  }
-  return <SimpleTable columns={columns} rows={rows} rowKey={rowKey} />
 }
 
 const mad = (v) => (v == null ? '—' : formatMAD(v, { decimals: 0 }))
@@ -141,12 +111,12 @@ const RECEPTIONS_COLS = [
 ]
 
 const TABS = [
-  { value: 'seuils', label: 'Seuils BCF', fetcher: () => installationsApi.getSeuilsApprobationBcf(), columns: SEUILS_COLS, empty: 'Aucun seuil configuré' },
-  { value: 'approbations', label: 'Approbations BCF', fetcher: () => installationsApi.getApprobationsBcf(), columns: APPROBATIONS_COLS, empty: 'Aucune approbation' },
-  { value: 'cadre', label: 'Contrats-cadre', fetcher: () => installationsApi.getCommandesCadre(), columns: CADRE_COLS, empty: 'Aucun contrat-cadre' },
-  { value: 'appels', label: "Commandes d'appel", fetcher: () => installationsApi.getAppelsCommande(), columns: APPELS_COLS, empty: "Aucune commande d'appel" },
-  { value: 'contrats', label: 'Contrats de prix', fetcher: () => installationsApi.getContratsPrixFournisseur(), columns: CONTRATS_COLS, empty: 'Aucun contrat de prix' },
-  { value: 'receptions', label: 'Réceptions non facturées', fetcher: () => installationsApi.getReceptionsNonFacturees(), columns: RECEPTIONS_COLS, empty: 'Aucune réception non facturée' },
+  { value: 'seuils', label: 'Seuils BCF', fetcher: (p) => installationsApi.getSeuilsApprobationBcf(p), columns: SEUILS_COLS, empty: 'Aucun seuil configuré' },
+  { value: 'approbations', label: 'Approbations BCF', fetcher: (p) => installationsApi.getApprobationsBcf(p), columns: APPROBATIONS_COLS, empty: 'Aucune approbation' },
+  { value: 'cadre', label: 'Contrats-cadre', fetcher: (p) => installationsApi.getCommandesCadre(p), columns: CADRE_COLS, empty: 'Aucun contrat-cadre' },
+  { value: 'appels', label: "Commandes d'appel", fetcher: (p) => installationsApi.getAppelsCommande(p), columns: APPELS_COLS, empty: "Aucune commande d'appel" },
+  { value: 'contrats', label: 'Contrats de prix', fetcher: (p) => installationsApi.getContratsPrixFournisseur(p), columns: CONTRATS_COLS, empty: 'Aucun contrat de prix' },
+  { value: 'receptions', label: 'Réceptions non facturées', fetcher: (p) => installationsApi.getReceptionsNonFacturees(p), columns: RECEPTIONS_COLS, empty: 'Aucune réception non facturée' },
 ]
 
 export default function ApprovisionnementPage() {

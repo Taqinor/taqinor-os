@@ -21,7 +21,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
-from core.champs_stricts import entier_ou_400
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, entier_ou_400
 from apps.crm.exports import build_xlsx_response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -85,7 +86,8 @@ _INSIGHTS_RECURRING_REVENUE_REPONSE = inline_serializer('InsightsRecurringRevenu
     responses={(200, 'application/json'): _INSIGHTS_RECURRING_REVENUE_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def recurring_revenue(request):
     """N49 — revenu récurrent des contrats de maintenance actifs.
 
@@ -216,7 +218,8 @@ _INSIGHTS_AUDIT_LOG_REPONSE = inline_serializer('InsightsAuditLogReponse', {
     ],
     responses={200: _INSIGHTS_AUDIT_LOG_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def audit_log(request):
     """N70 + N95 — journal d'activité unifié, company-scopé, trié par date.
 
@@ -407,7 +410,8 @@ _INSIGHTS_JOB_COSTING_REPONSE = inline_serializer('InsightsJobCostingReponse', {
 @extend_schema(
     responses={200: _INSIGHTS_JOB_COSTING_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsAdminRole])
+@permission_classes([IsAdminRole,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def job_costing(request):
     """N78 — coût de revient & marge par chantier (ADMIN UNIQUEMENT).
 
@@ -520,7 +524,8 @@ _INSIGHTS_ANALYTICS_REPONSE = inline_serializer('InsightsAnalyticsReponse', {
 @extend_schema(
     responses={200: _INSIGHTS_ANALYTICS_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def analytics(request):
     """N80 — analytics lecture seule.
 
@@ -615,7 +620,8 @@ _INSIGHTS_COMMISSIONS_REPONSE = inline_serializer('InsightsCommissionsReponse', 
     ],
     responses={200: _INSIGHTS_COMMISSIONS_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsAdminRole])
+@permission_classes([IsAdminRole,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def commissions(request):
     """N99/XSAL6 — commissions commerciales (ADMIN UNIQUEMENT, donnée sensible).
 
@@ -779,7 +785,8 @@ _INSIGHTS_SALES_LEADERBOARD_REPONSE = inline_serializer('InsightsSalesLeaderboar
     ],
     responses={200: _INSIGHTS_SALES_LEADERBOARD_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def sales_leaderboard(request):
     """FG93 — Classement commerciaux (CA signé, taux de victoire, deal moyen,
     kWc par responsable).
@@ -837,7 +844,9 @@ def sales_leaderboard(request):
 # ── FG94 — Reporting des champs personnalisés ─────────────────────────────────
 # ERR-ENF11-FUZZ-REPORTING — ``module``/``code`` vides = 400 : le schéma le dit
 # (au moins un caractère non blanc) au lieu de l'annoncer comme une chaîne libre.
-_TEXTE_NON_VIDE = {'type': 'string', 'minLength': 1, 'pattern': r'\S'}
+#: ENF11 (nocturne 15/10) — non blanc ET sans caractère nul (un nul atteignait
+#: PostgreSQL : ValueError → 500) ; ``cf_group_by`` applique ce même motif.
+_TEXTE_NON_VIDE = {'type': 'string', 'minLength': 1, 'pattern': MOTIF_NON_BLANC_SANS_NUL}
 
 _INSIGHTS_CF_GROUP_BY_REPONSE = inline_serializer('InsightsCfGroupByReponse', {
     'module': drf_serializers.JSONField(allow_null=True),
@@ -858,7 +867,8 @@ _INSIGHTS_CF_GROUP_BY_REPONSE = inline_serializer('InsightsCfGroupByReponse', {
     ],
     responses={200: _INSIGHTS_CF_GROUP_BY_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def cf_group_by(request):
     """FG94 — Agrégation (group-by) sur un champ personnalisé.
 
@@ -880,6 +890,10 @@ def cf_group_by(request):
     if not module or not code:
         return Response(
             {'detail': 'Paramètres requis : ?module=<module>&code=<code>'},
+            status=400)
+    if '\x00' in module or '\x00' in code:
+        return Response(
+            {'detail': 'Paramètres module/code : texte sans caractère nul attendu.'},
             status=400)
 
     # Vérifier que le champ est bien visible_liste pour ce module.
@@ -964,7 +978,8 @@ _INSIGHTS_COHORTS_REPONSE = inline_serializer('InsightsCohortsReponse', {
     ],
     responses={200: _INSIGHTS_COHORTS_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def cohorts(request):
     """FG98 — Cohortes de leads par mois d'acquisition.
 
@@ -1101,7 +1116,8 @@ _INSIGHTS_PROFITABILITY_REPONSE = inline_serializer('InsightsProfitabilityRepons
     ],
     responses={200: _INSIGHTS_PROFITABILITY_REPONSE})
 @api_view(['GET'])
-@permission_classes([IsAdminRole])
+@permission_classes([IsAdminRole,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def profitability(request):
     """FG99 — Rentabilité agrégée par segment (ADMIN uniquement).
 

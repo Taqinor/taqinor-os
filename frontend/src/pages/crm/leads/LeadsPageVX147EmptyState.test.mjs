@@ -14,6 +14,8 @@ const LEADS_PAGE = readFileSync(join(HERE, 'LeadsPage.jsx'), 'utf8')
 const KANBAN = readFileSync(join(HERE, 'views/KanbanView.jsx'), 'utf8')
 const LIST = readFileSync(join(HERE, 'views/ListView.jsx'), 'utf8')
 const CARTE = readFileSync(join(HERE, 'views/CarteView.jsx'), 'utf8')
+// ENF19 — l'état vide à deux paliers est partagé (Kanban + Graphiques).
+const ETAT_VIDE = readFileSync(join(HERE, 'views/EtatVideVueLeads.jsx'), 'utf8')
 
 test('VX147→LB27 : LeadsPage ne rend plus .page-loading/.page-error (StateBlock reste pour l’erreur)', () => {
   assert.doesNotMatch(LEADS_PAGE, /className="page-loading"/)
@@ -29,24 +31,27 @@ test('VX147→LB27 : LeadsPage ne rend plus .page-loading/.page-error (StateBloc
 })
 
 test('VX147 : KanbanView monte EmptyState pour leads=[] au lieu de colonnes vides en texte brut', () => {
-  assert.match(KANBAN, /import \{ EmptyState, Button \} from '..\/..\/..\/..\/ui'/)
+  assert.match(KANBAN, /import \{ Button \} from '..\/..\/..\/..\/ui'/)
+  assert.match(KANBAN, /import EtatVideVueLeads from '.\/EtatVideVueLeads'/)
   assert.match(KANBAN, /if \(!leads \|\| leads\.length === 0\) \{/)
   const idx = KANBAN.indexOf('if (!leads || leads.length === 0)')
   const block = KANBAN.slice(idx, idx + 900)
-  assert.match(block, /<EmptyState/)
+  assert.match(block, /<EtatVideVueLeads/)
+  assert.match(ETAT_VIDE, /<EmptyState/)
 })
 
 test('LB9 : KanbanView distingue « aucun lead du tout » (coach illustré + CTA) de « filtré à 0 » (CTA Effacer les filtres)', () => {
   const idx = KANBAN.indexOf('if (!leads || leads.length === 0)')
   const block = KANBAN.slice(idx, idx + 1600)
   // Palier 1 : vraiment aucun lead — coach illustré (VX40) + actions création/import.
-  assert.match(block, /const aucunDuTout = totalLeads != null && totalLeads === 0/)
-  assert.match(block, /<EmptyState\s*\n\s*illustrated/)
+  assert.match(ETAT_VIDE, /const aucunDuTout = totalLeads != null && totalLeads === 0/)
+  assert.match(ETAT_VIDE, /<EmptyState illustrated/)
   assert.match(block, /onClick=\{onNewLead\}/)
   assert.match(block, /onClick=\{onImportLeads\}/)
   // Palier 2 : filtré à 0 — CTA « Effacer les filtres » réel (onClick, pas décoratif).
-  assert.match(block, /Effacer les filtres/)
-  assert.match(block, /onClick=\{onClearFilters\}/)
+  assert.match(ETAT_VIDE, /Effacer les filtres/)
+  assert.match(ETAT_VIDE, /onClick=\{onClearFilters\}/)
+  assert.match(block, /onClearFilters=\{onClearFilters\}/)
 })
 
 test('VX147 : ListView monte EmptyState pour sorted=[] au lieu du texte brut "Aucun lead à afficher..."', () => {

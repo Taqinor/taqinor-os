@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { Briefcase } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import crmApi from '../../../api/crmApi'
+import { EtatListe } from '../../../ui/EtatListe'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent, Spinner,
+  Card, CardHeader, CardTitle, CardDescription, CardContent,
 } from '../../../ui'
 
 /* ============================================================================
@@ -43,13 +44,8 @@ export default function PortfolioWidget() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {loading ? (
-          <Spinner />
-        ) : error ? (
-          <p className="text-sm text-muted-foreground">Indisponible pour le moment.</p>
-        ) : comptes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucun compte dans votre portefeuille.</p>
-        ) : (
+        <EtatListe loading={loading} error={error} estVide={comptes.length === 0}
+          messageVide="Aucun compte dans votre portefeuille.">
           <ul className="space-y-2">
             {comptes.map((c) => (
               <li
@@ -70,7 +66,7 @@ export default function PortfolioWidget() {
               </li>
             ))}
           </ul>
-        )}
+        </EtatListe>
       </CardContent>
     </Card>
   )

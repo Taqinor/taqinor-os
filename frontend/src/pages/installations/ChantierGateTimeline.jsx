@@ -8,7 +8,7 @@
 // fusionnés DANS ce stepper, sous une progression « 3/7 » en tête, et le
 // bandeau « Prochaine action » passe sur `ui/NextActionBanner` (partagé avec
 // « Ma journée »).
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Circle, Lock, ClipboardCheck, PackageCheck } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -19,6 +19,7 @@ import {
 import ChantierTimeline from './ChantierTimeline'
 import RecettePompageDialog from './RecettePompageDialog'
 import { RECETTE_TRI_ETAT, RECETTE_RESULTATS } from '../../features/installations/statuses'
+import RaisonsBlocageGate from '../../ui/RaisonsBlocageGate'
 
 /* ── WIR202/CH3 — fiche de recette IEC 62446-1 : formulaire de SAISIE ───────
    Le bouton « Ouvrir la fiche de recette » créait un enregistrement VIDE
@@ -811,26 +812,29 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   // fiche IEC 62446-1 du PV raccordé.
   const agricole = installation?.type_installation === 'agricole'
 
-  const load = () => {
+  // Le type de chantier courant est lu À L'APPEL (jamais une dépendance : le
+  // chargement ne se relance qu'au changement de chantier).
+  const agricoleRef = useRef(agricole)
+  useEffect(() => { agricoleRef.current = agricole })
+  const load = useCallback(function load() {
     setLoading(true)
     installationsApi.getEtapesChantier(installationId)
       .then((r) => { setData(r.data); setError(null) })
       .catch(() => setError('Étapes indisponibles.'))
       .finally(() => setLoading(false))
-    ;(agricole ? installationsApi.getRecettePompage : installationsApi.getRecette)(installationId)
+    ;(agricoleRef.current ? installationsApi.getRecettePompage : installationsApi.getRecette)(installationId)
       .then((r) => setRecette(r.data)).catch(() => {})
     installationsApi.getPackRemise(installationId)
       .then((r) => setPack(r.data)).catch(() => {})
-  }
+  }, [installationId])
 
   // Charge trois ressources indépendantes (étapes/recette/pack) au montage +
-  // après chaque avancement, comme le fait déjà `checkDevisDivergence` plus
-  // haut sur cette même page (même repli d'effet).
+  // après chaque avancement (la divergence du devis, elle, est servie par le
+  // détail du chantier — ACHT67).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de chantier (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [installationId])
+  }, [load])
 
   const stages = data?.etapes ?? []
   const courante = stages.find((s) => s.courante)
@@ -1070,15 +1074,7 @@ export default function ChantierGateTimeline({ installationId, installation, onA
         </div>
       )}
       {blockedReasons && (
-        <div
-          role="alert"
-          className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
-          data-testid="ch6-blocked-reasons"
-        >
-          <strong>Étape bloquée par un gate&nbsp;:</strong>
-          <ul className="flex flex-col gap-0.5">
-            {blockedReasons.map((r) => <li key={r}>• {r}</li>)}
-          </ul>
+        <RaisonsBlocageGate raisons={blockedReasons}>
           {blockedReasons.some((r) => /acompte/i.test(r)) && (
             <div className="mt-1 flex flex-col gap-1 text-foreground">
               <label htmlFor="ch6-motif-acompte">Motif (acompte non reçu)</label>
@@ -1091,7 +1087,7 @@ export default function ChantierGateTimeline({ installationId, installation, onA
               </Button>
             </div>
           )}
-        </div>
+        </RaisonsBlocageGate>
       )}
 
       {/* APX26 — les jalons datés (ex-section « Timeline ») vivent maintenant

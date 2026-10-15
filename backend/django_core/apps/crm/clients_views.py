@@ -202,11 +202,12 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
             user, cree = portail_services.provisionner_compte_partenaire(
                 request.user.company, partenaire.id, exiger_email=True)
         except portail_services.ProvisionnementSansEmail as exc:
-            return Response({'detail': str(exc)}, status=400)
+            # ENF11 (nocturne 15/10) — la fiche (sans e-mail) s'oppose : 409.
+            return Response({'detail': str(exc)}, status=409)
         if user is None:
             return Response(
                 {'detail': 'Partenaire inconnu pour cette société.'},
-                status=400)
+                status=404)
         return Response({
             'utilisateur_id': user.id,
             'username': user.username,
@@ -1600,8 +1601,9 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         return response
 
 
-@extend_schema(parameters=[sd.param('periode', description='AAAA-MM'), sd.param('equipe', OpenApiTypes.INT)],
-               responses=sd.OBJ)
+@extend_schema(parameters=[sd.param('periode', {'type': 'string', 'pattern': sd.MOTIF_PERIODE_MOIS},
+                                    description='AAAA-MM'),
+                           sd.param('equipe', OpenApiTypes.INT)], responses=sd.OBJ)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def forecast_rollup_view(request):
@@ -1614,20 +1616,14 @@ def forecast_rollup_view(request):
         return Response({'equipes': [], 'total_societe': {}})
     periode = None
     periode_param = request.query_params.get('periode')
-    if periode_param:
+    if periode_param is not None:
         # ENF11 — « AAAA-MM » : une période illisible est refusée (avant :
-        # ignorée, donc le roll-up du mois courant répondait 200).
-        try:
-            year, month = periode_param.split('-', 1)
-            periode = {
-                'period_type': 'month', 'period_year': int(year),
-                'period_month': int(month),
-            }
-            if not (1 <= periode['period_month'] <= 12
-                    and 1 <= periode['period_year'] <= 9999):
-                raise ValueError
-        except ValueError:
+        # ignorée, donc le roll-up du mois courant répondait 200). Nocturne
+        # 15/10 : le motif PUBLIÉ est exactement celui-ci (même prédicat).
+        if not re.fullmatch(sd.MOTIF_PERIODE_MOIS, periode_param):
             raise DRFValidationError({'periode': 'Format AAAA-MM attendu.'})
+        year, month = periode_param.split('-', 1)
+        periode = {'period_type': 'month', 'period_year': int(year), 'period_month': int(month)}
     manager = None if getattr(user, 'is_admin_role', False) else user
     from .selectors import forecast_rollup
     data = forecast_rollup(user.company, periode=periode, manager=manager)

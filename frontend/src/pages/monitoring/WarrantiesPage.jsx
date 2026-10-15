@@ -12,9 +12,12 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { BarArrondie, ChartEmpty, resolveColor } from '../../ui/charts'
 import { formatMAD, formatNumber, formatPercent } from '../../lib/format'
-import MonitoringNav from './MonitoringNav'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { lancerChargement } from '../../lib/chargementEffet'
+import EnTeteMonitoring from './EnTeteMonitoring'
+import { ChargementPage } from '../../ui/ChargementPage'
+import PiedModaleFormulaire from '../../ui/PiedModaleFormulaire'
 
 /* WR6 — Garanties de production (FG282/FG284) : CRUD des garanties par
    système + statut annuel (réel vs garanti dégradé → manque / compensation)
@@ -86,26 +89,17 @@ export default function WarrantiesPage() {
 
   useEffect(() => {
     if (!selected) return undefined
-    let active = true
-    const load = async () => {
-      // setState seulement APRÈS un await (pas de setState synchrone en effet).
-      await Promise.resolve()
-      if (!active) return
-      setLoadingDetail(true)
-      try {
+    return lancerChargement({
+      setLoading: setLoadingDetail,
+      executer: async (actif) => {
         const [s, c] = await Promise.all([
           monitoringApi.getWarrantyStatus(selected.id),
           monitoringApi.getWarrantyCurve(selected.id),
         ])
-        if (active) { setStatus(s.data); setCurve(c.data) }
-      } catch {
-        if (active) { setStatus(null); setCurve(null) }
-      } finally {
-        if (active) setLoadingDetail(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) { setStatus(s.data); setCurve(c.data) }
+      },
+      surErreur: () => { setStatus(null); setCurve(null) },
+    })
   }, [selected])
 
   const openCreate = () => {
@@ -240,13 +234,7 @@ export default function WarrantiesPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Garanties de production</h1>
-        <div className="page-subtitle">
-          Productible garanti par système, écart annuel et courbe de dégradation.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Garanties de production" sousTitre="Productible garanti par système, écart annuel et courbe de dégradation." />
 
       <div className="mb-4 flex justify-end">
         <Button onClick={openCreate}><Plus /> Nouvelle garantie</Button>
@@ -254,7 +242,7 @@ export default function WarrantiesPage() {
 
       {loading ? (
         showLoadingSpinner && (
-          <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+          <ChargementPage />
         )
       ) : warranties.length === 0 ? (
         <EmptyState
@@ -409,12 +397,8 @@ export default function WarrantiesPage() {
             <Label htmlFor="w-note">Note</Label>
             <Textarea id="w-note" rows={2} value={form.note} onChange={setField('note')} />
           </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button type="submit" loading={saving} disabled={!form.installation}>
-              {editing ? 'Enregistrer' : 'Créer'}
-            </Button>
-          </div>
+          <PiedModaleFormulaire onAnnuler={() => setDialogOpen(false)} saving={saving}
+                                desactive={!form.installation} enEdition={editing} />
         </form>
       </ResponsiveDialog>
     </div>

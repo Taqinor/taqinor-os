@@ -10,84 +10,61 @@ import { configureStore } from '@reduxjs/toolkit'
 // QG1 — genererPdfDevis renvoie une action « thunk-like » : dispatch(...) doit
 // rester chaînable en .unwrap() (comme le vrai createAsyncThunk) pour que
 // genererUnPdf() poursuive jusqu'au polling dans le test dédié plus bas.
-vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    fetchDevis: vi.fn(() => ({ type: 'ventes/fetchDevis/noop' })),
-    genererPdfDevis: () => {
-      const action = { type: 'ventes/genererPdfDevis/noop' }
-      action.unwrap = () => Promise.resolve()
-      return action
-    },
-    convertirDevisEnBC: () => ({ type: 'ventes/convertirDevisEnBC/noop' }),
-  }
-})
+vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) =>
+  (await import('../../test/devisListMocks.js')).ventesSliceMock(importOriginal))
 
 // WR1 — espionne l'appel réseau du refus dédié (jamais un PATCH statut direct).
 // QG1 — espionne getDevisById (polling) + telechargerPdfDevis (ouverture auto).
 // QG10 — getVarianteConfig (pré-remplit le %) + dupliquerVariante (création).
 // WR2 — shareLinkDevis (« Copier le lien proposition »).
 // QX22 — whatsappPreviewDevis (aperçu lecture seule) + whatsappDevis (envoi réel).
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      refuserDevis: vi.fn(() => Promise.resolve({ data: { statut: 'refuse' } })),
-      getDevisById: vi.fn(() => Promise.resolve({ data: { fichier_pdf: '/media/devis/DEV-PDF-AUTO.pdf' } })),
-      // WIR217 — le sondage PDF lit l'ETAT du rendu (pret/en_cours/echec), et
-      // non plus le devis entier : un echec definitif etait invisible.
-      etatPdfDevis: vi.fn(() => Promise.resolve({
-        data: { devis: 99, statut: 'pret', fichier_pdf: true, erreur: null, date: null },
-      })),
-      // WIR225 — le panneau de comparaison est servi par le SERVEUR (le groupe
-      // complet de variantes), plus par une chaine reconstruite localement.
-      getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
-      // WIR274 — fil du devis + composeur de note manuelle (`noterDevis`
-      // n'etait appele que par l'auto-note de relance WhatsApp, VX222).
-      historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
-      noterDevis: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-      accepterDevis: vi.fn(() => Promise.resolve({ data: {} })),
-      telechargerPdfDevis: vi.fn(() => Promise.resolve({
-        data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
-        headers: {},
-      })),
-      getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '25.00' } })),
-      dupliquerVariante: vi.fn(() => Promise.resolve({ data: [] })),
-      // GAMMES — création de la SŒUR « gamme » (devis frère complet).
-      dupliquerVarianteGamme: vi.fn(() => Promise.resolve({
-        data: { source: {}, gamme: {}, gammes: [] },
-      })),
-      shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
-      whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
-      whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
-      // QJR659 — partager le PDF (feuille native résolue) vaut envoi.
-      partagePdfDevis: vi.fn(() => Promise.resolve({ data: { devis_statut: 'envoye' } })),
-      // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
-      // toucher le réseau réel dans le test du toast.warning associé.
-      reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
-      // QJR624 — l'acompte personnalisé du dialogue PDF est PATCHé dans
-      // l'échéancier du devis avant le rendu.
-      patchDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    },
-  }
-})
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    refuserDevis: vi.fn(() => Promise.resolve({ data: { statut: 'refuse' } })),
+    getDevisById: vi.fn(() => Promise.resolve({ data: { fichier_pdf: '/media/devis/DEV-PDF-AUTO.pdf' } })),
+    // WIR217 — le sondage PDF lit l'ETAT du rendu (pret/en_cours/echec), et
+    // non plus le devis entier : un echec definitif etait invisible.
+    etatPdfDevis: vi.fn(() => Promise.resolve({
+      data: { devis: 99, statut: 'pret', fichier_pdf: true, erreur: null, date: null },
+    })),
+    // WIR225 — le panneau de comparaison est servi par le SERVEUR (le groupe
+    // complet de variantes), plus par une chaine reconstruite localement.
+    getVariantes: vi.fn(() => Promise.resolve({ data: [] })),
+    // WIR274 — fil du devis + composeur de note manuelle (`noterDevis`
+    // n'etait appele que par l'auto-note de relance WhatsApp, VX222).
+    historiqueDevis: vi.fn(() => Promise.resolve({ data: [] })),
+    noterDevis: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    accepterDevis: vi.fn(() => Promise.resolve({ data: {} })),
+    telechargerPdfDevis: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+      headers: {},
+    })),
+    getVarianteConfig: vi.fn(() => Promise.resolve({ data: { variante_pct: '25.00' } })),
+    dupliquerVariante: vi.fn(() => Promise.resolve({ data: [] })),
+    // GAMMES — création de la SŒUR « gamme » (devis frère complet).
+    dupliquerVarianteGamme: vi.fn(() => Promise.resolve({
+      data: { source: {}, gamme: {}, gammes: [] },
+    })),
+    shareLinkDevis: vi.fn(() => Promise.resolve({ data: { token: 'tok123', path: '/proposition/tok123' } })),
+    whatsappPreviewDevis: vi.fn(() => Promise.resolve({ data: { wa_url: 'https://wa.me/212600000000', message: 'Bonjour' } })),
+    whatsappDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
+    // QJR659 — partager le PDF (feuille native résolue) vaut envoi.
+    partagePdfDevis: vi.fn(() => Promise.resolve({ data: { devis_statut: 'envoye' } })),
+    // VX216(a) — « Réviser (nouvelle version) », mocké pour ne jamais
+    // toucher le réseau réel dans le test du toast.warning associé.
+    reviserDevis: vi.fn(() => Promise.resolve({ data: {} })),
+    // QJR624 — l'acompte personnalisé du dialogue PDF est PATCHé dans
+    // l'échéancier du devis avant le rendu.
+    patchDevis: vi.fn(() => Promise.resolve({ data: {} })),
+  }))
 
 // QX26 — motifs de perte (taxonomie CRM, endpoint company-scoped existant).
-vi.mock('../../api/crmApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getMotifsPerte: vi.fn(() => Promise.resolve({
-        data: [{ id: 5, nom: 'Trop cher' }, { id: 6, nom: 'Choisi un concurrent' }],
-      })),
-    },
-  }
-})
+vi.mock('../../api/crmApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    getMotifsPerte: vi.fn(() => Promise.resolve({
+      data: [{ id: 5, nom: 'Trop cher' }, { id: 6, nom: 'Choisi un concurrent' }],
+    })),
+  }))
 
 // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11).
 vi.mock('../../api/uxviewsApi', async () =>

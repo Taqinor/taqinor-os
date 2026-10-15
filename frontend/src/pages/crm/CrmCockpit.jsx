@@ -16,6 +16,7 @@ import RelancesDuJourWidget from './RelancesDuJourWidget'
 import ControleSuiviPanel from './ControleSuiviPanel'
 import KpiRelancesPanel from './KpiRelancesPanel'
 import PlacementAnciensLeadsCard from './PlacementAnciensLeadsCard'
+import { ChiffresCockpit } from '../../ui/module/ChiffresCockpit'
 
 /* ============================================================================
    ODY15 — Cockpit CRM : porte d'entrée de l'app (ModuleHero VX15 + actions
@@ -193,23 +194,7 @@ export default function CrmCockpit() {
             </Button>
           </>
         )}
-        kpiSlot={(
-          <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3" data-testid="crm-cockpit-stats">
-            {stats.map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => navigate(s.to)}
-                className="rounded-lg border border-border bg-card p-3 text-left transition-colors hover:bg-muted"
-              >
-                <span className="block text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {s.label}
-                </span>
-                <span className="font-display text-xl font-semibold tabular-nums">{s.value}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        kpiSlot={<ChiffresCockpit stats={stats} onOpen={navigate} colonnes="grid-cols-2" testId="crm-cockpit-stats" />}
       />
 
       {/* COCKPIT-CONTRÔLE passe 2 (fondateur, 30/09/2026) — UNE seule page, le MÊME

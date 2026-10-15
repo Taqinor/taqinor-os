@@ -202,11 +202,21 @@ class FkSocieteGedTests(TestCase):
         self.assertFalse(PlanificationDocument.objects.exists())
 
     def test_routage_tags_defaut_etranger(self):
-        resp = self.api.post(BASE + 'routages-documentaires/', {
-            'source': 'ventes_devis', 'cabinet_cible': self.cab_a.pk,
-            'tags_defaut': [self.tag_b.pk]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ENF11 — corps COMPLET (``dossier_cible`` est requis : sans lui, l'erreur
+        # mêlée gardait le 400) : seul le tag d'une autre société manque → 404,
+        # même corps qu'un tag absent (aucun oracle), rien n'est créé.
+        def poster(tag_id):
+            return self.api.post(BASE + 'routages-documentaires/', {
+                'source': 'ventes_devis', 'cabinet_cible': self.cab_a.pk,
+                'dossier_cible': 'Devis', 'tags_defaut': [tag_id]}, format='json')
+        resp = poster(self.tag_b.pk)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('tags_defaut', resp.data)
+        self.assertEqual(resp.data['tags_defaut'][0].code, 'does_not_exist', resp.data)
+        absent = poster(99999999)
+        self.assertEqual(absent.status_code, 404, absent.data)
+        self.assertEqual(str(resp.data['tags_defaut']).replace(str(self.tag_b.pk), 'N'),
+                         str(absent.data['tags_defaut']).replace('99999999', 'N'))
         self.assertFalse(RoutageDocumentaire.objects.filter(
             source='ventes_devis').exists())
 

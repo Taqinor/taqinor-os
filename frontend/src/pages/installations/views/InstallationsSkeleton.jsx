@@ -6,6 +6,7 @@
 // Entièrement masqué aux lecteurs d'écran : le libellé « Chargement » reste dans
 // la page (région live).
 import { Skeleton } from '../../../ui'
+import { TableauLignes } from '../../../ui/TableauDefilant'
 
 const KANBAN_COLS = 5 // miroir de l'entonnoir chantier (statuses.js)
 const CARDS_PER_COL = [3, 2, 2, 1, 1]
@@ -54,21 +55,17 @@ function KanbanSkeleton() {
 
 function ListSkeleton() {
   return (
-    <div className="rounded-xl border border-border bg-card p-2">
-      <table className="w-full">
-        <tbody>
-          {Array.from({ length: LIST_ROWS }).map((unused, r) => (
-            <tr key={r}>
-              {Array.from({ length: LIST_COLS }).map((u, c) => (
-                <td key={c} className="px-3 py-2.5">
-                  <Skeleton className={c === 0 ? 'h-3.5 w-3/4' : 'h-3.5 w-1/2'} />
-                </td>
-              ))}
-            </tr>
+    <TableauLignes enveloppe="rounded-xl border border-border bg-card p-2" className="w-full">
+      {Array.from({ length: LIST_ROWS }).map((unused, r) => (
+        <tr key={r}>
+          {Array.from({ length: LIST_COLS }).map((u, c) => (
+            <td key={c} className="px-3 py-2.5">
+              <Skeleton className={c === 0 ? 'h-3.5 w-3/4' : 'h-3.5 w-1/2'} />
+            </td>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </tr>
+      ))}
+    </TableauLignes>
   )
 }
 

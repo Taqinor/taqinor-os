@@ -96,6 +96,15 @@ class TestDemandeTransfert(TestCase):
                              self._payload(quantite=0), format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_quantite_absente_400(self):
+        # ENF11 (nocturne 15/10) — sans `quantite`, le défaut modèle 0 était
+        # enregistré puis servi hors du schéma de réponse (minimum 1).
+        payload = self._payload()
+        payload.pop('quantite')
+        resp = self.api.post(f'{BASE}/demandes-transfert/', payload, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('quantite', resp.data)
+
     def test_emplacement_other_company_rejected(self):
         other = make_company()
         dst_other = make_emplacement(other)

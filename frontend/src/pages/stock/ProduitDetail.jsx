@@ -34,6 +34,8 @@ import ProfilsSaisonniersSection from './ProfilsSaisonniersSection.jsx'
 import { STAGE_LABELS } from '../../features/crm/stages.js'
 import { STATUT_DEVIS_LABELS } from '../../features/ventes/devisStatuts.js'
 import { STATUS_LABELS as CHANTIER_STATUT_LABELS } from '../../features/installations/statuses.js'
+import { AlerteErreur } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -351,8 +353,8 @@ function OngletEnCommande({ produit }) {
       {sources.length === 0 ? (
         <p className="py-2 text-sm text-muted-foreground">Aucun bon de commande ouvert pour ce produit.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[28rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[28rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Bon de commande</th>
@@ -361,18 +363,16 @@ function OngletEnCommande({ produit }) {
                 <th className="px-3 py-2 text-right font-semibold">Reste à recevoir</th>
               </tr>
             </thead>
-            <tbody>
-              {sources.map((s) => (
-                <tr key={s.bon_commande_id} className="border-t border-border">
-                  <td className="px-3 py-2 font-mono text-xs">{s.reference}</td>
-                  <td className="px-3 py-2">{s.fournisseur_nom ?? <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-3 py-2">{fmtDateFR(s.date_livraison_prevue)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{s.quantite_restante}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {sources.map((s) => (
+            <tr key={s.bon_commande_id} className="border-t border-border">
+              <td className="px-3 py-2 font-mono text-xs">{s.reference}</td>
+              <td className="px-3 py-2">{s.fournisseur_nom ?? <span className="text-muted-foreground">—</span>}</td>
+              <td className="px-3 py-2">{fmtDateFR(s.date_livraison_prevue)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{s.quantite_restante}</td>
+            </tr>
+          ))}
+        </TableauLignes>
       )}
     </div>
   )
@@ -415,8 +415,8 @@ function OngletPrevisionnel({ produitId }) {
       {timeline.length === 0 ? (
         <p className="py-2 text-sm text-muted-foreground">Aucun mouvement attendu.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[28rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[28rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Date</th>
@@ -426,31 +426,29 @@ function OngletPrevisionnel({ produitId }) {
                 <th className="px-3 py-2 text-right font-semibold">Solde projeté</th>
               </tr>
             </thead>
-            <tbody>
-              {timeline.map((t, i) => (
-                <tr key={i} className="border-t border-border">
-                  <td className="px-3 py-2">{fmtDateFR(t.date)}</td>
-                  <td className="px-3 py-2">
-                    <Badge tone={t.type === 'entree' ? 'success' : 'warning'}>
-                      {t.type === 'entree' ? 'Entrée attendue' : 'Sortie réservée'}
-                    </Badge>
-                  </td>
-                  <td className="px-3 py-2">
-                    {t.reference
-                      ? <span className="font-mono text-xs">{t.reference}{t.fournisseur_nom ? ` · ${t.fournisseur_nom}` : ''}</span>
-                      : <span className="text-muted-foreground">—</span>}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    <span className={t.quantite >= 0 ? 'text-success' : 'text-destructive'}>
-                      {t.quantite >= 0 ? '+' : ''}{t.quantite}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{t.solde_projete}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {timeline.map((t, i) => (
+            <tr key={i} className="border-t border-border">
+              <td className="px-3 py-2">{fmtDateFR(t.date)}</td>
+              <td className="px-3 py-2">
+                <Badge tone={t.type === 'entree' ? 'success' : 'warning'}>
+                  {t.type === 'entree' ? 'Entrée attendue' : 'Sortie réservée'}
+                </Badge>
+              </td>
+              <td className="px-3 py-2">
+                {t.reference
+                  ? <span className="font-mono text-xs">{t.reference}{t.fournisseur_nom ? ` · ${t.fournisseur_nom}` : ''}</span>
+                  : <span className="text-muted-foreground">—</span>}
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">
+                <span className={t.quantite >= 0 ? 'text-success' : 'text-destructive'}>
+                  {t.quantite >= 0 ? '+' : ''}{t.quantite}
+                </span>
+              </td>
+              <td className="px-3 py-2 text-right font-semibold tabular-nums">{t.solde_projete}</td>
+            </tr>
+          ))}
+        </TableauLignes>
       )}
     </div>
   )
@@ -830,11 +828,7 @@ export function RebutModal({ produit, emplacements = [], onClose, onDone }) {
                  onChange={(e) => setReferenceChantier(e.target.value)} />
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreur error={error} />
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>

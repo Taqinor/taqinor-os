@@ -292,15 +292,20 @@ class _OrdreStatutDerive(filters.OrderingFilter):
 
 
 @extend_schema_view(
-    partial_update=extend_schema(responses=CalepinageLectureSerializer),
+    # ENF11 (nocturne 15/10) — ACAL179 refuse toute clé ni inscriptible ni
+    # ignorée d'un PATCH : le corps publié le dit (additionalProperties false).
+    partial_update=extend_schema(responses=CalepinageLectureSerializer,
+                                 extensions={EXTENSION_CORPS_RESSERRE: {
+                                     'properties': {cle: {} for cle in CalepinageSerializer.cles_patch()},
+                                     'additionalProperties': False}}),
     list=extend_schema(responses=CalepinageLectureSerializer(many=True),
                        parameters=[
         OpenApiParameter('q', OpenApiTypes.STR, OpenApiParameter.QUERY,
                          required=False,
                          description="Recherche libre (titre, référence, client)."),
-        OpenApiParameter('statut', OpenApiTypes.STR, OpenApiParameter.QUERY,
-                         required=False,
-                         description="Statut du calepinage (vocabulaire du serveur)."),
+        OpenApiParameter('statut', {'type': 'string', 'enum': ['', *Calepinage.Statut.values]},
+                         OpenApiParameter.QUERY, required=False,
+                         description="Statut du calepinage (vocabulaire du serveur ; vide = tous)."),
         OpenApiParameter('depuis', OpenApiTypes.STR, OpenApiParameter.QUERY,
                          required=False,
                          description="Date ou date-heure ISO : calepinages modifiés depuis."),

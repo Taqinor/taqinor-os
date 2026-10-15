@@ -88,13 +88,6 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
     [produits])
 
   const famille = typeFilter ? familleAttendue(typeFilter) : null
-  const isRecommande = (p) => !!typeFilter && (
-    classifyProduct(p.nom) === typeFilter
-    || (famille !== null && typeOfProduit(p) === famille)
-    || p.role_devis_effectif === typeFilter
-    || (famille !== null && famille === familleAttendue(p.role_devis_effectif))
-  )
-
   // STKCAT13 — chargement paresseux des catégories, uniquement à l'ouverture
   // de la création rapide (jamais côté rendu normal du picker). Échec
   // silencieux (liste vide) : « + Nouveau » reste utilisable sans catégorie.
@@ -118,6 +111,12 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
 
   // Lignes à plat (en-têtes + articles) dans l'ordre délibéré de la taxonomie
   const { rows, selectables } = useMemo(() => {
+    const isRecommande = (p) => !!typeFilter && (
+      classifyProduct(p.nom) === typeFilter
+      || (famille !== null && typeOfProduit(p) === famille)
+      || p.role_devis_effectif === typeFilter
+      || (famille !== null && famille === familleAttendue(p.role_devis_effectif))
+    )
     const actifs = produits.filter((p) => !p.is_archived)
     const matches = searchCatalogue(actifs, query)
     const rows = []
@@ -160,7 +159,6 @@ export default function ProduitPicker({ produits, value, onChange, invalid, type
       }
     }
     return { rows, selectables }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [produits, query, typeFilter, famille])
 
   useEffect(() => {

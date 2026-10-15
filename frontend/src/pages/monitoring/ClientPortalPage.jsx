@@ -8,7 +8,8 @@ import {
 } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { formatMAD, formatNumber } from '../../lib/format'
-import MonitoringNav from './MonitoringNav'
+import { lancerChargement } from '../../lib/chargementEffet'
+import EnTeteMonitoring from './EnTeteMonitoring'
 
 /* WR7 — Portail environnemental client (FG288). Synthèse CUMULÉE des systèmes
    d'un client : production / économies / CO₂ évité, depuis
@@ -37,22 +38,14 @@ export default function ClientPortalPage() {
 
   useEffect(() => {
     if (!clientId) return undefined
-    let active = true
-    const load = async () => {
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const r = await monitoringApi.getClientPortal(clientId)
-        if (active) { setPortal(r.data); setError(null) }
-      } catch {
-        if (active) setError('Impossible de charger le portail client.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) { setPortal(r.data); setError(null) }
+      },
+      surErreur: () => setError('Impossible de charger le portail client.'),
+    })
   }, [clientId])
 
   const stats = useMemo(() => (portal ? [
@@ -82,13 +75,7 @@ export default function ClientPortalPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Portail client</h1>
-        <div className="page-subtitle">
-          Synthèse environnementale cumulée des systèmes d’un client : production, économies, CO₂ évité.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Portail client" sousTitre="Synthèse environnementale cumulée des systèmes d’un client : production, économies, CO₂ évité." />
 
       <div className="mb-4 min-w-[18rem]">
         {loadingClients ? (

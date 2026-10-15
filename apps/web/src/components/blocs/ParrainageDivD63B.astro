@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — parrainage.astro
+const { steps } = Astro.props as Record<string, any>;
+---
+        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+          {steps.map((s: any, i: any) => (
+            <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+              <p class="fig lum text-3xl">{s.n}</p>
+              <h3 class="display mt-2 text-2xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </div>
+          ))}
+        </div>

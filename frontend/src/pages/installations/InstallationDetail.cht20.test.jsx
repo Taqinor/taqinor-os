@@ -1,10 +1,8 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
+import { renderInstallationDetail } from '../../test/installationDetailHarness'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { MemoryRouter } from 'react-router-dom'
-import { configureStore } from '@reduxjs/toolkit'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* ============================================================================
    CHT20 — Fiche chantier : la passerelle vers ses satellites.
@@ -18,44 +16,25 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    chantier dans 4 menus ».
    ========================================================================== */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const mocks = vi.hoisted(() => ({
   getReglementaire: vi.fn(),
 }))
 
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/installationsApi', async () => ({
   default: {
-    getHistorique: () => Promise.resolve({ data: [] }),
-    getTypesIntervention: () => Promise.resolve({ data: [] }),
+    ...(await import('../../test/selectNatif')).installationsLecturesVides,
   },
 }))
 
-vi.mock('../../api/savApi', () => ({
-  default: {
-    getEquipements: () => Promise.resolve({ data: [] }),
-    getTickets: () => Promise.resolve({ data: [] }),
-    getContrats: () => Promise.resolve({ data: [] }),
-  },
-}))
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
 
-vi.mock('../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: () => Promise.resolve({ data: [] }),
-  },
-}))
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
 
-vi.mock('../../api/ventesApi', () => ({
+vi.mock('../../api/ventesApi', async () => ({
   default: {
-    getDevisById: () => Promise.resolve({ data: { lignes: [] } }),
+    ...(await import('../../test/selectNatif')).ventesApiMock.default,
     getReglementaire: (...args) => mocks.getReglementaire(...args),
   },
 }))
@@ -67,26 +46,6 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 import InstallationDetail from './InstallationDetail'
-
-function makeStore() {
-  return configureStore({
-    reducer: {
-      stock: (state = { produits: [{ id: 1, nom: 'Panneau' }] }) => state,
-    },
-  })
-}
-
-function renderDetail(installation) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter initialEntries={['/chantiers']}>
-        <ThemeProvider>
-          <InstallationDetail installation={installation} onClose={() => {}} onSaved={() => {}} />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
 
 const CHANTIER = {
   id: 601,
@@ -107,22 +66,13 @@ beforeEach(() => {
 })
 
 describe('InstallationDetail — « Autour de ce chantier » (CHT20)', () => {
-  it('les 5 liens satellites naviguent vers leur route avec ?chantier=<id>', async () => {
-    const user = userEvent.setup()
-    renderDetail(CHANTIER)
-
-    const attendus = [
-      ['Réserves', '/btp-chantier/reserves?chantier=601'],
-      ['RFI', '/btp-chantier/rfi?chantier=601'],
-      ['Journal', '/btp-chantier/journal?chantier=601'],
-      ['Avenants', '/btp-chantier/avenants?chantier=601'],
-      ['DGD', '/btp-chantier/dgd?chantier=601'],
-    ]
-    for (const [label, url] of attendus) {
-      const bouton = await screen.findByRole('button', { name: label })
-      await user.click(bouton)
-      expect(navigateMock).toHaveBeenCalledWith(url)
+  it('ACHT65 — aucun bouton ne mène à /btp-chantier/* (module parqué, aucune route)', async () => {
+    renderInstallationDetail(CHANTIER)
+    await screen.findByRole('button', { name: /Voir le devis/ })
+    for (const label of ['Réserves', 'RFI', 'Journal', 'Avenants', 'DGD']) {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
     }
+    expect(navigateMock).not.toHaveBeenCalledWith(expect.stringContaining('/btp-chantier'))
   })
 
   it('affiche le lien « Dossier réglementaire » quand un RegulatoryDossier existe pour le devis, et navigue vers la liste', async () => {
@@ -130,7 +80,7 @@ describe('InstallationDetail — « Autour de ce chantier » (CHT20)', () => {
       data: { results: [{ id: 3, devis: CHANTIER.devis, statut: 'depose', statut_label: 'Déposé' }] },
     })
     const user = userEvent.setup()
-    renderDetail(CHANTIER)
+    renderInstallationDetail(CHANTIER)
 
     const bouton = await screen.findByRole('button', { name: /Dossier réglementaire \(Déposé\)/ })
     await user.click(bouton)
@@ -140,7 +90,7 @@ describe('InstallationDetail — « Autour de ce chantier » (CHT20)', () => {
   })
 
   it("masque le lien « Dossier réglementaire » quand aucun dossier n'existe", async () => {
-    renderDetail(CHANTIER)
+    renderInstallationDetail(CHANTIER)
     await waitFor(() => expect(mocks.getReglementaire).toHaveBeenCalled())
     await waitFor(() => expect(
       screen.queryByRole('button', { name: /Dossier réglementaire/ }),

@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — regularization-article-33.astro
+const { steps } = Astro.props as Record<string, any>;
+---
+      <ol class="mt-8 border-l-2 border-white/15" data-stagger>
+        {steps.map((s: any, i: any) => (
+          <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
+            <span class="fig lum absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full border border-azur-200/40 bg-nuit text-lg">{i + 1}</span>
+            <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+          </li>
+        ))}
+      </ol>

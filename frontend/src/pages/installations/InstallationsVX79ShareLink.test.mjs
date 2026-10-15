@@ -11,19 +11,22 @@ import { dirname, join } from 'node:path'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'InstallationsPage.jsx'), 'utf8')
+const HOOK = readFileSync(join(HERE, '..', '..', 'hooks', 'useDeepLinkId.js'), 'utf8')
 
 test('VX79 : ?id=<pk> ouvre le chantier ciblé (état dérivé, patron ?lead=)', () => {
   assert.match(SRC, /useSearchParams/)
-  assert.match(SRC, /const wantedId = searchParams\.get\('id'\)/)
-  assert.match(SRC, /const deepItem = useMemo\(/)
+  // Logique PARTAGÉE : hooks/useDeepLinkId.js (ENF19), consommée par cet écran.
+  assert.match(HOOK, /const wantedId = searchParams\.get\('id'\)/)
+  assert.match(HOOK, /const deepItem = useMemo\(/)
+  assert.match(SRC, /useDeepLinkId\(searchParams, setSearchParams, items\)/)
   // Le panneau s'ouvre sur la sélection OU le chantier du lien profond.
   assert.match(SRC, /const detailItem = selected \?\? deepItem/)
   assert.match(SRC, /<InstallationDetail installation=\{detailItem\}/)
 })
 
 test('VX79 : fermer retire le paramètre ?id de l\'URL (ne ré-ouvre pas)', () => {
-  assert.match(SRC, /const clearDeepLink = \(\) =>/)
-  assert.match(SRC, /next\.delete\('id'\)/)
+  assert.match(HOOK, /const clearDeepLink = \(\) =>/)
+  assert.match(HOOK, /next\.delete\('id'\)/)
   assert.match(SRC, /const onClose = \(\) => \{ setSelected\(null\); clearDeepLink\(\) \}/)
 })
 

@@ -90,7 +90,7 @@ class LotSortieTests(TestCase):
         r = self.api.post(
             f'/api/django/stock/lots-entrepot/{self.lot.id}/sortir/',
             {'quantite': 11}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF11 : état
         self.lot.refresh_from_db()
         self.produit.refresh_from_db()
         self.assertEqual(self.lot.quantite_restante, 10)

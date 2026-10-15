@@ -7,6 +7,7 @@
 import {
   describe, it, expect, vi, afterEach,
 } from 'vitest'
+import { parcoursVisiteAcceptee } from '../../../test/parcoursVisiteAcceptee'
 import {
   render, screen, cleanup, fireEvent, waitFor,
 } from '@testing-library/react'
@@ -122,19 +123,7 @@ describe('VISCAD6 — issue « Visite acceptée » du mini-formulaire Fait', () 
   // planification AVEC la touche (`etape`) — c'est le serveur qui la clôt.
   it('choisie puis confirmée : ouvre la modale SANS rien envoyer ; « Date pas encore fixée » envoie l\'issue exacte', async () => {
     const onFait = vi.fn(() => Promise.resolve({}))
-    render(
-      <RelanceEtapeRow
-        etape={ETAPE_APRES_DEVIS} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop}
-      />,
-    )
-    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
-    expect(onFait).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Date pas encore fixée' }))
-    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
-      ETAPE_APRES_DEVIS.id, { outcome: 'visite_acceptee' }))
+    await parcoursVisiteAcceptee(ETAPE_APRES_DEVIS, onFait)
     // Jamais un message de « prochaine touche » inventé côté écran ({} ne
     // porte pas `prochaine_touche`).
     expect(toastInfo).not.toHaveBeenCalled()

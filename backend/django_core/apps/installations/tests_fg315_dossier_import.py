@@ -125,7 +125,7 @@ class TestAvancer(TestCase):
         self.d.save(update_fields=['statut_douane'])
         r = self.api.post(f'{BASE}/dossiers-import/{self.d.id}/avancer/',
                           {'statut_douane': 'commande'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : état du dossier
 
     def test_unknown_statut_rejected(self):
         r = self.api.post(f'{BASE}/dossiers-import/{self.d.id}/avancer/',

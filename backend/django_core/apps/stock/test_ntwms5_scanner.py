@@ -182,4 +182,14 @@ class TestMouvementScanne(Ntwms5Base):
         resp = self.api.post('/api/django/stock/scanner/mouvement/', {
             'produit': etranger.id, 'type_mouvement': 'entree', 'quantite': 1,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ENF11 (nocturne 15/10) — produit d'une autre société = introuvable
+        # (IntrouvableMetier) : 404, même corps qu'un produit absent, aucun
+        # mouvement posé.
+        self.assertEqual(resp.status_code, 404)
+        absent = self.api.post('/api/django/stock/scanner/mouvement/', {
+            'produit': 99999999, 'type_mouvement': 'entree', 'quantite': 1,
+        }, format='json')
+        self.assertEqual(absent.status_code, 404)
+        self.assertEqual(str(resp.data.get('detail')), str(absent.data.get('detail')))
+        self.assertIn('introuvable', str(resp.data.get('detail')))
+        self.assertFalse(MouvementStock.objects.filter(produit=etranger).exists())

@@ -164,7 +164,7 @@ class TestGardeAntiEffacement(STKCAT20Base):
 
     def test_vider_avec_null_est_refuse(self):
         r = self._patch({'courbe_pompe': None})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : état
         self.assertIn('courbe_pompe', r.data)
         self.pompe.refresh_from_db()
         self.assertEqual(
@@ -173,7 +173,7 @@ class TestGardeAntiEffacement(STKCAT20Base):
 
     def test_vider_avec_dict_vide_est_refuse(self):
         r = self._patch({'courbe_pompe': {}})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : état
         self.pompe.refresh_from_db()
         self.assertTrue(self.pompe.courbe_pompe)
 

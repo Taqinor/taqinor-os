@@ -17,11 +17,10 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
-import { PageHeader } from '../../ui/PageHeader'
 import { Button, EmptyState, Spinner } from '../../ui'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import ChoisirDevisPourDesign from '../../features/ventes/ChoisirDevisPourDesign'
 import { fetchAllPages } from '../../utils/fetchAllPages'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 export default function Conception3DPage() {
   const navigate = useNavigate()
@@ -51,9 +50,7 @@ export default function Conception3DPage() {
 
   return (
     <div className="page" data-testid="conception-3d-page">
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={Box}
         title="Conception 3D"
         subtitle="Calepinez la toiture d'un devis en 3D."

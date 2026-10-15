@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 
 /* XMFG1-16 — AteliersPage : câble le sous-système MRP-lite (ordres
    d'assemblage / démontage, kits). On vérifie : (1) le chargement liste les
@@ -21,23 +17,9 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
 import AteliersPage from './AteliersPage'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
-function authReducer(role) {
-  return (state = { role }) => state
-}
-
-function renderPage(role = 'responsable') {
-  const store = configureStore({ reducer: { auth: authReducer(role) } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ThemeProvider>
-          <AteliersPage />
-        </ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderPage = (role = 'responsable') => renderAvecAuth(<AteliersPage />, { role }, { theme: true })
 
 beforeEach(() => {
   api.getOrdresAssemblage.mockResolvedValue({

@@ -21,14 +21,15 @@
 // `IsAnyRole`), et chaque ligne affiche désormais `prochaine_touche_crm` : la
 // touche CRM (`crm.RelanceEtape`) déjà programmée pour le lead d'origine, pour
 // que personne ne relance deux fois le même client le même jour.
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, Clock, FileWarning, HelpCircle, PhoneCall, MessageCircle, Flame, Receipt,
 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import installationsApi from '../../api/installationsApi'
-import { TooltipProvider, Card, Badge, EmptyState, Skeleton, Button } from '../../ui'
+import { TooltipProvider, Card, Badge, Button } from '../../ui'
+import { EtatActionBoard, EnTeteActionBoard, CartePanier, useTotalBuckets } from '../../ui/module/ActionBoard'
 import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
 // QJR635 — LE constructeur wa.me partagé (normalise « 06… » → 2126…) ;
 // `draft` (QX30) pré-remplit `?text=` quand le backend en fournit un.
@@ -104,109 +105,72 @@ export default function DevisActionBoardPage() {
       .catch(() => setChantiersAFacturer([]))
   }, [])
 
-  const totalCount = useMemo(() => {
-    if (!board) return 0
-    return Object.values(board.buckets ?? {}).reduce((sum, b) => sum + b.count, 0)
-  }, [board])
+  const totalCount = useTotalBuckets(board)
 
-  if (loading) {
-    return (
-      <div className="ui-root mx-auto flex max-w-6xl flex-col gap-4 p-1">
-        {Array.from({ length: 4 }).map((unused, i) => <Skeleton key={i} className="h-40 w-full" />)}
-      </div>
-    )
-  }
-  if (loadError || !board) {
-    return (
-      <div className="ui-root mx-auto max-w-6xl p-1">
-        <EmptyState icon={AlertTriangle} title="Chargement impossible"
-                    description="Le tableau d'action n'a pas pu être chargé. Réessayez."
-                    action={<Button size="sm" variant="outline" onClick={charger}>Réessayer</Button>} />
-      </div>
-    )
+  if (loading || loadError || !board) {
+    return <EtatActionBoard loading={loading} squelettes={4} onRetry={charger} />
   }
 
   return (
     <TooltipProvider delayDuration={200}>
       <div className="ui-root mx-auto flex max-w-6xl flex-col gap-5 p-1">
-        <header>
-          <h1 className="font-display text-2xl font-bold tracking-tight">Relances du jour</h1>
-          <p className="text-sm text-muted-foreground">
-            {totalCount} devis nécessitant une action
-          </p>
-        </header>
+        <EnTeteActionBoard titre="Relances du jour" sousTitre={<>{totalCount} devis nécessitant une action</>} />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {BUCKETS.map(({ key, label, icon: Icon, tone }) => {
             const bucket = board.buckets?.[key] ?? { count: 0, ids: [] }
             return (
-              <Card key={key} className="flex flex-col gap-2 p-3">
-                <div className="flex items-center gap-2">
-                  {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-                  <span className="flex-1 font-display text-sm font-semibold">{label}</span>
-                  <Badge tone={tone}>{bucket.count}</Badge>
-                </div>
-                {bucket.ids.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">Aucun devis.</p>
-                ) : (
-                  <ul className="flex flex-col gap-1.5">
-                    {bucket.ids.slice(0, 20).map((id) => {
-                      const d = devisMap[id]
-                      // QX30 — brouillon wa.me pré-rempli fourni par le backend
-                      // pour cette file (queue engagement) ; absent ailleurs.
-                      const draft = board.wa_drafts?.[id]
-                      const tel = telHref(d?.client_telephone)
-                      // QJR635 — `||` : le sélecteur renvoie '' (jamais null)
-                      // sans WhatsApp ; `??` ne repliait donc jamais.
-                      const wa = waHref(d?.client_whatsapp || d?.client_telephone || d?.telephone, draft)
-                      // CAD115 (SIG9) — prochaine touche CRM déjà programmée
-                      // pour le lead d'origine : évite qu'une relance parte
-                      // ici alors que la cadence de Meryem s'en charge déjà
-                      // le même jour. `null` quand aucune touche n'est due.
-                      const touche = d?.prochaine_touche_crm
-                      return (
-                        <li key={id} className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              className="flex-1 truncate text-left text-xs text-primary hover:underline"
-                              onClick={() => navigate(`/ventes/devis?devis=${id}`)}
-                              title={d?.total_ttc != null ? formatMAD(d.total_ttc) : undefined}
-                            >
-                              {d?.reference ?? `#${id}`}{d?.client_nom ? ` — ${d.client_nom}` : ''}
-                            </button>
-                            {tel && (
-                              <a href={tel} title="Appeler" aria-label={`Appeler ${d?.client_nom ?? ''}`}
-                                 className="text-muted-foreground hover:text-foreground">
-                                <PhoneCall className="size-3.5" aria-hidden="true" />
-                              </a>
-                            )}
-                            {wa && (
-                              <a href={wa} target="_blank" rel="noopener noreferrer"
-                                 title={draft ? 'Ouvrir WhatsApp (message pré-rempli)' : 'Ouvrir WhatsApp'}
-                                 aria-label={`WhatsApp ${d?.client_nom ?? ''}`}
-                                 className="text-muted-foreground hover:text-foreground">
-                                <MessageCircle className="size-3.5" aria-hidden="true" />
-                              </a>
-                            )}
-                          </div>
-                          {touche && (
-                            <p className="pl-0.5 text-[11px] text-muted-foreground">
-                              Prochaine touche CRM : {CANAL_LABELS[touche.canal] ?? touche.canal}{' '}
-                              {touche.due_at ? formatDateTime(touche.due_at) : formatDate(touche.due_date)}
-                            </p>
-                          )}
-                        </li>
-                      )
-                    })}
-                    {bucket.ids.length > 20 && (
-                      <li className="text-xs text-muted-foreground">
-                        + {bucket.ids.length - 20} autre(s)
-                      </li>
+              <CartePanier key={key} Icon={Icon} label={label} tone={tone} count={bucket.count}
+                ids={bucket.ids} vide="Aucun devis." espacement="gap-1.5"
+                renderId={(id) => {
+              const d = devisMap[id]
+              // QX30 — brouillon wa.me pré-rempli fourni par le backend
+              // pour cette file (queue engagement) ; absent ailleurs.
+              const draft = board.wa_drafts?.[id]
+              const tel = telHref(d?.client_telephone)
+              // QJR635 — `||` : le sélecteur renvoie '' (jamais null)
+              // sans WhatsApp ; `??` ne repliait donc jamais.
+              const wa = waHref(d?.client_whatsapp || d?.client_telephone || d?.telephone, draft)
+              // CAD115 (SIG9) — prochaine touche CRM déjà programmée
+              // pour le lead d'origine : évite qu'une relance parte
+              // ici alors que la cadence de Meryem s'en charge déjà
+              // le même jour. `null` quand aucune touche n'est due.
+              const touche = d?.prochaine_touche_crm
+              return (
+                <li key={id} className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      className="flex-1 truncate text-left text-xs text-primary hover:underline"
+                      onClick={() => navigate(`/ventes/devis?devis=${id}`)}
+                      title={d?.total_ttc != null ? formatMAD(d.total_ttc) : undefined}
+                    >
+                      {d?.reference ?? `#${id}`}{d?.client_nom ? ` — ${d.client_nom}` : ''}
+                    </button>
+                    {tel && (
+                      <a href={tel} title="Appeler" aria-label={`Appeler ${d?.client_nom ?? ''}`}
+                         className="text-muted-foreground hover:text-foreground">
+                        <PhoneCall className="size-3.5" aria-hidden="true" />
+                      </a>
                     )}
-                  </ul>
-                )}
-              </Card>
+                    {wa && (
+                      <a href={wa} target="_blank" rel="noopener noreferrer"
+                         title={draft ? 'Ouvrir WhatsApp (message pré-rempli)' : 'Ouvrir WhatsApp'}
+                         aria-label={`WhatsApp ${d?.client_nom ?? ''}`}
+                         className="text-muted-foreground hover:text-foreground">
+                        <MessageCircle className="size-3.5" aria-hidden="true" />
+                      </a>
+                    )}
+                  </div>
+                  {touche && (
+                    <p className="pl-0.5 text-[11px] text-muted-foreground">
+                      Prochaine touche CRM : {CANAL_LABELS[touche.canal] ?? touche.canal}{' '}
+                      {touche.due_at ? formatDateTime(touche.due_at) : formatDate(touche.due_date)}
+                    </p>
+                  )}
+                </li>
+              )
+                }} />
             )
           })}
         </div>

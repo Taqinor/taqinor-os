@@ -7,14 +7,7 @@
 # de dette (zéro constat exigé). Jamais d'ajout à la main : on retire une ligne quand sa
 # cause est corrigée (re-mesure : rapport JSON du nocturne, script api_fuzz_scope.py).
 # Format : <titre du check Schemathesis>|<MÉTHODE> <gabarit de chemin>
-API rejected schema-compliant request|GET /api/django/parametres/audit/
-API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
-API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
-API rejected schema-compliant request|POST /api/django/parametres/onboarding-localisation/
-API rejected schema-compliant request|POST /api/django/parametres/taux-tva/
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
-API rejected schema-compliant request|POST /api/django/ventes/devis/from-layout/
-API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
@@ -42,6 +35,5 @@ API rejected schema-compliant request|PUT /api/django/parametres/email-templates
 # Vague 7 (13/10/2026) — lignes gelées sur dev-all-laptop absentes de main après fusion (union).
 # PR #991, 1er tirage (13/10/2026) — 6 constats PRÉ-EXISTANTS (ids FK du fuzz, énumérations de filtres, Allow OPTIONS portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -RECORDS / -PORTAIL.
 # PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
-API accepted schema-violating request|GET /api/django/parametres/audit/
 # PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.
 # Groupe de merge #991 (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH portail/documents-client-portail, route non modifiée), porté par ERR-ENF11-FUZZ-PORTAIL (suite).

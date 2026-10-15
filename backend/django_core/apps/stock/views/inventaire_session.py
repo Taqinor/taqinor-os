@@ -79,7 +79,7 @@ class InventaireSessionViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
         if session.statut != InventaireSession.Statut.BROUILLON:
             return Response(
                 {'detail': 'Seule une session en brouillon peut être annulée.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         session.statut = InventaireSession.Statut.ANNULE
         session.save(update_fields=['statut'])
         return Response(self.get_serializer(session).data)

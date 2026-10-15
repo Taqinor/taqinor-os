@@ -3,6 +3,7 @@ import { StrictMode } from 'react'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { documentContrat } from '../../../test/fixtures/contractSamples'
+import { polyfillResizeObserver } from '../../../test/selectNatif'
 
 /* ============================================================================
    CALX64 — LE TAPIS JOUR × HEURE ET LA JOURNÉE TYPE, VUS DU CONTRAT.
@@ -33,15 +34,7 @@ vi.mock('../../../api/calepinageApi', () => ({
 
 const { default: TapisHoraire } = await import('./TapisHoraire')
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 // 2021 n'est PAS bissextile : douze mois, 365 jours — exactement 8 760 points
 // au pas horaire, la borne que le contrat CALX142 décrit.

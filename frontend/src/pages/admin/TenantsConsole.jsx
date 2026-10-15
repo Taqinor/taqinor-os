@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import api from '../../api/axios'
 import adminopsApi from '../../api/adminopsApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /**
  * SCA22 — Console fondateur des tenants (superuser uniquement).
@@ -292,8 +293,8 @@ export default function TenantsConsole() {
         </div>
       )}
 
-      <div style={{ overflowX: 'auto' }}>
-        <table className="data-table" data-testid="tenants-console-table">
+      <TableauLignes enveloppeStyle={{ overflowX: 'auto' }} className="data-table" data-testid="tenants-console-table"
+        tete={(
           <thead>
             <tr>
               <th>Société</th>
@@ -311,64 +312,62 @@ export default function TenantsConsole() {
               <th>Support</th>
             </tr>
           </thead>
-          <tbody>
-            {tenants.map((t) => (
-              <tr key={t.id}>
-                <td>
-                  <strong>{t.nom}</strong>
-                  <div className="text-muted">{t.slug}</div>
-                </td>
-                <td>
-                  <select
-                    aria-label={`Statut de ${t.nom}`}
-                    value={t.statut}
-                    onChange={(e) => changerStatut(t, e.target.value)}
-                  >
-                    {STATUTS.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  {t.usage?.users ?? '—'}
-                  {t.sieges_utilises != null && ` / ${t.sieges_utilises}`}
-                </td>
-                <td>{t.usage?.devis ?? '—'}</td>
-                <td>{t.usage?.factures ?? '—'}</td>
-                <td>{t.health_score != null ? `${t.health_score}/100` : '—'}</td>
-                <td>
-                  {t.licences_impayees
-                    ? `${t.licences_impayees} (${t.licences_du_ttc} MAD)`
-                    : '—'}
-                </td>
-                <td>
-                  <input
-                    aria-label={`Note de plan de ${t.nom}`}
-                    value={notes[t.id] ?? ''}
-                    onChange={(e) =>
-                      setNotes((n) => ({ ...n, [t.id]: e.target.value }))}
-                    onBlur={() => enregistrerNote(t)}
-                    placeholder="Note libre…"
-                  />
-                </td>
-                <td>
-                  {t.date_creation
-                    ? new Date(t.date_creation).toLocaleDateString('fr-FR')
-                    : '—'}
-                </td>
-                <td>
-                  {/* NTADM32 — l'assistance passe TOUJOURS par une demande
-                      soumise au consentement du tenant, jamais par un accès
-                      direct depuis cette console. */}
-                  <a href="/admin/impersonation/demander">
-                    Demander une session
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        )}>
+        {tenants.map((t) => (
+          <tr key={t.id}>
+            <td>
+              <strong>{t.nom}</strong>
+              <div className="text-muted">{t.slug}</div>
+            </td>
+            <td>
+              <select
+                aria-label={`Statut de ${t.nom}`}
+                value={t.statut}
+                onChange={(e) => changerStatut(t, e.target.value)}
+              >
+                {STATUTS.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </td>
+            <td>
+              {t.usage?.users ?? '—'}
+              {t.sieges_utilises != null && ` / ${t.sieges_utilises}`}
+            </td>
+            <td>{t.usage?.devis ?? '—'}</td>
+            <td>{t.usage?.factures ?? '—'}</td>
+            <td>{t.health_score != null ? `${t.health_score}/100` : '—'}</td>
+            <td>
+              {t.licences_impayees
+                ? `${t.licences_impayees} (${t.licences_du_ttc} MAD)`
+                : '—'}
+            </td>
+            <td>
+              <input
+                aria-label={`Note de plan de ${t.nom}`}
+                value={notes[t.id] ?? ''}
+                onChange={(e) =>
+                  setNotes((n) => ({ ...n, [t.id]: e.target.value }))}
+                onBlur={() => enregistrerNote(t)}
+                placeholder="Note libre…"
+              />
+            </td>
+            <td>
+              {t.date_creation
+                ? new Date(t.date_creation).toLocaleDateString('fr-FR')
+                : '—'}
+            </td>
+            <td>
+              {/* NTADM32 — l'assistance passe TOUJOURS par une demande
+                  soumise au consentement du tenant, jamais par un accès
+                  direct depuis cette console. */}
+              <a href="/admin/impersonation/demander">
+                Demander une session
+              </a>
+            </td>
+          </tr>
+        ))}
+      </TableauLignes>
 
       {/* WIR267/N100(e) — registre fondateur de facturation de licence :
           liste + total dû filtrable, pointage manuel « payée », export CSV. */}
@@ -395,8 +394,8 @@ export default function TenantsConsole() {
         <p data-testid="facturation-total-du">
           Total dû TTC : <strong>{totalDuTtc} MAD</strong>
         </p>
-        <div style={{ overflowX: 'auto' }}>
-          <table className="data-table" data-testid="facturation-licence-table">
+        <TableauLignes enveloppeStyle={{ overflowX: 'auto' }} className="data-table" data-testid="facturation-licence-table"
+          tete={(
             <thead>
               <tr>
                 <th>Référence</th>
@@ -408,31 +407,29 @@ export default function TenantsConsole() {
                 <th>Action</th>
               </tr>
             </thead>
-            <tbody>
-              {facturesLicence.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.reference || '—'}</td>
-                  <td>{f.societe_nom || '—'}</td>
-                  <td>{f.periode || '—'}</td>
-                  <td>{f.plan_code || '—'}</td>
-                  <td>{f.montant_ttc} MAD</td>
-                  <td>{f.statut_libelle || f.statut}</td>
-                  <td>
-                    {f.statut !== 'payee' && (
-                      <button
-                        type="button"
-                        onClick={() => marquerFacturePayee(f)}
-                        aria-label={`Marquer payée la facture ${f.reference || `#${f.id}`}`}
-                      >
-                        Marquer payée
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {facturesLicence.map((f) => (
+            <tr key={f.id}>
+              <td>{f.reference || '—'}</td>
+              <td>{f.societe_nom || '—'}</td>
+              <td>{f.periode || '—'}</td>
+              <td>{f.plan_code || '—'}</td>
+              <td>{f.montant_ttc} MAD</td>
+              <td>{f.statut_libelle || f.statut}</td>
+              <td>
+                {f.statut !== 'payee' && (
+                  <button
+                    type="button"
+                    onClick={() => marquerFacturePayee(f)}
+                    aria-label={`Marquer payée la facture ${f.reference || `#${f.id}`}`}
+                  >
+                    Marquer payée
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </TableauLignes>
       </section>
     </div>
   )

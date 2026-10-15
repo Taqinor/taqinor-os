@@ -12,6 +12,8 @@
    quand le plafond de taille l'impose) — on l'affiche, on ne le suppose pas.
    ========================================================================== */
 
+import { rendreImageHd } from './rendreImageHd.js'
+
 /** Facteurs proposés par l'atelier, les mêmes que `HD_SCALES` côté builder. */
 export const FACTEURS_HD = [2, 3]
 
@@ -29,19 +31,11 @@ export function nomFichierHd(reference, width, height) {
  *          Jamais une exception : l'écran affiche `motif` tel quel.
  */
 export async function exporterImageHd(builderApi, { scale = 2, reference, telecharger } = {}) {
-  const api = builderApi?.current ?? builderApi
-  if (!api || typeof api.renderImageHd !== 'function') {
-    return { ok: false, motif: 'Outil non prêt — ouvrez la conception puis réessayez.' }
-  }
-  let rendu = null
-  try {
-    rendu = await api.renderImageHd(scale)
-  } catch {
-    return { ok: false, motif: 'Le rendu haute résolution a échoué sur ce navigateur.' }
-  }
-  if (!rendu || !rendu.blob) {
-    return { ok: false, motif: 'Scène non rendable ici (3D indisponible) — aucune image produite.' }
-  }
+  const { rendu, echec } = await rendreImageHd(builderApi, scale, {
+    motifEchec: 'Le rendu haute résolution a échoué sur ce navigateur.',
+    motifVide: 'Scène non rendable ici (3D indisponible) — aucune image produite.',
+  })
+  if (echec) return echec
   const nom = nomFichierHd(reference, rendu.width, rendu.height)
   try {
     ;(telecharger ?? telechargerBlob)(rendu.blob, nom)

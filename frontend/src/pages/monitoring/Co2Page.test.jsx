@@ -4,11 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // jsdom n'implémente pas ResizeObserver (recharts ResponsiveContainer).
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui, { route = '/' } = {}) {
   return render(<MemoryRouter initialEntries={[route]}><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -59,6 +55,7 @@ vi.mock('../../api/installationsApi', () => ({
 
 import monitoringApi from '../../api/monitoringApi'
 import Co2Page from './Co2Page'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 // L'historique d'appels des mocks module-level survit d'un test à l'autre
 // (aucun reset automatique) : sans ce clear, le test drill-down héritait des
@@ -82,7 +79,7 @@ describe('Co2Page (WR7 — suivi CO₂)', () => {
     renderPage(<Co2Page />, { route: '/production/co2?installation=11' })
 
     expect(await screen.findByText('CO₂ évité (système)')).toBeInTheDocument()
-    expect(monitoringApi.getConfigForInstallation).toHaveBeenCalledWith('11')
+    expect(monitoringApi.getConfigForInstallation).toHaveBeenCalledWith('11', expect.objectContaining({ page: 1 }))
     expect(monitoringApi.getCo2).toHaveBeenCalledWith(5)
     expect(monitoringApi.getCo2Fleet).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: /INST-2026-001/ })).toBeInTheDocument()

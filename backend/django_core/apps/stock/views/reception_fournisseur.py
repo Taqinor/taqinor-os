@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from ..openapi_helpers import BINARY, INT, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
+from ..erreurs_achats import ConflitEtat
 from ..models import Produit, ReceptionFournisseur
 from ..serializers import ReceptionFournisseurSerializer, FactureFournisseurSerializer
 from authentication.permissions import (
@@ -121,6 +122,18 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 created_by=self.request.user,
             )
         create_with_reference(ReceptionFournisseur, 'REC', company, _save)
+
+    def perform_update(self, serializer):
+        """ENF11 (nocturne 15/10) — ``lignes`` est un sérialiseur imbriqué que
+        ``ModelSerializer.update`` refuse (AssertionError → 500). Les lignes
+        d'une réception sont rattachées aux lignes du BCF et plafonnées au reste
+        dû À SA CRÉATION : les remplacer ensuite contournerait ce plafond.
+        Refus d'état (409) : annuler la réception et la recréer."""
+        if 'lignes' in serializer.validated_data:
+            raise ConflitEtat(
+                "Les lignes d'une réception se saisissent à sa création : "
+                'annulez-la et recréez-la pour les changer.')
+        super().perform_update(serializer)
 
     @extend_schema(parameters=[P('code', STR, True,
                                  'Code GS1-128 / DataMatrix (AI 01 + GTIN 14 chiffres en tête)',

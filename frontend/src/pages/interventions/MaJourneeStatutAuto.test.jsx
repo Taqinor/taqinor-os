@@ -13,24 +13,12 @@ import { MemoryRouter } from 'react-router-dom'
 // La fiche monte TOUS les panneaux F5-F19 (Radix garde les TabsContent
 // inactifs montés, `forceMount`) : chaque panneau appelle son endpoint au
 // montage. Même stub « rejet gracieux » que MaJourneePage.test.jsx.
-const { rejected } = vi.hoisted(() => ({
-  rejected: () => Promise.reject(new Error('non mocké')),
-}))
-vi.mock('../../api/installationsApi', () => ({
+vi.mock('../../api/installationsApi', async () => ({
   default: {
     getMaTournee: vi.fn(),
     updateIntervention: vi.fn(),
-    getInterventions: vi.fn(rejected),
-    getPreparation: vi.fn(rejected),
-    getPhotos: vi.fn(rejected),
-    getSerials: vi.fn(rejected),
-    getConsommation: vi.fn(rejected),
-    getMemos: vi.fn(rejected),
-    getReserves: vi.fn(rejected),
-    getSafety: vi.fn(rejected),
-    getToolReturn: vi.fn(rejected),
-    getCode: vi.fn(rejected),
-    compteRenduUrl: vi.fn(() => ''),
+    getInterventions: vi.fn(() => Promise.reject(new Error('non mocké'))),
+    ...(await import('../../test/mocksMaJournee')).panneauxRejetes(),
   },
 }))
 // `toast` vient de `ui/Toaster` (ré-exporté par `ui/index.js`) : c'est CE

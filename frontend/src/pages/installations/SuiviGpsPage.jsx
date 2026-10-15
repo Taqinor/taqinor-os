@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
-  Badge, Button, Spinner, EmptyState,
+  Badge, Button, Spinner,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
@@ -16,6 +16,8 @@ import { escapeHtml } from '../../components/MapView'
 import installationsApi from '../../api/installationsApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import crmApi from '../../api/crmApi'
+import { useFilteredList } from '../../features/installations/chargementListe'
+import ListShell from '../../features/installations/ListeEtat'
 
 /* ============================================================================
    WIR113 — Suivi GPS terrain (XFSM23). `/planification/suivi-gps`.
@@ -39,44 +41,6 @@ const MapView = lazy(() => import('../../components/MapView'))
 const MARKER_OK = '#16a34a'
 const MARKER_HORS = '#dc2626'
 
-function useList(fetcher) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const load = useCallback(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetcher()
-      .then((res) => {
-        if (cancelled) return
-        const p = res?.data
-        setRows(Array.isArray(p) ? p : (p?.results ?? []))
-      })
-      .catch((err) => { if (!cancelled) setError(err?.response?.data?.detail || 'Chargement impossible.') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
-  useEffect(() => load(), [load])
-  return { rows, loading, error, reload: load }
-}
-
-function ListShell({ loading, error, empty, icon, children }) {
-  if (loading) return (
-    <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
-  if (error) return <EmptyState title="Impossible de charger" description={error} className="py-6" />
-  // `children` vaut `false` quand la liste est vide (`rows.length > 0 && …`) :
-  // on teste la valeur, pas seulement null/undefined, sinon l'état vide ne
-  // s'afficherait jamais.
-  if (!children) return <EmptyState icon={icon} title={empty} className="py-6" />
-  return children
-}
-
 function formatDateTime(value) {
   if (!value) return '—'
   const d = new Date(value)
@@ -86,7 +50,7 @@ function formatDateTime(value) {
 
 // ── Consentements ───────────────────────────────────────────────────────────
 function ConsentementsTab({ techniciens }) {
-  const { rows, loading, error, reload } = useList(installationsApi.getGpsConsentements)
+  const { rows, loading, error, reload } = useFilteredList(installationsApi.getGpsConsentements)
   const [showCreate, setShowCreate] = useState(false)
 
   const revoquer = async (id) => {
@@ -208,7 +172,7 @@ function ConsentementDialog({ techniciens, onClose, onCreated }) {
 
 // ── Carte live ──────────────────────────────────────────────────────────────
 function CarteLiveTab() {
-  const { rows, loading, error } = useList(installationsApi.getCarteLivePositions)
+  const { rows, loading, error } = useFilteredList(installationsApi.getCarteLivePositions)
 
   const located = useMemo(
     () => rows.filter((p) => p.lat != null && p.lng != null), [rows])
@@ -252,8 +216,8 @@ function CarteLiveTab() {
 // ENTRÉES sont informatives et vivent dans l'onglet Historique de présence,
 // jamais dans cette file d'attente.
 function AlertesTab() {
-  const { rows, loading, error, reload } = useList(
-    () => installationsApi.getGeofenceAlertes({ type_franchissement: 'sortie' }),
+  const { rows, loading, error, reload } = useFilteredList(
+    (p) => installationsApi.getGeofenceAlertes({ ...p, type_franchissement: 'sortie' }),
   )
 
   const acquitter = async (id) => {
@@ -326,7 +290,7 @@ function HistoriquePresenceTab() {
       .then((rows) => setChantiers(Array.isArray(rows) ? rows : (rows?.results ?? [])))
   }, [])
 
-  // Enveloppé dans `useCallback` (même patron que `useList` ci-dessus dans
+  // Enveloppé dans `useCallback` (même patron que `useFilteredList` ci-dessus dans
   // ce fichier) : l'effet se contente d'APPELER la fonction, aucun
   // `setState` synchrone dans le corps de l'effet lui-même.
   const chargerEvenements = useCallback(() => {
@@ -343,7 +307,7 @@ function HistoriquePresenceTab() {
       .finally(() => setLoading(false))
   }, [chantierId, typeFiltre])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useList` ci-dessus) (D-ENF22)
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au chantier/type choisi (même patron que `useFilteredList` ci-dessus) (D-ENF22)
   useEffect(() => { chargerEvenements() }, [chargerEvenements])
 
   return (

@@ -44,6 +44,7 @@ import {
   type FlushPack,
 } from './estimatorBrainV3';
 import { type YieldSource } from './estimatorBrainV6';
+import type { EvalProductionSourced } from './estimatorBrainCommun';
 import { anneauPosableParArete } from './estimatorBrainV7'; // CALX95 câblage
 
 export { PANEL2_WATT };
@@ -74,18 +75,9 @@ export interface PitchedLocks {
   needImposedZero?: boolean;
 }
 
-export interface PitchedLiveEval {
+export interface PitchedLiveEval extends EvalProductionSourced {
   layout: PitchedLayoutAxis;
   margin: PitchedMarginAxis;
-  fitCount: number;
-  placedCount: number;
-  kwc: number;
-  annualKwh: number;
-  pctOfTarget: number;
-  savingsLow: number;
-  savingsHigh: number;
-  perPanelYield: number;
-  yieldSource: YieldSource;
   /** Pavage affleurant (pour le rendu 3D) et la grille de la pose retenue. */
   pack: FlushPack;
   grid: FlushGrid;

@@ -7,6 +7,7 @@ export { KpiSpark } from './KpiSpark.jsx'
 export { ChartTooltip } from './ChartTooltip.jsx'
 export { ChartEmpty } from './ChartEmpty.jsx'
 export { ChartFrame } from './ChartFrame.jsx'
+export { CaCompareChart, CaCompareToggle } from './CaCompareChart.jsx'
 
 // Thème / helpers (réutilisables hors React, testables).
 export * from './chart-theme.js'

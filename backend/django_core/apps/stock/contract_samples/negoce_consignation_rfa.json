@@ -135,7 +135,7 @@
     },
     "consignation_declarer_consommation": {
       "endpoint": "POST /api/django/stock/consignations/<id>/declarer-consommation/",
-      "pourquoi": "NTDST3 — le client déclare ce qu'il a consommé (responsable/admin). Corps {quantite, date_declaration, note?}. 201 = la déclaration. Ne retouche JAMAIS le stock (la marchandise est partie à la mise en consignation). `statut` ∈ declaree / facturee ; `document_reference` vide tant que non facturée. 400 {detail} réels : « Quantité invalide. », « La quantité consommée doit être positive. », « La date de déclaration est obligatoire. », « Ce dépôt de consignation est clos. », « Quantité supérieure au restant en dépôt (<n>). ».",
+      "pourquoi": "NTDST3 — le client déclare ce qu'il a consommé (responsable/admin). Corps {quantite, date_declaration, note?}. 201 = la déclaration. Ne retouche JAMAIS le stock (la marchandise est partie à la mise en consignation). `statut` ∈ declaree / facturee ; `document_reference` vide tant que non facturée. ENF11 (nocturne 15/10) : corps hors schéma (quantite entier >= 1, date_declaration requise, note texte) → 400 nommant le champ ; refus d'ÉTAT → 409 {detail} : « Ce dépôt de consignation est clos. », « Quantité supérieure au restant en dépôt (<n>). » (`exemple_erreur_409`, lu par ConsignationsPage.test.jsx).",
       "exemple": {
         "id": 8,
         "depot": 6,
@@ -153,7 +153,7 @@
         "date_declaration": "2026-10-10",
         "note": ""
       },
-      "exemple_erreur_400": {
+      "exemple_erreur_409": {
         "detail": "Quantité supérieure au restant en dépôt (16)."
       },
       "nouveau_astk198": "NOUVEAU — ASTK198 (clés facture_id, facture_reference ; non construites, exclues du test de forme)",
@@ -262,12 +262,11 @@
         "note": "",
         "created_at": "2026-01-05T10:00:00Z"
       },
-      "exemple_erreur_400": {
-        "non_field_errors": [
-          "Renseignez soit un taux (%), soit un montant fixe."
-        ],
+      "note_enf11_409": "ENF11 (nocturne 15/10) — ni taux ni montant fixe, ou les deux : règle croisée que le schéma ne sait pas exprimer, 409 (comme fin < début). Le serveur sert `exemple_erreur_409` (lu par RfaPage.test.jsx).",
+      "exemple_erreur_409": {
+        "detail": "Renseignez soit un taux (%), soit un montant fixe.",
         "error": {
-          "code": "validation_error",
+          "code": "api_error",
           "message": "Renseignez soit un taux (%), soit un montant fixe.",
           "fields": null,
           "request_id": "<request_id>"
@@ -293,13 +292,13 @@
     },
     "accord_rfa_generer_avoir": {
       "endpoint": "POST /api/django/stock/accords-rfa-fournisseur/<id>/generer-avoir/",
-      "pourquoi": "NTDST5 — matérialise la remise due en AVOIR fournisseur brouillon, UNE SEULE FOIS par accord (responsable/admin). 201 {avoir_id, reference, montant_ttc} (montant_ttc = texte décimal ; zéro dans l'exemple, aucun montant d'achat). 400 {detail} réels : « Un avoir a déjà été généré pour cet accord et cette période. », « Le seuil de CA d'achat de cet accord n'est pas atteint. », « Le montant de remise calculé est nul. ». TVA d'un avoir RFA = décision comptable non tranchée (hors contrat).",
+      "pourquoi": "NTDST5 — matérialise la remise due en AVOIR fournisseur brouillon, UNE SEULE FOIS par accord (responsable/admin). 201 {avoir_id, reference, montant_ttc} (montant_ttc = texte décimal ; zéro dans l'exemple, aucun montant d'achat). 409 {detail} réels (refus d'ÉTAT — ENF11 nocturne 15/10 ; `exemple_erreur_409`, lu par RfaPage.test.jsx) : « Un avoir a déjà été généré pour cet accord et cette période. », « Le seuil de CA d'achat de cet accord n'est pas atteint. », « Le montant de remise calculé est nul. ». TVA d'un avoir RFA = décision comptable non tranchée (hors contrat).",
       "exemple": {
         "avoir_id": 21,
         "reference": "AVF-2026-10-0001",
         "montant_ttc": "0.00"
       },
-      "exemple_erreur_400": {
+      "exemple_erreur_409": {
         "detail": "Un avoir a déjà été généré pour cet accord et cette période."
       }
     },

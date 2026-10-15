@@ -13,20 +13,14 @@ import { poserChoixOptimisation, cibleOptimisationSaisie } from './optimizer';
 import { fineGridMatrixV6 } from '../../lib/estimatorBrainV6';
 import { type LngLat } from '../../lib/roof';
 import { type Ctx } from './context';
+import { rectRing } from './harnaisAtelier';
 
 const LAT = 33.59;
 const FACTURE = 5000;
 
 /** Toit long et étroit : `compte` et `energie` n'y élisent PAS la même ligne. */
 function rect(widthM: number, depthM: number, lng0 = -7.6, lat0 = LAT): LngLat[] {
-  const dLat = depthM / 2 / 111320;
-  const dLng = widthM / 2 / (111320 * Math.cos((lat0 * Math.PI) / 180));
-  return [
-    [lng0 - dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 - dLat],
-    [lng0 + dLng, lat0 + dLat],
-    [lng0 - dLng, lat0 + dLat],
-  ];
+  return rectRing(widthM, depthM, lng0, lat0);
 }
 
 const TOIT = rect(8, 24);

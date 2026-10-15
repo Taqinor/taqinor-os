@@ -203,25 +203,15 @@ export const SOLAR_DECLINATION_DEG = 23.44; // déclinaison au solstice
 export const SHADOW_MARGIN_M = 0.05; // petite marge en plus de l'ombre calculée
 
 import { WGS84_RADIUS } from './geo';
+import type { ProLayout, ProPanel } from './roofPro';
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * WGS84_RADIUS;
 const MAX_CELLS = 200000;
 
-export interface ProPanel {
-  cx: number;
-  cy: number;
-}
+export type { ProPanel };
 
-export interface ProLayout2 {
-  origin: LngLat;
-  ringENU: [number, number][];
-  panels: ProPanel[];
-  count: number;
-  /** Puissance crête (kWc) = nombre × 0,72. */
-  kwc: number;
-  areaM2: number;
-  rowAngleRad: number;
-  tiltRad: number;
+/** Même plan que `ProLayout` (pro-4), plus l'orientation réelle et l'espacement de rangée. */
+export interface ProLayout2 extends ProLayout {
   /** Azimut RÉEL visé (degrés, 0=N, 90=E, 180=S, 270=O). */
   azimuthDeg: number;
   /** Latitude du toit (degrés) — pour positionner le soleil. */
@@ -230,13 +220,6 @@ export interface ProLayout2 {
   designElevDeg: number;
   /** Pas de rangée appliqué (m, centre à centre dans le sens de la pente). */
   rowPitchM: number;
-  dims: {
-    alongRow: number;
-    slope: number;
-    depthFootprint: number;
-    rise: number;
-    frontStrut: number;
-  };
 }
 
 /** Orientation FR → azimut réel (degrés, 0=Nord, 90=Est, 180=Sud, 270=Ouest). */

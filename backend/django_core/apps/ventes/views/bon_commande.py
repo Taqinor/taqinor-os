@@ -19,6 +19,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
 from ..domain.facturation_ops import StockInsuffisantError
 import logging
@@ -179,7 +180,9 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            # ASEC50 / D-ASEC-4 — supprimer un BC exige ``ventes_supprimer``
+            # en plus du palier administrateur (comme le devis).
+            return [IsAdminRole(), DroitDeLaGrille('ventes_supprimer')()]
         return [IsAdminRole()]
 
     def get_serializer(self, *args, **kwargs):
@@ -264,13 +267,15 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             detail=True, methods=['post'], url_path='marquer-livre',
             permission_classes=[IsResponsableOrAdmin])
     def marquer_livre(self, request, pk=None):
+        # ENF11 (nocturne 15/10) — statut du BC et stock insuffisant = refus
+        # d'ÉTAT (409) ici et dans livrer-partiel ; la forme reste en 400.
         bc = self.get_object()
         if bc.statut != BonCommande.Statut.CONFIRME:
             return Response(
                 {'detail': (
                     'Le BC doit être confirmé avant d\'être livré.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # FG51 — capture optionnelle de la preuve de livraison (PV/signature).
         # Le signataire, une note et une pièce jointe (bon signé) peuvent être
@@ -317,7 +322,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                         {'detail': (
                             'Le BC doit être confirmé avant d\'être livré.'
                         )},
-                        status=status.HTTP_400_BAD_REQUEST,
+                        status=status.HTTP_409_CONFLICT,
                     )
                 if bc.devis and not toggle_bc_stock:
                     # AFAC15 (C-AFAC-001) — « Livrer » ne sort QUE le
@@ -337,7 +342,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             # Message FR INCHANGÉ : il vit désormais dans le décompteur unique.
             return Response(
                 {'detail': exc.message},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         if toggle_bc_stock:
             from apps.installations.services import consommer_reservation_bc
@@ -361,7 +366,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         if bc.devis_id is None:
             return Response(
                 {'detail': 'Ce BC ne porte aucun devis : aucune ligne à livrer.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         lignes_payload = request.data.get('lignes') or []
         if not lignes_payload:
@@ -399,14 +404,14 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             if bc.statut == BonCommande.Statut.LIVRE:
                 return Response(
                     {'detail': 'Ce BC est déjà entièrement livré.'},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             if bc.statut != BonCommande.Statut.CONFIRME:
                 return Response(
                     {'detail': (
                         'Le BC doit être confirmé avant d\'être livré.'
                     )},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_409_CONFLICT,
                 )
             reliquats = {r['ligne_devis_id']: r for r in bc.reliquat_par_ligne}
             # ASTK244 — ne SORT que ce que la vente n'a pas déjà sorti
@@ -429,16 +434,20 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 if reliquat_ligne is None:
                     return Response(
                         {'detail': f'Ligne de devis {ligne_devis_id} inconnue sur ce BC.'},
-                        status=status.HTTP_400_BAD_REQUEST,
+                        status=status.HTTP_404_NOT_FOUND,
                     )
                 quantite = Decimal(str(quantite))
                 if quantite <= 0 or quantite > reliquat_ligne['reliquat']:
+                    # ENF11 (nocturne 15/10) — au-delà du reliquat, c'est l'ÉTAT
+                    # du BC qui s'oppose (409) ; une quantité <= 0 reste une
+                    # entrée invalide (400).
                     return Response(
                         {'detail': (
                             f"Quantité invalide pour « {reliquat_ligne['designation']} » "
                             f"(reliquat disponible : {reliquat_ligne['reliquat']})."
                         )},
-                        status=status.HTTP_400_BAD_REQUEST,
+                        status=(status.HTTP_400_BAD_REQUEST if quantite <= 0
+                                else status.HTTP_409_CONFLICT),
                     )
                 ligne_devis = bc.devis.lignes.get(id=ligne_devis_id)
                 # AUD216 — VERROU de ligne produit, tenu jusqu'au commit des
@@ -463,7 +472,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                             f'Stock insuffisant pour « {produit.nom} » '
                             f'(disponible : {qte_avant}, requis : {qte_entiere}).'
                         )},
-                        status=status.HTTP_400_BAD_REQUEST,
+                        status=status.HTTP_409_CONFLICT,
                     )
                 stock_reserve[produit.id] = stock_reserve.get(produit.id, 0) + qte_entiere
                 validated.append(

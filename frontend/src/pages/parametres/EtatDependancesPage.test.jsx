@@ -3,11 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -21,6 +17,7 @@ vi.mock('../../api/coreApi', () => ({
 
 import coreApi from '../../api/coreApi'
 import EtatDependancesPage from './EtatDependancesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('EtatDependancesPage (NTOBS11)', () => {
   it('affiche une dépendance en panne avec ses impacts', async () => {

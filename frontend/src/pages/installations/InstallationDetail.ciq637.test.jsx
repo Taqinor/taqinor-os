@@ -224,7 +224,9 @@ describe('InstallationDetail — CIQ637 dérogation et réception définitive', 
 
   it('une réception définitive prononcée relit le chantier et masque le bouton', async () => {
     mocks.prononcerReceptionDefinitive.mockResolvedValueOnce({ data: {} })
-    mocks.getInstallation.mockResolvedValue({
+    // APRF37 — le montage relit déjà le détail (1re lecture : état d'avant) ; la relecture
+    // après l'action rend ensuite le chantier réceptionné.
+    mocks.getInstallation.mockResolvedValueOnce({ data: CHANTIER }).mockResolvedValue({
       data: { ...CHANTIER, date_reception_definitive: '2026-12-01' },
     })
     const user = userEvent.setup()

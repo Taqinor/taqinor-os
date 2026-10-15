@@ -8,10 +8,11 @@ import {
 } from '../../ui'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { formatDate, formatPercent } from '../../lib/format'
-import MonitoringNav from './MonitoringNav'
-import SystemPicker from './SystemPicker'
+import BarreSysteme from './BarreSysteme'
 import useSupervisedSystems from './useSupervisedSystems'
 import { todayLocalIso } from '../../lib/dateLocale'
+import { lancerChargement } from '../../lib/chargementEffet'
+import EnTeteMonitoring from './EnTeteMonitoring'
 
 /* WR7 — Journal de nettoyages + évaluation de salissure (FG283).
    Liste et enregistre les nettoyages (bornes pour l'estimation d'encrassement)
@@ -49,29 +50,21 @@ export default function CleaningsPage() {
 
   useEffect(() => {
     if (!selectedId || !installationId) return undefined
-    let active = true
-    const load = async () => {
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const [c, s] = await Promise.all([
           fetchAllPages((page, { page_size: pageSize } = {}) =>
       monitoringApi.getCleanings({ installation: installationId, page, page_size: pageSize }).then((r) => r.data)),
           monitoringApi.getSoiling(selectedId),
         ])
-        if (active) {
+        if (actif()) {
           setCleanings(Array.isArray(c) ? c : (c?.results ?? []))
           setSoiling(s.data)
         }
-      } catch {
-        if (active) { setCleanings([]); setSoiling(null) }
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+      },
+      surErreur: () => { setCleanings([]); setSoiling(null) },
+    })
   }, [selectedId, installationId])
 
   const addCleaning = (e) => {
@@ -122,22 +115,9 @@ export default function CleaningsPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Nettoyages</h1>
-        <div className="page-subtitle">
-          Journal des nettoyages de panneaux et estimation de la perte par salissure.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Nettoyages" sousTitre="Journal des nettoyages de panneaux et estimation de la perte par salissure." />
 
-      <div className="mb-4">
-        <SystemPicker
-          systems={systems}
-          loading={loadingSystems}
-          value={selectedId}
-          onChange={setSelectedId}
-        />
-      </div>
+      <BarreSysteme systems={systems} loading={loadingSystems} value={selectedId} onChange={setSelectedId} className="mb-4" />
 
       {!loadingSystems && systems.length === 0 ? (
         <EmptyState

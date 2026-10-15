@@ -6,8 +6,9 @@ import { useState } from 'react'
 import crmApi from '../../../api/crmApi'
 import { Button } from '../../../ui'
 import { Combobox } from '../../../ui/Combobox'
-import { ResponsiveDialog } from '../../../ui/ResponsiveDialog'
 import { searchCompanies, hitsToOptions } from '../../../features/crm/companyLookup'
+import ModaleLead from './ModaleLead'
+import { nomLeadModale } from './nomLeadModale'
 
 const MODES = [
   { value: 'nouveau', label: 'Créer un nouveau client' },
@@ -50,16 +51,11 @@ export default function ConvertirClientDialog({ lead, onClose, onConverted }) {
     }
   }
 
-  const leadNom = `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() || 'ce lead'
+  const leadNom = nomLeadModale(lead)
 
   return (
-    // VX182 — shell fait-main remplacé par ResponsiveDialog (Escape + focus-
-    // trap + bottom-sheet mobile) ; en-tête/pied conservés à l'identique.
-    <ResponsiveDialog open onOpenChange={(o) => { if (!o) onClose() }} className="sm:max-w-lg" showClose={false}>
-      <div className="modal-header">
-        <h3 className="modal-title">Convertir en client</h3>
-        <button type="button" className="modal-close" onClick={onClose}>✕</button>
-      </div>
+    // VX182 — shell ResponsiveDialog (Escape + focus-trap + bottom-sheet mobile).
+    <ModaleLead titre="Convertir en client" onClose={onClose}>
 
         <div className="modal-body">
           {result == null ? (
@@ -123,6 +119,6 @@ export default function ConvertirClientDialog({ lead, onClose, onConverted }) {
             <Button type="button" onClick={onClose}>Fermer</Button>
           )}
         </div>
-    </ResponsiveDialog>
+    </ModaleLead>
   )
 }

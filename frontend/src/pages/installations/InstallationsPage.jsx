@@ -16,16 +16,7 @@ import {
 import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import crmApi from '../../api/crmApi'
-import {
-  Button,
-  Badge,
-  Segmented,
-  Spinner,
-  EmptyState,
-  Card,
-  StatusAccentCard,
-  toast,
-} from '../../ui'
+import { Button, Badge, Spinner, EmptyState, Card, StatusAccentCard, toast } from '../../ui'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useStatutConfig from '../../features/parametres/useStatutConfig'
 import FilterBar from './FilterBar'
@@ -33,6 +24,9 @@ import ListView from './views/ListView'
 import KanbanView from './views/KanbanView'
 import InstallationsSkeleton from './views/InstallationsSkeleton'
 import InstallationDetail from './InstallationDetail'
+import { useDeepLinkId } from '../../hooks/useDeepLinkId'
+import { SelecteurVue } from '../../ui/SelecteurVue'
+import CelluleCalendrier from '../../ui/CelluleCalendrier'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
 const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
@@ -214,45 +208,23 @@ function CalendarView({ items, onOpen, onReschedule }) {
         {WEEKDAYS.map((day) => (
           <div key={day} className="cal-weekday">{day}</div>
         ))}
-        {cells.map((cell) => {
-          const dayItems = byDay.get(cell.key) ?? []
-          const expanded = Boolean(expandedDays[cell.key])
-          const visible =
-            expanded || dayItems.length <= MAX_CHIPS_PER_DAY
-              ? dayItems
-              : dayItems.slice(0, MAX_CHIPS_PER_DAY)
-          const hidden = dayItems.length - visible.length
-          return (
-            <div
-              key={cell.key}
-              className={[
-                'cal-cell',
-                cell.inMonth ? '' : 'cal-cell-out',
-                cell.key === todayKey ? 'cal-cell-today' : '',
-                dragId ? 'cal-cell-droppable' : '',
-              ].filter(Boolean).join(' ')}
-              onDragOver={(e) => { if (dragId) e.preventDefault() }}
-              onDrop={(e) => { e.preventDefault(); handleDrop(cell.key) }}
-            >
-              <span className="cal-day-number">{cell.dayNumber}</span>
-              <div className="cal-chips">
-                {visible.map((it) => (
-                  <Chip key={it.id} item={it} onOpen={onOpen} onDragStart={handleDragStart} />
-                ))}
-                {hidden > 0 && (
-                  <button type="button" className="cal-more" onClick={() => toggleDay(cell.key)}>
-                    +{hidden} autres
-                  </button>
-                )}
-                {expanded && dayItems.length > MAX_CHIPS_PER_DAY && (
-                  <button type="button" className="cal-more" onClick={() => toggleDay(cell.key)}>
-                    Réduire
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
+        {cells.map((cell) => (
+          <CelluleCalendrier
+            key={cell.key}
+            cell={cell}
+            aujourdhui={cell.key === todayKey}
+            items={byDay.get(cell.key) ?? []}
+            deplie={Boolean(expandedDays[cell.key])}
+            onBasculer={toggleDay}
+            max={MAX_CHIPS_PER_DAY}
+            classes={[dragId ? 'cal-cell-droppable' : '']}
+            onDragOver={(e) => { if (dragId) e.preventDefault() }}
+            onDrop={(e) => { e.preventDefault(); handleDrop(cell.key) }}
+            rendrePastille={(it) => (
+              <Chip key={it.id} item={it} onOpen={onOpen} onDragStart={handleDragStart} />
+            )}
+          />
+        ))}
       </div>
     </div>
   )
@@ -358,24 +330,11 @@ export default function InstallationsPage() {
   // chantier ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet).
   // Fermer retire le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des
   // chantiers chargés est signalé par un EmptyState inline (jamais page blanche).
-  const wantedId = searchParams.get('id')
-  const deepItem = useMemo(() => {
-    if (!wantedId) return null
-    return (items ?? []).find((it) => String(it.id) === String(wantedId)) ?? null
-  }, [wantedId, items])
+  const { wantedId, deepItem, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
   // VX79 — id demandé mais introuvable (une fois le chargement terminé) : on
   // affiche un EmptyState inline plutôt qu'un panneau vide ou une page blanche.
   const deepMissing = !!wantedId && !loading && !deepItem
 
-  const clearDeepLink = () => {
-    if (searchParams.has('id')) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('id')
-        return next
-      }, { replace: true })
-    }
-  }
   const onOpen = (it) => setSelected(it)
   const onClose = () => { setSelected(null); clearDeepLink() }
   const onSaved = () => { refetch(); setSelected(null); clearDeepLink() }
@@ -502,17 +461,12 @@ export default function InstallationsPage() {
           >
             {xlsxBusy ? <Spinner /> : <Download />} Exporter Excel
           </Button>
-          <Segmented
-            size="sm"
-            value={view}
-            onChange={setView}
-            aria-label="Changer de vue"
+          <SelecteurVue view={view} onChange={setView}
             options={[
               { value: 'liste', label: 'Liste' },
               { value: 'kanban', label: 'Kanban' },
               { value: 'calendrier', label: 'Calendrier' },
-            ]}
-          />
+            ]} />
         </div>
       </div>
 

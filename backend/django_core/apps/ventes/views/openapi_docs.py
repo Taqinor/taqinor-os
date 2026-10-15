@@ -556,6 +556,19 @@ FromLayoutRequest = _ser('DevisFromLayoutRequest', {
                                   allow_null=True),
     'calepinage': s.IntegerField(required=False, allow_null=True),
 })
+#: ENF11 fuzz — ``from-layout`` : un layout VIDE (``{}``) n'est pas un layout
+#: (« Layout manquant ou invalide. ») et un devis naît d'un lead OU d'un
+#: client : les deux règles sont PUBLIÉES sur cette opération seulement.
+CORPS_FROM_LAYOUT = corps_resserre({
+    'type': 'object',
+    'properties': {'layout': {'type': 'object', 'minProperties': 1}},
+    'anyOf': [
+        {'required': ['lead'],
+         'properties': {'lead': {'type': 'integer', 'minimum': 1}}},
+        {'required': ['client'],
+         'properties': {'client': {'type': 'integer', 'minimum': 1}}},
+    ],
+})
 FromLayoutResponse = _ser('DevisFromLayoutResponse', {
     'id': s.IntegerField(),
     'reference': s.CharField(),
@@ -566,6 +579,8 @@ FromLayoutResponse = _ser('DevisFromLayoutResponse', {
     'marques_manquantes': s.ListField(child=s.CharField()),
     'deduplicated': s.BooleanField(required=False),
 })
+#: Refus d'ÉTAT (409, ENF11 ConflitEtat) : composition/catalogue qui s'oppose,
+#: calepinage à chiffrer par « Générer le devis » — jamais un 422.
 ErreurFromLayout = _ser('DevisErreurFromLayout', {
     'detail': s.CharField(required=False),
     'errors': s.ListField(child=s.CharField(), required=False),

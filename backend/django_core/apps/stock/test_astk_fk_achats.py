@@ -251,6 +251,19 @@ class FkAchatsTests(TestCase):
                 format='json')
             self.assertEqual(r.status_code, 400, (facture, r.content))
 
+    def test_facture_patch_ligne_sans_designation_400(self):
+        """ENF11 (nocturne 15/10) — l'imbriqué partiel du PATCH acceptait une
+        ligne sans `designation` (requise au schéma de la ligne)."""
+        facture = FactureFournisseur.objects.create(
+            company=self.co_a, reference='FFA-ENF11', fournisseur=self.fa,
+            montant_ht=Decimal('0'), montant_tva=Decimal('0'), montant_ttc=Decimal('0'))
+        r = self.api.patch(f'/api/django/achats/factures-fournisseur/{facture.pk}/', {
+            'lignes': [{'produit': self.pa.pk, 'quantite': '1', 'prix_unitaire_ht': '0',
+                        'taux_tva': '0'}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('designation', str(r.json()))
+        self.assertFalse(facture.lignes.exists())
+
     def test_fuzz_retour_patch_avec_lignes(self):
         """ERR fuzz : PATCH d'un retour brouillon portant ``lignes`` (écriture
         imbriquée) remplace les lignes au lieu de lever AssertionError (500)."""
@@ -275,7 +288,7 @@ class FkAchatsTests(TestCase):
         self._post_compare('/api/django/stock/paiements-fournisseur/', {
             'montant': '10', 'date_paiement': '2026-10-06',
             'mode': 'virement',
-        }, 'facture', self.facture_b.pk)
+        }, 'facture', self.facture_b.pk, statut=404)
         self.assertFalse(PaiementFournisseur.objects.exists())
 
     def test_echeance_facture_autre_societe(self):
@@ -364,12 +377,12 @@ class FkAchatsTests(TestCase):
         self.assertFalse(PrixFournisseur.objects.exists())
 
     def test_schema_facture_paiements_search_et_echeancier(self):
-        """ENF11 — ``search`` de ``paiements``/``echeancier`` publié SANS nul ;
-        la réponse 201 d'``echeancier`` est un TABLEAU (pas une page)."""
+        """ENF11 — ``search`` de ``paiements``/``echeancier`` publié en chaîne
+        libre (un nul ne désigne aucune ligne, nocturne du 15/10) ; la réponse
+        201 d'``echeancier`` est un TABLEAU (pas une page)."""
         from django.urls import include, path
         from drf_spectacular.generators import SchemaGenerator
 
-        from core.champs_stricts import MOTIF_SANS_NUL
         from apps.stock import urls as stock_urls
         chemins = SchemaGenerator(patterns=[
             path('api/django/stock/', include(stock_urls)),
@@ -377,7 +390,7 @@ class FkAchatsTests(TestCase):
         base = '/api/django/stock/factures-fournisseur/{id}/'
         for route in ('paiements/', 'echeancier/'):
             params = {p['name']: p for p in chemins[base + route]['get']['parameters']}
-            self.assertEqual(params['search']['schema']['pattern'], MOTIF_SANS_NUL, route)
+            self.assertNotIn('pattern', params['search']['schema'], route)
         reponse = chemins[base + 'echeancier/']['post']['responses']['201']
         self.assertEqual(
             reponse['content']['application/json']['schema']['type'], 'array')

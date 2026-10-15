@@ -11,6 +11,7 @@ import logging
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, NotFound
@@ -322,7 +323,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
 
     @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True),
                                sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER_ID,
-                               sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
+                               sd.param('statut', enum=[*STATUTS_SUIVI])],
+                   responses={200: sd.OBJ,
+                              409: inline_serializer('CrmSuiviConflit', {  # ENF11 : écart > 62 j = 409 d'état
+                                  'detail': drf_serializers.CharField()})})
     @action(detail=False, methods=['get'], url_path='suivi',
             pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
@@ -1057,8 +1061,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         programmée supprimée, avance d'étape défaite) — le service
         ``annuler_touche_relance`` porte toute la règle.
 
-        Refus MOTIVÉ en 400 ``{"erreurs": {champ: message}}`` (même forme que
-        ``fait``) : passé 24 h, devis parti, dossier parqué au froid, lead
+        Refus MOTIVÉ en 409 ``{"erreurs": {champ: message}}`` (même forme que
+        ``fait``, refus d'ÉTAT — ENF11) : passé 24 h, devis parti, dossier parqué au froid, lead
         signé/perdu, étape suivante déjà traitée. Écriture → garde
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions`` (jamais
         listée parmi les lectures)."""
@@ -1068,7 +1072,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             etape = annuler_touche_relance(etape, request.user)
         except AnnulationToucheRefusee as refus:
             return Response({'erreurs': {refus.champ: refus.message}},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(etape).data)
 
     @extend_schema(parameters=[sd.P_CLE, sd.P_LANGUE], responses=sd.OBJ)

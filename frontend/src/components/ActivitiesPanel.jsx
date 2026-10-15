@@ -1,6 +1,6 @@
 /* Activités planifiées (style Odoo) pour n'importe quel enregistrement.
    Réutilisable : passe model ('crm.lead', 'crm.client'…) + id. */
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import recordsApi from '../api/recordsApi'
 import AssigneePicker from './AssigneePicker'
 import FollowToggle from './FollowToggle'
@@ -71,11 +71,11 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
 
   // VX204 — un échec de chargement était INDISCERNABLE de « aucune relance
   // due » (l'état `error` existait déjà mais n'était jamais alimenté ici).
-  const load = () => {
+  const load = useCallback(() => {
     recordsApi.getActivities(model, id)
       .then(r => { setActivities(r.data.results ?? r.data); setError(null) })
       .catch(() => setError('Impossible de charger les activités.'))
-  }
+  }, [model, id])
   useEffect(() => {
     recordsApi.getActivityTypes()
       .then(r => {
@@ -84,7 +84,7 @@ export default function ActivitiesPanel({ model, id, users = [], onChange }) {
         setForm(f => ({ ...f, activity_type: f.activity_type || (list[0]?.id ?? '') }))
       }).catch(() => {})
     load()
-  }, [model, id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [model, id, load])
 
   const create = async () => {
     if (!form.activity_type) return

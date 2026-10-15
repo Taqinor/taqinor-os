@@ -12,6 +12,7 @@ import {
 } from '../../../../features/crm/stages'
 import { Segmented } from '../../../../ui'
 import MonthGrid, { localKey } from '../../../../components/MonthGrid'
+import CelluleCalendrier from '../../../../ui/CelluleCalendrier'
 
 const MAX_CHIPS_PER_DAY = 3
 const MAX_UNDATED_CHIPS = 20
@@ -125,58 +126,26 @@ export default function CalendarView({ leads, onOpenLead }) {
   const undatedVisible = undated.slice(0, MAX_UNDATED_CHIPS)
   const undatedOverflow = undated.length - undatedVisible.length
 
-  const renderCell = (cell) => {
-    const dayEvents = byDay.get(cell.key) ?? []
-    const expanded = Boolean(expandedDays[cell.key])
-    const visible =
-      expanded || dayEvents.length <= MAX_CHIPS_PER_DAY
-        ? dayEvents
-        : dayEvents.slice(0, MAX_CHIPS_PER_DAY)
-    const hidden = dayEvents.length - visible.length
-    return (
-      <div
-        key={cell.key}
-        className={[
-          'cal-cell',
-          cell.inMonth ? '' : 'cal-cell-out',
-          cell.isToday ? 'cal-cell-today' : '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
-      >
-        <span className="cal-day-number">{cell.dayNumber}</span>
-        <div className="cal-chips">
-          {visible.map(({ lead, kind }) => (
-            <LeadChip
-              key={`${kind}-${lead.id}`}
-              lead={lead}
-              kind={kind}
-              colorBy={colorBy}
-              onOpenLead={onOpenLead}
-            />
-          ))}
-          {hidden > 0 && (
-            <button
-              type="button"
-              className="cal-more"
-              onClick={() => toggleDay(cell.key)}
-            >
-              +{hidden} autres
-            </button>
-          )}
-          {expanded && dayEvents.length > MAX_CHIPS_PER_DAY && (
-            <button
-              type="button"
-              className="cal-more"
-              onClick={() => toggleDay(cell.key)}
-            >
-              Réduire
-            </button>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const renderCell = (cell) => (
+    <CelluleCalendrier
+      key={cell.key}
+      cell={cell}
+      aujourdhui={cell.isToday}
+      items={byDay.get(cell.key) ?? []}
+      deplie={Boolean(expandedDays[cell.key])}
+      onBasculer={toggleDay}
+      max={MAX_CHIPS_PER_DAY}
+      rendrePastille={({ lead, kind }) => (
+        <LeadChip
+          key={`${kind}-${lead.id}`}
+          lead={lead}
+          kind={kind}
+          colorBy={colorBy}
+          onOpenLead={onOpenLead}
+        />
+      )}
+    />
+  )
 
   return (
     <>

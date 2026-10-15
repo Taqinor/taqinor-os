@@ -3,11 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage() {
   return render(
@@ -42,6 +38,7 @@ vi.mock('../../api/reportingApi', () => ({
 
 import reportingApi from '../../api/reportingApi'
 import ClasseurPage from './ClasseurPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('ClasseurPage (XPLT22 — mini-tableur BI)', () => {
   it('charge le classeur et affiche la grille avec les cellules existantes', async () => {

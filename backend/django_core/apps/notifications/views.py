@@ -23,7 +23,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, BooleenStrict, ChaineStricte, entier_ou_400
 from core.parametres_requete import choix_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
@@ -756,7 +756,9 @@ def vapid_public_key(request):
     return Response({'public_key': resolve_vapid_keys()[0]})
 
 
-_NON_VIDE = r'\S'
+#: ENF11 (nocturne 15/10) — non blanc ET sans caractère nul : DRF refuse le nul
+#: dans tout texte, le motif publié (et appliqué par RegexField) le dit aussi.
+_NON_VIDE = MOTIF_NON_BLANC_SANS_NUL
 
 
 class RegexField(ChaineStricte, serializers.RegexField):

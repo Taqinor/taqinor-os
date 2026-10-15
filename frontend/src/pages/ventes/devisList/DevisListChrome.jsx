@@ -13,11 +13,10 @@ import { downloadBlobInGesture } from '../../../utils/downloadBlob.js'
 import ViewsManagerPopover from '../../../features/uxviews/ViewsManagerPopover'
 import importApi from '../../../api/importApi.js'
 // APX11 — l'en-tête UNIQUE de l'app (VX28) remplace l'idiome legacy.
-import { PageHeader } from '../../../ui/PageHeader'
 // APX11 — identité Ventes : accent brass posé sur l'en-tête des écrans de flux.
-import { VENTES_ACCENT_STYLE } from '../../../features/ventes/accent.js'
 import { STATUT_DEVIS_FILTRES } from '../../../features/ventes/devisStatuts.js'
 import { STATUT_DISPLAY, DL_ECRAN } from './devisListConstants.js'
+import EnteteVentes from '../../../features/ventes/EnteteVentes'
 
 // SPL206 — en-tête de page de la liste des devis (titre + actions, synthèse
 // KPI T6, T16, T15, filtres T5, barre de lot T7), déplacé VERBATIM de
@@ -37,9 +36,7 @@ export function DevisPageHeader({
   openNew,
 }) {
   return (
-    <PageHeader
-      style={VENTES_ACCENT_STYLE}
-      className="app-accent-rail"
+    <EnteteVentes
       icon={FileText}
       title="Devis"
       subtitle={

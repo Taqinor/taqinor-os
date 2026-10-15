@@ -25,36 +25,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }))
 
-vi.mock('../../../api/axios', () => {
-  const reponse = () => Promise.resolve({ data: {} })
-  const doublure = () => new Proxy(function appel() { return reponse() }, {
-    get: (_cible, prop) => (typeof prop === 'symbol' || prop === 'then'
-      ? undefined
-      : doublure()),
-    apply: () => reponse(),
-  })
-  const racine = new Proxy(function appel() { return reponse() }, {
-    get: (_cible, prop) => {
-      if (prop === 'get') return (...a) => mocks.get(...a)
-      return typeof prop === 'symbol' || prop === 'then' ? undefined : doublure()
-    },
-    apply: () => reponse(),
-  })
-  return { default: racine }
-})
+vi.mock('../../../api/axios', async () => (await import('../../../test/fixtures/proxyPermissif'))
+  .moduleApiPermissif({ get: (...a) => mocks.get(...a) }))
 
-vi.mock('../../../api/calepinageApi', () => {
-  const reponse = () => Promise.resolve({ data: {} })
-  const doublure = () => new Proxy(function appel() { return reponse() }, {
-    // `then` DOIT rester absent : un proxy « thenable » serait attendu comme
-    // une promesse par `await` et bloquerait le test.
-    get: (_cible, prop) => (typeof prop === 'symbol' || prop === 'then'
-      ? undefined
-      : doublure()),
-    apply: () => reponse(),
-  })
-  return { default: doublure() }
-})
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif())
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 import Rail from './Rail'

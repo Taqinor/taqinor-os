@@ -1,0 +1,12 @@
+---
+// ENF19 : bloc partagé (copies identiques) — batteries-stockage.astro
+const { specs } = Astro.props as Record<string, any>;
+---
+        <div class="mt-10 border-t-2 border-azur-900 bg-blanc" data-stagger>
+          {specs.map((s: any, i: any) => (
+            <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-azur-900/15 px-5 py-4" style={`--v2-i:${i}`}>
+              <span class="text-sm font-semibold">{s.item}</span>
+              <span class="whitespace-normal text-right text-sm text-azur-600">{s.detail}</span>
+            </div>
+          ))}
+        </div>

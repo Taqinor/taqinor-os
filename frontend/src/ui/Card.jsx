@@ -43,4 +43,15 @@ export function CardFooter({ className, ...props }) {
   )
 }
 
+/* Carte à un seul bloc de contenu (et en-tête facultatif `entete`) : `<Card><CardContent className={contenu}>`
+   + `</CardContent></Card>` d'un seul tenant. */
+export function CarteContenu({ classe, entete, contenu, children, ...rest }) {
+  return (
+    <Card className={classe} {...rest}>
+      {entete}
+      <CardContent className={contenu}>{children}</CardContent>
+    </Card>
+  )
+}
+
 export default Card

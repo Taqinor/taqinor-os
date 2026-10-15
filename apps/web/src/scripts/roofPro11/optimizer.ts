@@ -97,7 +97,7 @@ import {
   type FiltrageAccesSolaire,
 } from './shadingUi'; // CALX115 — le seuil d'accès solaire lu par le posable
 import { $, fmt, fmtMad } from './dom';
-import { type CardData, type RenderConfigOpts } from './types';
+import { type CardData, type RenderConfigOpts, type RenderSceneFn } from './types';
 import { type Ctx } from './context';
 
 // ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
@@ -304,15 +304,7 @@ export async function lireRendement(
  *  les TDZ ; les modules frères sont passés directement. */
 export interface OptimizerDeps {
   /** Rendu 3D d'une config (scene3d). */
-  renderScene: (
-    pack: PackResult,
-    grid: PanelGrid,
-    tiltDeg: number,
-    family: ConfigFamily,
-    maxCount: number,
-    flush?: boolean,
-    occupiedSet?: Set<number>,
-  ) => void;
+  renderScene: RenderSceneFn;
   /** Repeint le tableau matrice (toit plat) — module matrix. */
   paintComparison: () => void;
   /** Surligne la ligne gagnante (ou null) du tableau comparatif — module matrix. */

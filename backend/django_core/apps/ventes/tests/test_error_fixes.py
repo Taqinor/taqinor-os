@@ -242,7 +242,7 @@ class TestMarquerLivreStockNegatifAutorise(TestCase):
         # Stock 2, demande 3 → insuffisant, réglage société par défaut OFF.
         r = self.api.post(
             f'/api/django/ventes/bons-commande/{self.bc.id}/marquer-livre/')
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertEqual(r.status_code, 409, getattr(r, 'data', r))  # ENF11 : état du stock
         self.assertIn('Stock insuffisant', r.data['detail'])
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 2)  # inchangé

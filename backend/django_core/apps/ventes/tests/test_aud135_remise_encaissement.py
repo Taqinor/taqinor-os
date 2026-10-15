@@ -179,7 +179,7 @@ class TestAud135RemiseEncaissement(TestCase):
         resp = self.api.patch(
             f'{URL}{remise.id}/', {'montant_declare': '99999.00'},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF11 : remise clôturée (état)
         remise.refresh_from_db()
         self.assertEqual(remise.montant_declare, Decimal('15000.00'))
 

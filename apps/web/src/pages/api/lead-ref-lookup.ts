@@ -31,25 +31,13 @@ import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { jsonResponse as json } from '../../lib/apiJson';
+import { resolveApiBase } from './_apiBase';
 
 // Même discipline anti-garbage que `idempotencyKey` côté lib/lead.ts (déjà
 // validée avant envoi) — une valeur hors de cette forme ne peut être celle
 // d'AUCUNE soumission réelle, jamais la peine d'appeler le backend.
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_-]{8,64}$/;
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
-  });
-}
-
-function resolveApiBase(): string {
-  const env = (cf.env ?? {}) as { PUBLIC_API_BASE?: string };
-  const runtime = env.PUBLIC_API_BASE?.trim();
-  const build = (import.meta.env.PUBLIC_API_BASE as string | undefined)?.trim();
-  return runtime || build || 'https://api.taqinor.ma';
-}
 
 function leadRefEndpoint(apiBase: string, key: string): string {
   return `${apiBase.replace(/\/+$/, '')}/api/django/crm/public/lead-ref/${encodeURIComponent(key)}/`;

@@ -145,7 +145,7 @@ class DatePrevueTests(VisiteTerrainBase):
         for jour in (self.hier, demain):
             with self.subTest(jour=jour):
                 resp = self._patch_date(visite_id, jour)
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 409, resp.data)  # ENF11
                 self.assertIn('date_prevue', resp.data)
                 self.assertIn('déjà réalisée', resp.data['date_prevue'][0])
         visite = VisiteTerrain.objects.get(pk=visite_id)
@@ -154,18 +154,20 @@ class DatePrevueTests(VisiteTerrainBase):
     def test_date_passee_refusee(self):
         visite_id = self.creer_visite()
         resp = self._patch_date(visite_id, self.hier)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF11
         self.assertIn('passé', resp.data['date_prevue'][0])
         self.assertIsNone(VisiteTerrain.objects.get(pk=visite_id).date_prevue)
 
     def test_preparer_devis_non_annule(self):
         visite_id = self._visite_terminee()
         avant = self._etat_suivi()
-        resp = self._patch_date(visite_id,
-                                self.aujourdhui + datetime.timedelta(days=2))
-        self.assertEqual(resp.status_code, 400, resp.data)
-        resp = self._patch_date(visite_id, self.hier)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ENF11 (nocturne 15/10) — visite déjà réalisée : sa date ne bouge plus,
+        # refus d'ÉTAT 409 nommant ``date_prevue`` (messages en texte simple).
+        for jour in (self.aujourdhui + datetime.timedelta(days=2), self.hier):
+            resp = self._patch_date(visite_id, jour)
+            self.assertEqual(resp.status_code, 409, resp.content.decode())
+            self.assertIn('date_prevue', resp.data, resp.content.decode())
+            self.assertIn('réalisée', str(resp.data['date_prevue']))
         # Persistance : file de relances, notes et date du lead identiques.
         self.assertEqual(self._etat_suivi(), avant)
 

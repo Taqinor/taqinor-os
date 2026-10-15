@@ -1291,13 +1291,17 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # dossier. La lecture des visites passe par le SÉLECTEUR de ``apps.visites``
     # (frontière M3) : ce module n'importe jamais ses modèles.
 
-    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False),
-                                    proprietaire_inconnu=serializers.BooleanField(required=False)),
-                   extensions=sd.LOCATAIRE_SUITE, responses=inline_serializer('CrmLeadLocataire', {
-                       'locataire': serializers.BooleanField(),
-                       'propose': serializers.ListField(child=serializers.CharField()),
-                       'motif_perte': serializers.CharField(),
-                   }))
+    # ENF11 (nocturne 15/10) — GET et POST ne servent pas la même forme : le
+    # POST rend l'issue (201 fiche propriétaire créée, 200 sinon), déclarée.
+    @extend_schema(methods=['GET'], responses=inline_serializer('CrmLeadLocataire', {
+        'locataire': serializers.BooleanField(),
+        'propose': serializers.ListField(child=serializers.CharField()),
+        'motif_perte': serializers.CharField(),
+    }))
+    @extend_schema(methods=['POST'], request=sd.corps(
+        'CrmLocataireRequest', proprietaire=serializers.DictField(required=False),
+        proprietaire_inconnu=serializers.BooleanField(required=False)),
+        extensions=sd.LOCATAIRE_SUITE, responses={code: sd.LOCATAIRE_ISSUE for code in (200, 201)})
     @action(detail=True, methods=['get', 'post'], url_path='locataire')
     def locataire(self, request, pk=None):
         """CAD164 — [TRANCHÉ 21/09/2026] le client est LOCATAIRE.
@@ -1341,8 +1345,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                                   '« propriétaire inconnu » pour clore la '
                                   'fiche avec le motif « Locataire ».']},
                 status=status.HTTP_400_BAD_REQUEST)
-        refus = refus_proprietaire(donnees)
-        if refus:
+        if refus := refus_proprietaire(donnees):
             # Les erreurs de CHAMP vivent sous `proprietaire` (même forme que
             # le corps) ; une charge illisible est refusée sur `proprietaire`.
             corps = refus if 'proprietaire' in refus else {'proprietaire': refus}

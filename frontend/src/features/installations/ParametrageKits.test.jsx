@@ -6,13 +6,6 @@ import userEvent from '@testing-library/user-event'
    qualité (FG328, XMFG13/14). L'Atelier ne fait que SÉLECTIONNER un kit
    déjà créé — cet écran crée le kit lui-même. */
 
-function mockMatchMedia() {
-  window.matchMedia = (query) => ({
-    matches: false, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() })
 
 const inst = vi.hoisted(() => ({
@@ -39,6 +32,7 @@ vi.mock('../../api/stockApi', () => ({ default: {
 } }))
 
 import ParametrageKits from './ParametrageKits'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

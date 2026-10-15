@@ -1,27 +1,17 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, cleanup, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import crmReducer from '../store/crmSlice'
+import { describe, it, expect, vi } from 'vitest'
+import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { waitFor } from '@testing-library/react'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
-import LeadWorkspace from './LeadWorkspace'
 
 // LW41 — `chatter_recent` doit vraiment économiser la requête historique. Avant
 // ce fix, le shell appelait TOUJOURS `/historique/` au montage même si le GET
 // détail embarquait déjà `chatter_recent` (LW30) — l'ouverture coûtait PLUS
 // cher qu'avant, pas moins.
 
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 vi.mock('./ContextRail', () => ({ default: () => null }))
 vi.mock('./IdentityRail', () => ({ default: () => <div data-testid="identity-rail" /> }))
 
@@ -33,33 +23,11 @@ vi.mock('../../../api/crmApi', () => ({
     getLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   },
 }))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
-
-beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function makeStore() {
-  return configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s } })
-}
+installerHooksLeadWorkspace()
 
 function renderEdit(lead) {
-  return render(
-    <Provider store={makeStore()}>
-      <MemoryRouter>
-        <LeadWorkspace lead={lead} onClose={vi.fn()} onSaved={vi.fn()} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderLeadWorkspace({ lead })
 }
 
 describe('LW41 — pas de double requête historique quand chatter_recent est déjà là', () => {

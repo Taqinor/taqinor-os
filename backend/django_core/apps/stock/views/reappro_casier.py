@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import INT, P, STR
 from ..utils.params import UniciteEn409Mixin
@@ -19,7 +20,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class SeuilReapproCasierSerializer(UniciteEn409Mixin, CompanyScopedRelationsMixin,
+class SeuilReapproCasierSerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanyScopedRelationsMixin,
                                    ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # CI #997 fuzz (4) : un seul seuil par casier (OneToOne) -> le doublon est
     # un 409 (état des données), plus un 400.
@@ -33,7 +34,7 @@ class SeuilReapproCasierSerializer(UniciteEn409Mixin, CompanyScopedRelationsMixi
         read_only_fields = ['created_at']
 
 
-class TacheReapproInterneSerializer(CompanyScopedRelationsMixin,
+class TacheReapproInterneSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                     serializers.ModelSerializer):
     bin_cible_code = serializers.CharField(source='bin_cible.code',
                                            read_only=True, default='')

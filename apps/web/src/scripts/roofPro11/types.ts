@@ -21,6 +21,18 @@ import { type SerializedEdge } from './edges';
 import { type CoucheElectrique } from './electrique3d';
 import { type BatimentOsmServeur } from './batiment'; // CALX132 câblage
 
+/** Rendu 3D d'une config (scene3d) : mêmes pack/grid/tilt/family, occupation éventuellement
+ *  personnalisée. Signature PARTAGÉE de scene3d, layoutEditor et optimizer. */
+export type RenderSceneFn = (
+  pack: PackResult,
+  grid: PanelGrid,
+  tiltDeg: number,
+  family: ConfigFamily,
+  maxCount: number,
+  flush?: boolean,
+  occupiedSet?: Set<number>,
+) => void;
+
 export interface InitOptions {
   maptilerKey: string;
   mapboxToken?: string;

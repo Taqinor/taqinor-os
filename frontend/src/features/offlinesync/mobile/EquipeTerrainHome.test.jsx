@@ -1,27 +1,21 @@
 // NTMOB25 — accueil mobile « Technicien responsable » : vue d'équipe du jour
 // + réaffectation, redirection desktop.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { isMobileMock } from '../../../test/mobileMocks'
+import '../../../test/utilisateur7Mock'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-const { coreApiMock, installationsApiMock, isMobileMock } = vi.hoisted(() => ({
+const { coreApiMock, installationsApiMock } = vi.hoisted(() => ({
   coreApiMock: { utilisateurs: { list: vi.fn() } },
   installationsApiMock: {
     getInterventions: vi.fn(),
     getConflitsAffectation: vi.fn(),
     updateIntervention: vi.fn(),
   },
-  isMobileMock: vi.fn(() => true),
 }))
 vi.mock('../../../api/coreApi', () => ({ default: coreApiMock }))
 vi.mock('../../../api/installationsApi', () => ({ default: installationsApiMock }))
-vi.mock('react-redux', () => ({
-  useSelector: (sel) => sel({ auth: { user: { id: 7 } } }),
-}))
-vi.mock('../../../ui/ResponsiveDialog', async () => {
-  const actual = await vi.importActual('../../../ui/ResponsiveDialog')
-  return { ...actual, useIsMobile: () => isMobileMock() }
-})
 
 import EquipeTerrainHome from './EquipeTerrainHome'
 

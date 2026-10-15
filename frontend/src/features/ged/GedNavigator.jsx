@@ -25,11 +25,12 @@ import EnteteGed from './EnteteGed'
 import { formatDate } from '../../lib/format'
 import { downloadBlobInGesture, filenameFromResponse } from '../../utils/downloadBlob'
 import {
-  Card, CardContent, Button, EmptyState, Skeleton, Badge,
+  Button, EmptyState, Skeleton, Badge,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogClose, Input, Textarea, FileUpload, toast,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  CarteContenu,
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
@@ -414,288 +415,284 @@ export default function GedNavigator() {
       ) : (
         <div className="grid gap-4 md:grid-cols-[minmax(240px,360px)_1fr]">
           {/* ── Arborescence des dossiers ── */}
-          <Card>
-            <CardContent className="p-2">
-              <div className="mb-2 flex items-center gap-1 px-1">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {total} dossier{total > 1 ? 's' : ''}
-                </span>
-                <Button size="sm" variant="ghost" className="ml-auto"
-                  onClick={() => setFolderDlg({ mode: 'create' })}
-                  disabled={!hasCabinet}>
-                  <FolderPlus className="size-4" aria-hidden="true" /> Dossier
+          <CarteContenu contenu="p-2">
+            <div className="mb-2 flex items-center gap-1 px-1">
+              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {total} dossier{total > 1 ? 's' : ''}
+              </span>
+              <Button size="sm" variant="ghost" className="ml-auto"
+                onClick={() => setFolderDlg({ mode: 'create' })}
+                disabled={!hasCabinet}>
+                <FolderPlus className="size-4" aria-hidden="true" /> Dossier
+              </Button>
+            </div>
+            {visible.length === 0 ? (
+              // U14 — état vide de l'arbre : CTA pour créer le premier dossier.
+              <div className="px-2 py-4 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Aucun dossier dans cette armoire.
+                </p>
+                <Button size="sm" variant="secondary" className="mt-2"
+                  onClick={() => setFolderDlg({ mode: 'create' })}>
+                  <FolderPlus className="size-4" aria-hidden="true" /> Créer un dossier
                 </Button>
               </div>
-              {visible.length === 0 ? (
-                // U14 — état vide de l'arbre : CTA pour créer le premier dossier.
-                <div className="px-2 py-4 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Aucun dossier dans cette armoire.
-                  </p>
-                  <Button size="sm" variant="secondary" className="mt-2"
-                    onClick={() => setFolderDlg({ mode: 'create' })}>
-                    <FolderPlus className="size-4" aria-hidden="true" /> Créer un dossier
-                  </Button>
-                </div>
-              ) : (
-                <ul className="flex flex-col" role="tree" aria-label="Dossiers">
-                  {visible.map((node) => {
-                    const isOpen = expanded.has(node.id)
-                    const isSel = selected?.id === node.id
-                    return (
-                      <li key={node.id} role="treeitem"
-                        aria-expanded={node.hasChildren ? isOpen : undefined}
-                        aria-selected={isSel}>
-                        <button type="button"
-                          className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1.5 text-left text-sm hover:bg-muted${isSel ? ' bg-muted font-medium' : ''}`}
-                          style={{ paddingLeft: `${node.depth * 16 + 6}px` }}
-                          onClick={() => selectFolder(node)}>
-                          <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-                            {node.hasChildren
-                              ? (isOpen
-                                ? <ChevronDown className="size-3.5" aria-hidden="true" />
-                                : <ChevronRight className="size-3.5" aria-hidden="true" />)
-                              : null}
-                          </span>
-                          {node.hasChildren && isOpen
-                            ? <FolderOpen className="size-4 shrink-0 text-primary" aria-hidden="true" />
-                            : <Folder className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-                          <span className="truncate">{node.nom}</span>
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+            ) : (
+              <ul className="flex flex-col" role="tree" aria-label="Dossiers">
+                {visible.map((node) => {
+                  const isOpen = expanded.has(node.id)
+                  const isSel = selected?.id === node.id
+                  return (
+                    <li key={node.id} role="treeitem"
+                      aria-expanded={node.hasChildren ? isOpen : undefined}
+                      aria-selected={isSel}>
+                      <button type="button"
+                        className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1.5 text-left text-sm hover:bg-muted${isSel ? ' bg-muted font-medium' : ''}`}
+                        style={{ paddingLeft: `${node.depth * 16 + 6}px` }}
+                        onClick={() => selectFolder(node)}>
+                        <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                          {node.hasChildren
+                            ? (isOpen
+                              ? <ChevronDown className="size-3.5" aria-hidden="true" />
+                              : <ChevronRight className="size-3.5" aria-hidden="true" />)
+                            : null}
+                        </span>
+                        {node.hasChildren && isOpen
+                          ? <FolderOpen className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                          : <Folder className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
+                        <span className="truncate">{node.nom}</span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </CarteContenu>
 
           {/* ── Documents du dossier sélectionné ── */}
-          <Card>
-            <CardContent className="p-0">
-              {!selected ? (
-                <EmptyState icon={Folder}
-                  title="Aucun dossier sélectionné"
-                  description="Sélectionnez un dossier dans l'arborescence pour afficher ses documents." />
-              ) : (
-                <>
-                  <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
-                    <FolderOpen className="size-4 text-primary" aria-hidden="true" />
-                    <span className="text-sm font-medium">{selected.nom}</span>
-                    {/* ADOC30 — total réel (toutes les pages chargées). */}
-                    {!loadingDocs && (
-                      <span className="text-xs text-muted-foreground">
-                        {documents.length} document{documents.length > 1 ? 's' : ''}
-                      </span>
-                    )}
+          <CarteContenu contenu="p-0">
+            {!selected ? (
+              <EmptyState icon={Folder}
+                title="Aucun dossier sélectionné"
+                description="Sélectionnez un dossier dans l'arborescence pour afficher ses documents." />
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
+                  <FolderOpen className="size-4 text-primary" aria-hidden="true" />
+                  <span className="text-sm font-medium">{selected.nom}</span>
+                  {/* ADOC30 — total réel (toutes les pages chargées). */}
+                  {!loadingDocs && (
+                    <span className="text-xs text-muted-foreground">
+                      {documents.length} document{documents.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  <div className="ml-auto flex items-center gap-1">
+                    <Button size="sm" variant="ghost"
+                      onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>
+                      <Pencil className="size-4" aria-hidden="true" /> Renommer
+                    </Button>
+                    <Button size="sm" variant="ghost"
+                      onClick={() => setFolderDlg({ mode: 'move', folder: selected })}>
+                      <MoveRight className="size-4" aria-hidden="true" /> Déplacer
+                    </Button>
+                    {/* WIR70 — lien de dépôt public tokenisé pour ce dossier. */}
+                    <Button size="sm" variant="ghost" onClick={createDepotLink}>
+                      <Link2 className="size-4" aria-hidden="true" /> Lien de dépôt
+                    </Button>
+                    {/* GED32/WIR249 — import en masse depuis un CSV de métadonnées. */}
+                    <Button size="sm" variant="ghost" onClick={() => setImportMasseDlg(true)}>
+                      <FileUp className="size-4" aria-hidden="true" /> Importer (CSV)
+                    </Button>
+                    <Button size="sm" variant="default"
+                      onClick={() => setUploadDlg(true)}>
+                      <Upload className="size-4" aria-hidden="true" /> Téléverser
+                    </Button>
+                  </div>
+                </div>
+                {/* XGED14 — barre d'actions par lot (visible dès qu'une case est cochée). */}
+                {selectedIds.size > 0 && (
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
+                    <span className="text-sm font-medium">
+                      {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
+                    </span>
                     <div className="ml-auto flex items-center gap-1">
-                      <Button size="sm" variant="ghost"
-                        onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>
-                        <Pencil className="size-4" aria-hidden="true" /> Renommer
+                      <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                        Désélectionner
                       </Button>
-                      <Button size="sm" variant="ghost"
-                        onClick={() => setFolderDlg({ mode: 'move', folder: selected })}>
-                        <MoveRight className="size-4" aria-hidden="true" /> Déplacer
+                      {/* XGED10 — fusionne les PDF sélectionnés (≥2) en un seul document. */}
+                      {/* ADOC22 — seulement si TOUS les documents sélectionnés sont des PDF. */}
+                      {selectedIds.size >= 2 && documents
+                        .filter((d) => selectedIds.has(d.id))
+                        .every((d) => d.derniere_mime === 'application/pdf') && (
+                        <Button size="sm" variant="outline" onClick={() => setMergeDlg(true)}>
+                          <FileText className="size-4" aria-hidden="true" /> Fusionner
+                        </Button>
+                      )}
+                      {/* XGED14 — ZIP de la sélection (wrapper dédié, jamais operationsLot). */}
+                      <Button size="sm" variant="outline"
+                        onClick={bulkZip} disabled={bulkBusy}>
+                        {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
+                        Télécharger (.zip)
                       </Button>
-                      {/* WIR70 — lien de dépôt public tokenisé pour ce dossier. */}
-                      <Button size="sm" variant="ghost" onClick={createDepotLink}>
-                        <Link2 className="size-4" aria-hidden="true" /> Lien de dépôt
+                      {/* XGED14 — étiqueter/retirer/déplacer par lot (rapport d'erreurs). */}
+                      <Button size="sm" variant="outline" onClick={() => setBulkOpsDlg(true)}>
+                        <TagIcon className="size-4" aria-hidden="true" /> Étiqueter / Déplacer…
                       </Button>
-                      {/* GED32/WIR249 — import en masse depuis un CSV de métadonnées. */}
-                      <Button size="sm" variant="ghost" onClick={() => setImportMasseDlg(true)}>
-                        <FileUp className="size-4" aria-hidden="true" /> Importer (CSV)
-                      </Button>
-                      <Button size="sm" variant="default"
-                        onClick={() => setUploadDlg(true)}>
-                        <Upload className="size-4" aria-hidden="true" /> Téléverser
+                      <Button size="sm" variant="destructive"
+                        onClick={bulkCorbeille} disabled={bulkBusy}>
+                        {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
+                        Mettre en corbeille
                       </Button>
                     </div>
                   </div>
-                  {/* XGED14 — barre d'actions par lot (visible dès qu'une case est cochée). */}
-                  {selectedIds.size > 0 && (
-                    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2">
-                      <span className="text-sm font-medium">
-                        {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
-                      </span>
-                      <div className="ml-auto flex items-center gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
-                          Désélectionner
-                        </Button>
-                        {/* XGED10 — fusionne les PDF sélectionnés (≥2) en un seul document. */}
-                        {/* ADOC22 — seulement si TOUS les documents sélectionnés sont des PDF. */}
-                        {selectedIds.size >= 2 && documents
-                          .filter((d) => selectedIds.has(d.id))
-                          .every((d) => d.derniere_mime === 'application/pdf') && (
-                          <Button size="sm" variant="outline" onClick={() => setMergeDlg(true)}>
-                            <FileText className="size-4" aria-hidden="true" /> Fusionner
-                          </Button>
-                        )}
-                        {/* XGED14 — ZIP de la sélection (wrapper dédié, jamais operationsLot). */}
-                        <Button size="sm" variant="outline"
-                          onClick={bulkZip} disabled={bulkBusy}>
-                          {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Download className="size-4" aria-hidden="true" />}
-                          Télécharger (.zip)
-                        </Button>
-                        {/* XGED14 — étiqueter/retirer/déplacer par lot (rapport d'erreurs). */}
-                        <Button size="sm" variant="outline" onClick={() => setBulkOpsDlg(true)}>
-                          <TagIcon className="size-4" aria-hidden="true" /> Étiqueter / Déplacer…
-                        </Button>
-                        <Button size="sm" variant="destructive"
-                          onClick={bulkCorbeille} disabled={bulkBusy}>
-                          {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
-                          Mettre en corbeille
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  {loadingDocs ? (
-                    <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
-                    </div>
-                  ) : documents.length === 0 ? (
-                    // U14 — état vide du dossier : CTA pour téléverser le premier document.
-                    <EmptyState icon={Inbox}
-                      title={`Dossier « ${selected.nom} »`}
-                      description="Ce dossier ne contient aucun document. Téléversez-en un pour démarrer."
-                      action={<Button onClick={() => setUploadDlg(true)}>
-                        <Upload className="size-4" aria-hidden="true" /> Téléverser un document
-                      </Button>} />
-                  ) : (
-                    <DataTable
-                      data={documents}
-                      columns={GED_DOC_COLUMNS}
-                      getRowId={(d) => d.id}
-                      manualSorting
-                      manualFiltering
-                      manualPagination
-                      rowCount={documents.length}
-                      pageSize={documents.length}
-                      pageSizeOptions={[documents.length]}
-                      searchable={false}
-                      hideToolbar
-                      hidePagination
-                      tableRole="table"
-                      aria-label="Documents du dossier"
-                      renderHeaderRow={() => (
-                        <>
-                          <th scope="col" className="w-8">
-                            {/* XGED14 — tout sélectionner. */}
-                            <input type="checkbox"
-                              aria-label="Tout sélectionner"
-                              checked={selectedIds.size === documents.length && documents.length > 0}
-                              onChange={toggleSelectAll} />
-                          </th>
-                          <th scope="col">Document</th>
-                          <th scope="col" className="m-hide">Versions</th>
-                          <th scope="col" className="m-hide">Créé par</th>
-                          <th scope="col">Mis à jour</th>
-                          <th scope="col" aria-label="Actions" />
-                        </>
-                      )}
-                      renderRow={(d) => (
-                        <tr key={d.id}>
-                          <td data-label="" className="w-8">
-                            <input type="checkbox"
-                              aria-label={`Sélectionner ${d.nom}`}
-                              checked={selectedIds.has(d.id)}
-                              onChange={() => toggleSelect(d.id)} />
-                          </td>
-                          <td data-label="Document" className="font-medium">
-                            {/* GED14 — clic sur le nom → aperçu du document. */}
-                            <button type="button"
-                              className="flex items-center gap-1.5 text-left hover:underline"
+                )}
+                {loadingDocs ? (
+                  <div className="flex items-center gap-2 p-6 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
+                  </div>
+                ) : documents.length === 0 ? (
+                  // U14 — état vide du dossier : CTA pour téléverser le premier document.
+                  <EmptyState icon={Inbox}
+                    title={`Dossier « ${selected.nom} »`}
+                    description="Ce dossier ne contient aucun document. Téléversez-en un pour démarrer."
+                    action={<Button onClick={() => setUploadDlg(true)}>
+                      <Upload className="size-4" aria-hidden="true" /> Téléverser un document
+                    </Button>} />
+                ) : (
+                  <DataTable
+                    data={documents}
+                    columns={GED_DOC_COLUMNS}
+                    getRowId={(d) => d.id}
+                    manualSorting
+                    manualFiltering
+                    manualPagination
+                    rowCount={documents.length}
+                    pageSize={documents.length}
+                    pageSizeOptions={[documents.length]}
+                    searchable={false}
+                    hideToolbar
+                    hidePagination
+                    tableRole="table"
+                    aria-label="Documents du dossier"
+                    renderHeaderRow={() => (
+                      <>
+                        <th scope="col" className="w-8">
+                          {/* XGED14 — tout sélectionner. */}
+                          <input type="checkbox"
+                            aria-label="Tout sélectionner"
+                            checked={selectedIds.size === documents.length && documents.length > 0}
+                            onChange={toggleSelectAll} />
+                        </th>
+                        <th scope="col">Document</th>
+                        <th scope="col" className="m-hide">Versions</th>
+                        <th scope="col" className="m-hide">Créé par</th>
+                        <th scope="col">Mis à jour</th>
+                        <th scope="col" aria-label="Actions" />
+                      </>
+                    )}
+                    renderRow={(d) => (
+                      <tr key={d.id}>
+                        <td data-label="" className="w-8">
+                          <input type="checkbox"
+                            aria-label={`Sélectionner ${d.nom}`}
+                            checked={selectedIds.has(d.id)}
+                            onChange={() => toggleSelect(d.id)} />
+                        </td>
+                        <td data-label="Document" className="font-medium">
+                          {/* GED14 — clic sur le nom → aperçu du document. */}
+                          <button type="button"
+                            className="flex items-center gap-1.5 text-left hover:underline"
+                            onClick={() => setPreviewDoc(d)}>
+                            <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                            {d.nom}
+                          </button>
+                        </td>
+                        <td data-label="Versions" className="m-hide">
+                          {d.version_count ?? 0}
+                          {d.derniere_version ? ` (v${d.derniere_version})` : ''}
+                        </td>
+                        <td data-label="Créé par" className="m-hide">
+                          {d.created_by_nom || '—'}
+                          {d.is_locked && (
+                            <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
+                              <Lock className="size-3" aria-hidden="true" />
+                              {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
+                            </Badge>
+                          )}
+                        </td>
+                        <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
+                        <td data-label="Actions" className="text-right">
+                          <div className="flex items-center justify-end gap-0.5">
+                            <Button size="sm" variant="ghost"
+                              aria-label={`Aperçu de ${d.nom}`}
                               onClick={() => setPreviewDoc(d)}>
-                              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                              {d.nom}
-                            </button>
-                          </td>
-                          <td data-label="Versions" className="m-hide">
-                            {d.version_count ?? 0}
-                            {d.derniere_version ? ` (v${d.derniere_version})` : ''}
-                          </td>
-                          <td data-label="Créé par" className="m-hide">
-                            {d.created_by_nom || '—'}
-                            {d.is_locked && (
-                              <Badge tone="warning" className="ml-1.5 inline-flex items-center gap-0.5">
-                                <Lock className="size-3" aria-hidden="true" />
-                                {d.locked_by_nom ? d.locked_by_nom : 'extrait'}
-                              </Badge>
+                              <Eye className="size-4" aria-hidden="true" /> Aperçu
+                            </Button>
+                            {/* WIR70 — timeline + « qui voit ce document et pourquoi ». */}
+                            <Button size="sm" variant="ghost"
+                              aria-label={`Détails de ${d.nom}`}
+                              onClick={() => setInsightsDoc(d)}>
+                              <Info className="size-4" aria-hidden="true" /> Détails
+                            </Button>
+                            {d.is_locked ? (
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Archiver ${d.nom}`}
+                                onClick={() => checkIn(d)}>
+                                <LockOpen className="size-4" aria-hidden="true" /> Archiver
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Extraire ${d.nom}`}
+                                onClick={() => checkOut(d)}>
+                                <Lock className="size-4" aria-hidden="true" /> Extraire
+                              </Button>
                             )}
-                          </td>
-                          <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
-                          <td data-label="Actions" className="text-right">
-                            <div className="flex items-center justify-end gap-0.5">
-                              <Button size="sm" variant="ghost"
-                                aria-label={`Aperçu de ${d.nom}`}
-                                onClick={() => setPreviewDoc(d)}>
-                                <Eye className="size-4" aria-hidden="true" /> Aperçu
-                              </Button>
-                              {/* WIR70 — timeline + « qui voit ce document et pourquoi ». */}
-                              <Button size="sm" variant="ghost"
-                                aria-label={`Détails de ${d.nom}`}
-                                onClick={() => setInsightsDoc(d)}>
-                                <Info className="size-4" aria-hidden="true" /> Détails
-                              </Button>
-                              {d.is_locked ? (
+                            <Button size="sm" variant="ghost"
+                              aria-label={`Mettre ${d.nom} en corbeille`}
+                              onClick={() => mettreEnCorbeille(d)}>
+                              <Trash2 className="size-4" aria-hidden="true" />
+                            </Button>
+                            {/* GED33/ZGED9/GED17/XGED30/WIR249 — actions secondaires
+                                regroupées (OCR pièce, verrou d'avertissement, cycle de
+                                vie, éditeur Office) : la ligne reste lisible. */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
                                 <Button size="sm" variant="ghost"
-                                  aria-label={`Archiver ${d.nom}`}
-                                  onClick={() => checkIn(d)}>
-                                  <LockOpen className="size-4" aria-hidden="true" /> Archiver
+                                  aria-label={`Plus d'actions pour ${d.nom}`}>
+                                  <MoreVertical className="size-4" aria-hidden="true" />
                                 </Button>
-                              ) : (
-                                <Button size="sm" variant="ghost"
-                                  aria-label={`Extraire ${d.nom}`}
-                                  onClick={() => checkOut(d)}>
-                                  <Lock className="size-4" aria-hidden="true" /> Extraire
-                                </Button>
-                              )}
-                              <Button size="sm" variant="ghost"
-                                aria-label={`Mettre ${d.nom} en corbeille`}
-                                onClick={() => mettreEnCorbeille(d)}>
-                                <Trash2 className="size-4" aria-hidden="true" />
-                              </Button>
-                              {/* GED33/ZGED9/GED17/XGED30/WIR249 — actions secondaires
-                                  regroupées (OCR pièce, verrou d'avertissement, cycle de
-                                  vie, éditeur Office) : la ligne reste lisible. */}
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button size="sm" variant="ghost"
-                                    aria-label={`Plus d'actions pour ${d.nom}`}>
-                                    <MoreVertical className="size-4" aria-hidden="true" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onSelect={() => setModifierDoc(d)}>
-                                    <Pencil /> Modifier…
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => setNouvelleVersionDoc(d)}>
-                                    <FileUp /> Nouvelle version…
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => ocrPieceAction(d)}>
-                                    <ScanText /> Extraire l'OCR
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => toggleVerrouAvertissement(d)}>
-                                    {d.est_verrouille_avertissement ? <ShieldOff /> : <ShieldAlert />}
-                                    {d.est_verrouille_avertissement ? 'Lever le verrou (avertissement)' : 'Verrouiller (avertissement)'}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => setCycleVieDoc(d)}>
-                                    <Workflow /> Cycle de vie…
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onSelect={() => officeOuvrirAction(d)}>
-                                    <AppWindow /> Ouvrir dans l'éditeur (Office)
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    />
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => setModifierDoc(d)}>
+                                  <Pencil /> Modifier…
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setNouvelleVersionDoc(d)}>
+                                  <FileUp /> Nouvelle version…
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => ocrPieceAction(d)}>
+                                  <ScanText /> Extraire l'OCR
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => toggleVerrouAvertissement(d)}>
+                                  {d.est_verrouille_avertissement ? <ShieldOff /> : <ShieldAlert />}
+                                  {d.est_verrouille_avertissement ? 'Lever le verrou (avertissement)' : 'Verrouiller (avertissement)'}
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setCycleVieDoc(d)}>
+                                  <Workflow /> Cycle de vie…
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => officeOuvrirAction(d)}>
+                                  <AppWindow /> Ouvrir dans l'éditeur (Office)
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  />
+                )}
+              </>
+            )}
+          </CarteContenu>
         </div>
       )}
 

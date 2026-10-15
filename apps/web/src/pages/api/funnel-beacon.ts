@@ -17,13 +17,7 @@ import * as cf from 'cloudflare:workers';
 import { forwardBeacon, redactBeaconForLog, validateBeaconEvent, type FunnelEnv } from '../../lib/funnelBeacon';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
-  });
-}
+import { jsonResponse as json } from '../../lib/apiJson';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout

@@ -1299,9 +1299,9 @@ class TestAsav100Abonnements(TestCase):
         ab = AbonnementMonitoring.objects.get(id=r.data['id'])
         self.assertEqual(ab.company_id, self.company.id)
         self.assertEqual(ab.client_id, self.client.id)
-        # Un système d'une autre société est refusé (champ nommé).
+        # Un système d'une autre société est inconnu (404, champ nommé).
         r = self._creer(installation_id=autre_inst.id)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)  # ENF11 : système hors société = inconnu
         self.assertIn('installation_id', r.data)
 
     def test_montant_saisi_obligatoire(self):

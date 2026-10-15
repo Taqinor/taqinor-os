@@ -7,15 +7,7 @@ import { MemoryRouter } from 'react-router-dom'
    `RelancesSuiviPage.test.jsx` : le hook de rôle est mocké (réassignable par
    test) plutôt que de monter un vrai Provider redux. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const isAdminOrResponsableMock = vi.fn(() => false)
 vi.mock('../../hooks/useHasPermission', () => ({
@@ -46,6 +38,7 @@ vi.mock('../../api/crmApi', () => ({
 }))
 
 import VisiteursPage from './VisiteursPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 const APPAREIL_SUSPECT = {
   appareil_id: 'ab12cd34ef56', visites: 6, duree_totale_s: 725,

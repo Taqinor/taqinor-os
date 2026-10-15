@@ -148,6 +148,12 @@ class DashboardConfigCreateTests(TestCase):
         self.assertEqual(res.status_code, 201, res.data)
         cfg = DashboardConfig.objects.get(pk=res.data['id'])
         self.assertEqual(cfg.cards, [])
+        # ENF11 (nocturne 15/10) — PATCH partiel d'une config valide : la
+        # règle user XOR palier lit la config EN PLACE (avant : 400 sur ``{}``).
+        res = self.api.patch(f"{BASE_URL}{cfg.pk}/", {}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        res = self.api.patch(f"{BASE_URL}{cfg.pk}/", {'menu_tier': 'admin'}, format='json')
+        self.assertEqual(res.status_code, 409, res.data)
 
     def test_cards_non_liste_400_et_schema_publie_en_liste(self):
         """ERR-ENF11-FUZZ-REPORTING — ``{}``/``null`` ne sont plus conformes

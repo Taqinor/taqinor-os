@@ -2,17 +2,21 @@
 // d'authentification (aucune réponse, 5xx) — on ne renvoie pas vers /login (la
 // session peut être valide). Nouvel essai au clic et au retour du réseau
 // (événement `online`) : les loaders de la route sont rejoués.
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useRevalidator } from 'react-router-dom'
 
 export default function HorsLigneDemarrage() {
   const revalidator = useRevalidator()
   const reessayer = () => revalidator.revalidate()
+  // Dernier `reessayer` (le revalidator change à chaque rendu) : l'écouteur
+  // `online` est posé une seule fois et appelle toujours la version à jour.
+  const reessayerRef = useRef(reessayer)
+  useEffect(() => { reessayerRef.current = reessayer })
 
   useEffect(() => {
-    window.addEventListener('online', reessayer)
-    return () => window.removeEventListener('online', reessayer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const surRetourReseau = () => reessayerRef.current()
+    window.addEventListener('online', surRetourReseau)
+    return () => window.removeEventListener('online', surRetourReseau)
   }, [])
 
   return (

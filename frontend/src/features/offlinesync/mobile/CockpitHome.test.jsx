@@ -1,23 +1,19 @@
 // NTMOB5 — cockpit mobile Dirigeant : KPIs + approbations en attente.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { isMobileMock } from '../../../test/mobileMocks'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
-const { reportingApiMock, installationsApiMock, isMobileMock } = vi.hoisted(() => ({
+const { reportingApiMock, installationsApiMock } = vi.hoisted(() => ({
   reportingApiMock: {
     getDashboard: vi.fn(),
     getPipeline: vi.fn(),
     approbationsEnAttente: vi.fn(),
   },
   installationsApiMock: { getInstallations: vi.fn() },
-  isMobileMock: vi.fn(() => true),
 }))
 vi.mock('../../../api/reportingApi', () => ({ default: reportingApiMock }))
 vi.mock('../../../api/installationsApi', () => ({ default: installationsApiMock }))
-vi.mock('../../../ui/ResponsiveDialog', async () => {
-  const actual = await vi.importActual('../../../ui/ResponsiveDialog')
-  return { ...actual, useIsMobile: () => isMobileMock() }
-})
 
 import CockpitHome from './CockpitHome'
 

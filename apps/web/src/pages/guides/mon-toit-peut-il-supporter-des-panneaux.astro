@@ -73,6 +73,7 @@ const toitures = [
     body: 'Les installations lestées (sans perçage, panneaux posés sur des bacs lestés par des blocs béton) évitent de percer l’étanchéité, mais ajoutent un poids concentré sur des zones précises plutôt que réparti uniformément. Sur un toit plat, on vérifie surtout la capacité portante de la dalle sous l’étanchéité et la répartition des points de charge — pas uniquement le poids total.',
   },
 ];
+import GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB from '../../components/blocs/GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB.astro';
 ---
 
 <Layout
@@ -130,14 +131,7 @@ const toitures = [
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">Toiture par toiture : ce qui change</h2>
-      <div class="mt-8 grid gap-6" data-stagger>
-        {toitures.map((t, i) => (
-          <div class="v2-rise cine-card p-6 sm:p-7" style={`--v2-i:${i}`}>
-            <h3 class="display text-lg text-white">{t.title}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">{t.body}</p>
-          </div>
-        ))}
-      </div>
+      <GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB toitures={toitures} />
 
       <h2 class="display v2-section-title mt-12 text-white">Quand faut-il une vérification structurelle ?</h2>
       <p class="v2-lead mt-5 text-lune-soft">

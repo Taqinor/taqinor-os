@@ -15,14 +15,15 @@ import {
 import crmApi from '../../../api/crmApi'
 import reportingApi from '../../../api/reportingApi'
 import {
-  Card, CardHeader, CardTitle, CardDescription, CardContent,
-  Badge, Button, Spinner, EmptyState,
+  CardHeader, CardTitle, CardDescription, Badge, Button, Spinner, EmptyState,
+  CarteContenu,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { formatDate } from '../../../lib/format'
 import AFaireAujourdhui from './AFaireAujourdhui'
 import OnboardingTerrain from '../OnboardingTerrain'
 import { todayLocalIso } from '../../../lib/dateLocale'
+import EnteteCarteBadge from './EnteteCarteBadge'
 
 // Priorité haute → normale → basse (Lead.Priorite, crm/models.py).
 const PRIORITY_ORDER = { haute: 0, normale: 1, basse: 2 }
@@ -85,58 +86,50 @@ export default function CommercialHome() {
       {/* NTMOB19 — widget unifié cross-rôle, au-dessus des cartes du rôle. */}
       <AFaireAujourdhui />
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="size-4 text-muted-foreground" aria-hidden="true" />
-                Mes leads du jour
-              </CardTitle>
-              <CardDescription>Relances dues aujourd'hui, par priorité</CardDescription>
-            </div>
-            {leads && leads.length > 0 && <Badge tone="warning">{leads.length}</Badge>}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {leads === null
-            ? <Spinner />
-            : leads.length === 0
-              ? <EmptyState title="Aucune relance due aujourd'hui" />
-              : (
-                <ul className="flex flex-col divide-y divide-border">
-                  {leads.map((lead) => (
-                    <li key={lead.id}>
-                      <button
-                        type="button"
-                        className="flex w-full items-center justify-between gap-2 py-2 text-left"
-                        onClick={() => navigate(`/crm/leads/${lead.id}`)}
-                      >
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">
-                            {[lead.prenom, lead.nom].filter(Boolean).join(' ') || `Lead #${lead.id}`}
-                          </span>
-                          {lead.telephone && (
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Phone className="size-3" aria-hidden="true" /> {lead.telephone}
-                            </span>
-                          )}
+      <CarteContenu
+        entete={(
+          <EnteteCarteBadge icone={Target} titre="Mes leads du jour"
+            description="Relances dues aujourd'hui, par priorité"
+            compte={leads?.length} tonCompte="warning" />
+        )}>
+        {leads === null
+          ? <Spinner />
+          : leads.length === 0
+            ? <EmptyState title="Aucune relance due aujourd'hui" />
+            : (
+              <ul className="flex flex-col divide-y divide-border">
+                {leads.map((lead) => (
+                  <li key={lead.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 py-2 text-left"
+                      onClick={() => navigate(`/crm/leads/${lead.id}`)}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">
+                          {[lead.prenom, lead.nom].filter(Boolean).join(' ') || `Lead #${lead.id}`}
                         </span>
-                        {lead.priorite && (
-                          <Badge tone={PRIORITY_TONE[lead.priorite] || 'neutral'}>
-                            {lead.priorite}
-                          </Badge>
+                        {lead.telephone && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Phone className="size-3" aria-hidden="true" /> {lead.telephone}
+                          </span>
                         )}
-                        <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-        </CardContent>
-      </Card>
+                      </span>
+                      {lead.priorite && (
+                        <Badge tone={PRIORITY_TONE[lead.priorite] || 'neutral'}>
+                          {lead.priorite}
+                        </Badge>
+                      )}
+                      <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+      </CarteContenu>
 
-      <Card>
+      <CarteContenu
+        entete={(
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarClock className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -144,23 +137,22 @@ export default function CommercialHome() {
           </CardTitle>
           <CardDescription>Agenda du jour</CardDescription>
         </CardHeader>
-        <CardContent>
-          {events === null
-            ? <Spinner />
-            : events.length === 0
-              ? <EmptyState title="Aucun rendez-vous aujourd'hui" />
-              : (
-                <ul className="flex flex-col divide-y divide-border">
-                  {events.map((ev) => (
-                    <li key={ev.id} className="flex items-center justify-between gap-2 py-2">
-                      <span className="min-w-0 flex-1 truncate">{ev.title}</span>
-                      <span className="text-xs text-muted-foreground">{formatDate(ev.date)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-        </CardContent>
-      </Card>
+        )}>
+        {events === null
+          ? <Spinner />
+          : events.length === 0
+            ? <EmptyState title="Aucun rendez-vous aujourd'hui" />
+            : (
+              <ul className="flex flex-col divide-y divide-border">
+                {events.map((ev) => (
+                  <li key={ev.id} className="flex items-center justify-between gap-2 py-2">
+                    <span className="min-w-0 flex-1 truncate">{ev.title}</span>
+                    <span className="text-xs text-muted-foreground">{formatDate(ev.date)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+      </CarteContenu>
 
       <Button
         variant="outline" className="justify-center gap-2"

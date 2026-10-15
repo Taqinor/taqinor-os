@@ -3,11 +3,7 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const ROWS = [
   {
@@ -43,6 +39,7 @@ vi.mock('../../ui/confirm', () => ({
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
 import RelancesPage from './RelancesPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 // Réponses par défaut : aucun paramétrage, aucune promesse.
 const defaultGet = (url) => {

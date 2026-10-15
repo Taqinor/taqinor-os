@@ -28,7 +28,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, ChaineStricte
 
 from .branding import MARQUE_VIDE, company_pour_hote, marque_portail
 from .serializers import MarquePortailSerializer, ReleveComptePortailSerializer
@@ -37,7 +37,9 @@ from .serializers import MarquePortailSerializer, ReleveComptePortailSerializer
 #: ERR-ENF11-FUZZ-PORTAIL — le schéma dit la vérité : deux CHAÎNES JSON
 #: (``ChaineStricte`` : un nombre est refusé, plus converti) portant au moins
 #: un caractère non blanc (motif ``\S`` publié) ; tout autre corps → 400.
-_NON_BLANC = RegexValidator(r'\S', message='Ce champ ne peut pas être vide.')
+#: ENF11 (nocturne 15/10) — et SANS caractère nul (DRF le refuse dans tout
+#: texte : le motif publié le dit désormais).
+_NON_BLANC = RegexValidator(MOTIF_NON_BLANC_SANS_NUL, message='Ce champ ne peut pas être vide.')
 
 
 class AccepterInvitationPortailRequest(serializers.Serializer):

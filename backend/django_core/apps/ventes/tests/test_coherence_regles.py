@@ -289,6 +289,33 @@ class TestReglesEtude(_Base):
         self.assertEqual(self.run_rule('ETU_I7_BLOC_HORAIRE_PERIME', propre),
                          [])
 
+    def test_i7_divergent_compare_sans_a_son_bloc(self):
+        # ERR-QAH-VENTES-AUDIT-I7-FAUX-POSITIF — deux blocs frais, chacun
+        # pour SON option : aucune violation (avant : 5.68 vs 4.97 → critique).
+        data = {'puissance_kwc': 5.68, 'panneaux_divergents': True,
+                'puissance_kwc_sans': 4.97, 'puissance_kwc_avec': 5.68}
+        frais = self.devis(etude_params={
+            'etude_horaire': {'kwc': 5.68},
+            'etude_horaire_sans': {'kwc': 4.97}})
+        self.ctx.injecter_donnees(frais, data)
+        self.assertEqual(
+            self.run_rule('ETU_I7_BLOC_HORAIRE_PERIME', frais), [])
+        # Bloc SANS périmé : une violation, sur la colonne ``sans``.
+        perime = self.devis(etude_params={
+            'etude_horaire': {'kwc': 5.68},
+            'etude_horaire_sans': {'kwc': 4.26}})
+        self.ctx.injecter_donnees(perime, data)
+        out = self.run_rule('ETU_I7_BLOC_HORAIRE_PERIME', perime)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].valeurs['colonne'], 'sans')
+        self.assertEqual(out[0].valeurs['kwc_bloc'], 4.26)
+        # Bloc SANS absent : repli sur le bloc principal (rangé avant I7).
+        ancien = self.devis(etude_params={'etude_horaire': {'kwc': 5.68}})
+        self.ctx.injecter_donnees(ancien, data)
+        out = self.run_rule('ETU_I7_BLOC_HORAIRE_PERIME', ancien)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].valeurs['colonne'], 'sans')
+
     def _devis_i2(self):
         mois = [{'consommation_kwh': 1500, 'autoconsomme_avec_kwh': 500}
                 for _ in range(12)]

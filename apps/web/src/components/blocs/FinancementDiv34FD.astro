@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — financement.astro
+const { moyens } = Astro.props as Record<string, any>;
+---
+        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+          {moyens.map((m: any, i: any) => (
+            <div class="v2-rise flex flex-col border-t-2 border-azur-900 bg-blanc p-7" style={`--v2-i:${i}`}>
+              <p class="fig text-3xl text-azur-600" dir="ltr">{m.k}</p>
+              <h3 class="display mt-2 text-xl">{m.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-encre-soft">{m.body}</p>
+            </div>
+          ))}
+        </div>

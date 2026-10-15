@@ -4,6 +4,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Input, Label, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../ui'
+import { AlerteErreur } from '../ui/AlertesServeur'
 
 const CATEGORIE_AUCUNE = '__aucune'
 
@@ -138,11 +139,7 @@ export default function ProduitQuickCreateModal({
                      placeholder="0" />
             </div>
           </div>
-          {error && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
+          <AlerteErreur error={error} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={handleClose} disabled={busy}>
               Annuler

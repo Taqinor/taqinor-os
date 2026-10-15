@@ -5,8 +5,6 @@ import {
   CalendarClock, Download, UserCog, HandCoins,
 } from 'lucide-react'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import ventesApi from '../../api/ventesApi'
 // PACT44 — le paramétrage de relance par client (ZFAC8) n'a pas de wrapper
 // dédié : il est lu/écrit directement sur son endpoint REST company-scopé
@@ -34,6 +32,8 @@ import { toast, useConfirmDialog } from '../../ui/confirm'
 // APX17 — la table de recouvrement rejoint le tableau partagé (tri + export CSV).
 import { Table } from '../reporting/Table'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import ApercuWhatsAppDialog from '../../components/ApercuWhatsAppDialog'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 // Ajoute n jours à aujourd'hui (date ISO AAAA-MM-JJ).
 function todayPlus(days) {
@@ -728,9 +728,7 @@ export default function RelancesPage() {
       {/* APX11 — en-tête unique VX28 + accent Ventes ; la phrase de cadrage
           (consigner/imprimer, aucun envoi automatique) devient le sous-titre,
           elle n'a plus à flotter sous l'en-tête. */}
-      <PageHeader
-        style={VENTES_ACCENT_STYLE}
-        className="app-accent-rail"
+      <EnteteVentes
         icon={CalendarClock}
         title={(
           <>
@@ -867,45 +865,23 @@ export default function RelancesPage() {
       {/* ── L852 — Aperçu du rappel WhatsApp avant ouverture de wa.me ──
           VX116 — en file (relance en lot + WhatsApp), le titre montre la
           progression et « Annuler » clôt toute la séquence. */}
-      <Dialog open={!!waPreview}
-              onOpenChange={(o) => { if (!o) { if (inWaQueue) endWaQueue(); else setWaPreview(null) } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Aperçu du rappel WhatsApp — {waPreview?.reference}
-              {inWaQueue ? ` (${waQueueIdx + 1}/${waQueue.length})` : ''}
-            </DialogTitle>
-            <DialogDescription>
-              {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
-              {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
-            </DialogDescription>
-          </DialogHeader>
-          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm"
-               style={{ fontFamily: 'inherit' }}>
-            {waPreview?.message}
-          </pre>
-          {waPreview?.url && (
-            <p className="mt-2 break-words text-xs text-muted-foreground">
-              Lien public : {waPreview.url}
-            </p>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="ghost"
-                    onClick={() => { if (inWaQueue) endWaQueue(); else setWaPreview(null) }}>
-              {inWaQueue ? 'Arrêter' : 'Annuler'}
-            </Button>
-            {inWaQueue && (
-              <Button type="button" variant="outline" onClick={advanceWaQueue}>
-                Passer
-              </Button>
-            )}
-            <Button type="button" variant="success" disabled={!waPreview?.wa_url}
-                    onClick={ouvrirWhatsApp}>
-              <MessageCircle /> Ouvrir WhatsApp
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ApercuWhatsAppDialog apercu={waPreview}
+        titre={<>
+          Aperçu du rappel WhatsApp — {waPreview?.reference}
+          {inWaQueue ? ` (${waQueueIdx + 1}/${waQueue.length})` : ''}
+        </>}
+        description={<>
+          {waLangue === 'darija' ? 'Variante Darija' : 'Variante Français'}
+          {' '}— vérifiez le texte et le lien, puis ouvrez WhatsApp.
+        </>}
+        onFermer={() => { if (inWaQueue) endWaQueue(); else setWaPreview(null) }}
+        libelleAnnuler={inWaQueue ? 'Arrêter' : 'Annuler'}
+        passer={inWaQueue && (
+          <Button type="button" variant="outline" onClick={advanceWaQueue}>
+            Passer
+          </Button>
+        )}
+        onOuvrir={ouvrirWhatsApp} />
 
       <Dialog open={!!target} onOpenChange={(o) => { if (!o) setTarget(null) }}>
         <DialogContent>

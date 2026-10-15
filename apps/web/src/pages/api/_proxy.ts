@@ -8,22 +8,12 @@
  *
  * Jamais LEAD_WEBHOOK_URL ici (secret réservé à la capture, cf. WJ109).
  */
-import * as cf from 'cloudflare:workers';
+import { resolveApiBase } from './_apiBase';
+import { jsonResponse } from '../../lib/apiJson';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-const API_BASE_PAR_DEFAUT = 'https://api.taqinor.ma';
-
-export function jsonResponse(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  const entetes = { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers };
-  return new Response(JSON.stringify(data), { status, headers: entetes });
-}
-
-export function resolveApiBase(): string {
-  const runtimeEnv = (cf.env ?? {}) as { PUBLIC_API_BASE?: string };
-  const depuisRuntime = runtimeEnv.PUBLIC_API_BASE?.trim();
-  const depuisBuild = (import.meta.env.PUBLIC_API_BASE as string | undefined)?.trim();
-  return depuisRuntime || depuisBuild || API_BASE_PAR_DEFAUT;
-}
+// Une seule copie (lib/apiJson.ts, ./_apiBase.ts — ENF19) ; ré-exportées pour les importeurs historiques de ce socle.
+export { jsonResponse, resolveApiBase };
 
 export interface RelayResult {
   status: number;

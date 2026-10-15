@@ -12,6 +12,7 @@ import { Button, HelpTip, Popover, PopoverAnchor, PopoverContent, PopoverTrigger
 import { DictationButton, DICTATION_PRIVACY_FR } from '../../../ui/DictationButton'
 import crmApi from '../../../api/crmApi'
 import fetchAllPages from '../../../utils/fetchAllPages'
+import PiedPopover from '../../../ui/PiedPopover'
 
 /**
  * PerduPopover — popover « Marquer perdu » réutilisable.
@@ -123,10 +124,7 @@ export default function PerduPopover({
           <datalist id={listId}>
             {(motifs ?? []).map((m) => <option key={m.id} value={m.nom} />)}
           </datalist>
-          <div className="kb-perdu-actions">
-            <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
-              Annuler
-            </Button>
+          <PiedPopover className="kb-perdu-actions" onAnnuler={() => setOpen(false)}>
             <Button
               type="button"
               size="sm"
@@ -137,7 +135,7 @@ export default function PerduPopover({
             >
               Confirmer
             </Button>
-          </div>
+          </PiedPopover>
         </div>
       </PopoverContent>
     </Popover>

@@ -2,7 +2,18 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+
+from authentication.models import Company
+from core.events import devis_accepted
+
+from apps.crm.models import Client, Lead
+from apps.stock.models import Produit
+from apps.ventes.models import Devis, LigneDevis
 
 from apps.installations.models import Installation
 from apps.installations.regime import suggest_regime_8221, suggest_for_company
@@ -10,6 +21,7 @@ from apps.installations.services import create_installation_from_devis
 from apps.installations.tests import make_company, auth, make_accepted_devis
 
 User = get_user_model()
+BASE = '/api/django/installations/chantiers/'
 
 
 class TestSuggestRegimePure(TestCase):
@@ -291,3 +303,76 @@ class TestRegimeCIQ613(TestCase):
         devis, _client, _lead = make_accepted_devis(self.company)
         inst, _ = create_installation_from_devis(devis, self.user, self.company)
         self.assertEqual(inst.regime_8221, 'declaration_bt')
+
+
+# APRF37 (C-APRF-016) — la LISTE de chantiers sert regime_suggere/calepinage/dossier_8221_resume à
+# `null` (enfant d'un ListSerializer) ; le DÉTAIL les sert inchangés ; budget de requêtes plat.
+LIGNES = 11
+
+
+class ChantiersListeBlocsDetailTests(TestCase):
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='co-aprf37', defaults={'nom': 'Co APRF37'})
+        self.user = User.objects.create_user(
+            username='resp-aprf37', password='x', company=self.company,
+            role_legacy='responsable')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.produits = [
+            Produit.objects.create(
+                company=self.company, nom=f'Produit {i}', sku=f'AP37-{i}',
+                prix_vente=Decimal('100'), quantite_stock=100)
+            for i in range(LIGNES)]
+        self.n = 0
+
+    def _chantier(self):
+        self.n += 1
+        client = Client.objects.create(
+            company=self.company, nom=f'Site{self.n}', prenom='Client',
+            email=f'aprf37-{self.n}@example.invalid')
+        lead = Lead.objects.create(
+            company=self.company, nom=f'Site{self.n}', prenom='Client',
+            stage='SIGNED', type_installation='residentiel')
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-AP37-{self.n}',
+            client=client, lead=lead, statut=Devis.Statut.ACCEPTE,
+            taux_tva=Decimal('20'), mode_installation='residentiel')
+        for produit in self.produits:
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=produit.nom,
+                quantite=Decimal('2'), prix_unitaire=Decimal('100'))
+        devis_accepted.send(sender=None, devis=devis, user=self.user,
+                            ancien_statut='envoye')
+        return Installation.objects.get(devis=devis)
+
+    def _requetes_liste(self):
+        with CaptureQueriesContext(connection) as ctx:
+            r = self.api.get(BASE, {'page_size': 50})
+        self.assertEqual(r.status_code, 200)
+        return len(ctx), r
+
+    def test_budget_de_la_liste_identique_a_deux_tailles(self):
+        for _ in range(3):
+            self._chantier()
+        self._requetes_liste()  # échauffement (caches de session, société)
+        petit, _ = self._requetes_liste()
+        for _ in range(5):
+            self._chantier()
+        grand, _ = self._requetes_liste()
+        self.assertEqual(petit, grand)
+
+    def test_blocs_de_detail_nuls_en_liste_et_servis_au_detail(self):
+        chantier = self._chantier()
+        _, r = self._requetes_liste()
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        ligne = next(x for x in rows if x['id'] == chantier.id)
+        for cle in ('regime_suggere', 'calepinage', 'dossier_8221_resume'):
+            self.assertIn(cle, ligne)
+            self.assertIsNone(ligne[cle], cle)
+        detail = self.api.get(f'{BASE}{chantier.id}/')
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(set(detail.data['regime_suggere']), {'code', 'label'})
+        self.assertIsInstance(detail.data['dossier_8221_resume'], dict)
+        self.assertIn('calepinage', detail.data)

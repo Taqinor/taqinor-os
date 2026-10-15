@@ -11,17 +11,7 @@ import userEvent from '@testing-library/user-event'
 import { initState } from '../draftCore'
 import SectionPipeline from './SectionPipeline'
 
-vi.mock('../../../../api/crmApi', () => ({
-  default: {
-    initialiserRelance: vi.fn(),
-    arreterCadence: vi.fn(),
-    // MRY15 — CadenceFrise se charge elle-même au montage (mode édition).
-    getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
-    // useCanaux() (référentiel Canal géré) appelle getCanaux() au montage —
-    // sans ce stub, chaque test crashe AVANT d'atteindre le bouton testé.
-    getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
+vi.mock('../../../../api/crmApi', async () => (await import('../../../../test/sectionPipelineMocks')).crmApiPipeline())
 // Même patron que DiffPlan.test.jsx : toastPromise ne fait que RENVOYER sa
 // promesse (le vrai toast sonner n'est pas ce qu'on vérifie ici) ; on capture
 // les messages passés pour prouver qu'ils restent en français et honnêtes

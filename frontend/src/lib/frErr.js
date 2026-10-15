@@ -36,3 +36,15 @@ export function frErrForm(err, fallback = 'Une erreur est survenue.') {
   }
   return fallback
 }
+
+/** Création rapide (modales « + Nouveau … ») : detail > premier message de
+ *  champ (listes aplaties) > repli. Jamais de JSON brut. */
+export function frErrRapide(err, fallback) {
+  const data = err?.response?.data
+  const detail = typeof data?.detail === 'string'
+    ? data.detail
+    : (data && typeof data === 'object'
+      ? Object.values(data).flat().filter(Boolean)[0]
+      : null)
+  return typeof detail === 'string' ? detail : fallback
+}

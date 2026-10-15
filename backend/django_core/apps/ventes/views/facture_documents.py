@@ -211,7 +211,7 @@ class FactureDocumentsActionsMixin:
 
     @extend_schema(request=D.EnvoyerEmailFactureRequest,
                    responses={202: D.EnvoyerEmailFactureResponse,
-                              400: D.ErreurEnvoiEmail})
+                              400: D.ErreurEnvoiEmail, 409: D.ErreurEnvoiEmail})
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])
     def envoyer_email(self, request, pk=None):
@@ -231,10 +231,14 @@ class FactureDocumentsActionsMixin:
             corps=saisie.get('corps', '').strip() or None,
             attach_pdf=saisie.get('attach_pdf', True))
         if log.statut == EmailLog.Statut.ECHEC:
+            # ENF11 (nocturne 15/10) — corps conforme mais client SANS adresse
+            # (aucune n'est saisie) : c'est la fiche qui s'oppose, 409 ; un
+            # autre échec d'envoi garde son 400 (même corps).
+            sans_adresse = not log.to_email
             return Response(
                 {'detail': log.erreur or 'Envoi impossible.',
                  'email_log_id': log.id},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT if sans_adresse else status.HTTP_400_BAD_REQUEST)
         return Response(
             {'detail': 'Email envoyé.', 'email_log_id': log.id,
              'to_email': log.to_email},

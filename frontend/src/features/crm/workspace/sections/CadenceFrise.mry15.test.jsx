@@ -14,15 +14,7 @@ const ETAPES = exempleContrat('crm', 'relance_etape_v2').results
 // MRY32 — la frise fait désormais elle-même Fait/Sauter/Reporter/WhatsApp
 // sur ses touches actionnables : le mock crmApi doit couvrir ces appels en
 // plus de la lecture (`getRelanceEtapesLead`).
-vi.mock('../../../../api/crmApi', () => ({
-  default: {
-    getRelanceEtapesLead: vi.fn(),
-    marquerRelanceEtapeFait: vi.fn(() => Promise.resolve({ data: { statut: 'fait' } })),
-    marquerRelanceEtapeSautee: vi.fn(() => Promise.resolve({ data: { statut: 'sautee' } })),
-    reporterRelanceEtape: vi.fn(() => Promise.resolve({ data: { statut: 'a_faire' } })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-  },
+vi.mock('../../../../api/crmApi', async () => (await import('../../../../test/cadenceFriseMocks')).crmApiFrise({
 }))
 vi.mock('../../../../lib/toast', () => ({ toastError: vi.fn() }))
 

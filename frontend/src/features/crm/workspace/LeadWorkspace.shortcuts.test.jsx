@@ -1,72 +1,23 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import crmReducer from '../store/crmSlice'
+import { describe, it, expect, vi } from 'vitest'
+import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { fireEvent, waitFor } from '@testing-library/react'
 import crmApi from '../../../api/crmApi'
-import LeadWorkspace from './LeadWorkspace'
 
 /* LW23 — mode ÉDITION : registre de raccourcis propre (a/d/n/1-4). Mêmes
    neutralisations que LeadWorkspaceCreate.test.jsx (les satellites/rails ne
    sont PAS encore construits par les autres lanes — on teste le CÂBLAGE de
    cette lane, pas leur contenu). */
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
-    getTags: vi.fn(() => Promise.resolve({ data: [] })),
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: {} })),
-    getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
-    // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
-    getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    logInteraction: vi.fn(() => Promise.resolve({ data: {} })),
-    mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
-    updateLead: vi.fn(() => Promise.resolve({ data: {} })),
-    createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-    archiverLead: vi.fn(() => Promise.resolve({ data: {} })),
-    restaurerLead: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace())
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 
-const LEAD_A = { id: 1, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false }
-
-beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+installerHooksLeadWorkspace()
 
 function renderEdit(lead = LEAD_A) {
-  const store = configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <LeadWorkspace lead={lead} onClose={vi.fn()} onSaved={vi.fn()} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderLeadWorkspace({ lead })
 }
 
 describe('LW23 — raccourcis propres (d/n/1-4)', () => {

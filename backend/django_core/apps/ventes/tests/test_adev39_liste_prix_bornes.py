@@ -47,6 +47,24 @@ class ListePrixBornesTests(TestCase):
                 self.assertFalse(LignePrixListe.objects.filter(
                     liste=self.liste).exists())
 
+    def test_corps_publies_lignes_et_regles(self):
+        # ENF11 (nocturne 15/10) — sans @extend_schema, les deux actions
+        # publiaient le corps d'une ListePrix (type_regle/valeur absents).
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ventes import urls as ventes_urls
+        doc = SchemaGenerator(patterns=[path('api/django/ventes/', include(ventes_urls))]).get_schema(
+            request=None, public=True)
+        base = '/api/django/ventes/listes-prix/{id}/'
+        corps = {}
+        for route in ('lignes/', 'regles/'):
+            ref = doc['paths'][base + route]['post']['requestBody']['content']['application/json']['schema']['$ref']
+            corps[route] = doc['components']['schemas'][ref.split('/')[-1]]
+        self.assertEqual(set(corps['lignes/']['required']), {'produit', 'prix_unitaire'})
+        self.assertTrue({'type_regle', 'valeur'} <= set(corps['regles/']['required']))
+        self.assertNotIn('liste', corps['regles/'].get('required', []))
+
     def test_borne_haute_acceptee(self):
         resp = self._post('99999999.99')
         self.assertEqual(resp.status_code, 200, resp.content)

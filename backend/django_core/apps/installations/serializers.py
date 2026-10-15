@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -7,6 +9,7 @@ from core.champs_stricts import (  # ENF11
     ChampsStrictsEntiersMixin,
     ChampsStrictsMixin,
     ChampsStrictsSansDecimalMixin,
+    DecimalBornee,
     IdInconnu404Mixin,
     ListesStrictesMixin,
     TexteLie,
@@ -15,6 +18,8 @@ from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
 
+from .serializers_blocs import (
+    bloc_calepinage, bloc_dossier_8221_resume, bloc_regime_suggere)
 from .serializers_stage import refus_protege, valider_unicite_societe
 
 from .models import (
@@ -680,10 +685,9 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
         from .services import divergence_devis_chantier
         return divergence_devis_chantier(obj)
 
-    @extend_schema_field(serializers.DictField())
+    @extend_schema_field(serializers.DictField(allow_null=True))  # APRF37 : null en liste
     def get_dossier_8221_resume(self, obj):
-        from .services import resume_dossier_8221
-        return resume_dossier_8221(obj)
+        return bloc_dossier_8221_resume(self, obj)  # APRF37 : null en liste
 
     @extend_schema_field(serializers.IntegerField())
     def get_statut_ordre(self, obj):
@@ -697,14 +701,9 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
     def get_statut_canonique(self, obj):
         return Installation.canonical_statut(obj.statut)
 
-    @extend_schema_field(serializers.DictField())
+    @extend_schema_field(serializers.DictField(allow_null=True))  # APRF37 : null en liste
     def get_regime_suggere(self, obj):
-        # CIQ613 — noyau sourcé : kWc DC, kW AC des onduleurs (nomenclature
-        # gelée), niveau de tension, hors réseau ; C&I inconnu → à qualifier.
-        from .regime import suggest_for_installation
-        code = suggest_for_installation(obj)
-        label = dict(Installation.Regime8221.choices).get(code, code)
-        return {'code': code, 'label': label}
+        return bloc_regime_suggere(self, obj)  # APRF37 : null en liste
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_parc_garantie_etat(self, obj):
@@ -745,10 +744,7 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
     # ou `null` quand le chantier n'a ni devis ni variante retenue.
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_calepinage(self, obj):
-        # CAL245 — import fonction-local (frontière inter-apps) : le
-        # sélecteur, jamais apps.calepinage.models.
-        from .selectors import calepinage_retenu_du_chantier
-        return calepinage_retenu_du_chantier(obj)
+        return bloc_calepinage(self, obj)  # APRF37 : null en liste
 
     @extend_schema_field(serializers.BooleanField())
     def get_est_parc(self, obj):
@@ -1100,7 +1096,7 @@ class ProjetTicketSerializer(
         read_only_fields = ['date_creation']
 
 
-class ProjetSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class ProjetSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
     """FG291 — programme/projet multi-chantiers regroupant chantiers + devis +
     tickets d'un même client/site. `reference`, company et `created_by` sont
@@ -1268,6 +1264,7 @@ class BudgetProjetSerializer(
 
 
 class EquipeSerializer(
+    IdInconnu404Mixin,
     ListesStrictesMixin,
     ChampsStrictsSansDecimalMixin,
     SameCompanyFKSerializerMixin,
@@ -1764,6 +1761,9 @@ class FraisImportSerializer(
     same_company_fields = ('dossier',)
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True, default=None, allow_null=True)
+    # ENF11 (nocturne 15/10) — « jamais négatif » PUBLIÉ (motif sans signe) et
+    # appliqué par le même champ : « -1 » était conforme au schéma puis refusé.
+    montant = DecimalBornee(max_digits=12, decimal_places=2, min_value=Decimal('0'), required=False)
 
     class Meta:
         model = FraisImport
@@ -1772,12 +1772,6 @@ class FraisImportSerializer(
             'montant', 'date_frais', 'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
-
-    def validate_montant(self, value):
-        if value is not None and value < 0:
-            raise serializers.ValidationError(
-                'Le montant ne peut pas être négatif.')
-        return value
 
 
 class LandedCostLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
@@ -2134,7 +2128,7 @@ class ComptageLigneSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('produit',)
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
-    ecart = serializers.IntegerField(read_only=True)
+    ecart = serializers.IntegerField(read_only=True, allow_null=True)  # ENF11 : null tant que non comptée
 
     class Meta:
         model = ComptageLigne
@@ -2191,7 +2185,7 @@ class DemandeTransfertSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin
 
     class Meta:
         model = DemandeTransfert
-        extra_kwargs = {'quantite': {'min_value': 1}}
+        extra_kwargs = {'quantite': {'min_value': 1, 'required': True}}  # ENF11 : défaut modèle 0 servi hors schéma
         fields = [
             'id', 'reference', 'produit', 'produit_nom', 'source', 'source_nom',
             'destination', 'destination_nom', 'quantite', 'statut',

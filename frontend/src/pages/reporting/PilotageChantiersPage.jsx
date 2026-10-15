@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertOctagon, Clock, HardHat, ReceiptText, RotateCcw } from 'lucide-react'
 import api from '../../api/axios'
-import { EmptyState, Spinner } from '../../ui'
+import { EmptyState } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { Table } from './Table'
 import KpiCard from './KpiCard'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    CHT27 — Cockpit KPI chantier (`reporting/reports/chantier/`).
@@ -55,7 +56,7 @@ export default function PilotageChantiersPage() {
       />
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error || !report ? (
         <EmptyState icon={AlertOctagon} title="Erreur" description="Impossible de charger le pilotage chantiers." className="my-6" />
       ) : (

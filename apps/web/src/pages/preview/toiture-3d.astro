@@ -22,6 +22,7 @@ import DiagnosticFormEnriched from '../../components/DiagnosticFormEnriched.astr
 
 const inputClass =
   'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
+import Toiture3dProOption4857 from '../../components/blocs/Toiture3dProOption4857.astro';
 ---
 
 <Layout
@@ -129,13 +130,7 @@ const inputClass =
               <div class="ml-auto flex items-center gap-2">
                 <label for="r3-orient" class="text-sm text-lune-soft">Orientation</label>
                 <select id="r3-orient" class="border border-white/15 bg-nuit-700 px-3 py-2 text-sm text-white outline-none focus:border-brass-400">
-                  <option value="sud" selected>Sud</option>
-                  <option value="sud-est">Sud-Est</option>
-                  <option value="sud-ouest">Sud-Ouest</option>
-                  <option value="est">Est</option>
-                  <option value="ouest">Ouest</option>
-                  <option value="nord">Nord</option>
-                  <option value="inconnu">Je ne sais pas</option>
+                  <Toiture3dProOption4857 />
                 </select>
               </div>
             </div>

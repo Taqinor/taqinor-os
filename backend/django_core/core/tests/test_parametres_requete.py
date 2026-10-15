@@ -161,6 +161,23 @@ class ParametresRequeteTests(TestCase):
         reponse = _VueDeclaree.as_view()(factory.get('/x/', {'zz': '1'}))
         self.assertEqual(reponse.status_code, 200)
 
+    def test_recherche_avec_caractere_nul_liste_vide_200(self):
+        # ENF11 (nocturne 15/10) — ``search`` est publié en chaîne libre :
+        # un terme portant ``\x00`` ne désigne aucune ligne (200, liste vide).
+        reponse = liste(factory.get('/types/', {'search': 'us\x00er'}))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        self.assertEqual(reponse.data['count'], 0)
+        self.assertTrue(liste(factory.get('/types/', {'search': 'user'})).data['count'])
+
+    def test_recherche_nul_sans_champs_de_recherche_sans_effet(self):
+        from rest_framework.filters import SearchFilter
+        qs = ContentType.objects.order_by('id')
+        vue = mock.Mock(search_fields=None)
+        requete = mock.Mock(query_params={'search': '\x00'})
+        self.assertIs(SearchFilter().filter_queryset(requete, qs, vue), qs)
+        self.assertTrue(getattr(SearchFilter.filter_queryset,
+                                '_enf11_recherche_tolerante', False))
+
     def test_installation_idempotente(self):
         from rest_framework.views import APIView as Base
         avant = Base.initial

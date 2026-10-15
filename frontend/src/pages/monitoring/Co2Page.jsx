@@ -3,12 +3,18 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import installationsApi from '../../api/installationsApi'
-import { DataTable, EmptyState, Spinner } from '../../ui'
+import fetchAllPages from '../../utils/fetchAllPages'
+import { EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
-import { BarArrondie, ChartEmpty } from '../../ui/charts'
-import { formatNumber, timeAgo } from '../../lib/format'
+import { formatNumber } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
+import useVisibilityAwarePoll from './useVisibilityAwarePoll'
+import FreshnessBadge from './FreshnessBadge'
+import { lancerChargement } from '../../lib/chargementEffet'
+import EnTeteMonitoring from './EnTeteMonitoring'
+import { ChargementPage } from '../../ui/ChargementPage'
+import { TableauDeBordSystemes, TableSystemes } from './PartiesSystemes'
 
 /* WR7 — Suivi CO₂ évité (FG286) : CO₂ évité cumulé sur le parc + par système,
    depuis GET /monitoring/configs/co2-fleet/. Rend uniquement ce que renvoie le
@@ -28,26 +34,6 @@ import MonitoringNav from './MonitoringNav'
 // fichier hors du périmètre Files de la tâche VX30).
 const CO2_POLL_MS = 5 * 60 * 1000
 
-function useVisibilityAwarePoll(callback, intervalMs) {
-  const cbRef = useRef(callback)
-  useEffect(() => { cbRef.current = callback }, [callback])
-  useEffect(() => {
-    const tick = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      cbRef.current()
-    }
-    const iv = setInterval(tick, intervalMs)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') cbRef.current()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [intervalMs])
-}
-
 export default function Co2Page() {
   const [searchParams] = useSearchParams()
   const installationId = searchParams.get('installation')
@@ -66,27 +52,19 @@ function Co2Fleet() {
   useEffect(() => () => { mountedRef.current = false }, [])
 
   useEffect(() => {
-    let active = true
-    const load = async () => {
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const r = await monitoringApi.getCo2Fleet()
-        if (active) {
+        if (actif()) {
           setData(r.data)
           setError(null)
           setStale(false)
           setLastUpdated(new Date())
         }
-      } catch {
-        if (active) setError('Impossible de charger le suivi CO₂.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+      },
+      surErreur: () => setError('Impossible de charger le suivi CO₂.'),
+    })
   }, [])
 
   // VX30 — re-sondage silencieux : ne remplace jamais l'état chargé/erreur
@@ -158,42 +136,21 @@ function Co2Fleet() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Suivi CO₂</h1>
-        <div className="page-subtitle">
-          CO₂ évité par la production solaire, cumulé sur le parc et par système.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Suivi CO₂" sousTitre="CO₂ évité par la production solaire, cumulé sur le parc et par système." />
 
       {/* VX30 — badge de fraîcheur : distinct visuellement d'un « 0 » réel
           (jamais la même couleur/forme qu'un état périmé). */}
       {lastUpdated && (
         <div className="mb-4 flex justify-end">
-          <span
-            className={
-              stale
-                ? 'inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning'
-                : 'text-xs text-muted-foreground'
-            }
-          >
-            {stale ? 'Hors-ligne — ' : 'Actualisé '}
-            {timeAgo(lastUpdated)}
-          </span>
+          <FreshnessBadge stale={stale} lastUpdated={lastUpdated} />
         </div>
       )}
 
-      <ModuleDashboard
-        stats={stats}
-        loading={loading}
-        error={error}
-        charts={!loading && !error ? [{
-          title: 'CO₂ évité par système (tonnes)',
-          span: 'full',
-          node: chartData.length > 0
-            ? <BarArrondie data={chartData} height={220} tone="success" name="CO₂ évité" tooltipFormat={(v) => `${formatNumber(v, { decimals: 3 })} t`} />
-            : <ChartEmpty />,
-        }] : []}
+      <TableauDeBordSystemes
+        stats={stats} loading={loading} error={error}
+        titre="CO₂ évité par système (tonnes)" chartData={chartData}
+        tone="success" nom="CO₂ évité"
+        tooltipFormat={(v) => `${formatNumber(v, { decimals: 3 })} t`}
       />
 
       {!loading && !error && (
@@ -205,16 +162,7 @@ function Co2Fleet() {
             className="my-6"
           />
         ) : (
-          <div className="mt-6">
-            <DataTable
-              data={systems}
-              columns={columns}
-              getRowId={(row) => row.installation}
-              searchable={false}
-              pageSize={25}
-              aria-label="CO₂ évité par système"
-            />
-          </div>
+          <TableSystemes systems={systems} columns={columns} label="CO₂ évité par système" />
         )
       )}
     </div>
@@ -231,25 +179,23 @@ function Co2SystemDetail({ installationId }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    let active = true
-    const load = async () => {
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      setError(null)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
+        setError(null)
         const [configRes, instRes] = await Promise.all([
-          monitoringApi.getConfigForInstallation(installationId),
+          fetchAllPages((page, { page_size: pageSize } = {}) =>
+            monitoringApi.getConfigForInstallation(installationId, { page, page_size: pageSize }).then((r) => r.data)),
           installationsApi.getInstallation(installationId).catch(() => null),
         ])
-        if (!active) return
+        if (!actif()) return
         if (instRes?.data) {
           const inst = instRes.data
           setLabel(inst.reference ? `${inst.reference}${inst.client_nom ? ` — ${inst.client_nom}` : ''}` : `#${installationId}`)
         } else {
           setLabel(`#${installationId}`)
         }
-        const rows = configRes.data?.results ?? configRes.data ?? []
+        const rows = Array.isArray(configRes) ? configRes : (configRes?.results ?? [])
         const config = rows[0]
         if (!config?.id) {
           setError("Ce système n'a pas de configuration de supervision.")
@@ -257,15 +203,10 @@ function Co2SystemDetail({ installationId }) {
           return
         }
         const co2Res = await monitoringApi.getCo2(config.id)
-        if (active) setData(co2Res.data)
-      } catch {
-        if (active) setError('Impossible de charger le détail CO₂ de ce système.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) setData(co2Res.data)
+      },
+      surErreur: () => setError('Impossible de charger le détail CO₂ de ce système.'),
+    })
   }, [installationId])
 
   const stats = useMemo(() => (data ? [
@@ -303,7 +244,7 @@ function Co2SystemDetail({ installationId }) {
       </Link>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error ? (
         <EmptyState icon={METRIC_ICONS.co2} title="Détail indisponible" description={error} className="my-6" />
       ) : (

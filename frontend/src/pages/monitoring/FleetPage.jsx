@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Gauge, Leaf, Sun } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
-import { Badge, Card, DataTable, EmptyState, IconButton, Segmented } from '../../ui'
-import { ModuleDashboard } from '../../ui/module'
-import { BarArrondie, ChartEmpty } from '../../ui/charts'
-import { formatNumber, formatPercent, timeAgo } from '../../lib/format'
+import { Badge, Card, EmptyState, IconButton } from '../../ui'
+import { formatNumber, formatPercent } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
-import MonitoringNav from './MonitoringNav'
+import useVisibilityAwarePoll from './useVisibilityAwarePoll'
+import FreshnessBadge from './FreshnessBadge'
+import EnTeteMonitoring from './EnTeteMonitoring'
+import SegmentedPetit from './SegmentedPetit'
+import { TableauDeBordSystemes, TableSystemes } from './PartiesSystemes'
 
 /* WR6 — Vue PARC / FLOTTE multi-systèmes (FG281) : production totale, kWc
    installés, PR moyen pondéré et alertes de sous-performance ouvertes sur tous
@@ -47,26 +49,6 @@ function prStatus(prPct) {
 // même garde minimale que `useApprobationsCount` (jamais un `setInterval` nu
 // qui cogne l'API en onglet caché) et pourra migrer sur VX56 telle quelle.
 const FLEET_POLL_MS = 5 * 60 * 1000
-
-function useVisibilityAwarePoll(callback, intervalMs) {
-  const cbRef = useRef(callback)
-  useEffect(() => { cbRef.current = callback }, [callback])
-  useEffect(() => {
-    const tick = () => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-      cbRef.current()
-    }
-    const iv = setInterval(tick, intervalMs)
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') cbRef.current()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => {
-      clearInterval(iv)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [intervalMs])
-}
 
 export default function FleetPage() {
   const navigate = useNavigate()
@@ -214,61 +196,27 @@ export default function FleetPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Vue parc</h1>
-        <div className="page-subtitle">
-          Production, performance et alertes sur l’ensemble des systèmes supervisés.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Vue parc" sousTitre="Production, performance et alertes sur l’ensemble des systèmes supervisés." />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">Fenêtre d’analyse</span>
-          <Segmented
-            size="sm"
-            options={WINDOWS}
-            value={windowDays}
-            onChange={setWindowDays}
-            aria-label="Fenêtre d'analyse"
-          />
+          <SegmentedPetit options={WINDOWS} value={windowDays} onChange={setWindowDays} label="Fenêtre d'analyse" />
         </div>
         <div className="flex items-center gap-3">
           {/* VX30 — badge de fraîcheur : distinct visuellement d'un « 0 » de
               production (jamais la même couleur/forme qu'une carte périmée). */}
           {lastUpdated && (
-            <span
-              className={
-                stale
-                  ? 'inline-flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning'
-                  : 'text-xs text-muted-foreground'
-              }
-            >
-              {stale ? 'Hors-ligne — ' : 'Actualisé '}
-              {timeAgo(lastUpdated)}
-            </span>
+            <FreshnessBadge stale={stale} lastUpdated={lastUpdated} />
           )}
-          <Segmented
-            size="sm"
-            options={VIEW_MODES}
-            value={viewMode}
-            onChange={setViewMode}
-            aria-label="Mode d'affichage"
-          />
+          <SegmentedPetit options={VIEW_MODES} value={viewMode} onChange={setViewMode} label="Mode d'affichage" />
         </div>
       </div>
 
-      <ModuleDashboard
-        stats={stats}
-        loading={loading}
-        error={error}
-        charts={!loading && !error ? [{
-          title: 'PR par système (%)',
-          span: 'full',
-          node: chartData.length > 0
-            ? <BarArrondie data={chartData} height={220} name="PR" tooltipFormat={(v) => formatPercent(v, { decimals: 1 })} />
-            : <ChartEmpty />,
-        }] : []}
+      <TableauDeBordSystemes
+        stats={stats} loading={loading} error={error}
+        titre="PR par système (%)" chartData={chartData} nom="PR"
+        tooltipFormat={(v) => formatPercent(v, { decimals: 1 })}
       />
 
       {!loading && !error && (
@@ -325,16 +273,7 @@ export default function FleetPage() {
             })}
           </div>
         ) : (
-          <div className="mt-6">
-            <DataTable
-              data={systems}
-              columns={columns}
-              getRowId={(row) => row.installation}
-              searchable={false}
-              pageSize={25}
-              aria-label="Systèmes du parc"
-            />
-          </div>
+          <TableSystemes systems={systems} columns={columns} label="Systèmes du parc" />
         )
       )}
     </div>

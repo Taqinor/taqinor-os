@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import crmReducer from '../../features/crm/store/crmSlice'
 import ClientForm from './ClientForm'
 
 /* AUDV22 (DRAFT165-123/124, ARC20) — recherche EXACTE anti-doublon (ICE/
@@ -36,26 +33,11 @@ vi.mock('../../api/tiersApi', () => ({
 
 import crmApi from '../../api/crmApi'
 import tiersApi from '../../api/tiersApi'
-
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
+import { mockMatchMedia } from '../../test/matchMedia'
+import { renderClientForm } from '../../test/clientFormHarness'
 
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia(false) })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-const renderForm = (props = {}) => {
-  const store = configureStore({ reducer: { crm: crmReducer } })
-  return render(
-    <Provider store={store}>
-      <ClientForm onClose={vi.fn()} {...props} />
-    </Provider>,
-  )
-}
 
 describe('ClientForm — anti-doublon exact ICE/email (AUDV22)', () => {
   it('un email déjà porté par un tiers affiche un avertissement et refuse le premier submit', async () => {
@@ -66,7 +48,7 @@ describe('ClientForm — anti-doublon exact ICE/email (AUDV22)', () => {
         email_matches: [{ id: 5, nom: 'Client Existant', roles: { client: true } }],
       },
     })
-    renderForm()
+    renderClientForm()
 
     await user.type(screen.getByRole('textbox', { name: 'Nom' }), 'Nouveau Client')
     await user.type(screen.getByLabelText('Email — optionnel'), 'existant@example.ma')
@@ -86,7 +68,7 @@ describe('ClientForm — anti-doublon exact ICE/email (AUDV22)', () => {
         email_matches: [{ id: 5, nom: 'Client Existant', roles: { client: true } }],
       },
     })
-    renderForm()
+    renderClientForm()
 
     await user.type(screen.getByRole('textbox', { name: 'Nom' }), 'Nouveau Client')
     await user.type(screen.getByLabelText('Email — optionnel'), 'existant@example.ma')
@@ -104,7 +86,7 @@ describe('ClientForm — anti-doublon exact ICE/email (AUDV22)', () => {
     tiersApi.verifierDoublon.mockResolvedValue({
       data: { ice_matches: [], email_matches: [] },
     })
-    renderForm()
+    renderClientForm()
 
     await user.type(screen.getByRole('textbox', { name: 'Nom' }), 'Client Propre')
     await user.type(screen.getByLabelText('Email — optionnel'), 'propre@example.ma')
@@ -116,7 +98,7 @@ describe('ClientForm — anti-doublon exact ICE/email (AUDV22)', () => {
 
   it('sans ICE ni email, aucune vérification n\'est déclenchée', async () => {
     const user = userEvent.setup()
-    renderForm()
+    renderClientForm()
 
     await user.type(screen.getByRole('textbox', { name: 'Nom' }), 'Client Minimal')
     await user.click(screen.getByRole('button', { name: 'Créer le client' }))

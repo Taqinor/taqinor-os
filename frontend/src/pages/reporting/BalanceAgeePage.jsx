@@ -6,10 +6,11 @@ import reportingApi from '../../api/reportingApi'
 import { downloadXlsx } from '../../api/importApi'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import { formatMAD } from '../../lib/format'
-import { Button, Card, CardContent, Segmented, Skeleton, EmptyState } from '../../ui'
+import { Button, Card, CardContent, Segmented, EmptyState } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { Table } from './Table'
 import { StateBlock } from '../../components/StateBlock'
+import SqueletteLignesCarte from '../../ui/SqueletteLignesCarte'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -115,13 +116,7 @@ export default function BalanceAgeePage() {
       )}
 
       {loading ? (
-        <Card>
-          <CardContent className="space-y-2 pt-5">
-            {Array.from({ length: 5 }).map((unused, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </CardContent>
-        </Card>
+        <SqueletteLignesCarte />
       ) : loadError ? (
         // VX67 — StateBlock unifie l'état d'erreur avec un bouton « Réessayer »
         // (relance le même `load` qu'au montage).

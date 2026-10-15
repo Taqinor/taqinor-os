@@ -12,6 +12,7 @@
 import {
   describe, it, expect, vi, afterEach,
 } from 'vitest'
+import { parcoursVisiteAcceptee } from '../../../test/parcoursVisiteAcceptee'
 import {
   render, screen, cleanup, fireEvent, waitFor,
 } from '@testing-library/react'
@@ -56,21 +57,7 @@ describe('VISCAD6-B — « Visite acceptée » proposée dès la prise de contac
 
   it('choisie puis confirmée : envoie l’issue serveur exacte ET ouvre la modale de planification (même modale que VISCAD6)', async () => {
     const onFait = vi.fn(() => Promise.resolve({}))
-    render(
-      <RelanceEtapeRow
-        etape={ETAPE_CONTACT} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop}
-      />,
-    )
-    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    // SUIVI-BLOCAGE (30/09/2026) — la modale s'ouvre AVANT tout envoi ;
-    // « Date pas encore fixée » envoie l'issue serveur exacte.
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
-    expect(onFait).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Date pas encore fixée' }))
-    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
-      ETAPE_CONTACT.id, { outcome: 'visite_acceptee' }))
+    await parcoursVisiteAcceptee(ETAPE_CONTACT, onFait)
   })
 })
 
@@ -91,21 +78,7 @@ describe('VISCAD6-B — « Visite acceptée » proposée sur le filet génériqu
 
   it('choisie puis confirmée : envoie l’issue serveur exacte ET ouvre la modale de planification', async () => {
     const onFait = vi.fn(() => Promise.resolve({}))
-    render(
-      <RelanceEtapeRow
-        etape={ETAPE_GENERIQUE} onFait={onFait} onSauter={noop} onReporter={noop} onOuvrirMessage={noop}
-      />,
-    )
-    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    // SUIVI-BLOCAGE (30/09/2026) — la modale s'ouvre AVANT tout envoi ;
-    // « Date pas encore fixée » envoie l'issue serveur exacte.
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
-    expect(onFait).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Date pas encore fixée' }))
-    await waitFor(() => expect(onFait).toHaveBeenCalledWith(
-      ETAPE_GENERIQUE.id, { outcome: 'visite_acceptee' }))
+    await parcoursVisiteAcceptee(ETAPE_GENERIQUE, onFait)
   })
 })
 

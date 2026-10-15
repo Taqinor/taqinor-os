@@ -52,6 +52,7 @@ const toitures = [
     body: 'تتجنّب التركيبات المُثقَّلة (دون ثقب، ألواح مُركَّبة على صواني مُثقَّلة بكتل خرسانية) ثقب العزل، لكنها تضيف وزناً مُركَّزاً على مناطق محدَّدة بدل توزيعه بانتظام. على سقف مسطّح، نتحقّق أساساً من القدرة الحمّالة للدالة تحت العزل وتوزيع نقاط الحمل — لا الوزن الإجمالي فقط.',
   },
 ];
+import GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB from '../../../components/blocs/GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB.astro';
 ---
 
 <Layout
@@ -94,14 +95,7 @@ const toitures = [
       </p>
 
       <h2 class="display v2-section-title mt-12 text-white">سقفاً بسقف: ما يتغيّر</h2>
-      <div class="mt-8 grid gap-6" data-stagger>
-        {toitures.map((t, i) => (
-          <div class="v2-rise cine-card p-6 sm:p-7" style={`--v2-i:${i}`}>
-            <h3 class="display text-lg text-white">{t.title}</h3>
-            <p class="mt-2 text-sm leading-relaxed text-lune-soft">{t.body}</p>
-          </div>
-        ))}
-      </div>
+      <GuidesMonToitPeutIlSupporterDesPanneauxDiv5AAB toitures={toitures} />
 
       <h2 class="display v2-section-title mt-12 text-white">متى يلزم فحص هيكلي؟</h2>
       <p class="v2-lead mt-5 text-lune-soft">

@@ -24,16 +24,9 @@ vi.mock('../../../hooks/useHasPermission', () => ({ useHasPermission: () => true
 import calepinageApi from '../../../api/calepinageApi'
 import DiagrammePertes from './DiagrammePertes'
 import { construireCascadeDetaillee } from './DiagrammePertes.helpers'
+import { polyfillResizeObserver } from '../../../test/selectNatif'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 const servir = (variante) => {
   calepinageApi.calepinages.resultat

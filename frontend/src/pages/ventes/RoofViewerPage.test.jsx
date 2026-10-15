@@ -3,35 +3,29 @@ import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
 // QG12 — page autonome plein écran : mocke le GET du devis par id.
-vi.mock('../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getDevisById: vi.fn(() => Promise.resolve({
-        data: {
-          id: 55, reference: 'DEV-3D',
-          // Correction fondateur 24/08 — le GET du devis porte déjà le
-          // client/lead + les lignes réelles : RoofViewerPage doit les
-          // transmettre à RoofViewer au lieu de les jeter.
-          client_nom: 'Youssef Alaoui', lead_nom: '',
-          lignes: [
-            { id: 1, designation: 'Panneau Jinko 550W', quantite: '8' },
-          ],
-          roof_layout: {
-            version: 1, zones: [{
-              id: 'z1', label: 'Toit', roofType: 'flat', pitchDeg: 15,
-              facingAzimuthDeg: 180, neededPanels: 8,
-              vertices: [[-7.60, 33.50], [-7.599, 33.50], [-7.599, 33.501], [-7.60, 33.501]],
-              obstacles: [],
-            }],
-          },
+vi.mock('../../api/ventesApi', async (importOriginal) =>
+  (await import('../../test/etendreApi')).etendreApi(importOriginal, {
+    getDevisById: vi.fn(() => Promise.resolve({
+      data: {
+        id: 55, reference: 'DEV-3D',
+        // Correction fondateur 24/08 — le GET du devis porte déjà le
+        // client/lead + les lignes réelles : RoofViewerPage doit les
+        // transmettre à RoofViewer au lieu de les jeter.
+        client_nom: 'Youssef Alaoui', lead_nom: '',
+        lignes: [
+          { id: 1, designation: 'Panneau Jinko 550W', quantite: '8' },
+        ],
+        roof_layout: {
+          version: 1, zones: [{
+            id: 'z1', label: 'Toit', roofType: 'flat', pitchDeg: 15,
+            facingAzimuthDeg: 180, neededPanels: 8,
+            vertices: [[-7.60, 33.50], [-7.599, 33.50], [-7.599, 33.501], [-7.60, 33.501]],
+            obstacles: [],
+          }],
         },
-      })),
-    },
-  }
-})
+      },
+    })),
+  }))
 
 import RoofViewerPage from './RoofViewerPage'
 import ventesApi from '../../api/ventesApi'

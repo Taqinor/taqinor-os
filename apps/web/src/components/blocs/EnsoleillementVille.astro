@@ -1,0 +1,37 @@
+---
+// ENF19 : bloc partagé fr/en/ar — table « productible par ville » de
+// ensoleillement-maroc (inclinaison × orientation). Seuls les libellés, la
+// locale des nombres et les attributs de direction (ar) changent.
+const {
+  city, tilts, azimuths, azimuthLabels, locale, latLabel, captionPrefix, captionSuffix, tiltLabel,
+  startClass, endClass, h3Dir, tableDir, tdDir,
+} = Astro.props as Record<string, any>;
+---
+          <div class="mt-12">
+            <h3 class="display text-xl text-azur-900" dir={h3Dir}>{city.label} <span class="text-base font-normal text-encre-faint">— {latLabel} {city.lat.toLocaleString(locale)}°</span></h3>
+            <div class="mt-4 overflow-x-auto">
+              <table class="w-full min-w-[560px] border-collapse text-sm" dir={tableDir}>
+                <caption class="sr-only">{captionPrefix}{city.label}{captionSuffix}</caption>
+                <thead>
+                  <tr class="border-b-2 border-azur-900">
+                    <th scope="col" class={`px-3 py-2 ${startClass} font-semibold text-encre`}>{tiltLabel}</th>
+                    {azimuths.map((az: any) => (
+                      <th scope="col" class={`px-3 py-2 ${endClass} font-semibold text-encre`}>{azimuthLabels[az]}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tilts.map((tilt: any) => (
+                    <tr class="border-b border-azur-900/15">
+                      <th scope="row" class={`px-3 py-2 ${startClass} font-medium text-encre-soft`}>{tilt}°</th>
+                      {azimuths.map((az: any) => (
+                        <td class={`fig px-3 py-2 ${endClass} text-azur-600`} dir={tdDir}>
+                          {city.grid[az]?.[String(tilt)] != null ? city.grid[az][String(tilt)].toLocaleString(locale) : '—'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>

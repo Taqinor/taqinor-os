@@ -29,16 +29,9 @@ vi.mock('../../api/installationsApi', () => ({ default: installationsApiMock }))
 vi.mock('../../api/recordsApi', () => ({ default: recordsApiMock }))
 
 import ChantierPhotos from './ChantierPhotos'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function authReducer(role) {
   return (state = { role }) => state

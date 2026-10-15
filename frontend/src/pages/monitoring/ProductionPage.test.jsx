@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 import { buildProductionChartData } from './ProductionPage.helpers'
 
 /* VX148 — ProductionPage.jsx : l'écran le plus consulté du dossier monitoring
@@ -41,11 +42,7 @@ describe('buildProductionChartData (VX148)', () => {
 /* WIR122 — suppression de relevé (confirmation + `deleteReading`, jusque-là
    sans appelant) + historique mensuel attendu vs réel (`getHistory`, idem). */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -54,27 +51,8 @@ function renderPage(ui) {
 // Radix Select ne s'ouvre pas sous jsdom (portail + pointer-events:none) —
 // même contournement que ClientPortalPage.test.jsx : <select> natif pour
 // piloter le choix du système, les autres primitives ui/ restent réelles.
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children, 'aria-label': ariaLabel }) => (
-      <select
-        aria-label={ariaLabel || 'select'}
-        value={value}
-        onChange={(e) => onValueChange(e.target.value)}
-      >
-        <option value="" />
-        {children}
-      </select>
-    ),
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../ui', async (importActual) => (await import('../../test/selectNatif'))
+  .avecSelectNatifSimple(await importActual(), { labelDeProp: true }))
 
 vi.mock('../../api/monitoringApi', () => ({
   default: {

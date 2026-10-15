@@ -168,6 +168,16 @@ class EmailPdfFactureTests(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(self.facture.reference, self._pj_texte(mail.outbox[0]))
 
+    def test_client_sans_adresse_conflit_409(self):
+        # ENF11 (nocturne 15/10) — corps conforme, fiche client sans email.
+        client = self.facture.client
+        type(client).objects.filter(pk=client.pk).update(email='')
+        resp = self.api.post(
+            f'/api/django/ventes/factures/{self.facture.id}/envoyer-email/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('destinataire', resp.data['detail'])
+
     def test_pdf_impossible_refuse_envoi(self):
         from apps.ventes.email_service import send_relance_email
         self.minio.panne = True

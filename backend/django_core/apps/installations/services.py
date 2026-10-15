@@ -997,19 +997,8 @@ def _seed_schema_unifilaire_document(installation, devis):
     pointeur = (
         f'Brouillon SLD du devis {reference} (dossier technique, PV40) : '
         f'/api/django/ventes/devis/{devis.pk}/schema-unifilaire/?format=pdf')
-    doc, created = DocumentProjet.objects.get_or_create(
-        installation=installation,
-        type_doc=DocumentProjet.TypeDoc.SCHEMA_UNIFILAIRE,
-        defaults={
-            'company': installation.company,
-            'titre': titre,
-            'notes': pointeur,
-        })
-    if not created and (doc.titre != titre or doc.notes != pointeur):
-        doc.titre = titre
-        doc.notes = pointeur
-        doc.save(update_fields=['titre', 'notes'])
-    return doc
+    from .services_seed_documents import poser_document_schema_unifilaire
+    return poser_document_schema_unifilaire(installation, titre, pointeur)
 
 
 def _notifier_chantier_assigne(inst, technicien):

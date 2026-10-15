@@ -21,7 +21,7 @@ import visitesApi from '../../api/visitesApi'
 import PageHeader from '../../components/layout/PageHeader'
 import { Button, Card, Spinner, Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../ui'
 import { toast } from '../../ui/confirm'
-import { warpImageToQuad, boundingBox } from '../../lib/roofTextureWarp'
+import { dessinerApercuDrape } from '../../lib/calage/apercuDrape'
 import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
 
 const DEFAULT_CENTER = [31.7917, -7.0926] // Maroc — repli si le lead n'a pas de GPS.
@@ -91,25 +91,10 @@ export default function CalageToitPage() {
 
   // Redessine l'aperçu drapé en projetant les 4 poignées CARTE → pixels écran.
   const redessiner = useCallback(() => {
-    const canvas = canvasRef.current
-    const map = mapRef.current
-    const image = imageRef.current
-    if (!canvas || !map || !image?.complete) return
-    const points = markersRef.current.map((m) => {
-      const p = map.latLngToContainerPoint(m.getLatLng())
-      return [p.x, p.y]
+    dessinerApercuDrape({
+      canvas: canvasRef.current, map: mapRef.current, image: imageRef.current,
+      markers: markersRef.current, opacite: 0.85,
     })
-    if (points.length !== 4) return
-    const box = boundingBox(points)
-    canvas.width = Math.max(1, Math.round(box.width))
-    canvas.height = Math.max(1, Math.round(box.height))
-    canvas.style.left = `${box.x}px`
-    canvas.style.top = `${box.y}px`
-    const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-    const decale = points.map(([x, y]) => [x - box.x, y - box.y])
-    ctx.globalAlpha = 0.85
-    warpImageToQuad(ctx, image, decale)
   }, [])
 
   // Boot carte (une fois le lead/visite connu) + 4 poignées déplaçables.
@@ -141,7 +126,7 @@ export default function CalageToitPage() {
     map.on('move zoom', redessiner)
     mapRef.current = map
     return () => { map.remove(); mapRef.current = null }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- carte Leaflet recréée uniquement quand la visite change; redessiner est relié aux marqueurs par ref (D-ENF22)
   }, [visite])
 
   useEffect(() => { redessiner() }, [sourceUrl, redessiner])

@@ -32,6 +32,7 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from core.champs_stricts import ChaineStricte, DateStricte
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from ..models import PhotoSite
 from ..permissions import PeutLireOuEcrireCalepinage
@@ -218,6 +219,9 @@ class PhotosSiteMixin:
             description="Identifiant de la photo de site (sous-ressource du calepinage).")],
         request=inline_serializer('CalepinagePhotoCalageCorps', {
             'calage': serializers.JSONField(allow_null=True)}),
+        # ENF11 (nocturne 15/10) — un PATCH rend le corps partiel au schéma :
+        # la clé ``calage``, OBLIGATOIRE (ACAL202), y est republiée requise.
+        extensions={EXTENSION_CORPS_RESSERRE: {'required': ['calage']}},
         responses={200: _FORME_PHOTO})
     @action(detail=True, methods=['patch'],
             url_path=r'photos/(?P<photo_id>[^/.]+)/calage',

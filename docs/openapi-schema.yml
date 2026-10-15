@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3525}
+counts: {paths: 4814, operations: 7566, components: 3529}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9906,6 +9906,7 @@ components:
 - CrmKpiCadences
 - CrmKpiPremierContact
 - CrmLeadLocataire
+- CrmLeadLocataireIssue
 - CrmLeadMergeRequestRequest
 - CrmLeadMessageVisite
 - CrmLeadSupprime
@@ -9940,6 +9941,7 @@ components:
 - CrmSavedViewReorderRequestRequest
 - CrmScanCarteIndisponible
 - CrmScanCarteRequestRequest
+- CrmSuiviConflit
 - CrmVilleStatutRequestRequest
 - CrmWhatsappDevisApercuRequestRequest
 - CrmWhatsappDevisRequestRequest
@@ -10671,6 +10673,7 @@ components:
 - LigneRetourFournisseurRequest
 - LimModeEnum
 - ListePrix
+- ListePrixLigneSaisieRequest
 - ListePrixRequest
 - Livraison
 - LivraisonAnnoncee
@@ -11980,6 +11983,7 @@ components:
 - RegleDossier
 - RegleDossierRequest
 - RegleListePrix
+- RegleListePrixCorpsRequest
 - RegleListePrixRequest
 - RegleOperateursReponse
 - RegleRangement

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, CalendarClock, Droplets, Gauge, TrendingDown } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
-import { Badge, DataTable, EmptyState, Segmented } from '../../ui'
+import { Badge, DataTable, EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
 import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
 import { formatNumber, formatPercent } from '../../lib/format'
-import MonitoringNav from './MonitoringNav'
-import SystemPicker from './SystemPicker'
+import BarreSysteme from './BarreSysteme'
 import useSupervisedSystems from './useSupervisedSystems'
+import { lancerChargement } from '../../lib/chargementEffet'
+import EnTeteMonitoring from './EnTeteMonitoring'
+import SegmentedPetit from './SegmentedPetit'
 
 /* WR6 — Analytique O&M par système (FG279) : Performance Ratio, disponibilité,
    dégradation annualisée et suspicion de salissure, avec la série mensuelle de
@@ -29,23 +31,14 @@ export default function OmAnalyticsPage() {
 
   useEffect(() => {
     if (!selectedId) return undefined
-    let active = true
-    const load = async () => {
-      // setState seulement APRÈS un await (pas de setState synchrone en effet).
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const r = await monitoringApi.getOmMetrics(selectedId, { window_days: windowDays })
-        if (active) { setMetrics(r.data); setError(null) }
-      } catch {
-        if (active) setError('Impossible de charger l’analytique O&M.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) { setMetrics(r.data); setError(null) }
+      },
+      surErreur: () => setError('Impossible de charger l’analytique O&M.'),
+    })
   }, [selectedId, windowDays])
 
   const stats = useMemo(() => (metrics ? [
@@ -99,29 +92,11 @@ export default function OmAnalyticsPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Analytique O&M</h1>
-        <div className="page-subtitle">
-          PR, disponibilité, salissure et dégradation d’un système supervisé.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Analytique O&M" sousTitre="PR, disponibilité, salissure et dégradation d’un système supervisé." />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <SystemPicker
-          systems={systems}
-          loading={loadingSystems}
-          value={selectedId}
-          onChange={setSelectedId}
-        />
-        <Segmented
-          size="sm"
-          options={WINDOWS}
-          value={windowDays}
-          onChange={setWindowDays}
-          aria-label="Fenêtre d'analyse"
-        />
-      </div>
+      <BarreSysteme systems={systems} loading={loadingSystems} value={selectedId} onChange={setSelectedId}>
+        <SegmentedPetit options={WINDOWS} value={windowDays} onChange={setWindowDays} label="Fenêtre d'analyse" />
+      </BarreSysteme>
 
       {!loadingSystems && systems.length === 0 ? (
         <EmptyState

@@ -110,6 +110,15 @@ class NoteClientSansMarqueurTests(TestCase):
         variante = Devis.objects.get(pk=r.data[0]['id'])
         self._sans_marqueur(variante, 'Variante')
 
+    def test_variante_ligne_sans_quantite_jamais_500(self):
+        # ENF11 (nocturne 15/10) — une ligne sans quantité (titre) faisait un
+        # TypeError à la mise à l'échelle : elle est recopiée telle quelle.
+        LigneDevis.objects.create(devis=self.source, designation='Titre de section')
+        r = self.api.post(
+            f'/api/django/ventes/devis/{self.source.pk}/dupliquer-variante/',
+            {}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
     def test_gamme(self):
         from apps.ventes.domain.gammes import creer_variante_gamme
         soeur = creer_variante_gamme(self.source, 'Premium', user=self.user)

@@ -194,7 +194,7 @@ export default function DevisList() {
     // annulé au démontage — aucun chargement orphelin.
     const tick = setTimeout(() => chargerVariantes(versionsOpenId), 0)
     return () => clearTimeout(tick)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement du lien profond ?variantes= au montage uniquement (D-ENF22)
   }, [])
 
   // ── QG10 — Modale « Variantes » : confirmer / éditer le pourcentage avant

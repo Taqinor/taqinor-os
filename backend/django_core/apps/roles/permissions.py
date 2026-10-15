@@ -303,14 +303,19 @@ class IsInternalWriterOrPortalClientOwner(BasePermission):
 # paramètre la primitive ``HasPermissionOrLegacy`` (aucune réimplémentation :
 # rôle fin → le code ; compte hérité sans rôle fin → palier responsable ;
 # superuser → oui) et n'y ajoute que le refus NOMMÉ (403 ``droit_manquant``)
-# et deux déclencheurs :
+# et trois déclencheurs :
 #
-# * ``operation`` — action EN MASSE : la garde ne joue que si le champ
-#   ``action`` du corps vaut ``operation`` (p. ex. ``reassign`` du bulk leads) ;
+# * ``operation`` — action EN MASSE : la garde ne joue que si le champ ``cle``
+#   du corps (``action`` par défaut) vaut ``operation`` (p. ex. ``reassign`` du
+#   bulk leads, ``operation=technicien`` des actions groupées SAV) ;
 # * ``champ`` — modification d'un champ d'affectation par PUT/PATCH : la garde
 #   ne joue, au niveau OBJET, que si le corps CHANGE la valeur de ``champ``
 #   (réaffecter un lead en changeant son ``owner``) ; un corps qui renvoie la
-#   valeur courante n'est pas une réaffectation.
+#   valeur courante n'est pas une réaffectation. À la CRÉATION (POST), elle
+#   joue dès que le corps renseigne ``champ`` (créer déjà affecté) ;
+# * ``export`` — écran qui sert aussi un téléchargement : la garde ne joue que
+#   si ``?export=`` vaut l'un des formats donnés (``?export=xlsx`` des
+#   rapports) ; la lecture JSON du même écran reste ouverte.
 #
 # Aucun littéral de code ici : chaque code vit à l'endpoint qui l'applique
 # (la garde inverse ASEC20 lit ces littéraux pour prouver la consommation).
@@ -347,13 +352,15 @@ def corps_change_le_champ(request, obj, champ):
             != _valeur_normalisee(getattr(obj, attname, None)))
 
 
-def DroitDeLaGrille(code, *, operation=None, champ=None):
+def DroitDeLaGrille(code, *, operation=None, champ=None, cle='action',
+                    export=None):
     """ASEC50 — classe de permission DRF qui applique le code ``code`` de la
     grille (voir l'en-tête de section). Toujours AVEC la garde existante :
     ``[IsResponsableOrAdmin(), DroitDeLaGrille('<module>_export')()]``."""
     from authentication.permissions import HasPermissionOrLegacy
 
     geste = _GESTE_PAR_SUFFIXE.get(code.rsplit('_', 1)[-1], code)
+    formats = frozenset(export or ())
 
     class _DroitDeLaGrille(HasPermissionOrLegacy(code)):
         message = {
@@ -363,10 +370,17 @@ def DroitDeLaGrille(code, *, operation=None, champ=None):
 
         def has_permission(self, request, view):
             if champ is not None:
+                if (request.method == 'POST'
+                        and _valeur_normalisee(_corps(request).get(champ))):
+                    return super().has_permission(request, view)
                 return True  # tranché au niveau objet (valeur changée ?)
             if (operation is not None
-                    and _corps(request).get('action') != operation):
+                    and _corps(request).get(cle) != operation):
                 return True
+            if formats:
+                demande = (request.query_params.get('export') or '').lower()
+                if demande not in formats:
+                    return True
             return super().has_permission(request, view)
 
         def has_object_permission(self, request, view, obj):
@@ -374,7 +388,8 @@ def DroitDeLaGrille(code, *, operation=None, champ=None):
                 return True
             return super().has_permission(request, view)
 
-    suffixe = f'__{operation or champ}' if (operation or champ) else ''
+    suffixe = (f'__{operation or champ}' if (operation or champ)
+               else ('__export' if formats else ''))
     _DroitDeLaGrille.__name__ = f'DroitDeLaGrille_{code}{suffixe}'
     return _DroitDeLaGrille
 

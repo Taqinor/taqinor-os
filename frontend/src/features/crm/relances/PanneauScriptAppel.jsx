@@ -26,7 +26,7 @@
 // montées pendant un rechargement (`CadenceFrise.jsx`), pas ce composant.
 import { useEffect, useState } from 'react'
 import {
-  ChevronDown, ChevronRight, Copy, PhoneCall, TriangleAlert,
+  Copy, PhoneCall, TriangleAlert,
 } from 'lucide-react'
 import { Badge, Button, Input } from '../../../ui'
 import { toastInfo } from '../../../lib/toast'
@@ -43,6 +43,7 @@ import {
   VISITE_POINT_EAU_TITRE, VISITE_POINT_EAU_CONSIGNE,
   VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE,
 } from './appelGuidance'
+import BasculeReplie from './BasculeReplie'
 
 const PANNEAU_INDISPONIBLE = 'Questions indisponibles pour le moment — le '
   + 'script de la touche reste lisible.'
@@ -596,17 +597,10 @@ export default function PanneauScriptAppel({
   }
   return (
     <div className="mt-1.5 rounded-md border border-dashed border-border p-2" data-testid="panneau-script-appel">
-      <button
-        type="button"
-        className="flex w-full items-center gap-1.5 text-left text-xs font-medium text-foreground"
-        aria-expanded={ouvert}
-        onClick={onBasculer}
-      >
-        {ouvert ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
-          : <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
+      <BasculeReplie ouvert={ouvert} onBasculer={onBasculer}>
         <PhoneCall className="size-3.5 shrink-0" aria-hidden="true" />
         <span>Script d’appel</span>
-      </button>
+      </BasculeReplie>
       {ouvert && contenu}
     </div>
   )

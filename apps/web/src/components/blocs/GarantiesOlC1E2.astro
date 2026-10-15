@@ -1,0 +1,13 @@
+---
+// ENF19 : bloc partagé (copies identiques) — garanties.astro
+const { claimSteps } = Astro.props as Record<string, any>;
+---
+        <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {claimSteps.map((s: any, i: any) => (
+            <li class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
+              <p class="fig lum text-2xl">{s.n}</p>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>

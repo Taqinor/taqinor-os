@@ -12,7 +12,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from rest_framework import serializers
-from rest_framework.parsers import JSONParser
+from rest_framework.parsers import JSONParser
 
 from core.champs_stricts import (
     ArbreConditionsField, BooleenStrict, ChampsStrictsSansDecimalMixin)
@@ -166,7 +166,7 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
         if cible and target_model.lower() != cible:
             return Response(
                 {'detail': '« bouton » : cible non autorisée pour ce bouton.'},
-                status=400)
+                status=409)  # ENF11 : la cible configurée du bouton s'oppose
         ok, message = ui_extensions.declencher_bouton(
             bouton, target_model, target_id, user=request.user)
         return Response({'ok': ok, 'message': message})

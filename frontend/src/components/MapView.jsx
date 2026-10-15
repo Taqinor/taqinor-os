@@ -136,7 +136,7 @@ export default function MapView({
       layerRef.current = null
       tileLayerRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- carte Leaflet créée UNE fois au montage; center/zoom initiaux seulement, les mises à jour passent par les effets dédiés (D-ENF22)
   }, [])
 
   // VX32 — mode sombre : filtre CSS sur les tuiles (pas de fond blanc figé).

@@ -108,7 +108,7 @@ class AutomationFkTests(TestCase):
         self.assertEqual(self.demande.status,
                          ApprovalRequest.Status.APPROVED)
 
-    def test_delegation_suppleant_etranger_400(self):
+    def test_delegation_suppleant_etranger_404(self):
         avant = ApprovalDelegation.objects.count()
         for champ in ('suppleant', 'delegant'):
             corps = {'delegant': self.admin_a.pk,
@@ -118,7 +118,7 @@ class AutomationFkTests(TestCase):
             corps[champ] = self.user_b.pk
             r = self.api.post(f'{BASE}/approval-delegations/', corps,
                               format='json')
-            self.assertEqual(r.status_code, 400, r.data)
+            self.assertEqual(r.status_code, 404, r.data)  # ENF11 : IdInconnu404Mixin
             self.assertIn(champ, r.data)
         self.assertEqual(ApprovalDelegation.objects.count(), avant)
         r_ok = self.api.post(f'{BASE}/approval-delegations/', {

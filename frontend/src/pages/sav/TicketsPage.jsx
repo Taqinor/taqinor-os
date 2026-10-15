@@ -21,11 +21,9 @@ import {
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
-import crmApi from '../../api/crmApi'
 import api from '../../api/axios'
 // WIR178 — même sélecteur client (recherche /crm/clients/search/) que le
 // quick-create ⌘K (TicketQuickCreateModal) et DevisGenerator.
-import { searchCompanies } from '../../features/crm/companyLookup'
 // NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
 import { downloadBlob } from '../../utils/downloadBlob'
@@ -82,7 +80,6 @@ import {
   Input,
   Textarea,
   Checkbox,
-  Combobox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   SelectGroup, SelectLabel,
   Segmented,
@@ -98,11 +95,13 @@ import {
   annulerEditionStatut, executerEditionStatut, frError, parseBulkResult,
   ticketSlaEcheance, ticketSlaTri,
 } from './ticketsLogique'
+import ComboboxClient from '../../components/ComboboxClient'
 import { BoutonExportExcel, CollapsibleSection, ErreurChargement, OptionsEquipement, SqueletteListe, ScannerQrPleinEcran } from './SavCommun'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
 import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { todayLocalIso as todayISO } from '../../lib/dateLocale'
+import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 
 // WIR21 — vues sauvegardées côté serveur (apps.uxviews.SavedView, NTUX1/2).
 const TP_ECRAN = 'sav.tickets'
@@ -1650,15 +1649,6 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
-  // WIR178 — mêmes données propres que DevisGenerator/TicketQuickCreateModal
-  // (endpoint /search/, filtré aux clients : un ticket a besoin d'un id
-  // client réel).
-  const onSearchClient = async (query) => {
-    const hits = await searchCompanies(query, { searcher: crmApi.searchClients })
-    const clientHits = hits.filter((h) => h.source === 'client')
-    return clientHits.map((h) => ({ value: String(h.id), label: h.nom }))
-  }
-
   const submit = async () => {
     setErr(null)
     if (!clientId) { setErr('Le client est requis.'); return }
@@ -1691,17 +1681,8 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
         <div className="grid gap-3">
           <FormField label="Client" htmlFor="cqc-client">
             {/* VX240(d) — la modale s'ouvrait sans aucun autofocus. */}
-            <Combobox
-              id="cqc-client"
-              autoFocus
-              value={clientId}
-              onChange={(v) => setClientId(v)}
-              onSearch={onSearchClient}
-              placeholder="— Sélectionner un client —"
-              searchPlaceholder="Nom ou ICE…"
-              emptyText="Aucun client dans vos données"
-              invalid={err && !clientId ? true : undefined}
-            />
+            <ComboboxClient id="cqc-client" value={clientId} onChange={(v) => setClientId(v)}
+                            invalid={err && !clientId ? true : undefined} />
           </FormField>
           <FormField label="Type">
             <Select value={type} onValueChange={setType}>
@@ -1866,22 +1847,9 @@ export default function TicketsPage() {
   // ciblé (patron ?lead= de LeadsPage — état DÉRIVÉ, aucun effet). Fermer retire
   // le paramètre pour ne pas ré-ouvrir la fiche. Un id absent des tickets
   // chargés est signalé par un EmptyState inline (jamais une page blanche).
-  const wantedId = searchParams.get('id')
-  const deepTicket = useMemo(() => {
-    if (!wantedId) return null
-    return (items ?? []).find((t) => String(t.id) === String(wantedId)) ?? null
-  }, [wantedId, items])
+  const { wantedId, deepItem: deepTicket, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
   const deepMissing = !!wantedId && !loading && !error && !deepTicket
 
-  const clearDeepLink = () => {
-    if (searchParams.has('id')) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('id')
-        return next
-      }, { replace: true })
-    }
-  }
   // Panneau ouvert : sélection manuelle OU ticket ciblé par le lien profond.
   const detailTicket = selected ?? deepTicket
   const closeDetail = () => { setSelected(null); clearDeepLink() }

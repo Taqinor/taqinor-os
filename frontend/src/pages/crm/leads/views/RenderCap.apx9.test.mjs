@@ -17,6 +17,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const lf = (s) => s.replace(/\r\n/g, '\n')
 const KANBAN = lf(readFileSync(join(HERE, 'KanbanView.jsx'), 'utf8'))
 const LISTE = lf(readFileSync(join(HERE, 'ListView.jsx'), 'utf8'))
+// ENF19 — le bouton « Charger plus » est partagé (Kanban + Prévision).
+const CHARGER_PLUS = lf(readFileSync(join(HERE, 'BoutonChargerPlus.jsx'), 'utf8'))
 const PKG = JSON.parse(readFileSync(join(HERE, '../../../../../package.json'), 'utf8'))
 
 /* La regle de decoupe, rejouee ici pour la tester sur des volumes reels. */
@@ -50,8 +52,9 @@ test('APX9 : le plafond kanban est 40 et borne le RENDU', () => {
   assert.match(KANBAN, /export const RENDER_CAP = 40/)
   assert.match(KANBAN, /visibles\.slice\(0, limite\)\.map\(\(lead\) => \(/)
   assert.match(KANBAN, /const restants = Math\.max\(0, visibles\.length - limite\)/)
-  assert.match(KANBAN, /\{restants > 0 && \(/)
-  assert.match(KANBAN, /Charger plus \(\{restants\} restant\{restants > 1 \? 's' : ''\}\)/)
+  assert.match(KANBAN, /<BoutonChargerPlus restants=\{restants\}/)
+  assert.match(CHARGER_PLUS, /if \(!\(restants > 0\)\) return null/)
+  assert.match(CHARGER_PLUS, /Charger plus \(\{restants\} restant\{restants > 1 \? 's' : ''\}\)/)
 })
 
 test('APX9 : ZERO appel reseau — « Charger plus » ne fait que decouper la memoire', () => {
@@ -84,7 +87,7 @@ test("ordre fondateur 2026-08-01 : au doigt on monte TOUT, le bouton n'existe pa
   // APX9 desktop INCHANGE : le plafond 40 et le bouton restent (6 colonnes
   // visibles en meme temps — le mur de noeuds y est reel).
   assert.match(KANBAN, /export const RENDER_CAP = 40/)
-  assert.match(KANBAN, /\{restants > 0 && \(/)
+  assert.match(KANBAN, /<BoutonChargerPlus restants=\{restants\}/)
   // Round 3 allegait le StageMover au doigt ; depuis l'ordre fondateur
   // 2026-08-02 il n'existe PLUS DU TOUT (aucune surface, aucun pointeur).
   // (le MOT StageMover survit dans les commentaires d'archéologie — l'épingle

@@ -5,11 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { ConfirmProvider } from '../../providers/ConfirmProvider'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(
@@ -85,6 +81,7 @@ vi.mock('../../api/axios', () => ({
 import reportingApi from '../../api/reportingApi'
 import automationApi from '../../api/automationApi'
 import ApprobationsPage from './ApprobationsPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('ApprobationsPage (XKB1/ZCTR7-9 — boîte d’approbations centralisée)', () => {
   it('charge TOUTES les sources sans filtre par défaut', async () => {

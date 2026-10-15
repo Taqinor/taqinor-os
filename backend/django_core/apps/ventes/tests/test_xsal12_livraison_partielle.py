@@ -121,7 +121,7 @@ class TestLivraisonPartielle(TestCase):
 
     def test_no_double_decompte_with_over_delivery(self):
         resp = self._livrer([{'ligne_devis': self.ligne_panneau.id, 'quantite': '20'}])
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # ENF11 : au-delà du reliquat (état)
         self.panneau.refresh_from_db()
         self.assertEqual(self.panneau.quantite_stock, 100)  # inchangé
 
@@ -135,7 +135,7 @@ class TestLivraisonPartielle(TestCase):
         self.assertEqual(self.panneau.quantite_stock, 0)
 
         resp2 = self._livrer([{'ligne_devis': self.ligne_panneau.id, 'quantite': '3'}])
-        self.assertEqual(resp2.status_code, 400)
+        self.assertEqual(resp2.status_code, 409)  # ENF11 : stock insuffisant (état)
         self.assertIn('insuffisant', resp2.data['detail'])
 
     def test_aud228_stock_insuffisant_autorise_si_reglage_societe_actif(self):

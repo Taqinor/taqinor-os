@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Button } from '../../../ui'
 import { filterLeads } from '../../../features/crm/stages'
 
@@ -11,37 +11,32 @@ import { filterLeads } from '../../../features/crm/stages'
 // un seul état de filtres) ; le badge numérique ne rend que s'il est > 0
 // (règle de repli du blueprint : bruit zéro le matin calme).
 export default function QuickFilterChips({ leads, filters, setFilters, myUsername }) {
-  const countWith = (overrides) => filterLeads(
+  const countWith = useCallback((overrides) => filterLeads(
     leads, { ...filters, ...overrides }, { myUsername },
-  ).length
+  ).length, [leads, filters, myUsername])
 
   const dueTodayCount = useMemo(
     () => countWith({ relance: 'aujourdhui' }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- countWith ferme sur leads/filters/myUsername, déjà listés (D-ENF22)
-    [leads, filters, myUsername],
+    [countWith],
   )
   const retardCount = useMemo(
     () => countWith({ relance: 'retard' }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leads, filters, myUsername],
+    [countWith],
   )
   const chaudsCount = useMemo(
     () => countWith({ score: 'chaud' }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leads, filters, myUsername],
+    [countWith],
   )
   // MRY16 — moteur de relances (crm.RelanceEtape) : distinct des chips
   // « Dû aujourd'hui »/« En retard » ci-dessus (qui lisent `relance_date`,
   // le rappel manuel unique) — ceux-ci lisent la cadence structurée.
   const toucheDueCount = useMemo(
     () => countWith({ touche: 'due' }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leads, filters, myUsername],
+    [countWith],
   )
   const tentatives7PlusCount = useMemo(
     () => countWith({ tentatives: '7plus' }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leads, filters, myUsername],
+    [countWith],
   )
 
   const toggleRelance = (val) => setFilters((f) => ({

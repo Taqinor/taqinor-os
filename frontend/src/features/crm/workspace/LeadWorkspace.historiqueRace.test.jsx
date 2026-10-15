@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { render, screen, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -17,13 +18,8 @@ import LeadWorkspace from './LeadWorkspace'
 // /historique/ (LW41), ce qui isole proprement la garde d'identité (LW43) de
 // la logique « fetch évité » testée ailleurs (LeadWorkspace.historique.test.jsx).
 
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 vi.mock('./IdentityRail', () => ({ default: () => <div data-testid="identity-rail" /> }))
 
 vi.mock('../../../api/recordsApi', () => ({
@@ -49,22 +45,12 @@ vi.mock('../../../api/axios', () => ({
   default: { get: vi.fn(() => Promise.resolve({ data: [] })), post: vi.fn(() => Promise.resolve({ data: {} })) },
 }))
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
-
-beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+installerHooksLeadWorkspace()
 
 function makeStore() {
   return configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s } })
 }
 
-const LEAD_A = { id: 1, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false }
 const LEAD_B = { id: 2, nom: 'Sara', prenom: 'K.', stage: 'NEW', is_archived: false }
 
 function wrap(lead) {

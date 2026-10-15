@@ -6,11 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react'
    les utilisait). Ce test verrouille : chargement du profil existant du client
    sélectionné, et rendu du formulaire pré-rempli. */
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 vi.mock('../../api/crmApi', () => ({
   default: {
@@ -35,6 +31,7 @@ vi.mock('../../api/crmApi', () => ({
 
 import crmApi from '../../api/crmApi'
 import SiteProfilePage from './SiteProfilePage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('SiteProfilePage (WIR99 — création/édition du profil site)', () => {
   it('demande de choisir un client tant qu\'aucun n\'est sélectionné', async () => {

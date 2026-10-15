@@ -41,18 +41,6 @@ if (typeof window.HTMLElement !== 'undefined' && !window.HTMLElement.prototype.s
 }
 
 // matchMedia déterministe (ResponsiveDialog s'appuie dessus). Bureau par défaut.
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  })
-}
 
 import { MemoryRouter } from 'react-router-dom'
 import UsersManagement from './UsersManagement'
@@ -60,6 +48,7 @@ import { ConfirmProvider } from '../../providers/ConfirmProvider'
 import { ThemeProvider } from '../../design/ThemeProvider'
 import { confirmerSuppression } from './confirmation.testHelpers.js'
 import { toast } from '../../ui/confirm'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 const ROLES = [
   { id: 1, nom: 'Administrateur', est_systeme: true, permissions: ['roles_gerer'] },

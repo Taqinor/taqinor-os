@@ -58,6 +58,8 @@ const etapes = [
     body: 'Once in service, real-time production monitoring reads the production continuously and the client keeps their access: what we forecast becomes legible on a meter. In parallel, the Law 82-21 file is carried through to the end, declaration or regularisation included.',
   },
 ];
+import AProposSection62FB from '../../components/blocs/AProposSection62FB.astro';
+import GarantiesSection63F3 from '../../components/blocs/GarantiesSection63F3.astro';
 ---
 
 <Layout
@@ -92,14 +94,7 @@ const etapes = [
     {/* W280 — InstallCounter: real install figures, derived from
         realisations.ts (no invented number). No-op-safe: renders nothing if
         REALISATIONS is empty. */}
-    <section class="px-4 pb-4 sm:pb-6">
-      <div class="mx-auto max-w-3xl">
-        <InstallCounter />
-      </div>
-    </section>
-
-    <!-- The founder — his standards, not a biography -->
-    <div class="v2-seam" aria-hidden="true"></div>
+    <GarantiesSection63F3 />
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">An engineer's path</p>
@@ -197,14 +192,7 @@ const etapes = [
 
     {/* W280 — CertLogoRow: standards/warranties already published elsewhere
         (garanties.astro), no-op-safe (no fabricated logo). */}
-    <section class="border-y border-white/10 px-4 py-14 sm:py-16">
-      <div class="mx-auto max-w-6xl">
-        <CertLogoRow />
-      </div>
-    </section>
-
-    <!-- W345 — Press & partnerships: dedicated door, separate from the sales form -->
-    <div class="v2-seam" aria-hidden="true"></div>
+    <AProposSection62FB />
     <section class="border-y border-white/10 bg-blanc-azur px-4 py-16 text-encre sm:py-20">
       <div class="mx-auto max-w-5xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">Press & partnerships</p>

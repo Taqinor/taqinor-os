@@ -3,20 +3,11 @@
 // (le contrat `relance_etape_v2` ne servait pas `lead_email`) — le bouton
 // « E-mail » ouvrait le texte sans adresse ni lien `mailto:`.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { ligne } from '../../../test/relanceEtapeRowHarness'
+import { screen, cleanup, fireEvent } from '@testing-library/react'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-import RelanceEtapeRow from './RelanceEtapeRow'
 
-vi.mock('../../../lib/toast', () => ({ toastInfo: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getRelanceEtapeMessage: vi.fn(),
-    whatsappRelanceEtape: vi.fn(),
-    enregistrerPieceRecue: vi.fn(),
-  },
-}))
 
 import crmApi from '../../../api/crmApi'
 
@@ -28,17 +19,6 @@ const EMAIL_MASQUE = exempleContrat('crm', 'relance_etape_v2', 'exemple_pii_masq
 const MESSAGE = exempleContrat('crm', 'relance_etape_message')
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-function noop() {}
-
-function ligne(etape) {
-  return render(
-    <RelanceEtapeRow
-      etape={etape} onFait={noop} onSauter={noop} onReporter={noop}
-      onOuvrirMessage={noop}
-    />,
-  )
-}
 
 describe('CAD176 — le panneau e-mail affiche un texte et l’adresse', () => {
   it('une touche e-mail avec adresse montre l’adresse à côté du texte', async () => {

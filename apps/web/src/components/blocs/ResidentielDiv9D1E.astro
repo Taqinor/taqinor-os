@@ -1,0 +1,15 @@
+---
+// ENF19 : bloc partagé (copies identiques) — résidentiel.astro
+const { brackets } = Astro.props as Record<string, any>;
+---
+        {brackets.map((b: any, i: any) => (
+          <div class="v2-rise border-b border-white/10 py-5" style={`--v2-i:${i}`}>
+            <div class="grid gap-1.5 sm:grid-cols-[1.1fr_0.8fr_1.2fr_0.8fr] sm:items-baseline sm:gap-4">
+              <span class="font-display text-base font-bold text-white">{b.bill}</span>
+              <span class="fig lum text-xl sm:text-2xl" data-tally>{b.kwc}</span>
+              <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
+              <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
+            </div>
+            {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
+          </div>
+        ))}

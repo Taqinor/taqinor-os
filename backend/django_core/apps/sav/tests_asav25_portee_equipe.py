@@ -39,8 +39,10 @@ class PorteeEquipeTests(TestCase):
             slug='asav25-co', defaults={'nom': 'ASAV25 Co'})
         role = Role.objects.create(
             company=self.company, nom='Technicien ASAV25',
+            # ASEC50 — l'op ``technicien`` des actions groupées exige
+            # ``sav_reassign`` ; ce module éprouve la PORTÉE, pas ce droit.
             permissions=list(TECHNICIEN_PERMISSIONS) + [
-                'records_scope_equipe', 'sav_probleme_gerer'],
+                'records_scope_equipe', 'sav_probleme_gerer', 'sav_reassign'],
             est_systeme=False)
         self.tech = User.objects.create_user(
             username='asav25_tech', password='x', company=self.company,

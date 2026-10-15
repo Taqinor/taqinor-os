@@ -160,10 +160,19 @@ class TestEndpointsPlanChargement(Ntwms26Base):
         self.assertEqual(reponse.data['nb_unites'], 1)
 
     def test_unite_inconnue_refusee(self):
+        # ENF11 (nocturne 15/10) — une unité inconnue de la société est une
+        # ressource qui manque (404, plus 400) ; une unité d'une AUTRE société
+        # répond exactement pareil (aucun oracle d'existence).
         plan = self._plan()
         reponse = self.api.post(f'{self.URL}{plan.id}/unites/',
                                 {'unite_logistique': 999999}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404, reponse.content)
+        etrangere = creer_unite_logistique(company=self.autre, type_unite='palette')
+        r_etrangere = self.api.post(f'{self.URL}{plan.id}/unites/',
+                                    {'unite_logistique': etrangere.id}, format='json')
+        self.assertEqual(r_etrangere.status_code, 404, r_etrangere.content)
+        self.assertEqual(r_etrangere.content, reponse.content)
+        self.assertEqual(plan.unites_logistiques.count(), 0)
 
     def test_isolation_multi_societe(self):
         intrus = User.objects.create_user(

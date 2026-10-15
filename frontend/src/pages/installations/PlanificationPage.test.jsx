@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
 
 /* WR10 — PlanificationPage : câble les surfaces de scheduling/logistique
    (calendrier techniciens FG68, ma tournée FG73, plan de charge / conflits /
@@ -12,47 +10,18 @@ import { configureStore } from '@reduxjs/toolkit'
    data-testid) ; (2) la synthèse coût/marge (admin-only) n'apparaît PAS pour
    un rôle non-admin. Toute la logique réseau est mockée. */
 
-const api = vi.hoisted(() => ({
-  getCalendrierInterventions: vi.fn(),
-  getMaTournee: vi.fn(),
-  getPlanDeCharge: vi.fn(),
-  getConflitsAffectation: vi.fn(),
-  getNivellementCharge: vi.fn(),
-  getPlanningCamionnettes: vi.fn(),
-  getInstallations: vi.fn(),
-  getRegimeSuggestion: vi.fn(),
-  creerInterventionsStandard: vi.fn(),
-  getChantierCout: vi.fn(),
-  updateIntervention: vi.fn(),
-}))
+const api = await vi.hoisted(async () => (await import('../../test/planificationApi')).apiPlanification(['getRegimeSuggestion', 'creerInterventionsStandard', 'getChantierCout']))
 
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 vi.mock('../../ui/confirm', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 import PlanificationPage, { OutilsChantierTab } from './PlanificationPage'
 import { moveInterventionLocal } from './PlanificationPage.helpers'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
-function authReducer(role) {
-  return (state = { role }) => state
-}
+const renderPage = (role = 'responsable') => renderAvecAuth(<PlanificationPage />, { role }, { routeur: false })
 
-function renderPage(role = 'responsable') {
-  const store = configureStore({ reducer: { auth: authReducer(role) } })
-  return render(
-    <Provider store={store}>
-      <PlanificationPage />
-    </Provider>,
-  )
-}
-
-function renderOutils(role = 'responsable') {
-  const store = configureStore({ reducer: { auth: authReducer(role) } })
-  return render(
-    <Provider store={store}>
-      <OutilsChantierTab />
-    </Provider>,
-  )
-}
+const renderOutils = (role = 'responsable') => renderAvecAuth(<OutilsChantierTab />, { role }, { routeur: false })
 
 beforeEach(() => {
   api.getCalendrierInterventions.mockResolvedValue({ data: [] })
@@ -132,12 +101,7 @@ describe('VX251 · onglet dispatch (glisser-déposer)', () => {
         { technicien: { id: 2, nom: 'Sara' }, interventions: [] },
       ],
     })
-    const store = configureStore({ reducer: { auth: authReducer('responsable') } })
-    render(
-      <Provider store={store}>
-        <PlanificationPage />
-      </Provider>,
-    )
+    renderPage()
     // Bascule sur l'onglet « Calendrier techniciens ».
     await userEvent.click(screen.getByText('Calendrier techniciens'))
     await waitFor(() => expect(api.getCalendrierInterventions).toHaveBeenCalled())

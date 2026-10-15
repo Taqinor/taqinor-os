@@ -157,6 +157,10 @@ class TestRepliSansExtensions(STKCAT27Base):
         for terme in ('cable', 'câble', 'STKCAT27'):
             self.assertNotIn('STKCAT27 Câble voisin', self.chercher(terme))
 
+    def test_terme_a_caractere_nul_liste_vide(self):
+        # ENF11 (nocturne 15/10) — ``search`` publié en chaîne libre : 200 vide.
+        self.assertEqual(self.chercher('deye\x00'), [])
+
 
 class TestRechercheSansAccents(STKCAT27Base):
     """Le chemin insensible aux accents — sauté tel quel si la base de test

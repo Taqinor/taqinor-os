@@ -10,18 +10,8 @@ import { documentContrat } from '../../../../test/fixtures/contractSamples'
 import { initState } from '../draftCore'
 import SectionPipeline from './SectionPipeline'
 
-vi.mock('../../../../api/crmApi', () => ({
-  default: {
-    initialiserRelance: vi.fn(),
-    arreterCadence: vi.fn(),
-    getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
-    getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
-vi.mock('../../../../ui/confirm', () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-  toastPromise: vi.fn((p) => p),
-}))
+vi.mock('../../../../api/crmApi', async () => (await import('../../../../test/sectionPipelineMocks')).crmApiPipeline())
+vi.mock('../../../../ui/confirm', async () => (await import('../../../../test/sectionPipelineMocks')).confirmToastMock())
 
 import crmApi from '../../../../api/crmApi'
 import { toast } from '../../../../ui/confirm'

@@ -52,11 +52,20 @@ _ASEC50_SANS_ENDPOINT = (
     "ASEC50 : aucun endpoint de ce geste aujourd'hui (inventaire du 14/10/2026) ; "
     "la garde DroitDeLaGrille est posée sur son premier endpoint et la ligne part")
 
+#: ASEC50 (inventaire du 15/10/2026) — le code a des endpoints, mais le rôle
+#: système légacy « Responsable » y accède aujourd'hui SANS porter le code :
+#: la garde attend la décision fondateur (aligner le Responsable par migration
+#: roles, comme 0009, ou accepter le refus) — jamais un élargissement de lane.
+_ASEC50_DECISION_RESPONSABLE = (
+    "ASEC50 [BLOCKED: décision fondateur — rôle Responsable sans le code] : "
+    "endpoints recensés (sav : insights fcr / performance-agent ?export=xlsx ; "
+    "installations : interventions ?export=xlsx), garde DroitDeLaGrille en attente")
+
 #: code -> raison. Décroissant : retirer la ligne dès que le code est consommé.
 EXEMPTIONS = {
-    'installation_export': _ASEC50_SANS_ENDPOINT,
+    'installation_export': _ASEC50_DECISION_RESPONSABLE,
     'intervention_gerer': _C015,
-    'sav_export': _ASEC50_SANS_ENDPOINT,
+    'sav_export': _ASEC50_DECISION_RESPONSABLE,
     'stock_export': _C015,
     'ventes_modifier': _C015,
     # Un devis n'a pas de responsable propre (sa portée suit le lead) : aucun

@@ -6,16 +6,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { MapPin, CalendarDays, Users, Wrench } from 'lucide-react'
-import {
-  DndContext,
-  DragOverlay,
-  PointerSensor,
-  TouchSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
+import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useSensor, useSensors } from '@dnd-kit/core'
 import installationsApi from '../../api/installationsApi'
 import crmApi from '../../api/crmApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -30,12 +21,12 @@ import {
   INTERVENTION_STATUS_COLORS,
   interventionStatusLabel,
   INTERVENTION_TYPES,
+  NO_TECH,
   raisonRefusStatut,
 } from '../../features/installations/statuses'
 import {
   Button,
   Badge,
-  Segmented,
   Spinner,
   EmptyState,
   Card,
@@ -73,6 +64,11 @@ import InterventionLiensPublicsPanel from '../../features/installations/Interven
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
+import { useDeepLinkId } from '../../hooks/useDeepLinkId'
+import { SelecteurVue } from '../../ui/SelecteurVue'
+import { ColonneStatut, ItemsUtilisateurs, SelectReaffectation } from '../../ui/kanbanAffectation'
+import { TableauLignes } from '../../ui/TableauDefilant'
+import IndicateurTirerPourActualiser from '../../ui/IndicateurTirerPourActualiser'
 
 // VX43 — repli « changer le statut au menu » sans drag, sous 768px : le
 // glisser-déposer @dnd-kit (TouchSensor delay 150ms) reste utilisable au
@@ -86,11 +82,7 @@ const TYPE_LABELS = Object.fromEntries(
   INTERVENTION_TYPES.map((t) => [t.value, t.label]))
 const typeLabel = (k) => TYPE_LABELS[k] ?? k ?? '—'
 
-// Sentinelle « aucun technicien » (le Select du design system n'accepte pas '').
-const NO_TECH = '__none__'
-
 function InterventionCard({ it, users, onReassign, onChangeStatus }) {
-  const techValue = it.technicien ? String(it.technicien) : NO_TECH
   return (
     <StatusAccentCard accent={INTERVENTION_STATUS_COLORS[it.statut]}>
       <div className="kc-card-top">
@@ -135,24 +127,8 @@ function InterventionCard({ it, users, onReassign, onChangeStatus }) {
         </div>
       )}
       {onReassign && (
-        <div className="kc-reassign"
-             onPointerDown={(e) => e.stopPropagation()}
-             onClick={(e) => e.stopPropagation()}>
-          <Select value={techValue}
-                  onValueChange={(v) => onReassign(it, v === NO_TECH ? null : v)}>
-            <SelectTrigger className="h-8 text-xs" aria-label="Technicien">
-              <SelectValue placeholder="Technicien" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_TECH}>— Technicien —</SelectItem>
-              {(users ?? []).map((u) => (
-                <SelectItem key={u.id} value={String(u.id)}>
-                  {u.username ?? u.nom ?? `#${u.id}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <SelectReaffectation valeur={it.technicien} users={users} label="Technicien"
+          onChange={(tech) => onReassign(it, tech)} />
       )}
     </StatusAccentCard>
   )
@@ -168,26 +144,6 @@ function DraggableCard({ it, users, onReassign, onChangeStatus }) {
          {...listeners} {...attributes}>
       <InterventionCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
     </div>
-  )
-}
-
-function StatusColumn({ col, children }) {
-  const { setNodeRef, isOver } = useDroppable({ id: col.key })
-  return (
-    <section ref={setNodeRef} className={isOver ? 'kb-col kb-over' : 'kb-col'}
-             style={{ '--kb-accent': col.color }}>
-      <header className="kb-col-header">
-        <div className="kb-col-title-row">
-          <span className="kb-col-title">{col.label}</span>
-          <span className="kb-col-count">{col.items.length}</span>
-        </div>
-      </header>
-      <div className="kb-col-body">
-        {col.items.length === 0
-          ? <div className="kb-col-empty">Aucune intervention</div>
-          : children}
-      </div>
-    </section>
   )
 }
 
@@ -225,13 +181,13 @@ function KanbanView({ items, onOpen, onChangeStatus, users, onReassign }) {
                 onDragCancel={() => setActive(null)}>
       <div className="kb-board">
         {columns.map((col) => (
-          <StatusColumn key={col.key} col={col}>
+          <ColonneStatut key={col.key} col={col} vide="Aucune intervention">
             {col.items.map((it) => (
               <div key={it.id} onClick={() => onOpen?.(it)}>
                 <DraggableCard it={it} users={users} onReassign={onReassign} onChangeStatus={onChangeStatus} />
               </div>
             ))}
-          </StatusColumn>
+          </ColonneStatut>
         ))}
       </div>
       <DragOverlay>
@@ -256,8 +212,8 @@ function ListView({ items, onOpen }) {
     )
   }
   return (
-    <div className="table-scroll">
-      <table className="data-table">
+    <TableauLignes enveloppe="table-scroll" className="data-table"
+      tete={(
         <thead>
           <tr>
             <th>Chantier</th>
@@ -269,23 +225,21 @@ function ListView({ items, onOpen }) {
             <th>Statut</th>
           </tr>
         </thead>
-        <tbody>
-          {items.map((it) => (
-            <tr key={it.id} className="lv-row" onClick={() => onOpen(it)} style={{ cursor: 'pointer' }}>
-              <td data-label="Chantier">{it.installation_reference ?? `#${it.id}`}</td>
-              <td data-label="Client">{it.client_nom ?? '—'}</td>
-              <td data-label="Ville" className="m-hide">{it.site_ville ?? '—'}</td>
-              <td data-label="Type">{typeLabel(it.type_intervention)}</td>
-              <td data-label="Date prévue" className="m-hide">{formatDate(it.date_prevue)}</td>
-              <td data-label="Équipe" className="m-hide">{(it.equipe_noms ?? []).join(', ') || '—'}</td>
-              <td data-label="Statut">
-                <StatusPill status={it.statut} label={interventionStatusLabel(it.statut)} dot={false} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+      )}>
+      {items.map((it) => (
+        <tr key={it.id} className="lv-row" onClick={() => onOpen(it)} style={{ cursor: 'pointer' }}>
+          <td data-label="Chantier">{it.installation_reference ?? `#${it.id}`}</td>
+          <td data-label="Client">{it.client_nom ?? '—'}</td>
+          <td data-label="Ville" className="m-hide">{it.site_ville ?? '—'}</td>
+          <td data-label="Type">{typeLabel(it.type_intervention)}</td>
+          <td data-label="Date prévue" className="m-hide">{formatDate(it.date_prevue)}</td>
+          <td data-label="Équipe" className="m-hide">{(it.equipe_noms ?? []).join(', ') || '—'}</td>
+          <td data-label="Statut">
+            <StatusPill status={it.statut} label={interventionStatusLabel(it.statut)} dot={false} />
+          </td>
+        </tr>
+      ))}
+    </TableauLignes>
   )
 }
 
@@ -498,11 +452,7 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_TECH}>— Technicien —</SelectItem>
-                {(users ?? []).map((u) => (
-                  <SelectItem key={u.id} value={String(u.id)}>
-                    {u.username ?? u.nom ?? `#${u.id}`}
-                  </SelectItem>
-                ))}
+                <ItemsUtilisateurs users={users} />
               </SelectContent>
             </Select>
           </div>
@@ -558,25 +508,26 @@ export default function InterventionsPage() {
   // InstallationsPage.jsx:343). Prérequis des liens de notification CHT9
   // (règle WIR176 : jamais un paramètre qu'aucune page ne lit).
   const [searchParams, setSearchParams] = useSearchParams()
-  const wantedId = searchParams.get('id')
-  const deepItem = useMemo(() => {
-    if (!wantedId) return null
-    return (items ?? []).find((it) => String(it.id) === String(wantedId)) ?? null
-  }, [wantedId, items])
+  const { wantedId, deepItem, clearDeepLink } = useDeepLinkId(searchParams, setSearchParams, items)
   // id demandé mais introuvable (une fois le chargement terminé) : EmptyState
   // inline plutôt qu'un panneau vide ou une page blanche.
-  const deepMissing = !!wantedId && !loading && !deepItem
-  const clearDeepLink = () => {
-    if (searchParams.has('id')) {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('id')
-        return next
-      }, { replace: true })
-    }
-  }
+  // ACHT62 — un id absent de la liste chargée est résolu par `getIntervention(id)`
+  // (jamais « introuvable » avant la réponse du serveur).
+  const [deepRemote, setDeepRemote] = useState(null)
+  useEffect(() => {
+    if (!wantedId || loading || deepItem) return undefined
+    let off = false
+    const id = String(wantedId)
+    Promise.resolve().then(() => installationsApi.getIntervention(id))
+      .then((r) => { if (!off) setDeepRemote({ id, item: r?.data ?? null }) })
+      .catch(() => { if (!off) setDeepRemote({ id, item: null }) })
+    return () => { off = true }
+  }, [wantedId, loading, deepItem])
+  const remote = deepRemote && deepRemote.id === String(wantedId) ? deepRemote : null
+  const deepFound = deepItem ?? remote?.item ?? null
+  const deepMissing = !!wantedId && !loading && !deepFound && remote !== null
   // Panneau ouvert : sélection manuelle OU intervention ciblée par le lien profond.
-  const detailItem = selected ?? deepItem
+  const detailItem = selected ?? deepFound
   const closeDetail = () => { setSelected(null); clearDeepLink() }
 
   const [view, setView] = useState(() => {
@@ -592,13 +543,18 @@ export default function InterventionsPage() {
   // Récupère sans toucher `loading` de façon synchrone (compat règle hooks) :
   // l'état initial est déjà `true`, et un rafraîchissement de fond ne fait pas
   // clignoter le spinner du kanban.
+  // ACHT65 — `?installation=<id>` (lien « photos de l'intervention » de la fiche
+  // chantier) : filtre serveur existant `installation`.
+  const installationFiltre = searchParams.get('installation')
   const fetchData = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
-    installationsApi.getInterventions({ page, page_size: pageSize }).then((r) => r.data))
+    installationsApi.getInterventions({
+      page, page_size: pageSize, ...(installationFiltre ? { installation: installationFiltre } : {}),
+    }).then((r) => r.data))
     .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })
     .catch(() => setError('Impossible de charger les interventions. Réessayez.'))
     .finally(() => setLoading(false))
   const reload = () => { setLoading(true); return fetchData() }
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [installationFiltre]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65, D-ENF22)
   useEffect(() => {
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
@@ -666,16 +622,7 @@ export default function InterventionsPage() {
 
   return (
     <div className="page lp-page overflow-y-auto" {...containerProps}>
-      {(pullDistance > 0 || refreshing) && (
-        <div
-          className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
-          style={{ height: `${Math.max(pullDistance, refreshing ? 32 : 0)}px`, overflow: 'hidden', transition: refreshing ? 'height 150ms ease' : 'none' }}
-          role="status"
-        >
-          {refreshing ? <Spinner className="size-4" /> : null}
-          {refreshing ? 'Actualisation…' : 'Tirer pour actualiser'}
-        </div>
-      )}
+      <IndicateurTirerPourActualiser pullDistance={pullDistance} refreshing={refreshing} />
       <div className="page-header lp-header">
         <h2 className="flex items-center gap-2">
           Interventions
@@ -708,16 +655,11 @@ export default function InterventionsPage() {
               ))}
             </SelectContent>
           </Select>
-          <Segmented
-            size="sm"
-            value={view}
-            onChange={setView}
-            aria-label="Changer de vue"
+          <SelecteurVue view={view} onChange={setView}
             options={[
               { value: 'liste', label: 'Liste' },
               { value: 'kanban', label: 'Kanban' },
-            ]}
-          />
+            ]} />
         </div>
       </div>
 

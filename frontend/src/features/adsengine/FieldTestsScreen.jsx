@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { TestTube, Send, FlaskConical } from 'lucide-react'
 import adsengineApi from './adsengineApi'
+import { TableauNu } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    PUB128 — Écran « Tests terrain » (préflight d'autonomie, dd-assumption-engine.md).
@@ -131,129 +132,127 @@ export default function FieldTestsScreen() {
                 + `tous tranchés (${(data.constantes_en_attente || []).length} constante(s) en attente).`}
           </div>
 
-          <table className="table" data-testid="ae-tests-terrain-table">
-            <tbody>
-              {(data.tests || []).map(test => {
-                const draft = draftFor(test.ft)
-                const busy = busyFt === test.ft
-                return (
-                  <tr key={test.ft} data-testid={`ae-tests-terrain-row-${test.ft}`}>
-                    <td>
-                      <div className="d-flex align-items-center gap-2 mb-1">
-                        <FlaskConical size={16} aria-hidden="true" />
-                        <strong>{test.ft}</strong> — {test.label_fr}
-                        <span
-                          className={`badge bg-${test.tranche ? 'success' : 'secondary'}`}
-                          data-testid={`ae-tests-terrain-status-${test.ft}`}>
-                          {test.tranche ? 'Tranché' : 'En attente'}
-                        </span>
+          <TableauNu className="table" data-testid="ae-tests-terrain-table">
+            {(data.tests || []).map(test => {
+              const draft = draftFor(test.ft)
+              const busy = busyFt === test.ft
+              return (
+                <tr key={test.ft} data-testid={`ae-tests-terrain-row-${test.ft}`}>
+                  <td>
+                    <div className="d-flex align-items-center gap-2 mb-1">
+                      <FlaskConical size={16} aria-hidden="true" />
+                      <strong>{test.ft}</strong> — {test.label_fr}
+                      <span
+                        className={`badge bg-${test.tranche ? 'success' : 'secondary'}`}
+                        data-testid={`ae-tests-terrain-status-${test.ft}`}>
+                        {test.tranche ? 'Tranché' : 'En attente'}
+                      </span>
+                    </div>
+
+                    <p className="mb-1">{test.question_fr}</p>
+
+                    {Array.isArray(test.protocole_fr) && test.protocole_fr.length > 0 && (
+                      <ol className="mb-1" data-testid={`ae-tests-terrain-protocole-${test.ft}`}>
+                        {test.protocole_fr.map((step, i) => (
+                          <li key={i}>{step}</li>
+                        ))}
+                      </ol>
+                    )}
+
+                    <p className="text-muted mb-2">{test.mesure_fr}</p>
+
+                    {Array.isArray(test.constantes) && test.constantes.length > 0 && (
+                      <ul
+                        className="list-unstyled mb-2"
+                        data-testid={`ae-tests-terrain-constantes-${test.ft}`}>
+                        {test.constantes.map(c => (
+                          <li key={c.cle}>
+                            <code>{c.cle}</code> — {c.label_fr} : <strong>{c.valeur}</strong>
+                            {c.unite ? ` ${c.unite}` : ''} (source : {c.source})
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {test.tranche && (
+                      <div
+                        className="alert alert-light border mb-2"
+                        data-testid={`ae-tests-terrain-recorded-${test.ft}`}>
+                        Valeur mesurée : <strong>{test.valeur_mesuree}</strong>
+                        {test.preuve ? ` — Preuve : ${test.preuve}` : ''}
+                        {test.mesure_le ? ` — Mesuré le ${test.mesure_le}` : ''}
                       </div>
+                    )}
 
-                      <p className="mb-1">{test.question_fr}</p>
+                    <form
+                      onSubmit={(e) => submitResult(test.ft, e)}
+                      noValidate
+                      className="row g-2 align-items-end mb-2">
+                      <div className="col-md-4">
+                        <label
+                          className="form-label"
+                          htmlFor={`ae-tests-terrain-valeur-${test.ft}`}>
+                          Valeur mesurée (requis)
+                        </label>
+                        <input
+                          id={`ae-tests-terrain-valeur-${test.ft}`}
+                          className="form-control"
+                          data-testid={`ae-tests-terrain-valeur-${test.ft}`}
+                          value={draft.measured_value}
+                          onChange={e => setDraftField(test.ft, 'measured_value', e.target.value)}
+                          required />
+                      </div>
+                      <div className="col-md-4">
+                        <label
+                          className="form-label"
+                          htmlFor={`ae-tests-terrain-preuve-${test.ft}`}>
+                          Preuve (optionnel)
+                        </label>
+                        <textarea
+                          id={`ae-tests-terrain-preuve-${test.ft}`}
+                          className="form-control"
+                          data-testid={`ae-tests-terrain-preuve-${test.ft}`}
+                          value={draft.evidence}
+                          onChange={e => setDraftField(test.ft, 'evidence', e.target.value)} />
+                      </div>
+                      <div className="col-md-2">
+                        <label
+                          className="form-label"
+                          htmlFor={`ae-tests-terrain-date-${test.ft}`}>
+                          Mesuré le
+                        </label>
+                        <input
+                          id={`ae-tests-terrain-date-${test.ft}`}
+                          type="date"
+                          className="form-control"
+                          data-testid={`ae-tests-terrain-date-${test.ft}`}
+                          value={draft.measured_on}
+                          onChange={e => setDraftField(test.ft, 'measured_on', e.target.value)} />
+                      </div>
+                      <div className="col-md-2">
+                        <button
+                          type="submit"
+                          className="btn btn-primary w-100"
+                          data-testid={`ae-tests-terrain-submit-${test.ft}`}
+                          disabled={busy}>
+                          <Send size={14} aria-hidden="true" /> Enregistrer
+                        </button>
+                      </div>
+                    </form>
 
-                      {Array.isArray(test.protocole_fr) && test.protocole_fr.length > 0 && (
-                        <ol className="mb-1" data-testid={`ae-tests-terrain-protocole-${test.ft}`}>
-                          {test.protocole_fr.map((step, i) => (
-                            <li key={i}>{step}</li>
-                          ))}
-                        </ol>
-                      )}
-
-                      <p className="text-muted mb-2">{test.mesure_fr}</p>
-
-                      {Array.isArray(test.constantes) && test.constantes.length > 0 && (
-                        <ul
-                          className="list-unstyled mb-2"
-                          data-testid={`ae-tests-terrain-constantes-${test.ft}`}>
-                          {test.constantes.map(c => (
-                            <li key={c.cle}>
-                              <code>{c.cle}</code> — {c.label_fr} : <strong>{c.valeur}</strong>
-                              {c.unite ? ` ${c.unite}` : ''} (source : {c.source})
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      {test.tranche && (
-                        <div
-                          className="alert alert-light border mb-2"
-                          data-testid={`ae-tests-terrain-recorded-${test.ft}`}>
-                          Valeur mesurée : <strong>{test.valeur_mesuree}</strong>
-                          {test.preuve ? ` — Preuve : ${test.preuve}` : ''}
-                          {test.mesure_le ? ` — Mesuré le ${test.mesure_le}` : ''}
-                        </div>
-                      )}
-
-                      <form
-                        onSubmit={(e) => submitResult(test.ft, e)}
-                        noValidate
-                        className="row g-2 align-items-end mb-2">
-                        <div className="col-md-4">
-                          <label
-                            className="form-label"
-                            htmlFor={`ae-tests-terrain-valeur-${test.ft}`}>
-                            Valeur mesurée (requis)
-                          </label>
-                          <input
-                            id={`ae-tests-terrain-valeur-${test.ft}`}
-                            className="form-control"
-                            data-testid={`ae-tests-terrain-valeur-${test.ft}`}
-                            value={draft.measured_value}
-                            onChange={e => setDraftField(test.ft, 'measured_value', e.target.value)}
-                            required />
-                        </div>
-                        <div className="col-md-4">
-                          <label
-                            className="form-label"
-                            htmlFor={`ae-tests-terrain-preuve-${test.ft}`}>
-                            Preuve (optionnel)
-                          </label>
-                          <textarea
-                            id={`ae-tests-terrain-preuve-${test.ft}`}
-                            className="form-control"
-                            data-testid={`ae-tests-terrain-preuve-${test.ft}`}
-                            value={draft.evidence}
-                            onChange={e => setDraftField(test.ft, 'evidence', e.target.value)} />
-                        </div>
-                        <div className="col-md-2">
-                          <label
-                            className="form-label"
-                            htmlFor={`ae-tests-terrain-date-${test.ft}`}>
-                            Mesuré le
-                          </label>
-                          <input
-                            id={`ae-tests-terrain-date-${test.ft}`}
-                            type="date"
-                            className="form-control"
-                            data-testid={`ae-tests-terrain-date-${test.ft}`}
-                            value={draft.measured_on}
-                            onChange={e => setDraftField(test.ft, 'measured_on', e.target.value)} />
-                        </div>
-                        <div className="col-md-2">
-                          <button
-                            type="submit"
-                            className="btn btn-primary w-100"
-                            data-testid={`ae-tests-terrain-submit-${test.ft}`}
-                            disabled={busy}>
-                            <Send size={14} aria-hidden="true" /> Enregistrer
-                          </button>
-                        </div>
-                      </form>
-
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary btn-sm"
-                        data-testid={`ae-tests-terrain-structures-${test.ft}`}
-                        onClick={() => proposeStructures(test.ft)}
-                        disabled={busy}>
-                        Proposer les structures de test
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary btn-sm"
+                      data-testid={`ae-tests-terrain-structures-${test.ft}`}
+                      onClick={() => proposeStructures(test.ft)}
+                      disabled={busy}>
+                      Proposer les structures de test
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </TableauNu>
         </>
       )}
     </div>

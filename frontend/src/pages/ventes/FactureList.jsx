@@ -46,8 +46,6 @@ import {
 import { LangueWhatsApp, BasculeAffichage, OngletCompteur, PageListeChargement } from './ElementsListeVentes'
 import { formatMAD, toNumber } from '../../lib/format'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
-import { PageHeader } from '../../ui/PageHeader'
-import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 // APX13 — la chaîne documentaire devis→BC→facture, visible ici aussi.
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 import { DOC_STATUT_TRACK } from '../../features/ventes/documentChain'
@@ -73,6 +71,7 @@ import useDocumentTitle from '../../hooks/useDocumentTitle'
 import { useFocusedRecordShortcuts } from '../../providers/focusedRecordShortcuts'
 import { DataTable } from '../../ui/datatable'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
+import EnteteVentes from '../../features/ventes/EnteteVentes'
 
 // VX21 — squelette de la liste (parité DevisList/DevisTableSkeleton) : reprend
 // les 8 colonnes du vrai tableau pour que la mise en page ne saute pas à
@@ -366,8 +365,7 @@ export default function FactureList() {
       next.delete('id')
       return next
     }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, loading, factures])
+  }, [searchParams, loading, factures, setSearchParams])
 
 
 
@@ -428,9 +426,7 @@ export default function FactureList() {
   // APX11 — en-tête unique VX28 + icône/accent du module (le `<h2>` et son
   // badge sont conservés tels quels : ancres e2e inchangées).
   const pageHeader = (
-    <PageHeader
-      style={VENTES_ACCENT_STYLE}
-      className="app-accent-rail"
+    <EnteteVentes
       icon={Receipt}
       title={(
         <>
@@ -528,7 +524,7 @@ export default function FactureList() {
       )}
     >
       <ComptaDialogs compta={compta} />
-    </PageHeader>
+    </EnteteVentes>
   )
 
   if (loading) {

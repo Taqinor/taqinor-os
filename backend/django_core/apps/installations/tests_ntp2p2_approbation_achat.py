@@ -129,7 +129,7 @@ class ApprobationAchatSequentielleTests(TestCase):
         da = self._soumettre()
         resp = auth(self.appro1).post(
             f'{BASE}/demandes-achat/{da.pk}/approuver/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         da.refresh_from_db()
         self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
 
@@ -137,7 +137,7 @@ class ApprobationAchatSequentielleTests(TestCase):
         da = self._soumettre()
         resp = auth(self.appro1).post(
             f'{BASE}/demandes-achat/{da.pk}/generer-bcf/')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_les_deux_etapes_validees_approuvent_la_demande(self):
         da = self._soumettre()
@@ -166,7 +166,7 @@ class ApprobationAchatSequentielleTests(TestCase):
         resp = auth(self.appro2).post(
             f'{BASE}/demandes-achat/{da.pk}/approuver-etape/',
             {'etape': etape2.pk}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         etape2.refresh_from_db()
         self.assertEqual(etape2.statut,
                          EtapeApprobationAchat.Statut.EN_ATTENTE)

@@ -6,17 +6,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 
-vi.mock('../../../api/ventesApi', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    default: {
-      ...actual.default,
-      getDevis: vi.fn(),
-      accepterDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    },
-  }
-})
+vi.mock('../../../api/ventesApi', async (importOriginal) =>
+  (await import('../../../test/etendreApi')).etendreApi(importOriginal, {
+    getDevis: vi.fn(),
+    accepterDevis: vi.fn(() => Promise.resolve({ data: {} })),
+  }))
 
 import SigneDialog from './SigneDialog'
 import ventesApi from '../../../api/ventesApi'

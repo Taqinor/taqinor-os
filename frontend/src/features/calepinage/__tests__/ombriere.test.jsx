@@ -8,21 +8,8 @@ import {
   verifierSectionEcrite, verifierLectureEnEchec, verifierSectionPousseeDansAtelier,
 } from '../../../test/fixtures/calepinageApiMock'
 import { exempleContrat } from '../../../test/fixtures/contractSamples'
-
-/* `import.meta.url` est virtuel sous vitest : on part du dossier de travail
-   (fixé à `frontend/` par la configuration vitest) et on remonte jusqu'à la
-   racine du dépôt — même repli que `src/api/calepinageApi.test.mjs`.
-   `globalThis.process` plutôt que `process` nu : le lint de ce dossier ne
-   déclare pas les globales Node. */
-const RACINE_FRONTEND = globalThis.process.cwd()
-function racineDepot() {
-  let dossier = RACINE_FRONTEND
-  for (let i = 0; i < 8; i += 1) {
-    if (fs.existsSync(path.join(dossier, 'backend', 'django_core'))) return dossier
-    dossier = path.dirname(dossier)
-  }
-  throw new Error(`Racine du depot introuvable depuis ${RACINE_FRONTEND}`)
-}
+import { champPoseMock } from '../../../test/fixtures/champPoseMock'
+import { RACINE_FRONTEND, racineDepot } from '../../../test/fixtures/racineDepot'
 
 /* ============================================================================
    CAL91 — L'OMBRIÈRE EST UNE SURFACE DE POSE, PAS UN OUVRAGE CHIFFRÉ.
@@ -56,64 +43,11 @@ vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/f
  * (`apps/web/src/scripts/roofPro11/*.test.ts`) — ici on ne teste QUE l'écran. */
 const construireOmbriere = vi.fn((plan, opts) => {
   const hauteurConnue = Number.isFinite(opts?.hauteurLibreM) && opts.hauteurLibreM > 0
-  const hauteurLibreM = hauteurConnue ? opts.hauteurLibreM : 0
-
-  const tablesMoteur = plan?.tables ?? []
-  const tables = []
-  let empriseTablesM2Calc = 0
-  for (const t of tablesMoteur) {
-    const largeurM = Math.abs(t.x1 - t.x0)
-    const profondeurM = Math.abs(t.y1 - t.y0)
-    empriseTablesM2Calc += largeurM * profondeurM
-    tables.push({
-      cx: (t.x0 + t.x1) / 2,
-      cy: (t.y0 + t.y1) / 2,
-      largeurM,
-      profondeurM,
-      // Aucune pente n'est jamais transmise par `Ombriere.jsx` : l'altitude
-      // est donc la même hauteur libre pour toutes les tables — comme le
-      // fait le VRAI `construireChampPose` quand `tanPente` vaut 0.
-      z: hauteurLibreM,
-      inclinaisonRad: 0,
-      kit: typeof t.kit === 'string' ? t.kit : null,
-    })
-  }
-
-  const nonMesure = []
-  if (!tables.length) nonMesure.push('aucune table rendue par le moteur')
-  nonMesure.push('pente du terrain non renseignée : terrain rendu horizontal')
-
-  const y = Array.from(new Set((plan?.rangees ?? [])
-    .map((r) => Number(r?.y0)).filter((v) => Number.isFinite(v)))).sort((a, b) => a - b)
-  let pasInterRangeeM = null
-  if (y.length >= 2) {
-    let min = Infinity
-    for (let i = 1; i < y.length; i += 1) min = Math.min(min, y[i] - y[i - 1])
-    pasInterRangeeM = Number.isFinite(min) && min > 0 ? min : null
-  }
-  if (pasInterRangeeM === null) {
-    nonMesure.push('pas inter-rangées non mesurable (moins de deux rangées posées)')
-  }
-
-  const aire = Number.isFinite(opts?.aireTerrainM2) ? opts.aireTerrainM2 : null
-  let tauxOccupationCalc = null
-  if (aire !== null && aire > 0 && tables.length) tauxOccupationCalc = empriseTablesM2Calc / aire
-  else nonMesure.push('taux d’occupation non calculable (surface du terrain manquante)')
-
-  if (!hauteurConnue) {
-    nonMesure.push(
-      'hauteur libre non renseignée : la couverture n’est pas levée (aucune hauteur supposée)',
-    )
-  }
-
-  return {
-    tables,
-    modules: Number.isFinite(plan?.modules) ? plan.modules : null,
-    pasInterRangeeM,
-    empriseTablesM2: empriseTablesM2Calc,
-    tauxOccupation: tauxOccupationCalc,
-    nonMesure,
-  }
+  return champPoseMock(plan, opts, {
+    altitude: hauteurConnue ? opts.hauteurLibreM : 0, pente: 'toujours',
+    manqueFin: hauteurConnue ? null
+      : 'hauteur libre non renseignée : la couverture n’est pas levée (aucune hauteur supposée)',
+  })
 })
 vi.mock('@roofpro/scene3d', () => ({
   construireOmbriere: (...args) => construireOmbriere(...args),

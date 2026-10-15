@@ -463,6 +463,17 @@ class TestFuzzCrmTour2(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
 
+    def test_nocturne_1510_periode_equipe_membre_inconnu(self):
+        """ENF11 (nocturne 15/10) — ``?periode`` au motif publié (400 sinon,
+        200 sur un mois valide) ; membre d'équipe inconnu → 404."""
+        url = '/api/django/crm/forecast/rollup/'
+        self.assertEqual(self.api.get(url, {'periode': '2026-13'}).status_code, 400)
+        self.assertEqual(self.api.get(url, {'periode': ''}).status_code, 400)
+        self.assertEqual(self.api.get(url, {'periode': '2026-05'}).status_code, 200)
+        resp = self.api.post('/api/django/crm/equipes/', {
+            'nom': 'Equipe X', 'membres': [999999999]}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
     def test_reservation_publique_minute_impossible_400_pas_500(self):
         resp = self.api.post(
             '/api/django/crm/public/booking/jeton-inconnu/reserve/',
@@ -560,6 +571,13 @@ class TestFuzzCrmTour2(TestCase):
             'period_year': 2026}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('period_month', resp.data)
+        # ENF11 (nocturne 15/10) — année hors bornes publiées (17866 faisait
+        # ensuite un 500 au calcul du réalisé).
+        resp = self.api.post('/api/django/crm/objectifs/', {
+            'cible': '1', 'metric': 'nb_rdv', 'owner': None, 'period_type': 'year',
+            'period_year': 17866}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('period_year', resp.data)
 
     def test_ci997_client_fk_inconnue_404(self):
         """CI #997 fuzz — ``liste_prix``/``parent``/``tiers`` bien formés mais

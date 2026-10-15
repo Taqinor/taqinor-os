@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import crmReducer from '../../features/crm/store/crmSlice'
+import { screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import ClientForm from './ClientForm'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { mockMatchMedia } from '../../test/matchMedia'
+import { renderClientForm } from '../../test/clientFormHarness'
 
 // CIQ422 — les PATCH envoyés par le formulaire, capturés (aucun réseau).
 const envois = vi.hoisted(() => ({ liste: [], rejet: null }))
@@ -32,30 +31,13 @@ vi.mock('../../ui/confirm', () => ({
 }))
 vi.mock('../../components/AttachmentsPanel', () => ({ default: () => null }))
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
-
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia(false) })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
-
-const renderForm = (props = {}) => {
-  const store = configureStore({ reducer: { crm: crmReducer } })
-  return render(
-    <Provider store={store}>
-      <ClientForm onClose={vi.fn()} {...props} />
-    </Provider>,
-  )
-}
 
 describe('ClientForm (J139 — ResponsiveDialog)', () => {
   it('ouvre la modale « Nouveau client » sur bureau', () => {
     mockMatchMedia(false)
-    renderForm()
+    renderClientForm()
     expect(document.querySelector('[role="dialog"]')).toBeInTheDocument()
     expect(screen.getByText('Nouveau client')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Créer le client' })).toBeInTheDocument()
@@ -63,14 +45,14 @@ describe('ClientForm (J139 — ResponsiveDialog)', () => {
 
   it('rend le tiroir bas (Sheet) sous 768 px', () => {
     mockMatchMedia(true)
-    renderForm()
+    renderClientForm()
     expect(document.querySelector('[role="dialog"]')).toBeInTheDocument()
     expect(screen.getByText('Nouveau client')).toBeInTheDocument()
   })
 
   it('affiche « Mettre à jour » en édition', () => {
     mockMatchMedia(false)
-    renderForm({ client: { id: 9, nom: 'Dupont', type_client: 'particulier' } })
+    renderClientForm({ client: { id: 9, nom: 'Dupont', type_client: 'particulier' } })
     expect(screen.getByText('Éditer le client')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Mettre à jour' })).toBeInTheDocument()
   })
@@ -88,7 +70,7 @@ describe('CIQ422 — ClientForm : identité d’une entreprise', () => {
 
   it('les champs de l’entreprise sont rendus avec les valeurs servies', () => {
     mockMatchMedia(false)
-    renderForm({ client: entreprise })
+    renderClientForm({ client: entreprise })
     expect(document.getElementById('cf-contact-nom').value).toBe('Karim Exemple')
     expect(document.getElementById('cf-contact-fonction').value).toBe('Directeur')
     expect(document.getElementById('cf-tva-recuperable').value).toBe('oui')
@@ -97,17 +79,17 @@ describe('CIQ422 — ClientForm : identité d’une entreprise', () => {
 
   it('entreprise sans ICE → bandeau non bloquant tiré d’identite_entreprise', () => {
     mockMatchMedia(false)
-    renderForm({ client: nomPropre })
+    renderClientForm({ client: nomPropre })
     expect(screen.getByTestId('cf-ice-manquant').textContent).toBe(
       'ICE manquant — demandé au devis, obligatoire à l’acceptation en ligne et à la facture.')
     cleanup()
-    renderForm({ client: entreprise })
+    renderClientForm({ client: entreprise })
     expect(screen.queryByTestId('cf-ice-manquant')).toBeNull()
   })
 
   it('enregistrer → rouvrir → enregistrer sans toucher : même objet envoyé', async () => {
     mockMatchMedia(false)
-    renderForm({ client: entreprise })
+    renderClientForm({ client: entreprise })
     fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
     await waitFor(() => expect(envois.liste).toHaveLength(1))
     const premier = envois.liste[0].data
@@ -116,7 +98,7 @@ describe('CIQ422 — ClientForm : identité d’une entreprise', () => {
       adresse_siege: null, ice: '000000000000000',
     })
     cleanup()
-    renderForm({ client: { ...entreprise, ...premier } })
+    renderClientForm({ client: { ...entreprise, ...premier } })
     fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
     await waitFor(() => expect(envois.liste).toHaveLength(2))
     expect(envois.liste[1].data).toEqual(premier)
@@ -125,14 +107,14 @@ describe('CIQ422 — ClientForm : identité d’une entreprise', () => {
   it('le conflit d’identité s’affiche sous le champ ICE', async () => {
     mockMatchMedia(false)
     envois.rejet = conflit
-    renderForm({ client: entreprise })
+    renderClientForm({ client: entreprise })
     fireEvent.click(screen.getByRole('button', { name: 'Mettre à jour' }))
     expect(await screen.findByTestId('cf-ice-conflit')).toHaveTextContent(conflit.message)
   })
 
   it('un particulier est rendu à l’identique (aucun champ ni clé ajoutés)', async () => {
     mockMatchMedia(false)
-    renderForm({ client: { id: 9, nom: 'Dupont', type_client: 'particulier' } })
+    renderClientForm({ client: { id: 9, nom: 'Dupont', type_client: 'particulier' } })
     expect(document.getElementById('cf-contact-nom')).toBeNull()
     expect(document.getElementById('cf-tva-recuperable')).toBeNull()
     expect(screen.queryByTestId('cf-ice-manquant')).toBeNull()

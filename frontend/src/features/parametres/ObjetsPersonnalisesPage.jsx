@@ -20,10 +20,12 @@ import api from '../../api/axios'
 import customFieldsApi from '../../api/customFieldsApi'
 import { toast, useConfirmDialog } from '../../ui/confirm'
 import {
-  Button, IconButton, Input, Badge, Spinner, EmptyState, Card, CardContent,
+  Button, IconButton, Input, Badge, EmptyState, Card, CardContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import toutesLesPages from '../../pages/parametres/toutesLesPages'
+import { slugifyCode, erreurServeurLisible } from '../../lib/champsPerso'
+import { ChargementPageCentree } from '../../ui/ChargementPage'
 
 // Types de champ supportés par le moteur EXISTANT (CustomFieldDef.type).
 const TYPES_CHAMP = [
@@ -33,23 +35,6 @@ const TYPES_CHAMP = [
   ['boolean', 'Oui / Non'],
   ['choice', 'Liste de choix'],
 ]
-
-// Même règle de slug que l'éditeur de champs existant (Paramètres → Avancé).
-function slugify(s) {
-  return (s || '').trim().toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
-}
-
-// Message d'erreur serveur lisible (detail, ou première erreur de champ).
-function messageErreur(e, fallback) {
-  const d = e?.response?.data
-  if (!d) return fallback
-  if (typeof d === 'string') return d
-  if (d.detail) return d.detail
-  const first = Object.values(d)[0]
-  return Array.isArray(first) ? first[0] : (first || fallback)
-}
 
 export default function ObjetsPersonnalisesPage() {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
@@ -87,7 +72,7 @@ export default function ObjetsPersonnalisesPage() {
 
   const creerObjet = async () => {
     const libelle = draftObjet.libelle.trim()
-    const code = slugify(draftObjet.code || libelle)
+    const code = slugifyCode(draftObjet.code || libelle)
     if (!libelle || !code) return
     setBusy(true)
     try {
@@ -98,7 +83,7 @@ export default function ObjetsPersonnalisesPage() {
       await charger()
       if (res.data?.id) choisir(res.data)
     } catch (e) {
-      toast.error(messageErreur(e, "Création de l'objet impossible."))
+      toast.error(erreurServeurLisible(e, "Création de l'objet impossible."))
     } finally { setBusy(false) }
   }
 
@@ -106,7 +91,7 @@ export default function ObjetsPersonnalisesPage() {
     try {
       await api.patch(`/custom-fields/objects/${objet.id}/`, { actif: !objet.actif })
       charger()
-    } catch (e) { toast.error(messageErreur(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Modification impossible.')) }
   }
 
   const supprimerObjet = async (objet) => {
@@ -115,7 +100,7 @@ export default function ObjetsPersonnalisesPage() {
       await api.delete(`/custom-fields/objects/${objet.id}/`)
       if (selection?.id === objet.id) { setSelection(null); setChamps([]) }
       charger()
-    } catch (e) { toast.error(messageErreur(e, 'Suppression impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Suppression impossible.')) }
   }
 
   const ajouterChamp = async () => {
@@ -125,7 +110,7 @@ export default function ObjetsPersonnalisesPage() {
     try {
       await customFieldsApi.saveDef(null, {
         module: `custom:${selection.code}`,
-        code: slugify(libelle),
+        code: slugifyCode(libelle),
         libelle,
         type: draftChamp.type,
         obligatoire: draftChamp.obligatoire,
@@ -139,7 +124,7 @@ export default function ObjetsPersonnalisesPage() {
         visible_liste: true,
       })
       chargerChamps(selection)
-    } catch (e) { toast.error(messageErreur(e, 'Ajout du champ impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Ajout du champ impossible.')) }
     finally { setBusy(false) }
   }
 
@@ -148,18 +133,10 @@ export default function ObjetsPersonnalisesPage() {
     try {
       await customFieldsApi.deleteDef(champ.id)
       chargerChamps(selection)
-    } catch (e) { toast.error(messageErreur(e, 'Suppression impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Suppression impossible.')) }
   }
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-[1100px] p-6">
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-4 text-primary" /> Chargement…
-        </p>
-      </div>
-    )
-  }
+  if (loading) return <ChargementPageCentree />
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-4 p-6">

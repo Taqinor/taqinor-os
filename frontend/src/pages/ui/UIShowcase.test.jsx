@@ -4,19 +4,14 @@ import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { ConfirmProvider } from '../../providers/ConfirmProvider.jsx'
 import { UIShowcase } from './UIShowcase.jsx'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 /* jsdom n'implémente ni ResizeObserver (mesuré par Radix Tooltip/Combobox) ni
    matchMedia (lu par ResponsiveDialog/useIsMobile). On les rend disponibles
    localement — sans toucher au setup partagé — pour pouvoir monter la vitrine
    complète. matchMedia répond « bureau » (matches=false) par défaut. */
 beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    }
-  }
+  polyfillResizeObserver()
   if (typeof window.matchMedia !== 'function') {
     window.matchMedia = (query) => ({
       matches: false,

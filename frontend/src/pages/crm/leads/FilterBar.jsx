@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Archive, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Archive, Search, SlidersHorizontal } from 'lucide-react'
 import {
   EMPTY_FILTERS,
   PRIORITE_LABELS,
@@ -18,6 +18,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Popover, PopoverTrigger, PopoverContent,
 } from '../../../ui'
+import FacetteFiltre from './FacetteFiltre'
 
 // Sentinelle « tous » : Radix Select interdit la valeur chaîne vide, donc on
 // mappe "" (= aucun filtre) vers cette clé interne, transparente côté état.
@@ -129,16 +130,7 @@ export default function FilterBar({ filters, setFilters, leads, mobile = false, 
   const facets = buildLeadFacets(filters, canalOptions)
 
   const facetChips = facets.map((f) => (
-    <span key={f.key} className="fb-facet">
-      <span className="fb-facet-dim">{f.dim}</span>
-      <span className="fb-facet-val">{f.label}</span>
-      <button
-        type="button"
-        className="fb-facet-x"
-        aria-label={`Retirer le filtre ${f.dim} : ${f.label}`}
-        onClick={() => setKey(f.key)(EMPTY_FILTERS[f.key])}
-      ><X aria-hidden="true" /></button>
-    </span>
+    <FacetteFiltre key={f.key} facette={f} onRetirer={() => setKey(f.key)(EMPTY_FILTERS[f.key])} />
   ))
 
   return (

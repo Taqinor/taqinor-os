@@ -4,11 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // jsdom n'implémente pas ResizeObserver (mesuré par recharts ResponsiveContainer).
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 // WIR122 — drill-down CO₂ : le bouton par ligne navigue vers Co2Page avec
 // `?installation=<id>` (résolu ensuite en config puis en détail CO₂).
@@ -47,6 +43,7 @@ vi.mock('../../api/monitoringApi', () => ({
 
 import monitoringApi from '../../api/monitoringApi'
 import FleetPage from './FleetPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('FleetPage (WR6 — vue parc)', () => {
   it('rend les KPI du parc et le tableau des systèmes', async () => {

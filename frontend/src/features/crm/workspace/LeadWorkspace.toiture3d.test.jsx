@@ -1,9 +1,7 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import crmReducer from '../store/crmSlice'
+import { describe, it, expect, vi } from 'vitest'
+import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import ventesApi from '../../../api/ventesApi'
 import LeadWorkspace from './LeadWorkspace'
 
@@ -11,25 +9,13 @@ import LeadWorkspace from './LeadWorkspace'
    écran vide : le geste RÉSOUT d'abord le devis à calepiner. Quatre branches,
    quatre issues visibles pour le commercial. */
 
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: {} }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 
 // Même patron que LeadWorkspace.onAction.test.jsx : le rail est intercepté pour
 // exposer le contrat `onAction` à un bouton de test.
-vi.mock('./IdentityRail', () => ({
-  default: ({ onAction }) => (
-    <div data-testid="identity-rail">
-      <button type="button" onClick={() => onAction('toiture-3d')}>toiture-3d</button>
-    </div>
-  ),
-}))
+vi.mock('./IdentityRail', async () => (await import('../../../test/leadWorkspaceMocks'))
+  .identityRailMock([[['toiture-3d'], 'toiture-3d']]))
 
 vi.mock('../../../api/crmApi', () => ({
   default: {
@@ -46,9 +32,6 @@ vi.mock('../../../api/crmApi', () => ({
     createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   },
 }))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
 vi.mock('../../../api/ventesApi', () => ({
   default: { getDevis: vi.fn(), creerDevisAuto: vi.fn() },
 }))
@@ -59,30 +42,12 @@ vi.mock('react-router-dom', async (importOriginal) => {
   return { ...actual, useNavigate: () => navigateMock }
 })
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
-
 const LEAD = { id: 88, nom: 'Alaoui', prenom: 'Youssef', stage: 'NEW', is_archived: false }
 
-beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+installerHooksLeadWorkspace()
 
 function rendre() {
-  const store = configureStore({
-    reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s },
-  })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <LeadWorkspace lead={LEAD} onClose={vi.fn()} onSaved={vi.fn()} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderLeadWorkspace({ lead: LEAD })
 }
 
 const cliquer = () => fireEvent.click(screen.getByText('toiture-3d'))

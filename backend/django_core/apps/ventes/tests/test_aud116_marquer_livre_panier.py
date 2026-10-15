@@ -136,7 +136,7 @@ class TestMarquerLivrePanier(TestCase):
         bc = self._bc(devis)
         resp = self.api.post(
             f'/api/django/ventes/bons-commande/{bc.id}/marquer-livre/')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF11 : stock insuffisant (état)
         self.assertIn('Stock insuffisant', resp.data['detail'])
         bc.refresh_from_db()
         self.assertEqual(bc.statut, BonCommande.Statut.CONFIRME)

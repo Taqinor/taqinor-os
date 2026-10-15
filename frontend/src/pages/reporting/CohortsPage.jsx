@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Users } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import { DataTable, EmptyState, Segmented, Spinner } from '../../ui'
+import { DataTable, EmptyState, Segmented } from '../../ui'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber, formatPercent } from '../../lib/format'
+import { lancerChargement } from '../../lib/chargementEffet'
+import { ChargementPage, ErreurChargement } from '../../ui/ChargementPage'
 
 /* WR8 — Cohortes / saisonnalité (FG98). Leads groupés par mois d'acquisition :
    taux de signature + délai moyen lead→signé, depuis
@@ -22,23 +24,14 @@ export default function CohortsPage() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    let active = true
-    const load = async () => {
-      // setState seulement APRÈS un await (pas de setState synchrone en effet).
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const r = await reportingApi.cohorts(groupBy ? { group_by: groupBy } : {})
-        if (active) { setData(r.data); setError(false) }
-      } catch {
-        if (active) setError(true)
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) { setData(r.data); setError(false) }
+      },
+      surErreur: () => setError(true),
+    })
   }, [groupBy])
 
   const cohorts = useMemo(() => data?.cohorts ?? [], [data])
@@ -93,14 +86,10 @@ export default function CohortsPage() {
       </div>
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error ? (
-        <EmptyState
-          icon={Users}
-          title="Impossible de charger les cohortes"
-          description="Une erreur est survenue lors du chargement des cohortes."
-          className="my-6"
-        />
+        <ErreurChargement icon={Users} title="Impossible de charger les cohortes"
+          description="Une erreur est survenue lors du chargement des cohortes." />
       ) : cohorts.length === 0 ? (
         <EmptyState
           icon={Users}

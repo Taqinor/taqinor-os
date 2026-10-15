@@ -165,7 +165,7 @@ class Ntdst5ApiTests(Ntdst5Base):
         premier = api.post(f'{self.URL}{accord.id}/generer-avoir/')
         self.assertEqual(premier.status_code, 201)
         second = api.post(f'{self.URL}{accord.id}/generer-avoir/')
-        self.assertEqual(second.status_code, 400)
+        self.assertEqual(second.status_code, 409)
 
     def test_taux_et_montant_fixe_sont_exclusifs(self):
         res = auth(self.admin).post(self.URL, {
@@ -175,7 +175,7 @@ class Ntdst5ApiTests(Ntdst5Base):
             'seuil_ca_achat': '1000', 'taux_pct': '3',
             'montant_fixe': '500',
         }, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 409)
 
     def test_ni_taux_ni_montant_fixe_est_refuse(self):
         res = auth(self.admin).post(self.URL, {
@@ -183,7 +183,7 @@ class Ntdst5ApiTests(Ntdst5Base):
             'periode_debut': DEBUT.isoformat(),
             'periode_fin': FIN.isoformat(), 'seuil_ca_achat': '1000',
         }, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 409)
 
     def test_fin_avant_debut_est_un_conflit_409(self):
         res = auth(self.admin).post(self.URL, {

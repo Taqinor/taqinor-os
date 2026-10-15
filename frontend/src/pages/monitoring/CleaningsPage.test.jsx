@@ -3,11 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -54,6 +50,7 @@ vi.mock('../../api/installationsApi', () => ({
 
 import monitoringApi from '../../api/monitoringApi'
 import CleaningsPage from './CleaningsPage'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
 describe('CleaningsPage (WR7 — nettoyages + salissure)', () => {
   it('auto-sélectionne le système et affiche salissure + journal', async () => {

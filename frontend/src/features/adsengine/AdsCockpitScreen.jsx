@@ -21,6 +21,7 @@ import { COCKPIT_VIEWS, applyCockpitView, loadSavedCockpitView, saveCockpitView 
 import { fatigueTone } from './fatigueTone'
 import LoadErrorNotice from './LoadErrorNotice'
 import { markLoadError } from './loadErrors'
+import { chargerDevise } from './devise'
 
 // PUB40 — dépense totale visible (somme ``depense_mad`` des lignes) — pure,
 // testable isolément ; une ligne sans dépense compte pour 0 (jamais NaN).
@@ -256,12 +257,7 @@ export default function AdsCockpitScreen() {
       })
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
-    const connGet = adsengineApi.connection?.get
-    if (connGet) {
-      connGet()
-        .then(r => setCurrency(r?.data?.currency || 'MAD'))
-        .catch(() => {})
-    }
+    chargerDevise(setCurrency)
 
     // Comparaison : un second appel sur la période PRÉCÉDENTE (PUB40 — un
     // cockpit ligne-par-ligne n'a pas de bloc `previous` serveur comme le

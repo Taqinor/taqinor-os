@@ -2,6 +2,7 @@
 // CALX93 — noue / arêtier déduits des pentes et azimuts SAISIS, sinon « inconnue ».
 import { describe, expect, it } from 'vitest';
 import { deduceEdgeDetails, deduceEdgeTypes, EDGE_COLOR_BY_TYPE, reinitialiserDepuisTraceClient, type EdgeDeductionZone } from './edges';
+import { TRIANGLE_SUD, TRIANGLE_EST, DIAGONALE_SUD } from './harnaisAtelier';
 
 const DEG2RAD = Math.PI / 180;
 const DEG2M = DEG2RAD * 6378137;
@@ -14,21 +15,6 @@ function polyM(pts: [number, number][]): [number, number][] {
   return pts.map(([x, y]) => [LNG0 + x / (DEG2M * cosLat), LAT0 + y / DEG2M] as [number, number]);
 }
 
-/** Demi-croupe SUD d'un carré 10×10 centré sur l'origine : sommet au centre, égout au
- *  sud, et la diagonale centre→coin SE partagée avec le pan EST. */
-const TRIANGLE_SUD: [number, number][] = [
-  [0, 0],
-  [-5, -5],
-  [5, -5],
-];
-/** Demi-croupe EST du même carré : partage la diagonale centre→coin SE. */
-const TRIANGLE_EST: [number, number][] = [
-  [0, 0],
-  [5, -5],
-  [5, 5],
-];
-/** Rang du segment partagé (la diagonale) dans chaque triangle. */
-const DIAGONALE_SUD = 2;
 const DIAGONALE_EST = 0;
 
 /** Rectangle EW×NS (m) centré sur (LNG0,LAT0), en lng/lat. */

@@ -1317,7 +1317,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                 document, action='ajout de version')
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         try:
             services.assert_not_archive_legalement(document)
         except ArchivageLegalError as exc:
@@ -2282,8 +2282,8 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
         try:
             services.assert_not_document_lien(document, action='ajout de version')
         except ValueError as exc:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError({'detail': str(exc)})
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(str(exc))  # ENF11 : document-lien = état
         # GED23 — write-once : on n'ajoute jamais de version à un document
         # archivé légalement (immuable). Refus TÔT avec un message clair (403).
         try:
@@ -3237,7 +3237,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
             services.assert_not_document_lien(document, action='signature')
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         try:
             demande = services.demander_signature(
                 document,
@@ -3409,7 +3409,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
             status=status.HTTP_200_OK)
 
     @extend_schema(
-        parameters=[oa.P('emetteur', oa.ID, description='Émetteur.'),
+        parameters=[oa.P('emetteur', {'type': 'integer', 'minimum': 0}, description='Émetteur.'),  # ENF11 : isdigit
                     oa.P('date_debut', oa.DATE, description='Envoi depuis.'),
                     oa.P('date_fin', oa.DATE, description="Envoi jusqu'à.")],
         responses=oa.TABLEAU_BORD)

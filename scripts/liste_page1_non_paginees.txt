@@ -7,10 +7,10 @@ frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor  pa
 frontend/src/pages/parametres/ApplicationsSection.jsx::load  core/modules/toggles/  ModuleToggleViewSet pagination_class=None (la liste complète des bascules ; l'action journal renvoie un Response non paginé) @backend/django_core/core/views.py:1282
 frontend/src/pages/parametres/HistoriqueStatutPage.jsx::HistoriqueStatutPage  statuspage/historique-statut/  HistoriqueStatutComponentView pagination_class=None @backend/django_core/apps/statuspage/views.py:229
 frontend/src/pages/admin/SecuriteIdentitePage.jsx::load  identity/break-glass/  vue APIView, liste plafonnée aux 100 derniers octrois (aucune page suivante) @backend/django_core/apps/identity/views.py:313
-frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadEnRetard  stock/bons-commande-fournisseur/en-retard/  @action(pagination_class=None), liste complète des BCF en retard @backend/django_core/apps/stock/views/bon_commande_fournisseur.py:657
+frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadEnRetard  stock/bons-commande-fournisseur/en-retard/  @action(pagination_class=None), liste complète des BCF en retard @backend/django_core/apps/stock/views/bon_commande_fournisseur.py:664
 
 frontend/src/pages/ia/AgentActions.jsx::load  agent/logs/  vue APIView, journal plafonné aux 200 plus récents (réponse {count, results}) @backend/django_core/apps/agent/views.py:149
-frontend/src/pages/ventes/DevisList.jsx::chargerVariantes  ventes/devis/<id>/variantes/  @action(pagination_class=None), liste complète des variantes du devis @backend/django_core/apps/ventes/views/devis_cycle.py:384
+frontend/src/pages/ventes/DevisList.jsx::chargerVariantes  ventes/devis/<id>/variantes/  @action(pagination_class=None), liste complète des variantes du devis @backend/django_core/apps/ventes/views/devis_cycle.py:388
 frontend/src/pages/ventes/DevisPresetPanel.jsx::ApplySection  ventes/presets/  ViewSet pagination_class=None, list() renvoie une liste brute @backend/django_core/apps/ventes/views/preset.py:33
 frontend/src/pages/Journal.jsx::run  audit/security/  vue @api_view à plafond explicite ?limit= (défaut 100, max 500), réponse {count, results} volontairement bornée @backend/django_core/apps/audit/views.py:309
 frontend/src/pages/parametres/EmailSection.jsx::EmailSection  parametres/email-templates/effective/  @action(pagination_class=None), liste effective complète (une ligne par clé connue) dans {results} @backend/django_core/apps/parametres/views_email.py:118
@@ -26,14 +26,14 @@ frontend/src/features/crm/workspace/VisiteTab.jsx::VisiteTab  visites/visites/  
 frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage  visites/visites/  pagination_class = None sur le ViewSet des visites @backend/django_core/apps/visites/views.py:223
 frontend/src/features/audit/ObjectHistoryButton.jsx::charger  audit/objets/<ct>/<id>/history/  vue @api_view plafonnée par limit (défaut 100, max 500) @backend/django_core/apps/audit/views.py:372
 frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab  crm/leads/<id>/jalons-devis/  @action(pagination_class=None) liste complète des jalons @backend/django_core/apps/crm/views.py:1125
-frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise  crm/relance-etapes/?lead=  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:235
-frontend/src/pages/crm/RelancesDuJourWidget.jsx::charger  crm/relance-etapes/  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:235
-frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1788
-frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1788
-frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour  crm/relance-etapes/suivi/  @action(pagination_class=None) liste calculée complète @backend/django_core/apps/crm/cadence_views.py:327
-frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget  crm/clients/dormants/  @action(pagination_class=None) liste complète @backend/django_core/apps/crm/clients_views.py:988
-frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget  crm/clients/mon-portefeuille/  @action(pagination_class=None) portefeuille complet @backend/django_core/apps/crm/clients_views.py:1053
-frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils  crm/visites-externes/appareils/  tranche [:200] côté serveur @backend/django_core/apps/crm/clients_views.py:396
+frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise  crm/relance-etapes/?lead=  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:236
+frontend/src/pages/crm/RelancesDuJourWidget.jsx::charger  crm/relance-etapes/  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:236
+frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1792
+frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1792
+frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour  crm/relance-etapes/suivi/  @action(pagination_class=None) liste calculée complète @backend/django_core/apps/crm/cadence_views.py:331
+frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget  crm/clients/dormants/  @action(pagination_class=None) liste complète @backend/django_core/apps/crm/clients_views.py:989
+frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget  crm/clients/mon-portefeuille/  @action(pagination_class=None) portefeuille complet @backend/django_core/apps/crm/clients_views.py:1054
+frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils  crm/visites-externes/appareils/  tranche [:200] côté serveur @backend/django_core/apps/crm/clients_views.py:397
 frontend/src/pages/crm/RelancesSuiviPage.jsx::RelancesSuiviPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:104
 frontend/src/pages/interventions/InterventionsPage.jsx::reload  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:104
 frontend/src/pages/installations/SuiviGpsPage.jsx::SuiviGpsPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:104
@@ -42,7 +42,7 @@ frontend/src/pages/stock/FournisseurFiche360.jsx::reload  stock/fournisseurs/<id
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadTournee  sav/contrats-maintenance/tournee/  @action(pagination_class=None) tournée calculée @backend/django_core/apps/sav/maintenance.py:338
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadRentabilite  sav/contrats-maintenance/rentabilite/  @action(pagination_class=None) liste calculée @backend/django_core/apps/sav/maintenance.py:427
 frontend/src/pages/sav/SavSlaReportPage.jsx::charger  sav/insights/sav-pannes/  vues @api_view (rapports calculés, sav-pannes/-fiabilite/-resume-equipe/-parts-forecast) @backend/django_core/apps/sav/urls.py:83
-frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi  sav/tickets/<id>/similaires/  @action(pagination_class=None) top-N de similarité @backend/django_core/apps/sav/views.py:1505
+frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi  sav/tickets/<id>/similaires/  @action(pagination_class=None) top-N de similarité @backend/django_core/apps/sav/views.py:1510
 frontend/src/features/portail/client/PortailClientChantiers.jsx::charger  portail/mes-chantiers/  ViewSet portail pagination_class = None (liste complète du client) @backend/django_core/apps/portail/views_client.py:1271
 frontend/src/features/portail/client/PortailClientChantiers.jsx::voirSuivi  portail/mes-chantiers/<id>/photos/  ViewSet portail pagination_class = None (liste complète du client) @backend/django_core/apps/portail/views_client.py:1271
 frontend/src/features/portail/client/PortailClientConsommation.jsx::PortailClientConsommation  portail/mes-chantiers/  ViewSet portail pagination_class = None (liste complète du client) @backend/django_core/apps/portail/views_client.py:1271

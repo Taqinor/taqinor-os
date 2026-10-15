@@ -1,12 +1,9 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
+import { describe, it, expect, vi } from 'vitest'
+import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
+import { screen, fireEvent, waitFor } from '@testing-library/react'
 import { toast } from 'sonner'
-import crmReducer from '../store/crmSlice'
 import crmApi from '../../../api/crmApi'
-import LeadWorkspace from './LeadWorkspace'
 
 /* LW16-wire — le contrat `onAction` du rail (IdentityRail/StageControl, lane 2)
    gagne deux cas : 'set-field' (édition rapide responsable/relance) et
@@ -18,78 +15,22 @@ vi.mock('sonner', async (importOriginal) => {
   return { ...actual, toast: { ...actual.toast, error: vi.fn(), success: vi.fn() } }
 })
 
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 
 // IdentityRail réel n'est encore qu'un placeholder (LW14-18 pas construit) —
 // on l'intercepte pour exposer le contrat `onAction` à des boutons de test,
 // EXACTEMENT le patron déjà établi (AssigneePicker/CustomFieldsInput ci-dessus).
-vi.mock('./IdentityRail', () => ({
-  default: ({ onAction }) => (
-    <div data-testid="identity-rail">
-      <button type="button" onClick={() => onAction('set-field', { key: 'owner', value: '7' })}>
-        set-field-owner
-      </button>
-      <button type="button" onClick={() => onAction('change-stage', 'CONTACTED')}>
-        change-stage-contacted
-      </button>
-    </div>
-  ),
-}))
+vi.mock('./IdentityRail', async () => (await import('../../../test/leadWorkspaceMocks'))
+  .identityRailMock([[['set-field', { key: 'owner', value: '7' }], 'set-field-owner'], [['change-stage', 'CONTACTED'], 'change-stage-contacted']]))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
-    getTags: vi.fn(() => Promise.resolve({ data: [] })),
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: {} })),
-    getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
-    // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
-    getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    logInteraction: vi.fn(() => Promise.resolve({ data: {} })),
-    mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
-    updateLead: vi.fn(() => Promise.resolve({ data: {} })),
-    createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-    archiverLead: vi.fn(() => Promise.resolve({ data: {} })),
-    restaurerLead: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace())
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 
-const LEAD_A = { id: 1, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false }
-
-beforeEach(() => { mockMatchMedia(false); try { localStorage.clear() } catch { /* noop */ } })
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+installerHooksLeadWorkspace()
 
 function renderEdit(lead = LEAD_A) {
-  const store = configureStore({ reducer: { crm: crmReducer, auth: (s = { user: { id: 42 } }) => s } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <LeadWorkspace lead={lead} onClose={vi.fn()} onSaved={vi.fn()} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderLeadWorkspace({ lead })
 }
 
 describe("LW16-wire — onAction('set-field'/'change-stage')", () => {

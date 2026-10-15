@@ -104,7 +104,7 @@ class ActivityTypeSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['est_systeme']
 
 
-class ActivitySerializer(ChampsStrictsSansDecimalMixin,
+class ActivitySerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                          SameCompanyFKSerializerMixin,
                          serializers.ModelSerializer):
     # ASEC6 — utilisateur assigné et type bornés à la société de la requête

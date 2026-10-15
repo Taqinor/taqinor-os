@@ -226,6 +226,15 @@ class TestEndpointsVague(Ntwms4Base):
         self.assertEqual(
             LignePicking.objects.filter(company=self.autre).count(), 0)
 
+    def test_patch_note_non_texte_400(self):
+        # ENF11 (nocturne 15/10) — `note: 0` était enregistré « 0 » (200).
+        vague = creer_vague_depuis_besoins(
+            company=self.company, user=self.admin,
+            besoins=self._besoins_trois_chantiers())
+        url = f'/api/django/stock/vagues-picking/{vague.id}/'
+        self.assertEqual(self.api.patch(url, {'note': 0}, format='json').status_code, 400)
+        self.assertEqual(self.api.patch(url, {'note': 'Quai 2'}, format='json').status_code, 200)
+
     def test_corps_liste_400_jamais_500(self):
         """ENF11 — un corps JSON non-objet ne lève plus d'AttributeError."""
         resp = self.api.post(

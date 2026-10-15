@@ -24,6 +24,8 @@
  */
 
 /** Les SEULES tailles qui se CHARGENT. `recommande` n'en est pas une. */
+import type { OffreVariante } from './offresTailles';
+
 export const TAILLES_CHARGEABLES = ['eco', 'max'] as const;
 export type TailleChargeable = (typeof TAILLES_CHARGEABLES)[number];
 
@@ -106,16 +108,9 @@ export interface DetailBatterie {
   remplissageOk: boolean | null;
 }
 
-export interface DetailCarte {
-  nbPanneaux: number | null;
-  puissanceKwc: number | null;
-  prixTtc: number | null;
-  economieAnnuelleMad: number | null;
-  paybackAnnees: number | null;
-  couverturePct: number | null;
-  tauxAutoconsommationPct: number | null;
-  productionAnnuelleKwh: number | null;
-  economiesCumulees25AnsMad: number | null;
+export interface DetailCarte extends Pick<OffreVariante,
+  'nbPanneaux' | 'puissanceKwc' | 'prixTtc' | 'economieAnnuelleMad' | 'paybackAnnees'
+  | 'couverturePct' | 'tauxAutoconsommationPct' | 'productionAnnuelleKwh' | 'economiesCumulees25AnsMad'> {
   batterie: DetailBatterie | null;
 }
 

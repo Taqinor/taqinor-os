@@ -591,10 +591,15 @@ class AbonnementMonitoringError(ValueError):
     """Création/résiliation d'abonnement refusée ; ``champ`` nomme le champ
     fautif (``None`` = erreur globale)."""
 
-    def __init__(self, message, champ=None):
+    def __init__(self, message, champ=None, etat=False, introuvable=False):
         super().__init__(message)
         self.message = message
         self.champ = champ
+        # ENF11 (nocturne 15/10) — mêmes drapeaux que CertificatCarboneError :
+        # ``introuvable`` = id bien formé hors société (404, même corps qu'un
+        # absent), ``etat`` = la fiche s'oppose (système sans client : 409).
+        self.etat = etat
+        self.introuvable = introuvable
 
 
 def _ajouter_mois(jour, nb_mois):
@@ -628,11 +633,16 @@ def creer_abonnement_monitoring(company, *, installation_id, periodicite,
 
     from .models import AbonnementMonitoring
 
+    if installations_selectors.installation_scoped(company, installation_id) is None:
+        raise AbonnementMonitoringError(
+            'Système inconnu ou sans client.', champ='installation_id',
+            introuvable=True)
     client_id = installations_selectors.chantier_client_id(
         company, installation_id)
     if client_id is None:
         raise AbonnementMonitoringError(
-            'Système inconnu ou sans client.', champ='installation_id')
+            'Système inconnu ou sans client.', champ='installation_id',
+            etat=True)
     if montant is None or Decimal(str(montant)) <= 0:
         raise AbonnementMonitoringError(
             'Saisir le montant par période.', champ='montant')
@@ -709,12 +719,16 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
 
     from .report_carbon import tco2_evitees_periode
 
+    # ENF11 (nocturne 15/10) — deux règles croisées que le schéma ne sait pas
+    # dire (cible XOR, ordre des bornes) : 409, comme ailleurs.
     if bool(installation_id) == bool(client_id):
         raise CertificatCarboneError(
-            'Choisissez soit un système, soit un client (jamais les deux).')
+            'Choisissez soit un système, soit un client (jamais les deux).',
+            etat=True)
     if periode_fin < periode_debut:
         raise CertificatCarboneError(
-            'La fin de période doit suivre son début.', champ='periode_fin')
+            'La fin de période doit suivre son début.', champ='periode_fin',
+            etat=True)
     installation = None
     if installation_id:
         installation = installations_selectors.installation_scoped(

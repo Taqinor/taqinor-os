@@ -1,0 +1,12 @@
+---
+// ENF19 : bloc partagé (copies identiques) — index.astro
+const { investment } = Astro.props as Record<string, any>;
+---
+        <dl class="mt-12 grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4" data-stagger>
+          {investment.map((it: any, i: any) => (
+            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
+              <dd class="fig fig-md whitespace-nowrap text-azur-600" data-tally>{it.v}</dd>
+              <dt class="tech-label mt-2 text-encre-soft">{it.label}</dt>
+            </div>
+          ))}
+        </dl>

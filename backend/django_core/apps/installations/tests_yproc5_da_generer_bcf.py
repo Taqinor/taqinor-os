@@ -136,7 +136,7 @@ class GenererBcfTests(TestCase):
         r2 = self.api.post(
             f'{BASE}/demandes-achat/{da.id}/generer-bcf/',
             {'fournisseur': self.fournisseur.id}, format='json')
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.status_code, 409, r2.data)
 
     def test_da_non_approuvee_refusee(self):
         da = DemandeAchat.objects.create(
@@ -146,21 +146,21 @@ class GenererBcfTests(TestCase):
         r = self.api.post(
             f'{BASE}/demandes-achat/{da.id}/generer-bcf/',
             {'fournisseur': self.fournisseur.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
-    def test_sans_fournisseur_400(self):
+    def test_sans_fournisseur_409(self):
         da = make_da_approuvee(self.company, self.user, lignes=[
             (self.produit, None, 2, 999),
         ])
         r = self.api.post(f'{BASE}/demandes-achat/{da.id}/generer-bcf/', {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
-    def test_sans_lignes_400(self):
+    def test_sans_lignes_409(self):
         da = make_da_approuvee(self.company, self.user, lignes=[])
         r = self.api.post(
             f'{BASE}/demandes-achat/{da.id}/generer-bcf/',
             {'fournisseur': self.fournisseur.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_fournisseur_autre_societe_rejete(self):
         autre = make_company()
@@ -171,4 +171,4 @@ class GenererBcfTests(TestCase):
         r = self.api.post(
             f'{BASE}/demandes-achat/{da.id}/generer-bcf/',
             {'fournisseur': fournisseur_o.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)

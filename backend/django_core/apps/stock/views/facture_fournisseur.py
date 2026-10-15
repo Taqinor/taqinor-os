@@ -10,7 +10,6 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
 from ..erreurs_achats import IntrouvableMetier
-from core.champs_stricts import MOTIF_SANS_NUL
 from ..utils.params import corps_objet, date_ou_400, id_corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -163,6 +162,14 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             _emettre_facture_creee, evaluer_rapprochement_3_voies,
         )
         ancien_bcf_id = serializer.instance.bon_commande_id
+        # ENF11 (nocturne 15/10) — en PATCH l'imbriqué `lignes` est partiel :
+        # une ligne sans `designation` (requise au schéma de la ligne) était
+        # acceptée. Les lignes REMPLACENT les existantes : chacune est revalidée
+        # COMPLÈTE par le sérialiseur de ligne publié (400 nommant le champ).
+        if 'lignes' in serializer.validated_data:
+            complet = serializer.fields['lignes'].child.__class__(
+                data=self.request.data.get('lignes'), many=True, context=serializer.context)
+            complet.is_valid(raise_exception=True)
         with transaction.atomic():
             facture = serializer.save()
             if (facture.bon_commande_id is not None
@@ -177,9 +184,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         d'un refus métier explicite. Même patron que l'action `annuler` de
         `installations/views/facture_soustraitant.py` (vérifie
         `facture.total_paye > 0` avant de permettre la suppression)."""
-        from rest_framework.exceptions import ValidationError
+        from ..erreurs_achats import ConflitEtat
         if instance.total_paye > 0:
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Cette facture fournisseur porte des paiements réels '
                     '(total payé : ' + str(instance.total_paye) + ' MAD) : '
@@ -193,7 +200,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         nb_acomptes = (instance.imputations_acompte.order_by()
                        .values('acompte').distinct().count())
         if nb_acomptes:
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Cette facture fournisseur porte '
                     f'{nb_acomptes} acompte(s) imputé(s) (total : '
@@ -206,7 +213,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         if imputations_avoir:
             refs = ', '.join(sorted({
                 i.avoir.reference for i in imputations_avoir}))
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Cette facture fournisseur porte un avoir imputé '
                     f'({refs} — total : {instance.total_avoirs_imputes} '
@@ -459,7 +466,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True),
-                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
+                   parameters=[P('search', STR, False, 'Recherche (un caractère nul ne désigne aucune ligne)')])
     @extend_schema(methods=['POST'], request=PaiementFournisseurSerializer,
                    responses={201: FactureFournisseurSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='paiements',
@@ -562,7 +569,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
     @extend_schema(methods=['GET'], responses=LISTE,
-                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
+                   parameters=[P('search', STR, False, 'Recherche (un caractère nul ne désigne aucune ligne)')])
     @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps',
                                                    tranches=serializers.ListField(
                                                        child=TrancheEcheancierSerializer(), min_length=1)),

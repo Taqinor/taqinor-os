@@ -1437,7 +1437,7 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
                 date_releve=date_releve, created_by=request.user)
         except ReleveDecroissantError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)  # ENF11 : jumeau sav (recul = état)
         _auditer_portail(
             AuditLog.Action.CREATE, request, instance=releve,
             detail='Relevé %s saisi via le portail client' % type_releve)

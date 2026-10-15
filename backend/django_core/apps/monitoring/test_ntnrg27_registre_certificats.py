@@ -207,7 +207,7 @@ class TestAsav102RegistreApi(TestCase):
         self.assertEqual(r.status_code, 409)  # aucune production : refus d'ÉTAT
         self.assertIn('detail', r.data)
         r = self._emettre(client_id=self.inst.client_id)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : cible XOR = règle croisée
         # Système d'une autre société : id bien formé mais inconnu = 404
         # (CI #997 fuzz (2)), même corps qu'un id absent.
         r = self._emettre(installation_id=self.inst_b.id)

@@ -4,8 +4,8 @@ import api from './axios'
 const monitoringApi = {
   // ── Configs de supervision par système (N50) ──
   getConfigs: (params) => api.get('/monitoring/configs/', { params }),
-  getConfigForInstallation: (installationId) =>
-    api.get('/monitoring/configs/', { params: { installation: installationId } }),
+  getConfigForInstallation: (installationId, pagination = {}) =>
+    api.get('/monitoring/configs/', { params: { installation: installationId, ...pagination } }),
   saveConfig: (id, data) => id
     ? api.patch(`/monitoring/configs/${id}/`, data)
     : api.post('/monitoring/configs/', data),

@@ -306,6 +306,10 @@ class DevisCycleActionsMixin:
             variant_note = _label_for(scale)
 
             def _echelle(ligne, _scale=scale):
+                if ligne.quantite is None:
+                    # ENF11 (nocturne 15/10) — ligne sans quantité (titre,
+                    # commentaire) : rien à mettre à l'échelle (TypeError → 500).
+                    return {}
                 brute = ligne.quantite * Decimal(str(_scale))
                 qty = brute.quantize(Decimal('0.01'),
                                      rounding=ROUND_HALF_UP)

@@ -9,11 +9,11 @@
  * `pdf_url` du MÊME jeton. Aucun coût d'achat, aucune marge : le serveur n'en
  * envoie pas et la page n'en fabrique pas.
  */
-import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import installationsApi from '../../api/installationsApi'
 // VX75 — toute date passe par lib/format.js (jamais un toLocaleDateString nu).
 import { formatDate } from '../../lib/format'
+import { usePagePublique } from './usePagePublique'
 
 const fmtDate = (iso) => {
   if (!iso) return null
@@ -29,20 +29,7 @@ const PHASES = [
 
 export default function InterventionRapportPublicPage() {
   const { token } = useParams()
-  const [etat, setEtat] = useState('loading') // loading|ok|invalide
-  const [data, setData] = useState(null)
-
-  useEffect(() => {
-    let vivant = true
-    installationsApi.getInterventionRapportPublic(token)
-      .then((res) => {
-        if (!vivant) return
-        setData(res.data || {})
-        setEtat('ok')
-      })
-      .catch(() => { if (vivant) setEtat('invalide') })
-    return () => { vivant = false }
-  }, [token])
+  const { etat, data } = usePagePublique(installationsApi.getInterventionRapportPublic, token)
 
   if (etat === 'loading') {
     return (

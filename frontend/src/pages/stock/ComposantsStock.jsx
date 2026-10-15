@@ -53,3 +53,16 @@ export function BoutonsModifierSupprimer({ onModifier, onSupprimer }) {
 export function TableauStock({ items, ...props }) {
   return <DataTable data={items} getRowId={(r) => r.id} {...props} />
 }
+
+/** Cellule « Retirer la ligne » d'un formulaire de lignes (bon de commande,
+ *  modèle de BCF). */
+export function CelluleRetirerLigne({ onRetirer }) {
+  return (
+    <td className="px-3 py-2">
+      <IconButton label="Retirer la ligne" variant="ghost" size="icon" className="size-8"
+                  onClick={onRetirer}>
+        <Trash2 className="text-destructive" />
+      </IconButton>
+    </td>
+  )
+}

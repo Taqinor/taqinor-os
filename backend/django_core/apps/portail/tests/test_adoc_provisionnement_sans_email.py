@@ -67,7 +67,7 @@ class ProvisionnementSansEmailTests(TestCase):
     def test_client_sans_email_refuse(self):
         res = self.api.post(self.url, {}, format='json')
 
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 409, res.content)  # ENF11 : état de la fiche
         self.assertEqual(res.json(), {'detail': MESSAGE})
         self.assertFalse(self._comptes_portail().exists())
         self.assertEqual(len(mail.outbox), 0)

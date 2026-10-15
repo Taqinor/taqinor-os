@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { LEAD_A, mockMatchMedia } from '../../../test/leadWorkspaceMocks'
 import { render, screen, cleanup, act } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -15,49 +16,11 @@ import LeadWorkspace from './LeadWorkspace'
    LeadWorkspace.skeleton.test.jsx une fois ce mécanisme construit ; ici on
    couvre la partie propre à CETTE tâche : alimentation du cache + premier
    rendu instantané depuis le cache. */
-vi.mock('../../../hooks/useDuplicateCheck', () => ({ useDuplicateCheck: () => [] }))
-vi.mock('../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite/Walk-in' } }) }))
-vi.mock('../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
-vi.mock('../../../components/CustomFieldsInput', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null }))
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/PlanActiviteDialog', () => ({ default: () => null }))
-vi.mock('../../../pages/crm/leads/ConvertirClientDialog', () => ({ default: () => null }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
-    getTags: vi.fn(() => Promise.resolve({ data: [] })),
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: {} })),
-    getLeadDuplicates: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadClientMatch: vi.fn(() => Promise.resolve({ data: [] })),
-    getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
-    // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
-    getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
-    whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
-    logInteraction: vi.fn(() => Promise.resolve({ data: {} })),
-    mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),
-    updateLead: vi.fn(() => Promise.resolve({ data: {} })),
-    createLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-    archiverLead: vi.fn(() => Promise.resolve({ data: {} })),
-    restaurerLead: vi.fn(() => Promise.resolve({ data: {} })),
-  },
-}))
-vi.mock('../../../api/axios', () => ({
-  default: { get: vi.fn(() => Promise.resolve({ data: [] })) },
-}))
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace())
 
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
-
-const LEAD_A = { id: 1, nom: 'Ali', prenom: 'Ben', stage: 'NEW', is_archived: false }
 const LEAD_B_ROW = { id: 2, nom: 'Karim', stage: 'NEW' } // ligne PARTIELLE de liste
 
 beforeEach(() => {

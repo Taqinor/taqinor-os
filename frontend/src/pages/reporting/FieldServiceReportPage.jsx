@@ -1,10 +1,11 @@
 import { AlertOctagon, Gauge, RotateCcw, Timer } from 'lucide-react'
 import reportingApi from '../../api/reportingApi'
-import { EmptyState, Spinner } from '../../ui'
+import { EmptyState } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { Table } from './Table'
 import KpiCard from './KpiCard'
 import { useChargementRapport } from './useChargementRapport'
+import { ChargementPage } from '../../ui/ChargementPage'
 
 /* ============================================================================
    XFSM16 — Analytics field service consolidés (`reporting/reports/field/`).
@@ -28,7 +29,7 @@ export default function FieldServiceReportPage() {
       />
 
       {loading ? (
-        <p className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Spinner /> Chargement…</p>
+        <ChargementPage />
       ) : error || !data ? (
         <EmptyState icon={AlertOctagon} title="Erreur" description="Impossible de charger les analytics terrain." className="my-6" />
       ) : (

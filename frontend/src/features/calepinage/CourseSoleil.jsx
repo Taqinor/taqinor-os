@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import useDocumentCalepinage from './useDocumentCalepinage'
 import SunDiagram from './SunDiagram'
-import { COURBES_REPERE } from './SunDiagram.helpers'
+import { LegendeCourbes } from './LegendeCourbes'
 import { sunDirection as sunPosition, WINTER_SOLSTICE_DAY as JOUR_SOLSTICE_HIVER } from '@rooflib/roofPro2'
 import { HAUTEUR_TOIT_HYPOTHESE_M, centroideDuContour, obstructionsDuPan } from './obstructionMath'
 import RetourAtelier from './atelier/RetourAtelier'
@@ -183,17 +183,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
             sunHour={sceneSunHour}
             ariaLabel={`Course du soleil du pan ${libellePan(zone, zones.indexOf(zone))}`}
           />
-          <div className="mt-1 flex flex-wrap gap-3 text-xs text-lune-faint">
-            {COURBES_REPERE.map((c) => (
-              <span key={c.jour} className="inline-flex items-center gap-1">
-                <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 2, background: c.couleur }} />
-                {c.label}
-              </span>
-            ))}
-            <span className="inline-flex items-center gap-1">
-              <span aria-hidden="true" style={{ display: 'inline-block', width: 10, height: 10, background: 'rgba(90,60,30,0.55)' }} />
-              Horizon lointain
-            </span>
+          <LegendeCourbes libelleHorizon="Horizon lointain">
             <span className="inline-flex items-center gap-1">
               <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#d0654f' }} />
               Obstruction proche
@@ -202,7 +192,7 @@ export default function CourseSoleil({ calepinageId: idPropose } = {}) {
               <span aria-hidden="true" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#ffd166' }} />
               Soleil de scène
             </span>
-          </div>
+          </LegendeCourbes>
 
           {/* CALX118 — l'instant du soleil de scène AFFICHÉ, et le défaut NOMMÉ quand le
               document n'en porte aucun (jamais un 21 juin supposé silencieusement). */}

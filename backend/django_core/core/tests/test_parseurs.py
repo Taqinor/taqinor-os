@@ -83,6 +83,13 @@ class JsonTypeTests(SimpleTestCase):
         for valeur in (None, [], 'x'):
             self.assertFalse(self._valide(ObjetJSON(), valeur)[0], valeur)
 
+    def test_caractere_nul_retire_des_chaines_json(self):
+        # ENF11 (nocturne 15/10) — jsonb refuse le nul (DataError → 500).
+        self.assertEqual(self._valide(ObjetJSON(), {'k\x00': ['a\x00b', {'x': '\x00'}]}),
+                         (True, {'k': ['ab', {'x': ''}]}))
+        self.assertEqual(self._valide(ListeJSON(element=dict), [{'p': 'r\x00'}]),
+                         (True, [{'p': 'r'}]))
+
 
 class ParametresRequeteStrictsTests(SimpleTestCase):
     """ERR-ENF11-FUZZ-INSTALLATIONS — ``date_ou_400`` / ``nombre_ou_400`` :

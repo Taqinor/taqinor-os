@@ -131,12 +131,12 @@ class RelevesPompagePortailTests(TestCase):
         self.assertEqual(r.data, CONTRAT['exemple_404'])
         self.assertFalse(ReleveCompteurEquipement.objects.exists())
 
-    def test_recul_400(self):
+    def test_recul_409(self):
         self._post({'equipement': self.pompe.id, 'type': 'm3',
                     'valeur': '1838', 'date': '2027-02-04'})
         r = self._post({'equipement': self.pompe.id, 'type': 'm3',
                         'valeur': '1500', 'date': '2027-03-01'})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11
         self.assertEqual(r.data, CONTRAT['exemple_400_recul'])
 
     def test_kwh_400(self):

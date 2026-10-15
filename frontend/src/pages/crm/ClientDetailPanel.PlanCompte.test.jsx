@@ -1,11 +1,8 @@
 // WIR16 — la fiche client monte l'écran Plan de compte (PlanComptePage,
 // NTCRM11) dans un onglet dédié, sans URL tapée.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
@@ -16,6 +13,7 @@ vi.mock('../../ui/confirm', () => ({
 
 import api from '../../api/axios'
 import ClientDetailPanel from './ClientDetailPanel'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -27,14 +25,7 @@ function renderPanel(client, { documents = { devis: [], factures: [], chantiers:
     if (url.includes('/plans-compte/')) return Promise.resolve({ data: { results: plans } })
     return Promise.resolve({ data: {} })
   })
-  const store = configureStore({ reducer: { auth: (state = { role: 'admin' }) => state } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ClientDetailPanel client={client} onClose={() => {}} onNewDevis={() => {}} onChanged={() => {}} />
-      </MemoryRouter>
-    </Provider>,
-  )
+  return renderAvecAuth(<ClientDetailPanel client={client} onClose={() => {}} onNewDevis={() => {}} onChanged={() => {}} />, { role: 'admin' })
 }
 
 const client = { id: 11, nom: 'Benali', prenom: 'Sara' }

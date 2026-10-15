@@ -3,12 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import { polyfillResizeObserver } from '../../test/selectNatif'
 
-beforeAll(() => {
-  if (typeof globalThis.ResizeObserver === 'undefined') {
-    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
-  }
-})
+beforeAll(polyfillResizeObserver)
 
 function renderPage(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -17,27 +14,8 @@ function renderPage(ui) {
 // Radix Select ne s'ouvre pas sous jsdom (portail + pointer-events:none). On
 // remplace les primitives Select par un <select> natif (les autres primitives
 // de @/ui restent réelles), pour piloter le choix du client en test.
-vi.mock('../../ui', async (importActual) => {
-  const actual = await importActual()
-  const Passthrough = ({ children }) => <>{children}</>
-  return {
-    ...actual,
-    Select: ({ value, onValueChange, children, 'aria-label': ariaLabel }) => (
-      <select
-        aria-label={ariaLabel || 'select'}
-        value={value}
-        onChange={(e) => onValueChange(e.target.value)}
-      >
-        <option value="" />
-        {children}
-      </select>
-    ),
-    SelectTrigger: Passthrough,
-    SelectValue: () => null,
-    SelectContent: Passthrough,
-    SelectItem: ({ value, children }) => <option value={value}>{children}</option>,
-  }
-})
+vi.mock('../../ui', async (importActual) => (await import('../../test/selectNatif'))
+  .avecSelectNatifSimple(await importActual(), { labelDeProp: true }))
 
 /* WR7 — Le portail client rend la synthèse environnementale CUMULÉE d'un client
    (production / économies / CO₂) depuis /configs/client-portal/?client=ID —

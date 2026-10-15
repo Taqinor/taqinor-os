@@ -3,13 +3,13 @@
 // backflush de stock à la clôture, réservations/disponibilité par composant,
 // gate qualité (checklist QC), gamme d'exécution, chatter et bon d'assemblage
 // PDF (worksheet atelier). Aucun coût d'achat / marge n'est affiché ici.
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Plus, Play, CheckCircle2, XCircle, FileText, Printer, RefreshCw, Wrench,
 } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import {
   Button, Badge, Segmented, Spinner, Skeleton, EmptyState, Input, Textarea,
   Checkbox,
@@ -22,6 +22,9 @@ import { formatDate } from '../../lib/format'
 // VX132 — anti-scintillement propagé : Spinner + Skeleton s'affichaient
 // SIMULTANÉMENT (voir InstallationsPage.jsx, déjà migrée).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import PiedAnnulerOccupe from '../../ui/PiedAnnulerOccupe'
+import { ErreurTexte } from '../../ui/AlertesServeur'
+import { ErreurChargementReessayer } from '../../ui/ChargementPage'
 
 // Statuts de l'ordre d'assemblage (models_kitting OrdreAssemblage.Statut).
 const STATUT_TONE = {
@@ -138,16 +141,13 @@ function CreateAssemblageDialog({ kits, onClose, onCreated }) {
               onChange={(e) => set('note', e.target.value)}
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <ErreurTexte error={error} />
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            Annuler
-          </Button>
+        <PiedAnnulerOccupe onClose={onClose} busy={busy}>
           <Button type="button" onClick={submit} disabled={busy}>
             {busy ? <Spinner /> : <Plus />} Créer
           </Button>
-        </DialogFooter>
+        </PiedAnnulerOccupe>
       </DialogContent>
     </Dialog>
   )
@@ -219,16 +219,13 @@ function CreateDemontageDialog({ kits, onClose, onCreated }) {
               onChange={(e) => set('note', e.target.value)}
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <ErreurTexte error={error} />
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            Annuler
-          </Button>
+        <PiedAnnulerOccupe onClose={onClose} busy={busy}>
           <Button type="button" onClick={submit} disabled={busy}>
             {busy ? <Spinner /> : <Plus />} Créer
           </Button>
-        </DialogFooter>
+        </PiedAnnulerOccupe>
       </DialogContent>
     </Dialog>
   )
@@ -257,7 +254,7 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
 
   // Chargements read-only isolés dans une fonction pure (pas de setState
   // synchrone au montage) — appelée par l'effet et après chaque action.
-  const load = () => {
+  const load = useCallback(function load() {
     installationsApi.getDisponibiliteAssemblage(ordre.id)
       .then((r) => setDispo(Array.isArray(r.data) ? r.data : []))
       .catch(() => {})
@@ -274,8 +271,8 @@ function AssemblageDetail({ ordre, canWrite, onClose, onChanged }) {
       installationsApi.getLignesAssemblage(ordre.id, { page, page_size: pageSize }).then((r) => r.data))
       .then((rows) => setLignes(Array.isArray(rows) ? rows : (rows?.results ?? [])))
       .catch(() => {})
-  }
-  useEffect(() => { load() }, [ordre.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ordre.id])
+  useEffect(() => { load() }, [load])
 
   const qcBloque = controles.some(
     (c) => c.resultat == null || c.resultat === 'echec')
@@ -745,17 +742,14 @@ function TerminerAssemblageDialog({ ordre, qcBloque, onClose, onDone }) {
               )}
             </div>
           )}
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <ErreurTexte error={error} />
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            Annuler
-          </Button>
+        <PiedAnnulerOccupe onClose={onClose} busy={busy}>
           <Button type="button" onClick={submit}
                   disabled={busy || (qcBloque && forcer && !motif.trim())}>
             {busy ? <Spinner /> : <CheckCircle2 />} Clôturer
           </Button>
-        </DialogFooter>
+        </PiedAnnulerOccupe>
       </DialogContent>
     </Dialog>
   )
@@ -790,16 +784,13 @@ function AnnulerAssemblageDialog({ ordre, onClose, onDone }) {
           <Label htmlFor="ann-motif">Motif</Label>
           <Textarea id="ann-motif" rows={2} value={motif}
                     onChange={(e) => setMotif(e.target.value)} />
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <ErreurTexte error={error} />
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            Retour
-          </Button>
+        <PiedAnnulerOccupe onClose={onClose} busy={busy} libelle="Retour">
           <Button type="button" variant="destructive" onClick={submit} disabled={busy}>
             {busy ? <Spinner /> : <XCircle />} Confirmer l'annulation
           </Button>
-        </DialogFooter>
+        </PiedAnnulerOccupe>
       </DialogContent>
     </Dialog>
   )
@@ -885,15 +876,12 @@ function DeclarerRebutDialog({ ordre, produits, onClose, onDeclared }) {
           </div>
           {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            Annuler
-          </Button>
+        <PiedAnnulerOccupe onClose={onClose} busy={busy}>
           <Button type="button" variant="destructive" onClick={submit}
                   disabled={busy || !complet}>
             {busy ? <Spinner /> : <XCircle />} Déclarer le rebut
           </Button>
-        </DialogFooter>
+        </PiedAnnulerOccupe>
       </DialogContent>
     </Dialog>
   )
@@ -1082,15 +1070,16 @@ export default function AteliersPage() {
   const [creating, setCreating] = useState(false)
 
   const load = () => {
+    // ACHT62 — toutes les pages des ordres (jamais les 50 premiers).
     Promise.all([
-      installationsApi.getOrdresAssemblage(),
-      installationsApi.getOrdresDemontage(),
+      lireToutesLesPages((p) => installationsApi.getOrdresAssemblage(p)),
+      lireToutesLesPages((p) => installationsApi.getOrdresDemontage(p)),
       installationsApi.getKitsAssemblage({ active: 1 }),
     ])
       .then(([a, d, k]) => {
         const arr = (r) => (Array.isArray(r) ? r : r?.results ?? [])
-        setAssemblages(arr(a.data))
-        setDemontages(arr(d.data))
+        setAssemblages(a)
+        setDemontages(d)
         setKits(arr(k.data))
         setLoading(false)
       })
@@ -1187,12 +1176,7 @@ export default function AteliersPage() {
       {mode === 'rebuts' ? (
         <RapportRebutsPanel />
       ) : error ? (
-        <EmptyState
-          title="Erreur de chargement"
-          description={error}
-          action={<Button size="sm" onClick={reload}>Réessayer</Button>}
-          className="my-6 border-destructive/40"
-        />
+        <ErreurChargementReessayer error={error} onRetry={reload} />
       ) : loading ? (
         <div className="flex flex-col gap-2">
           {showSpinner && (

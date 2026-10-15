@@ -484,3 +484,6 @@ export function raisonRefusStatut(err) {
   }
   return nonVide(statut) ?? nonVide(data.transition_block_reason) ?? nonVide(data.detail)
 }
+
+// Sentinelle « aucun technicien » (le Select du design system n'accepte pas '').
+export const NO_TECH = '__none__'

@@ -4,13 +4,6 @@ import userEvent from '@testing-library/user-event'
 
 /* PACT56 — Import et douane : dossiers, frais, coût débarqué (FG315/FG316). */
 
-function mockMatchMedia() {
-  window.matchMedia = (query) => ({
-    matches: false, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() })
 
 const inst = vi.hoisted(() => ({
@@ -34,6 +27,7 @@ const inst = vi.hoisted(() => ({
 vi.mock('../../api/installationsApi', () => ({ default: inst }))
 
 import SuiviImport from './SuiviImport'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
