@@ -26,7 +26,7 @@ const entitesApi = {
   importer: (fichier, commit = false) => {
     const fd = new FormData()
     fd.append('fichier', fichier)
-    if (commit) fd.append('commit', '1')
+    if (commit) fd.append('commit', 'true')
     return api.post('/entites/entites/importer/', fd)
   },
 }

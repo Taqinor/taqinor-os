@@ -186,6 +186,26 @@ class EntiteApiTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertTrue(r.data['erreurs'])
 
+    def test_importer_drapeaux_true_false_seulement(self):
+        """CI fuzz : ``ecraser=0`` était lu « faux » en silence alors que le
+        schéma publie un booléen ; le prédicat publié = le prédicat appliqué."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = '/api/django/entites/entites/importer/'
+        for nom in ('ecraser', 'commit'):
+            for brut in ('0', '1', 'oui', ''):
+                csv_ok = SimpleUploadedFile("e.csv", b"code,nom\nZ,Zed\n")
+                r = self.client_api.post(
+                    url, {'fichier': csv_ok, nom: brut}, format='multipart')
+                self.assertEqual(r.status_code, 400, (nom, brut, r.content))
+        self.assertFalse(Entite.objects.filter(code='Z').exists())
+        csv_ok = SimpleUploadedFile("e.csv", b"code,nom\nZ,Zed\n")
+        r = self.client_api.post(
+            url, {'fichier': csv_ok, 'commit': 'true', 'ecraser': 'False'},
+            format='multipart')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(
+            Entite.objects.filter(company=self.company, code='Z').exists())
+
 
 class EntiteImportTests(TestCase):
     """NTADM43 — import CSV 2 passes (holding→filiale→agence)."""
