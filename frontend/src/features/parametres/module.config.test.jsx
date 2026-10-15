@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { verifierEntreeMenu } from '../../test/navItemModule'
 
 /* WIR14 — Playbooks (`Playbooks.jsx`, NTCRM13) était construit/testé mais
    monté nulle part (ni route, ni menu). On vérifie ici — comme
@@ -108,11 +109,7 @@ describe.each([
 ])('parametres — module.config (ODY23(b) %s)', (path, label, roles) => {
   it(`déclare ${path} en entrée de menu "${label}" (route déjà dans features/admin/module.config.jsx)`, async () => {
     const { default: config } = await import('./module.config.jsx')
-    const navItem = config.nav.items.find((i) => i.to === path)
-    expect(navItem).toBeTruthy()
-    expect(navItem.label).toBe(label)
-    expect(navItem.roles).toEqual(roles)
-    expect(navItem.icon).toBeTruthy()
+    verifierEntreeMenu(config, path, label, roles)
     expect(config.routes.find((r) => r.path === path)).toBeFalsy()
   })
 })

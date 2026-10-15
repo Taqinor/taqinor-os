@@ -16,24 +16,13 @@ vi.mock('../../api/installationsApi', async () => (await import('./__tests__/tic
 
 import { TicketDetail } from './TicketsPage'
 import { makeTicketStore } from './__tests__/ticketDetailTestKit'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 // Stub matchMedia déterministe : `desktop=true` fait matcher la requête
 // `min-width: 1280px` (chemin panneau latéral) ; `desktop=false` la fait
 // échouer (chemin Sheet plein-tiroir).
-function mockMatchMedia(desktop) {
-  window.matchMedia = (query) => ({
-    matches: desktop,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  })
-}
 
 const baseTicket = {
   id: 1, reference: 'SAV-1', statut: 'en_cours', type: 'correctif',

@@ -6,19 +6,13 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import ToitClientOverlay from './ToitClientOverlay'
 import { contourExploitable } from '../crm/workspace/traceToit'
+import { CONTOUR } from '../../test/contourToit'
 
 afterEach(cleanup)
 
-// MÊME fixture que `TraceToitClient.test.jsx` (carré ≈ 20 m de côté à
-// Casablanca, ordre d'axes de `Lead.roof_outline`) : la surface rendue ici
-// doit être la MÊME que celle déjà validée côté fiche lead — c'est tout le
-// point du calque (« zéro chiffre recalculé différemment »).
-const CONTOUR = [
-  [33.589, -7.603],
-  [33.589, -7.602784],
-  [33.58918, -7.602784],
-  [33.58918, -7.603],
-]
+// MÊME fixture que `TraceToitClient.test.jsx` (test/contourToit.js) : la
+// surface rendue ici doit être la MÊME que celle déjà validée côté fiche lead —
+// c'est tout le point du calque (« zéro chiffre recalculé différemment »).
 
 describe('ToitClientOverlay', () => {
   it('rend le contour du client en polygone SVG distinct, avec le libellé + la surface', () => {

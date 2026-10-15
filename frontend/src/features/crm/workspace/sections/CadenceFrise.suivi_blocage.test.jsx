@@ -28,6 +28,7 @@ vi.mock('../../../../lib/toast', () => ({
 import crmApi from '../../../../api/crmApi'
 import { toastError } from '../../../../lib/toast'
 import CadenceFrise from './CadenceFrise'
+import { ouvrirPlanificationVisite } from '../../../../test/parcoursVisiteAcceptee'
 
 const jour = (decalage) => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit',
@@ -54,10 +55,7 @@ describe('SUIVI-BLOCAGE — frise de la fiche', () => {
     crmApi.getRelanceEtapesLead.mockResolvedValue({ data: { results: [ouverte] } })
     render(<Fiche />)
     await waitFor(() => expect(screen.getByTestId('relance-etape-row')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: /^Fait$/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Visite acceptée' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-    expect(await screen.findByText('Planifier la visite technique')).toBeInTheDocument()
+    await ouvrirPlanificationVisite()
     expect(crmApi.marquerRelanceEtapeFait).not.toHaveBeenCalled()
     expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(1)
     // Après la planification : la frise est relue, la touche close (par le

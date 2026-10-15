@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* WIR152 — `TiersViewSet` (ARC17, CRUD complet) n'était consommé qu'en
    resolver de nom par deux écrans compta — aucun écran répertoire. */
@@ -35,16 +33,9 @@ vi.mock('../../api/tiersApi', () => ({
 
 import TiersPage from './TiersPage'
 import { polyfillResizeObserver } from '../../test/selectNatif'
+import { withProviders } from '../../test/renderAvecProviders'
 
 beforeEach(() => { vi.clearAllMocks() })
-
-function withProviders(ui) {
-  return render(
-    <MemoryRouter>
-      <ThemeProvider>{ui}</ThemeProvider>
-    </MemoryRouter>,
-  )
-}
 
 describe('TiersPage (WIR152)', () => {
   it('affiche le répertoire avec le rôle et les coordonnées', async () => {

@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* WIR28 (FG80) — le backend calcule déjà `a_calibrer`/`date_prochaine_calibration`
    et expose l'action `outils/{id}/calibrer/`, mais `OutillagePage.jsx` n'en
@@ -52,16 +50,9 @@ vi.mock('../../api/stockApi', () => ({
 
 import OutillagePage from './OutillagePage'
 import { polyfillResizeObserver } from '../../test/selectNatif'
+import { withProviders } from '../../test/renderAvecProviders'
 
 beforeEach(() => { vi.clearAllMocks() })
-
-function withProviders(ui) {
-  return render(
-    <MemoryRouter>
-      <ThemeProvider>{ui}</ThemeProvider>
-    </MemoryRouter>,
-  )
-}
 
 describe('OutillagePage — calibration (WIR28/FG80)', () => {
   it('affiche le badge « À calibrer » pour un outil en retard, jamais pour un outil non suivi', async () => {
