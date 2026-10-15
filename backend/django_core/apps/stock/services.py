@@ -164,29 +164,6 @@ def export_products_xlsx(produits):
 # action amont peut transformer ces manques en un BonCommandeFournisseur
 # brouillon. Le prix d'achat reste INTERNE (jamais sur un document client).
 
-def _quantite_comptee_entiere(valeur):
-    """ASTK209 — ``valeur`` en ``int`` si c'est un entier ≥ 0 (``7``,
-    ``"7"``, ``7.0``), sinon ``None`` (``7.5``, ``"7.5"``, ``-3``, ``True``,
-    texte, absent). CI #997 fuzz (4) : une CHAÎNE est faite de chiffres seuls
-    (``" 7 "``, ``"1e2"`` ne sont plus lus) et le niveau compté tient dans la
-    capacité d'un compteur (``QUANTITE_MAX``, le ``maximum`` publié) : au-delà il
-    débordait la colonne entière (500)."""
-    import re
-    from core.champs_stricts import QUANTITE_MAX
-    from .utils.params import MOTIF_QUANTITE_COMPTEE
-    if valeur is None or isinstance(valeur, bool):
-        return None
-    if isinstance(valeur, str) and not re.fullmatch(MOTIF_QUANTITE_COMPTEE, valeur):
-        return None
-    try:
-        nombre = Decimal(str(valeur))
-    except (InvalidOperation, ValueError):
-        return None
-    if not nombre.is_finite() or nombre != nombre.to_integral_value() or not 0 <= nombre <= QUANTITE_MAX:
-        return None
-    return int(nombre)
-
-
 def apply_inventory_count(*, company, user, motif, lignes):
     """N16 — inventaire : pose un comptage physique par produit et enregistre
     l'écart en MouvementStock (AJUSTEMENT). Renvoie {ajustes, inchanges,
@@ -195,6 +172,7 @@ def apply_inventory_count(*, company, user, motif, lignes):
     from django.db import transaction
     from rest_framework.exceptions import ValidationError
     from .models import Produit, MouvementStock
+    from .utils.params import quantite_comptee_entiere
 
     # ASTK209 (C-ASTK-053, MVT-22) — chaque quantité comptée doit être un
     # ENTIER ≥ 0 : 7.5 n'est plus tronqué en 7, "7.5" et -3 ne sont plus
@@ -205,10 +183,10 @@ def apply_inventory_count(*, company, user, motif, lignes):
     erreurs = {}
     comptes = []
     for index, ligne in enumerate(lignes):
-        compte = _quantite_comptee_entiere(
+        compte = quantite_comptee_entiere(
             ligne.get('quantite_comptee') if isinstance(ligne, dict) else None)
         if compte is None:
-            erreurs[str(index)] = ['Quantité entière ≥ 0 attendue.']  # ≤ QUANTITE_MAX, voir ci-dessus
+            erreurs[str(index)] = ['Quantité entière ≥ 0 attendue.']  # ≤ QUANTITE_MAX (utils.params)
         comptes.append(compte)
     if erreurs:
         raise ValidationError({'lignes': erreurs})

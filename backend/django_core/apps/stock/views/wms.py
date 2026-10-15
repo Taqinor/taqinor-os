@@ -48,6 +48,10 @@ CORPS_IMPORT_ASN = corps('UniteImportAsnCorps', version=ChaineStricte(required=F
 
 _ID_CORPS = {'min_value': 1, 'max_value': ID_MAX}
 
+#: Début des deux refus de ``creer_vague_depuis_besoins`` qui disent « rien à regrouper »
+#: (« Aucun besoin à regrouper… », « Aucun besoin valide à regrouper… ») : un état, pas une saisie.
+AUCUN_BESOIN = 'Aucun besoin'
+
 #: CI #997 fuzz (4) — corps de création d'une vague : des besoins explicites
 #: et/ou des chantiers dont on reprend les réservations ; ni l'un ni l'autre (ou
 #: rien de servable) est un état « aucun besoin à regrouper » (409).
@@ -188,11 +192,13 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
                 company=request.user.company, user=request.user,
                 besoins=besoins, installations=installations,
                 note=donnees.get('note') or '')
-        except EtatIncompatible as exc:  # rien de servable à regrouper : l'état s'oppose (409)
-            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
+            # « Aucun besoin (valide) à regrouper » : le corps est conforme, c'est l'état
+            # des réservations / du catalogue qui ne donne rien à servir (409) ; les
+            # autres refus du service (source « objet inexistant »…) restent des 400.
+            etat = str(exc).startswith(AUCUN_BESOIN)
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT if etat else status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(vague).data,
                         status=status.HTTP_201_CREATED)
 
