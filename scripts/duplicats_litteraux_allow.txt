@@ -56,7 +56,6 @@
 110254ccd14e|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro
 1175ae1c4671|apps/web/src/pages/ar/guides/combien-de-panneaux-pour-ma-maison.astro,apps/web/src/pages/en/guides/combien-de-panneaux-pour-ma-maison.astro
 12231c49d3b7|frontend/src/features/ged/GedNavigator.jsx,frontend/src/pages/ventes/devisList/DevisRow.jsx,frontend/src/pages/ventes/factureList/FactureRow.jsx
-130ccdcae376|apps/web/src/scripts/roofPro11/layoutEditor.ts,apps/web/src/scripts/roofPro11/optimizer.ts,apps/web/src/scripts/roofPro11/scene3d.ts
 135c7687c487|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/contact.astro,apps/web/src/pages/en/contact.astro
 137b890a6d3f|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro
 139898db6f4e|frontend/src/features/calepinage/CalepinageNouveau.test.jsx,frontend/src/features/calepinage/Etiquettes.test.jsx
