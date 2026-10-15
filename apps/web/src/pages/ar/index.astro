@@ -200,6 +200,11 @@ const investment = [
 // القاعدة ج8 (2026-07-05) — أُزيلت `engineeringPillars` مع قسم « مُركِّب يبني
 // أيضًا أدواته الخاصة » (المؤسس لا يريد تموقع تاكينور كباني لبرمجياته/أدواته
 // الخاصة).
+import ScrollytellingScript from '../../components/home/ScrollytellingScript.astro';
+import GalleryFilterLightboxScript from '../../components/home/GalleryFilterLightboxScript.astro';
+import HeroVideoScript from '../../components/home/HeroVideoScript.astro';
+import HeroTitleSweepScript from '../../components/home/HeroTitleSweepScript.astro';
+import HeroMagneticCtaScript from '../../components/home/HeroMagneticCtaScript.astro';
 ---
 
 <Layout
@@ -792,212 +797,15 @@ const investment = [
   }
 </style>
 
-<script>
-  // فيديو البطل: مؤجَّل — أول تفاعل أو 2.8 ثانية بعد التحميل؛ لا يُشغَّل أبدًا
-  // تحت reduced-motion أو data-saver (يبقى البوستر هو البطل).
-  const video = document.getElementById('hero-video') as HTMLVideoElement | null;
-  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
-  // @ts-expect-error saveData not typed everywhere
-  const saveData = navigator.connection?.saveData === true;
-  if (video && motionOk && !saveData) {
-    let started = false;
-    const start = () => {
-      if (started) return;
-      started = true;
-      video.src = '/videos/hero.mp4';
-      video.play().then(() => video.classList.add('opacity-100')).catch(() => {});
-    };
-    for (const ev of ['scroll', 'pointerdown', 'touchstart', 'keydown']) {
-      addEventListener(ev, start, { once: true, passive: true });
-    }
-    const arm = () => setTimeout(start, 2800);
-    if (document.readyState === 'complete') arm();
-    else addEventListener('load', arm, { once: true });
-  }
-</script>
+<HeroVideoScript />
 
 {/* القاعدة ب1/الأداء (2026-07-04) — أُزيل سكربت count-up لرقم البطل: الرقم
     الآن يُرسَم ثابتًا (LCP يُرسَم فورًا، بلا وميض)، ما يتجنّب حلقة
     requestAnimationFrame ثانية مكرَّرة مع count-up الخاص بـ V2Enhance. */}
-<script>
-  // W365 — بريق نحاسي واحد فقط يعبر عنوان البطل. يُسلَّح فقط بعد `load`
-  // (أبداً قبل ذلك: لا رسم إضافي ينافس ملصق البطل على LCP). الـ CSS
-  // (.hero-title-sweep، global.css) لا يفعل شيئاً قبل إضافة .hero-sweep-armed،
-  // لذا لا يمكن لهذا السكربت أبداً تأخير أو تغيير أول رسم للصفحة.
-  const heroTitle = document.getElementById('hero-title');
-  if (heroTitle) {
-    const arm = () => heroTitle.classList.add('hero-sweep-armed');
-    if (document.readyState === 'complete') requestAnimationFrame(arm);
-    else addEventListener('load', () => requestAnimationFrame(arm), { once: true });
-  }
-</script>
+<HeroTitleSweepScript />
 
-<script>
-  // W368 — CTA مغناطيسي: زر النحاس في البطل يتبع المؤشر بلطف شديد (±8px
-  // كحد أقصى)، transform فقط (لا reflow). مُقيَّد بالمؤشرات الدقيقة فقط
-  // ((pointer:fine) — أبداً على اللمس، حيث لا معنى لـ "pointermove") و
-  // prefers-reduced-motion. تحسين تدريجي خالص: بدون JS أو خارج التطابق، يبقى
-  // الزر رابطاً عادياً.
-  const magnet = document.getElementById('hero-cta-magnetic');
-  const canMagnet =
-    matchMedia('(prefers-reduced-motion: no-preference)').matches && matchMedia('(pointer: fine)').matches;
-  if (magnet && canMagnet) {
-    const strength = 8; // px — الإزاحة القصوى، انضباط «مهموس»
-    let raf = 0;
-    magnet.addEventListener('pointermove', (ev) => {
-      const rect = magnet.getBoundingClientRect();
-      const relX = (ev.clientX - rect.left) / rect.width - 0.5;
-      const relY = (ev.clientY - rect.top) / rect.height - 0.5;
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        magnet.style.transform = `translate(${(relX * 2 * strength).toFixed(1)}px, ${(relY * 2 * strength).toFixed(1)}px)`;
-      });
-    });
-    magnet.addEventListener('pointerleave', () => {
-      if (raf) cancelAnimationFrame(raf);
-      magnet.style.transform = '';
-    });
-  }
-</script>
+<HeroMagneticCtaScript />
 
-<script>
-  // W271 — فلترة المدينة + lightbox لمعرض الإثبات. DOM خالص، بلا أي تبعية.
-  // بلا جافاسكريبت: تبقى كل البطاقات ظاهرة ويبقى زرّ التكبير زرّاً عادياً بلا
-  // معالِج (تحسين تدريجي — أبداً فخّاً للوحة المفاتيح أو لقارئات الشاشة).
+<GalleryFilterLightboxScript />
 
-  // — فلترة المدينة —
-  const filterGroup = document.querySelector<HTMLElement>('[data-gallery-filter]');
-  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-gallery-card]'));
-  if (filterGroup) {
-    filterGroup.addEventListener('click', (ev) => {
-      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-city]');
-      if (!btn) return;
-      const city = btn.dataset.city;
-      filterGroup.querySelectorAll<HTMLButtonElement>('button[data-city]').forEach((b) => {
-        const active = b === btn;
-        b.setAttribute('aria-pressed', active ? 'true' : 'false');
-        b.classList.toggle('gallery-filter-chip-active', active);
-        b.classList.toggle('border-brass-400', active);
-        b.classList.toggle('bg-brass-400/10', active);
-        b.classList.toggle('text-brass-300', active);
-        b.classList.toggle('border-white/25', !active);
-        b.classList.toggle('text-lune-soft', !active);
-      });
-      cards.forEach((card) => {
-        const show = city === 'الكل' || card.dataset.city === city;
-        card.classList.toggle('gallery-card-hidden', !show);
-      });
-    });
-  }
-
-  // — Lightbox —
-  const dialog = document.getElementById('gallery-lightbox') as HTMLDialogElement | null;
-  if (dialog && typeof dialog.showModal === 'function') {
-    const img = dialog.querySelector<HTMLImageElement>('[data-lightbox-img]');
-    const captionEl = dialog.querySelector<HTMLElement>('[data-lightbox-caption]');
-    const typeEl = dialog.querySelector<HTMLElement>('[data-lightbox-type]');
-    const closeBtn = dialog.querySelector<HTMLButtonElement>('[data-lightbox-close]');
-
-    let lastTrigger: HTMLElement | null = null;
-
-    const openFromButton = (btn: HTMLElement) => {
-      const name = btn.dataset.name ?? '';
-      const widths = (btn.dataset.widths ?? '').split(',').map((w) => parseInt(w, 10)).filter((n) => !Number.isNaN(n));
-      const largest = widths.length ? Math.max(...widths) : 1600;
-      if (img) {
-        img.src = `/photos/${name}-${largest}.webp`;
-        img.alt = btn.dataset.alt ?? '';
-      }
-      if (captionEl) captionEl.textContent = btn.dataset.caption ?? '';
-      if (typeEl) typeEl.textContent = btn.dataset.type ?? '';
-      lastTrigger = btn;
-      dialog.showModal();
-    };
-
-    document.querySelectorAll<HTMLButtonElement>('[data-lightbox-open]').forEach((btn) => {
-      btn.addEventListener('click', () => openFromButton(btn));
-    });
-
-    const closeDialog = () => {
-      dialog.close();
-    };
-    closeBtn?.addEventListener('click', closeDialog);
-
-    // نقر على الخلفية (backdrop) → إغلاق. <dialog> الأصلي يتكفّل بـ Escape سلفاً.
-    dialog.addEventListener('click', (ev) => {
-      if (ev.target === dialog) closeDialog();
-    });
-
-    // إعادة التركيز إلى الزرّ المُطلِق عند الإغلاق (إتاحة لوحة المفاتيح).
-    dialog.addEventListener('close', () => {
-      lastTrigger?.focus();
-    });
-  }
-</script>
-
-<script>
-  // W371 — لحظة سرد مثبَّتة أثناء التمرير، فريدة في الصفحة («كيف يجري الأمر»).
-  // تحسين تدريجي خالص: بلا جافاسكريبت، أو خارج الحاسوب، أو تحت
-  // prefers-reduced-motion، يبقى القسم الشبكة المسطّحة الأصلية — هذا السكربت
-  // يكتفي بإضافة صنف + سِمة، أبدًا لا يختطف التمرير (بلا preventDefault، بلا
-  // scrollTo قسري).
-  const journeySection = document.querySelector<HTMLElement>('[data-journey-section]');
-  const steps = Array.from(document.querySelectorAll<HTMLElement>('[data-journey-step]'));
-  const caption = document.querySelector<HTMLElement>('[data-journey-caption]');
-
-  if (journeySection && steps.length && 'IntersectionObserver' in window) {
-    const desktopMotionOk = matchMedia('(min-width: 1024px) and (prefers-reduced-motion: no-preference)');
-
-    let io: IntersectionObserver | null = null;
-
-    const setActive = (step: HTMLElement) => {
-      for (const s of steps) s.removeAttribute('data-journey-active');
-      step.setAttribute('data-journey-active', '');
-      if (caption) {
-        const title = step.dataset.journeyTitle ?? '';
-        const body = step.dataset.journeyBody ?? '';
-        caption.textContent = title && body ? `${title} — ${body}` : '';
-      }
-    };
-
-    const teardown = () => {
-      io?.disconnect();
-      io = null;
-      journeySection.classList.remove('journey-pinned');
-      for (const s of steps) s.removeAttribute('data-journey-active');
-      if (caption) {
-        caption.hidden = true;
-        caption.textContent = '';
-      }
-    };
-
-    const setup = () => {
-      journeySection.classList.add('journey-pinned');
-      if (caption) caption.hidden = false;
-      // المرحلة التي يكون مركزها الأقرب لمركز الشاشة «تُضاء» — نافذة ضيّقة
-      // حول خط المنتصف، لا مجرّد عتبة دخول، لربط دقيق بين القراءة والحركة.
-      io = new IntersectionObserver(
-        (entries) => {
-          const visible = entries.filter((e) => e.isIntersecting);
-          if (!visible.length) return;
-          const closest = visible.reduce((best, e) =>
-            Math.abs(e.boundingClientRect.top) < Math.abs(best.boundingClientRect.top) ? e : best
-          );
-          setActive(closest.target as HTMLElement);
-        },
-        { rootMargin: '-45% 0px -45% 0px', threshold: 0 }
-      );
-      for (const s of steps) io.observe(s);
-      // المرحلة الأولى نشِطة افتراضيًا، قبل أي عبور لعتبة.
-      setActive(steps[0]);
-    };
-
-    const sync = () => {
-      if (desktopMotionOk.matches) setup();
-      else teardown();
-    };
-
-    sync();
-    desktopMotionOk.addEventListener('change', sync);
-  }
-</script>
+<ScrollytellingScript />

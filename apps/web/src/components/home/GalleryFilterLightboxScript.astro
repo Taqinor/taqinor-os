@@ -1,0 +1,77 @@
+<script>
+  // W271 — Filtre de galerie par ville + lightbox. Pur DOM, sans dépendance.
+  // Sans JS : toutes les cartes restent visibles et le bouton d'agrandissement
+  // reste un <button> normal sans handler (progressive enhancement — jamais
+  // un piège au clavier ou pour les lecteurs d'écran).
+
+  // — Filtre ville —
+  const filterGroup = document.querySelector<HTMLElement>('[data-gallery-filter]');
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-gallery-card]'));
+  if (filterGroup) {
+    // La 1re pastille est toujours « tout » (libellé localisé : data-city de la page).
+    const allCity = filterGroup.querySelector<HTMLButtonElement>('button[data-city]')?.dataset.city;
+    filterGroup.addEventListener('click', (ev) => {
+      const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>('button[data-city]');
+      if (!btn) return;
+      const city = btn.dataset.city;
+      filterGroup.querySelectorAll<HTMLButtonElement>('button[data-city]').forEach((b) => {
+        const active = b === btn;
+        b.setAttribute('aria-pressed', active ? 'true' : 'false');
+        b.classList.toggle('gallery-filter-chip-active', active);
+        b.classList.toggle('border-brass-400', active);
+        b.classList.toggle('bg-brass-400/10', active);
+        b.classList.toggle('text-brass-300', active);
+        b.classList.toggle('border-white/25', !active);
+        b.classList.toggle('text-lune-soft', !active);
+      });
+      cards.forEach((card) => {
+        const show = city === allCity || card.dataset.city === city;
+        card.classList.toggle('gallery-card-hidden', !show);
+      });
+    });
+  }
+
+  // — Lightbox —
+  const dialog = document.getElementById('gallery-lightbox') as HTMLDialogElement | null;
+  if (dialog && typeof dialog.showModal === 'function') {
+    const img = dialog.querySelector<HTMLImageElement>('[data-lightbox-img]');
+    const captionEl = dialog.querySelector<HTMLElement>('[data-lightbox-caption]');
+    const typeEl = dialog.querySelector<HTMLElement>('[data-lightbox-type]');
+    const closeBtn = dialog.querySelector<HTMLButtonElement>('[data-lightbox-close]');
+
+    let lastTrigger: HTMLElement | null = null;
+
+    const openFromButton = (btn: HTMLElement) => {
+      const name = btn.dataset.name ?? '';
+      const widths = (btn.dataset.widths ?? '').split(',').map((w) => parseInt(w, 10)).filter((n) => !Number.isNaN(n));
+      const largest = widths.length ? Math.max(...widths) : 1600;
+      if (img) {
+        img.src = `/photos/${name}-${largest}.webp`;
+        img.alt = btn.dataset.alt ?? '';
+      }
+      if (captionEl) captionEl.textContent = btn.dataset.caption ?? '';
+      if (typeEl) typeEl.textContent = btn.dataset.type ?? '';
+      lastTrigger = btn;
+      dialog.showModal();
+    };
+
+    document.querySelectorAll<HTMLButtonElement>('[data-lightbox-open]').forEach((btn) => {
+      btn.addEventListener('click', () => openFromButton(btn));
+    });
+
+    const closeDialog = () => {
+      dialog.close();
+    };
+    closeBtn?.addEventListener('click', closeDialog);
+
+    // Clic sur le fond (backdrop) → fermeture. <dialog> natif gère déjà Échap.
+    dialog.addEventListener('click', (ev) => {
+      if (ev.target === dialog) closeDialog();
+    });
+
+    // Rendre le focus au déclencheur à la fermeture (accessibilité clavier).
+    dialog.addEventListener('close', () => {
+      lastTrigger?.focus();
+    });
+  }
+</script>
