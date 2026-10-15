@@ -91,7 +91,7 @@ class QuestionnairePro(TestCase):
         lead = self._pro()
         for section in CONTRAT['segment_pro']['refusees_400']:
             res = self._mint(lead, {'questions': {section: True}})
-            self.assertEqual(res.status_code, 400, section)
+            self.assertEqual(res.status_code, 409, section)  # ENF11 : hors segment
             self.assertIn(section, res.data['detail'])
 
     def test_post_reseau_n_ecrit_que_ses_colonnes_jamais_de_vide(self):

@@ -79,7 +79,7 @@ class SectionPompageTests(TestCase):
         lead = self._agricole()
         for section in quest.SECTIONS_REFUSEES_AGRICOLE:
             res = self._mint(lead, {'questions': {section: True}})
-            self.assertEqual(res.status_code, 400, section)
+            self.assertEqual(res.status_code, 409, section)  # ENF11 : hors segment
             self.assertIn(section, res.data['detail'])
 
     def test_post_section_pompage_n_ecrit_que_ses_colonnes(self):
@@ -132,5 +132,5 @@ class SectionPompageTests(TestCase):
             self.assertNotIn(section, res.data['questions'])
             self.assertNotIn(section, res.data['manquantes'])
         res = self._mint(lead, {'questions': {'pompage': True}})
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 409)  # ENF11 : section connue, hors segment
         self.assertEqual(res.data['detail'], 'Section inconnue : « pompage ».')

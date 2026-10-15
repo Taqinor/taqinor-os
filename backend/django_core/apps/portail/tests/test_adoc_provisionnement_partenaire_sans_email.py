@@ -54,10 +54,10 @@ class ProvisionnementPartenaireSansEmailTests(TestCase):
             company=self.co, portee=CustomUser.PORTEE_PORTAIL_PARTENAIRE,
             portail_partenaire_id=self.partenaire.id)
 
-    def test_partenaire_sans_email_400(self):
+    def test_partenaire_sans_email_409(self):
         res = self.api.post(self.url, {}, format='json')
 
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 409, res.content)  # ENF11 : état de la fiche
         self.assertEqual(res.json(), {'detail': MESSAGE})
         # Persistance : relecture — aucun compte créé, aucun e-mail.
         self.assertFalse(self._comptes_portail().exists())

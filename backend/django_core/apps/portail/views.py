@@ -166,10 +166,10 @@ class ComptePortailClientViewSet(_PortailBaseViewSet):
                 request.user.company, compte.client_id)
         except services.ProvisionnementSansEmail as exc:
             # ADOC123 — refus NOMMÉ : aucun compte créé, aucun e-mail.
-            return Response({'detail': str(exc)}, status=400)
+            return Response({'detail': str(exc)}, status=409)  # ENF11 : la fiche s'oppose
         if user is None:
             return Response(
-                {'detail': 'Client inconnu pour cette société.'}, status=400)
+                {'detail': 'Client inconnu pour cette société.'}, status=404)
         return Response({
             'utilisateur_id': user.id,
             'username': user.username,

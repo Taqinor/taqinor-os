@@ -6,7 +6,7 @@ vue est déclaré, tout corps attendu est décrit, toute réponse qui n'est pas 
 ``inline_serializer`` / ``OpenApiParameter`` dans ``views.py``.
 """
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_serializer
 from rest_framework import serializers
 
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
@@ -180,6 +180,33 @@ LOCATAIRE_SUITE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
                             'telephone': {'type': 'string', 'maxLength': 0}}},
         ]}}},
 ]}}
+
+
+def _schema_questions():
+    from .models import QuestionnaireLien
+    return {'type': 'object', 'additionalProperties': False,
+            'properties': {cle: {'type': 'boolean'} for cle in QuestionnaireLien.SECTIONS_CLES}}
+
+
+@extend_schema_field(_schema_questions())
+class QuestionsQuestionnaire(serializers.DictField):
+    """ENF11 (nocturne 15/10) — ``questions`` du lien questionnaire :
+    ``{section: booléen}``, sections de la whitelist SEULEMENT (une clé
+    inconnue était « conforme » au schéma puis refusée en 400)."""
+
+
+#: ENF11 (nocturne 15/10) — ``?periode=AAAA-MM`` du roll-up forecast : année
+#: 0001-9999, mois 01-12 — le motif PUBLIÉ est celui que la vue applique.
+MOTIF_PERIODE_MOIS = r'^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$'
+
+#: ENF11 (nocturne 15/10) — réponse du POST ``leads/{id}/locataire/`` : l'issue
+#: (``proprietaire_cree`` 201, ``proprietaire_relie`` / ``perdu_locataire`` 200),
+#: la fiche propriétaire (null quand le propriétaire est inconnu) et le locataire.
+LOCATAIRE_ISSUE = inline_serializer('CrmLeadLocataireIssue', {
+    'issue': serializers.CharField(),
+    'lead_proprietaire': serializers.DictField(allow_null=True),
+    'locataire': serializers.DictField(),
+})
 
 
 def corps_bulk(actions):

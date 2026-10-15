@@ -127,12 +127,10 @@ class BornesFactureTests(TestCase):
     def test_designation_nul_publiee_et_refusee(self):
         # ENF11 (nocturne 15/10) — le motif publié exclut le caractère nul,
         # exactement ce que DRF refuse (400 nommant `designation`).
-        import re
-
         from apps.ventes.serializers_facturation import LigneFactureSerializer
         from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
-        motifs = [v.regex.pattern for v in LigneFactureSerializer().fields['designation'].validators
-                  if isinstance(getattr(v, 'regex', None), re.Pattern)]
+        motifs = [getattr(getattr(v, 'regex', None), 'pattern', None)
+                  for v in LigneFactureSerializer().fields['designation'].validators]
         self.assertIn(MOTIF_NON_BLANC_SANS_NUL, motifs)
         r = self.api.patch(f'/api/django/ventes/factures-lignes/{self.ligne.id}/',
                            {'designation': 'Panneau\x00'}, format='json')
