@@ -109,7 +109,7 @@ class DeclencherCollecteView(_BaseVeilleView):
                          company=company, user=request.user,
                          company_id=getattr(company, 'pk', None),
                          user_id=request.user.pk)
-        except Exception as erreur:  # noqa: BLE001 — broker injoignable
+        except Exception as erreur:  # noqa: BLE001 — broker injoignable (D-ENF22-BLE001)
             # ``core.jobs.submit`` a déjà marqué le job en ÉCHEC ; il reste à
             # le DIRE à l'écran. Un 503 explicite en français vaut infiniment
             # mieux qu'un 500 : l'utilisateur sait que ce n'est pas sa faute
