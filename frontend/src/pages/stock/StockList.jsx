@@ -444,7 +444,6 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
     stockApi.suggestionsReapproEmplacement()
       .then((r) => setSuggestions(r.data ?? [])).catch(() => {})
   }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadEmplacements(); loadTransferts(); loadSuggestions() }, [])
 
   const loadBreakdown = (pid) => {

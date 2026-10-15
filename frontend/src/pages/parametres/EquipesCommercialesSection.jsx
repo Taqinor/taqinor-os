@@ -2,7 +2,7 @@
 // dashboard « Mes équipes » (pipeline/CA agrégés par équipe). Autonome : gère
 // son propre chargement, la liste des membres assignables lui est passée par
 // le parent (déjà chargée pour le reste de l'onglet Leads).
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import useEquipesAdmin from './useEquipesAdmin'
 import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import EquipesAdminPanel from './EquipesAdminPanel'
@@ -15,16 +15,15 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
   const { confirmDelete: confirmerSuppression } = useConfirmDialog()
   const { equipes, setEquipes, loading, setLoading, error, setError, newNom, setNewNom, busyId, setBusyId } = useEquipesAdmin()
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     toutesLesPages((params) => crmApi.getEquipes(params))
       .then((rows) => setEquipes(rows))
       .catch(() => setError('Impossible de charger les équipes.'))
       .finally(() => setLoading(false))
-  }
+  }, [setLoading, setEquipes, setError])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
   const addEquipe = async () => {
     if (!newNom.trim()) return

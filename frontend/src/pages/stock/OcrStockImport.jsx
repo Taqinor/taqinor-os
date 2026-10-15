@@ -176,7 +176,7 @@ export default function OcrStockImport() {
       setDocType(stockOcrDocType)
       setStep(2)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!stockOcrResult) return
@@ -271,7 +271,7 @@ const cp = produitsRef.current
       }
     }))
     setStep(3)
-  }, [stockOcrResult]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [stockOcrResult])
 
   // Conservé pour usage futur (préfixe _ : non branché pour l'instant)
   const _fuzzyMatchCategorie = useCallback((suggestion) => {

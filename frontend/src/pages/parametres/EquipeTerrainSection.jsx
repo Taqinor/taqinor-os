@@ -9,7 +9,7 @@
 // on regroupe des techniciens (utilisateurs), on désigne un chef optionnel, on
 // archive sans supprimer. La liste des utilisateurs assignables est passée par
 // le parent (déjà chargée pour l'onglet).
-import { useEffect } from 'react'
+import { useCallback, useEffect } from 'react'
 import useEquipesAdmin from './useEquipesAdmin'
 import { useConfirmDialog } from '../../ui/confirm'
 import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
@@ -27,16 +27,15 @@ export default function EquipeTerrainSection({ assignables = [] }) {
   const { confirmDelete } = useConfirmDialog()
   const { equipes, setEquipes, loading, setLoading, error, setError, newNom, setNewNom, busyId, setBusyId } = useEquipesAdmin()
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     toutesLesPages((params) => installationsApi.getEquipesTerrain(params))
       .then((rows) => setEquipes(rows))
       .catch(() => setError('Impossible de charger les équipes terrain.'))
       .finally(() => setLoading(false))
-  }
+  }, [setLoading, setEquipes, setError])
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
   const addEquipe = async () => {
     if (!newNom.trim()) return
