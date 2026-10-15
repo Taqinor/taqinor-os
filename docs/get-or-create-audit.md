@@ -52,14 +52,11 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/adsengine/views.py::GuardrailSingletonView.patch::GuardrailConfig` | get_or_create | GuardrailConfig.objects | company |
 | `backend/django_core/apps/adsengine/views.py::MetaConnectionStatusView.post::MetaConnection` | get_or_create | MetaConnection.objects | company |
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py::WhatsAppCloudWebhookView._process::CtwaReferral` | update_or_create | CtwaReferral.objects | company, wa_message_id |
-| `backend/django_core/apps/automation/templates.py::installer_modele::AutomationRule` | get_or_create | AutomationRule.objects | company, nom |
 | `backend/django_core/apps/calepinage/services/modeles.py::_tag_modele::Tag` | get_or_create | Tag.objects | company, nom |
 | `backend/django_core/apps/calepinage/services/modeles.py::marquer_modele::TaggedItem` | get_or_create | TaggedItem.objects | content_type, object_id, tag |
 | `backend/django_core/apps/calepinage/views/calepinages.py::ActionIdempotenteMixin.executer_idempotent::IdempotencyRecord` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
 | `backend/django_core/apps/calepinage/views/reglementaire.py::_dossier_en_base::DossierReglementaire` | get_or_create | DossierReglementaire.objects | calepinage, company, gabarit |
-| `backend/django_core/apps/crm/cadence_messages.py::seed_playbooks_segment::Playbook` | get_or_create | Playbook.objects | company, nom |
 | `backend/django_core/apps/crm/cadence_messages.py::seed_playbooks_segment::PlaybookEtape` | get_or_create | PlaybookEtape.objects | playbook, stage |
-| `backend/django_core/apps/crm/cadence_messages.py::seed_playbooks_segment::PlaybookTache` | get_or_create | PlaybookTache.objects | etape, libelle |
 | `backend/django_core/apps/crm/fiche_funnel.py::_rattraper_playbooks_lisant::LeadPlaybookProgress` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
 | `backend/django_core/apps/crm/fiche_funnel.py::generer_playbook_progress::LeadPlaybookProgress` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py::snapshot_forecast_hebdo::ForecastSnapshot` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
@@ -94,7 +91,6 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/installations/services.py::_emplacement_van::EmplacementStock` | get_or_create | EmplacementStock.objects | company, nom |
 | `backend/django_core/apps/installations/services.py::_poser_reservation_ecart::StockReservation` | get_or_create | StockReservation.objects | installation, produit_id |
 | `backend/django_core/apps/installations/services.py::_publier_jalon_statut::JalonProjet` | get_or_create | JalonProjet.objects | installation, phase |
-| `backend/django_core/apps/installations/services.py::_seed_schema_unifilaire_document::DocumentProjet` | get_or_create | DocumentProjet.objects | installation, type_doc |
 | `backend/django_core/apps/installations/services.py::appliquer_mouvement_casier::BinAffectation` | get_or_create | BinAffectation.objects.select_for_update() | bin_id, produit_id |
 | `backend/django_core/apps/installations/services.py::ensure_commissioning_record::CommissioningRecord` | get_or_create | CommissioningRecord.objects | installation |
 | `backend/django_core/apps/installations/services.py::ensure_default_template::ChecklistEtapeModele` | get_or_create | ChecklistEtapeModele.objects | cle, company, template |
@@ -124,7 +120,6 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/notifications/management/commands/seed_holidays_sn.py::Command.handle::Holiday` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py::seed_holidays_for_company::Holiday` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py::seed_holidays_for_company::Holiday` | get_or_create | Holiday.objects | company, date, nom |
-| `backend/django_core/apps/notifications/selectors.py::upsert_holiday::Holiday` | update_or_create | Holiday.objects | company, date, pays |
 | `backend/django_core/apps/notifications/services.py::_approval_reminder_state::ApprovalReminderState` | get_or_create | ApprovalReminderState.objects | content_type, object_id |
 | `backend/django_core/apps/notifications/services.py::acknowledge_annonce::AnnonceLecture` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
 | `backend/django_core/apps/notifications/services.py::snooze_approbation_item::SnoozedItem` | update_or_create | SnoozedItem.objects | object_id, source, user |
