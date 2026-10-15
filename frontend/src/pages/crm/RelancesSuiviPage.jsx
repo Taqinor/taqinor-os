@@ -549,7 +549,7 @@ export default function RelancesSuiviPage() {
       // qui l'affiche sous le geste ; le toast ne reste que pour réseau/5xx.
       const statut = err?.response?.status
       const donnees = err?.response?.data
-      const refusNomme = statut === 403 || (statut === 400
+      const refusNomme = statut === 403 || ((statut === 400 || statut === 409)
         && (Object.keys(donnees?.erreurs ?? {}).length > 0
           || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
       if (!refusNomme) toastError('Action impossible pour le moment.')

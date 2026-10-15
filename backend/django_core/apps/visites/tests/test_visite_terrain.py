@@ -230,6 +230,15 @@ class CompletudeTests(VisiteTerrainBase):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('categorie', resp.data['erreurs'])
 
+    def test_un_champ_inconnu_de_la_categorie_est_un_refus_d_etat(self):
+        visite_id = self.creer_visite()
+        resp = self.api.patch(
+            f'/api/django/visites/visites/{visite_id}/mesures/',
+            {'categorie': 'tableau', 'valeurs': {'champ_fantaisiste': 1}},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('champ_fantaisiste', resp.data['erreurs'])
+
     def test_mesure_invalide_nomme_le_champ_fautif(self):
         visite_id = self.creer_visite()
         resp = self.api.patch(

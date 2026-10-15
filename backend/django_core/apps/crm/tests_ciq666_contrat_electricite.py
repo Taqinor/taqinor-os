@@ -110,11 +110,11 @@ class SaisieParLApi(TestCase):
         self.assertEqual(entree['valeur'], {'contrat': 'bt_force_motrice',
                                             'option_bi_horaire': True})
 
-    def test_bi_horaire_hors_force_motrice_400_nomme_le_champ(self):
+    def test_bi_horaire_hors_force_motrice_409_nomme_le_champ(self):
         resp = self.api.patch(self.url, {
             'contrat_electricite': 'bt_patente',
             'option_tarifaire_bt': 'bi_horaire'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('option_tarifaire_bt', resp.data)
 
     def test_contrat_inconnu_refuse(self):

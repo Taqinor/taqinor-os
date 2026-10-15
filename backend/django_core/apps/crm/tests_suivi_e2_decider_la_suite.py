@@ -130,7 +130,7 @@ class PerduTests(_Base):
     def test_motif_absent_refuse_en_nommant_le_champ(self):
         decider = self._decider()
         resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('Motif de perte', resp.data['erreurs']['motif_perte'])
         self._rien_n_a_bouge(decider)
 
@@ -138,7 +138,7 @@ class PerduTests(_Base):
         decider = self._decider()
         resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte='Inventé')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('« Inventé »', resp.data['erreurs']['motif_perte'])
         self._rien_n_a_bouge(decider)
 
@@ -146,7 +146,7 @@ class PerduTests(_Base):
         decider = self._decider()
         resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte='Ancien motif')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('motif_perte', resp.data['erreurs'])
         self._rien_n_a_bouge(decider)
 
@@ -158,7 +158,7 @@ class PerduTests(_Base):
         decider = self._decider()
         resp = self._fait(decider, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte='Motif étranger')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self._rien_n_a_bouge(decider)
 
     def test_perdu_hors_de_decider_la_suite_est_refuse(self):
@@ -166,7 +166,7 @@ class PerduTests(_Base):
                              libelle=cadence_reperes.FILET_JOINT_LIBELLE)
         resp = self._fait(devis, reponse=cadence_reponses.REPONSE_PERDU,
                           motif_perte=MOTIF)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('« Perdu — clore le dossier »',
                       resp.data['erreurs']['reponse'])
         self.lead.refresh_from_db()
@@ -184,7 +184,7 @@ class RefusSurDeciderLaSuiteTests(_Base):
     def test_refus_est_refuse_et_ne_repose_rien(self):
         decider = self._decider()
         resp = self._fait(decider, outcome='refuse')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data['erreurs']['outcome'],
                          MESSAGE_REFUS_SUR_DECIDER_SUITE)
         decider.refresh_from_db()

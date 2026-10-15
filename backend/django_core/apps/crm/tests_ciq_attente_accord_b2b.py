@@ -90,7 +90,7 @@ class RaisonObligatoireTests(_Base):
 
     def test_a_sans_raison_400_nomme_le_champ(self):
         resp = self._attente(rappel_le=J10.isoformat())
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('raison_attente', resp.data['erreurs'])
         self.lead.refresh_from_db()
         for etiquette in TAGS.values():

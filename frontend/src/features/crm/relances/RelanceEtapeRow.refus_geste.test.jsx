@@ -77,6 +77,15 @@ describe('SUIVI-REFUS — « Reporter » refusé par le serveur', () => {
     expect(toastInfo).not.toHaveBeenCalled()
   })
 
+  it('refus d’ÉTAT (409 erreurs.etape, ERR-ENF11-FUZZ-CRM) : même affichage sous le geste qu’un 400', async () => {
+    const onReporter = vi.fn(() => Promise.reject(refus(409, { erreurs: { etape: DEJA_TRAITEE } })))
+    monter({ onReporter })
+    ouvrirReporter()
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
+    expect(screen.getByRole('button', { name: 'Confirmer' })).toBeInTheDocument()
+  })
+
   it('le refus de DATE du serveur (erreurs.rappel_le) s’affiche SOUS « Reporter au » et s’efface à la retouche de la date', async () => {
     const refusDate = '« Reporter au » : le 22/09/2026 est déjà passé — choisissez aujourd’hui ou une date à venir.'
     const onReporter = vi.fn(() => Promise.reject(refus400({ rappel_le: refusDate })))

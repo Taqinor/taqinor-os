@@ -165,7 +165,7 @@ class EnregistrerLaLangueTests(_Base):
         resp = self.api.post(
             f'/api/django/crm/relance-etapes/{etape.pk}/fait/',
             {'langue': 'darija'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('outcome', resp.data['erreurs'])
         self.lead.refresh_from_db()
         self.assertIsNone(self.lead.langue_preferee)

@@ -189,6 +189,16 @@ describe('SUIVI-REFUS — frise de la fiche : Sauter / Reporter refusés', () =>
     expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(1)
   })
 
+  it('« Sauter » refusé en 409 (état : touche déjà traitée, ERR-ENF11-FUZZ-CRM) : même affichage, aucun toast générique', async () => {
+    crmApi.marquerRelanceEtapeSautee.mockRejectedValueOnce(refus(409, { erreurs: { etape: DEJA_TRAITEE } }))
+    await monterFrise()
+    fireEvent.click(screen.getByRole('button', { name: /Sauter/ }))
+    confirmer()
+    expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
+    expect(toastError).not.toHaveBeenCalled()
+    expect(crmApi.getRelanceEtapesLead).toHaveBeenCalledTimes(1)
+  })
+
   it('« Sauter » : un échec RÉSEAU garde son toast (F2) ET la phrase claire sous le geste', async () => {
     crmApi.marquerRelanceEtapeSautee.mockRejectedValueOnce(new Error('Network Error'))
     await monterFrise()

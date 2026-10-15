@@ -411,7 +411,7 @@ class TestRelanceEtapeAPI(TestCase):
         resp = self.api_resp.post(
             f'/api/django/crm/relance-etapes/{etape.id}/fait/',
             {'note': 'Ça a sonné'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('outcome', resp.data['erreurs'])
         etape.refresh_from_db()
         self.assertEqual(etape.statut, RelanceEtape.Statut.A_FAIRE)
