@@ -15,6 +15,8 @@ from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
 
+from .serializers_blocs import (
+    bloc_calepinage, bloc_dossier_8221_resume, bloc_regime_suggere)
 from .serializers_stage import refus_protege, valider_unicite_societe
 
 from .models import (
@@ -682,8 +684,7 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
 
     @extend_schema_field(serializers.DictField())
     def get_dossier_8221_resume(self, obj):
-        from .services import resume_dossier_8221
-        return resume_dossier_8221(obj)
+        return bloc_dossier_8221_resume(self, obj)  # APRF37 : null en liste
 
     @extend_schema_field(serializers.IntegerField())
     def get_statut_ordre(self, obj):
@@ -699,12 +700,7 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
 
     @extend_schema_field(serializers.DictField())
     def get_regime_suggere(self, obj):
-        # CIQ613 — noyau sourcé : kWc DC, kW AC des onduleurs (nomenclature
-        # gelée), niveau de tension, hors réseau ; C&I inconnu → à qualifier.
-        from .regime import suggest_for_installation
-        code = suggest_for_installation(obj)
-        label = dict(Installation.Regime8221.choices).get(code, code)
-        return {'code': code, 'label': label}
+        return bloc_regime_suggere(self, obj)  # APRF37 : null en liste
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_parc_garantie_etat(self, obj):
@@ -745,10 +741,7 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
     # ou `null` quand le chantier n'a ni devis ni variante retenue.
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_calepinage(self, obj):
-        # CAL245 — import fonction-local (frontière inter-apps) : le
-        # sélecteur, jamais apps.calepinage.models.
-        from .selectors import calepinage_retenu_du_chantier
-        return calepinage_retenu_du_chantier(obj)
+        return bloc_calepinage(self, obj)  # APRF37 : null en liste
 
     @extend_schema_field(serializers.BooleanField())
     def get_est_parc(self, obj):

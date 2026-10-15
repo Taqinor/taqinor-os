@@ -407,6 +407,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   }
 
   useEffect(() => {
+    // APRF37 — la LIGNE de liste porte `null` pour regime_suggere/calepinage/dossier : le détail est relu à l'ouverture.
+    Promise.resolve().then(() => installationsApi.getInstallation(id)).then((r) => { if (r?.data) setCurrent(r.data) }).catch(() => {})
     loadHistorique()
     loadEquipements()
     loadTickets()

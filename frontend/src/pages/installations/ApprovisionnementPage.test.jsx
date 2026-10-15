@@ -56,4 +56,26 @@ describe('ApprovisionnementPage (WIR110)', () => {
     await waitFor(() => expect(api.getCommandesCadre).toHaveBeenCalled())
     expect(await screen.findByText('CC-202607-0001')).toBeInTheDocument()
   })
+
+  // ACHT62 — faux serveur DRF paginé à 50 : l'onglet lit TOUTES les pages (51 lignes).
+  it('un onglet de 51 lignes sur 2 pages les affiche toutes', async () => {
+    resolveAll()
+    const lignes = Array.from({ length: 51 }, (_, i) => ({
+      id: i + 1, reference: `CC-${String(i + 1).padStart(3, '0')}`, intitule: 'Lot', fournisseur_nom: 'ACME',
+      statut: 'actif', statut_display: 'Actif', lignes: [],
+    }))
+    api.getCommandesCadre.mockImplementation(({ page = 1 } = {}) => Promise.resolve({
+      data: {
+        count: 51,
+        next: page === 1 ? '?page=2' : null,
+        results: page === 1 ? lignes.slice(0, 50) : lignes.slice(50),
+      },
+    }))
+    const user = userEvent.setup()
+    render(<ApprovisionnementPage />)
+    await screen.findByText('Seuil Responsable (MAD)')
+    await user.click(screen.getByRole('tab', { name: 'Contrats-cadre' }))
+    expect(await screen.findByText('CC-051')).toBeInTheDocument()
+    expect(screen.getByText('CC-001')).toBeInTheDocument()
+  })
 })
