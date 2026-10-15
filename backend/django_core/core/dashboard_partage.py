@@ -28,6 +28,7 @@ from core.throttling import PublicTokenReadThrottle
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.mixins import TenantMixin
 from core.serializers import CompanyScopedRelationsMixin
+from core.unicite import UniciteEn409Mixin
 
 from .models import Dashboard, DashboardPartageInterne, PartageDashboard
 
@@ -171,12 +172,18 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
-class DashboardPartageInterneSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+class DashboardPartageInterneSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
+                                        ChampsStrictsMixin,
                                         CompanyScopedRelationsMixin,
                                         DashboardScopeMixin,
                                         serializers.ModelSerializer):
     """XPLT10 — partage interne d'un dashboard (utilisateur ou rôle,
-    lecture/édition), borné à la société."""
+    lecture/édition), borné à la société.
+
+    CI #1000 : le doublon (même dashboard + même utilisateur, ou même rôle)
+    répond 409 ``unique_conflict`` (``UniciteEn409Mixin``) — le corps est
+    conforme au schéma, c'est l'état des données qui s'y oppose (le 400 de
+    DRF contredisait « requête conforme acceptée »)."""
 
     class Meta:
         model = DashboardPartageInterne

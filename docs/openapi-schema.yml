@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3506}
+counts: {paths: 4814, operations: 7566, components: 3505}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -7595,7 +7595,8 @@ query_params:
   get /api/django/achats/factures-fournisseur/en-exception/: ordering search
   get /api/django/achats/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/django/achats/factures-fournisseur/suggestions-bcf/: fournisseur montant
-  post /api/django/achats/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/django/achats/factures-fournisseur/{id}/echeancier/: search
+  post /api/django/achats/factures-fournisseur/{id}/echeancier/: ordering search
   get /api/django/achats/factures-fournisseur/{id}/paiements/: ordering search
   get /api/django/achats/paiements-fournisseur/: facture ordering page page_size
   get /api/django/achats/paiements-fournisseur/ras-tva/export/: date_debut date_fin
@@ -8206,7 +8207,8 @@ query_params:
   get /api/django/stock/factures-fournisseur/en-exception/: ordering search
   get /api/django/stock/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/django/stock/factures-fournisseur/suggestions-bcf/: fournisseur montant
-  post /api/django/stock/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/django/stock/factures-fournisseur/{id}/echeancier/: search
+  post /api/django/stock/factures-fournisseur/{id}/echeancier/: ordering search
   get /api/django/stock/factures-fournisseur/{id}/paiements/: ordering search
   get /api/django/stock/fiches-techniques/: ordering page page_size produit
   get /api/django/stock/fournisseurs/: categorie ordering page page_size search show_archived
@@ -8376,7 +8378,8 @@ query_params:
   get /api/v1/achats/factures-fournisseur/en-exception/: ordering search
   get /api/v1/achats/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/v1/achats/factures-fournisseur/suggestions-bcf/: fournisseur montant
-  post /api/v1/achats/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/v1/achats/factures-fournisseur/{id}/echeancier/: search
+  post /api/v1/achats/factures-fournisseur/{id}/echeancier/: ordering search
   get /api/v1/achats/factures-fournisseur/{id}/paiements/: ordering search
   get /api/v1/achats/paiements-fournisseur/: facture ordering page page_size
   get /api/v1/achats/paiements-fournisseur/ras-tva/export/: date_debut date_fin
@@ -8985,7 +8988,8 @@ query_params:
   get /api/v1/stock/factures-fournisseur/en-exception/: ordering search
   get /api/v1/stock/factures-fournisseur/releve-deductions-tva/: date_debut date_fin
   get /api/v1/stock/factures-fournisseur/suggestions-bcf/: fournisseur montant
-  post /api/v1/stock/factures-fournisseur/{id}/echeancier/: ordering page page_size search
+  get /api/v1/stock/factures-fournisseur/{id}/echeancier/: search
+  post /api/v1/stock/factures-fournisseur/{id}/echeancier/: ordering search
   get /api/v1/stock/factures-fournisseur/{id}/paiements/: ordering search
   get /api/v1/stock/fiches-techniques/: ordering page page_size produit
   get /api/v1/stock/fournisseurs/: categorie ordering page page_size search show_archived
@@ -10027,6 +10031,7 @@ components:
 - DepotPublicRequest
 - DestinataireMultiRequest
 - DestinataireMultiRoleEnum
+- DetailReponse
 - Devis
 - DevisAccepterRequestRequest
 - DevisActionBuckets
@@ -11022,7 +11027,6 @@ components:
 - PaginatedDossierImportList
 - PaginatedDossierList
 - PaginatedDossierOnboardingFournisseurList
-- PaginatedEcheanceFactureFournisseurList
 - PaginatedElementSupprimeList
 - PaginatedEmailTemplateList
 - PaginatedEmplacementStockList
@@ -11245,7 +11249,6 @@ components:
 - PaginatedVeilleDecouverteList
 - PaginatedVisiteExterneList
 - PaginatedVueGedEnregistreeList
-- PaginatedVuesListeOuDefautList
 - PaginatedWarrantyClaimList
 - PaginatedWebhookDeliveryList
 - PaginatedWebhookList

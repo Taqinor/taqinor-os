@@ -13,6 +13,8 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, IsAdminRole
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
+from core.champs_stricts import entier_ou_400
+from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON
 
 from .models import Outillage, KitOutillage, KitOutillageItem
@@ -21,6 +23,9 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+#: Valeurs publiées ET acceptées du filtre ``?a_calibrer=``.
+_A_CALIBRER_VALEURS = ['1', 'true', 'True']
 
 _Suppression409 = inline_serializer('OutillageSuppressionRefusee', {
     'detail': drf_serializers.CharField()})
@@ -48,7 +53,7 @@ def seed_kits_outillage(company):
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
         OpenApiParameter('emplacement', OpenApiTypes.INT, required=False),
         OpenApiParameter('a_calibrer', OpenApiTypes.STR, required=False,
-                         enum=['1', 'true', 'True'],
+                         enum=_A_CALIBRER_VALEURS,
                          description='Seulement les outils à calibrer.'),
     ]),
     destroy=extend_schema(responses={204: None, 409: _Suppression409}),
@@ -105,12 +110,16 @@ class OutillageViewSet(UsageGuardedDestroyMixin, TenantMixin,
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
-        emplacement = params.get('emplacement')
-        if emplacement:
+        # ``?emplacement=abc`` levait ValueError (500) : entier ou 400.
+        emplacement = entier_ou_400(params.get('emplacement'), 'emplacement')
+        if emplacement is not None:
             qs = qs.filter(emplacement_id=emplacement)
         # FG80 — filtre « à calibrer » : intervalle > 0 ET date_prochaine <= aujourd'hui.
-        a_calibrer = params.get('a_calibrer')
-        if a_calibrer in ('1', 'true', 'True'):
+        # ``?a_calibrer=AAA`` / vide : l'énumération est publiée → 400 (le
+        # filtre était ignoré en silence).
+        a_calibrer = choix_ou_400(
+            self.request, 'a_calibrer', _A_CALIBRER_VALEURS)
+        if a_calibrer is not None:
             # ACHT74 — MÊME règle que le badge `a_calibrer` : intervalle > 0 ET
             # (jamais calibré OU échéance dépassée).
             today = datetime.date.today()
@@ -227,8 +236,8 @@ class KitOutillageItemViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        kit = self.request.query_params.get('kit')
-        if kit:
+        kit = entier_ou_400(self.request.query_params.get('kit'), 'kit')
+        if kit is not None:
             qs = qs.filter(kit_id=kit)
         return qs
 

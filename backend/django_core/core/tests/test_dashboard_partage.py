@@ -290,6 +290,22 @@ class TestCrossTenantCreationRefused(DashboardPartageBase):
         self.assertEqual(partage.dashboard_id, self.dashboard.id)
         self.assertEqual(partage.utilisateur_id, self.viewer.id)
 
+    def test_partage_interne_doublon_409_unique_conflict(self):
+        """CI #1000 (api-fuzz) — le même dashboard partagé deux fois au même
+        utilisateur est un conflit d'ÉTAT (409 ``unique_conflict``), plus un
+        400 : le corps est conforme au schéma."""
+        corps = {'dashboard': self.dashboard.id,
+                 'utilisateur': self.viewer.id, 'role': 'zz'}
+        url = '/api/django/core/dashboards-partages-internes/'
+        premier = self.api.post(url, corps, format='json')
+        self.assertEqual(premier.status_code, 201, premier.data)
+        second = self.api.post(url, corps, format='json')
+        self.assertEqual(second.status_code, 409, second.content)
+        self.assertEqual(
+            second.json()['error']['code'], 'unique_conflict')
+        self.assertEqual(DashboardPartageInterne.objects.filter(
+            dashboard=self.dashboard, utilisateur=self.viewer).count(), 1)
+
     def test_dashboard_inconnu_404_comme_autre_societe(self):
         """ERR-ENF11-FUZZ-CORE (api-fuzz) — un id de dashboard bien formé mais
         inexistant (``0`` compris) répond 404, plus 400, avec le même message

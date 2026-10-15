@@ -42,6 +42,16 @@ class TestCustomObjectDefCRUD(CF16Base):
         self.assertFalse(CustomObjectDef.objects.filter(
             company=self.company, code='icone_nombre').exists())
 
+    def test_code_non_texte_ou_rogne_refuse(self):
+        """CI #1000 fuzz — `code` (slug) est une chaîne sans rognage : `0` et
+        `" a "` étaient acceptés (convertis / rognés)."""
+        for code in (0, ' a ', ''):
+            resp = self.api.post('/api/django/custom-fields/objects/', {
+                'code': code, 'libelle': 'L'}, format='json')
+            self.assertEqual(resp.status_code, 400, (code, resp.content))
+        self.assertFalse(CustomObjectDef.objects.filter(
+            company=self.company).exists())
+
     def test_object_scoped_to_company(self):
         other = Company.objects.create(slug='cf16-other', nom='Autre')
         CustomObjectDef.objects.create(
