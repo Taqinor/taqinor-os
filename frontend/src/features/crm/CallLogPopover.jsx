@@ -414,15 +414,20 @@ export function useCallEndedNudge({ delayMs = NUDGE_DELAY_MS } = {}) {
 
   const dismissNudge = () => { setNudgeVisible(false); desarmer() }
 
+  // Dernier `declencher` (recréé à chaque rendu) : les écouteurs, posés une
+  // seule fois, appellent toujours la version à jour.
+  const declencherRef = useRef(declencher)
+  useEffect(() => { declencherRef.current = declencher })
+
   useEffect(() => {
     // Déclencheur 1 — retour d'onglet (téléphone). Inchangé.
     const onVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return
-      declencher()
+      declencherRef.current()
     }
     // Déclencheur 2 — retour de focus fenêtre (bureau : l'onglet n'a jamais
     // été masqué, mais le focus est parti vers le softphone).
-    const onFocus = () => { declencher() }
+    const onFocus = () => { declencherRef.current() }
     document.addEventListener('visibilitychange', onVisibilityChange)
     window.addEventListener('focus', onFocus)
     return () => {
@@ -431,7 +436,6 @@ export function useCallEndedNudge({ delayMs = NUDGE_DELAY_MS } = {}) {
       // Le démontage ne doit pas laisser un timer réveiller un composant mort.
       if (timerRef.current) clearTimeout(timerRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return { nudgeVisible, armCallNudge, dismissNudge }

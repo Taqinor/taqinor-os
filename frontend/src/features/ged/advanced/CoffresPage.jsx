@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, FileText } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
@@ -63,7 +63,8 @@ export default function CoffresPage() {
     load()
   }, [])
 
-  const clientNom = (id) => clients.find((c) => String(c.id) === String(id))?.nom
+  const clientNom = useCallback(
+    (id) => clients.find((c) => String(c.id) === String(id))?.nom, [clients])
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Coffre', accessor: (r) => r.nom },
@@ -78,8 +79,7 @@ export default function CoffresPage() {
       id: 'documents', header: 'Documents', width: 110, align: 'right',
       accessor: (r) => r.document_count ?? 0,
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [clients])
+  ], [clientNom])
 
   // ADOC4 — un coffre non vide est refusé (409) : le motif serveur est
   // affiché tel quel, jamais « Coffre supprimé. ».

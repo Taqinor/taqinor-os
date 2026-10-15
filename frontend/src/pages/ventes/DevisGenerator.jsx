@@ -1332,7 +1332,7 @@ export default function DevisGenerator({
         if (lead) setLeadDuDevis(lead)
         appliquerArrivee(lead)
       })
-  }, [leads, produits]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leads, produits]) // eslint-disable-line react-hooks/exhaustive-deps -- arrivée par ?lead= appliquée une seule fois (autoRan), au premier chargement de leads et produits (D-ENF22)
 
   // AGNR19 — le client d'arrivée (`?client=<id>`, plein écran sans lead) est
   // relu par son id, une fois.
@@ -1343,7 +1343,7 @@ export default function DevisGenerator({
     if (!id || searchParams.get('lead')) return
     clientArriveeLu.current = true
     crmApi.getClient(id).then(({ data }) => { if (data) setClientArrivee(data) }).catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- client d'arrivée relu une seule fois (clientArriveeLu) au montage (D-ENF22)
 
   // ── Factures : estimation hiver/été + suggestion panneaux ──
   // Règle fondateur du 18/08 — même chaîne palier/payback que applyLead/

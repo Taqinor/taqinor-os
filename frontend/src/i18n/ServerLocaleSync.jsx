@@ -51,8 +51,7 @@ export default function ServerLocaleSync() {
       .then((data) => { if (alive && data) setOverrides(data) })
       .catch(() => { /* repli silencieux sur le catalogue statique */ })
     return () => { alive = false }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, porteeConnue, comptePortail])
+  }, [isAuthenticated, porteeConnue, comptePortail, setOverrides])
 
   useEffect(() => {
     if (!serverLocale || !LOCALES.includes(serverLocale)) return

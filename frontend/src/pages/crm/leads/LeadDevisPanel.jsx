@@ -200,7 +200,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
       // eslint-disable-next-line react-hooks/set-state-in-effect -- création automatique au montage, une seule fois (startedRef) (D-ENF22)
       doCreateAuto('0')
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- création automatique au montage, une seule fois (startedRef); mode/doCreateAuto relancés créeraient un 2e devis (D-ENF22)
+  }, [])
 
   // Référence (pour le nom du fichier) une fois le devis connu. EDC8 — c'est
   // AUSSI cette lecture qui décide d'ouvrir l'éditeur d'un devis existant : le

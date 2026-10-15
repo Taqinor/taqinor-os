@@ -181,7 +181,8 @@ export function useChargeurEdition(ctx) {
         submit: 'Impossible de charger ce devis — il a peut-être été supprimé.',
       }))
     })
-  }, [editId, rechargeEdit]) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- chargement d'un devis en édition au changement d'editId/rechargeEdit seulement; les ~30 setters et refs listés ne doivent pas relancer le chargement (D-ENF22)
+  }, [editId, rechargeEdit])
 
   // QJR548 — une taille d'offre appliquée RECOMPOSE le devis côté serveur
   // (lignes, totaux, études) : l'écran relit ce devis par LE chargeur

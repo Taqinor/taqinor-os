@@ -352,7 +352,7 @@ export function useVoiceChat(deps = {}) {
       stopSpeaking: () => stopSpeaking(),
       confirm: (token) => dispatch(confirmAgentAction({ token, index: messages.length - 1 })),
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- confirm lit messages.length au moment de la construction de la boucle; le reconstruire à chaque message relancerait la conversation (D-ENF22)
   }, [dispatch, startCapture, stopCapture, speak, stopSpeaking])
 
   const startConversation = useCallback(() => {

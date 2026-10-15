@@ -126,7 +126,7 @@ export default function CalageToitPage() {
     map.on('move zoom', redessiner)
     mapRef.current = map
     return () => { map.remove(); mapRef.current = null }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- carte Leaflet recréée uniquement quand la visite change; redessiner est relié aux marqueurs par ref (D-ENF22)
   }, [visite])
 
   useEffect(() => { redessiner() }, [sourceUrl, redessiner])

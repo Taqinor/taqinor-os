@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Pencil, FileText, Trash2, Upload, Plus, FilePlus } from 'lucide-react'
@@ -125,7 +125,7 @@ export default function ClientList() {
       next.delete('new')
       return next
     }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- ouverture one-shot de la liste clients pilotée par ?new=1; setSearchParams ne doit pas la rejouer (D-ENF22)
   }, [searchParams])
 
   const openReleve = async (c) => {
@@ -200,8 +200,8 @@ export default function ClientList() {
   // L151 — bascule optimiste du type de client (Particulier ↔ Entreprise),
   // seul « statut » persisté du client. Passe par le thunk updateClient
   // existant ; rollback automatique si le PATCH échoue.
-  const saveType = (c, next) =>
-    dispatch(updateClient({ id: c.id, data: { type_client: next } })).unwrap()
+  const saveType = useCallback((c, next) =>
+    dispatch(updateClient({ id: c.id, data: { type_client: next } })).unwrap(), [dispatch])
 
   const columns = useMemo(() => [
     {
@@ -326,8 +326,7 @@ export default function ClientList() {
       ),
       exportValue: (c) => (c.date_creation ? formatDate(c.date_creation) : ''),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [])
+  ], [navigate, saveType])
 
   const rowActions = (c) => {
     const actions = [

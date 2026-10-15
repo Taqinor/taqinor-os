@@ -366,8 +366,7 @@ export default function FactureList() {
       next.delete('id')
       return next
     }, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, loading, factures])
+  }, [searchParams, loading, factures, setSearchParams])
 
 
 

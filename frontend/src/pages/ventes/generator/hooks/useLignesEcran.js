@@ -158,7 +158,7 @@ export function useLignesEcran(ctx) {
       if (!l.produit || l.prixRelu) return
       if (nouvelle || clientChange) refreshTarif(l._key, l.produit, l.quantite)
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- le tarif ne se résout que pour une ligne nouvelle ou un changement de client (clesTarifVues); lines/refreshTarif complets relanceraient chaque ligne (D-ENF22)
   }, [clientId, lines.length])
 
   // QP2 — au blur d'une désignation modifiée (par un rôle autorisé) qui diffère
@@ -176,8 +176,7 @@ export function useLignesEcran(ctx) {
     if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
     setRenameError(null)
     setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRenameLine, lines, produits])
+  }, [canRenameLine, lines, produits, setRenameError, setRenameDialog])
 
   // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
   // divergente telle quelle, aucun produit créé. Juste fermer le dialogue.
@@ -300,8 +299,7 @@ export function useLignesEcran(ctx) {
       row.scrollIntoView({ block: 'nearest' })
     }
     setPendingFocusKey(null)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingFocusKey, lines])
+  }, [pendingFocusKey, lines, linesTableRef, setPendingFocusKey])
 
   // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────
   // Bascule de mode. En passant en « villas », chaque ligne sans groupe est

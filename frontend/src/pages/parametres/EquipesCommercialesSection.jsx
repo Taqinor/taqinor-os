@@ -23,8 +23,7 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
       .finally(() => setLoading(false))
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, []) // eslint-disable-line react-hooks/exhaustive-deps -- chargement des équipes commerciales au montage uniquement (D-ENF22)
 
   const addEquipe = async () => {
     if (!newNom.trim()) return

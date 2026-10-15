@@ -138,7 +138,7 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
     setArrondiCaisse(null)
     setFactureActivites([])
     loadActivites(facture.id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- formulaire réinitialisé uniquement quand la facture CIBLE change (facture.id), pas à chaque relecture de l'objet (D-ENF22)
   }, [facture?.id])
 
   // ZFAC11 — quand le mode passe à « espèces », interroge le reste à payer
@@ -151,7 +151,7 @@ function CorpsPaiementDialog({ facture, relireFacture, onOpenChange, onSaved }) 
       .then(({ data }) => { if (!annule) setArrondiCaisse(data) })
       .catch(() => { if (!annule) setArrondiCaisse(null) })
     return () => { annule = true; setArrondiCaisse(null) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- l'arrondi caisse est interrogé au changement de facture ou de mode, pas à chaque relecture de l'objet facture (D-ENF22)
   }, [facture?.id, payMode])
 
   const appliquerArrondiCaisse = () => {

@@ -31,7 +31,7 @@ export default function DashboardFilterBar({ dashboardId, layout, onLayoutChange
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- resynchronise les filtres affichés à chaque changement de dashboardId (source externe, pas un dérivé de rendu) (D-ENF22)
     setFilters(readGlobalFilters(layout))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filtres relus uniquement au changement de dashboard; layout est réécrit par ce composant lui-même (D-ENF22)
   }, [dashboardId])
 
   const persist = async (next) => {

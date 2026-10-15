@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AlertTriangle, Check, Download, RefreshCw } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import {
@@ -69,10 +69,10 @@ export default function ConceptionElectrique({ devisId }) {
   // Le retour de promesse permet à `handleRecalculer` d'attendre le rechargement
   // du schéma après un recalcul (setSvgLoading géré par l'appelant : effet ou
   // handler, jamais deux fois pour le même appel).
-  const chargerSchema = () => ventesApi.getSchemaUnifilaireDevis(devisId)
+  const chargerSchema = useCallback(() => ventesApi.getSchemaUnifilaireDevis(devisId)
     .then((res) => setSvg(res.data?.svg || null))
     .catch(() => setSvg(null))
-    .finally(() => setSvgLoading(false))
+    .finally(() => setSvgLoading(false)), [devisId])
 
   useEffect(() => {
     let cancelled = false
@@ -99,8 +99,7 @@ export default function ConceptionElectrique({ devisId }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- amorçage du chargement, aucune cascade (comme PdfCanvas.jsx) (D-ENF22)
     setSvgLoading(true)
     chargerSchema()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [devisId])
+  }, [devisId, chargerSchema])
 
   const handleRecalculer = async (e) => {
     e.preventDefault()

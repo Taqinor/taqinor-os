@@ -235,7 +235,7 @@ export default function CameraCapture({
       stopStream()
       releaseShots() // NTMOB11 — libère les URLs objet même sans close() explicite.
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- démarrage et libération de la caméra au montage/démontage uniquement; start/stopStream dépendent de la configuration du parent (D-ENF22)
   }, [])
 
   if (!supported) {

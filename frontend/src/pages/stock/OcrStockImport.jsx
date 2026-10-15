@@ -176,7 +176,8 @@ export default function OcrStockImport() {
       setDocType(stockOcrDocType)
       setStep(2)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- restauration de l'étape au montage uniquement; les états Redux ne doivent pas ramener l'écran à l'étape 2 (D-ENF22)
+  }, [])
 
   useEffect(() => {
     if (!stockOcrResult) return
@@ -271,7 +272,8 @@ const cp = produitsRef.current
       }
     }))
     setStep(3)
-  }, [stockOcrResult]) // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lignes de validation reconstruites uniquement à l'arrivée d'un nouveau résultat OCR (stockOcrResult) (D-ENF22)
+  }, [stockOcrResult])
 
   // Conservé pour usage futur (préfixe _ : non branché pour l'instant)
   const _fuzzyMatchCategorie = useCallback((suggestion) => {

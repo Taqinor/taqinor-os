@@ -97,7 +97,7 @@ export default function useVisibilityAwarePolling(tasks, options = {}) {
       document.removeEventListener('visibilitychange', onVisibility)
       stop()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- les intervalles ne sont armés/désarmés qu'au changement de enabled; start/stop/runAll sont recréés à chaque rendu (D-ENF22)
   }, [enabled])
 
   return { resume }

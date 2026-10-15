@@ -85,7 +85,7 @@ export default function ProductTour() {
     setActiveKey(eligible ? tour.tour_key : null)
     setStep(0)
     setOpen(eligible)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- l'ouverture du tour ne se rejoue qu'au changement de tour/écran, jamais à chaque nouvel objet user (D-ENF22)
   }, [tour, pathname])
 
   const etapes = useMemo(() => tour?.etapes ?? [], [tour])

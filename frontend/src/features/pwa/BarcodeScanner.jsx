@@ -44,7 +44,7 @@ export default function BarcodeScanner({
   useEffect(() => {
     if (autoStart && supported) start()
     return () => stop()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- démarrage/arrêt caméra au montage et au changement de support seulement; start/stop changent avec les callbacks du parent (D-ENF22)
   }, [autoStart, supported])
 
   // Repli : fonctionnalité absente sur cet appareil / ce navigateur.
