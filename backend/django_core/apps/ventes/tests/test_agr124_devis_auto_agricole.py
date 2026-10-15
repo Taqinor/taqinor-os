@@ -102,7 +102,7 @@ class DevisAutoAgricoleTests(TestCase):
         self._pompe('15000')
         lead = self._lead(niveau_statique_m=None, debit_forage_m3h=None)
         rep = self._post(lead)
-        self.assertEqual(rep.status_code, 422, rep.data)
+        self.assertEqual(rep.status_code, 409, rep.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('D-AGR-4', rep.data['detail'])
         self.assertIn("relevé du point d'eau", rep.data['detail'].lower())
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
@@ -111,7 +111,7 @@ class DevisAutoAgricoleTests(TestCase):
         self._pompe('15000')
         lead = self._lead(pompe_hmt_m=None, niveau_statique_m=None)
         rep = self._post(lead)
-        self.assertEqual(rep.status_code, 422, rep.data)
+        self.assertEqual(rep.status_code, 409, rep.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(rep.data['field'], 'pompe_hmt_m')
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
@@ -178,7 +178,7 @@ class DevisAutoAgricoleTests(TestCase):
         self._pompe('0')
         lead = self._lead()
         rep = self._post(lead)
-        self.assertEqual(rep.status_code, 422, rep.data)
+        self.assertEqual(rep.status_code, 409, rep.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('Aucune pompe chiffrable', rep.data['detail'])
         self.assertIn('OSP 30/8', rep.data['detail'])
         self.assertEqual(rep.data['field'], 'pompe')

@@ -89,7 +89,7 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
     * ERR8 — lead / client d'une autre société refusés ;
     * QJR539 (``t17``) — correction d'un ENVOYÉ : une remise globale ENTRANTE
       plus profonde au-dessus du seuil n'est plus couverte par l'approbation
-      d'avant (400 {'statut'}). ``replace-lines`` passe ``t17=False`` et juge
+      d'avant (409 {'statut'}, CI #997 fuzz). ``replace-lines`` passe ``t17=False`` et juge
       APRÈS l'écriture des lignes, dans sa transaction.
 
     Lit le statut, ne l'écrit jamais (règle #4)."""
@@ -132,7 +132,9 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
                 remise_globale=validated_data.get(
                     'remise_globale', instance.remise_globale))
         except RemiseNonApprouvee as erreur:
-            raise ValidationError({'statut': erreur.message})
+            # CI #997 fuzz — la profondeur APPROUVÉE est un état du devis :
+            # 409, corps {'statut'} inchangé (plus 400).
+            raise ConflitEtat({'statut': erreur.message})
 
 
 #: ADEV26 (C-ADEV-035) — les champs d'en-tête qu'une étude LIT (marché,

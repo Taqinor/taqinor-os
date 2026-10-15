@@ -492,19 +492,52 @@ ErreurComposition = _ser('DevisErreurComposition', {
     'field': s.CharField(required=False, allow_null=True),
 })
 
+
+class NombreStrict(s.FloatField):
+    """CI #997 fuzz — nombre JSON RÉEL (``"5"`` et ``true`` étaient lus par
+    ``float()``), fini."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+def _pourcent_souple(**kwargs):
+    """Pourcentage 0-100 à 2 décimales, CHAÎNE (l'écran envoie ``"0"``) ou
+    NOMBRE JSON arrondi au centième (``DecimalSouple``), publié par LE motif
+    de la remise d'en-tête (``conditions_ci.MOTIF_REMISE``, ``-0`` compris) :
+    la règle de ``domain/bornes.pourcentage_saisi``, enfin publiée."""
+    from ..domain.conditions_ci import MOTIF_REMISE, _decimal_borne
+    classe = extend_schema_field(_decimal_borne(
+        MOTIF_REMISE, 100, nullable=True))(
+        type('PourcentSouple', (DecimalSouple,), {}))
+    return classe(max_digits=5, decimal_places=2,
+                  min_value=Decimal('0'), max_value=Decimal('100'),
+                  required=False, allow_null=True, **kwargs)
+
+
 AutoDevisRequest = _ser('DevisAutoRequest', {
-    'lead': s.IntegerField(required=False, allow_null=True),
-    'client': s.IntegerField(required=False, allow_null=True),
-    'target_kwc': s.FloatField(required=False, allow_null=True),
-    'scenario': s.CharField(required=False, allow_blank=True,
-                            allow_null=True),
+    # CI #997 fuzz — corps validé tel que publié (la vue le relisait à la
+    # main) ; « un lead OU un client » publié (``CORPS_LEAD_OU_CLIENT``).
+    'lead': EntierStrict(required=False, allow_null=True, min_value=1),
+    'client': EntierStrict(required=False, allow_null=True, min_value=1),
+    'target_kwc': NombreStrict(required=False, allow_null=True),
+    'scenario': ChaineStricte(required=False, allow_blank=True,
+                              allow_null=True),
     'etude_params': s.DictField(required=False, allow_null=True),
-    'taux_tva': s.FloatField(required=False, allow_null=True),
-    'remise_globale': s.FloatField(required=False, allow_null=True),
-    'structure_produit_id': s.IntegerField(required=False, allow_null=True),
-    'structure_type': s.CharField(required=False, allow_blank=True,
-                                  allow_null=True),
+    'taux_tva': _pourcent_souple(),
+    'remise_globale': _pourcent_souple(),
+    'structure_produit_id': EntierStrict(required=False, allow_null=True),
+    'structure_type': ChaineStricte(required=False, allow_blank=True,
+                                    allow_null=True),
 })
+#: CI #997 fuzz — un devis naît d'un LEAD ou d'un CLIENT (« Un client ou un
+#: lead est requis. ») : règle publiée sur ``POST devis/`` et ``devis/auto/``.
+CORPS_LEAD_OU_CLIENT = corps_resserre({'anyOf': [
+    {'required': ['lead'], 'properties': {'lead': {'type': 'integer'}}},
+    {'required': ['client'], 'properties': {'client': {'type': 'integer'}}},
+]})
 AutoDevisResponse = _ser('DevisAutoResponse', {
     'id': s.IntegerField(),
     'reference': s.CharField(),

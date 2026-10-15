@@ -16,7 +16,6 @@ API accepted schema-violating request|POST /api/django/offlinesync/operations/ba
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
-API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/mesures/
 API rejected schema-compliant request|POST /api/django/agent/actions/automation-draft/
 API rejected schema-compliant request|POST /api/django/crm/leads/
@@ -31,14 +30,10 @@ API rejected schema-compliant request|POST /api/django/public/portail/invitation
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/
 API rejected schema-compliant request|POST /api/django/register/
-API rejected schema-compliant request|POST /api/django/ventes/devis-lignes/
-API rejected schema-compliant request|POST /api/django/ventes/devis/
 API rejected schema-compliant request|POST /api/django/ventes/devis/atomic/
-API rejected schema-compliant request|POST /api/django/ventes/devis/auto/
 API rejected schema-compliant request|POST /api/django/ventes/devis/from-layout/
 API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
-API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
 Response violates schema|GET /api/django/onboarding/progress/
 Undocumented Content-Type|GET /api/public/v1/calepinages/{id}/resultat/
 Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
@@ -54,7 +49,6 @@ Server error|POST /api/django/agent/actions/automation-draft/
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
 # VNT lot M0, 3e tour (12/10/2026, PR #979) : tirage aleatoire, ventes/core pre-existants.
-API rejected schema-compliant request|PATCH /api/django/ventes/devis/{id}/
 # VNT lot M1 (12/10/2026, PR #982) : constats pre-existants hors du diff (reporting/*, dupliquer-variante), tirage aleatoire.
 # VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
 # VNT lot M1, tour 3 (12/10/2026) : PATCH factures/{id} — le harnais fuzz envoie entite: 0 (aucune Entite pour la societe fuzz, prepare_fuzz_env.py) ; limite du harnais, pas de la vue.

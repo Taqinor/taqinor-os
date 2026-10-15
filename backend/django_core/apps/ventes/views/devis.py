@@ -35,7 +35,6 @@ from ..utils.client_links import chemin_proposition
 from core.entite_scoping import EntiteScopeMixin  # NTADM2
 from core.idempotency import IdempotentCreateMixin  # YAPIC9
 from ..utils.company_settings import create_numbered
-from ..domain.bornes import pourcentage_saisi as _pourcentage_saisi  # ACAL278, ATOT21
 from .devis_edition import DevisEditionActionsMixin  # SPL135
 from .devis_cycle import DevisCycleActionsMixin  # SPL136
 from .devis_etudes import DevisEtudesActionsMixin  # SPL137
@@ -60,7 +59,8 @@ CONCEVABLE = ['1', 'true']
 
 @extend_schema_view(list=extend_schema(parameters=[
     qint('lead'), qstr('concevable', enum=CONCEVABLE),
-    qstr('statut', enum=Devis.Statut.values), ENTITE]))
+    qstr('statut', enum=Devis.Statut.values), ENTITE]),
+    create=extend_schema(extensions=D.CORPS_LEAD_OU_CLIENT))
 class DevisViewSet(DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
                    DevisEtudesActionsMixin,
@@ -420,7 +420,8 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(request=D.AutoDevisRequest,
                    responses={201: D.AutoDevisResponse,
-                              422: D.ErreurComposition})
+                              409: D.ErreurComposition},
+                   extensions=D.CORPS_LEAD_OU_CLIENT)
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
     def auto(self, request):
@@ -447,15 +448,13 @@ class DevisViewSet(DevisEditionActionsMixin,
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # CI #997 — corps non objet ou id non entier (``[null, null]``) : 400
-        # nommé, plus le TypeError du filtre ``pk=`` (500).
-        from core.champs_stricts import entier_ou_400
-        if not isinstance(request.data, dict):
-            return Response({'detail': 'Corps JSON objet attendu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 fuzz — corps validé par le sérialiseur PUBLIÉ (types JSON
+        # stricts, pourcentages 0-100 en chaîne ou nombre) : 400 nommé.
+        from ..utils.corps import valider_corps
+        corps = valider_corps(request, D.AutoDevisRequest)
         lead_obj = None
-        lead_id = entier_ou_400(request.data.get('lead'), 'lead')
-        client_id = entier_ou_400(request.data.get('client'), 'client')
+        lead_id = corps.get('lead')
+        client_id = corps.get('client')
         if lead_id:
             lead_obj = get_company_lead(company, lead_id)
             if lead_obj is None:
@@ -471,26 +470,23 @@ class DevisViewSet(DevisEditionActionsMixin,
                     {'detail': "Ce client n'a pas de fiche lead avec profil "
                      "énergétique. Complétez le lead (facture d'hiver ou taille "
                      "souhaitée) pour générer l'auto-devis."},
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                    # CI #997 fuzz — l'ÉTAT de la fiche s'oppose : 409.
+                    status=status.HTTP_409_CONFLICT)
         else:
             return Response(
                 {'detail': 'Un lead (ou un client) est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
-        # ACAL278 — UNE règle de module (fini, 0..100, 2 décimales) au lieu
-        # d'un ``_dec`` imbriqué sans borne : 400 NOMMÉ, jamais l'IntegrityError
-        # de ck_devis_remise_globale_0_100 (500).
-        # APAR49 — défaut = taux STANDARD de la société (``tva_standard``).
+        # ACAL278 — UNE règle (fini, 0..100, 2 décimales), désormais PUBLIÉE
+        # par le sérialiseur (CI #997 fuzz) ; APAR49 — défaut = taux STANDARD
+        # de la société (``tva_standard``).
         from ..utils.company_settings import tva_standard
-        taux_tva, erreur = _pourcentage_saisi(
-            request.data, 'taux_tva', tva_standard(company))
-        remise, erreur_remise = _pourcentage_saisi(
-            request.data, 'remise_globale', Decimal('0'))
-        erreur = erreur or erreur_remise
-        if erreur:
-            return Response(
-                dict(erreur, detail=next(iter(erreur.values()))),
-                status=status.HTTP_400_BAD_REQUEST)
+        taux_tva = corps.get('taux_tva')
+        if taux_tva is None:
+            taux_tva = tva_standard(company)
+        remise = corps.get('remise_globale')
+        if remise is None:
+            remise = Decimal('0')
 
         # U3 — trois réglages POUR CE DEVIS-LÀ, qui ne réécrivent JAMAIS la
         # fiche du lead : la puissance cible saisie par le commercial (EZ5), le
@@ -498,11 +494,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         # calculées (factures mensuelles réelles du contrat PACT10). La
         # COMPOSITION, elle, est entièrement serveur : l'appelant n'envoie
         # aucune ligne, aucun prix, aucune marque.
-        etude_extra = request.data.get('etude_params')
-        if etude_extra is not None and not isinstance(etude_extra, dict):
-            return Response(
-                {'detail': 'etude_params doit être un objet.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        etude_extra = corps.get('etude_params')
         # AGR124 — le devis automatique AGRICOLE dépose ici ses alertes
         # (étude pompage + articles « prix à renseigner » omis), rendues à
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
@@ -515,9 +507,12 @@ class DevisViewSet(DevisEditionActionsMixin,
                 scenario=request.data.get('scenario'),
                 etude_extra=etude_extra, journal_auto=journal)
         except AutoDevisError as exc:
+            # CI #997 fuzz — corps valide : donnée de la fiche manquante,
+            # marché ou catalogue qui s'y oppose = refus d'ÉTAT, 409 (le
+            # message FRANÇAIS du serveur reste lu tel quel par les écrans).
             return Response(
                 {'detail': exc.message, 'field': exc.field},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+                status=status.HTTP_409_CONFLICT)
 
         link = ShareLink.for_devis(devis)
         return Response(

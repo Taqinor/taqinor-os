@@ -128,7 +128,7 @@ class TestT17GardeEnvoi(TestCase):
         d = self._devis(remise='5', statut='envoye')
         r = self._api(self.resp).patch(
             self._url(d), {'remise_globale': '40'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('statut', r.json())
         d.refresh_from_db()
         self.assertEqual(d.remise_globale, Decimal('5'))
@@ -140,7 +140,7 @@ class TestT17GardeEnvoi(TestCase):
         d.save(update_fields=['remise_approuvee', 'remise_approuvee_par'])
         r = self._api(self.resp).patch(
             self._url(d), {'remise_globale': '40'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # CI #997 fuzz : refus d'état, 409
         d.refresh_from_db()
         # Le geste refusé ne change rien, approbation d'avant comprise.
         self.assertEqual(d.remise_globale, Decimal('20'))

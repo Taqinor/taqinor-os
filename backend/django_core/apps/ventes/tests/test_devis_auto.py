@@ -412,7 +412,7 @@ class AutoEndpointTest(TestCase):
             company=self.company, nom='Agri', facture_hiver=Decimal('1800'),
             type_installation='agricole')
         resp = self.api.post(AUTO_URL, {'lead': lead.id}, format='json')
-        self.assertEqual(resp.status_code, 422, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(resp.data.get('field'), 'pompe_hmt_m')
 
     def test_requires_auth(self):
