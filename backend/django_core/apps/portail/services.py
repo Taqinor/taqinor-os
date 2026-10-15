@@ -282,7 +282,7 @@ def _envoyer_identifiants_portail(
             fail_silently=True,
         )
         return True
-    except Exception:  # noqa: BLE001 - un email KO ne casse jamais l'accès
+    except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'accès (D-ENF22-BLE001)
         logger.warning("_envoyer_identifiants_portail : erreur absorbée, repli dégradé", exc_info=True)
         return False
 
@@ -680,7 +680,7 @@ def _envoyer_invitation_portail(invitation, company, base_url=None):
             fail_silently=True,
         )
         return True
-    except Exception:  # noqa: BLE001 - un email KO ne casse jamais l'invitation
+    except Exception:  # noqa: BLE001 — un email KO ne casse jamais l'invitation (D-ENF22-BLE001)
         logger.warning("_envoyer_invitation_portail : erreur absorbée, repli dégradé", exc_info=True)
         return False
 
