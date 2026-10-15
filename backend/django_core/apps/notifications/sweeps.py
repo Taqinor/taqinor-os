@@ -791,7 +791,7 @@ def _sweep_hot_leads(company, now=None):
                 ecoulees = horaires.minutes_ouvrees_entre(
                     lead.date_creation, maintenant, company,
                     canal=_CANAL_PREMIER_CONTACT)
-            except Exception:  # noqa: BLE001 — un lead en échec n'arrête rien
+            except Exception:  # noqa: BLE001 — un lead en échec n'arrête rien (D-ENF22-BLE001)
                 logger.warning('sweeps: hot_leads calcul échoué (lead %s)',
                                lead.pk, exc_info=True)
                 continue

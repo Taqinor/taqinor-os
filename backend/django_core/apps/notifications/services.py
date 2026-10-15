@@ -133,7 +133,7 @@ def _branded_html(company, sujet, corps):
             company_email=identite.get('email', ''),
             couleur_principale=identite.get('couleur_principale', ''),
         )
-    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+    except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point (D-ENF22-BLE001)
         logger.warning("branded html : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
