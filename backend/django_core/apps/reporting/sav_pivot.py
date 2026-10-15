@@ -10,6 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from .query_params import DATE_OU_VIDE, date_param
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -56,7 +57,8 @@ PIVOT_CHAMPS = [
     responses={(200, 'application/json'): _SAV_PIVOT_SAV_TICKETS_PIVOT_REPONSE,
                (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('reporting_export', export=('xlsx',))])
 def sav_tickets_pivot(request):
     """ZSAV7 — ``GET reporting/insights/sav-tickets-pivot/``.
 
