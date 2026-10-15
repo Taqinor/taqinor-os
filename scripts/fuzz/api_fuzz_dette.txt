@@ -45,7 +45,6 @@ API rejected schema-compliant request|POST /api/django/calepinage/calepinages/im
 API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/consommation/proposer/
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/calculer/
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/pose/
-API rejected schema-compliant request|POST /api/django/calepinage/parametres/suggestion-pente/
 API rejected schema-compliant request|POST /api/django/crm/leads/
 API rejected schema-compliant request|POST /api/django/crm/leads/scan-carte/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/relance/initialiser/

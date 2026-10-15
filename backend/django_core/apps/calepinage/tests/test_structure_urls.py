@@ -299,6 +299,44 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
         self.assertIs(rotation['nullable'], True)
         self.assertNotIn('rotationDeg', calage['required'])
 
+    def _composant(self, schema):
+        return self.schema['components']['schemas'][
+            schema['$ref'].rsplit('/', 1)[-1]]
+
+    def test_suggestion_pente_publie_au_moins_un_pan(self):
+        """``zones`` : liste NON VIDE (``minItems: 1``) — le serveur refuse un
+        document sans pan ; publié libre, ``[]`` était un cas « conforme »."""
+        operation = self.schema['paths'][
+            '/api/django/calepinage/parametres/suggestion-pente/']['post']
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        document = self._composant(corps['properties']['roof_layout'])
+        self.assertEqual(document['required'], ['zones'])
+        self.assertEqual(document['properties']['zones']['minItems'], 1)
+
+    def test_edition_du_schema_unifilaire_publie_ce_que_le_service_juge(self):
+        """Textes non blancs sans nul d'au plus 120 signes, positions {x, y}
+        positives : le prédicat de ``services/sld.py``, dit au schéma."""
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
+        from apps.calepinage.services.sld import LONGUEUR_TEXTE_MAX
+
+        operation = self._operation('post', '{id}/schema-unifilaire/')
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(sorted(corps['properties']),
+                         ['libelles', 'positions', 'reperes'])
+        for rubrique in ('libelles', 'reperes'):
+            texte = corps['properties'][rubrique]['additionalProperties']
+            self.assertEqual(texte['maxLength'], LONGUEUR_TEXTE_MAX)
+            self.assertEqual(texte['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+            self.assertIs(texte['nullable'], True)
+        position = self._composant(
+            corps['properties']['positions']['additionalProperties'][
+                'allOf'][0])
+        self.assertEqual(position['required'], ['x', 'y'])
+        self.assertEqual(position['properties']['x']['minimum'], 0)
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']
