@@ -15,6 +15,7 @@ import json
 
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -171,6 +172,28 @@ class RolesRbacTest(TestCase):
                 self.assertIn('permissions', resp.data)
         role.refresh_from_db()
         self.assertEqual(role.permissions, ['stock_voir'])
+
+    def test_code_permission_schema_et_serveur_un_seul_predicat(self):
+        # CI #1000 — le schéma publie le motif des codes (catalogue OU
+        # « app visible ») que le serveur applique : « 00 » conforme à
+        # « chaîne » ne l'est plus, et chaque code du catalogue passe.
+        import re
+        from apps.roles.serializers import (
+            MOTIF_CODE_PERMISSION, RoleSerializer)
+        motif = re.compile(MOTIF_CODE_PERMISSION)
+        champ = RoleSerializer().fields['permissions'].child
+        for code in ('0', '00', 'stock', 'app_crm', 'stock_voir\n'):
+            self.assertIsNone(motif.fullmatch(code), code)
+            with self.assertRaises(DRFValidationError):
+                champ.run_validation(code)
+        for code in (ALL_PERMISSIONS[0], 'app_crm_voir'):
+            self.assertIsNotNone(motif.fullmatch(code), code)
+            self.assertEqual(champ.run_validation(code), code)
+        resp = self.api.post(
+            '/api/django/roles/',
+            {'nom': 'Zero', 'permissions': ['00']}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('permissions', resp.data)
 
     def test_entites_visibles_liste_sinon_400(self):
         # ENF11 (api-fuzz) — `entites_visibles` est une liste d'identifiants :

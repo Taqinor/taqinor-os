@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
@@ -7,15 +9,39 @@ from .permissions_registre import (
     ALL_PERMISSIONS,
     ELEVATED_PERMISSIONS,
     codes_non_octroyables,
-    est_permission_app,
 )
 from drf_spectacular.utils import extend_schema_field, inline_serializer
+
+#: CI #1000 — UN SEUL prédicat pour un code de permission de rôle : le schéma
+#: publie ce motif et ``CodePermission`` l'applique (``fullmatch``). Le schéma
+#: ne disait que « chaîne » alors que le serveur refusait tout code hors
+#: catalogue (``"00"`` « conforme » → 400). Catalogue ``ALL_PERMISSIONS`` OU
+#: famille ODY26 « app visible » (``permissions_registre.EST_PERMISSION_APP``).
+MOTIF_CODE_PERMISSION = '^(?:%s|app_[a-z0-9][a-z0-9_]*_voir)$' % '|'.join(
+    re.escape(code) for code in ALL_PERMISSIONS)
+_RE_CODE_PERMISSION = re.compile(MOTIF_CODE_PERMISSION)
+
+
+@extend_schema_field({'type': 'string', 'pattern': MOTIF_CODE_PERMISSION})
+class CodePermission(ChaineStricte):
+    """Code de permission d'un rôle (catalogue ou « app visible »). Pas de
+    rognage : un code à blancs de bord est HORS motif, pas corrigé."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('trim_whitespace', False)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        valeur = super().to_internal_value(data)
+        if not _RE_CODE_PERMISSION.fullmatch(valeur):
+            self.fail('invalid')
+        return valeur
 
 
 class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     # ENF11 — liste de codes TEXTE déclarée au schéma : `null`, un objet ou un
     # code non texte répondent 400 (le JSONField du modèle acceptait tout).
-    permissions = serializers.ListField(child=ChaineStricte(), required=False)
+    permissions = serializers.ListField(child=CodePermission(), required=False)
     users_count = serializers.SerializerMethodField()
     # Liste légère des utilisateurs portant ce rôle (id + nom d'affichage), pour
     # l'expansion « Utilisateurs » dans l'éditeur de rôles (Feature RBAC).
@@ -67,8 +93,10 @@ class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         # registre d'apps côté backend, interdit par le Groupe ODY (registre
         # unique = ``moduleConfigs`` côté front). Aucun risque d'escalade : ces
         # codes ne donnent AUCUN droit, ils RESTREIGNENT ce que le rôle voit.
-        invalid = [p for p in value
-                   if p not in ALL_PERMISSIONS and not est_permission_app(p)]
+        # Les codes inconnus sont déjà refusés par ``CodePermission`` ; ce
+        # contrôle (même motif, ``_RE_CODE_PERMISSION``) garde la méthode sûre
+        # quand on l'appelle seule.
+        invalid = [p for p in value if not _RE_CODE_PERMISSION.fullmatch(p)]
         if invalid:
             raise serializers.ValidationError(
                 f"Permissions invalides : {invalid}"
