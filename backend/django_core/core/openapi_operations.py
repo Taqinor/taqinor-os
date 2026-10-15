@@ -54,3 +54,14 @@ class SchemaMotsOperation(AutoSchema):
 def mots_operation(**mots) -> SchemaMotsOperation:
     """``schema = mots_operation(list='list')`` sur la vue (voir l'en-tête)."""
     return type('SchemaMotsOperation', (SchemaMotsOperation,), {'mots': mots})()
+
+
+class SchemaObjetUnique(AutoSchema):
+    """Singleton exposé par ``list`` (un OBJET, pas un tableau) : sans cela
+    drf-spectacular enveloppe la réponse d'un ``list`` de ``ViewSet`` dans un
+    tableau et la réponse réelle (un objet) viole le schéma (api-fuzz
+    « Response violates schema »). Le mot final de l'operationId devient
+    ``retrieve``. Déclaration de schéma UNIQUEMENT : aucune réponse changée."""
+
+    def _is_list_view(self, serializer=None):
+        return False
