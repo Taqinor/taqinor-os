@@ -299,9 +299,12 @@ class ApiAnnulerTests(_Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['statut'], RelanceEtape.Statut.A_FAIRE)
 
-    def test_400_nomme_le_champ_fautif(self):
+    def test_409_nomme_le_champ_fautif(self):
+        # ENF11 (nocturne 15/10) — corps vide (aucun corps n'est publié) sur une
+        # touche jamais traitée : c'est l'ÉTAT de la touche qui s'oppose → 409,
+        # même forme ``{"erreurs": {champ: message}}`` nommant le champ.
         resp = self._api().post(self._url(self.etapes[0]), {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('statut', resp.data['erreurs'])
         self.assertTrue(resp.data['erreurs']['statut'].strip())
 
