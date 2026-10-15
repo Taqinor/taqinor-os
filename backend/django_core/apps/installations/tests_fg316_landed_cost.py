@@ -70,6 +70,15 @@ class TestFraisEtLignes(TestCase):
         self.assertEqual(f.company_id, self.company.id)
         self.assertEqual(f.created_by_id, self.user.id)
 
+    def test_montant_negatif_publie_et_refuse(self):
+        # ENF11 (nocturne 15/10) — « jamais négatif » publié (DecimalBornee).
+        from apps.installations.serializers import FraisImportSerializer
+        champ = FraisImportSerializer().fields['montant']
+        self.assertEqual(champ.min_value, 0)
+        r = self.api.post(f'{BASE}/frais-import/', {
+            'dossier': self.dossier.id, 'categorie': 'fret', 'montant': '-1'})
+        self.assertEqual(r.status_code, 400, r.data)
+
     def test_create_ligne_and_fob_unitaire(self):
         r = self.api.post(f'{BASE}/landed-cost-lignes/', {
             'dossier': self.dossier.id, 'designation': 'Panneau',
@@ -226,7 +235,7 @@ class TestDC38LandedCostVersCoutStock(TestCase):
         dossier = make_dossier(self.company)  # pas de bon_commande
         r = self.api.post(
             f'{BASE}/dossiers-import/{dossier.id}/appliquer-cout-stock/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : état du dossier
 
     def test_appliquer_reserve_aux_roles(self):
         normal = make_user(self.company, role='normal')

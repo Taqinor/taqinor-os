@@ -130,7 +130,7 @@ class TestTableEstConsultee(BaseAud819):
         table_fermee[DemandeAchat.Statut.SOUMISE] = set()
         with patch.object(DemandeAchat, 'TRANSITIONS', table_fermee):
             r = self.api.post(f'{BASE}/demandes-achat/{da.id}/approuver/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : transition refusée = état
         da.refresh_from_db()
         self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
         self.assertIsNone(da.approuvee_par_id)

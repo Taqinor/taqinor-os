@@ -125,7 +125,7 @@ class TestLettrer(TestCase):
         r = self.api.post(
             f'{BASE}/receptions-non-facturees/{self.prov.id}/lettrer/',
             {'facture': facture_o.id})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)  # ENF11 : id inconnu de la société
 
 
 class TestScopeRole(TestCase):

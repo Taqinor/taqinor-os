@@ -74,6 +74,11 @@ class ReceptionNonFactureeViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         prov = self.get_object()
         facture_id = request.data.get('facture')
         if facture_id:
+            # ENF11 (nocturne 15/10) — forme hors schéma 400, facture inconnue
+            # de la société 404 (ressource manquante, plus 400).
+            if isinstance(facture_id, bool) or not str(facture_id).isdigit():
+                return Response({'facture': 'Identifiant entier attendu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
             from django.apps import apps as django_apps
             facture_model = django_apps.get_model('achats', 'FactureFournisseur')
             facture = facture_model.objects.filter(
@@ -81,7 +86,7 @@ class ReceptionNonFactureeViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             if facture is None:
                 return Response(
                     {'facture': 'Facture inconnue pour cette société.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
             prov.facture = facture
         fields = ['date_modification']
         if not prov.lettre:

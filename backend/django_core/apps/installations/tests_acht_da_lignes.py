@@ -107,6 +107,6 @@ class DaLignesTests(TestCase):
         self._approuver()
         r = self.api.post(f'{BASE}/demandes-achat/{self.da.id}/generer-bcf/',
                           {}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # ENF11 : lignes de la DA (état)
         self.da.refresh_from_db()
         self.assertEqual(self.da.statut, DemandeAchat.Statut.APPROUVEE)

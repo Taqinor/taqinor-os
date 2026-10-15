@@ -99,7 +99,7 @@ class SodDemandeAchatTests(TestCase):
         resp = auth(self.demandeur).post(
             f'{BASE}/demandes-achat/{da.pk}/approuver-etape/', {},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('Séparation des tâches', resp.data['detail'])
         da.refresh_from_db()
         self.assertEqual(da.statut, DemandeAchat.Statut.SOUMISE)
@@ -123,7 +123,7 @@ class SodDemandeAchatTests(TestCase):
         resp = auth(self.demandeur).post(
             f'{BASE}/demandes-achat/{da.pk}/rejeter-etape/', {},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_sod_dune_autre_societe_sans_effet(self):
         activer_sod(make_company())

@@ -168,22 +168,22 @@ class TestEquipeTenantGuard(TestCase):
         self.api = auth(self.user)
 
     def test_member_of_other_company_rejected(self):
-        """DC40 — un membre d'une autre société est refusé (400)."""
+        """DC40 — un membre d'une autre société est refusé (404, id inconnu de la société)."""
         autre = make_company()
         intrus = make_user(autre)
         r = self.api.post(f'{BASE}/equipes/', {
             'nom': 'Frauduleuse', 'membres': [intrus.id],
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_chef_of_other_company_rejected(self):
-        """DC40 — un chef d'une autre société est refusé (400)."""
+        """DC40 — un chef d'une autre société est refusé (404, id inconnu de la société)."""
         autre = make_company()
         intrus = make_user(autre)
         r = self.api.post(f'{BASE}/equipes/', {
             'nom': 'Frauduleuse2', 'chef': intrus.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 # ── Unicité (société, nom) ───────────────────────────────────────────────────

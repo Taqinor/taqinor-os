@@ -307,16 +307,16 @@ class FkInstallationsBorneesSocieteTests(TestCase):
 
     # ── bout en bout ─────────────────────────────────────────────────────
 
-    def _refus(self, r, champ):
-        self.assertEqual(r.status_code, 400, r.data)
+    def _refus(self, r, champ, statut=400):
+        self.assertEqual(r.status_code, statut, r.data)
         self.assertIn(champ, r.data)
         self.assertNotIn('SECRET', str(r.data))
 
-    def test_programme_client_etranger_400(self):
+    def test_programme_client_etranger_404(self):
         api = _api(self.a.user)
         r = api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'client': self.b.client.pk}, format='json')
-        self._refus(r, 'client')
+        self._refus(r, 'client', 404)  # ENF11 : IdInconnu404Mixin
         r = api.post(f'{BASE}/programmes/', {
             'nom': 'Programme', 'client': self.a.client.pk}, format='json')
         self.assertEqual(r.status_code, 201, r.data)

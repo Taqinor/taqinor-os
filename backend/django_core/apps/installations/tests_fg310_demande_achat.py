@@ -131,7 +131,7 @@ class TestLifecycle(TestCase):
 
     def test_cannot_approve_unsubmitted(self):
         r = self.api.post(f'{BASE}/demandes-achat/{self.da.id}/approuver/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_refuser_with_motif(self):
         self.api.post(f'{BASE}/demandes-achat/{self.da.id}/soumettre/')
@@ -144,7 +144,7 @@ class TestLifecycle(TestCase):
     def test_cannot_order_unapproved(self):
         r = self.api.post(
             f'{BASE}/demandes-achat/{self.da.id}/marquer_commandee/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
 
 class TestLignes(TestCase):
