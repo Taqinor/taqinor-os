@@ -111,3 +111,22 @@ class CadenceRelanceEtapeAPITest(TestCase):
         rows = resp.data['results'] if isinstance(resp.data, dict) else resp.data
         self.assertEqual(len(rows), 5)
         self.assertTrue(all(r['id'] for r in rows))
+
+    def test_ordre_et_delai_plafonnes_et_cadence_pleine_409(self):
+        """CI #1001 fuzz : un `ordre` à 2147483647 faisait déborder le rang du
+        POST suivant (500). Le plafond est publié (400 au-delà) et une cadence
+        pleine répond 409 au lieu de déborder."""
+        from .models_relance import DELAI_JOURS_ETAPE_MAX, ORDRE_ETAPE_MAX
+        base = {'delai_jours': 0, 'canal': 'appel', 'libelle': 'x'}
+        for champ, hors in (('ordre', ORDRE_ETAPE_MAX + 1),
+                            ('delai_jours', DELAI_JOURS_ETAPE_MAX + 1)):
+            resp = self.api.post(
+                CADENCE_URL, {**base, champ: hors}, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.content))
+        resp = self.api.post(
+            CADENCE_URL, {**base, 'ordre': ORDRE_ETAPE_MAX}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        resp = self.api.post(CADENCE_URL, base, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(CadenceRelanceEtape.objects.filter(
+            company=self.company).count(), 1)

@@ -22,11 +22,14 @@ from rest_framework.exceptions import ValidationError
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
+from core.conflit_etat import ConflitEtat
 from core.unicite import ConflitUnicite
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models_payment_terms import ConditionPaiement
-from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
+from .models_relance import (
+    CADENCES_MOTEUR, ORDRE_ETAPE_MAX, Cadence, CadenceRelanceEtape,
+)
 from .models_taxes import TauxTVA
 from .views_common import ACTIF_PARAM, SettingsAuditedMixin, filtrer_actif
 from .models_units import UniteMesure
@@ -189,6 +192,12 @@ class CadenceRelanceEtapeViewSet(_ReferentielViewSet):
         ordre = serializer.validated_data.get('ordre')
         if not ordre:
             ordre = (deja.aggregate(m=Max('ordre'))['m'] or 0) + 1
+            if ordre > ORDRE_ETAPE_MAX:
+                # Corps conforme, cadence pleine : conflit d'ÉTAT (409) — le
+                # rang suivant déborderait la colonne (500) sans ce garde.
+                raise ConflitEtat(
+                    f'Cette cadence compte déjà {ORDRE_ETAPE_MAX} étapes : '
+                    "supprimez-en avant d'en ajouter.")
         elif deja.filter(ordre=ordre).exists():
             # ENF11 — rang déjà occupé = conflit d'ÉTAT (409), champ nommé.
             raise ConflitUnicite(
