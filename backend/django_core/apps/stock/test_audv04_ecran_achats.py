@@ -211,8 +211,23 @@ class TestProfilSaisonnierViewSet(Audv04Base):
             'produit': self.produit.pk, 'categorie': cat.pk,
             'mois_debut': 5, 'mois_fin': 8,
         }, format='json')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)  # ENF11 : règle croisée
         self.assertEqual(ProfilSaisonnier.objects.count(), 0)
+
+    def test_modification_produit_et_categorie_409_jamais_500(self):
+        # ENF11 (nocturne 15/10) — la contrainte XOR cassait en base (500).
+        from apps.stock.models import Categorie
+        cat = Categorie.objects.create(company=self.company, nom='Pompes')
+        profil = ProfilSaisonnier.objects.create(
+            company=self.company, produit=self.produit,
+            mois_debut=5, mois_fin=8, actif=True)
+        url = f'/api/django/stock/profils-saisonniers/{profil.pk}/'
+        rep = self.api.patch(url, {'categorie': cat.pk}, format='json')
+        self.assertEqual(rep.status_code, 409, rep.content)
+        rep = self.api.patch(url, {'produit': None}, format='json')
+        self.assertEqual(rep.status_code, 409, rep.content)
+        profil.refresh_from_db()
+        self.assertEqual((profil.produit_id, profil.categorie_id), (self.produit.pk, None))
 
     def test_chevauchement_refuse(self):
         ProfilSaisonnier.objects.create(

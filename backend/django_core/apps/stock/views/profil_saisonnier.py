@@ -80,6 +80,7 @@ class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
         serializer.is_valid(raise_exception=True)
         from ..services import creer_profil_saisonnier
         data = serializer.validated_data
+        _produit_xor_categorie(data.get('produit'), data.get('categorie'))
         try:
             profil = creer_profil_saisonnier(
                 request.user.company,
@@ -98,4 +99,19 @@ class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
             self.get_serializer(profil).data, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
+        # ENF11 (nocturne 15/10) — la contrainte « produit XOR catégorie »
+        # n'était vérifiée qu'à la création : un PUT/PATCH qui laissait les
+        # deux (ou aucun) cassait la contrainte en base (IntegrityError 500).
+        # Règle croisée que le schéma ne sait pas exprimer : 409.
+        donnees, instance = serializer.validated_data, serializer.instance
+        _produit_xor_categorie(donnees.get('produit', instance.produit),
+                               donnees.get('categorie', instance.categorie))
         serializer.save(company=self.request.user.company)
+
+
+def _produit_xor_categorie(produit, categorie):
+    """Règle croisée (création ET modification) : 409, jamais un 500/400."""
+    if (produit is None) == (categorie is None):
+        raise ConflitEtat(
+            'Un profil saisonnier vise un produit OU une catégorie, '
+            'jamais les deux ni aucun.')

@@ -3,6 +3,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, inline_seri
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from ..openapi_helpers import INT, P, corps
 from core.viewsets import CompanyScopedModelViewSet
@@ -84,6 +85,15 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
         d'un retour brouillon (le figé est refusé en amont) sont remplacées
         avec l'en-tête, dans une seule transaction."""
         lignes = serializer.validated_data.pop('lignes', None)
+        # ENF11 (nocturne 15/10) — en PATCH le sérialiseur imbriqué est partiel :
+        # une ligne sans produit/quantité (requise au schéma de la ligne) passait
+        # puis cassait le NOT NULL (500). Les lignes REMPLACENT les existantes :
+        # chacune doit être complète, sinon 400 nommant les champs.
+        incompletes = {
+            i: {c: ['Ce champ est obligatoire.'] for c in ('produit', 'quantite') if ligne.get(c) is None}
+            for i, ligne in enumerate(lignes or [])}
+        if any(incompletes.values()):
+            raise ValidationError({'lignes': [incompletes[i] for i in range(len(lignes))]})
         with transaction.atomic():
             retour = serializer.save()
             if lignes is not None:

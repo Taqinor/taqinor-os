@@ -1,3 +1,4 @@
+from django.core.validators import RegexValidator
 from django.db import transaction
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -7,7 +8,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
 from ..erreurs_achats import EtatIncompatible, IntrouvableMetier
+from ..utils.params import corps_objet
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import Fournisseur, BonCommandeFournisseur, ReceptionFournisseur
@@ -479,7 +482,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         bc.save(update_fields=['statut'])
         return Response(self.get_serializer(bc).data)
 
-    @extend_schema(request=corps('BcfAnnulerCorps', motif_annulation=serializers.CharField()),
+    @extend_schema(request=corps('BcfAnnulerCorps', motif_annulation=serializers.CharField(
+                       validators=[RegexValidator(MOTIF_NON_BLANC_SANS_NUL)])),
                    responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):
@@ -490,7 +494,10 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
         # ZPUR11 — motif OBLIGATOIRE (400 si vide), tracé horodaté + acteur.
-        motif = (request.data.get('motif_annulation') or '').strip()
+        # ENF11 (nocturne 15/10) — même prédicat que le motif publié (texte
+        # non blanc, sans caractère nul) : un nul faisait un ValueError SQL (500).
+        motif = corps_objet(request).get('motif_annulation')
+        motif = motif.strip() if isinstance(motif, str) and '\x00' not in motif else ''
         if not motif:
             return Response(
                 {'detail': "Un motif d'annulation est requis."},

@@ -16,7 +16,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from core.champs_stricts import ChaineStricte, DecimalStricte, MOTIF_NON_BLANC_SANS_NUL
+from core.champs_stricts import ChaineStricte, DecimalStricte, MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL
 from core.entite_scoping import EntiteScopeMixin
 from ..openapi_helpers import (
     BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, QuantiteComptee, corps,
@@ -1300,8 +1300,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'limite': UTILISE_DANS_LIMITE,
         })
 
-    @extend_schema(parameters=[P('serie', STR, True, 'Numéro de série (ou lot via le paramètre lot)', pattern=r'\S'),
-                               P('lot', STR, False, 'Numéro de lot')], responses=OBJET)
+    @extend_schema(parameters=[P('serie', STR, True, 'Numéro de série (ou lot via le paramètre lot)',
+                                 pattern=MOTIF_NON_BLANC_SANS_NUL),
+                               P('lot', STR, False, 'Numéro de lot', pattern=MOTIF_SANS_NUL)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='tracer',
             permission_classes=[IsAnyRole])
     def tracer(self, request):
@@ -1309,8 +1310,16 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         `?serie=<numero>` ou `?lot=<numero>`. Remonte réception fournisseur
         → emplacement entrepôt → équipement installé/client en un appel.
         Numéro inconnu / hors société → 404. INTERNE, lecture seule."""
+        from rest_framework.exceptions import ValidationError
+
         from ..selectors import trace_serie
 
+        # ENF11 (nocturne 15/10) — un caractère nul atteignait la requête SQL
+        # (ValueError 500) : les motifs PUBLIÉS sont appliqués (400 sinon).
+        for nom, motif in (('serie', MOTIF_NON_BLANC_SANS_NUL), ('lot', MOTIF_SANS_NUL)):
+            brut = request.query_params.get(nom)
+            if brut is not None and not re.fullmatch(motif, brut):
+                raise ValidationError({nom: ['Valeur invalide (texte sans caractère nul attendu).']})
         numero_serie = (request.query_params.get('serie') or '').strip()
         numero_lot = (request.query_params.get('lot') or '').strip()
         if not numero_serie and not numero_lot:
@@ -1380,7 +1389,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(chaine)
 
     @extend_schema(parameters=[P('code', STR, True, 'Code scanné (PRODUIT:<id> / SYSTEME:<id>)',
-                                 pattern=r'\S')], responses=OBJET)
+                                 pattern=MOTIF_NON_BLANC_SANS_NUL)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
     def resolve(self, request):
@@ -1394,7 +1403,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from .. import labels
 
         code = (request.query_params.get('code') or '').strip()
-        if not code:
+        if not code or '\x00' in code:  # ENF11 : nul publié interdit (500 SQL avant)
             return Response(
                 {'detail': 'Code illisible.'},
                 status=status.HTTP_400_BAD_REQUEST)
