@@ -6,13 +6,6 @@ import userEvent from '@testing-library/user-event'
    d'endpoints FG310-318, un onglet par famille. */
 
 // Radix Tabs peut sonder matchMedia — filet standard du dépôt.
-function mockMatchMedia() {
-  window.matchMedia = (query) => ({
-    matches: false, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() })
 
 const api = vi.hoisted(() => ({
@@ -26,6 +19,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
 import ApprovisionnementPage from './ApprovisionnementPage'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

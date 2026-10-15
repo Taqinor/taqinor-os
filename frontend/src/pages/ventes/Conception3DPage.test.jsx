@@ -19,14 +19,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 import ventesApi from '../../api/ventesApi'
 import Conception3DPage from './Conception3DPage'
-
-function mockMatchMedia(mobile) {
-  window.matchMedia = (query) => ({
-    matches: mobile, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
+import { mockMatchMedia } from '../../test/matchMedia'
 
 function rendre() {
   return render(

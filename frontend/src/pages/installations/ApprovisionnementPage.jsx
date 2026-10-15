@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
 import { PackageSearch } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
-  Badge, Spinner, EmptyState,
+  Badge,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { formatMAD, formatDate } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
 // NTI18N1 — rollout i18n : premier écran Chantiers/Installations migré.
 import { useT } from '../../i18n'
+import { useFilteredList } from '../../features/installations/chargementListe'
+import ListShell from '../../features/installations/ListeEtat'
 
 /* ============================================================================
    WIR110 — Approvisionnement avancé (consultation, `/chantiers/approvisionnement`).
@@ -53,42 +54,12 @@ function SimpleTable({ columns, rows, rowKey = (r) => r.id }) {
 
 // Onglet générique : charge via `fetcher`, montre spinner/erreur/vide/tableau.
 function ResourceTab({ fetcher, columns, rowKey, emptyLabel }) {
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  const load = useCallback(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    fetcher()
-      .then((res) => {
-        if (cancelled) return
-        const payload = res?.data
-        setRows(Array.isArray(payload) ? payload : (payload?.results ?? []))
-      })
-      .catch((err) => {
-        if (cancelled) return
-        setError(err?.response?.data?.detail || 'Chargement impossible.')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
-  useEffect(() => load(), [load])
-
-  if (loading) return (
-    <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
+  const { rows, loading, error } = useFilteredList(fetcher)
+  return (
+    <ListShell loading={loading} error={error} icon={PackageSearch} empty={emptyLabel}>
+      {rows.length > 0 && <SimpleTable columns={columns} rows={rows} rowKey={rowKey} />}
+    </ListShell>
   )
-  if (error) return <EmptyState title="Impossible de charger" description={error} className="py-6" />
-  if (rows.length === 0) {
-    return <EmptyState icon={PackageSearch} title={emptyLabel} className="py-6" />
-  }
-  return <SimpleTable columns={columns} rows={rows} rowKey={rowKey} />
 }
 
 const mad = (v) => (v == null ? '—' : formatMAD(v, { decimals: 0 }))

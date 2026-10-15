@@ -6,13 +6,6 @@ import userEvent from '@testing-library/user-event'
    Vérifie les 3 onglets, l'appel des 3 familles d'endpoints, et surtout que
    le consentement est explicite (case à cocher obligatoire) et révocable. */
 
-function mockMatchMedia() {
-  window.matchMedia = (query) => ({
-    matches: false, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() })
 
 const inst = vi.hoisted(() => ({
@@ -74,6 +67,7 @@ vi.mock('../../components/MapView', () => ({
 }))
 
 import SuiviGpsPage from './SuiviGpsPage'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 

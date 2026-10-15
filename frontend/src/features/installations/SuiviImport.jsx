@@ -10,12 +10,16 @@ import { useCallback, useEffect, useState } from 'react'
 import { PlusCircle } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
-  Badge, Button, IconButton, Spinner, EmptyState,
+  Badge, Button, IconButton,
   Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { formatDate, formatMAD } from '../../lib/format'
 import installationsApi from '../../api/installationsApi'
+import { unwrap, useFilteredList } from './chargementListe'
+import ListShell from './ListeEtat'
+import MaitreDetail from './MaitreDetail'
+import PiedCreation from './PiedCreation'
 
 const INCOTERMS = [
   ['exw', "EXW — À l'usine"], ['fob', 'FOB — Franco à bord'],
@@ -34,44 +38,6 @@ const CATEGORIES_FRAIS = [
   ['manutention', 'Manutention / magasinage'], ['assurance', 'Assurance'],
   ['autre', 'Autre frais'],
 ]
-
-function unwrap(res) {
-  const p = res?.data
-  return Array.isArray(p) ? p : (p?.results ?? [])
-}
-
-function useFilteredList(fetcher, params) {
-  const key = JSON.stringify(params)
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const load = useCallback(() => {
-    let cancelled = false
-    setLoading(true); setError(null)
-    fetcher(params)
-      .then((res) => { if (!cancelled) setRows(unwrap(res)) })
-      .catch((err) => {
-        if (!cancelled) setError(err?.response?.data?.detail || 'Chargement impossible.')
-      })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` encode les filtres : seul son changement relance le chargement (D-ENF22)
-  }, [key])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de filtre (D-ENF22)
-  useEffect(() => load(), [load])
-  return { rows, loading, error, reload: load }
-}
-
-function ListShell({ loading, error, empty, children }) {
-  if (loading) return (
-    <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-      <Spinner className="size-4 text-primary" /> Chargement…
-    </p>
-  )
-  if (error) return <EmptyState title="Impossible de charger" description={error} className="py-6" />
-  if (!children) return <EmptyState title={empty} className="py-6" />
-  return children
-}
 
 // ── Créer un dossier d'import ───────────────────────────────────────────────
 function CreateDossierDialog({ onClose, onCreated }) {
@@ -119,12 +85,7 @@ function CreateDossierDialog({ onClose, onCreated }) {
         <input id="di-port" type="text" className="form-control" value={portArrivee} onChange={(e) => setPortArrivee(e.target.value)} />
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-      <div className="modal-footer">
-        <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-        <Button type="button" loading={busy} disabled={busy} onClick={create}>
-          {busy ? 'Création…' : 'Créer'}
-        </Button>
-      </div>
+      <PiedCreation busy={busy} onClose={onClose} onCreate={create} />
     </ResponsiveDialog>
   )
 }
@@ -170,12 +131,7 @@ function CreateFraisDialog({ dossierId, onClose, onCreated }) {
         <input id="fi-date" type="date" className="form-control" value={dateFrais} onChange={(e) => setDateFrais(e.target.value)} />
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-      <div className="modal-footer">
-        <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-        <Button type="button" loading={busy} disabled={busy} onClick={create}>
-          {busy ? 'Création…' : 'Créer'}
-        </Button>
-      </div>
+      <PiedCreation busy={busy} onClose={onClose} onCreate={create} />
     </ResponsiveDialog>
   )
 }
@@ -248,12 +204,7 @@ function CreateLandedLigneDialog({ dossierId, onClose, onCreated }) {
         <input id="lc-fob" type="number" step="any" className="form-control" value={valeurFob} onChange={(e) => setValeurFob(e.target.value)} />
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
-      <div className="modal-footer">
-        <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
-        <Button type="button" loading={busy} disabled={busy} onClick={create}>
-          {busy ? 'Création…' : 'Créer'}
-        </Button>
-      </div>
+      <PiedCreation busy={busy} onClose={onClose} onCreate={create} />
     </ResponsiveDialog>
   )
 }
@@ -393,48 +344,31 @@ export default function SuiviImport() {
         title="Import et douane"
         subtitle="Dossiers d'import, frais et coût de revient débarqué — donnée interne, jamais client-facing."
       />
-      <div className="flex flex-col gap-4 md:flex-row">
-        <aside className="w-full md:w-72 flex-shrink-0 flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">Dossiers d'import</h3>
-            <IconButton size="md" variant="outline" label="Nouveau dossier" onClick={() => setShowCreate(true)}>
-              <PlusCircle className="size-4" aria-hidden="true" />
-            </IconButton>
-          </div>
-          {loadingList ? (
-            <p className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-              <Spinner className="size-4 text-primary" /> Chargement…
-            </p>
-          ) : dossiers.length === 0 ? (
-            <EmptyState title="Aucun dossier d'import" description="Créez le premier dossier suivi." className="py-4" />
-          ) : (
-            <ul className="flex flex-col gap-1" data-testid="liste-dossiers-import">
-              {dossiers.map((d) => (
-                <li key={d.id}>
-                  <button type="button"
-                    data-testid={`dossier-import-${d.id}`}
-                    className={`w-full text-left rounded-lg border px-3 py-2 text-sm ${selected === d.id ? 'border-primary bg-primary/5' : 'border-border'}`}
-                    onClick={() => setSelected(d.id)}>
-                    <span className="font-medium block">{d.designation}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {d.statut_douane_display || STATUT_DOUANE_LABEL[d.statut_douane]}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
-        <div className="flex-1 min-w-0">
-          {!current ? (
-            <EmptyState title="Sélectionnez un dossier"
-              description="Choisissez un dossier d'import dans la liste, ou créez-en un nouveau."
-              className="py-10" />
-          ) : (
-            <DossierFiche dossier={current} onAdvanced={loadDossiers} />
-          )}
-        </div>
-      </div>
+      <MaitreDetail
+        titre="Dossiers d'import"
+        action={(
+          <IconButton size="md" variant="outline" label="Nouveau dossier" onClick={() => setShowCreate(true)}>
+            <PlusCircle className="size-4" aria-hidden="true" />
+          </IconButton>
+        )}
+        loading={loadingList}
+        vide={{ title: "Aucun dossier d'import", description: 'Créez le premier dossier suivi.' }}
+        testId="liste-dossiers-import"
+        items={dossiers}
+        selected={selected}
+        onSelect={setSelected}
+        itemTestId={(d) => `dossier-import-${d.id}`}
+        renderItem={(d) => (
+          <>
+            <span className="font-medium block">{d.designation}</span>
+            <span className="text-xs text-muted-foreground">
+              {d.statut_douane_display || STATUT_DOUANE_LABEL[d.statut_douane]}
+            </span>
+          </>
+        )}
+        selectionVide={{ title: 'Sélectionnez un dossier', description: "Choisissez un dossier d'import dans la liste, ou créez-en un nouveau." }}
+        fiche={current ? <DossierFiche dossier={current} onAdvanced={loadDossiers} /> : null}
+      />
       {showCreate && (
         <CreateDossierDialog
           onClose={() => setShowCreate(false)}

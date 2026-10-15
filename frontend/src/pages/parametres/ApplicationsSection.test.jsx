@@ -6,13 +6,6 @@ import { configureStore } from '@reduxjs/toolkit'
 
 // AlertDialog (Radix) peut sonder matchMedia — même filet que
 // ClientRgpdActions.test.jsx (autre écran utilisant AlertDialog).
-function mockMatchMedia() {
-  window.matchMedia = (query) => ({
-    matches: false, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })
-}
 beforeAll(() => { if (typeof window.matchMedia !== 'function') mockMatchMedia() })
 
 /* ODX5 — Onglet « Applications » : catalogue de modules (ODX3) admin-gated,
@@ -82,6 +75,7 @@ vi.mock('../../api/coreApi', () => ({
 }))
 
 import ApplicationsSection from './ApplicationsSection'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 // `vi.clearAllMocks()` n'efface QUE l'historique d'appels : une implémentation
