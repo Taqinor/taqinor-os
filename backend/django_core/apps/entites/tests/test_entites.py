@@ -156,6 +156,17 @@ class EntiteApiTests(TestCase):
         r = self.client_api.patch(f'{base}{e.id}/', {'actif': False}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
 
+    def test_enf11_nom_et_code_non_texte_refuses(self):
+        """CI #1001 fuzz : `code: 0` / `nom: 0` ne sont plus convertis en chaîne
+        (400) ; le même corps avec des chaînes est créé (201)."""
+        base = '/api/django/entites/entites/'
+        for corps in ({'nom': 'A', 'code': 0}, {'nom': 0, 'code': 'A'}):
+            r = self.client_api.post(base, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        self.assertFalse(Entite.objects.filter(company=self.company).exists())
+        r = self.client_api.post(base, {'nom': '0', 'code': '0'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
     def test_enf11_cycle_de_parent_409(self):
         """ENF11 — un rattachement en boucle est un conflit d'état (409)."""
         a = creer_entite(self.company, nom='A', code='A')

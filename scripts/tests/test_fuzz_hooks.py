@@ -577,7 +577,9 @@ class FichiersPdfTests(unittest.TestCase):
     def test_import_generique_recoit_un_csv_lisible(self):
         # ENF11 imports : dry-run/commit lisent un CSV (en-têtes seuls) ; des
         # octets quelconques sont « Lecture impossible » (400).
-        for chemin in ('/api/django/imports/dry-run/', '/api/django/imports/commit/'):
+        for chemin in ('/api/django/imports/dry-run/', '/api/django/imports/commit/',
+                       '/api/django/imports/traductions/import/',
+                       '/api/django/imports/feries/import/'):
             corps = self._corps('POST', chemin, {'file': b'', 'target': 'leads'})
             self.assertEqual(corps['file'], b'nom,email\r\n')
             self.assertEqual(corps['target'], 'leads')
