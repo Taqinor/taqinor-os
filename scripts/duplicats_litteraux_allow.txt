@@ -195,7 +195,6 @@
 346ab5d1d3a3|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 348ee56856b5|frontend/src/pages/monitoring/CleaningsPage.jsx,frontend/src/pages/monitoring/ClientPortalPage.jsx,frontend/src/pages/monitoring/Co2Page.jsx,frontend/src/pages/monitoring/OmAnalyticsPage.jsx,frontend/src/pages/monitoring/OmReportPage.jsx,frontend/src/pages/reporting/CohortsPage.jsx
 34aad3e6ee5b|apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/marocains-du-monde.astro
-34d8a81ee353|frontend/src/pages/Dashboard.jsx,frontend/src/pages/Reporting.jsx
 34dc75ff2a2c|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/ar/résidentiel.astro,apps/web/src/pages/en/professionnel.astro,apps/web/src/pages/en/résidentiel.astro,apps/web/src/pages/professionnel.astro,apps/web/src/pages/résidentiel.astro
 34dd17ce579f|apps/web/src/pages/ar/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/en/recharge-voiture-electrique-solaire.astro,apps/web/src/pages/recharge-voiture-electrique-solaire.astro
 34efbb575afc|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
@@ -267,7 +266,6 @@
 474fa0638935|frontend/src/features/calepinage/CalepinageList.err-qah-rattachement.test.jsx,frontend/src/features/calepinage/CalepinageList.test.jsx
 475754d8af0b|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro,apps/web/src/pages/à-propos.astro
 476b538b2523|frontend/src/features/calepinage/ModeTerrain.jsx,frontend/src/features/calepinage/Ombriere.jsx
-47f63a2bcb29|frontend/src/pages/Dashboard.jsx,frontend/src/pages/Reporting.jsx
 47f736112800|apps/web/src/pages/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/faut-il-des-batteries.astro,apps/web/src/pages/guides/mon-toit-peut-il-supporter-des-panneaux.astro,apps/web/src/pages/guides/monocristallin-ou-polycristallin.astro,apps/web/src/pages/guides/onduleur-hybride-ou-reseau.astro,apps/web/src/pages/guides/quelle-taille-de-batterie.astro
 4922f9eee55d|frontend/src/features/parametres/CustomObjectRecordsPage.jsx,frontend/src/pages/Journal.jsx,frontend/src/pages/admin/GouvernanceAccesPage.jsx,frontend/src/pages/ia/OcrUpload.jsx,frontend/src/pages/installations/PlanificationPage.jsx,frontend/src/pages/parametres/AvanceSection.jsx,frontend/src/pages/parametres/DonneesSection.jsx,frontend/src/pages/parametres/EquipeSection.jsx,frontend/src/pages/parametres/GammesMarquesPage.jsx,frontend/src/pages/reporting/ClasseurPage.jsx,frontend/src/pages/stock/PaiementsFournisseurLedgerPage.jsx,frontend/src/pages/ventes/BonCommandeList.jsx,frontend/src/pages/ventes/DossiersReglementairesPage.jsx,frontend/src/pages/ventes/factureList/DialoguesFacture.jsx,frontend/src/pages/ventes/generator/PanneauSurcharges.jsx
 49791ae69744|apps/web/src/pages/ar/guides/entretien-et-duree-de-vie-des-panneaux.astro,apps/web/src/pages/ar/guides/on-grid-off-grid-ou-hybride.astro,apps/web/src/pages/ar/guides/orientation-inclinaison-ombrage.astro,apps/web/src/pages/en/guides/entretien-et-duree-de-vie-des-panneaux.astro,apps/web/src/pages/en/guides/on-grid-off-grid-ou-hybride.astro,apps/web/src/pages/en/guides/orientation-inclinaison-ombrage.astro
@@ -602,7 +600,6 @@ a47b574fa865|frontend/src/features/crm/relances/RelanceEtapeRow.visiteAcceptee.t
 a4b5cfe317a2|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 a5414aa1441b|frontend/src/features/offlinesync/mobile/CockpitHome.jsx,frontend/src/features/offlinesync/mobile/EquipeTerrainHome.jsx
 a5c433cf38f4|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-a5cc2683e5d2|frontend/src/pages/Dashboard.jsx,frontend/src/pages/Reporting.jsx
 a60d4cf844cc|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
 a61955ffec60|frontend/src/features/calepinage/ModeTerrain.jsx,frontend/src/features/calepinage/Ombriere.jsx
 a65d22dd4e48|apps/web/src/pages/pourquoi-taqinor.astro,apps/web/src/pages/realisations/index.astro
@@ -720,7 +717,6 @@ c8fea06ca250|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 c9b07d76de19|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
 c9ccbef75f4c|frontend/src/pages/crm/ClientForm.jsx,frontend/src/pages/stock/FournisseursStock.jsx
 c9d780e02d48|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
-c9dd32859107|frontend/src/pages/Dashboard.jsx,frontend/src/pages/Reporting.jsx
 ca3c70af9d41|frontend/src/features/crm/workspace/LeadWorkspace.historique.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.historiqueRelance.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.nestedShortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.onAction.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.paletteActions.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.prefetch.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.shortcuts.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.skeleton.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspace.toiture3d.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx,frontend/src/features/crm/workspace/burstSafety.test.jsx
 ca7f4da11612|apps/web/src/pages/ar/blog/index.astro,apps/web/src/pages/blog/index.astro,apps/web/src/pages/en/blog/index.astro
 ca91630fb946|frontend/src/features/crm/workspace/LeadWorkspace.test.jsx,frontend/src/features/crm/workspace/LeadWorkspaceFieldErrorChip.test.jsx

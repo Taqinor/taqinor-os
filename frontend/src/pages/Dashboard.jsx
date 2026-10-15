@@ -38,12 +38,7 @@ import {
   TrendingUp, Activity, ReceiptText, Clock, Wrench, CalendarClock, Phone,
 } from 'lucide-react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer,
-} from 'recharts'
-import {
-  AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty, ChartTooltip,
-  CHART_TOKENS, CHART_GRID_STYLE, CHART_COMPARISON_STYLE, categoricalColor,
-  animationDuration, CHART_ANIM_EASING,
+  AreaSansAxe, BarArrondie, KpiSpark, ChartEmpty, CaCompareChart, CaCompareToggle,
 } from '../ui/charts'
 import { ModuleHero } from '../ui/module/ModuleHero.jsx'
 import { fetchProduits } from '../features/stock/store/stockSlice'
@@ -1106,15 +1101,7 @@ export function Component() {
               isEmpty={caMensuel.every((m) => m.ca === 0)}
               emptyLabel="Aucune facture payée sur les 6 derniers mois."
               actions={(
-                <Segmented
-                  size="sm"
-                  value={caCompare ? 'compare' : 'simple'}
-                  onChange={(v) => setCaCompare(v === 'compare')}
-                  options={[
-                    { value: 'simple', label: 'CA seul' },
-                    { value: 'compare', label: 'Vs période précédente' },
-                  ]}
-                />
+                <CaCompareToggle caCompare={caCompare} setCaCompare={setCaCompare} />
               )}
             >
               {caCompare ? (
@@ -1123,65 +1110,8 @@ export function Component() {
                       déjà chargées, décalées de 6 mois — zéro appel API. Série
                       courante en trait plein (palette CA), précédente en
                       pointillé (CHART_COMPARISON_STYLE). */}
-                  <ResponsiveContainer width="100%" height={180}>
-                    <AreaChart data={caMensuelCompare} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                      <CartesianGrid {...CHART_GRID_STYLE} />
-                      <XAxis
-                        dataKey="mois"
-                        tick={{ fontSize: 11, fill: CHART_TOKENS.axis }}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis hide domain={[0, 'auto']} />
-                      <RTooltip
-                        cursor={{ stroke: CHART_TOKENS.grid }}
-                        content={<ChartTooltip format={(v) => formatMAD(v, { decimals: 0 })} />}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="ca"
-                        name="CA HT (période actuelle)"
-                        stroke={categoricalColor(0)}
-                        strokeWidth={2}
-                        fill={categoricalColor(0)}
-                        fillOpacity={0.12}
-                        dot={false}
-                        isAnimationActive={animationDuration() > 0}
-                        animationDuration={animationDuration()}
-                        animationEasing={CHART_ANIM_EASING}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="caPrecedent"
-                        name="CA HT (période précédente)"
-                        stroke={categoricalColor(1)}
-                        dot={false}
-                        isAnimationActive={animationDuration() > 0}
-                        animationDuration={animationDuration()}
-                        animationEasing={CHART_ANIM_EASING}
-                        {...CHART_COMPARISON_STYLE}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                  {/* Légende claire (les couleurs recharts natives ne rendent
-                      pas le style pointillé) : trait plein = période actuelle,
-                      pointillé = période précédente. */}
-                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span aria-hidden="true" className="inline-block h-0.5 w-3.5 rounded-full" style={{ background: categoricalColor(0) }} />
-                      Période actuelle
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span
-                        aria-hidden="true"
-                        className="inline-block h-0.5 w-3.5"
-                        style={{
-                          backgroundImage: `repeating-linear-gradient(90deg, ${categoricalColor(1)} 0 4px, transparent 4px 7px)`,
-                        }}
-                      />
-                      Période précédente
-                    </span>
-                  </div>
+                  <CaCompareChart data={caMensuelCompare} height={180}
+                    format={(v) => formatMAD(v, { decimals: 0 })} />
                 </>
               ) : (
                 <AreaSansAxe
