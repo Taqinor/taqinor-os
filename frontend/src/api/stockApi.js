@@ -4,7 +4,7 @@ import api from './axios'
 // (StandardPagination : 50 par défaut, plafond serveur 200) en suivant `next`
 // jusqu'au bout. Renvoie `{ data: [...] }` : les appelants qui lisent
 // `r.data?.results ?? r.data` restent compatibles. Garde-fou : 500 pages.
-async function lireToutesLesPages(url, params) {
+async function lireListeStock(url, params) {
   const tous = []
   for (let page = 1; page <= 500; page += 1) {
     const r = await api.get(url, { params: { page_size: 200, ...params, page } })
@@ -74,9 +74,9 @@ const stockApi = {
   // Fournisseurs
   getFournisseurs: (params) => api.get('/stock/fournisseurs/', { params }),
   // ASTK185 — liste COMPLÈTE (le 51ᵉ fournisseur n'est plus perdu en page 2).
-  getAllFournisseurs: (params) => lireToutesLesPages('/stock/fournisseurs/', params),
+  getAllFournisseurs: (params) => lireListeStock('/stock/fournisseurs/', params),
   getAllFournisseursArchived: (params) =>
-    lireToutesLesPages('/stock/fournisseurs/', { ...params, show_archived: 'true' }),
+    lireListeStock('/stock/fournisseurs/', { ...params, show_archived: 'true' }),
   // WIR219 — fiche fournisseur unique (retrieve), lecture IsAnyRole. Manquait
   // jusqu'ici : FournisseurFiche360.jsx l'appelait déjà en optional-chaining
   // (`stockApi.getFournisseur?.(...)`), donc le badge de candidature/actions
