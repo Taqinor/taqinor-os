@@ -12,6 +12,7 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import toutesLesPages from './toutesLesPages'
 import { ChargementPage } from '../../ui/ChargementPage'
+import PiedModaleFormulaire from '../../ui/PiedModaleFormulaire'
 
 /* ============================================================================
    XPLT6 — CRUD des alertes de seuil sur KPI AGRÉGÉS (`reporting/kpi-alertes/`).
@@ -301,12 +302,8 @@ export default function KpiAlertesPage() {
             <Label htmlFor="ka-actif">Alerte active</Label>
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
-            <Button type="submit" loading={saving} disabled={!form.seuil}>
-              {editing ? 'Enregistrer' : 'Créer'}
-            </Button>
-          </div>
+          <PiedModaleFormulaire onAnnuler={() => setDialogOpen(false)} saving={saving}
+                                desactive={!form.seuil} enEdition={editing} />
         </form>
       </ResponsiveDialog>
     </div>

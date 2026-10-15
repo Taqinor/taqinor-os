@@ -26,6 +26,7 @@ import InstallationsSkeleton from './views/InstallationsSkeleton'
 import InstallationDetail from './InstallationDetail'
 import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 import { SelecteurVue } from '../../ui/SelecteurVue'
+import CelluleCalendrier from '../../ui/CelluleCalendrier'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
 const VALID_VIEWS = ['liste', 'kanban', 'calendrier']
@@ -207,45 +208,23 @@ function CalendarView({ items, onOpen, onReschedule }) {
         {WEEKDAYS.map((day) => (
           <div key={day} className="cal-weekday">{day}</div>
         ))}
-        {cells.map((cell) => {
-          const dayItems = byDay.get(cell.key) ?? []
-          const expanded = Boolean(expandedDays[cell.key])
-          const visible =
-            expanded || dayItems.length <= MAX_CHIPS_PER_DAY
-              ? dayItems
-              : dayItems.slice(0, MAX_CHIPS_PER_DAY)
-          const hidden = dayItems.length - visible.length
-          return (
-            <div
-              key={cell.key}
-              className={[
-                'cal-cell',
-                cell.inMonth ? '' : 'cal-cell-out',
-                cell.key === todayKey ? 'cal-cell-today' : '',
-                dragId ? 'cal-cell-droppable' : '',
-              ].filter(Boolean).join(' ')}
-              onDragOver={(e) => { if (dragId) e.preventDefault() }}
-              onDrop={(e) => { e.preventDefault(); handleDrop(cell.key) }}
-            >
-              <span className="cal-day-number">{cell.dayNumber}</span>
-              <div className="cal-chips">
-                {visible.map((it) => (
-                  <Chip key={it.id} item={it} onOpen={onOpen} onDragStart={handleDragStart} />
-                ))}
-                {hidden > 0 && (
-                  <button type="button" className="cal-more" onClick={() => toggleDay(cell.key)}>
-                    +{hidden} autres
-                  </button>
-                )}
-                {expanded && dayItems.length > MAX_CHIPS_PER_DAY && (
-                  <button type="button" className="cal-more" onClick={() => toggleDay(cell.key)}>
-                    Réduire
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
+        {cells.map((cell) => (
+          <CelluleCalendrier
+            key={cell.key}
+            cell={cell}
+            aujourdhui={cell.key === todayKey}
+            items={byDay.get(cell.key) ?? []}
+            deplie={Boolean(expandedDays[cell.key])}
+            onBasculer={toggleDay}
+            max={MAX_CHIPS_PER_DAY}
+            classes={[dragId ? 'cal-cell-droppable' : '']}
+            onDragOver={(e) => { if (dragId) e.preventDefault() }}
+            onDrop={(e) => { e.preventDefault(); handleDrop(cell.key) }}
+            rendrePastille={(it) => (
+              <Chip key={it.id} item={it} onOpen={onOpen} onDragStart={handleDragStart} />
+            )}
+          />
+        ))}
       </div>
     </div>
   )

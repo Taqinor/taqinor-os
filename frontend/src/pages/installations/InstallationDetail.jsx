@@ -79,6 +79,9 @@ import {
   Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 import TableauDefilant from '../../ui/TableauDefilant'
+import SelectStatutEquipement from '../../features/sav/SelectStatutEquipement'
+import { EQUIP_STATUTS } from '../../features/sav/equipement'
+import RaisonsBlocageGate from '../../ui/RaisonsBlocageGate'
 
 // L4 — l'aperçu PDF (canvas PDF.js) est chargé à la demande (gros module) : il
 // ne pèse sur le bundle que quand on ouvre réellement un aperçu après-vente.
@@ -190,13 +193,7 @@ function ChantierAlerts({ alerts, onClearError }) {
 
 const ALL_NONE = '__none__'
 
-// N5 — statuts d'un équipement du parc (miroir de sav.Equipement.Statut).
-// source-choix: sav.Equipement.statut
-const EQUIP_STATUTS = [
-  { value: 'en_service', label: 'En service' },
-  { value: 'remplace', label: 'Remplacé' },
-  { value: 'hors_service', label: 'Hors service' },
-]
+// N5 — libellé du statut d'un équipement du parc (liste : features/sav/equipement.js).
 const equipStatutLabel = (v) =>
   EQUIP_STATUTS.find((s) => s.value === v)?.label ?? '—'
 
@@ -1171,15 +1168,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   quand la transition de statut est bloquée par un gate : une
                   liste à puces des raisons, jamais un message brut. */}
               {statutBlockedReasons ? (
-                <div
-                  role="alert"
-                  className="flex flex-col gap-1 rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive"
-                  data-testid="ch6-blocked-reasons"
-                >
-                  <strong>Étape bloquée par un gate&nbsp;:</strong>
-                  <ul className="flex flex-col gap-0.5">
-                    {statutBlockedReasons.map((r) => <li key={r}>• {r}</li>)}
-                  </ul>
+                <RaisonsBlocageGate raisons={statutBlockedReasons}>
                   {/* CIQ621/CIQ630 — un Directeur peut passer outre avec un
                       motif, journalisé ; il part au prochain enregistrement. */}
                   <label className="mt-1 flex flex-col gap-1 text-foreground" htmlFor="ch-derogation">
@@ -1202,7 +1191,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                              onChange={(e) => setMotifReouverture(e.target.value)} />
                     </label>
                   )}
-                </div>
+                </RaisonsBlocageGate>
               ) : saveError && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" role="alert">
                   {saveError}
@@ -1507,15 +1496,8 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                         <td className="px-3 py-2">{formatDate(eq.date_pose)}</td>
                         <td className="px-3 py-2">
                           {editing ? (
-                            <Select value={editEquip.statut}
-                                    onValueChange={(v) => setEditEquip(s => ({ ...s, statut: v }))}>
-                              <SelectTrigger><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                {EQUIP_STATUTS.map((s) => (
-                                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <SelectStatutEquipement value={editEquip.statut}
+                                    onValueChange={(v) => setEditEquip(s => ({ ...s, statut: v }))} />
                           ) : (eq.statut_display ?? equipStatutLabel(eq.statut))}
                         </td>
                         <td className="px-3 py-2">

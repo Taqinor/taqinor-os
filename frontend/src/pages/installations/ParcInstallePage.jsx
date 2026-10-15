@@ -30,8 +30,11 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   DataTable, StatusPill,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-  DialogFooter, Label,
+  Label,
 } from '../../ui'
+import PiedAnnulerOccupe from '../../ui/PiedAnnulerOccupe'
+import { ErreurTexte } from '../../ui/AlertesServeur'
+import { ErreurChargementReessayer } from '../../ui/ChargementPage'
 
 const MapView = lazy(() => import('../../components/MapView'))
 
@@ -127,17 +130,14 @@ function RapportEnergieModal({ installation, onClose }) {
               placeholder="Défaut appliqué si vide"
             />
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <ErreurTexte error={error} />
         </div>
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            Annuler
-          </Button>
+        <PiedAnnulerOccupe onClose={onClose} busy={busy}>
           <Button type="button" onClick={telecharger} disabled={busy}>
             {busy ? <Spinner /> : <Download />} Télécharger le PDF
           </Button>
-        </DialogFooter>
+        </PiedAnnulerOccupe>
       </DialogContent>
     </Dialog>
   )
@@ -414,12 +414,7 @@ export default function ParcInstallePage() {
       )}
 
       {error ? (
-        <EmptyState
-          title="Erreur de chargement"
-          description={error}
-          action={<Button size="sm" onClick={reload}>Réessayer</Button>}
-          className="my-6 border-destructive/40"
-        />
+        <ErreurChargementReessayer error={error} onRetry={reload} />
       ) : loading && items.length === 0 ? (
         // N11 — squelette de chargement (aucune page encore reçue).
         <div className="flex flex-col gap-2">

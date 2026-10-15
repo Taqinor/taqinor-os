@@ -5,7 +5,7 @@ import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import fetchAllPages from '../../utils/fetchAllPages'
 import {
-  Card, CardContent, Skeleton, EmptyState, Button, Input, Label,
+  Card, CardContent, EmptyState, Button, Input, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -16,6 +16,7 @@ import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
 import PiedDialogueFermer from '../stock/PiedDialogueFermer'
+import SqueletteLignesCarte from '../../ui/SqueletteLignesCarte'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -84,9 +85,7 @@ export default function ListesPrixPage() {
       )}
 
       {loading ? (
-        <Card><CardContent className="space-y-2 pt-5">
-          {Array.from({ length: 4 }).map((unused, i) => <Skeleton key={i} className="h-9 w-full" />)}
-        </CardContent></Card>
+        <SqueletteLignesCarte lignes={4} />
       ) : (
         <Card>
           <CardContent className="p-0 sm:p-0">

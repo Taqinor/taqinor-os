@@ -2,15 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Gauge, Leaf, Sun } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
-import { Badge, Card, DataTable, EmptyState, IconButton } from '../../ui'
-import { ModuleDashboard } from '../../ui/module'
-import { BarArrondie, ChartEmpty } from '../../ui/charts'
+import { Badge, Card, EmptyState, IconButton } from '../../ui'
 import { formatNumber, formatPercent } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import useVisibilityAwarePoll from './useVisibilityAwarePoll'
 import FreshnessBadge from './FreshnessBadge'
 import EnTeteMonitoring from './EnTeteMonitoring'
 import SegmentedPetit from './SegmentedPetit'
+import { TableauDeBordSystemes, TableSystemes } from './PartiesSystemes'
 
 /* WR6 — Vue PARC / FLOTTE multi-systèmes (FG281) : production totale, kWc
    installés, PR moyen pondéré et alertes de sous-performance ouvertes sur tous
@@ -214,17 +213,10 @@ export default function FleetPage() {
         </div>
       </div>
 
-      <ModuleDashboard
-        stats={stats}
-        loading={loading}
-        error={error}
-        charts={!loading && !error ? [{
-          title: 'PR par système (%)',
-          span: 'full',
-          node: chartData.length > 0
-            ? <BarArrondie data={chartData} height={220} name="PR" tooltipFormat={(v) => formatPercent(v, { decimals: 1 })} />
-            : <ChartEmpty />,
-        }] : []}
+      <TableauDeBordSystemes
+        stats={stats} loading={loading} error={error}
+        titre="PR par système (%)" chartData={chartData} nom="PR"
+        tooltipFormat={(v) => formatPercent(v, { decimals: 1 })}
       />
 
       {!loading && !error && (
@@ -281,16 +273,7 @@ export default function FleetPage() {
             })}
           </div>
         ) : (
-          <div className="mt-6">
-            <DataTable
-              data={systems}
-              columns={columns}
-              getRowId={(row) => row.installation}
-              searchable={false}
-              pageSize={25}
-              aria-label="Systèmes du parc"
-            />
-          </div>
+          <TableSystemes systems={systems} columns={columns} label="Systèmes du parc" />
         )
       )}
     </div>

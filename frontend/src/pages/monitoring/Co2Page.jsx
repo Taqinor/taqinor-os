@@ -4,9 +4,8 @@ import { ArrowLeft } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import installationsApi from '../../api/installationsApi'
 import fetchAllPages from '../../utils/fetchAllPages'
-import { DataTable, EmptyState } from '../../ui'
+import { EmptyState } from '../../ui'
 import { ModuleDashboard } from '../../ui/module'
-import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber } from '../../lib/format'
 import { METRIC_ICONS } from '../../ui/metricIcons'
 import MonitoringNav from './MonitoringNav'
@@ -15,6 +14,7 @@ import FreshnessBadge from './FreshnessBadge'
 import { lancerChargement } from '../../lib/chargementEffet'
 import EnTeteMonitoring from './EnTeteMonitoring'
 import { ChargementPage } from '../../ui/ChargementPage'
+import { TableauDeBordSystemes, TableSystemes } from './PartiesSystemes'
 
 /* WR7 — Suivi CO₂ évité (FG286) : CO₂ évité cumulé sur le parc + par système,
    depuis GET /monitoring/configs/co2-fleet/. Rend uniquement ce que renvoie le
@@ -146,17 +146,11 @@ function Co2Fleet() {
         </div>
       )}
 
-      <ModuleDashboard
-        stats={stats}
-        loading={loading}
-        error={error}
-        charts={!loading && !error ? [{
-          title: 'CO₂ évité par système (tonnes)',
-          span: 'full',
-          node: chartData.length > 0
-            ? <BarArrondie data={chartData} height={220} tone="success" name="CO₂ évité" tooltipFormat={(v) => `${formatNumber(v, { decimals: 3 })} t`} />
-            : <ChartEmpty />,
-        }] : []}
+      <TableauDeBordSystemes
+        stats={stats} loading={loading} error={error}
+        titre="CO₂ évité par système (tonnes)" chartData={chartData}
+        tone="success" nom="CO₂ évité"
+        tooltipFormat={(v) => `${formatNumber(v, { decimals: 3 })} t`}
       />
 
       {!loading && !error && (
@@ -168,16 +162,7 @@ function Co2Fleet() {
             className="my-6"
           />
         ) : (
-          <div className="mt-6">
-            <DataTable
-              data={systems}
-              columns={columns}
-              getRowId={(row) => row.installation}
-              searchable={false}
-              pageSize={25}
-              aria-label="CO₂ évité par système"
-            />
-          </div>
+          <TableSystemes systems={systems} columns={columns} label="CO₂ évité par système" />
         )
       )}
     </div>

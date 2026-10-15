@@ -68,6 +68,7 @@ import { useDeepLinkId } from '../../hooks/useDeepLinkId'
 import { SelecteurVue } from '../../ui/SelecteurVue'
 import { ColonneStatut, ItemsUtilisateurs, SelectReaffectation } from '../../ui/kanbanAffectation'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import IndicateurTirerPourActualiser from '../../ui/IndicateurTirerPourActualiser'
 
 // VX43 — repli « changer le statut au menu » sans drag, sous 768px : le
 // glisser-déposer @dnd-kit (TouchSensor delay 150ms) reste utilisable au
@@ -621,16 +622,7 @@ export default function InterventionsPage() {
 
   return (
     <div className="page lp-page overflow-y-auto" {...containerProps}>
-      {(pullDistance > 0 || refreshing) && (
-        <div
-          className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
-          style={{ height: `${Math.max(pullDistance, refreshing ? 32 : 0)}px`, overflow: 'hidden', transition: refreshing ? 'height 150ms ease' : 'none' }}
-          role="status"
-        >
-          {refreshing ? <Spinner className="size-4" /> : null}
-          {refreshing ? 'Actualisation…' : 'Tirer pour actualiser'}
-        </div>
-      )}
+      <IndicateurTirerPourActualiser pullDistance={pullDistance} refreshing={refreshing} />
       <div className="page-header lp-header">
         <h2 className="flex items-center gap-2">
           Interventions

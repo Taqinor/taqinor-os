@@ -1,5 +1,6 @@
 import { Spinner } from './Spinner'
 import { EmptyState } from './EmptyState'
+import { Button } from './Button'
 
 /* Éléments d'état PARTAGÉS des écrans de rapport / supervision / IA : ligne
    « Chargement… » et carte d'échec de chargement. Un seul endroit — jamais
@@ -24,5 +25,17 @@ export function ChargementPageCentree() {
         <Spinner className="size-4 text-primary" /> Chargement…
       </p>
     </div>
+  )
+}
+
+/** Carte « Erreur de chargement » d'une liste, avec le bouton « Réessayer ». */
+export function ErreurChargementReessayer({ error, onRetry }) {
+  return (
+    <EmptyState
+      title="Erreur de chargement"
+      description={error}
+      action={<Button size="sm" onClick={onRetry}>Réessayer</Button>}
+      className="my-6 border-destructive/40"
+    />
   )
 }

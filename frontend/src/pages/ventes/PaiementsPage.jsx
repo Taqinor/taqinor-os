@@ -8,7 +8,7 @@ import api from '../../api/axios'
 import fetchAllPages from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
-  Card, CardContent, Skeleton, EmptyState, Input, Button, Badge, Label,
+  Card, CardContent, EmptyState, Input, Button, Badge, Label,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -21,6 +21,7 @@ import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import SqueletteLignesCarte from '../../ui/SqueletteLignesCarte'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
@@ -560,13 +561,7 @@ export default function PaiementsPage() {
       )}
 
       {loading ? (
-        <Card>
-          <CardContent className="space-y-2 pt-5">
-            {Array.from({ length: 5 }).map((unused, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </CardContent>
-        </Card>
+        <SqueletteLignesCarte />
       ) : (
         <Card>
           <CardContent className="p-0 sm:p-0">
