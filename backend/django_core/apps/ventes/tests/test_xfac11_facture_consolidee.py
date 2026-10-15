@@ -115,7 +115,7 @@ class XFAC11FactureConsolideeTests(TestCase):
         r = self.api.post('/api/django/ventes/factures/consolider/', {
             'devis_ids': [d1.id, d3.id],
         }, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # CI #997 fuzz : refus d'état, 409
 
     def test_mixed_clients_rejected(self):
         d1 = self._accepted_devis('0006', 1, 1)
@@ -133,7 +133,7 @@ class XFAC11FactureConsolideeTests(TestCase):
         r = self.api.post('/api/django/ventes/factures/consolider/', {
             'devis_ids': [d1.id, d2.id],
         }, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # CI #997 fuzz : refus d'état, 409
 
     def test_requires_at_least_two_devis(self):
         d1 = self._accepted_devis('0008', 1, 1)
@@ -147,7 +147,9 @@ class XFAC11FactureConsolideeTests(TestCase):
         # non entiers répondent 400 « devis_ids invalide ».
         url = '/api/django/ventes/factures/consolider/'
         for corps in ([None, None], None, {'devis_ids': [{}, {}]},
-                      {'devis_ids': 'abc'}, {'devis_ids': 7}):
+                      {'devis_ids': 'abc'}, {'devis_ids': 7},
+                      # CI #997 fuzz — ids entiers JSON (relus par int()).
+                      {'devis_ids': ['5', '6']}):
             r = self.api.post(url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.data))
 
@@ -175,4 +177,4 @@ class XFAC11FactureConsolideeTests(TestCase):
         r = self.api.post('/api/django/ventes/factures/consolider/', {
             'devis_ids': [d1.id, d2.id],
         }, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # CI #997 fuzz : refus d'état, 409

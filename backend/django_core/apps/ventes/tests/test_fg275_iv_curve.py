@@ -129,7 +129,22 @@ class IVCurveApiTest(TestCase):
             'recette': other_recette.id, 'string_label': 'X',
             'pmax_mesure_w': '4000', 'pmax_attendu_w': '5000',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # CI #997 fuzz — recette étrangère = recette absente : 404 (corps
+        # conforme, c'est la ressource qui manque), plus 400.
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertFalse(IVCurveCapture.objects.exists())
+
+    def test_champs_stricts_400(self):
+        # CI #997 fuzz — un nombre JSON pour un texte ou un décimal-chaîne
+        # (et une chaîne vide pour une mesure) était converti en silence.
+        for corps in ({'string_label': 0}, {'voc_mesure_v': 0},
+                      {'pmax_mesure_w': ''}, {'observations': 0}):
+            resp = self.api.post(self.url, {
+                'recette': self.recette.id, 'string_label': 'S9', **corps,
+            }, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn(next(iter(corps)), resp.data)
+        self.assertFalse(IVCurveCapture.objects.exists())
 
     def test_filter_defaut(self):
         IVCurveCapture.objects.create(

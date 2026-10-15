@@ -9,52 +9,16 @@
 # Format : <titre du check Schemathesis>|<MÉTHODE> <gabarit de chemin>
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
-API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
-API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
-API rejected schema-compliant request|POST /api/django/facturation/factures/encaissement-groupe/
-API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/
-API rejected schema-compliant request|POST /api/django/facturation/paiements/factures/{facture_id}/paiement-avec-retenue/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/onboarding-localisation/
 API rejected schema-compliant request|POST /api/django/parametres/taux-tva/
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
-API rejected schema-compliant request|POST /api/django/ventes/bons-commande/{id}/creer-facture/
-API rejected schema-compliant request|POST /api/django/ventes/courbes-iv/
-API rejected schema-compliant request|POST /api/django/ventes/devis-lignes/
-API rejected schema-compliant request|POST /api/django/ventes/devis/
-API rejected schema-compliant request|POST /api/django/ventes/devis/atomic/
-API rejected schema-compliant request|POST /api/django/ventes/devis/auto/
 API rejected schema-compliant request|POST /api/django/ventes/devis/from-layout/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/acquitter-derive/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/convertir-bc/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/facturer-complet/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/generer-facture/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/offres-tailles/appliquer/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/reappliquer-lead/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/roof-image/
-API rejected schema-compliant request|POST /api/django/ventes/dossiers-checklist/
-API rejected schema-compliant request|POST /api/django/ventes/dossiers-echanges/
-API rejected schema-compliant request|POST /api/django/ventes/dossiers-reglementaires/
-API rejected schema-compliant request|POST /api/django/ventes/factures/consolider/
-API rejected schema-compliant request|POST /api/django/ventes/factures/encaissement-groupe/
-API rejected schema-compliant request|POST /api/django/ventes/factures/{id}/relancer/
-API rejected schema-compliant request|POST /api/django/ventes/factures/{id}/retour-client/
-API rejected schema-compliant request|POST /api/django/ventes/paiements/factures/{facture_id}/paiement-avec-retenue/
-API rejected schema-compliant request|POST /api/django/ventes/plans-commission/
-API rejected schema-compliant request|POST /api/django/ventes/promesses-paiement/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
-API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
-API accepted schema-violating request|POST /api/django/ventes/devis/composition/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
-API rejected schema-compliant request|POST /api/django/ventes/attestations-conformite/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/layout/
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/sync-layout/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
-API rejected schema-compliant request|POST /api/django/ventes/packs-asbuilt/
 # VNT lot M0, 3e tour (12/10/2026, PR #979) : tirage aleatoire, ventes/core pre-existants.
-API rejected schema-compliant request|PATCH /api/django/ventes/devis/{id}/
 # VNT lot M1 (12/10/2026, PR #982) : constats pre-existants hors du diff (reporting/*, dupliquer-variante), tirage aleatoire.
 # VNT lot M1, 4e tour (12/10/2026, PR #982) : reporting hors diff, pre-existant.
 # VNT lot M1, tour 3 (12/10/2026) : PATCH factures/{id} — le harnais fuzz envoie entite: 0 (aucune Entite pour la societe fuzz, prepare_fuzz_env.py) ; limite du harnais, pas de la vue.
@@ -67,7 +31,6 @@ API rejected schema-compliant request|PATCH /api/django/ventes/devis/{id}/
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
 # PR #985, 1er tirage (12/10/2026) — 1 constat PRÉ-EXISTANT (ventes non touchée par la PR ; périmètre élargi par un test ventes),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
-API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/ajouter-boq-electrique/
 # PR #985, 3e tirage (13/10/2026) — 8 constats PRÉ-EXISTANTS sur des routes NON modifiées par la PR (coercition DRF int→str, famille ERR-ENF11-FUZZ-CORE / -SAV encore ouvertes),
 # gelés ; portés par ERR-ENF11-FUZZ-CRM / -CALEPINAGE / -VENTES — aucun ne touche une route modifiée par cette PR.
 # Groupe de merge #985 (13/10/2026) — 2 constats PRÉ-EXISTANTS sur des routes NON modifiées (règles métier tarification ; corps formulaire etude-horaire/preview, app ventes),

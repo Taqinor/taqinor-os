@@ -77,7 +77,9 @@ class TestAud133PromessePaiement(TestCase):
     def test_date_promise_a_cinq_ans_est_refusee(self):
         resp = self._api(self.responsable).post(
             URL, self._corps(jours=365 * 5), format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # CI #997 fuzz — date bien formée hors fenêtre du jour : refus d'ÉTAT
+        # (409, corps {date_promise} inchangé), plus 400.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('date_promise', resp.data)
         self.assertFalse(PromessePaiement.objects.exists())
         self.facture.refresh_from_db()
@@ -86,7 +88,7 @@ class TestAud133PromessePaiement(TestCase):
     def test_date_promise_passee_est_refusee(self):
         resp = self._api(self.responsable).post(
             URL, self._corps(jours=-1), format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('date_promise', resp.data)
 
     def test_promesse_valide_est_creee_et_suspend_la_relance(self):
@@ -108,4 +110,4 @@ class TestAud133PromessePaiement(TestCase):
         resp2 = self._api(self.responsable).post(
             URL, self._corps(jours=PROMESSE_HORIZON_JOURS_MAX + 1),
             format='json')
-        self.assertEqual(resp2.status_code, 400, resp2.data)
+        self.assertEqual(resp2.status_code, 409, resp2.data)

@@ -322,13 +322,14 @@ class LEndpointDryRunPorteLeChamp(STKCAT7Base):
         self.assertEqual(self._structure(r.data)['role'], 'structure')
 
     def test_un_id_non_numerique_ne_fait_pas_500(self):
+        # CI #997 fuzz — l'id est publié ENTIER : un texte viole le schéma,
+        # 400 nommé (il était ignoré en silence), jamais une 500.
         r = self.api.post(COMPO_URL, {
             'kwc': 5, 'panel_watt': 710, 'scenario': 'sans',
             'structure_produit_id': 'abc',
         }, format='json')
-        self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(
-            self._structure(r.data)['designation'], 'Structures acier')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('structure_produit_id', r.data)
 
     def test_sans_le_champ_le_dry_run_est_inchange(self):
         r = self.api.post(COMPO_URL, {

@@ -2,7 +2,8 @@
 lead → devis se RÉSOUT : « reprendre les valeurs du lead »
 (``reappliquer-lead``) ou « garder celles du devis » (``acquitter-derive``).
 Brouillon et envoyé sur place (envoyé : statut inchangé, instantané, chatter
-« corrigé après envoi ») ; accepté → 400 ``devis_fige``, rien d'écrit.
+« corrigé après envoi ») ; accepté → 409 ``devis_fige`` (refus d'état, CI
+#997 fuzz — 400 auparavant), rien d'écrit.
 """
 import json
 from decimal import Decimal
@@ -96,7 +97,7 @@ class TestReappliquerLead(TestCase):
         self.assertTrue(DevisActivity.objects.filter(
             devis=self.devis, field='correction_apres_envoi').exists())
 
-    def test_accepte_400_rien_ecrit(self):
+    def test_accepte_409_rien_ecrit(self):
         Devis.objects.filter(pk=self.devis.pk).update(
             statut=Devis.Statut.ACCEPTE)
         self._modifier_lead()
@@ -104,8 +105,8 @@ class TestReappliquerLead(TestCase):
                       .values_list('id', 'quantite'))
         for suffixe in ('reappliquer-lead', 'acquitter-derive'):
             r = self.api.post(self._url(suffixe), {}, format='json')
-            self.assertEqual(r.status_code, 400, r.content)
-            self.assertEqual(r.json(), self.contrat['exemple_400'])
+            self.assertEqual(r.status_code, 409, r.content)
+            self.assertEqual(r.json(), self.contrat['exemple_409'])
         self.assertEqual(list(LigneDevis.objects.filter(devis=self.devis)
                               .values_list('id', 'quantite')), lignes)
 

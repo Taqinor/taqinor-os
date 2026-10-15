@@ -122,11 +122,12 @@ class ContratBoqTests(_Forme, TestCase):
         self.url = (f'/api/django/ventes/devis/{self.devis.id}'
                     '/ajouter-boq-electrique/')
 
-    def test_sans_conception_400_detail(self):
+    def test_sans_conception_409_detail(self):
+        # CI #997 fuzz — refus d'état (pas encore de conception) : 409.
         r = self.api.post(self.url, {}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         attendu = _echantillon('devis_boq_electrique.json')['refus'][
-            '400_sans_conception']
+            '409_sans_conception']
         self.assertEqual(json.loads(r.content), attendu)
 
     def test_reponse_a_la_forme_du_contrat(self):

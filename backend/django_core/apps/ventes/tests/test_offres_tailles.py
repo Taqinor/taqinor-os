@@ -2149,8 +2149,10 @@ class ApiAppliquerTests(_Base):
         Devis.objects.filter(pk=devis.pk).update(statut='brouillon')
         resp = self._api(devis.company).post(
             self.URL % devis.pk, {'cle': 'eco'}, format='json')
+        # CI #997 fuzz — « Recommandé » seule est PUBLIÉE : Éco viole le
+        # schéma (400 sous ``cle``), toujours avec son motif en français.
         self.assertEqual(resp.status_code, 400)
-        self.assertIn('Recommandé', str(resp.json()['detail']))
+        self.assertIn('Recommandé', str(resp.json()['cle']))
 
     def test_un_devis_ENVOYE_repond_200_et_reste_envoye(self):
         """QJR557 (D-QJR5-5) — réécrit (PV21 épinglait le 400) : un envoyé
@@ -2164,16 +2166,17 @@ class ApiAppliquerTests(_Base):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'envoye')
 
-    def test_un_devis_ACCEPTE_repond_400_et_dit_REVISION_POSSIBLE(self):
-        """Le refus d'un document clos garde son code historique (400,
-        jamais changé — NE PAS FAIRE) et ``revision_possible`` booléen."""
+    def test_un_devis_ACCEPTE_repond_409_et_dit_REVISION_POSSIBLE(self):
+        """Le refus d'un document clos garde son corps et
+        ``revision_possible`` booléen ; CI #997 fuzz (règle fondateur du
+        09/10, api-fuzz bloquant) : c'est un refus d'ÉTAT, 409 — plus 400."""
         devis = self._devis('api-app-accepte')
         ot.enregistrer_config(devis, 'recommande', {'nb_panneaux': 21})
         Devis.objects.filter(pk=devis.pk).update(statut='accepte')
         with mock.patch.object(ot, '_contexte', side_effect=self._contexte):
             resp = self._api(devis.company).post(
                 self.URL % devis.pk, {'cle': 'recommande'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIs(resp.json()['revision_possible'], True)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')

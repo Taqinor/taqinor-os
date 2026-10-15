@@ -96,7 +96,7 @@ class FacturationFinanceurTest(_Base):
         facture = Facture.objects.get(pk=r.data['id'])
         self.assertEqual(facture.client_id, self.financeur.id)
         self.assertEqual(facture.devis_id, devis.id)
-        self.assertEqual(self._generer(devis).status_code, 400)
+        self.assertEqual(self._generer(devis).status_code, 409)  # CI #997 fuzz : refus d'état, 409
 
     def test_dix_quatre_vingt_dix_somme_au_centime(self):
         from apps.ventes.models import Facture

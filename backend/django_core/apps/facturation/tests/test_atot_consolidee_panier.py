@@ -101,7 +101,7 @@ class ConsolideePanierTests(TestCase):
         d1 = self._devis([self._ligne('125000')], remise='10')
         d2 = self._devis([self._ligne('125000')], remise='5')
         resp = self._consolider(d1, d2)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn(d1.reference, str(resp.data))
         self.assertIn(d2.reference, str(resp.data))
         self.assertFalse(Facture.objects.filter(

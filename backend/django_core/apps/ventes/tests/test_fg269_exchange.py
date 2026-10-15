@@ -69,7 +69,18 @@ class DossierExchangeApiTest(TestCase):
             'dossier': other_dossier.id, 'sens': 'recu',
             'type_echange': 'accuse', 'date_echange': '2026-06-02',
         }, format='json')
+        # CI #997 fuzz — dossier étranger = dossier absent : 404, plus 400.
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_objet_non_texte_400(self):
+        # CI #997 fuzz — ``"objet": 0`` était converti en « 0 » (201).
+        resp = self.api.post(self.url, {
+            'dossier': self.dossier.id, 'sens': 'envoi',
+            'type_echange': 'depot', 'date_echange': '2026-06-01',
+            'objet': 0,
+        }, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('objet', resp.data)
 
     def test_detail_non_texte_refuse_en_chaine(self):
         # ENF11 — le champ s'appelle ``detail`` : son erreur reste une chaîne

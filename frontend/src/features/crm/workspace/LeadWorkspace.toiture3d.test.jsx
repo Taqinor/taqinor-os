@@ -144,11 +144,11 @@ describe('PV22 — résolution du devis à concevoir', () => {
       .toHaveBeenCalledWith('/ventes/devis/900/design'))
   })
 
-  it('422 : le message SERVEUR est affiché tel quel et renvoie au générateur', async () => {
+  it('409 : le message SERVEUR est affiché tel quel et renvoie au générateur', async () => {
     ventesApi.getDevis.mockResolvedValue({ data: [] })
     ventesApi.creerDevisAuto.mockRejectedValue({
       response: {
-        status: 422,
+        status: 409,
         data: { detail: "Renseignez la facture d'hiver du lead pour dimensionner le devis." },
       },
     })

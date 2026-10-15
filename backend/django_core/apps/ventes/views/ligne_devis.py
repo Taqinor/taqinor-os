@@ -176,9 +176,11 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         """ADEV33 — la garde T17 s'applique aussi aux lignes d'un ENVOYÉ :
         une remise de ligne qui porte la profondeur au-delà du seuil (et de
         la profondeur approuvée) est refusée en 400 nommant ``remise``, sans
-        écriture (transaction annulée). Hors envoyé : simple ``save``."""
+        écriture (transaction annulée). Hors envoyé : simple ``save``.
+        CI #997 fuzz — la profondeur APPROUVÉE est un état du devis : le
+        refus répond 409 (corps ``{remise}`` inchangé), plus 400."""
         from django.db import transaction
-        from rest_framework.exceptions import ValidationError
+        from core.conflit_etat import ConflitEtat
         if devis is None or devis.statut != 'envoye':
             serializer.save()
             return
@@ -193,7 +195,7 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
                 reverifier_remise_apres_correction(
                     devis, self.request.user, avant=avant)
         except RemiseNonApprouvee as erreur:
-            raise ValidationError({'remise': erreur.message})
+            raise ConflitEtat({'remise': erreur.message})
 
     def perform_create(self, serializer):
         from ..domain.modifiabilite import (

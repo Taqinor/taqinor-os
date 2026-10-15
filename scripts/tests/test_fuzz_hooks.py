@@ -335,6 +335,12 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
         self.assertEqual(corps['client_id'], 1)
 
+    def test_affiche_d_un_devis_recoit_un_png(self):
+        # CI #997 (w4, ventes) — roof-image du devis lit les octets magiques.
+        corps = self._corps('POST', '/api/django/ventes/devis/{id}/roof-image/',
+                            {'image': b''})
+        self.assertTrue(corps['image'].startswith(b'\x89PNG'))
+
     def test_scan_carte_et_photo_de_visite_recoivent_un_png(self):
         # ERR-ENF11-FUZZ-CRM / -VISITES — deux dépôts de PHOTO dont le serveur
         # lit les octets : un cas positif en reçoit un PNG décodable.

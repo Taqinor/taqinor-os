@@ -83,7 +83,7 @@ class Qx21AtomicDevisTests(TestCase):
             'lignes': [{'produit': foreign.id, 'quantite': '1',
                         'prix_unitaire': '1'}],
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # CI #997 fuzz : atomic, refus d'état / de contenu, 409
         # Rollback total : aucun devis créé.
         self.assertEqual(Devis.objects.filter(company=self.company).count(), 0)
 

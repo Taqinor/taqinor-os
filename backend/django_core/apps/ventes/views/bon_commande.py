@@ -582,17 +582,20 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def creer_facture(self, request, pk=None):
         bc = self.get_object()
+        # CI #997 fuzz — sans corps, chaque refus ci-dessous vient de l'ÉTAT
+        # du BC (statut, facture existante, vente déjà facturée, société) :
+        # 409, comme les trois autres portes de facturation, plus 400.
         if bc.statut not in [
             BonCommande.Statut.CONFIRME, BonCommande.Statut.LIVRE
         ]:
             return Response(
                 {'detail': 'Le BC doit être confirmé ou livré.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         if Facture.objects.filter(bon_commande=bc).exists():
             return Response(
                 {'detail': 'Une facture existe déjà pour ce BC.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AUD112 — LES DEUX PORTES SE VOIENT ENFIN. La garde ci-dessus ne
         # regardait que la chaîne BC : un devis déjà facturé par l'échéancier
@@ -609,7 +612,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                 exiger_devis_facturable(bc.devis, 'bc')
             except DevisDejaFacture as exc:
                 return Response({'detail': exc.motif},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
         # AUD117 — LA SOCIÉTÉ VIENT DU BON DE COMMANDE, PAS DE L'UTILISATEUR.
         # La règle maison est « company forcée côté serveur, jamais issue de la
         # requête » : elle venait bien du serveur, mais du MAUVAIS objet
@@ -624,7 +627,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     'Ce bon de commande n\'appartient à aucune société : '
                     'impossible d\'émettre une facture.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         company = bc.company
 

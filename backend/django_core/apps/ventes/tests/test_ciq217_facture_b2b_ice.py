@@ -152,7 +152,7 @@ class TrancheSansIceTest(_Base):
             taux_tva=Decimal('20.00'))
         r = self.api.post(
             f'/api/django/ventes/devis/{devis.id}/generer-facture/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # CI #997 fuzz : refus d'état, 409
         self.assertIn('client.ice', r.data['detail'])
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
         self.assertEqual(self.emises, [])

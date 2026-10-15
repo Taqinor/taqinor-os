@@ -125,7 +125,8 @@ class PorteEncaissementTests(TestCase):
                 'client': self.client_obj.id, 'montant': '2400',
                 'mode': 'virement', 'date': str(timezone.localdate()),
                 'factures': [emise.id, autre.id]}, format='json')
-            self.assertEqual(r.status_code, 400, r.data)
+            # CI #997 fuzz — facture non encaissable : refus d'ÉTAT, 409.
+            self.assertEqual(r.status_code, 409, r.data)
             self.assertIn(autre.reference, r.data['detail'])
         self.assertFalse(
             Paiement.objects.filter(company=self.company).exists())
@@ -137,7 +138,7 @@ class PorteEncaissementTests(TestCase):
             'client': self.client_obj.id, 'montant': '100',
             'mode': 'especes', 'date': str(timezone.localdate()),
             'factures': [f.id]}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertFalse(
             Paiement.objects.filter(company=self.company).exists())
 
@@ -171,7 +172,8 @@ class PorteEncaissementTests(TestCase):
             {'montant': '1000', 'date_paiement': str(timezone.localdate()),
              'mode': 'virement', 'type_retenue': 'ras_tva', 'taux': '75'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 fuzz — entrée valide, facture non encaissable : 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(self._nb_paiements(f), 0)
 
     # ── ventilation d'avance ────────────────────────────────────────────

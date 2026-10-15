@@ -133,6 +133,15 @@ class TestCrud(TestCase):
             'paliers': [{'seuil_atteinte_pct': 100}]}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('paliers', r.data)
+        # CI #997 fuzz — publiés « liste d'objets à NOMBRES » : un texte
+        # numérique, un booléen, un texte vide ou un objet sont refusés.
+        for paliers in ([{'seuil_atteinte_pct': '100', 'taux': 5}],
+                        [{'seuil_atteinte_pct': 100, 'taux': True}], '', {}):
+            r = self.api.post(f'{BASE}/', {
+                'base': 'ca_devis_signe', 'taux_pct': '3',
+                'paliers': paliers}, format='json')
+            self.assertEqual(r.status_code, 400, (paliers, r.content))
+            self.assertIn('paliers', r.data)
 
     def test_paliers_valides_acceptes(self):
         r = self.api.post(f'{BASE}/', {

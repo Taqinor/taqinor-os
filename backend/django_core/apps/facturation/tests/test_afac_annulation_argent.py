@@ -155,7 +155,7 @@ class AnnulationArgentTests(TestCase):
                          Decimal('70000.00'))
         r = self.api.post(f'{BASE}/devis/{devis.id}/facturer-complet/',
                           {'paiements': []}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # CI #997 fuzz : refus d'état, 409
 
     # ── (c) avance ventilée ─────────────────────────────────────────────
     def test_affectation_suit_transfert(self):

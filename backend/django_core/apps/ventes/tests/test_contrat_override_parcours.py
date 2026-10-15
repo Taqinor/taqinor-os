@@ -313,9 +313,10 @@ class Parcours:
         r = self.case.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/'
             'offres-tailles/appliquer/', {'cle': 'recommande'}, format='json')
-        # 400 = « ce devis ne permet pas encore de dériver des tailles »,
-        # motif NOMMÉ et attendu sur une fixture sans profil de consommation.
-        return r.status_code, (200, 400)
+        # 409 = « ce devis ne permet pas encore de dériver des tailles »,
+        # motif NOMMÉ et attendu sur une fixture sans profil de consommation
+        # (refus d'état, CI #997 fuzz — 400 auparavant).
+        return r.status_code, (200, 409)
 
     def etape_rafraichir_etudes(self):
         from apps.ventes.domain.etudes import rafraichir_etudes_du_devis

@@ -169,7 +169,7 @@ class ConvertirEnBcTests(TestCase):
         # ni second événement.
         message = facturation_ops.MESSAGE_BC_EXISTANT
         r2 = self.api.post(url)
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.status_code, 409, r2.data)  # CI #997 fuzz : refus d'état, 409
         self.assertEqual(r2.data['detail'], message)
         r3 = self.api.post(
             '/api/django/ventes/bons-commande/',
