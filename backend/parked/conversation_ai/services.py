@@ -120,7 +120,7 @@ def transcrire_appel(appel) -> bool:
         appel.statut = (AppelCommercial.STATUT_TRANSCRIT if morceaux
                         else AppelCommercial.STATUT_NON_TRANSCRIT)
         appel.message = ''
-    except Exception as exc:  # noqa: BLE001 - best-effort, jamais bloquant.
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         logger.warning('conversation_ai: transcription en échec (appel %s)',
                        appel.pk, exc_info=True)
         appel.statut = AppelCommercial.STATUT_ERREUR
