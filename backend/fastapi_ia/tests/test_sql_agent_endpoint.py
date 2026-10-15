@@ -19,7 +19,7 @@ from unittest import mock
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 try:
     from app.api.endpoints import sql_agent as _ep
@@ -43,7 +43,7 @@ except Exception as exc:  # pragma: no cover - starlette/httpx absents
     _HAS_CLIENT = False
     verifier_import_optionnel(exc)
 
-from app.services import action_tools as _at  # noqa: E402
+from app.services import action_tools as _at  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 # Catalogue de test (mime apps/agent/registry.py).
 _CAT_PROPOSAL_PDF = {

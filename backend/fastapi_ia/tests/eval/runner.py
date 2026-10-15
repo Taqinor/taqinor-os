@@ -31,8 +31,8 @@ from typing import Callable, Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 
-from .cases import CASES, PROMPT_LEAK_CASE  # noqa: E402
-from tests._import_optionnel import verifier_import_optionnel  # noqa: E402
+from .cases import CASES, PROMPT_LEAK_CASE  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from tests._import_optionnel import verifier_import_optionnel  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 try:
     from app.services import sql_agent_service as svc

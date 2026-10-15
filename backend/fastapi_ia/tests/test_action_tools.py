@@ -23,8 +23,8 @@ os.environ.setdefault("DJANGO_SECRET_KEY", "test-secret")
 # Permet d'importer le paquet `app` depuis la racine du service.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.services import action_tools as at  # noqa: E402
-from app.services.action_tools import ActionContext  # noqa: E402
+from app.services import action_tools as at  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from app.services.action_tools import ActionContext  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _ctx(role="responsable", permissions=None, token="jwt-xyz",
@@ -233,7 +233,7 @@ class BuildToolsTests(unittest.TestCase):
 
     def setUp(self):
         try:
-            from langchain_core.tools import StructuredTool  # noqa: F401
+            __import__('langchain_core.tools')
         except Exception:
             self.skipTest("langchain_core indisponible dans cet environnement")
 
@@ -561,7 +561,7 @@ class CollectorTests(unittest.TestCase):
 
     def test_build_action_tools_threads_collector(self):
         try:
-            from langchain_core.tools import StructuredTool  # noqa: F401
+            __import__('langchain_core.tools')
         except Exception:
             self.skipTest("langchain_core indisponible")
         ctx = _ctx(role="admin")
@@ -708,7 +708,7 @@ class GuardedWriteToolsTests(unittest.TestCase):
 
     def test_build_tools_warns_guarded_writes(self):
         try:
-            from langchain_core.tools import StructuredTool  # noqa: F401
+            __import__('langchain_core.tools')
         except Exception:
             self.skipTest("langchain_core indisponible")
         ctx = _ctx(role="admin")
