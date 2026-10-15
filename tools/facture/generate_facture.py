@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
+# D-ENF22 : exception de fichier entier signée — facture : PDF legacy séparé, hors moteur de devis (règle #4), fichier non réécrit pour le lint.
 """Générateur de FACTURE premium TAQINOR (une page A4).
 
 Réutilise EN LECTURE SEULE le design system du moteur de devis vendored

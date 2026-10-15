@@ -1,4 +1,4 @@
-# flake8: noqa  (sonde de session reprise telle quelle : style libre, logique validee le 09/10)
+# flake8: noqa  (sonde de session reprise telle quelle : style libre, logique validee le 09/10) (D-ENF22)
 """Sonde de la session audit-méthode du 09/10/2026 (R3), rejouable par scripts/sonde.py (AMET93) :
 transaction annulée, mail en mémoire, Celery coupé, HTTP bloqué. Jamais contre la prod.
 """
