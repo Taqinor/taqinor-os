@@ -30,7 +30,9 @@ class CalageVisiteValideurCommunTest(AssemblageBase):
                 resp = self.api.patch(
                     self._url(), {'texture_calage': {'coins': coins}},
                     format='json')
-                self.assertEqual(resp.status_code, 400, resp.data)
+                # ERR-ENF11-FUZZ-VISITES — règle entre les quatre coins que
+                # le schéma ne dit pas : 409, même corps nommant le champ.
+                self.assertEqual(resp.status_code, 409, resp.data)
                 self.assertIn('texture_calage', resp.data['erreurs'])
         self.assertIsNone(self.visite().texture_calage)
 

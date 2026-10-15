@@ -1020,6 +1020,11 @@ def marquer_en_cours(visite):
     return visite
 
 
+#: Début du refus « catégorie inconnue de CE gabarit » (la vue y reconnaît un
+#: refus d'ÉTAT, 409, sans le confondre avec un champ nommé ``categorie``).
+CATEGORIE_MESURES_INCONNUE = 'Catégorie de mesures inconnue'
+
+
 def enregistrer_mesures(visite, categorie, valeurs):
     """POSE les mesures d'UNE catégorie. Renvoie ``(visite, erreurs)``.
 
@@ -1034,7 +1039,7 @@ def enregistrer_mesures(visite, categorie, valeurs):
     declaration = checklist.categorie(
         categorie, visite.gabarit, **selectors.contexte_checklist(visite))
     if declaration is None or not declaration['mesures']:
-        return None, {'categorie': ('Catégorie de mesures inconnue '
+        return None, {'categorie': (f'{CATEGORIE_MESURES_INCONNUE} '
                                     f'« {categorie} ».')}
     if not isinstance(valeurs, dict):
         return None, {'valeurs': ('Les valeurs doivent être un objet '
