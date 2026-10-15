@@ -151,7 +151,6 @@ API rejected schema-compliant request|POST /api/django/stock/transferts/demander
 API rejected schema-compliant request|POST /api/django/stock/vagues-picking/
 API rejected schema-compliant request|POST /api/django/users/
 API rejected schema-compliant request|POST /api/django/ventes/bons-commande/{id}/creer-facture/
-API rejected schema-compliant request|POST /api/django/ventes/courbes-iv/
 API rejected schema-compliant request|POST /api/django/ventes/devis-lignes/
 API rejected schema-compliant request|POST /api/django/ventes/devis/
 API rejected schema-compliant request|POST /api/django/ventes/devis/atomic/
@@ -164,9 +163,6 @@ API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/generer
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/offres-tailles/appliquer/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/reappliquer-lead/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/roof-image/
-API rejected schema-compliant request|POST /api/django/ventes/dossiers-checklist/
-API rejected schema-compliant request|POST /api/django/ventes/dossiers-echanges/
-API rejected schema-compliant request|POST /api/django/ventes/dossiers-reglementaires/
 API rejected schema-compliant request|POST /api/django/ventes/factures/consolider/
 API rejected schema-compliant request|POST /api/django/ventes/factures/encaissement-groupe/
 API rejected schema-compliant request|POST /api/django/ventes/factures/{id}/relancer/
@@ -200,7 +196,6 @@ API accepted schema-violating request|POST /api/django/entites/entites/importer/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
 API accepted schema-violating request|PUT /api/django/accessreview/campaigns/{id}/
-API rejected schema-compliant request|POST /api/django/ventes/attestations-conformite/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/layout/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/sync-layout/
 API accepted schema-violating request|GET /api/django/tiers/tiers/
@@ -208,7 +203,6 @@ Server error|POST /api/django/agent/actions/automation-draft/
 # VNT lot M0 (12/10/2026, PR #979) : crm/ventes entres dans le perimetre PR par les contrats VNT7/VNT1 ; constats
 # pre-existants (couverture variable sous --max-time 300, meme pratique que les gels des vagues 4-5), ERR-ENF11-* les portent.
 # VNT lot M0, 2e tour (12/10/2026, PR #979) : memes causes (couverture variable), ventes/core pre-existants.
-API rejected schema-compliant request|POST /api/django/ventes/packs-asbuilt/
 # VNT lot M0, 3e tour (12/10/2026, PR #979) : tirage aleatoire, ventes/core pre-existants.
 API rejected schema-compliant request|PATCH /api/django/ventes/devis/{id}/
 # VNT lot M1 (12/10/2026, PR #982) : constats pre-existants hors du diff (reporting/*, dupliquer-variante), tirage aleatoire.

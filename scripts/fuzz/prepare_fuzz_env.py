@@ -571,6 +571,30 @@ def _palettes_ouvertes(qs, company):
     return qs.filter(type_unite='palette', statut='en_preparation')
 
 
+# ── CI #997 (ventes) — FK sans ligne en base de fuzz : une fiche de recette
+# (``recette`` des courbes I-V, packs as-built, attestations) et un dossier
+# réglementaire (``dossier`` de la checklist et de la navette opérateur) —
+# « Clé primaire 1 non valide », à raison, sinon.
+
+def _semer_recette(company, user):
+    existant = _premier('ventes.CommissioningTest', company)
+    if existant is not None:
+        return existant
+    return _modele('ventes.CommissioningTest').objects.create(
+        company=company, technicien='Fuzz', created_by=user)
+
+
+def _semer_dossier_reglementaire(company, user):
+    existant = _premier('ventes.RegulatoryDossier', company)
+    if existant is not None:
+        return existant
+    devis = _premier('ventes.Devis', company)
+    if devis is None:
+        raise ValueError('aucun devis dans la société de fuzz')
+    return _modele('ventes.RegulatoryDossier').objects.create(
+        company=company, devis=devis, created_by=user)
+
+
 SEMEURS = (
     ('stock.LotEntrepot', _semer_lot),
     ('records.ActivityType', _semer_type_activite),
@@ -600,6 +624,8 @@ SEMEURS = (
     ('achats.ReceptionFournisseur', _semer_reception),
     ('achats.FactureFournisseur', _semer_facture_fournisseur),
     ('stock logistique (livraison, vague, palette, expédition)', _semer_logistique),
+    ('ventes.CommissioningTest', _semer_recette),
+    ('ventes.RegulatoryDossier', _semer_dossier_reglementaire),
 )
 
 
@@ -668,6 +694,10 @@ REGLES_PAR_CHEMIN = (
      'installations.Livraison', None, None),
     (r'^/api/django/stock/unites-logistiques/', ('parent', 'parent_id'),
      'stock.UniteLogistique', _palettes_ouvertes, None),
+    # CI #997 (ventes) — ``dossier`` vise aussi les dossiers d'import
+    # (installations) et de stock : l'union donnait leurs ids.
+    (r'^/api/django/ventes/dossiers-(checklist|echanges)/', ('dossier',),
+     'ventes.RegulatoryDossier', None, None),
 )
 
 

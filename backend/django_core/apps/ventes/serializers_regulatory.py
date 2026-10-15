@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.champs_stricts import (
-    ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+    ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 
@@ -17,10 +17,15 @@ from .models import (
 )
 
 
-class DossierChecklistItemSerializer(SameCompanyFKSerializerMixin,
+class DossierChecklistItemSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                     SameCompanyFKSerializerMixin,
                                      serializers.ModelSerializer):
-    """FG268 — pièce/étape de checklist d'un dossier."""
-    # ENF17 — dossier d'une AUTRE société = id absent (400).
+    """FG268 — pièce/étape de checklist d'un dossier.
+
+    CI #997 fuzz (ENF11 ventes) — texte et booléens STRICTS (``"code": 0``,
+    ``"obligatoire": 0`` étaient convertis en silence)."""
+    # ENF17 — dossier d'une AUTRE société = id absent ; CI #997 : bien formé
+    # mais inconnu (ou étranger, même corps) → 404, plus 400.
     same_company_fields = ('dossier',)
 
     class Meta:
@@ -95,10 +100,15 @@ class RegulatoryDossierSerializer(ChampsStrictsSansDecimalMixin,
         return pieces_contrat_dossier(obj)
 
 
-class DossierExchangeSerializer(SameCompanyFKSerializerMixin,
+class DossierExchangeSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                                SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
-    """FG269 — échange de la navette opérateur."""
-    # ENF17 — dossier d'une AUTRE société = id absent (400).
+    """FG269 — échange de la navette opérateur.
+
+    CI #997 fuzz (ENF11 ventes) — texte STRICT (``"objet": 0`` était converti
+    en silence)."""
+    # ENF17 — dossier d'une AUTRE société = id absent ; CI #997 : bien formé
+    # mais inconnu (ou étranger, même corps) → 404, plus 400.
     same_company_fields = ('dossier',)
     sens_label = serializers.CharField(
         source='get_sens_display', read_only=True)
