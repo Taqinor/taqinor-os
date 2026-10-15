@@ -270,7 +270,9 @@ class LesReglesMigreesViventCoteServeur(_Base):
         reponse = self.api.post(
             AUTO_URL, {'lead': self.lead(taille_souhaitee_kwc=Decimal('5')).id},
             format='json')
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        # CI #1003 — refus d'ÉTAT du catalogue sur un corps valide : 409
+        # (ENF11, /devis/auto/ publie 409 ErreurComposition).
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('Trina', reponse.data['detail'])
         self.assertIn('Panneaux', reponse.data['detail'])
         # Et surtout : AUCUN brouillon amputé ne reste derrière l'erreur.

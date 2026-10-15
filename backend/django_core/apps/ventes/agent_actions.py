@@ -68,7 +68,7 @@ _PERM_VALIDER = 'ventes_valider'
 # la fiche lead (facture d'hiver / taille souhaitée), choisit panneaux + onduleur
 # (+ batterie si le lead la souhaite) dans le catalogue, force la société et le
 # created_by côté serveur, et numérote. Il ne crée JAMAIS un devis vide : si une
-# donnée manque, le serveur répond 422 avec le champ à compléter pour que l'agent
+# donnée manque, le serveur répond 409 avec le champ à compléter pour que l'agent
 # le demande.
 CREER_AUTO = AgentAction(
     key='ventes.devis.creer_auto',
@@ -79,7 +79,7 @@ CREER_AUTO = AgentAction(
         "SEUL moyen de créer un devis : il choisit panneaux, onduleur et "
         "batterie depuis le catalogue. Fournir le 'lead' (ou le 'client', dont "
         "on remonte au lead). Si une donnée de dimensionnement manque, le serveur "
-        "l'indique (422) pour que tu la demandes — il ne crée jamais de devis "
+        "l'indique (409) pour que tu la demandes — il ne crée jamais de devis "
         "vide. Pour l'industriel/agricole, le serveur oriente vers le générateur."
     ),
     endpoint='/api/django/ventes/devis/auto/',
