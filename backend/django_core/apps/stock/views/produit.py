@@ -221,6 +221,10 @@ class RechercheProduitSansAccents(filters.SearchFilter):
     """
 
     def filter_queryset(self, request, queryset, view):
+        if '\x00' in request.query_params.get(self.search_param, ''):
+            # ENF11 — terme à caractère nul : le parent (rendu tolérant par
+            # ``core.parametres_requete``) ne désigne aucune ligne.
+            return super().filter_queryset(request, queryset, view)
         champs = self.get_search_fields(view, request)
         termes = self.get_search_terms(request)
         if not champs or not termes:

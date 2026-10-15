@@ -364,12 +364,12 @@ class FkAchatsTests(TestCase):
         self.assertFalse(PrixFournisseur.objects.exists())
 
     def test_schema_facture_paiements_search_et_echeancier(self):
-        """ENF11 — ``search`` de ``paiements``/``echeancier`` publié SANS nul ;
-        la réponse 201 d'``echeancier`` est un TABLEAU (pas une page)."""
+        """ENF11 — ``search`` de ``paiements``/``echeancier`` publié en chaîne
+        libre (un nul ne désigne aucune ligne, nocturne du 15/10) ; la réponse
+        201 d'``echeancier`` est un TABLEAU (pas une page)."""
         from django.urls import include, path
         from drf_spectacular.generators import SchemaGenerator
 
-        from core.champs_stricts import MOTIF_SANS_NUL
         from apps.stock import urls as stock_urls
         chemins = SchemaGenerator(patterns=[
             path('api/django/stock/', include(stock_urls)),
@@ -377,7 +377,7 @@ class FkAchatsTests(TestCase):
         base = '/api/django/stock/factures-fournisseur/{id}/'
         for route in ('paiements/', 'echeancier/'):
             params = {p['name']: p for p in chemins[base + route]['get']['parameters']}
-            self.assertEqual(params['search']['schema']['pattern'], MOTIF_SANS_NUL, route)
+            self.assertNotIn('pattern', params['search']['schema'], route)
         reponse = chemins[base + 'echeancier/']['post']['responses']['201']
         self.assertEqual(
             reponse['content']['application/json']['schema']['type'], 'array')

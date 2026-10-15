@@ -10,7 +10,6 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
 from ..erreurs_achats import IntrouvableMetier
-from core.champs_stricts import MOTIF_SANS_NUL
 from ..utils.params import corps_objet, date_ou_400, id_corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -459,7 +458,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     @extend_schema(methods=['GET'], responses=PaiementFournisseurSerializer(many=True),
-                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
+                   parameters=[P('search', STR, False, 'Recherche (un caractère nul ne désigne aucune ligne)')])
     @extend_schema(methods=['POST'], request=PaiementFournisseurSerializer,
                    responses={201: FactureFournisseurSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='paiements',
@@ -562,7 +561,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
     @extend_schema(methods=['GET'], responses=LISTE,
-                   parameters=[P('search', STR, False, 'Recherche (sans caractère nul)', pattern=MOTIF_SANS_NUL)])
+                   parameters=[P('search', STR, False, 'Recherche (un caractère nul ne désigne aucune ligne)')])
     @extend_schema(methods=['POST'], request=corps('FactureEcheancierCorps',
                                                    tranches=serializers.ListField(
                                                        child=TrancheEcheancierSerializer(), min_length=1)),

@@ -222,10 +222,37 @@ def vider_cache() -> None:
     _CACHE.clear()
 
 
+def _installer_recherche_tolerante() -> None:
+    """ENF11 (nocturne du 15/10, 24 listes) — ``?search=`` avec un caractère
+    nul. Le schéma publie ``search`` en chaîne libre (``SearchFilter``) et ~75
+    opérations qui le publient ne l'appliquent pas : un motif « sans nul » y
+    serait faux. Or ``SearchFilter.get_search_terms`` (DRF 3.15) valide le
+    terme par un ``CharField`` et répondait 400 sur une requête conforme.
+    Aucun texte stocké par PostgreSQL ne contient de caractère nul : un terme
+    qui en porte ne désigne AUCUNE ligne — liste vide (200), sans recherche
+    déclarée la liste est rendue telle quelle (la recherche est sans effet)."""
+    from rest_framework.filters import SearchFilter
+
+    origine = SearchFilter.filter_queryset
+    if getattr(origine, '_enf11_recherche_tolerante', False):
+        return
+
+    @functools.wraps(origine)
+    def filter_queryset(self, request, queryset, view):
+        if '\x00' in request.query_params.get(self.search_param, ''):
+            return queryset.none() if self.get_search_fields(view, request) else queryset
+        return origine(self, request, queryset, view)
+
+    filter_queryset._enf11_recherche_tolerante = True
+    SearchFilter.filter_queryset = filter_queryset
+
+
 def installer() -> None:
-    """Enveloppe ``APIView.initial`` une seule fois (idempotent)."""
+    """Enveloppe ``APIView.initial`` une seule fois (idempotent) ; rend la
+    recherche DRF tolérante au caractère nul (voir ci-dessus)."""
     from rest_framework.views import APIView
 
+    _installer_recherche_tolerante()
     origine = APIView.initial
     if getattr(origine, '_enfp_parametres_requete', False):
         return
