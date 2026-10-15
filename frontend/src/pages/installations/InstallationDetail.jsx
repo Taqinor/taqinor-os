@@ -1060,44 +1060,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             {/* ── CAL213 — l'encart disparaît de lui-même (rend `null`) quand
                 le devis du chantier n'a pas de calepinage retenu (CAL209). ── */}
             <CalepinageRetenuCard calepinage={current.calepinage} />
-            {/* ── CHT20 — la passerelle vers les satellites : fin du parcours
-                « re-sélectionner le même chantier dans 4 menus ». Chaque lien
-                est un deep-link RÉEL déjà lu par l'écran cible (CHT19,
-                ?chantier=<id>) — jamais une URL ad hoc. ── */}
+            {/* ── ACHT65 — les cinq boutons vers /btp-chantier/* (module parqué, aucune
+                route) sont retirés ; reste le lien vers le dossier réglementaire. ── */}
+            {dossierReglementaireLie && (
             <Section icon={Share2} title="Autour de ce chantier">
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/reserves?chantier=${current.id}`)}>
-                  Réserves
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/rfi?chantier=${current.id}`)}>
-                  RFI
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/journal?chantier=${current.id}`)}>
-                  Journal
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/avenants?chantier=${current.id}`)}>
-                  Avenants
-                </Button>
-                <Button size="sm" variant="outline"
-                        onClick={() => navigate(`/btp-chantier/dgd?chantier=${current.id}`)}>
-                  DGD
-                </Button>
                 {/* Couche SÉPARÉE de la section « Dossier réglementaire »
                     ci-dessous (celle-ci vit sur le chantier ; RegulatoryDossier
                     vit sur le devis, côté ventes) — le lien évite toute
                     confusion sur laquelle fait foi. */}
-                {dossierReglementaireLie && (
-                  <Button size="sm" variant="outline"
-                          onClick={() => navigate('/ventes/dossiers-reglementaires')}>
-                    Dossier réglementaire ({dossierReglementaireLie.statut_label})
-                  </Button>
-                )}
+                <Button size="sm" variant="outline"
+                        onClick={() => navigate('/ventes/dossiers-reglementaires')}>
+                  Dossier réglementaire ({dossierReglementaireLie.statut_label})
+                </Button>
               </div>
             </Section>
+            )}
             {/* ── Infos & édition ── */}
             <Section icon={Hammer} title="Chantier">
               <div className="grid gap-3 sm:grid-cols-3">

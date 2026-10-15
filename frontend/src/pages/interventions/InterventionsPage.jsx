@@ -543,13 +543,18 @@ export default function InterventionsPage() {
   // Récupère sans toucher `loading` de façon synchrone (compat règle hooks) :
   // l'état initial est déjà `true`, et un rafraîchissement de fond ne fait pas
   // clignoter le spinner du kanban.
+  // ACHT65 — `?installation=<id>` (lien « photos de l'intervention » de la fiche
+  // chantier) : filtre serveur existant `installation`.
+  const installationFiltre = searchParams.get('installation')
   const fetchData = () => fetchAllPages((page, { page_size: pageSize } = {}) =>
-    installationsApi.getInterventions({ page, page_size: pageSize }).then((r) => r.data))
+    installationsApi.getInterventions({
+      page, page_size: pageSize, ...(installationFiltre ? { installation: installationFiltre } : {}),
+    }).then((r) => r.data))
     .then((rows) => { setItems(Array.isArray(rows) ? rows : (rows?.results ?? [])); setError(null) })
     .catch(() => setError('Impossible de charger les interventions. Réessayez.'))
     .finally(() => setLoading(false))
   const reload = () => { setLoading(true); return fetchData() }
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [installationFiltre]) // eslint-disable-line react-hooks/exhaustive-deps -- fetchData relu à chaque changement du filtre chantier (ACHT65)
   useEffect(() => {
     crmApi.getAssignableUsers()
       .then((r) => setUsers(r.data?.results ?? r.data ?? [])).catch(() => {})

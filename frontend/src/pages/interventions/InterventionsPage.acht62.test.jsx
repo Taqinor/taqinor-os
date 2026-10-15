@@ -1,4 +1,4 @@
-// ACHT62 — Interventions : faux serveur DRF PAGINÉ (50) ; toutes les cartes,
+// ACHT62 + ACHT65 — Interventions : faux serveur DRF PAGINÉ (50) ; toutes les cartes,
 // et un lien profond hors liste résolu par getIntervention(id).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
@@ -66,5 +66,23 @@ describe('InterventionsPage — ACHT62', () => {
     installationsApi.getIntervention.mockRejectedValue({ response: { status: 404 } })
     render(<MemoryRouter initialEntries={['/interventions?id=999']}><InterventionsPage /></MemoryRouter>)
     await waitFor(() => expect(screen.getByText('Intervention introuvable')).toBeInTheDocument())
+  })
+})
+
+// ACHT65 — `?installation=<id>` : filtre serveur existant `installation` (faux serveur filtrant).
+describe('InterventionsPage — ACHT65 ?installation=', () => {
+  it('ne liste que les interventions du chantier demandé', async () => {
+    const parChantier = [
+      { id: 1, installation: 10, installation_reference: 'CH-010', client_nom: 'Client Dix', type_intervention: 'pose', statut: 'a_preparer' },
+      { id: 2, installation: 20, installation_reference: 'CH-020', client_nom: 'Client Vingt', type_intervention: 'pose', statut: 'a_preparer' },
+    ]
+    installationsApi.getInterventions.mockImplementation(({ installation } = {}) => {
+      const rows = parChantier.filter((x) => !installation || String(x.installation) === String(installation))
+      return Promise.resolve({ data: { count: rows.length, next: null, results: rows } })
+    })
+    render(<MemoryRouter initialEntries={['/interventions?installation=10']}><InterventionsPage /></MemoryRouter>)
+    await waitFor(() => expect(screen.getByText('Client Dix')).toBeInTheDocument())
+    expect(screen.queryByText('Client Vingt')).toBeNull()
+    expect(installationsApi.getInterventions).toHaveBeenCalledWith(expect.objectContaining({ installation: '10' }))
   })
 })
