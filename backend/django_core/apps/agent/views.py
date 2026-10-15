@@ -15,6 +15,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole, IsAnyRole
+from apps.records.champs_stricts import RegexStricte
 
 from .models import AgentActionLog
 from .registry import for_user
@@ -61,8 +62,10 @@ def sans_nul(valeur):
 
 class BrouillonAutomationSerializer(drf_serializers.Serializer):
     # ``nom`` : au moins un caractère non blanc (le service refuse un nom vide
-    # après ``strip``), 255 au plus (``AutomationRule.nom``).
-    nom = drf_serializers.RegexField(r'\S', max_length=255)
+    # après ``strip``), 255 au plus (``AutomationRule.nom``). CI #1003 (fuzz) —
+    # une VRAIE chaîne JSON : ``RegexField`` convertissait ``0`` en ``"0"`` et
+    # créait le brouillon (201) alors que le schéma publie ``type: string``.
+    nom = RegexStricte(r'\S', max_length=255)
     trigger_type = drf_serializers.CharField()
     trigger_config = drf_serializers.DictField(required=False)
     action_type = drf_serializers.CharField()
