@@ -364,9 +364,40 @@ class TariffApiTest(TestCase):
         self.assertEqual(s.company_id, self.company.id)
 
     def test_invalid_tiers_rejected(self):
+        # ENF11 — ``residential_tiers`` est libre au schéma : sa forme est une
+        # règle métier (409), pas un défaut de type (400).
         r = self.api.patch(
             PUT_URL, {'residential_tiers': 'pas-une-liste'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
+
+    def test_regle_metier_409_et_defaut_de_forme_400(self):
+        # ENF11 (api-fuzz) — une source obligatoire dès qu'un taux est saisi est
+        # une règle métier sur un corps conforme au schéma : 409, le champ
+        # nommé. Mêlée à un défaut de FORME (entier illisible), c'est un 400.
+        r = self.api.patch(
+            PUT_URL, {'indexation_tarif_pct_an': '4'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('indexation_source', r.data['detail'])
+        self.assertEqual(
+            TariffSettings.get(company=self.company).version, 1)
+        r = self.api.patch(PUT_URL, {
+            'residential_tiers': 'pas-une-liste', 'tolerance_kwh': 'x'},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_types_stricts_texte_booleen_decimal(self):
+        # ENF11 — un nombre pour un texte, un entier pour un booléen ou une
+        # chaîne hors motif pour un décimal : 400 ; un décimal est accepté en
+        # chaîne OU en nombre JSON.
+        for corps in ({'tou_source': 5}, {'pvgis_actif': 1},
+                      {'surplus_prix_kwh_ttc': '+1'},
+                      {'surplus_prix_kwh_ttc': True}):
+            r = self.api.patch(PUT_URL, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        for valeur in (0.5, '0.5'):
+            r = self.api.patch(
+                PUT_URL, {'surplus_prix_kwh_ttc': valeur}, format='json')
+            self.assertEqual(r.status_code, 200, (valeur, r.data))
 
     def test_negative_tier_price_rejected(self):
         # ORDRE FONDATEUR (19/08/2026) — validation « 6 prix positifs ».
@@ -374,7 +405,7 @@ class TariffApiTest(TestCase):
             {'max_kwh': 100, 'prix_kwh_ttc': '-1.0000'},
             {'max_kwh': None, 'prix_kwh_ttc': '2.0000'},
         ]}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_default_tiers_are_six_positive_2026_prices(self):
         # Le barème par défaut (aucune surcharge) porte SIX paliers, tous à

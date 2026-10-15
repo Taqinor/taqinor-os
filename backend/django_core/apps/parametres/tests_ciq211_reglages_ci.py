@@ -81,20 +81,19 @@ class ApiReglagesCiTest(TestCase):
         self.assertIs(resp.data['mention_credit_bail_autorisee'], False)
         self.assertEqual(resp.data['mention_credit_bail_source'], '')
 
-    def test_scenario_sans_source_400_nommant_le_champ(self):
+    def test_scenario_sans_source_409_nommant_le_champ(self):
+        # ENF11 — règle métier sur un corps conforme au schéma : 409.
         resp = self.api.patch(URL_MAJ, {'sensibilites_ci': [
             {'cle': 'production', 'variation_pct': -5, 'source': ''}]},
             format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('sensibilites_ci', resp.data)
-        self.assertIn('sensibilites_ci[0].source',
-                      str(resp.data['sensibilites_ci']))
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('sensibilites_ci[0].source', resp.data['detail'])
 
-    def test_credit_bail_vrai_sans_source_400(self):
+    def test_credit_bail_vrai_sans_source_409(self):
         resp = self.api.patch(
             URL_MAJ, {'mention_credit_bail_autorisee': True}, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('mention_credit_bail_source', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('mention_credit_bail_source', resp.data['detail'])
 
     def test_saisie_valide_aller_retour_identique(self):
         corps = {'sensibilites_ci': [SCENARIO],
