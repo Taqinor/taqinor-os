@@ -1613,16 +1613,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             context={'request': request}).data)
 
     @oa.extend_schema(
-        request=oa.body(
-            'AjouterReserveRequete',
-            client_op_id=oa.s(),
-            description=oa.s(True),
-            assignee=oa.i(null=True),
-            photo=oa.i(null=True),
-            memo=oa.i(null=True),
-            creer_suivi=oa.b(),
-            creer_ticket=oa.b(),
-        ),
+        request=oa.AjouterReserveRequete,  # ERR-ENF11 : déclaration = validation
         responses={200: ReserveSerializer, 201: ReserveSerializer},
     )
     @action(detail=True, methods=['post'], url_path='ajouter-reserve',
@@ -1633,8 +1624,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         description, [assignee], [photo], [memo], [creer_suivi], [creer_ticket]."""
         interv = self.get_object()
         company = interv.company
+        corps = oa.corps_valide(oa.AjouterReserveRequete, request)
         # ADEP44 — idempotence par `client_op_id` (voir `ajouter_serial`).
-        op_id = (request.data.get('client_op_id') or '').strip()
+        op_id = corps.get('client_op_id', '').strip()
         try:
             memorise = field_sync.rejeu_op_en_ligne(
                 company, op_id, 'intervention.reserve')
@@ -1649,26 +1641,19 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     existante, context={'request': request}).data
                 data['replayed'] = True
                 return Response(data, status=status.HTTP_200_OK)
-        assignee = None
-        if request.data.get('assignee'):
-            from authentication.models import CustomUser
-            assignee = CustomUser.objects.filter(
-                id=request.data.get('assignee'), company=company).first()
-        photo = None
-        if request.data.get('photo'):
-            from apps.records.models import Attachment
-            photo = Attachment.objects.filter(
-                id=request.data.get('photo'), company=company).first()
-        memo = None
-        if request.data.get('memo'):
-            memo = interv.voice_memos.filter(
-                id=request.data.get('memo')).first()
+        from authentication.models import CustomUser
+        from apps.records.models import Attachment
+        assignee = CustomUser.objects.filter(
+            id=corps.get('assignee'), company=company).first()
+        photo = Attachment.objects.filter(
+            id=corps.get('photo'), company=company).first()
+        memo = interv.voice_memos.filter(id=corps.get('memo')).first()
         from django.db import IntegrityError, transaction
         try:
             with transaction.atomic():
                 reserve = Reserve.objects.create(
                     company=company, intervention=interv,
-                    description=(request.data.get('description') or '').strip(),
+                    description=corps['description'].strip(),
                     assignee=assignee, photo=photo, memo=memo,
                     created_by=request.user)
                 field_sync.memoriser_op_en_ligne(
@@ -1686,7 +1671,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             data['replayed'] = True
             return Response(data, status=status.HTTP_200_OK)
         # Suivi optionnel : intervention de suivi (même chantier) et/ou ticket.
-        if request.data.get('creer_suivi'):
+        if corps.get('creer_suivi'):
             suivi = Intervention.objects.create(
                 company=company, installation=interv.installation,
                 type_intervention=Intervention.Type.CONTROLE,
@@ -1694,7 +1679,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             intervention_activity.log_creation(suivi, request.user)
             reserve.suivi_intervention = suivi
             reserve.save(update_fields=['suivi_intervention'])
-        if request.data.get('creer_ticket'):
+        if corps.get('creer_ticket'):
             ticket = self._spawn_ticket_for_reserve(reserve, request.user)
             if ticket is not None:
                 reserve.ticket = ticket
@@ -1841,7 +1826,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         }, status=status.HTTP_201_CREATED)
 
     # ── F17 — réconciliation du retour d'outillage ──────────────────────────
-    @oa.extend_schema(request=None, responses=oa.OBJ)
+    @oa.extend_schema(request=None, responses=oa.RETOUR_OUTILLAGE)
     @action(detail=True, methods=['get', 'post'], url_path='tool-return',
             permission_classes=[IsAnyRole])
     def tool_return(self, request, pk=None):
@@ -1925,7 +1910,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(rows)
 
     @oa.extend_schema(
-        request=oa.body('CocherToolReturnRequete', ligne=oa.i(True), rendu=oa.b(), emplacement=oa.i(null=True)),
+        request=oa.CocherToolReturnRequete,  # ERR-ENF11 : déclaration = validation
         responses=ToolReturnSerializer,
     )
     @action(detail=True, methods=['post'], url_path='cocher-tool-return',
@@ -1934,16 +1919,17 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F17 — marque un outil rendu/non rendu + emplacement de retour. Corps :
         {"ligne": <id>, "rendu": bool, "emplacement": <id|null>}."""
         interv = self.get_object()
+        corps = oa.corps_valide(oa.CocherToolReturnRequete, request)
         self._tool_return_response(interv)
-        tr = interv.tool_returns.filter(id=request.data.get('ligne')).first()
+        tr = interv.tool_returns.filter(id=corps['ligne']).first()
         if tr is None:
             return Response({'detail': 'Ligne inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        tr.rendu = bool(request.data.get('rendu', True))
+                            status=status.HTTP_404_NOT_FOUND)
+        tr.rendu = corps['rendu']
         fields = ['rendu']
-        if 'emplacement' in request.data:
+        if 'emplacement' in corps:
             from apps.stock.selectors import get_emplacement_scoped
-            emp_id = request.data.get('emplacement')
+            emp_id = corps['emplacement']
             tr.emplacement_retour = (
                 get_emplacement_scoped(interv.company, emp_id)
                 if emp_id else None)
@@ -2416,7 +2402,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response({'date': jour, 'stops': stops})
 
     # ── FG299 — plan de charge des équipes (capacité vs affecté) ─────────────
-    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ_FENETRE)
     @action(detail=False, methods=['get'], url_path='plan-de-charge',
             permission_classes=[IsAnyRole])
     def plan_de_charge(self, request):
@@ -2438,7 +2424,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG300 — détection de conflits d'affectation (double-booking) ─────────
-    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin')], responses=oa.OBJ_FENETRE)
     @action(detail=False, methods=['get'], url_path='conflits-affectation',
             permission_classes=[IsAnyRole])
     def conflits_affectation(self, request):
@@ -2457,7 +2443,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG301 — nivellement de charge (resource levelling) ───────────────────
-    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ_FENETRE)
     @action(detail=False, methods=['get'], url_path='nivellement-charge',
             permission_classes=[IsAnyRole])
     def nivellement_charge(self, request):
@@ -2557,7 +2543,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────
-    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qidv('capacite_jour')], responses=oa.OBJ)
+    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qidv('capacite_jour')], responses=oa.OBJ_FENETRE)
     @action(detail=False, methods=['get'], url_path='planning-camionnettes',
             permission_classes=[IsAnyRole])
     def planning_camionnettes(self, request):

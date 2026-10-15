@@ -418,6 +418,14 @@ class TestReserves(_Base):
             'reserve': rid, 'resolution': 'Câble posé'}, format='json')
         self.assertEqual(r.data['statut'], 'resolue')
 
+    def test_corps_vide_ou_mal_type_400(self):
+        # La description est exigée par le schéma publié : plus de 201 muet.
+        r = self.api.post(f'{self.url}/ajouter-reserve/', {}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(f'{self.url}/ajouter-reserve/', {
+            'description': 'x', 'creer_ticket': 'oui'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_reserve_spawns_ticket(self):
         from apps.sav.models import Ticket
         r = self.api.post(f'{self.url}/ajouter-reserve/', {
@@ -494,6 +502,16 @@ class TestToolReturn(_Base):
         self.assertEqual(
             ToolReturn.objects.filter(
                 intervention=self.interv, outil=outil).count(), 1)
+
+    def test_cocher_corps_invalide_400_ligne_inconnue_404(self):
+        # `ligne` non entière faisait un 500 ORM ; ligne bien formée mais
+        # absente = ressource manquante (404).
+        self._make_kit()
+        url = f'{self.url}/cocher-tool-return/'
+        r = self.api.post(url, {'ligne': {}, 'rendu': False}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'ligne': 987654, 'rendu': True}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
 
     def test_get_still_reads_state(self):
         # ERR81 — le GET reste lisible (amorce sans doublonner).
