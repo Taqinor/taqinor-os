@@ -72,6 +72,10 @@ def corps_objet(request):
     return donnees
 
 
+#: Quantité comptée écrite en TEXTE (inventaire) : chiffres seuls, au plus
+#: ``QUANTITE_MAX`` (1 000 000) — la MÊME forme est publiée et lue.
+MOTIF_QUANTITE_COMPTEE = r'[0-9]{1,6}|1000000'
+
 #: Borne d'une clé primaire entière PostgreSQL.
 ID_MAX = 2147483647
 #: Plancher d'une colonne entière PostgreSQL (``integer``).

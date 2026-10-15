@@ -94,3 +94,23 @@ class InventaireSaisieTests(TestCase):
         self.assertEqual(resp.json()['ajustes'], 2)
         self.assertEqual(resp.json()['inchanges'], 1)
         self.assertEqual(self._stocks(), [7, 20, 0])
+
+    def test_forme_publiee_chiffres_seuls_et_plafond(self):
+        """CI #997 fuzz (4) : un texte est fait de chiffres seuls, le niveau compté
+        tient dans QUANTITE_MAX, chaque ligne NOMME son produit — sinon 400 et
+        rien d'appliqué."""
+        refuses = (
+            [{'produit': self.a.id, 'quantite_comptee': ' 7 '}],
+            [{'produit': self.a.id, 'quantite_comptee': '1e2'}],
+            [{'produit': self.a.id, 'quantite_comptee': 1000001}],
+            [{'produit': self.a.id, 'quantite_comptee': '1000001'}],
+            [{'quantite_comptee': 7}],
+            [5],
+        )
+        for lignes in refuses:
+            resp = self._poster(lignes)
+            self.assertEqual(resp.status_code, 400, (lignes, resp.content))
+        self.assertEqual(self._stocks(), [20, 20, 20])
+        resp = self._poster([{'produit': self.a.id, 'quantite_comptee': '1000000'}])
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(self._stocks(), [1000000, 20, 20])

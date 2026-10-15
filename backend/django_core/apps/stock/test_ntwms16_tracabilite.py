@@ -126,8 +126,8 @@ class TestEndpointTracabilite(Ntwms16Base):
         self.assertEqual(reponse.data['lot'], NUMERO_LOT)
         self.assertEqual(len(reponse.data['amont']), 1)
 
-    def test_sans_parametre_400(self):
-        self.assertEqual(self.api.get(self.URL).status_code, 400)
+    def test_sans_parametre_404(self):
+        self.assertEqual(self.api.get(self.URL).status_code, 404)
 
     def test_numero_inconnu_404(self):
         reponse = self.api.get(self.URL, {'lot': 'RIEN'})

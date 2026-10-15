@@ -203,6 +203,40 @@ class TestEmplacementApi(EmplacementBase):
             produit=self.produit, emplacement=camionnette)
         self.assertEqual(se.quantite, 2)
 
+    def _emplacements(self):
+        ensure_emplacements(self.company)
+        return (EmplacementStock.objects.get(company=self.company, is_principal=True),
+                EmplacementStock.objects.get(company=self.company, nom='Camionnette'))
+
+    def test_transfert_etats_en_409_corps_incomplet_en_400(self):
+        """CI #997 fuzz (4) : source = destination et stock insuffisant sont des
+        états (409) ; un corps incomplet ou mal typé reste un 400."""
+        principal, camionnette = self._emplacements()
+        url = '/api/django/stock/transferts/'
+        base = {'produit': self.produit.id, 'source': principal.id,
+                'destination': camionnette.id, 'quantite': 2}
+        r = self.api.post(url, {**base, 'destination': principal.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.api.post(url, {**base, 'quantite': 11}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        for corps in ({**base, 'quantite': '2'}, {**base, 'quantite': True}, {**base, 'note': 5},
+                      {**base, 'note': 'a\u0000b'}, {**base, 'source': 0},
+                      {'produit': self.produit.id, 'quantite': 2}):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        self.assertEqual(TransfertStock.objects.count(), 0)
+
+    def test_demande_transfert_meme_emplacement_409(self):
+        principal, camionnette = self._emplacements()
+        r = self.api.post('/api/django/stock/transferts/demander/', {
+            'produit': self.produit.id, 'source': principal.id,
+            'destination': principal.id, 'quantite': 2}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.api.post('/api/django/stock/transferts/demander/', {
+            'produit': self.produit.id, 'source': principal.id,
+            'destination': camionnette.id, 'quantite': 2, 'note': None}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
     def test_principal_not_deletable(self):
         ensure_emplacements(self.company)
         principal = EmplacementStock.objects.get(
