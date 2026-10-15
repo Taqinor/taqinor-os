@@ -21,6 +21,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _exceptions_permanentes as ep  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
+TYPE_DE_CLE = "par_symbole"  # AMET100 — clé de contenu `fichier::symbole` (jamais un numéro de ligne)
+
 ROOT = Path(__file__).resolve().parent.parent
 BACKEND = ROOT / "backend"
 CAT = "tests_sautes_environnement"
