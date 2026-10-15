@@ -38,7 +38,8 @@ test('VX239 : ClientForm pose useDuplicateCheck ET <PhoneHint> (jusqu\'ici limit
   assert.match(CLIENT_FORM, /import PhoneHint from '..\/..\/components\/PhoneHint'/)
   assert.match(CLIENT_FORM, /const dupMatches = useDuplicateCheck\(fields\.telephone, fields\.email\)/)
   assert.match(CLIENT_FORM, /<PhoneHint value=\{fields\.telephone\} testId="cf-tel-hint" \/>/)
-  assert.match(CLIENT_FORM, /dupMatches\.length > 0/)
+  // ENF19 — l'avertissement est rendu par <AvertissementDoublons> (components/).
+  assert.match(CLIENT_FORM, /<AvertissementDoublons matches=\{dupMatches\}/)
 })
 
 test('VX239 : ClientQuickCreateModal pose useDuplicateCheck ET <PhoneHint>', () => {

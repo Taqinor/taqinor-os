@@ -17,16 +17,18 @@ import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
 import PhoneHint from '../../components/PhoneHint'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
-import crmApi from '../../api/crmApi'
 import ventesApi from '../../api/ventesApi'
 import fetchAllPages from '../../utils/fetchAllPages'
 import tiersApi from '../../api/tiersApi'
 import {
-  searchCompanies, hitsToOptions, verifierIceUrl, verifierOmpicUrl,
+  verifierIceUrl, verifierOmpicUrl,
 } from '../../features/crm/companyLookup'
 import { useT } from '../../i18n'
 import { useCreerUnAutre } from '../../hooks/useCreerUnAutre'
 import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
+import ComboboxEntreprise from '../../components/ComboboxEntreprise'
+import { rechercherEntreprises } from '../../features/crm/rechercheEntreprises'
+import AvertissementDoublons from '../../components/AvertissementDoublons'
 
 // Avertissements NON bloquants sur les identifiants marocains. Renvoie une
 // chaîne d'aide (ou null) — n'empêche JAMAIS l'enregistrement, sert juste à
@@ -241,8 +243,6 @@ export default function ClientForm({ client = null, onClose }) {
   // stockage (espaces/points/tirets tolérés) au lieu de tomber brut.
   const onTelephonePaste = usePasteClean(parsePastedPhone, (clean) => setField('telephone', clean))
 
-  const onSearchCompany = (query) =>
-    searchCompanies(query, { searcher: crmApi.searchClients }).then(hitsToOptions)
 
   // Remplissage depuis un match choisi : ne remplit que les champs vides pour
   // ne jamais écraser une saisie de l'utilisateur ; bascule en entreprise si
@@ -406,16 +406,7 @@ export default function ClientForm({ client = null, onClose }) {
               {!isEdit && (
                 <FormField label="Rechercher une entreprise existante — optionnel"
                            htmlFor="cf-company-search" fullWidth>
-                  <Combobox
-                    id="cf-company-search"
-                    value={null}
-                    onSearch={onSearchCompany}
-                    onChange={(_v, opt) => fillFromHit(opt?.hit)}
-                    placeholder="Taper un nom d'entreprise…"
-                    searchPlaceholder="Nom ou ICE…"
-                    emptyText="Aucune correspondance dans vos données"
-                    clearable={false}
-                  />
+                  <ComboboxEntreprise id="cf-company-search" onChoisir={fillFromHit} />
                   {dupWarning && (
                     <p className="mt-1 text-xs text-warning" data-testid="cf-dup-warning">
                       {dupWarning}
@@ -484,19 +475,8 @@ export default function ClientForm({ client = null, onClose }) {
               {/* VX239 — avertissement doublon EN DIRECT, jusqu'ici réservé à
                   LeadForm : un contact déjà connu (comme lead) avant même de
                   soumettre la création du client. */}
-              {dupMatches.length > 0 && (
-                <p className="-mt-2 text-xs text-warning" role="status">
-                  ⚠️ Un contact avec ce téléphone/email existe déjà
-                  {dupMatches.length > 1 ? ` (${dupMatches.length})` : ''} :{' '}
-                  {dupMatches.slice(0, 3).map((d, i) => (
-                    <span key={d.id}>
-                      {i > 0 && ', '}
-                      {`${d.nom} ${d.prenom || ''}`.trim() || `#${d.id}`}
-                    </span>
-                  ))}
-                  {dupMatches.length > 3 && '…'}
-                </p>
-              )}
+              <AvertissementDoublons matches={dupMatches} className="-mt-2 text-xs text-warning"
+                                     avecCompte />
             </FormSection>
 
             <FormSection title="Type & identifiants">
@@ -662,7 +642,7 @@ export default function ClientForm({ client = null, onClose }) {
                 <Combobox
                   id="cf-parent"
                   value={fields.parent ? String(fields.parent) : null}
-                  onSearch={onSearchCompany}
+                  onSearch={rechercherEntreprises}
                   onChange={(_v, opt) => setField('parent', opt?.hit?.id ?? null)}
                   placeholder="Rechercher la société mère…"
                   searchPlaceholder="Nom ou ICE…"
