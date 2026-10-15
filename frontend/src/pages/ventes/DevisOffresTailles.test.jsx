@@ -411,10 +411,10 @@ describe('DevisOffresTailles — « Appliquer » dit ce qu\'il fait', () => {
     ventesApi.getOffresTaillesDevis.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
     ventesApi.patchOffreTailleConfig.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
     ventesApi.regenererOffreTaille.mockResolvedValue({ data: BLOC_DEUX_TAILLES })
-    // Forme RÉELLE du refus serveur (ApplicationImpossible → DRF 400).
+    // Forme RÉELLE du refus serveur (ApplicationImpossible → 409, refus d'état).
     ventesApi.appliquerOffreTailleAuDevis.mockRejectedValue({
       response: {
-        status: 400,
+        status: 409,
         data: {
           detail: ['Devis « Envoyé » : le client a déjà cette version sous les yeux.'],
           revision_possible: true,

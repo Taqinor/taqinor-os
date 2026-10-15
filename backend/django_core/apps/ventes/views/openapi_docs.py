@@ -18,6 +18,7 @@ from core.champs_stricts import (
     EntierStrict,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.parseurs import ChoixDocumente
 from ..models import Paiement
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
@@ -450,7 +451,11 @@ CompositionRequest = {
             'nb_panneaux': {'type': 'integer', 'minimum': 1},
             'panel_watt': {'type': 'number', 'exclusiveMinimum': True,
                            'minimum': 0},
-            'scenario': {'type': 'string'},
+            # CI #997 fuzz — les scénarios que la composition sait servir
+            # (``creation_auto.SCENARIOS_DEMANDABLES`` ; vide = les deux) :
+            # un autre texte était « conforme » puis refusé en 422.
+            'scenario': {'type': 'string',
+                         'enum': ['', 'sans', 'avec', 'les_deux']},
             'structure_produit_id': {'type': 'integer', 'nullable': True},
             'structure_type': {'type': 'string'},
             'taux_tva': {'type': 'number', 'minimum': 0, 'maximum': 100},
@@ -582,6 +587,24 @@ RoofImageRequest = {
         'required': ['image'],
     },
 }
+#: PV47 — réponse de ``ajouter-boq-electrique`` (``domain/bordereau``) :
+#: ``{creees, lignes, manques, deja_presentes}``, clés toujours présentes.
+AjouterBoqResponse = _ser('DevisAjouterBoqResponse', {
+    'creees': s.IntegerField(),
+    'lignes': s.ListField(child=_ser('DevisBoqLigneCreee', {
+        'designation': s.CharField(),
+        'produit': s.IntegerField(allow_null=True),
+        'quantite': s.FloatField(allow_null=True),
+        'type_ligne': s.CharField(),
+        'a_chiffrer': s.BooleanField(),
+    })),
+    'manques': s.ListField(child=_ser('DevisBoqManque', {
+        'designation': s.CharField(),
+        'quantite': s.FloatField(),
+        'spec': s.JSONField(),
+    })),
+    'deja_presentes': s.ListField(child=s.CharField()),
+})
 RoofImageResponse = _ser('DevisRoofImageResponse', {
     'roof_image': s.CharField(),
     'url': s.CharField(),
@@ -1286,6 +1309,18 @@ NoteDebitAnnuleeResponse = _ser('NoteDebitAnnulationResponse', {
 OffreTailleCleRequest = _ser('DevisOffreTailleCleRequest', {
     'cle': s.ChoiceField(choices=['eco', 'recommande', 'max']),
     'expected_updated_at': _JETON,
+})
+#: CI #997 fuzz — ``offres-tailles/appliquer`` : SEULE « Recommandé »
+#: s'applique au devis (Éco et Max étaient « conformes » puis TOUJOURS
+#: refusées) ; jeton en texte STRICT (``0`` était relu « 0 »). Validé par la
+#: vue avant toute autre garde.
+OffreTailleAppliquerRequest = _ser('DevisOffreTailleAppliquerRequest', {
+    'cle': ChoixDocumente(choices=['recommande'], error_messages={
+        'invalid_choice': 'Seule la taille « Recommandé » s\'applique au '
+                          'devis : « {input} » est une taille d\'exploration, '
+                          'montrée au client à côté de l\'offre officielle.'}),
+    'expected_updated_at': ChaineStricte(required=False, allow_blank=True,
+                                         allow_null=True),
 })
 OffreTailleConfigRequest = {
     'application/json': {

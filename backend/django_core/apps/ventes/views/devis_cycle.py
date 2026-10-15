@@ -155,8 +155,9 @@ class DevisCycleActionsMixin:
 
     @staticmethod
     def _refus_derive_fige(devis):
-        """QJR588 — accepté / refusé / expiré / remplacé : 400
-        ``{detail, code: 'devis_fige'}`` (garde QJR516, statut LU)."""
+        """QJR588 — accepté / refusé / expiré / remplacé : 409 (CI #997
+        fuzz : refus d'ÉTAT, corps inchangé) ``{detail, code: 'devis_fige'}``
+        (garde QJR516, statut LU)."""
         from ..domain.modifiabilite import (
             LIGNES, DevisNonModifiable, exiger_modifiable)
         try:
@@ -165,12 +166,12 @@ class DevisCycleActionsMixin:
             return Response(
                 {'detail': 'Devis figé — révisez-le (reviser) pour le '
                            'modifier.', 'code': 'devis_fige'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return None
 
     @extend_schema(request=None,
                    responses={200: D.DeriveResponse,
-                              400: D.ErreurDevisFige})
+                              409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='reappliquer-lead',
             permission_classes=[IsResponsableOrAdmin])
     def reappliquer_lead(self, request, pk=None):
@@ -178,7 +179,7 @@ class DevisCycleActionsMixin:
         les valeurs du lead » : études recalculées depuis le lead courant,
         compte de panneaux réconcilié (prix négociés, lignes manuelles,
         sections et notes intacts), estampille reposée. Brouillon et envoyé
-        sur place (envoyé : correction tracée) ; figé → 400 ``devis_fige``."""
+        sur place (envoyé : correction tracée) ; figé → 409 ``devis_fige``."""
         from ..domain.pipeline import reappliquer_lead
         devis = self.get_object()  # borné société
         refus = self._refus_derive_fige(devis)
@@ -190,13 +191,13 @@ class DevisCycleActionsMixin:
 
     @extend_schema(request=None,
                    responses={200: D.DeriveResponse,
-                              400: D.ErreurDevisFige})
+                              409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='acquitter-derive',
             permission_classes=[IsResponsableOrAdmin])
     def acquitter_derive(self, request, pk=None):
         """QJR588 — « Garder les valeurs du devis » : l'estampille est
         reposée sur les valeurs COURANTES du lead, rien d'autre (lignes et
-        études octet-identiques). Figé → 400 ``devis_fige``."""
+        études octet-identiques). Figé → 409 ``devis_fige``."""
         from ..domain.pipeline import restamper_provenance
         devis = self.get_object()
         refus = self._refus_derive_fige(devis)

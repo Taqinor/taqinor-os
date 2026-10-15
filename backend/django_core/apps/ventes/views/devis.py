@@ -338,7 +338,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         composent EXACTEMENT le même kit — la source de vérité unique promise
         par cet endpoint (U3) vaut aussi pour les deux optimiseurs (L-2OPT).
         """
-        from decimal import Decimal, InvalidOperation
+        from decimal import Decimal
         from ..services import composer_devis_residentiel, AutoDevisError
 
         company = request.user.company
@@ -347,87 +347,52 @@ class DevisViewSet(DevisEditionActionsMixin,
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # CI #997 fuzz — le corps est validé par le schéma PUBLIÉ lui-même
+        # (``D.CompositionRequest``) : nombres JSON (plus ``"5"`` relu par
+        # ``Decimal``), bornes, scénario énuméré, drapeau booléen strict,
+        # ``dimensionnement_avec`` objet de nombres — un écart = 400 nommé.
+        from ..utils.corps import valider_corps_schema
+        corps = valider_corps_schema(request, D.CompositionRequest)
+
         def _nombre(cle, defaut=None):
-            brut = request.data.get(cle)
-            if brut in (None, ''):
-                return defaut
-            try:
-                return Decimal(str(brut))
-            except (InvalidOperation, TypeError, ValueError):
-                raise ValueError(cle)
+            return (Decimal(str(corps[cle])) if corps.get(cle) is not None
+                    else defaut)
 
-        def _dimensionnement_avec(brut):
-            """``None`` | ``{'nb_panneaux'?, 'kwc'?, 'batterie_kwh'?}`` en
-            ``float`` — miroir de ce que ``composer_devis_residentiel``
-            attend. Un corps qui n'est pas un objet, ou vide, vaut « moteur
-            muet sur l'axe batterie » (repli historique, jamais une erreur)."""
-            if not isinstance(brut, dict):
-                return None
-            valeurs = {}
-            for cle in ('nb_panneaux', 'kwc', 'batterie_kwh'):
-                item = brut.get(cle)
-                if item in (None, ''):
-                    continue
-                try:
-                    valeurs[cle] = float(item)
-                except (TypeError, ValueError):
-                    raise ValueError('dimensionnement_avec.%s' % cle)
-            return valeurs or None
+        kwc = _nombre('kwc')
+        nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
+        from ..domain.taille import _AUTO_PANEL_WATT
+        panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
+        # APAR49 — défaut = taux STANDARD de la société, jamais 20 codé.
+        from ..utils.company_settings import tva_standard
+        taux_tva = _nombre('taux_tva', tva_standard(company))
+        mppt_paires = _nombre('mppt_paires', Decimal('1'))
+        # U3COMPOSE — ``{'nb_panneaux'?, 'kwc'?, 'batterie_kwh'?}`` en float
+        # (vide = moteur muet sur l'axe batterie).
+        dimensionnement_avec = {
+            cle: float(valeur) for cle, valeur in (
+                corps.get('dimensionnement_avec') or {}).items()
+            if cle in ('nb_panneaux', 'kwc', 'batterie_kwh')} or None
 
-        try:
-            kwc = _nombre('kwc')
-            nb_panneaux = _nombre('nb_panneaux', Decimal('0'))
-            from ..domain.taille import _AUTO_PANEL_WATT
-            panel_watt = _nombre('panel_watt', Decimal(_AUTO_PANEL_WATT))
-            # APAR49 — défaut = taux STANDARD de la société, jamais 20 codé.
-            from ..utils.company_settings import tva_standard
-            taux_tva = _nombre('taux_tva', tva_standard(company))
-            mppt_paires = _nombre('mppt_paires', Decimal('1'))
-            dimensionnement_avec = _dimensionnement_avec(
-                request.data.get('dimensionnement_avec'))
-        except ValueError as exc:
-            return Response(
-                {'detail': 'Valeur numérique invalide : %s.' % exc},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        if (kwc is None or kwc <= 0) and nb_panneaux <= 0:
-            return Response(
-                {'detail': 'Renseignez une puissance (kwc) ou un nombre de '
-                           'panneaux (nb_panneaux).'},
-                status=status.HTTP_400_BAD_REQUEST)
-
-        structure = request.data.get('structure_type') or 'acier'
-        # STKCAT1/STKCAT7 — l'id du produit de structure CHOISI. Une valeur non
-        # numérique est IGNORÉE (repli sur le toggle), jamais un 500 ; le
-        # scoping société est celui du CATALOGUE, posé côté composition (un id
-        # d'une autre société n'y résout simplement rien).
-        _brut_structure_id = request.data.get('structure_produit_id')
-        try:
-            structure_produit_id = (
-                int(_brut_structure_id)
-                if _brut_structure_id not in (None, '') else None)
-        except (TypeError, ValueError):
-            structure_produit_id = None
+        structure = corps.get('structure_type') or 'acier'
+        # STKCAT1/STKCAT7 — l'id du produit de structure CHOISI ; le scoping
+        # société est celui du CATALOGUE, posé côté composition (un id d'une
+        # autre société n'y résout simplement rien).
+        structure_produit_id = corps.get('structure_produit_id')
+        structure_produit_id = (int(structure_produit_id)
+                                if structure_produit_id is not None else None)
         # QJR-OFFGRID — drapeau ADDITIF et optionnel : le site est ISOLÉ
         # (onduleur autonome + batterie, option unique). Absent ⇒ dry-run
         # strictement inchangé. Cet endpoint n'a AUCUN lead en portée (il est
         # piloté par les nombres tapés à l'écran) : le repli « raccordement du
         # lead = aucun » vit là où le lead existe, dans ``build_devis_auto``.
-        _brut_hors_reseau = request.data.get('hors_reseau')
-        hors_reseau = (str(_brut_hors_reseau).strip().lower()
-                       in ('1', 'true', 'oui', 'yes')
-                       if _brut_hors_reseau is not None else False)
+        hors_reseau = bool(corps.get('hors_reseau'))
         # QJR604 — la ville du barème transport vient d'un LEAD de la société
         # (404 sinon), résolue côté serveur ; plus jamais d'un texte libre.
         ville = ''
-        if request.data.get('lead') not in (None, ''):
+        if corps.get('lead') is not None:
             from apps.crm.selectors import get_company_lead
             from ..domain.transport import ville_du_lead
-            try:
-                lead_obj = get_company_lead(
-                    company, int(request.data.get('lead')))
-            except (TypeError, ValueError):
-                lead_obj = None
+            lead_obj = get_company_lead(company, int(corps['lead']))
             if lead_obj is None:
                 return Response({'detail': 'Lead inconnu.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -438,7 +403,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                 kwc=float(kwc) if kwc is not None else 0,
                 nb_panneaux=int(nb_panneaux),
                 panel_watt=float(panel_watt),
-                scenario=request.data.get('scenario'),
+                scenario=corps.get('scenario'),
                 structure_type=str(structure),
                 structure_produit_id=structure_produit_id,
                 taux_tva=taux_tva,

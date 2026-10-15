@@ -71,7 +71,7 @@ describe('QJR589 — bannière de dérive lead → devis', () => {
 
   it('un échec serveur est dit, la bannière reste', async () => {
     ventesApi.reappliquerLeadDevis.mockRejectedValue({
-      response: { status: 400, data: exempleContrat('ventes', 'devis_reappliquer_lead', 'exemple_400') },
+      response: { status: 409, data: exempleContrat('ventes', 'devis_reappliquer_lead', 'exemple_409') },
     })
     render(<BandeauDeriveLead devisId={413} statut="brouillon" champs={['facture_hiver']} />)
     await userEvent.click(screen.getByRole('button', { name: 'Reprendre les valeurs du lead' }))

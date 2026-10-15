@@ -6,7 +6,7 @@
     "corps": {}
   },
   "refus": {
-    "400_sans_conception": {
+    "409_sans_conception": {
       "detail": "Ce devis n'a pas encore de conception électrique : lancez d'abord « Conception électrique »."
     },
     "409_non_modifiable": {

@@ -55,14 +55,11 @@ GARDEES_409 = {
     # ENTETE), refus d'état 409 {statut} — plus 400.
     'partial_update': [('patch', {'note': 'Retouche'})],
     'update': [('put', {'note': 'Retouche'})],
-}
-
-#: Refus HISTORIQUES en 400 (même prédicat, code conservé par contrat) :
-#: rejoués → 400, devis inchangé.
-REFUS_400 = {
-    'reappliquer_lead': [('post', {})],   # QJR588 400 devis_fige
-    'acquitter_derive': [('post', {})],   # QJR588 400 devis_fige
-    'offres_tailles_appliquer': [('post', {'cle': 'recommande'})],  # QJR557
+    # CI #997 fuzz — les trois refus HISTORIQUES en 400 (même prédicat)
+    # sont des refus d'état : 409, corps inchangé (devis_fige, QJR557).
+    'reappliquer_lead': [('post', {})],
+    'acquitter_derive': [('post', {})],
+    'offres_tailles_appliquer': [('post', {'cle': 'recommande'})],
 }
 
 #: Écritures LÉGITIMES sur un devis accepté (elles ne modifient pas son
@@ -183,13 +180,13 @@ class GardeActionsModifiabiliteTests(TestCase):
 
     def test_toute_action_ecriture_classee(self):
         decouvertes = _ecritures_decouvertes()
-        classees = set(GARDEES_409) | set(REFUS_400) | set(EXEMPTEES)
+        classees = set(GARDEES_409) | set(EXEMPTEES)
         non_classees = sorted(set(decouvertes) - classees)
         self.assertEqual(
             non_classees, [],
             'action d’écriture de DevisViewSet ni gardée par '
             '_refus_modifiabilite (GARDEES_409) ni exemptée avec sa raison '
-            '(EXEMPTEES / REFUS_400)')
+            '(EXEMPTEES)')
         perimees = sorted(classees - set(decouvertes))
         self.assertEqual(perimees, [],
                          'entrée de la garde pour une action disparue')
@@ -199,10 +196,4 @@ class GardeActionsModifiabiliteTests(TestCase):
         ecarts = self._jouer(GARDEES_409, 409)
         self.assertEqual(ecarts, [], '\n'.join(ecarts))
         # Aucun geste refusé n'a écrit (statut LU, jamais écrit — règle #4).
-        self.assertEqual(self._instantane(), avant)
-
-    def test_refus_historiques_400(self):
-        avant = self._instantane()
-        ecarts = self._jouer(REFUS_400, 400)
-        self.assertEqual(ecarts, [], '\n'.join(ecarts))
         self.assertEqual(self._instantane(), avant)

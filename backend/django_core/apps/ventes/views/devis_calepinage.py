@@ -528,6 +528,11 @@ class DevisCalepinageActionsMixin:
         return Response({'status': 'pending'},
                         status=status.HTTP_202_ACCEPTED)
 
+    # CI #997 fuzz — corps VIDE publié (le défaut de drf-spectacular était le
+    # sérialiseur du devis entier) et réponse publiée telle que rendue.
+    @extend_schema(request=None,
+                   responses={200: D.AjouterBoqResponse,
+                              409: D.ErreurSyncLayout})
     @action(detail=True, methods=['post'],
             url_path='ajouter-boq-electrique',
             permission_classes=[IsResponsableOrAdmin])
@@ -562,10 +567,12 @@ class DevisCalepinageActionsMixin:
                 'Utilisez « Réviser » pour en créer une nouvelle version.')
         design = getattr(devis, 'electrical_design', None)
         if not isinstance(design, dict) or not design.get('bom'):
+            # CI #997 fuzz — l'appel est valide, c'est l'ÉTAT du devis (pas
+            # encore de conception électrique) qui s'oppose : 409.
             return Response(
                 {'detail': "Ce devis n'a pas encore de conception électrique : "
                            'lancez d\'abord « Conception électrique ».'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         resultat = ajouter_lignes_boq_electrique(devis, request.user)
         return Response(resultat)
 

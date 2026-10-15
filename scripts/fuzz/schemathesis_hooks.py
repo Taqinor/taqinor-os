@@ -538,6 +538,10 @@ _FICHIERS_VALIDES = (
      {'fichier': _DXF_PLAN}),
     (re.compile(_CALEPINAGE + r'meteo-fichier/$'), {'POST'},
      {'fichier': _CSV_METEO}),
+    # CI #997 (w4, ventes) — affiche 3D d'un DEVIS : le serveur lit les octets
+    # magiques (PNG ou JPEG), sinon « Image invalide » (400).
+    (re.compile(r'^/api/django/ventes/devis/\{[^}]+\}/roof-image/$'), {'POST'},
+     {'image': _PNG_MINIMAL}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},

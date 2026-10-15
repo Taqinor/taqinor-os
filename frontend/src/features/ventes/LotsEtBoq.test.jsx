@@ -135,8 +135,8 @@ describe('AjouterBoqElectrique', () => {
     expect(onAjoute).toHaveBeenCalled()
   })
 
-  it('sans conception électrique : le detail 400 du contrat est affiché', async () => {
-    const refus = documentContrat('ventes', 'devis_boq_electrique').refus['400_sans_conception']
+  it('sans conception électrique : le detail 409 du contrat est affiché', async () => {
+    const refus = documentContrat('ventes', 'devis_boq_electrique').refus['409_sans_conception']
     ventesApi.ajouterBoqElectrique.mockRejectedValue({ response: { data: refus } })
     const onAjoute = vi.fn()
     render(<AjouterBoqElectrique devisId={7} modifiable onAjoute={onAjoute} />)

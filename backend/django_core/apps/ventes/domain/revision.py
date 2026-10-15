@@ -30,9 +30,9 @@ def renouveler_devis(devis, *, user=None):
 
     VNT106 (arbitrage 7) — un ACCEPTÉ lève ``ConflitEtat`` (409
     ``deuxieme_affaire``) : le renouveler sur le MÊME lead laissait deux ventes
-    en vigueur. Tout autre état non renouvelable lève ``ValidationError``.
-    Renvoie le nouveau devis."""
-    from rest_framework.exceptions import ValidationError
+    en vigueur. Tout autre état non renouvelable lève aussi ``ConflitEtat``
+    (409 ``{statut}`` — CI #997 fuzz : c'est l'état du devis qui s'oppose,
+    l'appel sans corps est valide). Renvoie le nouveau devis."""
     from django.db import transaction
     from apps.ventes.models import Devis
     from apps.ventes import activity
@@ -47,7 +47,7 @@ def renouveler_devis(devis, *, user=None):
             'deuxième affaire (nouvelle fiche lead) ; pour changer le prix, '
             'utilisez Réviser ou Prix négocié.')})
     if devis.statut not in RENOUVELABLES:
-        raise ValidationError({'statut': (
+        raise ConflitEtat({'statut': (
             'Seul un devis expiré peut être renouvelé '
             '(un devis en cours se corrige avec « réviser »).')})
 
