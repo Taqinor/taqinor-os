@@ -74,7 +74,6 @@
 17788ba6ce4c|apps/web/src/lib/roof.ts,apps/web/src/scripts/roofPro11/prefill.ts
 179462f1ffab|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 179e120c2508|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
-17e79d78f32a|apps/web/src/lib/applianceConsumption.ts,apps/web/src/scripts/roofPro11/prefill.ts
 18473cd3c776|apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/marocains-du-monde.astro
 197f0d7940be|frontend/src/pages/crm/controleSuiviTexte.js,frontend/src/pages/crm/controleSuiviTexte.test.js
 19daad2eed8c|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
@@ -275,7 +274,6 @@
 7065e1313af8|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 70fb662e54a2|apps/web/src/pages/en/politique-de-confidentialite.astro,apps/web/src/pages/politique-de-confidentialite.astro
 70fd22358ff6|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-7205faaf85b3|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 721b59500543|apps/web/src/components/DiagnosticForm.astro,apps/web/src/components/DiagnosticFormEnriched.astro
 727f724a0426|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 72aa24bfa3c2|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
@@ -423,9 +421,7 @@ b71958844be8|apps/web/src/pages/ar/blog/prix-installation-solaire-maroc-2026.ast
 b74dee6f9698|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 b7d71faf0d66|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 b852a82f460f|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
-b9085ab93a5f|apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 b963ae28fa9a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-b969c5da8c58|apps/web/src/lib/obstacles.ts,apps/web/src/scripts/roofPro11/prefill.ts
 b9800ff3a0a4|frontend/src/features/calepinage/atelier/Projet.jsx,frontend/src/features/calepinage/documents/PanneauDocuments.jsx
 b9c9afa6f925|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
 bb739021e242|apps/web/src/scripts/roofPro11/mapDraw.ts,apps/web/src/scripts/roofPro11/obstaclesUi.ts
@@ -519,7 +515,6 @@ db02e06834f2|apps/web/src/lib/shadingEngine.test.ts,apps/web/src/scripts/roofPro
 dbbb09062cc1|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
 dbf2094ca765|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 dd2c745e120a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-dd6237d55182|apps/web/src/lib/offresTailles.ts,apps/web/src/lib/tailleDetail.ts
 ddb048f236a6|apps/web/src/pages/ar/contact.astro,apps/web/src/pages/contact.astro,apps/web/src/pages/en/contact.astro
 de0dbb4ea9a0|apps/web/src/scripts/roofPro11/captureBoot.ts,apps/web/src/scripts/roofPro11/prefill.ts
 de1da74c93a2|apps/web/src/scripts/roofPro11/batiment.ts,apps/web/src/scripts/roofPro11/scene3d.ts
@@ -595,7 +590,6 @@ fda88e381fa4|apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/e
 fdec568d0fb2|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 fe07fe379d79|apps/web/src/lib/estimatorPro.ts,apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 fe75990add10|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-fe8d2c1917e0|apps/web/src/lib/jourTypeData.ts,apps/web/src/lib/proposition.ts
 ff1132c880f1|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 ff5d317d3aa2|apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/production-mesuree.astro
 ff67290fc515|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro

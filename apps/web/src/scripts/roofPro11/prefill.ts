@@ -15,12 +15,13 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type ObstacleType, type ObstacleProvenance, type TiltMode, type OrientMode, type AzimuthMode, type MarginMode } from './types';
+import { champsFormeObstacle, type AreaRecord, type CardData, type LeadPayload, type TiltMode, type OrientMode, type AzimuthMode, type MarginMode } from './types';
 import { type LngLat } from '../../lib/roof';
+import { type Obstacle } from '../../lib/obstacles';
 import { BILL_RANGES } from '../../lib/billRange';
 import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
-import { emptyCurve, type Appliance, type ApplianceBilling, type HourlyCurve } from '../../lib/applianceConsumption'; // CALX253/CALX254
+import { emptyCurve, type Appliance, type HourlyCurve } from '../../lib/applianceConsumption'; // CALX253/CALX254
 import { type Measurement, type MeasureKind, isMeasureValid } from './mesureUi';
 import { deduceEdgeTypes, fusionnerAretesSaisies, type SerializedEdge, type EdgeDeductionZone } from './edges';
 import { type EnvironmentObject } from './environment';
@@ -328,16 +329,7 @@ export interface SerializedZone {
    *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. CAL66 —
    *  `heightM` (optionnel, SAISI) : absent = obstacle plan, aucune ombre. CAL72 —
    *  `provenance` (optionnel) : absent = comportement historique (aucun blocage). */
-  obstacles: Array<{
-    id: string;
-    centerLng: number;
-    centerLat: number;
-    lengthM: number;
-    widthM: number;
-    type?: ObstacleType;
-    heightM?: number;
-    provenance?: ObstacleProvenance;
-  }>;
+  obstacles: Obstacle[];
   /** F2 — OPTIONNELS : `serializeLayout` les écrit toujours, mais une zone posée
    *  par le SERVEUR depuis le tracé du client les OMET délibérément (personne n'a
    *  mesuré ce toit, et un champ écrit ici descend jusqu'à l'annexe « paramètres du
@@ -724,14 +716,7 @@ export interface SerializedConsumption {
    *  `ctx.consWinterFactor`). Omis quand la modulation saisonnière n'a pas été activée. */
   saisons?: { ete: number; hiver: number };
   /** Appareils du calculateur (`ctx.consAppliances`). Omis si aucun appareil. */
-  appareils?: Array<{
-    kind: string;
-    label: string;
-    dailyKwh: number;
-    startHour: number;
-    endHour: number;
-    billing: ApplianceBilling;
-  }>;
+  appareils?: Appliance[];
   /** Comment la courbe a été obtenue — DÉDUITE, jamais un choix par défaut. */
   methode: 'facture' | 'courbe' | 'appareils';
   /** Provenance déclarative du bloc (jamais un chiffre, D-CALX 7). */
