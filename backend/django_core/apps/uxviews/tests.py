@@ -81,6 +81,38 @@ class SavedViewApiTests(TestCase):
         self.assertEqual(obj.owner, self.commercial1)
         self.assertEqual(obj.company, self.co_a)
 
+    def test_configuration_est_un_objet_publie_et_applique(self):
+        # CI #1003 (fuzz) — publiée en JSON libre, `configuration: null` était
+        # « conforme » puis refusée 400 : le schéma publie désormais l'objet
+        # (non nul) et le serveur refuse tout non-objet.
+        from drf_spectacular.drainage import get_override
+
+        from .serializers import SavedViewSerializer
+        schema = get_override(SavedViewSerializer().fields['configuration'], 'field')
+        self.assertEqual(schema['type'], 'object')
+        self.assertNotIn('nullable', schema)
+        for configuration in (None, '0', [], 0):
+            with self.subTest(configuration=configuration):
+                resp = auth(self.commercial1).post(
+                    self.BASE, self._payload(configuration=configuration), format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn('configuration', resp.data)
+        # CI #1003 (fuzz, 2e passe) — `nom: 0` était converti en "0" (201) :
+        # `ecran`/`nom` sont de vraies chaînes, de longueur BRUTE bornée.
+        for champ, valeur in (('nom', 0), ('ecran', 0), ('nom', True),
+                              ('nom', 'x' * 120 + '  ')):
+            with self.subTest(champ=champ, valeur=valeur):
+                resp = auth(self.commercial1).post(
+                    self.BASE, self._payload(**{champ: valeur}), format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn(champ, resp.data)
+        self.assertFalse(SavedView.objects.exists())
+        payload = self._payload()
+        del payload['configuration']
+        resp = auth(self.commercial1).post(self.BASE, payload, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['configuration'], {})
+
     # ── Visibilité : personnelle vs équipe, isolation multi-société ────────
     def test_personal_view_hidden_from_other_users(self):
         SavedView.objects.create(
@@ -293,6 +325,43 @@ class SavedViewApiTests(TestCase):
         original = SavedView.objects.get(
             company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Mes leads')
         self.assertEqual(original.configuration, {'ancien': True})
+
+    def test_importer_fichier_illisible_est_un_400_jamais_un_500(self):
+        # CI #1003 (fuzz) — un PNG sans extension était lu comme un CSV :
+        # ``csv.Error`` (retour chariot isolé) remontait en 500 ; un XLSX
+        # corrompu prenait le même chemin. Les deux imports de l'app.
+        png = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x08'
+               b'\x00\x00\x00\x08\x08\x02\x00\x00\x00Km)')
+        for url, nom, octets in (
+                (f'{self.BASE}importer/', 'fichier', png),
+                (f'{self.BASE}importer/', 'vues.xlsx', b'pas un zip'),
+                ('/api/django/uxviews/favoris/importer/', 'fichier', png)):
+            with self.subTest(url=url, nom=nom):
+                fichier = SimpleUploadedFile(nom, octets)
+                resp = auth(self.directeur).post(
+                    url, {'fichier': fichier}, format='multipart')
+                self.assertEqual(resp.status_code, 400, resp.content)
+                self.assertIn('fichier', resp.data)
+        self.assertEqual(SavedView.objects.count(), 0)
+
+    def test_importer_ligne_hors_bornes_rejetee_sans_500(self):
+        # CI #1003 (fuzz) — nom > 120 signes ou octet NUL : la colonne
+        # PostgreSQL refusait l'écriture (500) ; la ligne est rejetée, nommée.
+        # Le NUL était refusé dès le filtre « vue homonyme ? » (ValueError
+        # psycopg) : les bornes sont vérifiées AVANT toute requête.
+        SavedView.objects.create(company=self.co_a, owner=self.directeur,
+                                 ecran='crm.leads', nom='y' * 115)
+        fichier = self._csv([('crm.leads', 'x' * 121, '{}'),
+                             ('crm.leads', 'a' + chr(0) + 'b', '{}'),
+                             ('e' * 81, 'Écran trop long', '{}'),
+                             # homonyme : « (import) » ferait 124 signes
+                             ('crm.leads', 'y' * 115, '{}'),
+                             ('crm.leads', 'Valide', '{}')])
+        resp = auth(self.directeur).post(
+            f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual([e['ligne'] for e in resp.data['erreurs']], [1, 2, 3, 4])
+        self.assertEqual([v['nom'] for v in resp.data['created']], ['Valide'])
 
     def test_importer_rejects_malformed_configuration_structure(self):
         bad = json.dumps({'colonnes_visibles': 'pas-une-liste'}).replace('"', '""')
@@ -837,6 +906,23 @@ class UxParametresApiTests(TestCase):
                 self.BASE, {'roles_autorises_definir_defaut': brut},
                 format='json')
             self.assertEqual(resp.status_code, 400, (brut, resp.data))
+
+    def test_booleen_strict(self):
+        # CI #1003 (fuzz) — `0` pour le booléen était converti en silence
+        # (200) alors que le schéma publie `type: boolean`.
+        for corps in ({'permettre_vues_partagees_equipe': 0},
+                      {'permettre_vues_partagees_equipe': 'true'},
+                      {'permettre_vues_partagees_equipe': None}):
+            with self.subTest(corps=corps):
+                resp = auth(self.directeur).patch(self.BASE, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertTrue(UxParametres.get_or_default(
+            self.co_a).permettre_vues_partagees_equipe)
+        resp = auth(self.directeur).patch(self.BASE, {
+            'permettre_vues_partagees_equipe': False,
+            'max_vues_par_utilisateur': 5}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['permettre_vues_partagees_equipe'])
 
     # ── Ce que le réglage GOUVERNE (NTUX1/NTUX2) ────────────────────────────
     def test_partage_desactive_refuse_une_nouvelle_vue_equipe(self):

@@ -162,6 +162,20 @@ class CorbeilleApiTests(CorbeilleBase):
             api.patch(f'{self.BASE}{element.pk}/', {'type_libelle': 'X'},
                       format='json').status_code, 405)
 
+    def test_allow_de_la_liste_sans_post(self):
+        # CI #1003 (fuzz « Invalid Allow header ») — la liste n'annonce pas
+        # POST (`create` répond 405, exclu du schéma) ; `restaurer/` le sert.
+        archiver(self.lead)
+        element = ElementSupprime.objects.get()
+        api = auth(self.directeur)
+        resp = api.options(self.BASE)
+        self.assertEqual(resp.status_code, 200)
+        allow = {m.strip() for m in resp['Allow'].split(',')}
+        self.assertEqual(allow, {'GET', 'HEAD', 'OPTIONS'})
+        self.assertNotIn('POST', api.post(self.BASE, {}, format='json')['Allow'])
+        allow_restaurer = api.options(f'{self.BASE}{element.pk}/restaurer/')['Allow']
+        self.assertIn('POST', allow_restaurer)
+
     def test_restaurer_remet_la_cible_active(self):
         archiver(self.lead, user=self.directeur)
         element = ElementSupprime.objects.get()

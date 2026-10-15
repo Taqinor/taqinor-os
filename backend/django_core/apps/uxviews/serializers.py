@@ -6,6 +6,10 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound
 
+from apps.records.champs_stricts import (
+    ChampsStrictsBornesMixin as TextesBornesStrictsMixin,
+)
+from core.champs_stricts import BooleenStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import FavoriUtilisateur, SavedView, UxParametres
@@ -48,13 +52,33 @@ def cible_du_favori(favori):
     return cible
 
 
+@extend_schema_field({
+    'type': 'object', 'additionalProperties': {},
+    'description': (
+        "Colonnes, filtres et tri de la vue (objet JSON opaque au serveur). "
+        "Absent = objet vide ; `null` ou un non-objet est refusé.")})
+class ConfigurationVueField(serializers.JSONField):
+    """CI #1003 (fuzz) — ``configuration`` est un OBJET : publié en JSON libre
+    (donc ``null`` « conforme »), ``null`` était refusé 400 « ne peut être nul »
+    (colonne non nulle). Le schéma publie l'objet, le serveur refuse tout
+    non-objet : un seul prédicat, publié et appliqué."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError('Un objet JSON est attendu.')
+        return super().to_internal_value(data)
+
+
 # ENF11 — `apps.crm.serializers.SavedViewSerializer` porte le MÊME nom de
 # composant OpenAPI (« SavedView ») : drf-spectacular n'en gardait qu'un et
 # publiait pour `/uxviews/saved-views/` le contrat de l'autre (ecran/nom jamais
 # exigés, champs `name`/`page`), d'où des POST « conformes » refusés (400).
 @extend_schema_serializer(component_name='UxSavedView')
-class SavedViewSerializer(SameCompanyFKSerializerMixin,
+class SavedViewSerializer(TextesBornesStrictsMixin, SameCompanyFKSerializerMixin,
                           serializers.ModelSerializer):
+    # CI #1003 (fuzz) — `ecran`/`nom` sont de VRAIES chaînes JSON (`nom: 0`
+    # était converti en "0" et la vue créée, 201) dont la longueur BRUTE
+    # respecte `maxLength` (`ChaineBornee`, mixin de `apps.records`).
     # AANA17 — le rôle d'une vue est un rôle de LA société (les ids de rôle
     # sont devinables), même garde que `UxParametresSerializer`.
     same_company_fields = ('role',)
@@ -65,6 +89,7 @@ class SavedViewSerializer(SameCompanyFKSerializerMixin,
     # que l'écran puisse matcher « ma vue par défaut de rôle » sans requête
     # supplémentaire.
     role_nom = serializers.SerializerMethodField()
+    configuration = ConfigurationVueField(required=False)
 
     class Meta:
         model = SavedView
@@ -205,6 +230,11 @@ class UxParametresSerializer(serializers.ModelSerializer):
     `company` n'est JAMAIS lue du corps : la vue résout les réglages depuis
     `request.user.company`.
     """
+
+    # CI #1003 (fuzz) — booléen STRICT : `0` était converti en `false` (200)
+    # alors que le schéma publie `type: boolean`. (Les entiers restent
+    # tolérants : l'écran `/parametres/ux` envoie la valeur texte du champ.)
+    permettre_vues_partagees_equipe = BooleenStrict(required=False)
 
     class Meta:
         model = UxParametres

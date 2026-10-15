@@ -270,7 +270,9 @@ class LesReglesMigreesViventCoteServeur(_Base):
         reponse = self.api.post(
             AUTO_URL, {'lead': self.lead(taille_souhaitee_kwc=Decimal('5')).id},
             format='json')
-        self.assertEqual(reponse.status_code, 422, reponse.data)
+        # CI #997 fuzz (3dc8d2879) : refus d'ÉTAT de la fiche/du catalogue
+        # publié en 409 par devis/auto/ (ErreurComposition).
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('Trina', reponse.data['detail'])
         self.assertIn('Panneaux', reponse.data['detail'])
         # Et surtout : AUCUN brouillon amputé ne reste derrière l'erreur.
@@ -446,6 +448,17 @@ class LeDryRunRefuseCeQuIlNeSaitPasComposer(_Base):
         reponse = self.api.post(
             COMPO_URL, {'kwc': 'beaucoup'}, format='json')
         self.assertEqual(reponse.status_code, 400)
+
+    def test_catalogue_qui_s_y_oppose_c_est_409(self):
+        # CI #1003 fuzz — corps CONFORME au schéma (site isolé demandé) mais
+        # aucun onduleur autonome tarifé au catalogue : refus d'ÉTAT, 409
+        # (était 422, hors des codes d'un corps valide), même corps lu par
+        # l'écran ({detail, field}).
+        reponse = self.api.post(
+            COMPO_URL, {'kwc': 5, 'hors_reseau': True}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(reponse.data['field'], 'hors_reseau')
+        self.assertIn('off-grid', reponse.data['detail'])
 
     def test_authentification_requise(self):
         self.assertEqual(
