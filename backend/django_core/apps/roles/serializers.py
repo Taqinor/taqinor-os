@@ -2,7 +2,7 @@ import re
 
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
+from core.champs_stricts import ChampsStrictsMixin
 
 from .models import Role
 from .permissions_registre import (
@@ -10,6 +10,7 @@ from .permissions_registre import (
     ELEVATED_PERMISSIONS,
     codes_non_octroyables,
 )
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 
 #: CI #1000 — UN SEUL prédicat pour un code de permission de rôle : le schéma
@@ -22,20 +23,38 @@ MOTIF_CODE_PERMISSION = '^(?:%s|app_[a-z0-9][a-z0-9_]*_voir)$' % '|'.join(
 _RE_CODE_PERMISSION = re.compile(MOTIF_CODE_PERMISSION)
 
 
-@extend_schema_field({'type': 'string', 'pattern': MOTIF_CODE_PERMISSION})
-class CodePermission(ChaineStricte):
+class CodePermission(serializers.CharField):
     """Code de permission d'un rôle (catalogue ou « app visible »). Pas de
-    rognage : un code à blancs de bord est HORS motif, pas corrigé."""
+    rognage : un code à blancs de bord est HORS motif, pas corrigé.
+
+    CI #1000 (2) — le motif ne vaut que pour l'ÉCRITURE : un rôle stocké porte
+    aussi des codes hérités (``portail_client_acces``, variantes ``app_*``,
+    codes semés) que le serveur LIT sans les refuser. La RÉPONSE est donc une
+    chaîne libre (``_CodePermission``) ; seule la requête publie le motif."""
 
     def __init__(self, **kwargs):
         kwargs.setdefault('trim_whitespace', False)
         super().__init__(**kwargs)
 
     def to_internal_value(self, data):
+        # Vraie chaîne JSON seulement (jamais ``0`` -> ``"0"``), comme
+        # ``ChaineStricte`` — dont l'extension de schéma générique (motif sans
+        # nul) primerait sur ``_CodePermission`` : d'où la base ``CharField``.
+        if not isinstance(data, str):
+            self.fail('invalid')
         valeur = super().to_internal_value(data)
         if not _RE_CODE_PERMISSION.fullmatch(valeur):
             self.fail('invalid')
         return valeur
+
+
+class _CodePermission(OpenApiSerializerFieldExtension):
+    target_class = 'apps.roles.serializers.CodePermission'
+
+    def map_serializer_field(self, auto_schema, direction):
+        if direction == 'request':
+            return {'type': 'string', 'pattern': MOTIF_CODE_PERMISSION}
+        return {'type': 'string'}
 
 
 class RoleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
