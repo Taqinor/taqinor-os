@@ -19,36 +19,9 @@ import { fallbackAnnualKwh, orientationToAspect } from '../../lib/roof';
 // des 500 kWh/mois et la règle sélective ONEE).
 import { annualSavingsMad, billToAnnualKwh, tariffForCity } from '../../lib/estimatorBrainV2';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
-  });
-}
-
-// W317 — Origin/Sec-Fetch-Site : garde-fou LOCAL (jamais importé de lib/lead —
-// cette route reste volontairement découplée de toute plomberie de lead/CRM,
-// garanti par un test dédié). Voir lib/lead.ts pour la version jumelle utilisée
-// par les endpoints lead/proposition.
-function isSameOriginRequest(request: Request): boolean {
-  const secFetchSite = request.headers.get('sec-fetch-site');
-  if (secFetchSite) return secFetchSite !== 'cross-site';
-  const origin = request.headers.get('origin');
-  if (!origin) return true;
-  try {
-    return new URL(origin).origin === new URL(request.url).origin;
-  } catch {
-    return false;
-  }
-}
-function crossSiteRejection(): Response {
-  return json({ ok: false, error: 'Requête refusée.' }, 403);
-}
-
-function num(v: unknown): number {
-  return typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.'));
-}
+import { jsonResponse as json } from '../../lib/apiJson';
+import { isSameOriginRequest } from '../../lib/sameOrigin';
+import { crossSiteRejection, num } from '../../lib/roofApiCommon';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — Origin/Sec-Fetch-Site : refuse un POST cross-site forgé avant tout

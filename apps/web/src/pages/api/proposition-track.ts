@@ -31,19 +31,13 @@ import { buildProposalTrackPayload, type ProposalEngagementEvent } from '../../l
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { cleanVisitePage } from '../../lib/visite';
+import { jsonResponse as json } from '../../lib/apiJson';
 
 interface TrackEnv {
   /** WJ109 — canal télémétrie DÉDIÉ, distinct du webhook de lead CRM (voir la
    *  note ci-dessus). Absent par défaut : log-only, jamais bloquant. */
   FUNNEL_WEBHOOK_URL?: string;
   FUNNEL_WEBHOOK_SECRET?: string;
-}
-
-function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
-  });
 }
 
 const VALID_EVENTS: ProposalEngagementEvent[] = ['proposal_first_view', 'proposal_scrolled_financing'];
