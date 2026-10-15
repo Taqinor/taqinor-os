@@ -7,8 +7,6 @@
 # de dette (zéro constat exigé). Jamais d'ajout à la main : on retire une ligne quand sa
 # cause est corrigée (re-mesure : rapport JSON du nocturne, script api_fuzz_scope.py).
 # Format : <titre du check Schemathesis>|<MÉTHODE> <gabarit de chemin>
-API accepted schema-violating request|GET /api/django/accessreview/campaigns/
-API accepted schema-violating request|GET /api/django/accessreview/sod-rules/
 API accepted schema-violating request|GET /api/django/audit/entries/
 API accepted schema-violating request|GET /api/django/companies/
 API accepted schema-violating request|GET /api/django/offlinesync/operations/
@@ -119,7 +117,6 @@ Undocumented HTTP status code|POST /api/public/v1/oauth/token/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/renouveler/
-API accepted schema-violating request|PUT /api/django/accessreview/campaigns/{id}/
 API rejected schema-compliant request|POST /api/django/ventes/attestations-conformite/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/layout/
 API rejected schema-compliant request|POST /api/django/ventes/devis/{id}/sync-layout/
