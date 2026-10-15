@@ -142,12 +142,35 @@ def valider_saisie(annee: int, dates: dict, existantes: dict | None = None,
 
 
 class SaisieFetesInvalide(ValueError):
-    """Saisie refusée ; ``erreurs`` = ``{cle: [message, ...]}``."""
+    """Saisie refusée ; ``erreurs`` = ``{cle: [message, ...]}``.
 
-    def __init__(self, erreurs: dict):
+    ``conflit_etat`` (ENF11) : la saisie est BIEN FORMÉE (les quatre dates
+    présentes ou déjà enregistrées, toutes en ``AAAA-MM-JJ``) et c'est la règle
+    qui la refuse — date dans le passé, hors de l'année cible : un refus
+    d'ÉTAT, que le schéma (``annee`` et ``dates`` indépendants) ne peut pas
+    exprimer — la vue répond 409, pas 400."""
+
+    def __init__(self, erreurs: dict, conflit_etat: bool = False):
         self.erreurs = erreurs
+        self.conflit_etat = conflit_etat
         super().__init__(' '.join(
             msg for cle in FETES_MOBILES_CLES for msg in erreurs.get(cle, [])))
+
+
+def _saisie_bien_formee(dates: dict, existantes: dict) -> bool:
+    """Vrai si chaque fête est fournie (ou déjà enregistrée) et que chaque date
+    fournie se lit en ISO — le reste des refus est une règle d'état."""
+    for cle in FETES_MOBILES_CLES:
+        brut = dates.get(cle)
+        if not brut:
+            if not existantes.get(cle):
+                return False
+            continue
+        try:
+            _to_date(brut)
+        except ValueError:
+            return False
+    return True
 
 
 def enregistrer_fetes_mobiles(company, annee: int, dates: dict,
@@ -165,7 +188,8 @@ def enregistrer_fetes_mobiles(company, annee: int, dates: dict,
     existantes = fetes_mobiles_saisies(company, annee)
     erreurs = erreurs_par_champ(annee, dates, existantes, aujourd_hui)
     if erreurs:
-        raise SaisieFetesInvalide(erreurs)
+        raise SaisieFetesInvalide(
+            erreurs, conflit_etat=_saisie_bien_formee(dates, existantes))
 
     from django.db import transaction
 

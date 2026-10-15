@@ -492,6 +492,11 @@ _FICHIERS_VALIDES = (
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
      {'file': b'PVObject_=pvModule\n'}),
+    # ENF11 (parametres) — logo et signature de la société : le serveur lit les
+    # octets magiques (PNG, JPEG ou WebP), inexprimable dans le schéma ; sans
+    # image lisible, un part « conforme » répond « Format non supporté » (400).
+    (re.compile(r'^/api/django/parametres/upload-(logo|signature)/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
 )
 
 

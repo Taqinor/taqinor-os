@@ -114,11 +114,8 @@ API rejected schema-compliant request|POST /api/django/monitoring/configs/
 API rejected schema-compliant request|POST /api/django/monitoring/readings/
 API rejected schema-compliant request|POST /api/django/monitoring/warranties/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
-API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/
 API rejected schema-compliant request|POST /api/django/parametres/onboarding-localisation/
 API rejected schema-compliant request|POST /api/django/parametres/taux-tva/
-API rejected schema-compliant request|POST /api/django/parametres/upload-logo/
-API rejected schema-compliant request|POST /api/django/parametres/upload-signature/
 API rejected schema-compliant request|POST /api/django/public/portail/invitations/accepter/
 API rejected schema-compliant request|POST /api/django/public/stock/portail-fournisseur/{token}/reserver-creneau/
 API rejected schema-compliant request|POST /api/django/publicapi/webhooks/

@@ -144,6 +144,25 @@ class FetesMobilesEndpointTests(TestCase):
             {'annee': annee, 'dates': _dates_valides(annee)}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
+    def test_post_dates_hors_annee_ou_passees_409(self):
+        # ENF11 — saisie BIEN FORMÉE (quatre dates ISO) que la règle refuse
+        # (hors de l'année cible, passé) : conflit d'état 409, erreurs par
+        # champ conservées ; une date illisible reste un 400.
+        api = _auth(self.admin)
+        annee = _annee_future()
+        dates = _dates_valides(annee + 1)
+        resp = api.post(
+            BASE + 'enregistrer/',
+            {'annee': annee, 'dates': dates}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(sorted(resp.data['erreurs']), sorted(dates))
+        dates = _dates_valides(annee)
+        dates['aid_el_adha'] = 'pas-une-date'
+        resp = api.post(
+            BASE + 'enregistrer/',
+            {'annee': annee, 'dates': dates}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_post_blocks_incomplete_dates_with_400(self):
         api = _auth(self.admin)
         annee = _annee_future()
