@@ -179,8 +179,6 @@ API rejected schema-compliant request|PUT /api/django/installations/recettes-com
 API rejected schema-compliant request|PUT /api/django/installations/regles-approbation-achat/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/sessions-comptage/{id}/
 API rejected schema-compliant request|PUT /api/django/parametres/email-templates/{id}/
-API rejected schema-compliant request|PATCH /api/django/parametres/update/
-API rejected schema-compliant request|PUT /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
 Response violates schema|GET /api/django/adminops/settings/
 Response violates schema|GET /api/django/onboarding/progress/

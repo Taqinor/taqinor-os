@@ -65,10 +65,12 @@ class IceNormaliseTests(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['ice'], '001234567000089')
 
-    def test_ice_quatorze_chiffres_400_sous_le_champ(self):
+    def test_ice_quatorze_chiffres_409_nommant_le_champ(self):
         r = self.api.patch(URL_PATCH, {
             'ice': '001 234 567 000 08', 'banque': 'X'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('ice', r.data)
+        # ENF11 — format dépendant de la normalisation, inexprimable au schéma :
+        # règle métier, 409 (le champ nommé dans le message, rien n'est écrit).
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('ice', r.data['detail'])
         profil = CompanyProfile.objects.get(company=self.company)
         self.assertNotEqual(profil.banque, 'X')
