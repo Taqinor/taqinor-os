@@ -4,6 +4,7 @@ import reportingApi from '../../api/reportingApi'
 import { DataTable, EmptyState, Segmented, Spinner } from '../../ui'
 import { BarArrondie, ChartEmpty } from '../../ui/charts'
 import { formatNumber, formatPercent } from '../../lib/format'
+import { lancerChargement } from '../../lib/chargementEffet'
 
 /* WR8 — Cohortes / saisonnalité (FG98). Leads groupés par mois d'acquisition :
    taux de signature + délai moyen lead→signé, depuis
@@ -22,23 +23,14 @@ export default function CohortsPage() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    let active = true
-    const load = async () => {
-      // setState seulement APRÈS un await (pas de setState synchrone en effet).
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const r = await reportingApi.cohorts(groupBy ? { group_by: groupBy } : {})
-        if (active) { setData(r.data); setError(false) }
-      } catch {
-        if (active) setError(true)
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) { setData(r.data); setError(false) }
+      },
+      surErreur: () => setError(true),
+    })
   }, [groupBy])
 
   const cohorts = useMemo(() => data?.cohorts ?? [], [data])

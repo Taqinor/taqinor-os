@@ -21,9 +21,9 @@ import { ModuleDashboard } from '../../ui/module'
 // plus consulté du dossier monitoring n'avait AUCUN graphique quand ses 4
 // voisins directs (PR mensuel, CO2, flotte…) en ont un.
 import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
-import MonitoringNav from './MonitoringNav'
 import { buildProductionChartData } from './ProductionPage.helpers'
 import { todayLocalIso } from '../../lib/dateLocale'
+import EnTeteMonitoring from './EnTeteMonitoring'
 
 const todayISO = () => todayLocalIso()
 
@@ -266,13 +266,7 @@ export default function ProductionPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Production</h1>
-        <div className="page-subtitle">
-          Supervision de la production des systèmes installés (relevés manuels ou automatiques).
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Production" sousTitre="Supervision de la production des systèmes installés (relevés manuels ou automatiques)." />
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="min-w-[14rem] flex-1">

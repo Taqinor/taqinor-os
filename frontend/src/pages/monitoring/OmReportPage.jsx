@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { FileDown, Mail, Send } from 'lucide-react'
 import monitoringApi from '../../api/monitoringApi'
 import {
-  Badge, Button, Card, CardContent, EmptyState, Input, Label, Segmented, Spinner,
+  Badge, Button, Card, CardContent, EmptyState, Input, Label, Spinner,
 } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
 import { formatNumber, formatPercent } from '../../lib/format'
-import MonitoringNav from './MonitoringNav'
-import SystemPicker from './SystemPicker'
+import BarreSysteme from './BarreSysteme'
 import useSupervisedSystems from './useSupervisedSystems'
+import { lancerChargement } from '../../lib/chargementEffet'
+import EnTeteMonitoring from './EnTeteMonitoring'
+import SegmentedPetit from './SegmentedPetit'
 
 /* WR7 — Génération + envoi du rapport O&M périodique (FG289).
    Affiche les données JSON du rapport (/om-report/), permet de télécharger le
@@ -36,22 +38,14 @@ export default function OmReportPage() {
 
   useEffect(() => {
     if (!selectedId) return undefined
-    let active = true
-    const load = async () => {
-      await Promise.resolve()
-      if (!active) return
-      setLoading(true)
-      try {
+    return lancerChargement({
+      setLoading,
+      executer: async (actif) => {
         const r = await monitoringApi.getOmReport(selectedId, { period })
-        if (active) { setReport(r.data); setError(null) }
-      } catch {
-        if (active) setError('Impossible de charger le rapport O&M.')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    load()
-    return () => { active = false }
+        if (actif()) { setReport(r.data); setError(null) }
+      },
+      surErreur: () => setError('Impossible de charger le rapport O&M.'),
+    })
   }, [selectedId, period])
 
   const download = () => {
@@ -99,29 +93,11 @@ export default function OmReportPage() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Rapports O&M</h1>
-        <div className="page-subtitle">
-          Rapport périodique d’un système : indicateurs, alarmes, recommandations, PDF et envoi e-mail.
-        </div>
-      </div>
-      <MonitoringNav />
+      <EnTeteMonitoring titre="Rapports O&M" sousTitre="Rapport périodique d’un système : indicateurs, alarmes, recommandations, PDF et envoi e-mail." />
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <SystemPicker
-          systems={systems}
-          loading={loadingSystems}
-          value={selectedId}
-          onChange={setSelectedId}
-        />
-        <Segmented
-          size="sm"
-          options={PERIODS}
-          value={period}
-          onChange={setPeriod}
-          aria-label="Période du rapport"
-        />
-      </div>
+      <BarreSysteme systems={systems} loading={loadingSystems} value={selectedId} onChange={setSelectedId}>
+        <SegmentedPetit options={PERIODS} value={period} onChange={setPeriod} label="Période du rapport" />
+      </BarreSysteme>
 
       {!loadingSystems && systems.length === 0 ? (
         <EmptyState
