@@ -6,6 +6,7 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound
 
+from core.champs_stricts import BooleenStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import FavoriUtilisateur, SavedView, UxParametres
@@ -205,6 +206,11 @@ class UxParametresSerializer(serializers.ModelSerializer):
     `company` n'est JAMAIS lue du corps : la vue résout les réglages depuis
     `request.user.company`.
     """
+
+    # CI #1003 (fuzz) — booléen STRICT : `0` était converti en `false` (200)
+    # alors que le schéma publie `type: boolean`. (Les entiers restent
+    # tolérants : l'écran `/parametres/ux` envoie la valeur texte du champ.)
+    permettre_vues_partagees_equipe = BooleenStrict(required=False)
 
     class Meta:
         model = UxParametres

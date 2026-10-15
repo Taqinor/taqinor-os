@@ -838,6 +838,23 @@ class UxParametresApiTests(TestCase):
                 format='json')
             self.assertEqual(resp.status_code, 400, (brut, resp.data))
 
+    def test_booleen_strict(self):
+        # CI #1003 (fuzz) — `0` pour le booléen était converti en silence
+        # (200) alors que le schéma publie `type: boolean`.
+        for corps in ({'permettre_vues_partagees_equipe': 0},
+                      {'permettre_vues_partagees_equipe': 'true'},
+                      {'permettre_vues_partagees_equipe': None}):
+            with self.subTest(corps=corps):
+                resp = auth(self.directeur).patch(self.BASE, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertTrue(UxParametres.get_or_default(
+            self.co_a).permettre_vues_partagees_equipe)
+        resp = auth(self.directeur).patch(self.BASE, {
+            'permettre_vues_partagees_equipe': False,
+            'max_vues_par_utilisateur': 5}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['permettre_vues_partagees_equipe'])
+
     # ── Ce que le réglage GOUVERNE (NTUX1/NTUX2) ────────────────────────────
     def test_partage_desactive_refuse_une_nouvelle_vue_equipe(self):
         self._desactiver_partage()
