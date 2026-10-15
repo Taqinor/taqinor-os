@@ -195,3 +195,22 @@ class Ntwms40ApiTests(Ntwms40Base):
         self.assertEqual(res.status_code, 201)
         seuil = SeuilReapproCasier.objects.get(id=res.data['id'])
         self.assertEqual(seuil.company_id, self.company.id)
+
+    def test_seuil_deja_pose_sur_le_casier_est_un_conflit_409(self):
+        """CI #997 fuzz (4) : un seul seuil par casier -> doublon = 409."""
+        api = auth(self.admin)
+        corps = {'bin': self.stock_proche.id, 'produit': self.produit.id, 'seuil': 5}
+        self.assertEqual(api.post(
+            '/api/django/stock/seuils-reappro-casier/', corps, format='json').status_code, 201)
+        res = api.post('/api/django/stock/seuils-reappro-casier/', corps, format='json')
+        self.assertEqual(res.status_code, 409, res.content)
+
+    def test_tache_refuse_un_corps_formulaire(self):
+        """CI #997 fuzz (4) : les ordres de réappro se créent en JSON seulement."""
+        corps = {'produit': self.produit.id, 'bin_cible': self.pick.id, 'quantite': 5}
+        res = auth(self.admin).post(
+            '/api/django/stock/taches-reappro-interne/', corps, format='multipart')
+        self.assertEqual(res.status_code, 415, res.content)
+        res = auth(self.admin).post(
+            '/api/django/stock/taches-reappro-interne/', corps, format='json')
+        self.assertEqual(res.status_code, 201, res.content)

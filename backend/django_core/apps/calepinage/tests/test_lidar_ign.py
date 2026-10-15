@@ -261,6 +261,18 @@ class ReponseIgnTest(SimpleTestCase):
         self.assertIsNone(_ajuster_plan(alignes))
 
 
+class CorpsDuPostJsonSeulTest(SimpleTestCase):
+    """CI #1001 : ``roof_layout`` (pans imbriqués) ne se transporte pas dans un
+    formulaire — la porte ne prend que du JSON, le schéma publié aussi."""
+
+    def test_le_post_ne_prend_que_du_json(self):
+        from rest_framework.parsers import JSONParser
+
+        from apps.calepinage.views.parametres import SuggestionPenteIGNView
+
+        self.assertEqual(SuggestionPenteIGNView.parser_classes, [JSONParser])
+
+
 class DecisionHumaineTest(SimpleTestCase):
     """Accepter garde la trace ; refuser ne touche à rien."""
 
@@ -353,3 +365,13 @@ class EndpointTest(TestCase):
         reponse = self.api.post(URL, {'roof_layout': {}}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('roof_layout', reponse.data)
+
+    def test_post_zones_mal_formees_refusees_avant_tout_appel(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE (w4) — UN prédicat avec le schéma publié
+        (``zones`` : liste NON VIDE d'objets) : une valeur d'un autre type
+        n'est jamais « lue vide » par le service, même en France (200 à tort)."""
+        for zones in ([], 'AAA', {}, 0, None, [0], [None], ['AAA'], [{}, 5]):
+            reponse = self.api.post(
+                URL, {'roof_layout': {'zones': zones}}, format='json')
+            self.assertEqual(reponse.status_code, 400, zones)
+            self.assertIn('roof_layout', reponse.data)

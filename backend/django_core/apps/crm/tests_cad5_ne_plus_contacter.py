@@ -142,7 +142,8 @@ class NePlusContacterTests(_Base):
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.pk}/relance/initialiser/',
             {'cadence': 'contact'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ERR-ENF11-FUZZ-CRM — état de la fiche (« ne plus contacter ») : 409.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(self._ouvertes(), [])
 
     def test_l_annulation_de_la_touche_est_refusee(self):

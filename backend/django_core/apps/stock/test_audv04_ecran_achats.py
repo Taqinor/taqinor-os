@@ -221,8 +221,24 @@ class TestProfilSaisonnierViewSet(Audv04Base):
         rep = self.api.post('/api/django/stock/profils-saisonniers/', {
             'produit': self.produit.pk, 'mois_debut': 6, 'mois_fin': 9,
         }, format='json')
-        self.assertEqual(rep.status_code, 400)
+        # CI #997 fuzz (4) : le profil existant s'oppose à un corps conforme (409).
+        self.assertEqual(rep.status_code, 409)
         self.assertEqual(ProfilSaisonnier.objects.count(), 1)
+
+    def test_mois_hors_1_12_refuse_par_le_serializer(self):
+        for mois in (0, 13):
+            rep = self.api.post('/api/django/stock/profils-saisonniers/', {
+                'produit': self.produit.pk, 'mois_debut': mois, 'mois_fin': 8,
+            }, format='json')
+            self.assertEqual(rep.status_code, 400, mois)
+            self.assertIn('mois_debut', rep.data)
+        self.assertEqual(ProfilSaisonnier.objects.count(), 0)
+
+    def test_nom_numerique_refuse(self):
+        rep = self.api.post('/api/django/stock/profils-saisonniers/', {
+            'produit': self.produit.pk, 'mois_debut': 5, 'mois_fin': 8, 'nom': 5,
+        }, format='json')
+        self.assertEqual(rep.status_code, 400)
 
     def test_lecture_liste(self):
         ProfilSaisonnier.objects.create(

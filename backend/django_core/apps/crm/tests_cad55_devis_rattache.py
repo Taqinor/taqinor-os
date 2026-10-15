@@ -147,7 +147,9 @@ class DevisRattacheTests(TestCase):
         etranger = self._devis('DEV-2609-0099', 6, lead=autre)
         corps = dict(CONTRAT['corps_devis_choisi'], devis=etranger.pk)
         reponse = self.api.post(self.url, corps, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # ERR-ENF11-FUZZ-CRM — un devis qui n'est pas celui de CE lead : id
+        # inconnu de sa portée = 404, même corps nommant le champ.
+        self.assertEqual(reponse.status_code, 404, reponse.data)
         self.assertEqual(reponse.data, CONTRAT['exemple_erreur_devis'])
         self.assertFalse(self._touches().exists())
 

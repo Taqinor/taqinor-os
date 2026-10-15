@@ -9,7 +9,9 @@ from types import SimpleNamespace
 
 from rest_framework import serializers
 
+from .erreurs_metier import refus_metier, regle_metier
 from .models_tariff import TariffSettings
+from .requetes_strictes import TypageStrictReglages
 from .tariff import erreurs_reglages_tarif
 
 # CALX72 — les réglages SAISIS du lot 5 (CALX274 → CALX284), dans l'ordre de
@@ -43,7 +45,7 @@ CHAMPS_CI = ['sensibilites_ci', 'mention_credit_bail_autorisee',
              'mention_credit_bail_source']
 
 
-class TariffSettingsSerializer(serializers.ModelSerializer):
+class TariffSettingsSerializer(TypageStrictReglages, serializers.ModelSerializer):
     class Meta:
         model = TariffSettings
         fields = [
@@ -69,8 +71,14 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
         extra_kwargs = {champ: {'allow_null': True} for champ in (
             'charges_pompage_solaire', 'regle_fda_pompage', 'sensibilites_ci')}
 
+    @regle_metier
     def validate(self, attrs):
         """CALX72 — la porte de saisie relaie ``erreurs_reglages_tarif``.
+
+        ENF11 (api-fuzz) — ces refus portent sur des valeurs que le schéma
+        accepte (source obligatoire dès qu'un taux est saisi, coefficient > 1,
+        grille horaire complète…) et sur l'ÉTAT FUSIONNÉ (base + requête) : des
+        règles métier, donc 409 (``erreurs_metier.valider_ou_conflit``), pas 400.
 
         L'état VALIDÉ est celui qui sera enregistré : les valeurs en base,
         recouvertes par celles de la requête (un PATCH partiel ne peut donc
@@ -110,6 +118,14 @@ class TariffSettingsSerializer(serializers.ModelSerializer):
         return {} if value is None else value
 
     def validate_residential_tiers(self, value):
+        """ENF11 — le schéma du champ est libre (``{}``) : toute forme refusée
+        ici est une règle métier (409), comme le dernier palier ouvert."""
+        try:
+            return self._paliers_propres(value)
+        except serializers.ValidationError as exc:
+            raise refus_metier(exc.detail) from None
+
+    def _paliers_propres(self, value):
         """Liste de paliers {max_kwh: int|null, prix_kwh_ttc} ou NULL.
 
         NULL/[] → repli sur le barème ONEE par défaut côté service. Tout autre

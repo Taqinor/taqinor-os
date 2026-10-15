@@ -14,7 +14,8 @@ from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, parser_classes
 from core.champs_stricts import ChaineStricte
 from core.parametres_requete import choix_ou_400
-from core.parseurs import PARSEURS_JSON, corps_valide
+from core.conflit_etat import ConflitEtat
+from core.parseurs import PARSEURS_JSON, ChoixDocumente, corps_valide
 from rest_framework.response import Response
 from rest_framework.parsers import FormParser, MultiPartParser
 
@@ -178,6 +179,9 @@ def dry_run(request):
             f.read(), f.name, target, company=request.user.company,
             mapping_name=mapping_name, mode=mode, ecraser=ecraser,
             external_system=external_system)
+    except services.ModeNonSupporte as exc:
+        # Couple cible/mode inexprimable dans le corps publié : 409.
+        raise ConflitEtat(str(exc))
     except ValueError as exc:
         # Erreur attendue (cible inconnue, plafond de lignes…) : message clair.
         return Response({'detail': str(exc)}, status=400)
@@ -249,6 +253,8 @@ def commit(request):
             mode=mode, external_system=external_system,
             mapping_name=mapping_name, rollback_on_error=rollback_on_error,
             ecraser=ecraser)
+    except services.ModeNonSupporte as exc:
+        raise ConflitEtat(str(exc))
     except ValueError as exc:
         # Erreur attendue (cible inconnue, plafond de lignes…) : message clair.
         return Response({'detail': str(exc)}, status=400)
@@ -287,13 +293,21 @@ def list_mappings(request):
 
 NOM_MAPPING_MAX = 150  # ``ImportMapping.nom`` (varchar 150)
 
+#: Champs qu'une cible QUELCONQUE sait écrire (``FIELD_MAPS``) : une valeur hors
+#: de cette liste (``company_id``…) est refusée en 400 par le corps publié ; le
+#: couple colonne→champ propre à UNE cible reste vérifié par ``save_mapping``.
+_CHAMPS_IMPORTABLES = sorted(
+    {champ for carte in services.FIELD_MAPS.values()
+     for champ in carte.values()})
+
 #: Corps de ``POST mapping/`` : LE prédicat publié ET appliqué (``corps_valide``).
-#: ``nom`` / valeurs : textes stricts (un nombre n'est plus « converti » en
-#: texte) ; le plafond de ``nom`` est celui de la colonne.
+#: ``nom`` : texte strict (un nombre n'est plus « converti » en texte), plafond
+#: de la colonne ; valeurs : un champ importable.
 _MAPPING_REQUETE = inline_serializer('ImportMappingRequete', {
     'target': serializers.ChoiceField(choices=_CIBLES),
     'nom': ChaineStricte(max_length=NOM_MAPPING_MAX),
-    'mapping': serializers.DictField(child=ChaineStricte())})
+    'mapping': serializers.DictField(
+        child=ChoixDocumente(choices=_CHAMPS_IMPORTABLES))})
 
 
 @extend_schema(
@@ -323,17 +337,19 @@ def save_mapping(request):
             {'detail': 'Mapping invalide (dict colonne→champ attendu).'},
             status=400)
     # Une colonne portant un caractère nul ne peut pas être stockée en JSON
-    # (jsonb le refuse → 500) et ne correspond à aucun en-tête de fichier.
+    # (jsonb le refuse → 500) et ne correspond à aucun en-tête de fichier. Le
+    # schéma OpenAPI 3.0 ne sait pas borner les CLÉS d'un objet (pas de
+    # ``propertyNames``) : refus inexprimable au schéma = 409.
     if any('\x00' in colonne for colonne in mapping):
-        return Response(
-            {'mapping': ['Nom de colonne invalide (caractère nul).']},
-            status=400)
+        raise ConflitEtat('Nom de colonne invalide (caractère nul).')
     # AANA9 — un champ hors ``FIELD_MAPS[target]`` (company_id, owner_id…)
     # est refusé en 400 lisible, jamais enregistré.
     try:
         obj = services.save_mapping(request.user.company, target, nom, mapping)
     except ValueError as exc:
-        return Response({'detail': str(exc)}, status=400)
+        # Champ valide pour une autre cible mais pas pour celle-ci : le couple
+        # cible/champ est inexprimable dans le corps publié (409).
+        raise ConflitEtat(str(exc))
     return Response({
         'id': obj.pk, 'target': obj.entity, 'nom': obj.nom, 'mapping': obj.mapping,
     })

@@ -28,6 +28,7 @@ from authentication.permissions import (
 )
 from core.champs_stricts import ChaineStricte, entier_ou_400, nombre_ou_400
 
+from .erreurs_metier import valider_ou_conflit
 from .models import SettingsAuditLog
 from .models_tariff import TariffSettings
 from .serializers_tariff import (
@@ -97,7 +98,9 @@ def update_tariff_settings(request):
         obj, data=request.data, partial=partial,
         context={'request': request},
     )
-    serializer.is_valid(raise_exception=True)
+    # ENF11 — les refus de règle métier (source obligatoire, coefficient…) sur
+    # un corps conforme au schéma répondent 409, pas 400.
+    valider_ou_conflit(serializer)
     updated = serializer.save()
 
     # Détecte un vrai changement (un seul champ suffit) → version + audit.

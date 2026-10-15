@@ -3,6 +3,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
+from core.unicite import UniciteEn409Mixin
 from .models import CustomUser, Company, UserSession
 
 
@@ -151,7 +152,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
 
-class RegisterSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+class RegisterSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
+                         serializers.ModelSerializer):
+    # CI api-fuzz : un nom d'utilisateur déjà pris = 409 ``unique_conflict`` ;
+    # un mot de passe refusé par la politique (Django + société FG22) = 409
+    # aussi — la politique dépend de la configuration de la société, le schéma
+    # ne peut pas l'exprimer (corps conforme, état de la société en conflit).
     password = ChaineStricte(write_only=True)
     role = serializers.PrimaryKeyRelatedField(
         required=False,
@@ -173,27 +179,31 @@ class RegisterSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
             'first_name', 'last_name', 'role', 'must_change_password',
         )
 
-    def validate_password(self, value):
+    def validate(self, attrs):
         """AUD402 — force du mot de passe à la création admin→collaborateur.
 
         Jusqu'ici ``create()`` posait le mot de passe tel quel : un
         administrateur pressé créait un compte avec « azerty » même quand sa
         société avait durci sa politique FG22. Même entrée unique que le signup
-        public et le changement de mot de passe.
-        """
+        public et le changement de mot de passe. Contrôle fait sur les champs
+        DÉJÀ validés (``attrs``) : relire ``initial_data`` à la main faisait
+        planter (500) un ``email`` qui n'est pas une chaîne ; un corps qui porte
+        une autre erreur reste un 400, la politique ne répond que sur un corps
+        conforme."""
+        attrs = super().validate(attrs)
         from .password_policy import validate_new_password
-        data = getattr(self, 'initial_data', None) or {}
         candidate = CustomUser(
-            username=(data.get('username') or '').strip(),
-            email=(data.get('email') or '').strip(),
-            first_name=data.get('first_name') or '',
-            last_name=data.get('last_name') or '',
+            username=(attrs.get('username') or '').strip(),
+            email=(attrs.get('email') or '').strip(),
+            first_name=attrs.get('first_name') or '',
+            last_name=attrs.get('last_name') or '',
         )
         errors = validate_new_password(
-            value, self.context.get('company'), user=candidate)
+            attrs['password'], self.context.get('company'), user=candidate)
         if errors:
-            raise serializers.ValidationError(errors)
-        return value
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'password': errors})
+        return attrs
 
     def create(self, validated_data):
         from apps.roles.models import Role
@@ -229,7 +239,10 @@ class RegisterSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         return user
 
 
-class UserSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
+                     serializers.ModelSerializer):
+    # ERR-ENF11-FUZZ-USERS — un nom d'utilisateur déjà pris est un 409
+    # ``unique_conflict`` (corps conforme, donnée en conflit), plus un 400.
     password = ChaineStricte(write_only=True, required=False)
     company_nom = serializers.CharField(
         source='company.nom', read_only=True,
@@ -518,7 +531,10 @@ class UserSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         )
         errors = validate_new_password(password, company, user=candidate)
         if errors:
-            raise serializers.ValidationError({'password': errors})
+            # Corps conforme au schéma, politique (configurable par société)
+            # en conflit -> 409, comme ``RegisterSerializer`` (CI #1001 fuzz).
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'password': errors})
         return attrs
 
     def create(self, validated_data):
@@ -563,6 +579,15 @@ class UserModificationSerializer(UserSerializer):
 
     class Meta(UserSerializer.Meta):
         fields = tuple(f for f in UserSerializer.Meta.fields if f != 'password')
+
+
+class UserCreationSerializer(UserSerializer):
+    """CI #1001 api-fuzz (« rejected schema-compliant request ») — CORPS publié
+    de la CRÉATION d'un compte (POST ``/users/``) : le mot de passe y est
+    OBLIGATOIRE (ASEC3 : 400 « requis » sans lui), alors que ``UserSerializer``
+    le déclare facultatif parce qu'une lecture / modification n'en a pas. Sert au
+    SCHÉMA seulement (la vue lit toujours ``UserSerializer``)."""
+    password = ChaineStricte(write_only=True)
 
 
 class MeSerializer(UserSerializer):

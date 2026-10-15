@@ -19,6 +19,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.champs_stricts import date_ou_400
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -81,12 +82,12 @@ def _exiger_nomenclature(kit, champ='kit'):
     """ACHT25 (C-ACHT-023) — aucun composite n'entre en stock sans
     consommation : un kit sans composant EXPLOITABLE (produit catalogue et
     quantité > 0) refuse la création / la clôture d'un ordre et son
-    activation (400)."""
+    activation (409 : l'état du kit s'y oppose)."""
     if kit is None:
         return
     if not kit.composants.filter(
             produit__isnull=False, quantite__gt=0).exists():
-        raise ValidationError({champ: MESSAGE_NOMENCLATURE_VIDE})
+        raise ConflitEtat({champ: [MESSAGE_NOMENCLATURE_VIDE]})
 
 
 def _exiger_transition_ordre(ordre, cible, table):
@@ -401,7 +402,7 @@ class OrdreAssemblageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
 
     def _check_editable(self, ordre):
         if ordre.statut != OrdreAssemblage.Statut.PLANIFIE:
-            raise ValidationError({
+            raise ConflitEtat({
                 'ordre': "Lignes verrouillées : l'ordre n'est plus planifié."})
 
     def _check_parent(self, serializer):
@@ -1162,7 +1163,7 @@ class OrdreDemontageLigneViewSet(oa.JsonOnlyMixin, viewsets.ModelViewSet):
             raise ValidationError(
                 {'ordre': 'Ordre inconnu pour cette société.'})
         if ordre is not None and ordre.statut != OrdreDemontage.Statut.PLANIFIE:
-            raise ValidationError({
+            raise ConflitEtat({
                 'ordre': "Lignes verrouillées : l'ordre n'est plus planifié."})
         # ERR124 — le produit de la ligne doit appartenir à la société.
         produit = serializer.validated_data.get('produit')

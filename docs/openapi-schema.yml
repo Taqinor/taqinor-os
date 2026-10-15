@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3505}
+counts: {paths: 4814, operations: 7566, components: 3521}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2334,7 +2334,7 @@ operations:
 - get /api/django/onboarding/items-masques/ -> django_onboarding_items_masques_list
 - post /api/django/onboarding/items-masques/{id}/demasquer/ -> django_onboarding_items_masques_demasquer_create
 - post /api/django/onboarding/items-masques/{id}/masquer/ -> django_onboarding_items_masques_masquer_create
-- get /api/django/onboarding/progress/ -> django_onboarding_progress_list
+- get /api/django/onboarding/progress/ -> django_onboarding_progress_retrieve
 - post /api/django/onboarding/progress/ignorer-tout/ -> django_onboarding_progress_ignorer_tout_create
 - post /api/django/onboarding/progress/{id}/ignorer/ -> django_onboarding_progress_ignorer_create
 - post /api/django/onboarding/progress/{id}/marquer-fait/ -> django_onboarding_progress_marquer_fait_create
@@ -6156,7 +6156,7 @@ operations:
 - get /api/v1/onboarding/items-masques/ -> v1_onboarding_items_masques_list
 - post /api/v1/onboarding/items-masques/{id}/demasquer/ -> v1_onboarding_items_masques_demasquer_create
 - post /api/v1/onboarding/items-masques/{id}/masquer/ -> v1_onboarding_items_masques_masquer_create
-- get /api/v1/onboarding/progress/ -> v1_onboarding_progress_list
+- get /api/v1/onboarding/progress/ -> v1_onboarding_progress_retrieve
 - post /api/v1/onboarding/progress/ignorer-tout/ -> v1_onboarding_progress_ignorer_tout_create
 - post /api/v1/onboarding/progress/{id}/ignorer/ -> v1_onboarding_progress_ignorer_create
 - post /api/v1/onboarding/progress/{id}/marquer-fait/ -> v1_onboarding_progress_marquer_fait_create
@@ -8254,6 +8254,7 @@ query_params:
   get /api/django/stock/produits/rapport-pertes/: date_debut date_fin
   get /api/django/stock/produits/resolve/: code
   get /api/django/stock/produits/rotation/: jours
+  get /api/django/stock/produits/tracabilite/: lot serie
   get /api/django/stock/produits/tracer/: lot serie
   get /api/django/stock/produits/valorisation-a-date/: date
   get /api/django/stock/produits/{id}/comparer-tco/: cout_rupture_jour fenetre_mois
@@ -9035,6 +9036,7 @@ query_params:
   get /api/v1/stock/produits/rapport-pertes/: date_debut date_fin
   get /api/v1/stock/produits/resolve/: code
   get /api/v1/stock/produits/rotation/: jours
+  get /api/v1/stock/produits/tracabilite/: lot serie
   get /api/v1/stock/produits/tracer/: lot serie
   get /api/v1/stock/produits/valorisation-a-date/: date
   get /api/v1/stock/produits/{id}/comparer-tco/: cout_rupture_jour fenetre_mois
@@ -9330,6 +9332,7 @@ components:
 - AjouterLigneConsommationRequeteRequest
 - AjouterMemoRequeteRequest
 - AjouterPhotoRequeteRequest
+- AjouterReleveRequetePhaseEnum
 - AjouterReleveRequeteRequest
 - AjouterReserveRequeteRequest
 - AjouterSerialRequeteRequest
@@ -9523,6 +9526,7 @@ components:
 - CadenceRelanceEtapeCreationCadenceEnum
 - CadenceRelanceEtapeCreationRequest
 - CadenceRelanceEtapeRequest
+- CalageRequest
 - CalculRoiRequestRequest
 - CalendarCalendarEventsReponse
 - CalendarCalendarRescheduleReponse
@@ -9547,8 +9551,6 @@ components:
 - CalepinageComparaisonVariantes
 - CalepinageComparerProjetsRequeteRequest
 - CalepinageConsommationProposee
-- CalepinageConsommationProposerCorpsRequest
-- CalepinageConsommationProposerCorpsSourceEnum
 - CalepinageCreationConflit
 - CalepinageCreationParClientRequest
 - CalepinageCreationParLeadRequest
@@ -9624,6 +9626,7 @@ components:
 - CalepinageMoteurAccuseTravailLong
 - CalepinageMoteurCalculerReponse
 - CalepinageMoteurCalculerRequeteRequest
+- CalepinageMoteurParametresRequest
 - CalepinageMoteurPoseDemandeRequest
 - CalepinageMoteurPoseReponse
 - CalepinageMoteurPoseRequeteRequest
@@ -9633,7 +9636,6 @@ components:
 - CalepinageParametresEcrite
 - CalepinageParametresReponse
 - CalepinageParametresRequeteRequest
-- CalepinagePhotoCorpsRequest
 - CalepinagePhotoSite
 - CalepinagePhotosSite
 - CalepinagePlanImporte
@@ -9654,7 +9656,6 @@ components:
 - CalepinageResultatServi
 - CalepinageRoofImageCorpsRequest
 - CalepinageRoofImageDepot
-- CalepinageSchemaEditionCorpsRequest
 - CalepinageSchemaUnifilaire
 - CalepinageSimulationAccuse
 - CalepinageSimulationDejaCalculee
@@ -9831,6 +9832,9 @@ components:
 - ConsentementTraitement
 - ConsentementTraitementRequest
 - ConsommationLigne
+- ConsommationProposerCorpsClasseEnum
+- ConsommationProposerCorpsRequest
+- ConsommationProposerCorpsSourceEnum
 - ContactFournisseur
 - ContactFournisseurRequest
 - ContactPreferenceEnum
@@ -9934,6 +9938,7 @@ components:
 - CrmResumeAssocie
 - CrmResumeAssocieRequestRequest
 - CrmSavedViewReorderRequestRequest
+- CrmScanCarteIndisponible
 - CrmScanCarteRequestRequest
 - CrmVilleStatutRequestRequest
 - CrmWhatsappDevisApercuRequestRequest
@@ -10188,6 +10193,7 @@ components:
 - EcheanceFactureFournisseurRequest
 - EconomieCiResponse
 - EconomiePompageResponse
+- EditionSldCorpsRequest
 - ElectriciteSurPlaceEnum
 - ElementSupprime
 - EmailLog
@@ -10349,6 +10355,7 @@ components:
 - FactureWriteRequest
 - FacturesKpis
 - FacturesLicenceListe
+- FamilleEnum
 - FavoriImportRequeteRequest
 - FavoriReordonnerRequeteRequest
 - FavoriUtilisateur
@@ -10501,6 +10508,7 @@ components:
 - GenererDusReponse
 - GenererRetourLivraisonRequeteRequest
 - GenreEnum
+- GenrePhotoSiteEnum
 - GeoGeoPointsReponse
 - GeofenceAlert
 - GpsConsentRecord
@@ -11633,6 +11641,7 @@ components:
 - PeseeLigneCorpsRequest
 - PhotoAnnotation
 - PhotoChecklistMeta
+- PhotoSiteCorpsRequest
 - PhotoVisiteRequest
 - PickList
 - PickListLigne
@@ -11685,6 +11694,7 @@ components:
 - PointContact
 - PointContactRequest
 - PointEnum
+- PointPlancheRequest
 - PolitiqueFacturationAchatEnum
 - PolitiqueRetention
 - PolitiqueRetentionRequest
@@ -11755,6 +11765,7 @@ components:
 - ProduitExportXlsxCorpsRequest
 - ProduitGenererBcfReapproCorpsRequest
 - ProduitInventaireCorpsRequest
+- ProduitInventaireLigneCorpsRequest
 - ProduitPhotoCorpsRequest
 - ProduitPhotoReponse
 - ProduitPlanPicking
@@ -11777,6 +11788,7 @@ components:
 - ProjetChantierRequest
 - ProjetDevis
 - ProjetDevisRequest
+- ProjetFichierRequest
 - ProjetPompageEnum
 - ProjetRequest
 - ProjetStatutEnum
@@ -11805,6 +11817,8 @@ components:
 - PublicActivityCreateReponse
 - PublicActivityCreateRequeteRequest
 - PublicApiCatalogue
+- PublicApiErreur
+- PublicApiErreurDetail
 - PublicApiMonitoring
 - PublicApiMonitoringAppels
 - PublicApiMonitoringEndpoint
@@ -12037,7 +12051,9 @@ components:
 - ResultatCommissioningEnum
 - RetenueSubie
 - RetourClient
+- RetourClientCreerCorpsRequest
 - RetourClientInspecterCorpsRequest
+- RetourClientLigneCorpsRequest
 - RetourClientRequest
 - RetourClientStatutEnum
 - RetourFournisseur
@@ -12339,6 +12355,7 @@ components:
 - StockScannerMouvementErreur
 - StockScannerMouvementResultat
 - StockScannerResoudreResultat
+- StockScannerRetourConflit
 - StockScannerRetourErreur
 - StockScannerRetourFournisseurLigne
 - StockSimulationCapacite
@@ -12346,7 +12363,6 @@ components:
 - StockTacheRetour
 - StockTracabiliteChaine
 - StockTracabiliteInconnue
-- StockTracabiliteParamManquant
 - StockUniteAsn
 - StockUniteAsnErreur
 - StockUniteAsnImport
@@ -12522,14 +12538,16 @@ components:
 - UsageSnapshotFait
 - UsageSummary
 - User
+- UserCreationRequest
 - UserModificationRequest
 - UserPorteeEnum
-- UserRequest
 - UserSession
 - UxParametres
 - UxSavedView
 - UxSavedViewRequest
+- VagueBesoinCorpsRequest
 - VagueConfigurerLiberationCorpsRequest
+- VagueCreerCorpsRequest
 - VaguePicking
 - VaguePickingRequest
 - VaguePickingStatutEnum

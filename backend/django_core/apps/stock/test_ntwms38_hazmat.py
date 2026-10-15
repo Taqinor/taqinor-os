@@ -155,6 +155,17 @@ class Ntwms38ApiTests(Ntwms38Base):
         obj = CompatibiliteHazmatCasier.objects.get(id=res.data['id'])
         self.assertEqual(obj.company_id, self.company.id)
 
+    def test_schema_publie_les_classes_autorisables(self):
+        from apps.stock.schema_contraintes import _classes_danger_autorisables
+        schemas = {'CompatibiliteHazmatCasierRequest': {'properties': {
+            'classe_danger': {'type': 'string', 'maxLength': 20}}}}
+        _classes_danger_autorisables(schemas)
+        propriete = schemas['CompatibiliteHazmatCasierRequest']['properties']['classe_danger']
+        self.assertEqual(
+            set(propriete['enum']),
+            {c for c in Produit.ClasseDanger.values if c != Produit.ClasseDanger.AUCUNE})
+        self.assertNotIn('maxLength', propriete)
+
     def test_classe_aucune_est_refusee(self):
         res = auth(self.admin).post(self.URL, {
             'bin': self.casier_nu.id, 'classe_danger': 'AUCUNE',

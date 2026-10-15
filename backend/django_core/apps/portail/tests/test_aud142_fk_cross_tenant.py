@@ -25,6 +25,7 @@ import itertools
 from decimal import Decimal
 
 from django.test import TestCase
+from rest_framework.exceptions import NotFound
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -103,14 +104,15 @@ class FkCrossTenantPortailTests(TestCase):
         self.chantier_a = Installation.objects.create(
             company=self.a, reference='CHT-AUD142-A')
 
-    # ── Les 3 ressources encore écrivables : 400, jamais 201 ────────────────
+    # ── Les 3 ressources encore écrivables : 404 (ERR-ENF11-FUZZ-PORTAIL ;
+    #    400 avant), jamais 201 ───────────────────────────────────────────────
 
     def test_document_client_dun_autre_tenant_refuse(self):
         """ROUGE avant AUD142 : 201."""
         res = self.api.post('/api/django/portail/documents-client-portail/', {
             'client_id': self.client_b.id, 'type_document': 'facture_onee',
         }, format='multipart')  # CI #997 fuzz (2) : dépôt = formulaire seul
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 404, res.content)
         self.assertFalse(DocumentClientPortail.objects.filter(
             client_id=self.client_b.id).exists())
 
@@ -118,7 +120,7 @@ class FkCrossTenantPortailTests(TestCase):
         res = self.api.post('/api/django/portail/documents-client-portail/', {
             'client_id': self.client_a.id, 'lead_id': self.lead_b.id,
         }, format='multipart')
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 404, res.content)
 
     def test_jalon_chantier_dun_autre_tenant_refuse(self):
         """ROUGE avant AUD142 : 201. ADOC129 — la création manuelle est
@@ -136,7 +138,7 @@ class FkCrossTenantPortailTests(TestCase):
         res = self.api.post('/api/django/portail/demandes-ticket-portail/', {
             'client_id': self.client_b.id, 'sujet': 'Onduleur',
         }, format='json')
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 404, res.content)
         self.assertFalse(DemandeTicketPortail.objects.filter(
             client_id=self.client_b.id).exists())
 
@@ -145,7 +147,7 @@ class FkCrossTenantPortailTests(TestCase):
             'client_id': self.client_a.id, 'sujet': 'Onduleur',
             'chantier_id': self.chantier_b.id,
         }, format='json')
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 404, res.content)
 
     def test_les_objets_de_ma_societe_passent_toujours(self):
         res = self.api.post('/api/django/portail/demandes-ticket-portail/', {
@@ -173,15 +175,17 @@ class FkCrossTenantPortailTests(TestCase):
         ser = AcceptationDevisPortailSerializer(
             data={'devis_id': self.devis_b.id, 'nom_signataire': 'X'},
             context=contexte(self.user_a))
-        self.assertFalse(ser.is_valid())
-        self.assertIn('devis_id', ser.errors)
+        with self.assertRaises(NotFound) as ctx:
+            ser.is_valid()
+        self.assertIn('devis_id', ctx.exception.detail)
 
     def test_le_serializer_paiement_refuse_une_facture_dun_autre_tenant(self):
         ser = PaiementFacturePortailSerializer(
             data={'facture_id': self.facture_b.id, 'montant': '1.00'},
             context=contexte(self.user_a))
-        self.assertFalse(ser.is_valid())
-        self.assertIn('facture_id', ser.errors)
+        with self.assertRaises(NotFound) as ctx:
+            ser.is_valid()
+        self.assertIn('facture_id', ctx.exception.detail)
 
     # ── Les cinq serializers, en un seul balayage ───────────────────────────
     # (ADOC129 : le cinquième, JalonChantierPortailSerializer, n'a plus de FK
@@ -202,8 +206,9 @@ class FkCrossTenantPortailTests(TestCase):
         for classe, donnees, champ in cas:
             with self.subTest(serializer=classe.__name__):
                 ser = classe(data=donnees, context=contexte(self.user_a))
-                self.assertFalse(ser.is_valid())
-                self.assertIn(champ, ser.errors)
+                with self.assertRaises(NotFound) as ctx:
+                    ser.is_valid()
+                self.assertIn(champ, ctx.exception.detail)
 
     def test_jalon_chantier_id_en_lecture_seule(self):
         """ADOC129 — le jalon portail ne se crée plus à la main (POST 405) et
@@ -224,8 +229,13 @@ class FkCrossTenantPortailTests(TestCase):
         confondent dans le même message."""
         ser = DocumentClientPortailSerializer(
             data={'client_id': 987654321}, context=contexte(self.user_a))
-        self.assertFalse(ser.is_valid())
-        self.assertIn('client_id', ser.errors)
+        with self.assertRaises(NotFound) as inexistant:
+            ser.is_valid()
+        autre = DocumentClientPortailSerializer(
+            data={'client_id': self.client_b.id}, context=contexte(self.user_a))
+        with self.assertRaises(NotFound) as etranger:
+            autre.is_valid()
+        self.assertEqual(inexistant.exception.detail, etranger.exception.detail)
 
 
 class ContratApiFuzzPortailTests(TestCase):
@@ -313,3 +323,45 @@ class ContratApiFuzzPortailTests(TestCase):
         self.assertEqual(res.status_code, 200, res.content)
         doc.refresh_from_db()
         self.assertTrue(doc.traite)
+
+    def test_modification_demande_id_inconnu_404_corps_identique(self):
+        """ERR-ENF11-FUZZ-PORTAIL — PUT/PATCH : un entier conforme qui ne
+        désigne rien dans la société (inexistant OU d'une autre société) est
+        une ressource introuvable (404), au corps identique ; rien n'est écrit."""
+        autre = make_company('enf11-portail-b', 'ENF11 Portail B')
+        etranger = Installation.objects.create(
+            company=autre, reference='CHT-ENF11-B')
+        url = f'{self.URL}{self.demande.id}/'
+        complet = {'client_id': self.client_a.id, 'sujet': 'Onduleur'}
+        corps = []
+        for chantier in (2147483647, etranger.id):
+            res = self.api.put(
+                url, {**complet, 'chantier_id': chantier}, format='json')
+            self.assertEqual(res.status_code, 404, res.content)
+            corps.append(res.json()['chantier_id'])
+            res = self.api.patch(url, {'chantier_id': chantier}, format='json')
+            self.assertEqual(res.status_code, 404, res.content)
+            corps.append(res.json()['chantier_id'])
+        self.assertEqual(len(set(map(tuple, corps))), 1)
+        self.demande.refresh_from_db()
+        self.assertIsNone(self.demande.chantier_id)
+
+    def test_schema_depot_libelle_sans_nul(self):
+        """ERR-ENF11-FUZZ-PORTAIL — ``libelle`` d'un dépôt est un texte strict,
+        publié sans caractère nul (le serveur refuse ``U+0000``)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/portail/', include('apps.portail.urls'))]
+        ).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        for nom in ('DocumentClientPortailRequest',
+                    'PatchedDocumentClientPortailRequest'):
+            self.assertIn(
+                '\\u0000', composants[nom]['properties']['libelle']['pattern'])
+        res = self.api.post(
+            '/api/django/portail/documents-client-portail/',
+            {'client_id': self.client_a.id, 'libelle': 'a\x00b'},
+            format='multipart')
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertIn('libelle', res.json())

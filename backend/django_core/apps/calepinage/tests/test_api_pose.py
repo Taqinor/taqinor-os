@@ -14,7 +14,8 @@ Ce qui est prouvé ici :
   demande pas de suggestions — on ne paye pas ce qu'on ne publie pas
   (ACAL292 : les tiroirs AO n'existent plus) ;
 * le ``verdict`` est GÉNÉRÉ des grandeurs mesurées, jamais rédigé ;
-* un relevé invalide rend 400 en NOMMANT le champ fautif, jamais un 500 ;
+* un corps absent rend 400 ; un relevé bien formé que le moteur refuse rend
+  409 en NOMMANT le champ fautif, jamais un 500 ;
 * la route est gardée par ``calepinage_gerer``, pas par ``ao_gerer``.
 
 Le MOTEUR lui-même n'est pas retesté ici (il a ses tests dans
@@ -86,7 +87,7 @@ class PortePoseTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('demande', reponse.data)
 
-    def test_releve_invalide_rend_400_avec_le_motif_serveur(self):
+    def test_releve_refuse_par_le_moteur_rend_409_avec_le_motif_serveur(self):
         from apps.calepinage.moteur_service import (
             erreurs_moteur_calepinage,
         )
@@ -95,7 +96,7 @@ class PortePoseTest(BaseApiCalepinage):
         reponse = self._appeler(self.api, {'demande': CONTRAT['demande']},
                                 erreur=entree_invalide('Surface absente.'))
 
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('demande', reponse.data)
         self.assertIn('Surface absente.', str(reponse.data['demande']))
 

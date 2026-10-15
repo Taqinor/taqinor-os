@@ -115,11 +115,15 @@ class WebhookSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         return value or {}
 
     def validate_target_url(self, value):
-        # ERR46 — refuse https + bloque les hôtes internes (anti-SSRF).
+        # ERR46 — refuse https + bloque les hôtes internes (anti-SSRF). Le
+        # schéma publie ``https://…`` ; que l'hôte soit public et résolvable
+        # dépend du DNS (état du réseau), pas du corps : 409, pas 400 (CI
+        # api-fuzz : ``https://0`` est conforme au schéma).
         try:
             return validate_webhook_target_url(value)
         except UnsafeWebhookURL as exc:
-            raise serializers.ValidationError(str(exc))
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'target_url': [str(exc)]})
 
 
 def scope_catalogue():

@@ -33,7 +33,7 @@ class TestMappingChampsAutorises(ImportBase):
             'mapping': {'Cid': 'company_id', 'Nom': 'nom'},
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertIn('company_id', resp.data['detail'])
+        self.assertIn('company_id', str(resp.data))
         self.assertFalse(ImportMapping.objects.filter(
             company=self.company, nom='Piege').exists())
 
@@ -98,3 +98,18 @@ class TestMappingChampsAutorises(ImportBase):
             'mapping': {'Full Name': 'nom', 'Mail': 'email'},
         }, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_champ_d_une_autre_cible_409_champ_inconnu_400(self):
+        # ENF11 : le corps publié n'admet que les champs importables ; un champ
+        # valide ailleurs (``sku`` n'existe pas pour leads) est un 409.
+        resp = self.api.post('/api/django/imports/mapping/', {
+            'target': 'leads', 'nom': 'Autre', 'mapping': {'Ref': 'sku'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('sku', resp.data['detail'])
+        self.assertFalse(ImportMapping.objects.filter(
+            company=self.company, nom='Autre').exists())
+        resp = self.api.post('/api/django/imports/mapping/', {
+            'target': 'leads', 'nom': 'Autre', 'mapping': {'Ref': 'inconnu'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)

@@ -180,12 +180,31 @@ class TestApplication(RemplacementBase):
 
 
 class TestValidationEtGardes(RemplacementBase):
-    def test_same_product_400(self):
+    def test_same_product_409(self):
         resp = self._post({
             'produit_ancien': self.ancien.id,
             'produit_nouveau': self.ancien.id,
         })
+        self.assertEqual(resp.status_code, 409)
+
+    def test_dry_run_non_booleen_400_sans_rien_appliquer(self):
+        """CI #997 fuzz (4) — `dry_run: 0` lisait « appliquer » : 400 maintenant."""
+        resp = self._post({
+            'produit_ancien': self.ancien.id,
+            'produit_nouveau': self.nouveau.id,
+            'dry_run': 0,
+        })
         self.assertEqual(resp.status_code, 400)
+        self.assertIn('dry_run', resp.json())
+
+    def test_ratio_nul_400(self):
+        resp = self._post({
+            'produit_ancien': self.ancien.id,
+            'produit_nouveau': self.nouveau.id,
+            'ratio_quantite': '0',
+        })
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('ratio_quantite', resp.json())
 
     def test_unknown_product_400(self):
         resp = self._post({

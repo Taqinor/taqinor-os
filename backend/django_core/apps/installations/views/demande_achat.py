@@ -28,6 +28,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.conflit_etat import ConflitEtat
 from core.documents import TransitionRefusee
 from core.numbering import create_with_reference
 from core.viewsets import CompanyScopedModelViewSet
@@ -67,11 +68,11 @@ def _exiger_brouillon(demande):
     dès sa soumission (le montant soumis à la règle d'approbation et au budget
     est celui qui est commandé). Lignes (création, modification,
     suppression, import CSV) et en-tête ne s'écrivent qu'en BROUILLON ;
-    sinon 400 en français, sans écriture."""
+    sinon 409 (état figé) en français, sans écriture."""
     if demande is None or demande.statut == DemandeAchat.Statut.BROUILLON:
         return
     libelle = demande.get_statut_display().lower()
-    raise ValidationError({'detail': (
+    raise ConflitEtat({'detail': (
         f'Demande {libelle} : repassez-la en brouillon pour la modifier.')})
 
 
@@ -548,9 +549,13 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
                 'quantite': quantite_brute or '0',
                 'prix_estime': prix_brut or '0',
             })
-            if not ser.is_valid():
+            try:
+                valide, refus = ser.is_valid(), ser.errors
+            except ConflitEtat as exc:  # règle d'ensemble de la ligne : erreur nommée
+                valide, refus = False, exc.detail
+            if not valide:
                 detail = '; '.join(
-                    str(m) for msgs in ser.errors.values()
+                    str(m) for msgs in refus.values()
                     for m in (msgs if isinstance(msgs, (list, tuple))
                               else [msgs]))
                 erreurs.append({'ligne': numero, 'erreur': detail})

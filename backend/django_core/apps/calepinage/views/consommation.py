@@ -16,18 +16,21 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.permissions import ScopedPermission
 
 from ..permissions import CAL_GERER, CAL_VOIR, PeutGererCalepinage
+from ..serializers import corps_obligatoire
 from ..serializers_conso import (
-    ProfilsTypesEcritureSerializer, ProfilsTypesSerializer,
+    ConsommationProposerCorpsSerializer, ProfilsTypesEcritureSerializer,
+    ProfilsTypesSerializer,
 )
 from ..services.profils_types import (
-    ProfilInvalide, enregistrer_profils, profil_depuis_import,
-    profils_de_societe,
+    ProfilEnConflit, ProfilInvalide, enregistrer_profils, profil_depuis_import,
+    profils_de_societe, valider_forme_profils,
 )
 from .calepinages import CalepinageViewSet
 
@@ -38,6 +41,9 @@ class ProfilsTypesView(APIView):
     """Les profils types de consommation de la société de l'appelant."""
 
     permission_classes = [ScopedPermission]
+    # Corps JSON SEUL : ``profils`` est une liste d'objets imbriqués, que ni un
+    # formulaire multipart (parts texte) ni urlencoded ne portent.
+    parser_classes = [JSONParser]
     read_permission = CAL_VOIR
     write_permission = CAL_GERER
 
@@ -67,11 +73,19 @@ class ProfilsTypesView(APIView):
                      [str(refus)]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({'profils': profils_de_societe(company)})
         try:
+            # La FORME d'abord, toute seule (400 nommant ``profils[<rang>].<champ>``) :
+            # le prédicat que le schéma du ``PUT`` publie.
+            valider_forme_profils(corps.get('profils'))
             profils = enregistrer_profils(
                 company, corps.get('profils'), utilisateur=request.user)
         except ProfilInvalide as refus:
+            # La FORME fautive (schéma publié) reste un 400 ; une clé en double
+            # ou une journée entièrement nulle sont des faits que ce schéma ne
+            # peut pas dire : 409.
             return Response({refus.champ or 'profils': [str(refus)]},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT
+                                    if isinstance(refus, ProfilEnConflit)
+                                    else status.HTTP_400_BAD_REQUEST))
         return Response({'profils': profils})
 
 
@@ -87,20 +101,13 @@ FORME_PROPOSITION = inline_serializer('CalepinageConsommationProposee', {
 })
 
 
-@extend_schema(
-    request=inline_serializer('CalepinageConsommationProposerCorps', {
-        'source': serializers.ChoiceField(
-            choices=['lead', 'factures', 'appareils', 'csv']),
-        'factures': serializers.JSONField(required=False),
-        'classe': serializers.CharField(required=False),
-        'appareils': serializers.JSONField(required=False),
-        'charges': serializers.JSONField(required=False),
-        'csv': serializers.JSONField(required=False),
-        'ramadan': serializers.JSONField(required=False)}),
-    responses={200: FORME_PROPOSITION})
+@extend_schema(request=ConsommationProposerCorpsSerializer,
+               responses={200: FORME_PROPOSITION})
+@corps_obligatoire
 @action(detail=True, methods=['post'], url_path='consommation/proposer',
         url_name='consommation-proposer',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage],
+        parser_classes=[JSONParser])  # sous-documents imbriqués : JSON seul
 def proposer_consommation(self, request, pk=None):
     """ACAL310 — ``POST /calepinages/<pk>/consommation/proposer/``.
 
@@ -108,7 +115,10 @@ def proposer_consommation(self, request, pk=None):
     (factures + barème de la SOCIÉTÉ), des factures saisies, des appareils
     (et charges : climatisation, PAC, véhicule) ou un relevé CSV ; option
     Ramadan. LECTURE PURE : rien n'est écrit (la persistance passe par le
-    document). 400 NOMMANT le champ ; 404 pour un lead absent.
+    document). 400 NOMMANT le champ pour la FORME du corps (source inconnue,
+    sous-document du mauvais type ou absent) ; 409 pour le CONTENU que le
+    service refuse (facture non finie, appareil hors contrat, CSV illisible,
+    classe tarifaire non résolue) ; 404 pour un lead absent.
     """
     from ..services.charges import ChargeInvalide
     from ..services.consommation import (
@@ -118,7 +128,9 @@ def proposer_consommation(self, request, pk=None):
     )
 
     calepinage = self.get_object()  # borné société par get_queryset
-    corps = request.data if isinstance(request.data, dict) else {}
+    champs = ConsommationProposerCorpsSerializer(data=request.data)
+    champs.is_valid(raise_exception=True)
+    corps = dict(champs.validated_data)
     try:
         rendu = proposer(calepinage, corps,
                          company=getattr(request.user, 'company', None))
@@ -129,7 +141,7 @@ def proposer_consommation(self, request, pk=None):
             ChargeInvalide) as refus:
         champ = getattr(refus, 'champ', '') or 'consommation'
         return Response({champ: str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT)
     return Response(rendu)
 
 

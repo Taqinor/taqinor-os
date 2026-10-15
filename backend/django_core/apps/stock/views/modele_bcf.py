@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from rest_framework import serializers
 from ..openapi_helpers import corps
+from ..utils.params import ID_MAX, corps_objet, types_corps_ou_400
 from ..serializers import BonCommandeFournisseurSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
@@ -49,7 +50,8 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
 
-    @extend_schema(request=corps('ModeleBcfGenererCorps', fournisseur=serializers.IntegerField(required=False)),
+    @extend_schema(request=corps('ModeleBcfGenererCorps', fournisseur=serializers.IntegerField(
+        required=False, min_value=1, max_value=ID_MAX)),
                    responses={201: BonCommandeFournisseurSerializer})
     @action(detail=True, methods=['post'], url_path='generer')
     def generer(self, request, pk=None):
@@ -60,11 +62,15 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         génération."""
         modele = self.get_object()
         company = request.user.company
-        fournisseur_id = request.data.get('fournisseur') or modele.fournisseur_id
+        donnees = corps_objet(request)
+        # CI #997 fuzz (4) — identifiant entier 1..ID_MAX, comme le schéma publié.
+        types_corps_ou_400(donnees, ids=('fournisseur',), nuls=())
+        fournisseur_id = donnees.get('fournisseur') or modele.fournisseur_id
         if not fournisseur_id:
+            # Le corps est conforme : c'est le modèle qui n'a pas de fournisseur (409).
             return Response(
                 {'detail': 'Aucun fournisseur (ni sur le modèle, ni fourni).'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         from ..models import Fournisseur
         fournisseur = Fournisseur.objects.filter(
             id=fournisseur_id, company=company).first()
@@ -81,7 +87,7 @@ class ModeleBonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         if not lignes_modele:
             return Response(
                 {'detail': 'Ce modèle ne contient aucune ligne.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
         created = {}
 

@@ -176,8 +176,14 @@
           "request_id": "<request_id>"
         }
       },
-      "exemple_erreur_400_auto_reference": {
-        "composants": "Un kit ne peut pas se contenir lui-même."
+      "exemple_erreur_409_auto_reference": {
+        "detail": "Un kit ne peut pas se contenir lui-même.",
+        "error": {
+          "code": "api_error",
+          "message": "Un kit ne peut pas se contenir lui-même.",
+          "fields": null,
+          "request_id": "<request_id>"
+        }
       },
       "exemple_erreur_400_composant_autre_societe": {
         "note": "ASTK5/ASTK168 — un composant d'une AUTRE société reçoit EXACTEMENT la réponse d'un id absent (CompanyScopedRelationsMixin sur KitComposantSerializer) : exemple pour l'id 99999999 ; l'id étranger donne le même corps, son propre id cité.",

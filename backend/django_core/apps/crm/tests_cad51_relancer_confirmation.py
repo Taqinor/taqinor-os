@@ -84,7 +84,9 @@ class RelancerAvecConfirmationTests(TestCase):
     def test_confirmation_sans_motif_refusee_en_nommant_le_champ(self):
         corps = dict(CONTRAT['corps_confirme'], motif='  ')
         reponse = self.api.post(self.url, corps, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # ERR-ENF11-FUZZ-CRM — le motif dépend de l'ÉTAT (une cadence va être
+        # arrêtée) : 409, même corps nommant le champ.
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertEqual(reponse.data, CONTRAT['exemple_erreur_motif'])
         self.assertEqual(self._statuts_reveil(),
                          {RelanceEtape.Statut.A_FAIRE})
@@ -136,12 +138,12 @@ class RelancerAvecConfirmationTests(TestCase):
 
     def test_cadence_moins_prioritaire_reste_le_refus_cadx(self):
         # « Réveil » sur une prise de contact active : refus CADX inchangé
-        # (400 `erreurs.cadence`) — ce n'est pas un remplacement.
+        # (409 `erreurs.cadence`) — ce n'est pas un remplacement.
         RelanceEtape.objects.filter(lead=self.lead).delete()
         _touche(self.lead, 'contact', 2, 0)
         reponse = self.api.post(
             self.url, {'cadence': 'reveil'}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('cadence', reponse.data['erreurs'])
 
 

@@ -12,6 +12,7 @@ de requête, statuts, binaires).
   le code l'est (sinon REJ).
 """
 from collections.abc import Mapping
+from datetime import date, timedelta
 
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (  # noqa: F401  (ré-exportés)
@@ -24,6 +25,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict, date_ou_400
+from core.conflit_etat import ConflitEtat
 
 from ..signature_validation import (
     MESSAGE_SIGNATURE_INVALIDE, MOTIF_DATA_URL, SIGNATURE_MAX_CARACTERES,
@@ -195,6 +197,9 @@ PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
 HTML = {(200, 'text/html'): OpenApiTypes.STR}
 OBJ = OpenApiTypes.OBJECT
 NO_CONTENT = {204: None}
+#: Lecture sur fenêtre ``debut``/``fin`` : 409 si la fin précède le début
+#: (``fenetre_semaine`` — règle d'ensemble, pas un 400).
+OBJ_FENETRE = {200: OBJ, 409: OBJ}
 
 
 LIST = type(inline_serializer('ObjetLibre', fields={}))(many=True)
@@ -240,6 +245,22 @@ def id_requete(request, nom, requis=False):
             raise ValidationError({nom: 'Paramètre requis.'})
         return None
     return id_entier(brut, nom)
+
+
+def fenetre_semaine(request):
+    """``(debut, fin)`` des paramètres ``debut``/``fin`` (ISO) ; défaut = la
+    semaine en cours (lundi → dimanche). Une fenêtre inversée (``fin`` avant
+    ``debut``) est une règle d'ENSEMBLE que le schéma ne peut pas exprimer :
+    409 (conflit), jamais un 400 sur une requête conforme."""
+    debut = date_ou_400(request.query_params.get('debut'), 'debut')
+    fin = date_ou_400(request.query_params.get('fin'), 'fin')
+    if debut is None:
+        debut = date.today() - timedelta(days=date.today().weekday())
+    if fin is None:
+        fin = debut + timedelta(days=6)
+    if fin < debut:
+        raise ConflitEtat('La fin de fenêtre précède le début.')
+    return debut, fin
 
 
 def _valider_filtres(request, entiers, dates):
@@ -311,6 +332,45 @@ class SuggererCreneauRequete(serializers.Serializer):
     type_intervention = ChaineStricte(required=False, allow_blank=True, default='')
     duree_jours = EntierStrict(required=False, min_value=1, max_value=365, default=1)
     date_cible = serializers.DateField(required=False, allow_null=True)
+
+
+class AjouterReserveRequete(serializers.Serializer):
+    """F16 — {description, [client_op_id], [assignee], [photo], [memo],
+    [creer_suivi], [creer_ticket]} : la déclaration OpenAPI ET la validation
+    (corps vide ou mal typé → 400, ``description`` exigée)."""
+    client_op_id = ChaineStricte(required=False, allow_blank=True, max_length=64)
+    description = ChaineStricte()
+    assignee = _id_strict(required=False, allow_null=True)
+    photo = _id_strict(required=False, allow_null=True)
+    memo = _id_strict(required=False, allow_null=True)
+    creer_suivi = BooleenStrict(required=False)
+    creer_ticket = BooleenStrict(required=False)
+
+
+#: Réponse de ``tool-return`` (GET et POST) : la LISTE des lignes de retour,
+#: ou — quand un outil est déjà sorti sur une autre intervention — l'objet
+#: ``{tool_returns, conflits}``. Deux formes, ``oneOf`` (le schéma annonçait
+#: un objet seul alors que la liste est la forme ordinaire).
+_LIGNES_RETOUR = {'type': 'array',
+                  'items': {'$ref': '#/components/schemas/ToolReturn'}}
+RETOUR_OUTILLAGE = {200: {'oneOf': [_LIGNES_RETOUR, {
+    'type': 'object',
+    'properties': {
+        'tool_returns': _LIGNES_RETOUR,
+        'conflits': {'type': 'array', 'items': {
+            'type': 'object',
+            'properties': {'outil': {'type': 'integer'},
+                           'intervention': {'type': 'integer', 'nullable': True}},
+            'required': ['outil', 'intervention']}}},
+    'required': ['tool_returns', 'conflits']}]}}
+
+
+class CocherToolReturnRequete(serializers.Serializer):
+    """F17 — {ligne, [rendu], [emplacement]} : la déclaration OpenAPI ET la
+    validation (``ligne`` mal typée faisait un 500 ORM)."""
+    ligne = _id_strict()
+    rendu = BooleenStrict(required=False, default=True)
+    emplacement = _id_strict(required=False, allow_null=True)
 
 
 def _texte_facultatif():

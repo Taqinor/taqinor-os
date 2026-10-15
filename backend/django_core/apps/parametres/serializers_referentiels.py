@@ -15,7 +15,10 @@ from core.unicite import ConflitUnicite
 from .requetes_strictes import TypageStrictParametres
 
 from .models_payment_terms import ConditionPaiement
-from .models_relance import CADENCES_MOTEUR, Cadence, CadenceRelanceEtape
+from .models_relance import (
+    CADENCES_MOTEUR, DELAI_JOURS_ETAPE_MAX, ORDRE_ETAPE_MAX, Cadence,
+    CadenceRelanceEtape,
+)
 from .models_taxes import TauxTVA
 from .models_units import UniteMesure
 
@@ -173,6 +176,22 @@ class CadenceRelanceEtapeSerializer(TypageStrictParametres, UniciteSocieteMixin,
                   'heure_cible', 'canal', 'libelle', 'template_cle',
                   'dimanche_ok', 'actif', 'samedi_ok', 'cle']
         read_only_fields = ['cle']
+        # ENF11 (api-fuzz) — bornes 0 à 1439 PUBLIÉES au schéma ET tenues par
+        # ce seul champ (aide du modèle : « 0 à 1439 ») : un minimum/maximum
+        # absent du contrat laissait le fuzz envoyer 2147483647 « conforme » et
+        # recevoir 400. Au-delà de 1439, l'appelant voulait dire « un jour de
+        # plus » (MRY4) ; un négatif tombait en 500 selon le moteur (CAD29).
+        extra_kwargs = {
+            # CI #1001 fuzz — plafonds métier (voir ``ORDRE_ETAPE_MAX``).
+            'ordre': {'max_value': ORDRE_ETAPE_MAX},
+            'delai_jours': {'max_value': DELAI_JOURS_ETAPE_MAX},
+            'delai_minutes': {
+                'min_value': 0, 'max_value': 1439,
+                'error_messages': {
+                    'max_value': 'Le délai en minutes doit rester sous 1440 '
+                                 '(24 h) — au-delà, utiliser le délai en jours.',
+                    'min_value': 'Le délai en minutes ne peut pas être négatif '
+                                 '— il va de 0 à 1439.'}}}
 
     def validate(self, attrs):
         # PARAM-CADENCE — un barreau à clé moteur appartient à SA cadence : le
@@ -195,25 +214,6 @@ class CadenceRelanceEtapeSerializer(TypageStrictParametres, UniciteSocieteMixin,
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError('Le libellé est requis.')
-        return value
-
-    def validate_delai_minutes(self, value):
-        # MRY4 — au-delà de 1439, l'appelant voulait dire « un jour de plus » :
-        # on refuse plutôt que d'absorber silencieusement un décalage d'un
-        # jour dans un champ nommé « minutes ».
-        if value is not None and value >= 1440:
-            raise serializers.ValidationError(
-                'Le délai en minutes doit rester sous 1440 (24 h) — '
-                'au-delà, utiliser le délai en jours.')
-        # CAD29 — la borne BASSE, elle, ne tenait que par le type de la
-        # colonne (`PositiveIntegerField`) : selon le moteur de base, un -1
-        # ressortait en erreur d'intégrité (500) au lieu d'un refus nommé.
-        # L'aide du champ annonce « 0 à 1439 » : le serveur le dit désormais
-        # aussi, en français, sur LE champ fautif (règle fondateur 08/09).
-        if value is not None and value < 0:
-            raise serializers.ValidationError(
-                'Le délai en minutes ne peut pas être négatif — il va de 0 '
-                'à 1439.')
         return value
 
 

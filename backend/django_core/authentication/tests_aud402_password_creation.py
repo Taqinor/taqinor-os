@@ -101,9 +101,19 @@ class Aud402RegisterViewTest(TestCase):
             'email': 'c@aud402.ma'}, format='json')
 
     def test_mot_de_passe_faible_refuse(self):
+        # CI api-fuzz : le corps est conforme au schéma, c'est la politique
+        # (configurable par société) qui s'y oppose -> 409, comme un doublon.
         r = self._post('azerty')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('password', r.data)
         self.assertFalse(User.objects.filter(username='collab402').exists())
+
+    def test_nom_d_utilisateur_deja_pris_409_et_rien_cree(self):
+        avant = User.objects.count()
+        r = self._post(STRONG, username='owner402')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.json()['error']['code'], 'unique_conflict')
+        self.assertEqual(User.objects.count(), avant)
 
     def test_register_types_stricts_et_role_mal_forme_400(self):
         """ENF11 — mot de passe non texte, ``role`` illisible : 400, pas 500."""
@@ -121,6 +131,16 @@ class Aud402RegisterViewTest(TestCase):
             '/api/django/register/', [1], format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
+    def test_register_email_non_texte_400_pas_500(self):
+        """CI #1001 fuzz : ``email`` en liste -> 400 nommé ; la politique du
+        mot de passe ne relit plus le corps brut (``.strip()`` d'une liste = 500)."""
+        r = self.api.post('/api/django/register/', {
+            'username': 'collab_liste', 'password': '0',
+            'email': [None, None]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('email', r.json()['error']['fields'])
+        self.assertFalse(User.objects.filter(username='collab_liste').exists())
+
     def test_mot_de_passe_valide_accepte(self):
         r = self._post(STRONG)
         self.assertEqual(r.status_code, 201, r.data)
@@ -133,7 +153,7 @@ class Aud402RegisterViewTest(TestCase):
             defaults={'nom': 'AUD402 Co', 'password_min_length': 20},
         )
         r = self._post(STRONG, username='collab402b')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertFalse(User.objects.filter(username='collab402b').exists())
 
 

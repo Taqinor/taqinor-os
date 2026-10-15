@@ -18,7 +18,7 @@ Couvre :
     sans intervention reste visible (count=0, indisponible=True) ;
   * le scope société (aucune camionnette d'une autre société) ;
   * les gardes fenêtre vide/None/inversée ;
-  * l'endpoint ``planning-camionnettes`` (200 + lecture toute-rôle + 400 fenêtre
+  * l'endpoint ``planning-camionnettes`` (200 + lecture toute-rôle + 409 fenêtre
     inversée).
 
 Pure agrégation, lecture seule, aucun nouveau modèle.
@@ -327,12 +327,12 @@ class TestPlanningEndpoint(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('camionnettes', r.data)
 
-    def test_endpoint_fenetre_inversee_400(self):
-        """FG303 — fenêtre inversée côté endpoint → 400."""
+    def test_endpoint_fenetre_inversee_409(self):
+        """FG303 — fenêtre inversée côté endpoint → 409."""
         r = self.api.get(
             f'{BASE}/interventions/planning-camionnettes/',
             {'debut': SEMAINE_FIN.isoformat(), 'fin': LUNDI.isoformat()})
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_endpoint_scope_societe(self):
         """FG303 — l'endpoint ne montre que les camionnettes de la société de

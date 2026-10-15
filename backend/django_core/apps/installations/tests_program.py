@@ -325,3 +325,18 @@ class TestFG291LinkViewSets(TestCase):
         r = auth(user_b).get(f'{BASE}/programme-chantiers/')
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['count'], 0)
+
+    def test_rattachement_en_double_409_et_programme_absent_404(self):
+        """ERR-ENF11-FUZZ-INSTALLATIONS — le même chantier deux fois dans un
+        programme = conflit (409), un programme sans ligne = 404 (pas 400)."""
+        inst, _ = make_chantier(self.company, self.user, self.client_obj)
+        corps = {'projet': self.projet.id, 'installation': inst.id}
+        r = self.api.post(f'{BASE}/programme-chantiers/', corps, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.post(f'{BASE}/programme-chantiers/', corps, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(ProjetChantier.objects.filter(projet=self.projet).count(), 1)
+        r = self.api.post(f'{BASE}/programme-chantiers/', {
+            'projet': 2147483647, 'installation': inst.id}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        self.assertIn('projet', r.data)

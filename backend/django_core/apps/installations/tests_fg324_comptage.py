@@ -85,7 +85,7 @@ class TestSessionComptage(TestCase):
         resp = self.api.post(f'{BASE}/sessions-comptage/', {
             'emplacement': emp_other.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_ajouter_ligne_snapshots_theoretical(self):
         session = SessionComptage.objects.create(

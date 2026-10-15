@@ -149,10 +149,19 @@ class TiersEnf11Tests(TenantAPITestCase):
         self.assertEqual(self._post(email='pas-un-email').status_code, 400)
         self.assertEqual(self._post(email=5).status_code, 400)
 
-    def test_schema_email_reponse_sans_format_requete_avec(self):
-        from apps.tiers.serializers import EmailTiersExtension
-        ext = EmailTiersExtension(target=None)
-        rep = ext.map_serializer_field(None, 'response')
-        req = ext.map_serializer_field(None, 'request')
-        self.assertNotIn('format', rep)
-        self.assertEqual(req['anyOf'][0]['format'], 'email')
+    def test_schema_email_reponse_accepte_la_chaine_vide(self):
+        """Le schéma RÉELLEMENT généré (extensions résolues par priorité PUIS
+        validateurs rejoués par drf-spectacular, comme ``_map_basic_serializer``) :
+        la réponse porte « e-mail valide OU chaîne vide ». CI api-fuzz : « "" is
+        not a "email" » sur GET tiers/ — le ``format: email`` rejoué sur le
+        ``type: string`` de la réponse l'exigeait même vide."""
+        from drf_spectacular.openapi import AutoSchema
+        from apps.tiers.serializers import TiersSerializer
+        champ = TiersSerializer().fields['email']
+        for sens in ('response', 'request'):
+            schema = AutoSchema()._map_serializer_field(champ, sens)
+            AutoSchema()._insert_field_validators(champ, schema)
+            self.assertNotIn('format', schema, sens)
+            self.assertEqual(
+                [b.get('format') for b in schema['anyOf']], ['email', None], sens)
+            self.assertEqual(schema['anyOf'][1]['maxLength'], 0, sens)

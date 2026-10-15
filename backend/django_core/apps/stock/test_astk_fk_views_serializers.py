@@ -268,6 +268,11 @@ class CorpsFuzzTests(TestCase):
         self.pa = Produit.objects.create(
             company=self.a, nom='ProdF', sku='FUZZ-PA', fournisseur=self.fa,
             prix_achat=Decimal('10'), prix_vente=Decimal('20'), quantite_stock=50)
+        # CI #997 — produit d'une AUTRE société (cible d'un remplacement de composant).
+        self.pb = Produit.objects.create(
+            company=make_company('fuzz-stock-b', 'Fuzz stock B'), nom='ProdFB',
+            sku='FUZZ-PB', prix_achat=Decimal('10'), prix_vente=Decimal('20'),
+            quantite_stock=5)
         self.emp = EmplacementStock.objects.create(
             company=self.a, nom='Dépôt F', is_principal=True)
         self.client_a = Client.objects.create(company=self.a, nom='Client F')
@@ -409,6 +414,12 @@ class CorpsFuzzTests(TestCase):
         cas = (
             ('blocages-qualite/lever-quarantaine/', [None, None]),
             ('blocages-qualite/lever-quarantaine/', {'bin': {}}),
+            ('blocages-qualite/lever-quarantaine/', {'bin': 0}),
+            ('produits/inventaire/', {'lignes': [{'quantite_comptee': 1}]}),
+            ('produits/inventaire/', {'lignes': [{'produit': self.pa.id, 'quantite_comptee': 1000001}]}),
+            ('produits/inventaire/', {'lignes': [{'produit': self.pa.id, 'quantite_comptee': ' 7 '}]}),
+            ('kits/remplacer-composant/', {'produit_ancien': self.pa.id, 'produit_nouveau': self.pb.id,
+                                           'dry_run': 0}),
             ('kits/remplacer-composant/', {'produit_ancien': 0, 'produit_nouveau': {},
                                            'ratio_quantite': '0', 'dry_run': False}),
             ('produits/inventaire/', [None, None]),
@@ -637,3 +648,37 @@ class CorpsFuzzTests(TestCase):
             self.assertIsNone(sous_kit[nom], nom)
         self.assertEqual(produit['produit_nom'], 'ProdF')
         self.assertIsNone(produit['composant_kit_nom'])
+
+    def test_fuzz_ci997_4_transfert_direct_ecart_reception_null_publie(self):
+        """CI #997 (4) — un transfert direct (jamais réceptionné) n'a ni
+        `quantite_recue` ni écart : `ecart_reception` vaut null, publié
+        null-able ; liste et création respectent le schéma."""
+        from apps.stock.serializers import TransfertStockSerializer
+        self.assertTrue(TransfertStockSerializer().fields['ecart_reception'].allow_null)
+        api = self._api_admin()
+        dest = EmplacementStock.objects.create(company=self.a, nom='Camionnette F')
+        r = api.post(f'{BASE}/transferts/', {
+            'produit': self.pa.id, 'source': self.emp.id, 'destination': dest.id,
+            'quantite': 1, 'note': ''}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertIsNone(r.data['ecart_reception'])
+        r = api.get(f'{BASE}/transferts/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIsNone(r.data['results'][0]['ecart_reception'])
+
+    def test_fuzz_ci997_4_numeros_serie_liste_de_chaines_et_tracabilite_serie(self):
+        """CI #997 (4) — `numeros_serie` d'une ligne de réception est une liste
+        de chaînes : un scalaire JSON (`1`, `true`) était stocké puis itéré par
+        la traçabilité (`?serie=0` -> 500). Désormais refusé à l'écriture ; la
+        traçabilité d'une série inconnue reste un 404."""
+        from rest_framework.exceptions import ValidationError
+        from apps.stock.serializers import LigneReceptionFournisseurSerializer
+        champ = LigneReceptionFournisseurSerializer().fields['numeros_serie']
+        for valeur in (1, True, 1.5, 'SN1', {'a': 1}, [1], [None], [{}]):
+            with self.assertRaises(ValidationError, msg=repr(valeur)):
+                champ.run_validation(valeur)
+        self.assertEqual(champ.run_validation(['SN1', 'SN2']), ['SN1', 'SN2'])
+        self.assertEqual(champ.run_validation([]), [])
+        self.assertIsNone(champ.run_validation(None))
+        r = self._api_admin().get(f'{BASE}/produits/tracabilite/?serie=0')
+        self.assertEqual(r.status_code, 404, r.content)

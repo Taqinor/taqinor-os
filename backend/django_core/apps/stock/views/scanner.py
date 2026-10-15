@@ -168,6 +168,11 @@ def scanner_mouvement_view(request):
     400: inline_serializer('StockScannerRetourErreur', {
         'detail': serializers.CharField(),
     }),
+    # CI #1001 — un code conforme qui désigne un casier/autre objet : l'ÉTAT
+    # du référentiel s'oppose au retour (409), pas la forme de la requête.
+    409: inline_serializer('StockScannerRetourConflit', {
+        'detail': serializers.CharField(),
+    }),
 })
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
@@ -193,6 +198,7 @@ def scanner_retour_fournisseur_view(request):
         return Response({'detail': str(exc)},
                         status=status.HTTP_404_NOT_FOUND)
     except ValueError as exc:
+        conflit = str(exc).startswith('Ce code désigne')
         return Response({'detail': str(exc)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_409_CONFLICT if conflit else status.HTTP_400_BAD_REQUEST)
     return Response(ligne)

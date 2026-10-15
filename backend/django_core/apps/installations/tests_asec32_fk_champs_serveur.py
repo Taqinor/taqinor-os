@@ -53,24 +53,25 @@ class InterventionInstallationTests(TestCase):
         return self.api.patch(
             f'{BASE}/interventions/{self.interv.pk}/', corps, format='json')
 
-    def test_technicien_etranger_400(self):
+    def test_technicien_etranger_404(self):
         r = self._patch_interv({'technicien': self.tech_b.pk})
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('technicien', r.data)
         self.assertNotIn('secret', str(r.data))
         self.interv.refresh_from_db()
         self.assertIsNone(self.interv.technicien_id)
         r2 = self.api.post(f'{BASE}/interventions/', {
-            'installation': self.inst.pk, 'technicien': self.tech_b.pk},
+            'installation': self.inst.pk, 'technicien': self.tech_b.pk,
+            'type_intervention': Intervention.Type.CONTROLE},
             format='json')
-        self.assertEqual(r2.status_code, 400, r2.content)
+        self.assertEqual(r2.status_code, 404, r2.content)
 
-    def test_equipe_etrangere_400(self):
+    def test_equipe_etrangere_404(self):
         r = self._patch_interv({'equipe_ref': self.equipe_b.pk})
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('equipe_ref', r.data)
         r2 = self._patch_interv({'equipe': [self.tech_b.pk]})
-        self.assertEqual(r2.status_code, 400, r2.content)
+        self.assertEqual(r2.status_code, 404, r2.content)
         self.assertIn('equipe', r2.data)
         self.interv.refresh_from_db()
         self.assertIsNone(self.interv.equipe_ref_id)

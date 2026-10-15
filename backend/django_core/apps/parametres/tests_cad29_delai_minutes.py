@@ -95,6 +95,19 @@ class DelaiMinutesBornesTests(TestCase):
         self.etape.refresh_from_db()
         self.assertEqual(self.etape.delai_minutes, 3)
 
+    def test_les_bornes_sont_portees_par_le_champ_publie(self):
+        """ENF11 (api-fuzz) — le minimum et le maximum sont ceux du CHAMP (donc
+        du schéma OpenAPI), pas seulement d'un ``validate_*`` : 2147483647
+        n'est plus « conforme » au contrat puis refusé."""
+        from apps.parametres.serializers_referentiels import (
+            CadenceRelanceEtapeCreationSerializer,
+            CadenceRelanceEtapeSerializer)
+        for classe in (CadenceRelanceEtapeSerializer,
+                       CadenceRelanceEtapeCreationSerializer):
+            champ = classe().fields['delai_minutes']
+            self.assertEqual((champ.min_value, champ.max_value),
+                             (MINUTES_MIN, MINUTES_MAX), classe.__name__)
+
     def test_laide_du_champ_annonce_bien_ces_bornes(self):
         """La règle du fichier et le comportement disent la même chose."""
         aide = CadenceRelanceEtape._meta.get_field(

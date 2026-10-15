@@ -128,19 +128,56 @@ class ProposerTest(_Base):
                                sum(sans.data['courbe24']), delta=0.01)
         self.assertEqual(avec.data['consumption']['methode'], 'courbe')
 
-    def test_csv_illisible_400_nomme(self):
+    def test_csv_illisible_409_nomme(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE (w4) : le CONTENU du CSV est un fait que le
+        # schéma publié ne peut pas dire -> 409 (la FORME du corps reste 400).
         reponse = self._proposer({'source': 'csv', 'csv': {
             'contenu': 'horodatage;kwh\n2026-01-01T00:00:00+01:00;0.12\n',
             'colonne': 'kwh_x'}})
 
-        self.assertEqual(reponse.status_code, 400, reponse.content[:300])
+        self.assertEqual(reponse.status_code, 409, reponse.content[:300])
         self.assertTrue(any(cle.startswith('csv.') for cle in reponse.data),
                         reponse.data)
 
-    def test_facture_non_finie_400_et_lead_absent_404(self):
+    def test_forme_du_corps_400_avant_le_contenu(self):
+        """La source, la classe, le TYPE des sous-documents et la présence de
+        celui de la source choisie : un 400 qui nomme le champ."""
+        for corps, champ in (
+                ({}, 'source'), ({'source': 'xml'}, 'source'),
+                ({'source': 'lead', 'classe': 'luxe'}, 'classe'),
+                ({'source': 'factures'}, 'factures'),
+                ({'source': 'factures', 'factures': 5}, 'factures'),
+                ({'source': 'appareils'}, 'appareils'),
+                ({'source': 'appareils', 'appareils': 0}, 'appareils'),
+                ({'source': 'appareils', 'appareils': [1]}, 'appareils'),
+                ({'source': 'appareils', 'appareils': [], 'charges': []},
+                 'charges'),
+                ({'source': 'csv'}, 'csv'),
+                ({'source': 'lead', 'ramadan': 'oui'}, 'ramadan')):
+            reponse = self._proposer(corps)
+            self.assertEqual(reponse.status_code, 400, (corps, reponse.data))
+            self.assertIn(champ, reponse.data)
+
+    def test_contenu_refuse_409_nomme_et_jamais_500(self):
+        for corps, champ in (
+                ({'source': 'appareils', 'appareils': APPAREILS,
+                  'charges': {'frigo': {}}}, 'charges.frigo'),
+                ({'source': 'appareils', 'appareils': APPAREILS,
+                  'charges': {'climatisation': 5}}, 'charges.climatisation'),
+                ({'source': 'appareils', 'appareils': APPAREILS,
+                  'charges': {'climatisation': {'zzz': 1}}},
+                 'charges.climatisation.zzz'),
+                ({'source': 'appareils', 'appareils': [{}]}, 'appareils'),
+                ({'source': 'csv', 'csv': {}}, 'csv')):
+            reponse = self._proposer(corps)
+            self.assertEqual(reponse.status_code, 409, (corps, reponse.data))
+            self.assertTrue(any(cle.startswith(champ) for cle in reponse.data),
+                            (corps, reponse.data))
+
+    def test_facture_non_finie_409_et_lead_absent_404(self):
         refus = self._proposer({'source': 'factures',
                                 'factures': {'classe': 'residentiel'}})
-        self.assertEqual(refus.status_code, 400)
+        self.assertEqual(refus.status_code, 409)
         self.assertIn('factures.hiver_mad', refus.data)
 
         sans_lead = Calepinage.objects.create(
@@ -166,6 +203,115 @@ class ProposerTest(_Base):
         lecture = self.api.get(URL_PROFILS)
         cles = [profil.get('cle') for profil in lecture.data['profils']]
         self.assertIn('releve_maison', cles)
+
+
+class ProfilsTypesPutEnBaseTest(BaseApiCalepinage):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — ``PUT parametres/profils-types/`` :
+    FORME fautive 400 (chemin ``profils[<rang>].<champ>``), état 409 (clé en
+    double, journée entièrement nulle), écriture 200 (la CI est la gate)."""
+
+    JOURNEE = [1.0] * 12 + [2.0] * 12
+
+    def _ligne(self, **surcharges):
+        ligne = {'cle': 'maison-1', 'courbe': {'annuel': self.JOURNEE},
+                 'provenance': 'Relevé de 12 factures, 2025.'}
+        ligne.update(surcharges)
+        return ligne
+
+    def test_forme_fautive_400_nomme_la_ligne(self):
+        reponse = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(), self._ligne(
+                cle='autre', provenance='  ')]}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('profils[1].provenance', reponse.data)
+        reponse = self.api.put(URL_PROFILS, {'profils': 'x'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('profils', reponse.data)
+
+    def test_etat_409_cle_en_double_et_journee_nulle(self):
+        doublon = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(),
+                                      self._ligne(cle='MAISON-1')]},
+            format='json')
+        self.assertEqual(doublon.status_code, 409, doublon.data)
+        self.assertIn('maison-1', doublon.data)
+        nulle = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(
+                courbe={'annuel': [0] * 24})]}, format='json')
+        self.assertEqual(nulle.status_code, 409, nulle.data)
+        self.assertIn('maison-1.courbe', nulle.data)
+
+    def test_ecriture_200_remplace_les_profils_de_la_societe(self):
+        reponse = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(famille='commercial')]},
+            format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        cles = [p['cle'] for p in reponse.data['profils']
+                if p['source'] == 'societe']
+        self.assertEqual(cles, ['maison-1'])
+
+
+class CorpsProposerPublieTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — le corps de ``consommation/proposer`` :
+    UN prédicat, publié ET appliqué, sans base."""
+
+    @staticmethod
+    def _valider(corps):
+        from apps.calepinage.serializers_conso import (
+            ConsommationProposerCorpsSerializer,
+        )
+
+        champs = ConsommationProposerCorpsSerializer(data=corps)
+        return champs.is_valid(), dict(champs.errors)
+
+    def test_formes_valides(self):
+        for corps in ({'source': 'lead'}, {'source': 'lead', 'classe':
+                                           'domestique', 'ramadan': {}},
+                      {'source': 'factures', 'factures': {},
+                       'classe': 'agricole'},
+                      {'source': 'appareils', 'appareils': []},
+                      {'source': 'appareils', 'appareils': APPAREILS,
+                       'charges': {'pac': {}}},
+                      {'source': 'csv', 'csv': {'contenu': ''}}):
+            self.assertTrue(self._valider(corps)[0], corps)
+
+    def test_formes_fautives_nomment_le_champ(self):
+        for corps, champ in (
+                (None, 'non_field_errors'), ([], 'non_field_errors'),
+                ({}, 'source'), ({'source': 5}, 'source'),
+                ({'source': 'lead', 'classe': ''}, 'classe'),
+                ({'source': 'lead', 'factures': []}, 'factures'),
+                ({'source': 'lead', 'appareils': {}}, 'appareils'),
+                ({'source': 'lead', 'appareils': ['x']}, 'appareils'),
+                ({'source': 'lead', 'csv': None}, 'csv'),
+                ({'source': 'factures'}, 'factures'),
+                ({'source': 'appareils'}, 'appareils'),
+                ({'source': 'csv'}, 'csv')):
+            valide, erreurs = self._valider(corps)
+            self.assertFalse(valide, corps)
+            self.assertIn(champ, erreurs)
+
+    def test_le_corps_ne_se_donne_qu_en_json(self):
+        # CI #1001 : en multipart / urlencoded un sous-document (objet, liste)
+        # ne se transporte pas (liste vide = aucune part) — le schéma publié
+        # ne déclare donc QUE ``application/json``.
+        from rest_framework.parsers import JSONParser
+
+        from apps.calepinage.views.consommation import proposer_consommation
+
+        self.assertEqual(proposer_consommation.kwargs['parser_classes'],
+                         [JSONParser])
+
+    def test_classes_saisissables_et_schema_oneof(self):
+        from apps.calepinage.serializers_conso import classes_tarifaires
+        from apps.parametres.tariff import CLASSES_INVERSION
+
+        self.assertEqual(set(classes_tarifaires()),
+                         {*CLASSES_INVERSION, 'domestique'})
+        from apps.calepinage.services.consommation import SOURCES_PROPOSITION
+        from apps.calepinage.serializers_conso import SOURCES_CONSOMMATION
+
+        self.assertEqual(SOURCES_CONSOMMATION, SOURCES_PROPOSITION)
 
 
 class SaisonsLuesParLaSimulationTest(SimpleTestCase):

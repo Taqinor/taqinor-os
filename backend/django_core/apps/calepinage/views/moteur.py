@@ -27,16 +27,31 @@ from __future__ import annotations
 
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.calepinage.version import SCHEMA_VERSION
 from core.permissions import ScopedPermission
 
 from ..permissions import CAL_GERER, CAL_VOIR
 
 __all__ = ['MoteurCalculerView', 'MoteurPoseView', 'MoteurResultatView',
            'document_de_la_demande', 'verdict_de_pose']
+
+
+class RefusDeDocument(APIException):
+    """409 — le document est un objet bien formé, mais le moteur ne peut pas en
+    tirer un calepinage (relevé incomplet, surface sans kit, plan incohérent…).
+
+    ERR-ENF11-FUZZ-CALEPINAGE (w4) : le schéma publié dit le squelette du
+    document (version, repère, surfaces, kits, paramètres) ; ce que seul le
+    moteur sait juger — la géométrie, les kits référencés, la cohérence du plan
+    — est un refus d'ÉTAT du document, pas une faute de forme. Le corps est
+    celui d'avant (champ nommé, motif français du moteur)."""
+
+    status_code = status.HTTP_409_CONFLICT
+    default_code = 'document_refuse'
 
 
 def document_de_la_demande(donnees):
@@ -92,16 +107,27 @@ _POSE_MESUREE = {
 #: L'entrée du moteur : le document de relevé, dont le vocabulaire est celui
 #: de ``core/calepinage/serialisation.py`` (contour, surfaces, kits,
 #: paramètres, obstacles, zones) — décrit ici section par section.
+#:
+#: ERR-ENF11-FUZZ-CALEPINAGE (w4) — le SQUELETTE est publié tel que le moteur
+#: l'exige (``core/calepinage/schema.json::required`` : version, repère,
+#: surfaces, kits, paramètres, dont au moins un kit) ; le contenu de chaque
+#: surface / kit — que seul le moteur sait juger — reste libre ici et son refus
+#: est un 409 (``RefusDeDocument``). ``schema_version`` n'admet que la version
+#: du moteur : plus ancienne, aucune migration ; plus récente, document d'un
+#: moteur plus neuf.
 _DOCUMENT_MOTEUR = {
-    'schema_version': serializers.IntegerField(required=False),
-    'repere': serializers.CharField(required=False, allow_blank=True),
+    'schema_version': serializers.IntegerField(
+        min_value=SCHEMA_VERSION, max_value=SCHEMA_VERSION),
+    'repere': serializers.CharField(allow_blank=True),
     'contour': serializers.ListField(child=serializers.ListField(
         child=serializers.FloatField()), required=False),
     'surfaces': serializers.ListField(child=serializers.DictField(),
-                                      required=False),
+                                      min_length=1),
     'kits': serializers.ListField(child=serializers.DictField(),
-                                  required=False),
-    'parametres': serializers.DictField(required=False),
+                                  min_length=1),
+    'parametres': inline_serializer('CalepinageMoteurParametres', {
+        'kits': serializers.ListField(child=serializers.CharField(),
+                                      min_length=1)}),
     'obstacles': serializers.ListField(child=serializers.DictField(),
                                        required=False),
     'zones': serializers.ListField(child=serializers.DictField(),
@@ -152,8 +178,10 @@ class MoteurCalculerView(APIView):
     * **200** — le résultat, à la forme figée par CAL2 ;
     * **202** — le travail dépasse le budget synchrone (corps : le coût
       estimé et où suivre le calcul) ;
-    * **400** — document invalide ou plan incohérent, avec le motif FRANÇAIS
-      du serveur et le champ fautif nommé.
+    * **400** — corps absent, vide ou non-objet ;
+    * **409** — document bien formé mais que le moteur refuse (relevé
+      incomplet, plan incohérent), avec le motif FRANÇAIS du serveur et le
+      champ fautif nommé.
     """
 
     permission_classes = [ScopedPermission]
@@ -189,8 +217,7 @@ class MoteurCalculerView(APIView):
         try:
             cout = cout_calepinage(document)
         except entree_invalide as erreur:
-            return Response({'entree': [str(erreur)]},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise RefusDeDocument({'entree': [str(erreur)]}) from erreur
         if not cout.synchrone:
             return Response(
                 accuse_de_travail_long(
@@ -202,13 +229,11 @@ class MoteurCalculerView(APIView):
             resultat = calepinage_json(document, company=company,
                                        user=request.user)
         except entree_invalide as erreur:
-            return Response({'entree': [str(erreur)]},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise RefusDeDocument({'entree': [str(erreur)]}) from erreur
         except incoherent as erreur:
-            return Response({'calepinage': [str(erreur)],
-                             'controle': erreur.controle,
-                             'repere': erreur.repere},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise RefusDeDocument({'calepinage': [str(erreur)],
+                                   'controle': erreur.controle,
+                                   'repere': erreur.repere}) from erreur
         resultat['depuis_cache'] = False
         return Response(resultat)
 
@@ -306,8 +331,10 @@ class MoteurPoseView(APIView):
     Elle n'écrit RIEN — aucun calepinage, aucune variante, aucun statut.
 
     * **200** — la pose, à la forme figée par le contrat ;
-    * **400** — document invalide ou plan incohérent, motif FRANÇAIS du
-      serveur, champ fautif nommé ;
+    * **400** — corps absent, vide ou non-objet ;
+    * **409** — document bien formé mais que le moteur refuse (relevé
+      incomplet, plan incohérent), motif FRANÇAIS du serveur, champ fautif
+      nommé ;
     * **403** — sans ``calepinage_gerer`` (le calcul est une écriture au sens
       des permissions, comme pour ``calculer``).
     """
@@ -363,9 +390,9 @@ class MoteurPoseView(APIView):
                                        user=request.user,
                                        suggestions=False)
         except entree_invalide as erreur:
-            raise ValidationError({'demande': [str(erreur)]}) from erreur
+            raise RefusDeDocument({'demande': [str(erreur)]}) from erreur
         except incoherent as erreur:
-            raise ValidationError({'calepinage': [str(erreur)],
+            raise RefusDeDocument({'calepinage': [str(erreur)],
                                    'controle': erreur.controle,
                                    'repere': erreur.repere}) from erreur
 

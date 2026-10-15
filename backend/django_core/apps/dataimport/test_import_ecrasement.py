@@ -141,7 +141,7 @@ class TestApercuEcrasements(EcrasementBase):
             {'file': self._csv('Nom,SKU\nPanneau,SKU-X\n'),
              'target': 'products', 'mode': 'upsert'},
             format='multipart')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
 
 class TestRemplissageSeulParDefaut(EcrasementBase):

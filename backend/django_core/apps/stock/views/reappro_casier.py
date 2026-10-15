@@ -10,6 +10,7 @@ from authentication.permissions import (
 )
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import INT, P, STR
+from ..utils.params import UniciteEn409Mixin
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import SeuilReapproCasier, TacheReapproInterne
@@ -18,8 +19,10 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class SeuilReapproCasierSerializer(CompanyScopedRelationsMixin,
+class SeuilReapproCasierSerializer(UniciteEn409Mixin, CompanyScopedRelationsMixin,
                                    ChampsTexteBooleenStricts, serializers.ModelSerializer):
+    # CI #997 fuzz (4) : un seul seuil par casier (OneToOne) -> le doublon est
+    # un 409 (état des données), plus un 400.
     bin_code = serializers.CharField(source='bin.code', read_only=True,
                                      default='')
 
@@ -85,6 +88,8 @@ class TacheReapproInterneViewSet(CompanyScopedModelViewSet):
         'produit', 'bin_cible', 'bin_source').all()
     serializer_class = TacheReapproInterneSerializer
     ordering = ['-created_at']
+
+    parser_classes = [JSONParser]  # CI #997 fuzz (4) : corps JSON seul, comme les autres écritures WMS
 
     def get_permissions(self):
         if self.action in READ_ACTIONS:

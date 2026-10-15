@@ -24,6 +24,8 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte, non_blanc
+
 from ..permissions import PeutGererCalepinage
 from .calepinages import CalepinageViewSet
 from .import_plan import CHAMP_FICHIER, SANS_FICHIER, _refus
@@ -40,7 +42,7 @@ REFUS_FOND_PLAN = ("Seuls les plans PNG et JPEG se posent en fond : un DXF ou "
 @extend_schema(
     request=inline_serializer('CalepinageFondPlanCorps', {
         CHAMP_FICHIER: serializers.ImageField(),
-        'base_empreinte': serializers.CharField()}),
+        'base_empreinte': ChaineStricte()}),
     responses={200: inline_serializer('CalepinageFondPlan', {
         'roof_layout': serializers.DictField(),
         'underlay': serializers.DictField(),
@@ -80,7 +82,11 @@ def fond_plan(self, request, pk=None):
 
     calepinage = self.get_object()  # L'OBJET D'ABORD (borné société)
 
-    base = str(request.data.get('base_empreinte') or '').strip()
+    # CI #997 (w4) — UN prédicat avec le schéma publié (``ChaineStricte`` :
+    # motif « non blanc, sans caractère nul ») : un jeton fait d'espaces ou
+    # de caractères nuls est « manquant », jamais comparé à l'empreinte.
+    base = request.data.get('base_empreinte')
+    base = base.strip() if isinstance(base, str) and non_blanc(base) else ''
     if not base:
         return _refus('base_empreinte',
                       "Jeton manquant : envoyez base_empreinte, l'empreinte "

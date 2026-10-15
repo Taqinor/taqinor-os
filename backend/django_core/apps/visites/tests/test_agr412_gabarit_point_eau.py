@@ -148,7 +148,8 @@ class VisitePointEauTests(VisiteTerrainBase):
     def test_un_slot_de_toit_est_refuse_sur_un_point_eau(self):
         visite_id = self.creer_visite()
         resp = self.poster_photo(visite_id, 'toiture_vue_generale')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ENF11 (visites) : slot/calage hors gabarit = conflit d'état (409), même corps `erreurs`.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('slot_code', resp.data['erreurs'])
 
     def test_l_agregat_egale_l_exemple_point_eau_du_contrat(self):

@@ -156,6 +156,17 @@ class EntiteApiTests(TestCase):
         r = self.client_api.patch(f'{base}{e.id}/', {'actif': False}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
 
+    def test_enf11_nom_et_code_non_texte_refuses(self):
+        """CI #1001 fuzz : `code: 0` / `nom: 0` ne sont plus convertis en chaîne
+        (400) ; le même corps avec des chaînes est créé (201)."""
+        base = '/api/django/entites/entites/'
+        for corps in ({'nom': 'A', 'code': 0}, {'nom': 0, 'code': 'A'}):
+            r = self.client_api.post(base, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        self.assertFalse(Entite.objects.filter(company=self.company).exists())
+        r = self.client_api.post(base, {'nom': '0', 'code': '0'}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
     def test_enf11_cycle_de_parent_409(self):
         """ENF11 — un rattachement en boucle est un conflit d'état (409)."""
         a = creer_entite(self.company, nom='A', code='A')
@@ -185,6 +196,26 @@ class EntiteApiTests(TestCase):
         r = self.client_api.post(url, {'fichier': binaire}, format='multipart')
         self.assertEqual(r.status_code, 200, r.content)
         self.assertTrue(r.data['erreurs'])
+
+    def test_importer_drapeaux_true_false_seulement(self):
+        """CI fuzz : ``ecraser=0`` était lu « faux » en silence alors que le
+        schéma publie un booléen ; le prédicat publié = le prédicat appliqué."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = '/api/django/entites/entites/importer/'
+        for nom in ('ecraser', 'commit'):
+            for brut in ('0', '1', 'oui', ''):
+                csv_ok = SimpleUploadedFile("e.csv", b"code,nom\nZ,Zed\n")
+                r = self.client_api.post(
+                    url, {'fichier': csv_ok, nom: brut}, format='multipart')
+                self.assertEqual(r.status_code, 400, (nom, brut, r.content))
+        self.assertFalse(Entite.objects.filter(code='Z').exists())
+        csv_ok = SimpleUploadedFile("e.csv", b"code,nom\nZ,Zed\n")
+        r = self.client_api.post(
+            url, {'fichier': csv_ok, 'commit': 'true', 'ecraser': 'False'},
+            format='multipart')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertTrue(
+            Entite.objects.filter(company=self.company, code='Z').exists())
 
 
 class EntiteImportTests(TestCase):

@@ -1338,7 +1338,7 @@ class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSer
         return attrs
 
 
-class TransfertStockSerializer(CompanyScopedRelationsMixin,
+class TransfertStockSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -1352,7 +1352,7 @@ class TransfertStockSerializer(CompanyScopedRelationsMixin,
     # NTRET7 — cycle en deux temps. Tous LECTURE SEULE : le statut n'avance
     # que par les actions dédiées (demander/expedier/receptionner), jamais par
     # un PATCH — sinon la garde d'ordre du cycle se contourne en une requête.
-    ecart_reception = serializers.IntegerField(read_only=True)
+    ecart_reception = serializers.IntegerField(read_only=True, allow_null=True)
 
     class Meta:
         model = TransfertStock
@@ -1797,6 +1797,11 @@ class LigneReceptionFournisseurSerializer(CompanyScopedRelationsMixin,
     produit_nom = serializers.SerializerMethodField()
     produit_sku = serializers.SerializerMethodField()
     designation = serializers.SerializerMethodField()
+    # CI #997 fuzz — FG61 : « liste de chaînes » (aide du modèle), mais le champ
+    # JSON acceptait n'importe quoi (``1``, ``true``…) ; les lecteurs de séries
+    # (traçabilité, étiquettes, SerieEntrepot) itèrent la valeur -> 500.
+    numeros_serie = serializers.ListField(
+        child=ChaineStricte(max_length=100), allow_null=True, required=False)
 
     class Meta:
         model = LigneReceptionFournisseur
@@ -2466,9 +2471,9 @@ class KitProduitSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixi
         for c in composants_data:
             sk = c.get('composant_kit')
             if sk is not None and sk.id == kit_id:
-                raise serializers.ValidationError(
-                    {'composants': 'Un kit ne peut pas se contenir '
-                                   'lui-même.'})
+                # CI #997 fuzz — le corps est conforme au schéma ; c'est l'état
+                # (l'id du kit désigné par l'URL) qui s'oppose : 409, pas 400.
+                raise ConflitEtat('Un kit ne peut pas se contenir lui-même.')
 
     def _snapshot(self, kit):
         # XMFG18 — snapshot auto de la composition à chaque modification des
@@ -2482,7 +2487,6 @@ class KitProduitSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixi
     def create(self, validated_data):
         composants_data = validated_data.pop('composants', [])
         kit = KitProduit.objects.create(**validated_data)
-        self._validate_no_direct_self_reference(kit.id, composants_data)
         for c in composants_data:
             KitComposant.objects.create(kit=kit, **c)
         self._snapshot(kit)
@@ -2870,7 +2874,7 @@ class ModeleBonCommandeFournisseurSerializer(
         return instance
 
 
-class RegleCodeBarresSerializer(CompanyScopedRelationsMixin,
+class RegleCodeBarresSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                 serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

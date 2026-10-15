@@ -19,6 +19,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier
+from core.openapi_operations import SchemaObjetUnique
 
 from . import services
 from .selectors import (
@@ -101,6 +102,8 @@ _CLE_TOUR = [OpenApiParameter(
 class OnboardingProgressViewSet(viewsets.ViewSet):
     """Checklist « Premiers pas » de l'utilisateur courant (company-scopée)."""
     permission_classes = [IsAuthenticated]
+    #: ``list`` rend le résumé (UN objet), pas un tableau d'items.
+    schema = SchemaObjetUnique()
 
     def _company(self, request):
         return getattr(request.user, 'company', None)

@@ -161,7 +161,7 @@
         ],
         "note": ""
       },
-      "exemple_erreur_400": {
+      "exemple_erreur_409": {
         "detail": "Aucun besoin à regrouper dans cette vague."
       }
     },

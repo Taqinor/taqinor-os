@@ -452,22 +452,47 @@ def _xlsx_minimal():
     return tampon.getvalue()
 
 
-def _png_minimal():
-    """PNG 2x2 NOIR décodable par Pillow (une page NON blanche : la séparation
-    de lots la prendrait sinon pour une page séparatrice)."""
+def _png_minimal(cote=2):
+    """PNG ``cote`` x ``cote`` NOIR décodable par Pillow (une page NON blanche :
+    la séparation de lots la prendrait sinon pour une page séparatrice)."""
     def bloc(type_, donnees):
         return (struct.pack('>I', len(donnees)) + type_ + donnees
                 + struct.pack('>I', zlib.crc32(type_ + donnees) & 0xffffffff))
-    ligne = b'\x00' + b'\x00\x00\x00' * 2
+    ligne = b'\x00' + b'\x00\x00\x00' * cote
     return (b'\x89PNG\r\n\x1a\n'
-            + bloc(b'IHDR', struct.pack('>IIBBBBB', 2, 2, 8, 2, 0, 0, 0))
-            + bloc(b'IDAT', zlib.compress(ligne * 2)) + bloc(b'IEND', b''))
+            + bloc(b'IHDR', struct.pack('>IIBBBBB', cote, cote, 8, 2, 0, 0, 0))
+            + bloc(b'IDAT', zlib.compress(ligne * cote)) + bloc(b'IEND', b''))
 
 
 _PNG_MINIMAL = _png_minimal()
+# CI #997 (w4) — les dépôts d'image du calepinage (rendu de toiture, photo de
+# site, fond de plan, carte d'ombrage) lisent les octets magiques ; le dépôt
+# d'image-document décode en plus l'image et exige 8 px de côté au moins.
+_PNG_CAPTURE = _png_minimal(8)
+# Plan importé (calepinage importer-plan) : un DXF R12 minimal dont le calque
+# « 0 » porte UN contour fermé (rectangle 10 x 5, unité m), lisible par
+# ``analyser_plan`` ; le calque et le rang d'entité du cas restent ceux du
+# formulaire.
+_DXF_PLAN = ('\n'.join((
+    '0', 'SECTION', '2', 'HEADER', '9', '$ACADVER', '1', 'AC1009',
+    '9', '$INSUNITS', '70', '6', '0', 'ENDSEC', '0', 'SECTION', '2',
+    'ENTITIES', '0', 'POLYLINE', '8', '0', '66', '1', '70', '1',
+    '0', 'VERTEX', '8', '0', '10', '0', '20', '0', '30', '0',
+    '0', 'VERTEX', '8', '0', '10', '10', '20', '0', '30', '0',
+    '0', 'VERTEX', '8', '0', '10', '10', '20', '5', '30', '0',
+    '0', 'VERTEX', '8', '0', '10', '0', '20', '5', '30', '0',
+    '0', 'SEQEND', '8', '0', '0', 'ENDSEC', '0', 'EOF')) + '\n').encode('ascii')
+# Série météo horaire d'un fournisseur (calepinage meteo-fichier) : colonnes
+# obligatoires ``horodatage`` (fuseau explicite) et ``gi_w_m2``, deux heures.
+_CSV_METEO = (b'horodatage;gi_w_m2\r\n2021-01-15T12:00:00+00:00;100\r\n'
+              b'2021-01-15T13:00:00+00:00;120\r\n')
 # CSV de métadonnées d'un import en masse : en-têtes + UNE ligne (``nom`` requis).
 _CSV_MINIMAL = b'nom,description\r\nFuzz,Import\r\n'
+# Fichier d'un import générique (dry-run/commit) : un CSV à en-têtes seuls, lisible
+# pour TOUTE cible ; des octets quelconques (NUL…) sont « Lecture impossible ».
+_CSV_IMPORT = b'nom,email\r\n'
 _GED = r'^/api/django/ged/documents/'
+_CALEPINAGE = r'^/api/django/calepinage/calepinages/\{[^}]+\}/'
 # (chemin, méthodes, {champ du corps: octets d'un fichier valide})
 _FICHIERS_VALIDES = (
     (re.compile(r'^/api/django/calepinage/gabarits-dossiers/'),
@@ -488,10 +513,58 @@ _FICHIERS_VALIDES = (
     # fichier ``fichier`` (le serveur lit les octets magiques).
     (re.compile(r'^/api/django/portail/documents-client-portail/'),
      {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
+    # ERR-ENF11-FUZZ-CRM — scan d'une carte de visite : une PHOTO (octets
+    # magiques PNG/JPEG/WebP lus par ``scan_carte_visite``) ; des octets vides
+    # = « Aucune image fournie » (400). Sans clé OCR, le serveur répond 503.
+    (re.compile(r'^/api/django/crm/leads/scan-carte/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
+    # ERR-ENF11-FUZZ-CRM — « pièce reçue » en multipart : le fichier facultatif
+    # est lu par ``store_attachment`` (octets magiques), jamais des octets vides.
+    (re.compile(r'^/api/django/crm/relance-etapes/\{[^/]+\}/piece-recue/$'), {'POST'},
+     {'fichier': _PDF_MINIMAL}),
+    # ERR-ENF11-FUZZ-VISITES — photo d'un slot de checklist : le serveur lit
+    # les octets (``store_attachment`` : image PNG/JPEG/WebP).
+    (re.compile(r'^/api/django/visites/visites/\{[^/]+\}/photos/$'), {'POST'},
+     {'fichier': _PNG_MINIMAL}),
+    # ERR-ENF11-FUZZ-AUTOMATION — pièce jointe d'une demande d'approbation : le
+    # part ``file`` nommé mais VIDE est refusé par le stockage (400) alors que
+    # le schéma n'exprime que ``format: binary``.
+    (re.compile(r'^/api/django/automation/approval-requests/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
+    # CI #997 (w4) — les dépôts de fichier d'UN calepinage : image de rendu,
+    # photo de site, fond de plan, carte d'ombrage (PNG), plan importé (DXF) et
+    # série météo (CSV). Un part vide ou quelconque y est un refus 400.
+    (re.compile(_CALEPINAGE + r'(roof-image|photos|fond-plan|image-document)/$'),
+     {'POST'}, {'image': _PNG_CAPTURE, 'photo': _PNG_CAPTURE,
+                'fichier': _PNG_CAPTURE}),
+    (re.compile(_CALEPINAGE + r'importer-plan/$'), {'POST'},
+     {'fichier': _DXF_PLAN}),
+    (re.compile(_CALEPINAGE + r'meteo-fichier/$'), {'POST'},
+     {'fichier': _CSV_METEO}),
+    (re.compile(r'^/api/django/imports/(dry-run|commit)/$'), {'POST'},
+     {'file': _CSV_IMPORT}),
+    # CI #1001 fuzz — réimport d'un CSV de traductions / de jours fériés : des
+    # octets quelconques sont « Lecture du fichier impossible » (400), le schéma
+    # ne dit que ``format: binary``. Un CSV à en-têtes seuls est lisible.
+    (re.compile(r'^/api/django/imports/(traductions|feries)/import/$'), {'POST'},
+     {'file': _CSV_IMPORT}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
      {'file': b'PVObject_=pvModule\n'}),
+    # Relevé de toiture / drone d'un chantier : ``store_attachment`` lit les
+    # octets magiques (PDF, PNG, JPEG, WebP), inexprimables dans le schéma.
+    (re.compile(r'^/api/django/installations/chantiers/\{[^}]+\}/ajouter-releve/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
+    # CI #997 (4) - photo d'un produit : le serveur valide les octets magiques
+    # (PDF, PNG, JPEG, WebP) ; un part sans octets valides est « Format non supporté ».
+    (re.compile(r'^/api/django/stock/produits/\{[^}]+\}/photo/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
+    # ENF11 (parametres) — logo et signature de la société : le serveur lit les
+    # octets magiques (PNG, JPEG ou WebP), inexprimable dans le schéma ; sans
+    # image lisible, un part « conforme » répond « Format non supporté » (400).
+    (re.compile(r'^/api/django/parametres/upload-(logo|signature)/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
 )
 
 

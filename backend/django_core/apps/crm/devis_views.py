@@ -58,8 +58,12 @@ class LeadDevisActionsMixin:
         from apps.ventes.utils.whatsapp import build_devis_whatsapp
 
         from .fiche_bulk import coerce_id_list
+        from .params_requete import corps_objet
 
-        raw_ids = request.data.get('devis_ids') or []
+        # CI #1001 (fuzz) — un corps tableau (``[null, null]``) n'a pas de
+        # ``.get`` : 400 « objet JSON attendu » au lieu d'un 500.
+        donnees = corps_objet(request)
+        raw_ids = donnees.get('devis_ids') or []
         if not isinstance(raw_ids, list) or not raw_ids:
             return Response(
                 {'detail': 'Sélectionnez au moins un devis.'},
@@ -103,7 +107,7 @@ class LeadDevisActionsMixin:
                                 status=status.HTTP_400_BAD_REQUEST), None
         # Langue du message : la valeur explicite de la requête l'emporte ;
         # sinon on retombe sur la langue préférée du lead, puis sur le FR.
-        langue = request.data.get('langue')
+        langue = donnees.get('langue')
         if langue is None:
             langue = lead.langue_preferee or 'fr'
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)

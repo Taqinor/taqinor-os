@@ -46,6 +46,27 @@ class AccessReviewTests(TenantAPITestCase):
                 self.assertIn(champ, r.json())
         self.assertFalse(AccessReviewCampaign.objects.exists())
 
+    def test_modification_complete_textes_stricts_et_listes_paginees(self):
+        # ERR-ENF11-FUZZ-ACCESSREVIEW — la MODIFICATION complète suit la même
+        # règle que la création (un nombre n'est pas converti en texte) et les
+        # deux listes refusent un ``page_size`` qui n'est pas UN entier.
+        campaign = AccessReviewCampaign.objects.create(
+            company=self.company, nom='c', perimetre='all')
+        api = self._admin()
+        r = api.put(
+            f'{self.BASE}{campaign.id}/',
+            {'nom': 'c', 'perimetre': 'all', 'perimetre_ref': 0},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('perimetre_ref', r.json())
+        campaign.refresh_from_db()
+        self.assertEqual(campaign.perimetre_ref, '')
+        for liste in (self.BASE, '/api/django/accessreview/sod-rules/'):
+            for requete in ('?page_size=null', '?page_size=null&page_size=null'):
+                r = api.get(liste + requete)
+                self.assertEqual(r.status_code, 400, (liste, r.content))
+            self.assertEqual(api.get(liste).status_code, 200)
+
     def test_non_admin_forbidden(self):
         r = self.client_as().post(self.BASE, {'nom': 'x'}, format='json')
         self.assertEqual(r.status_code, 403)

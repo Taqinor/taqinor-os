@@ -28,26 +28,23 @@ Forme : ``contract_samples/calepinage_projet_json.json``.
 """
 from __future__ import annotations
 
+from drf_spectacular.extensions import OpenApiSerializerExtension
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
+from core.champs_stricts import BooleenStrict, ChaineStricte
+
 from ..permissions import PeutGererCalepinage
-from ..services.export_projet import ImportProjetRefuse, importer_projet
+from ..serializers import corps_obligatoire
+from ..services.export_projet import (
+    FORMATS_IMPORTABLES, ImportProjetRefuse, importer_projet,
+)
 from .calepinages import CalepinageViewSet
 
 __all__ = ['import_projet']
-
-
-def _identifiant(brut):
-    """Un identifiant entier, ou ``None`` — jamais une valeur devinée."""
-    if brut in (None, '') or isinstance(brut, bool):
-        return None
-    try:
-        return int(brut)
-    except (TypeError, ValueError):
-        return None
 
 
 #: La forme DÉCLARÉE de la réponse (jamais un « type: object » vide —
@@ -69,32 +66,87 @@ IMPORT_PROJET_SCHEMA = inline_serializer('CalepinageImportProjet', {
 })
 
 
+#: Plus grand identifiant d'une clé primaire entière (``AutoField`` PostgreSQL,
+#: entier 32 bits) : au-delà, la requête ne peut désigner aucune ligne.
+ID_MAX = 2_147_483_647
+
+
+# ERR-ENF11-FUZZ-CALEPINAGE (w4) — le corps de ``import-projet``, UN seul
+# prédicat publié ET appliqué : un fichier OBJET portant une ``format_version``
+# lue par ce serveur ; ``apercu`` un vrai booléen ; EXACTEMENT un de ``lead`` /
+# ``client`` (entiers 1..2^31-1) ; ``titre`` d'au plus 200 signes (la colonne).
+# Le contenu du fichier (conception, postes, variantes, coûts, saisies) et
+# l'existence du lead / client sont des faits que ce schéma ne peut pas dire :
+# 409 / 404 (``ImportProjetRefuse.statut``). (Commentaire et non docstring :
+# elle fuiterait dans la description OpenAPI.)
+class ProjetFichierSerializer(serializers.Serializer):
+    format_version = serializers.IntegerField(
+        min_value=min(FORMATS_IMPORTABLES), max_value=max(FORMATS_IMPORTABLES))
+
+
+class ImportProjetChampsSerializer(serializers.Serializer):
+    apercu = BooleenStrict(required=False)
+    lead = serializers.IntegerField(required=False, min_value=1,
+                                    max_value=ID_MAX)
+    client = serializers.IntegerField(required=False, min_value=1,
+                                      max_value=ID_MAX)
+    titre = ChaineStricte(required=False, allow_blank=True, max_length=200,
+                          trim_whitespace=False)
+
+    def validate(self, attrs):
+        if ('lead' in attrs) == ('client' in attrs):
+            raise serializers.ValidationError({
+                'lead': ["Indiquez le lead OU le client de votre société "
+                         "auquel rattacher le projet importé (un seul des "
+                         "deux)."]})
+        return attrs
+
+
+class CalepinageImportProjetCorpsSerializer(ImportProjetChampsSerializer):
+    projet = ProjetFichierSerializer()
+
+
+class _RattachementUniquePublie(OpenApiSerializerExtension):
+    """« Exactement un de lead / client » PUBLIÉ (``oneOf`` de deux
+    ``required``) : sans cela ``{projet}`` seul, ou les deux ensemble, étaient
+    des corps « conformes » refusés en 400."""
+    target_class = CalepinageImportProjetCorpsSerializer
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+        return {**schema, 'oneOf': [{'required': ['lead']},
+                                    {'required': ['client']}]}
+
+
 @extend_schema(
-    request=inline_serializer('CalepinageImportProjetCorps', {
-        'projet': serializers.JSONField(),
-        'apercu': serializers.BooleanField(required=False),
-        'lead': serializers.IntegerField(required=False),
-        'client': serializers.IntegerField(required=False),
-        'titre': serializers.CharField(required=False, allow_blank=True)}),
+    request=CalepinageImportProjetCorpsSerializer,
     responses={200: IMPORT_PROJET_SCHEMA, 201: IMPORT_PROJET_SCHEMA})
+@corps_obligatoire
 @action(detail=False, methods=['post'], url_path='import-projet',
-        permission_classes=[PeutGererCalepinage])
+        permission_classes=[PeutGererCalepinage],
+        parser_classes=[JSONParser])  # ``projet`` est un objet JSON imbriqué
 def import_projet(self, request):
     """CALX370 — réimporte le fichier de projet (nouveau calepinage)."""
-    corps = request.data if isinstance(request.data, dict) else {}
-    apercu = corps.get('apercu') is True or str(
-        corps.get('apercu') or '').lower() in ('1', 'true', 'oui')
+    donnees = request.data if isinstance(request.data, dict) else {}
+    # Le fichier lui-même est jugé par le service (``projet`` non objet,
+    # version inconnue : 400 nommé, motif français) ; ici, la forme du reste.
+    champs = ImportProjetChampsSerializer(data=donnees)
+    champs.is_valid(raise_exception=True)
+    corps = champs.validated_data
+    apercu = corps.get('apercu') is True
     try:
         resume = importer_projet(
-            corps.get('projet'), getattr(request.user, 'company', None),
+            donnees.get('projet'), getattr(request.user, 'company', None),
             user=request.user,
-            lead_id=_identifiant(corps.get('lead')),
-            client_id=_identifiant(corps.get('client')),
-            titre=str(corps.get('titre') or ''),
+            lead_id=corps.get('lead'), client_id=corps.get('client'),
+            titre=corps.get('titre') or '',
             apercu=apercu)
     except ImportProjetRefuse as refus:
         return Response({refus.champ or 'projet': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=refus.statut)
     return Response(resume, status=(status.HTTP_200_OK if apercu
                                     else status.HTTP_201_CREATED))
 

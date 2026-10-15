@@ -121,7 +121,9 @@ class ReinitialisationMotDePasseTests(TestCase):
         resp = self.api.post(
             '/api/django/users/', {'username': 'mdp_faible', 'password': 'a'},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # CI #1001 fuzz : corps conforme, politique de la société en conflit
+        # -> 409 (comme ``register/``), plus un 400.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('password', resp.data)
         self.assertFalse(User.objects.filter(username='mdp_faible').exists())
 

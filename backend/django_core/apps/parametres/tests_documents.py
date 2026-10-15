@@ -115,6 +115,27 @@ class DocumentTemplatesApiTest(TestCase):
             PUT_URL, {'cgv_bullets': 'pas-une-liste'}, format='json')
         self.assertEqual(r.status_code, 400)
 
+    def test_formes_json_publiees_sont_tenues(self):
+        # ENF11 (api-fuzz) — ``cgv_bullets`` (liste de textes ou null) et
+        # ``cgv_par_mode`` (objet commercial/industriel, jamais null) sont
+        # publiés au schéma ; toute autre forme répond 400, et un texte ne
+        # prend plus un nombre.
+        for corps in ({'cgv_bullets': True}, {'cgv_bullets': ['a', 1]},
+                      {'cgv_bullets': ''}, {'cgv_par_mode': None},
+                      {'cgv_par_mode': ''}, {'cgv_par_mode': {'autre': {}}},
+                      {'cgv_par_mode': {'commercial': {'titre': 3}}},
+                      {'cgv_par_mode': {'commercial': {'bullets': [1]}}},
+                      {'cgv_titre': 0}):
+            r = self.api.patch(PUT_URL, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        r = self.api.patch(PUT_URL, {
+            'cgv_bullets': None,
+            'cgv_par_mode': {'commercial': None,
+                             'industriel': {'titre': None, 'bullets': None}},
+        }, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['cgv_par_mode'], {})
+
     def test_cgv_bullets_list_persists(self):
         r = self.api.patch(
             PUT_URL, {'cgv_bullets': ['Puce A', 'Puce B']}, format='json')

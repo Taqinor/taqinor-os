@@ -269,12 +269,26 @@ class SuiviActionTests(_Base):
         self.assertEqual(self._get(date_debut='07/09/2026').status_code, 400)
 
     def test_une_periode_inversee_est_refusee(self):
+        # ERR-ENF11-FUZZ-CRM — deux dates conformes dont l'écart est refusé :
+        # règle entre deux paramètres, 409 (même corps nommant ``date_fin``).
         resp = self._get(date_debut='2026-09-13', date_fin='2026-09-07')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('date_fin', resp.data)
 
     def test_une_periode_trop_longue_est_refusee(self):
         resp = self._get(date_debut='2026-09-01', date_fin='2026-11-05')
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('date_fin', resp.data)
+
+    def test_un_responsable_negatif_est_refuse_sans_erreur_serveur(self):
+        resp = self._get(owner='-5')
         self.assertEqual(resp.status_code, 400)
+        # CI #1001 fuzz : le schéma publie ``minimum: 1`` — ``0`` ou un texte
+        # sont refusés (400), jamais lus comme « tous les responsables ».
+        for refuse in ('0', 'abc', '2.5'):
+            resp = self._get(owner=refuse)
+            self.assertEqual(resp.status_code, 400, (refuse, resp.content))
+        self.assertEqual(self._get(owner='1').status_code, 200)
 
     def test_soixante_deux_jours_passent(self):
         resp = self._get(date_debut='2026-09-01', date_fin='2026-11-02')

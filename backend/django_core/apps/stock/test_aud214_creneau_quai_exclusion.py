@@ -213,7 +213,7 @@ class Aud214CourseSurLeCreneauTests(Aud214Base):
         self.assertEqual(seconde.status_code, 400)
         self.assertIn('vient d\'être réservé', seconde.data['detail'])
 
-    def test_l_api_interne_repond_400_et_pas_500(self):
+    def test_l_api_interne_repond_409_et_pas_500(self):
         api = APIClient()
         api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
@@ -227,7 +227,7 @@ class Aud214CourseSurLeCreneauTests(Aud214Base):
             seconde = api.post(URL_RDV, corps, format='json')
 
         self.assertEqual(premiere.status_code, 201)
-        self.assertEqual(seconde.status_code, 400)
+        self.assertEqual(seconde.status_code, 409)
         self.assertEqual(
             RendezVousTransporteur.objects.filter(quai=self.quai).count(), 1)
 

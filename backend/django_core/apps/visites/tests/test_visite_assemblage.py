@@ -165,7 +165,8 @@ class ActionApiTests(AssemblageBase):
             f'/api/django/visites/visites/{self.visite_id}/calage/',
             {'texture_calage': {'coins': [[33.5, -7.6], [33.5, -7.5]]}},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ENF11 (visites) : slot/calage hors gabarit = conflit d'état (409), même corps `erreurs`.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('texture_calage', resp.data['erreurs'])
 
     def test_calage_enregistre_les_quatre_coins(self):

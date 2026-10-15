@@ -42,7 +42,8 @@ logger = logging.getLogger(__name__)
 #: la requête en 500.
 MAX_OCTETS = 15 * 1024 * 1024
 
-__all__ = ['PhotoRefusee', 'ajouter_photo_site', 'calage_photo_site',
+__all__ = ['PhotoRefusee', 'PhotoEnConflit', 'ajouter_photo_site',
+           'calage_photo_site',
            'modifier_photo_site', 'supprimer_photo_site',
            'photo_en_ligne', 'lire_octets_piece', 'MAX_OCTETS']
 
@@ -53,6 +54,12 @@ class PhotoRefusee(ValueError):
     def __init__(self, message, *, champ=''):
         super().__init__(message)
         self.champ = champ
+
+
+class PhotoEnConflit(PhotoRefusee):
+    """Refus que la FORME du corps ne peut pas porter (date de prise de vue
+    FUTURE : elle dépend du jour du serveur) — 409 à la création, comme tout
+    refus d'état ; la correction (PATCH) la rend en 400 comme avant."""
 
 
 def _date_saisie(valeur):
@@ -76,7 +83,7 @@ def _date_saisie(valeur):
                 "Date de prise de vue illisible : attendu AAAA-MM-JJ "
                 f"(reçu : « {texte} »).", champ='prise_le')
     if prise_le > timezone.localdate():
-        raise PhotoRefusee(
+        raise PhotoEnConflit(
             "La date de prise de vue ne peut pas être dans le futur "
             f"(reçu : {prise_le:%d/%m/%Y}).", champ='prise_le')
     return prise_le

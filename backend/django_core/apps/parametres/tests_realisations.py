@@ -128,6 +128,28 @@ class ApiTests(TestCase):
         realisation = Realisation.objects.get(pk=resp.data['id'])
         self.assertEqual(realisation.company_id, self.company.id)
 
+    def test_url_au_predicat_du_schema_hote_long_accepte_blancs_refuses(self):
+        """ENF11 (api-fuzz) — schéma et serveur partagent le MÊME prédicat
+        d'URL : un hôte à étiquettes de 63 signes (conforme) est accepté ;
+        blancs de bord, schéma non http(s) ou lien vide sur ``url_page`` : 400."""
+        long_hote = 'https://' + ('a' * 63) + '.' + ('b' * 63) + '.ma/r/'
+        resp = self.api.post(URL, {
+            'titre': 'Hôte long', 'ville': 'Bouskoura', 'url_page': long_hote,
+            'lien_suivi': long_hote + 'suivi'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        for faute in (' https://taqinor.ma/r/', 'ftp://taqinor.ma/r/',
+                      'https://taqinor.ma/a b', ''):
+            resp = self.api.post(URL, {
+                'titre': 'Faute', 'ville': 'Bouskoura', 'url_page': faute},
+                format='json')
+            self.assertEqual(resp.status_code, 400, (faute, resp.data))
+            self.assertIn('url_page', resp.data)
+        resp = self.api.post(URL, {
+            'titre': 'Lien vide', 'ville': 'Bouskoura',
+            'url_page': 'https://taqinor.ma/realisations/lien-vide/',
+            'lien_video': ''}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
     def test_le_champ_video_est_optionnel_et_expose(self):
         """CAD95 (21/09/2026) — le champ vidéo existe, reste VIDE sans qu'on
         le saisisse (aucune vidéo requise pour qu'une réalisation serve de

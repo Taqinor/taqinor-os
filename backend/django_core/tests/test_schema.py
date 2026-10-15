@@ -126,10 +126,14 @@ class OpenAPISchemaGenerationTests(TestCase):
             any(b.get('pattern') == MOTIF_HEURE_RENDUE for b in branches),
             nullable)
         lien = profil['lien_avis_google']
+        # ENF11 (parametres, vague 4) : en LECTURE un texte libre borné à la
+        # colonne ; en REQUÊTE le prédicat http(s) partagé (vide autorisé).
         self.assertNotIn('format', lien, lien)
-        self.assertIn({'maxLength': 0}, lien['anyOf'])
-        self.assertIn({'format': 'uri'}, lien['anyOf'])
+        self.assertNotIn('anyOf', lien, lien)
+        self.assertEqual(lien.get('maxLength'), 500)
         requete = schemas['CompanyProfileRequest']['properties']
+        self.assertTrue(requete['lien_avis_google'].get('pattern', '').startswith('^(|https?://'),
+                        requete['lien_avis_google'])
         self.assertEqual(requete['appel_heure_debut'].get('format'), 'time')
 
     def test_chaine_stricte_exclut_nul_cote_requete_seulement(self):

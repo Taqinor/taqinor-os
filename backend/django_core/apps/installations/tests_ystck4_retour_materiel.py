@@ -202,4 +202,4 @@ class TestRetourMaterielEndpoint(TestCase):
         r = self.api.post(
             f'{BASE}/retours-materiel/',
             {'installation': other_inst.id}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)

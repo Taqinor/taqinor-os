@@ -14,10 +14,11 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_field, extend_schema_view
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import BINARY, INT, OBJET, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
@@ -29,8 +30,8 @@ from ..utils.params import UniciteEn409Mixin
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 
-class DocumentFournisseurSerializer(CompanyScopedRelationsMixin,
-                                    serializers.ModelSerializer):
+class DocumentFournisseurSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
+                                    ChampsTexteBooleenStricts, serializers.ModelSerializer):
     type_document_display = serializers.CharField(
         source='get_type_document_display', read_only=True, default=None)
     est_valide = serializers.SerializerMethodField()
@@ -205,7 +206,9 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
     """
     queryset = DocumentFournisseur.objects.select_related('dossier').all()
     serializer_class = DocumentFournisseurSerializer
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
+    # CI #997 fuzz — le schéma publie du JSON ; un corps formulaire lisait ``''``
+    # comme null (date_expiration=) hors schéma. Seul `televerser` lit du multipart.
+    parser_classes = [JSONParser]
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'telecharger'):
@@ -232,7 +235,7 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
     @extend_schema(request={'multipart/form-data': corps('DocumentFournisseurTeleverserCorps',
                                                          file=serializers.FileField())},
                    responses=DocumentFournisseurSerializer)
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser])
     def televerser(self, request, pk=None):
         """NTP2P7 — attache le fichier de la pièce (MinIO, clé par société).
 

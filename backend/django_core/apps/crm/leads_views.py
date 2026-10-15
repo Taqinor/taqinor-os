@@ -231,7 +231,7 @@ class LeadIntakeActionsMixin:
         ])
 
     @extend_schema(request={'multipart/form-data': sd.corps('CrmScanCarteRequest', file=serializers.FileField())},
-                   responses=sd.OBJ)
+                   responses={200: sd.OBJ, 503: sd.corps('CrmScanCarteIndisponible', detail=serializers.CharField())})
     @action(detail=False, methods=['post'], url_path='scan-carte',
             permission_classes=[IsAnyRole],
             parser_classes=[MultiPartParser],

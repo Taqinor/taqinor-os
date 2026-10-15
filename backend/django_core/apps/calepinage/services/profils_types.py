@@ -30,9 +30,12 @@ Module PUR côté calcul ; les lectures en base passent par le modèle du module
 """
 from __future__ import annotations
 
-__all__ = ['ProfilInvalide', 'SOURCE_REPLI', 'SOURCE_SOCIETE',
-           'courbe_journaliere', 'enregistrer_profils',
-           'profil_depuis_import', 'profils_de_societe']
+from core.champs_stricts import non_blanc
+
+__all__ = ['ProfilEnConflit', 'ProfilInvalide', 'SOURCE_REPLI',
+           'SOURCE_SOCIETE', 'courbe_journaliere', 'enregistrer_profils',
+           'profil_depuis_import', 'profils_de_societe',
+           'valider_forme_profils']
 
 
 class ProfilInvalide(ValueError):
@@ -42,6 +45,12 @@ class ProfilInvalide(ValueError):
         super().__init__(message)
         self.champ = champ
         self.motif = message
+
+
+class ProfilEnConflit(ProfilInvalide):
+    """Refus d'ÉTAT d'un profil de FORME conforme (clé en double après mise en
+    minuscules, journée entièrement nulle) : le schéma publié du ``PUT`` ne
+    peut pas le dire, la porte rend 409 (la forme fautive reste un 400)."""
 
 
 SOURCE_SOCIETE = 'societe'
@@ -172,6 +181,116 @@ def profils_de_societe(company, *, inclure_replis=True):
     return profils
 
 
+def _refus_forme(rang, nom, message):
+    return ProfilInvalide(message, champ=f'profils[{rang}].{nom}')
+
+
+def _nombre_de_courbe(valeur):
+    import math
+
+    return (not isinstance(valeur, bool) and isinstance(valeur, (int, float))
+            and math.isfinite(valeur) and valeur >= 0)
+
+
+def _forme_courbe24(valeurs, heures):
+    return (isinstance(valeurs, list) and len(valeurs) == heures
+            and all(_nombre_de_courbe(v) for v in valeurs))
+
+
+def _forme_courbe(courbe, modele):
+    """Le message de refus de FORME d'une courbe, ou ``None`` — le prédicat
+    PUBLIÉ au schéma (``serializers_conso.COURBE_PROFIL_SCHEMA``) : au moins
+    une saison connue, chacune une liste de ``HEURES`` nombres >= 0 OU, par type
+    de jour connu (au moins un), la même liste."""
+    if not isinstance(courbe, dict) or not courbe:
+        return ("La courbe attend au moins une saison "
+                "(« {saison: [24 valeurs]} »).")
+    for saison, valeurs in courbe.items():
+        if saison not in modele.SAISONS:
+            return (f"Saison inconnue : « {saison} ». Saisons admises : "
+                    f"{', '.join(modele.SAISONS)}.")
+        if isinstance(valeurs, dict):
+            if not valeurs or any(
+                    jour not in modele.JOURS_TYPES
+                    or not _forme_courbe24(v, modele.HEURES)
+                    for jour, v in valeurs.items()):
+                return (f"La courbe segmentée de la saison « {saison} » "
+                        f"attend, par type de jour ({', '.join(modele.JOURS_TYPES)}), "
+                        f"{modele.HEURES} nombres >= 0.")
+        elif not _forme_courbe24(valeurs, modele.HEURES):
+            return (f"La courbe de la saison « {saison} » attend exactement "
+                    f"{modele.HEURES} nombres >= 0, une valeur par heure.")
+    return None
+
+
+def valider_forme_profils(profils):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — la FORME du corps du ``PUT``, jugée
+    toute seule, AVANT la base : le MÊME prédicat que
+    ``serializers_conso.ProfilTypeEcritureSerializer`` publie. Chaque refus
+    NOMME ``profils[<rang>].<champ>`` (l'écran pointe la ligne fautive).
+
+    Raises:
+        ProfilInvalide: ``profils`` n'est pas une liste, une ligne n'est pas un
+            objet, ``cle`` n'est pas un code (lettres, chiffres, ``-``, ``_``),
+            ``libelle`` / ``provenance`` ne sont pas des textes sans nul
+            (provenance non blanche), ``famille`` hors énumération, ``actif`` pas
+            un booléen, ``courbe`` mal formée.
+    """
+    import re
+
+    from ..models import ProfilTypeConsommation as Modele
+
+    if not isinstance(profils, list):
+        raise ProfilInvalide(
+            'Les profils types se donnent en liste ordonnée '
+            '(« profils: [{cle, libelle, famille, courbe, provenance}, …] »).',
+            champ='profils')
+    longueur_cle = Modele._meta.get_field('cle').max_length
+    longueur_libelle = Modele._meta.get_field('libelle').max_length
+    familles = {choix.value for choix in Modele.Famille}
+    for rang, brut in enumerate(profils):
+        if not isinstance(brut, dict):
+            raise ProfilInvalide(
+                f'Le profil n°{rang + 1} doit être un objet '
+                f'(reçu : {type(brut).__name__}).', champ=f'profils[{rang}]')
+        cle = brut.get('cle')
+        if (not isinstance(cle, str) or len(cle) > longueur_cle
+                or not re.fullmatch(r'[-a-zA-Z0-9_]+', cle)):
+            raise _refus_forme(
+                rang, 'cle',
+                f'Le profil n°{rang + 1} n’a pas de clé valide : elle sert de '
+                'repère stable aux écrans et aux calculs (lettres, chiffres, '
+                f'« - » et « _ », {longueur_cle} signes au plus).')
+        libelle = brut.get('libelle', '')
+        if (not isinstance(libelle, str) or '\x00' in libelle
+                or len(libelle) > longueur_libelle):
+            raise _refus_forme(
+                rang, 'libelle',
+                f'Le libellé du profil n°{rang + 1} est un texte de '
+                f'{longueur_libelle} signes au plus, sans caractère nul.')
+        if 'famille' in brut and not (isinstance(brut['famille'], str)
+                                      and brut['famille'] in familles):
+            raise _refus_forme(
+                rang, 'famille',
+                f'Famille inconnue pour le profil n°{rang + 1}. Familles '
+                f'admises : {", ".join(sorted(familles))}.')
+        if 'actif' in brut and not isinstance(brut['actif'], bool):
+            raise _refus_forme(
+                rang, 'actif',
+                f'« actif » du profil n°{rang + 1} est vrai ou faux.')
+        provenance = brut.get('provenance')
+        if (not isinstance(provenance, str) or '\x00' in provenance
+                or not non_blanc(provenance)):
+            raise _refus_forme(
+                rang, 'provenance',
+                "La provenance est obligatoire : un profil type sans "
+                "provenance écrite ne peut être ni défendu devant un client "
+                "ni distingué d'une hypothèse interne.")
+        message = _forme_courbe(brut.get('courbe'), Modele)
+        if message:
+            raise _refus_forme(rang, 'courbe', message)
+
+
 def enregistrer_profils(company, profils, *, utilisateur=None):
     """Remplace les profils SAISIS de la société par ceux fournis.
 
@@ -193,27 +312,14 @@ def enregistrer_profils(company, profils, *, utilisateur=None):
         raise ProfilInvalide(
             'Aucune société : les profils types sont toujours ceux d’une '
             'société, jamais des profils globaux.', champ='company')
-    if not isinstance(profils, list):
-        raise ProfilInvalide(
-            'Les profils types se donnent en liste ordonnée '
-            '(« profils: [{cle, libelle, famille, courbe, provenance}, …] »).',
-            champ='profils')
+    valider_forme_profils(profils)
 
     lignes = []
     vues = set()
     for rang, brut in enumerate(profils):
-        if not isinstance(brut, dict):
-            raise ProfilInvalide(
-                f'Le profil n°{rang + 1} doit être un objet '
-                f'(reçu : {type(brut).__name__}).', champ=f'profils[{rang}]')
-        cle = str(brut.get('cle') or '').strip().lower()
-        if not cle:
-            raise ProfilInvalide(
-                f'Le profil n°{rang + 1} n’a pas de clé : elle sert de repère '
-                'stable aux écrans et aux calculs.',
-                champ=f'profils[{rang}].cle')
+        cle = brut['cle'].lower()
         if cle in vues:
-            raise ProfilInvalide(
+            raise ProfilEnConflit(
                 f'La clé de profil « {cle} » apparaît deux fois.', champ=cle)
         vues.add(cle)
         objet = ProfilTypeConsommation(
@@ -228,9 +334,12 @@ def enregistrer_profils(company, profils, *, utilisateur=None):
         try:
             objet.full_clean(exclude=['company', 'saisi_par'])
         except ValidationError as refus:
+            # La forme est déjà jugée (``valider_forme_profils``) : ce que le
+            # modèle refuse encore est un fait de la courbe (journée
+            # entièrement nulle) — un refus d'état, 409.
             champ, messages = next(iter(refus.message_dict.items()))
-            raise ProfilInvalide(f'Profil « {cle} » : {messages[0]}',
-                                 champ=f'{cle}.{champ}')
+            raise ProfilEnConflit(f'Profil « {cle} » : {messages[0]}',
+                                  champ=f'{cle}.{champ}')
         lignes.append(objet)
 
     with transaction.atomic():

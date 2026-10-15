@@ -138,18 +138,23 @@ class TestRollbackChoice(ImportBase):
         self.assertEqual(job.statut, ImportJob.Statut.ECHEC)
         self.assertEqual(job.created_count, 0)
 
-    def test_save_mapping_corps_non_objet_nom_long_et_colonne_nulle_400(self):
+    def test_save_mapping_corps_non_objet_nom_long_et_colonne_nulle(self):
         # CI #1000 fuzz : `[null, null]` levait AttributeError (500) ; un `nom`
         # nombre était converti en texte ; un `nom` > 150 caractères débordait
-        # la colonne ; une colonne à caractère nul est refusée par jsonb.
+        # la colonne ; une colonne à caractère nul est refusée par jsonb (409 :
+        # le schéma OpenAPI 3.0 ne borne pas les clés d'un objet).
         for corps in (
                 [None, None],
                 {'target': 'leads', 'nom': 0, 'mapping': {'A': 'nom'}},
-                {'target': 'leads', 'nom': 'x' * 151, 'mapping': {'A': 'nom'}},
-                {'target': 'leads', 'nom': 'X', 'mapping': {'A\x00': 'nom'}}):
+                {'target': 'leads', 'nom': 'x' * 151, 'mapping': {'A': 'nom'}}):
             resp = self.api.post(
                 '/api/django/imports/mapping/', corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self.api.post(
+            '/api/django/imports/mapping/',
+            {'target': 'leads', 'nom': 'X', 'mapping': {'A\x00': 'nom'}},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_list_mappings_cible_vide_ou_inconnue_400(self):
         for cible in ('', 'AAA'):
