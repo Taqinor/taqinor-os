@@ -26,7 +26,7 @@ from ..serializers_conso import (
     ProfilsTypesEcritureSerializer, ProfilsTypesSerializer,
 )
 from ..services.profils_types import (
-    ProfilInvalide, enregistrer_profils, profil_depuis_import,
+    ProfilEnConflit, ProfilInvalide, enregistrer_profils, profil_depuis_import,
     profils_de_societe,
 )
 from .calepinages import CalepinageViewSet
@@ -70,8 +70,13 @@ class ProfilsTypesView(APIView):
             profils = enregistrer_profils(
                 company, corps.get('profils'), utilisateur=request.user)
         except ProfilInvalide as refus:
+            # La FORME fautive (schéma publié) reste un 400 ; une clé en double
+            # ou une journée entièrement nulle sont des faits que ce schéma ne
+            # peut pas dire : 409.
             return Response({refus.champ or 'profils': [str(refus)]},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT
+                                    if isinstance(refus, ProfilEnConflit)
+                                    else status.HTTP_400_BAD_REQUEST))
         return Response({'profils': profils})
 
 

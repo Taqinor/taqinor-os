@@ -168,6 +168,52 @@ class ProposerTest(_Base):
         self.assertIn('releve_maison', cles)
 
 
+class ProfilsTypesPutEnBaseTest(BaseApiCalepinage):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — ``PUT parametres/profils-types/`` :
+    FORME fautive 400 (chemin ``profils[<rang>].<champ>``), état 409 (clé en
+    double, journée entièrement nulle), écriture 200 (la CI est la gate)."""
+
+    JOURNEE = [1.0] * 12 + [2.0] * 12
+
+    def _ligne(self, **surcharges):
+        ligne = {'cle': 'maison-1', 'courbe': {'annuel': self.JOURNEE},
+                 'provenance': 'Relevé de 12 factures, 2025.'}
+        ligne.update(surcharges)
+        return ligne
+
+    def test_forme_fautive_400_nomme_la_ligne(self):
+        reponse = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(), self._ligne(
+                cle='autre', provenance='  ')]}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('profils[1].provenance', reponse.data)
+        reponse = self.api.put(URL_PROFILS, {'profils': 'x'}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('profils', reponse.data)
+
+    def test_etat_409_cle_en_double_et_journee_nulle(self):
+        doublon = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(),
+                                      self._ligne(cle='MAISON-1')]},
+            format='json')
+        self.assertEqual(doublon.status_code, 409, doublon.data)
+        self.assertIn('maison-1', doublon.data)
+        nulle = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(
+                courbe={'annuel': [0] * 24})]}, format='json')
+        self.assertEqual(nulle.status_code, 409, nulle.data)
+        self.assertIn('maison-1.courbe', nulle.data)
+
+    def test_ecriture_200_remplace_les_profils_de_la_societe(self):
+        reponse = self.api.put(
+            URL_PROFILS, {'profils': [self._ligne(famille='commercial')]},
+            format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+        cles = [p['cle'] for p in reponse.data['profils']
+                if p['source'] == 'societe']
+        self.assertEqual(cles, ['maison-1'])
+
+
 class SaisonsLuesParLaSimulationTest(SimpleTestCase):
     """``consumption.saisons`` module la courbe de charge de la simulation."""
 
