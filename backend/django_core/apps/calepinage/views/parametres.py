@@ -28,6 +28,7 @@ from drf_spectacular.utils import (
     extend_schema, extend_schema_field, inline_serializer,
 )
 from rest_framework import serializers, status
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -411,6 +412,10 @@ class SuggestionPenteIGNView(APIView):
     """
 
     permission_classes = [ScopedPermission]
+    # Corps JSON SEUL : ``roof_layout`` est un objet imbriqué (liste de pans) que
+    # ni multipart (part texte, lue comme un document sans pan) ni urlencoded
+    # ne portent — le schéma publié ne déclare que ``application/json``.
+    parser_classes = [JSONParser]
     read_permission = CAL_VOIR
     #: Proposer consomme du temps serveur et un quota externe : c'est une
     #: écriture au sens des permissions, comme le moteur (CAL22).
