@@ -82,7 +82,7 @@ def _tracer_acces(report, ip):
     try:
         AccesRapportPartage.objects.create(
             company=report.company, saved_report=report, ip=ip or None)
-    except Exception:  # noqa: BLE001 — une trace en échec ne casse pas l'accès
+    except Exception:  # noqa: BLE001 — une trace en échec ne casse pas l'accès (D-ENF22-BLE001)
         logger.warning("tracer acces : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
@@ -135,7 +135,7 @@ def diffuser_whatsapp(report, base_url=''):
         try:
             resultat = send_whatsapp_campaign_message(
                 report.company, recipient=numero, body=corps)
-        except Exception:  # noqa: BLE001 - un numéro KO n'arrête pas les autres
+        except Exception:  # noqa: BLE001 — un numéro KO n'arrête pas les autres (D-ENF22-BLE001)
             logger.warning("diffuser whatsapp : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if (resultat or {}).get('provider') == 'bsp':
