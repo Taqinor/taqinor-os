@@ -488,6 +488,19 @@ _FICHIERS_VALIDES = (
     # fichier ``fichier`` (le serveur lit les octets magiques).
     (re.compile(r'^/api/django/portail/documents-client-portail/'),
      {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
+    # ERR-ENF11-FUZZ-CRM — scan d'une carte de visite : une PHOTO (octets
+    # magiques PNG/JPEG/WebP lus par ``scan_carte_visite``) ; des octets vides
+    # = « Aucune image fournie » (400). Sans clé OCR, le serveur répond 503.
+    (re.compile(r'^/api/django/crm/leads/scan-carte/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
+    # ERR-ENF11-FUZZ-CRM — « pièce reçue » en multipart : le fichier facultatif
+    # est lu par ``store_attachment`` (octets magiques), jamais des octets vides.
+    (re.compile(r'^/api/django/crm/relance-etapes/\{[^/]+\}/piece-recue/$'), {'POST'},
+     {'fichier': _PDF_MINIMAL}),
+    # ERR-ENF11-FUZZ-VISITES — photo d'un slot de checklist : le serveur lit
+    # les octets (``store_attachment`` : image PNG/JPEG/WebP).
+    (re.compile(r'^/api/django/visites/visites/\{[^/]+\}/photos/$'), {'POST'},
+     {'fichier': _PNG_MINIMAL}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
