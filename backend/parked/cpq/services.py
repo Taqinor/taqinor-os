@@ -3,6 +3,7 @@
 Toute écriture cross-app (créer des ``LigneDevis``, lire un ``Devis``…) passe
 par des imports LOCAUX (fonction-locaux) des modèles ventes/crm pour éviter les
 cycles — l'app cpq est en aval de ventes dans le graphe d'apps."""
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 
 from .models import (
@@ -623,7 +624,8 @@ def generer_variantes_devis(devis, *, user=None, tiers=None):
                     prix = prix_applicable(
                         produit=substitut, client=devis.client,
                         quantite=ligne.quantite)['prix']
-                except Exception:  # noqa: BLE001 — repli prix catalogue
+                except Exception:  # noqa: BLE001 — repli prix catalogue (D-ENF22-BLE001)
+                    logging.getLogger(__name__).warning("services.generer_variantes_devis : erreur ignorée (mode dégradé)", exc_info=True)
                     prix = substitut.prix_vente
             LigneDevis.objects.create(
                 devis=variante, produit=produit, designation=designation,
