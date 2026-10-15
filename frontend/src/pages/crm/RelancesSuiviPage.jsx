@@ -12,6 +12,7 @@ import {
 import RelanceEtapeRow from '../../features/crm/relances/RelanceEtapeRow'
 import ArretCadenceChamps from '../../features/crm/relances/ArretCadenceChamps'
 import { PARCOURS } from '../../features/crm/relances/parcours'
+import { traiterGesteTouche } from '../../features/crm/relances/refusGeste'
 import ToucheMessageDialog from './ToucheMessageDialog'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toastError } from '../../lib/toast'
@@ -532,32 +533,13 @@ export default function RelancesSuiviPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` recrée une fermeture à chaque rendu (owner/today/onglet la referment déjà) ; l'ajouter provoquerait un rechargement à chaque frappe sans rien changer aux dépendances réelles.
     [onglet, owner, today])
 
-  const traiter = async (id, action, payload) => {
-    setBusyId(id)
-    try {
-      let res
-      if (action === 'fait') res = await crmApi.marquerRelanceEtapeFait(id, payload)
-      else if (action === 'sauter') res = await crmApi.marquerRelanceEtapeSautee(id, payload)
-      else if (action === 'reporter') res = await crmApi.reporterRelanceEtape(id, payload)
-      charger({ enPlace: true })
-      return res?.data
-    } catch (err) {
-      // CKP4 — voir `RelancesDuJourWidget.jsx` : un canal APPEL sans issue
-      // (400 `{erreurs: {outcome}}`) s'affiche SOUS le contrôle, pas un toast.
-      // SUIVI-REFUS — idem pour Sauter et Reporter, et pour tout refus NOMMÉ
-      // (400 `erreurs`/`detail`, 403 rôle) : l'erreur est relancée à la ligne,
-      // qui l'affiche sous le geste ; le toast ne reste que pour réseau/5xx.
-      const statut = err?.response?.status
-      const donnees = err?.response?.data
-      const refusNomme = statut === 403 || ((statut === 400 || statut === 409)
-        && (Object.keys(donnees?.erreurs ?? {}).length > 0
-          || (typeof donnees?.detail === 'string' && donnees.detail !== '')))
-      if (!refusNomme) toastError('Action impossible pour le moment.')
-      throw err
-    } finally {
-      setBusyId(null)
-    }
-  }
+  // CKP4 / SUIVI-REFUS — voir `traiterGesteTouche` (`features/crm/relances/
+  // refusGeste.js`) : un refus NOMMÉ (400/409 `erreurs`/`detail`, 403 rôle)
+  // s'affiche sous le geste, le toast ne reste que pour réseau/5xx.
+  const traiter = (id, action, payload) => traiterGesteTouche({
+    action, id, payload, setBusyId,
+    surSucces: () => charger({ enPlace: true }),
+  })
 
   // CAD50 — retour arrière (24h, refus motivé du serveur au-delà). Un
   // refetch fait réapparaître la touche redevenue `a_faire`.
