@@ -68,7 +68,7 @@ def journaliser_destruction(company, *, type_objet, objet_ref, action,
             motif=motif or '',
             empreinte_avant=(empreinte or '')[:64],
         )
-    except Exception:  # noqa: BLE001 - jamais bloquant pour l'effacement
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'effacement (D-ENF22-BLE001)
         logger.exception(
             'grc: journalisation de destruction impossible (%s/%s)',
             type_objet, objet_ref)
@@ -274,7 +274,8 @@ def contact_responsable(company):
     try:
         CompanyProfile = django_apps.get_model('parametres', 'CompanyProfile')
         profil = CompanyProfile.objects.filter(company=company).first()
-    except Exception:  # noqa: BLE001 - profil indisponible ⇒ dossier quand même
+    except Exception:  # noqa: BLE001 - profil indisponible ⇒ dossier quand même (D-ENF22-BLE001)
+        logger.warning("services.contact_responsable : erreur ignorée (mode dégradé)", exc_info=True)
         profil = None
     if profil is None:
         return {'nom': getattr(company, 'nom', '') or '', 'email': '',
@@ -1081,7 +1082,7 @@ def journaliser_transition_incident(incident, ancien, nouveau, user=None):
             old_value=libelles.get(ancien, ancien),
             new_value=libelles.get(nouveau, nouveau),
             company=incident.company)
-    except Exception:  # noqa: BLE001 — jamais bloquant pour l'incident
+    except Exception:  # noqa: BLE001 — jamais bloquant pour l'incident (D-ENF22-BLE001)
         logger.exception(
             'grc: chronologie d\'incident impossible (%s)',
             getattr(incident, 'pk', None))

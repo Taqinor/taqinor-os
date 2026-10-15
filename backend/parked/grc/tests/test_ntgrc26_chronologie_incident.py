@@ -12,6 +12,7 @@ PLATEFORME ``records.Activity`` (ARC8), pas sur un quatorzième modèle
 
 Horloge FIGÉE dans les assertions d'horodatage.
 """
+import logging
 from django.test import TestCase
 from django.utils import timezone
 
@@ -73,8 +74,8 @@ class ChronologieServiceTests(TestCase):
             incident = self._incident()
             try:
                 changer_statut_incident(incident, 'archive')
-            except Exception:  # noqa: BLE001 — la garde est testée ailleurs
-                pass
+            except Exception:  # noqa: BLE001 — la garde est testée ailleurs (D-ENF22-BLE001)
+                logging.getLogger(__name__).warning("test_ntgrc26_chronologie_incident.ChronologieServiceTests.test_une_transition_refusee_n_ecrit_rien : erreur ignorée (mode dégradé)", exc_info=True)
         self.assertEqual(chronologie_incident(incident).count(), 0)
 
     def test_une_note_manuelle_apparait(self):
