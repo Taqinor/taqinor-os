@@ -81,6 +81,28 @@ class SavedViewApiTests(TestCase):
         self.assertEqual(obj.owner, self.commercial1)
         self.assertEqual(obj.company, self.co_a)
 
+    def test_configuration_est_un_objet_publie_et_applique(self):
+        # CI #1003 (fuzz) — publiée en JSON libre, `configuration: null` était
+        # « conforme » puis refusée 400 : le schéma publie désormais l'objet
+        # (non nul) et le serveur refuse tout non-objet.
+        from drf_spectacular.drainage import get_override
+
+        from .serializers import SavedViewSerializer
+        schema = get_override(SavedViewSerializer().fields['configuration'], 'field')
+        self.assertEqual(schema['type'], 'object')
+        self.assertNotIn('nullable', schema)
+        for configuration in (None, '0', [], 0):
+            with self.subTest(configuration=configuration):
+                resp = auth(self.commercial1).post(
+                    self.BASE, self._payload(configuration=configuration), format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn('configuration', resp.data)
+        payload = self._payload()
+        del payload['configuration']
+        resp = auth(self.commercial1).post(self.BASE, payload, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['configuration'], {})
+
     # ── Visibilité : personnelle vs équipe, isolation multi-société ────────
     def test_personal_view_hidden_from_other_users(self):
         SavedView.objects.create(

@@ -49,6 +49,23 @@ def cible_du_favori(favori):
     return cible
 
 
+@extend_schema_field({
+    'type': 'object', 'additionalProperties': {},
+    'description': (
+        "Colonnes, filtres et tri de la vue (objet JSON opaque au serveur). "
+        "Absent = objet vide ; `null` ou un non-objet est refusé.")})
+class ConfigurationVueField(serializers.JSONField):
+    """CI #1003 (fuzz) — ``configuration`` est un OBJET : publié en JSON libre
+    (donc ``null`` « conforme »), ``null`` était refusé 400 « ne peut être nul »
+    (colonne non nulle). Le schéma publie l'objet, le serveur refuse tout
+    non-objet : un seul prédicat, publié et appliqué."""
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError('Un objet JSON est attendu.')
+        return super().to_internal_value(data)
+
+
 # ENF11 — `apps.crm.serializers.SavedViewSerializer` porte le MÊME nom de
 # composant OpenAPI (« SavedView ») : drf-spectacular n'en gardait qu'un et
 # publiait pour `/uxviews/saved-views/` le contrat de l'autre (ecran/nom jamais
@@ -66,6 +83,7 @@ class SavedViewSerializer(SameCompanyFKSerializerMixin,
     # que l'écran puisse matcher « ma vue par défaut de rôle » sans requête
     # supplémentaire.
     role_nom = serializers.SerializerMethodField()
+    configuration = ConfigurationVueField(required=False)
 
     class Meta:
         model = SavedView
