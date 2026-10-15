@@ -18,7 +18,7 @@ from core.parseurs import corps_valide
 from ..models import Facture, Paiement, RetenueSubie
 from ..serializers_facturation import (
     FactureSerializer, PaiementSerializer, AffectationPaiementSerializer,
-    RetenueSubieSerializer,
+    PaiementVentilerRequestSerializer, RetenueSubieSerializer,
 )
 from ..serializers_facturation import PaiementAvecRetenueEntreeSerializer  # ENF11 : utilisé par @extend_schema
 from authentication.permissions import (
@@ -320,7 +320,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             PaiementSerializer(paiement).data, status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=D.VentilerRequest, responses={201: AffectationPaiementSerializer})
+    @extend_schema(request=PaiementVentilerRequestSerializer, responses={201: AffectationPaiementSerializer})
     @action(detail=True, methods=['post'], url_path='ventiler')
     def ventiler(self, request, pk=None):
         """XFAC1 — ventile une avance non affectée sur UNE facture ouverte du
@@ -329,14 +329,17 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         from ..services import ventiler_avance as _ventiler_avance
 
         paiement = self.get_object()
-        facture = self._facture_visible(request.data.get('facture'))
+        entree = PaiementVentilerRequestSerializer(data=request.data)
+        if not entree.is_valid():
+            return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
+        facture = self._facture_visible(entree.validated_data['facture'])
         if facture is None:
             return Response({'detail': 'Facture introuvable.'},
                             status=status.HTTP_400_BAD_REQUEST)
         try:
             affectation = _ventiler_avance(
                 paiement=paiement, facture=facture,
-                montant=request.data.get('montant'), user=request.user,
+                montant=entree.validated_data['montant'], user=request.user,
             )
         except ValidationError as exc:
             return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
