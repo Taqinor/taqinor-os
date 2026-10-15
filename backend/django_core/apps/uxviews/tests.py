@@ -316,6 +316,36 @@ class SavedViewApiTests(TestCase):
             company=self.co_a, owner=self.directeur, ecran='crm.leads', nom='Mes leads')
         self.assertEqual(original.configuration, {'ancien': True})
 
+    def test_importer_fichier_illisible_est_un_400_jamais_un_500(self):
+        # CI #1003 (fuzz) — un PNG sans extension était lu comme un CSV :
+        # ``csv.Error`` (retour chariot isolé) remontait en 500 ; un XLSX
+        # corrompu prenait le même chemin. Les deux imports de l'app.
+        png = (b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x08'
+               b'\x00\x00\x00\x08\x08\x02\x00\x00\x00Km)')
+        for url, nom, octets in (
+                (f'{self.BASE}importer/', 'fichier', png),
+                (f'{self.BASE}importer/', 'vues.xlsx', b'pas un zip'),
+                ('/api/django/uxviews/favoris/importer/', 'fichier', png)):
+            with self.subTest(url=url, nom=nom):
+                fichier = SimpleUploadedFile(nom, octets)
+                resp = auth(self.directeur).post(
+                    url, {'fichier': fichier}, format='multipart')
+                self.assertEqual(resp.status_code, 400, resp.content)
+                self.assertIn('fichier', resp.data)
+        self.assertEqual(SavedView.objects.count(), 0)
+
+    def test_importer_ligne_hors_bornes_rejetee_sans_500(self):
+        # CI #1003 (fuzz) — nom > 120 signes ou octet NUL : la colonne
+        # PostgreSQL refusait l'écriture (500) ; la ligne est rejetée, nommée.
+        fichier = self._csv([('crm.leads', 'x' * 121, '{}'),
+                             ('crm.leads', 'a' + chr(0) + 'b', '{}'),
+                             ('crm.leads', 'Valide', '{}')])
+        resp = auth(self.directeur).post(
+            f'{self.BASE}importer/', {'fichier': fichier}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual([e['ligne'] for e in resp.data['erreurs']], [1, 2])
+        self.assertEqual(len(resp.data['created']), 1)
+
     def test_importer_rejects_malformed_configuration_structure(self):
         bad = json.dumps({'colonnes_visibles': 'pas-une-liste'}).replace('"', '""')
         fichier = self._csv([('crm.leads', 'Vue mal formée', bad)])
