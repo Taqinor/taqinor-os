@@ -13,6 +13,7 @@ y écrivent (lanes réellement file-disjointes).
 """
 from __future__ import annotations
 
+from drf_spectacular.extensions import OpenApiSerializerExtension
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -87,6 +88,69 @@ class ProfilTypeEcritureSerializer(serializers.Serializer):
     courbe = CourbeProfilField()
     provenance = ChaineStricte()
     actif = BooleenStrict(required=False)
+
+
+#: Les sources d'une proposition de consommation et le sous-document que
+#: CHACUNE exige (``lead`` n'en exige aucun : il lit le lead du calepinage).
+SOURCES_CONSOMMATION = ('lead', 'factures', 'appareils', 'csv')
+DOCUMENT_DE_LA_SOURCE = {'factures': 'factures', 'appareils': 'appareils',
+                         'csv': 'csv'}
+
+
+def classes_tarifaires():
+    """Les classes tarifaires SAISISSABLES : celles de l'inversion du barème
+    (``apps.parametres.tariff``) et l'alias « domestique » du contrat."""
+    from apps.parametres.tariff import CLASSES_INVERSION
+
+    from .services.consommation import ALIAS_CLASSES
+
+    return (*CLASSES_INVERSION, *ALIAS_CLASSES)
+
+
+# ERR-ENF11-FUZZ-CALEPINAGE (w4) — le corps de ``consommation/proposer``, UN
+# prédicat publié ET appliqué par la vue : une source connue, sa classe
+# tarifaire dans l'énumération, chaque sous-document du bon TYPE (objet, liste
+# d'objets), et le sous-document de la source choisie PRÉSENT (``oneOf`` publié
+# par l'extension ci-dessous). Le CONTENU de ces sous-documents — montants,
+# appareils, paramètres de charge, CSV — est jugé par le service : son refus est
+# un 409 (la classe non résolue du lead aussi), un lead absent un 404.
+# (Commentaire et non docstring : une docstring fuiterait dans l'OpenAPI.)
+class ConsommationProposerCorpsSerializer(serializers.Serializer):
+    source = serializers.ChoiceField(choices=SOURCES_CONSOMMATION)
+    classe = serializers.ChoiceField(choices=classes_tarifaires(),
+                                     required=False)
+    factures = serializers.DictField(required=False)
+    appareils = serializers.ListField(child=serializers.DictField(),
+                                      required=False)
+    charges = serializers.DictField(required=False)
+    csv = serializers.DictField(required=False)
+    ramadan = serializers.DictField(required=False)
+
+    def validate(self, attrs):
+        document = DOCUMENT_DE_LA_SOURCE.get(attrs['source'])
+        if document is not None and document not in attrs:
+            raise serializers.ValidationError({
+                document: [f"La source « {attrs['source']} » exige le "
+                           f"document « {document} »."]})
+        return attrs
+
+
+class _SourceExigeSonDocumentPublie(OpenApiSerializerExtension):
+    target_class = ConsommationProposerCorpsSerializer
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+        branches = []
+        for source in SOURCES_CONSOMMATION:
+            branche = {'properties': {'source': {'anyOf': [
+                {'enum': [source]}]}}}
+            if source in DOCUMENT_DE_LA_SOURCE:
+                branche['required'] = [DOCUMENT_DE_LA_SOURCE[source]]
+            branches.append(branche)
+        return {**schema, 'oneOf': branches}
 
 
 class ProfilsTypesEcritureSerializer(serializers.Serializer):

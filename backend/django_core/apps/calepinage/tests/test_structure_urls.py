@@ -406,6 +406,22 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
                          (min(FORMATS_IMPORTABLES), max(FORMATS_IMPORTABLES)))
         self.assertEqual(projet['required'], ['format_version'])
 
+    def test_consommation_proposer_publie_une_source_et_son_document(self):
+        """Source connue, classe énumérée, un ``oneOf`` par source qui exige
+        le sous-document de la source choisie (``lead`` n'en exige aucun)."""
+        operation = self._operation('post', '{id}/consommation/proposer/')
+        self.assertIs(operation['requestBody'].get('required'), True)
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(corps['required'], ['source'])
+        branches = corps['oneOf']
+        self.assertEqual(
+            [b['properties']['source']['anyOf'][0]['enum'][0]
+             for b in branches], ['lead', 'factures', 'appareils', 'csv'])
+        self.assertEqual([b.get('required') for b in branches],
+                         [None, ['factures'], ['appareils'], ['csv']])
+        self.assertEqual(corps['properties']['appareils']['type'], 'array')
+
     def test_meteo_fichier_lu_peut_etre_null(self):
         """``GET meteo-fichier/`` sert ``null`` sans fichier retenu."""
         reponse = self._operation('get', '{id}/meteo-fichier/')['responses']

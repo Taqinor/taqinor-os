@@ -40,7 +40,6 @@ API rejected schema-compliant request|POST /api/django/agent/actions/automation-
 API rejected schema-compliant request|POST /api/django/automation/approval-requests/
 API rejected schema-compliant request|POST /api/django/automation/incoming-webhooks/
 API rejected schema-compliant request|POST /api/django/automation/rules/
-API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{id}/consommation/proposer/
 API rejected schema-compliant request|POST /api/django/crm/leads/
 API rejected schema-compliant request|POST /api/django/crm/leads/scan-carte/
 API rejected schema-compliant request|POST /api/django/crm/leads/{id}/relance/initialiser/
