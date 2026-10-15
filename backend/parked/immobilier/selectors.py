@@ -63,7 +63,7 @@ def _travaux_pour_locaux(company, locaux_ids):
     from decimal import Decimal
 
     try:
-        import apps.installations.selectors  # noqa: F401 — vérifie juste la présence du module
+        __import__('apps.installations.selectors')  # — vérifie juste la présence du module
     except Exception:
         return Decimal('0')
     # Aucun mécanisme de résolution local→chantier n'est encore câblé
