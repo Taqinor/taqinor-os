@@ -50,8 +50,10 @@ def corps_annexe_domicile(*, ref, vendeur, couleurs, langue=None) -> str:
       {t("res_ret_intro").format(jours=DELAI_RETRACTATION_DOMICILE_JOURS)}
     </div>
 
-    <div style="background:{c['fond']};border:1px solid {c['filet']};border-radius:7px;padding:9px 12px;margin-bottom:12px;">
-      <div style="font-size:7.5pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">{t("res_ret_mentions_titre")}</div>
+    <div style="background:{c['fond']};border:1px solid {c['filet']};border-radius:7px;padding:9px 12px;\
+margin-bottom:12px;">
+      <div style="font-size:7.5pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:.5px;\
+margin-bottom:5px;">{t("res_ret_mentions_titre")}</div>
       <ul style="margin:0;padding-left:16px;font-size:7.5pt;color:{c['texte']};line-height:1.45;">{mentions_html}</ul>
     </div>
 
@@ -60,7 +62,8 @@ def corps_annexe_domicile(*, ref, vendeur, couleurs, langue=None) -> str:
     </div>
 
     <div style="{cadre}">
-      <div style="font-size:9pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">{t("res_ret_formulaire")}</div>
+      <div style="font-size:9pt;font-weight:700;color:{c['navy']};text-transform:uppercase;letter-spacing:1px;\
+margin-bottom:8px;">{t("res_ret_formulaire")}</div>
       <div style="font-size:8pt;color:{c['texte']};line-height:1.9;">
         {t("res_ret_formulaire_corps").format(vendeur=vendeur, ref=ref)}
       </div>
