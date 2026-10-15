@@ -61,7 +61,7 @@ def _current_session_mfa_at(request):
             .first()
         )
         return getattr(session, 'last_mfa_at', None) if session else None
-    except Exception:  # noqa: BLE001 - jamais casser le pipeline permission
+    except Exception:  # noqa: BLE001 — jamais casser le pipeline permission (D-ENF22-BLE001)
         logger.warning("stepup._current_session_mfa_at : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -80,7 +80,7 @@ def _step_up_actions(company):
         )
         actions = getattr(profile, 'step_up_actions', None) if profile else None
         return actions if isinstance(actions, (list, tuple)) else []
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning("stepup._step_up_actions : erreur ignorée (mode dégradé)", exc_info=True)
         return []
 
