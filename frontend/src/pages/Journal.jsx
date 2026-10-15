@@ -266,13 +266,16 @@ export default function Journal() {
   useEffect(() => {
     if (!allowed) return undefined
     let cancelled = false
+    // Les entrées sont relues depuis la clé sérialisée : l'effet ne dépend que
+    // de `requestKey` (et non des objets recréés à chaque rendu).
+    const req = JSON.parse(requestKey)
     const run = async () => {
       setLoading(true)
       setError(null)
       try {
         const [s, e] = await Promise.all([
-          auditApi.getStats({ period, date, ...filterParams }),
-          auditApi.getEntries({ ...range, ...filterParams, page }),
+          auditApi.getStats({ period: req.period, date: req.date, ...req.filterParams }),
+          auditApi.getEntries({ ...req.range, ...req.filterParams, page: req.page }),
         ])
         if (cancelled) return
         setStats(s.data)
@@ -289,7 +292,6 @@ export default function Journal() {
     }
     run()
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowed, requestKey])
 
   // WIR18/WIR20 — onglets « Sécurité » et « Analytiques », en plus de
