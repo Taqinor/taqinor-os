@@ -33,11 +33,11 @@ class RegleDuContrat(SimpleTestCase):
         self.assertEqual(dict(Lead.DossierSubvention.choices),
                          CONTRAT['notes']['libelles'])
 
-    def test_le_message_400_est_celui_du_contrat(self):
+    def test_le_message_de_refus_est_celui_du_contrat(self):
         from apps.crm.serializers import LeadSerializer
         self.assertEqual(
             [LeadSerializer.MESSAGE_DATE_SUBVENTION],
-            CONTRAT['exemple_400']['dossier_subvention_le'])
+            CONTRAT['exemple_refus']['dossier_subvention_le'])
 
     def test_les_deux_colonnes_sont_journalisees(self):
         self.assertIn('dossier_subvention', activity.TRACKED_FIELDS)
@@ -73,12 +73,12 @@ class DossierSubventionApi(TestCase):
     def _patch(self, corps):
         return self.api.patch(self.url, corps, format='json')
 
-    def test_depose_sans_date_refuse_en_400_nommant_le_champ(self):
+    def test_depose_sans_date_refuse_en_409_nommant_le_champ(self):
         resp = self._patch({'dossier_subvention': 'depose'})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertEqual(
             [str(m) for m in resp.data['dossier_subvention_le']],
-            CONTRAT['exemple_400']['dossier_subvention_le'])
+            CONTRAT['exemple_refus']['dossier_subvention_le'])
 
     def test_le_corps_du_contrat_est_accepte_et_relu(self):
         resp = self._patch(CONTRAT['corps'])

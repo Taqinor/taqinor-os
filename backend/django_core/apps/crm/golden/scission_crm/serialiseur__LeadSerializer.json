@@ -187,25 +187,25 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "undo",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "confirme_recul",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "facture_periodicite",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "is_deleted",
    "read_only": true,
    "required": false
@@ -217,13 +217,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "nom",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "prenom",
    "read_only": false,
    "required": false
@@ -235,7 +235,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "societe",
    "read_only": false,
    "required": false
@@ -247,31 +247,31 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "telephone",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "adresse",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "ville",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "contact_secondaire_nom",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "contact_secondaire_telephone",
    "read_only": false,
    "required": false
@@ -289,13 +289,13 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "ete_differente",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "whatsapp",
    "read_only": false,
    "required": false
@@ -319,13 +319,13 @@
    "required": false
   },
   {
-   "classe": "URLField",
+   "classe": "LienMaps",
    "nom": "lien_maps",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "ville_reference",
    "read_only": false,
    "required": false
@@ -343,19 +343,19 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "tags",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "perdu",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "motif_perte",
    "read_only": false,
    "required": false
@@ -373,7 +373,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "ne_plus_contacter",
    "read_only": false,
    "required": false
@@ -403,7 +403,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "tranche_onee",
    "read_only": false,
    "required": false
@@ -415,7 +415,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "regularisation_8221",
    "read_only": false,
    "required": false
@@ -427,13 +427,13 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "equip_piscine",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "equip_voiture_electrique",
    "read_only": false,
    "required": false
@@ -445,7 +445,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "equip_clim",
    "read_only": false,
    "required": false
@@ -457,7 +457,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "equip_chauffe_eau_electrique",
    "read_only": false,
    "required": false
@@ -559,7 +559,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "culture",
    "read_only": false,
    "required": false
@@ -619,7 +619,7 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "ListeMois",
    "nom": "mois_irrigation",
    "read_only": false,
    "required": false
@@ -643,7 +643,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "autorisation_numero",
    "read_only": false,
    "required": false
@@ -661,7 +661,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "compteur_eau",
    "read_only": false,
    "required": false
@@ -673,7 +673,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "deja_beneficiaire_fda",
    "read_only": false,
    "required": false
@@ -727,7 +727,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "ombrage_notes",
    "read_only": false,
    "required": false
@@ -763,13 +763,13 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "visite_effectuee",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "visite_notes",
    "read_only": false,
    "required": false
@@ -787,13 +787,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "external_system",
    "read_only": true,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "external_id",
    "read_only": true,
    "required": false
@@ -805,7 +805,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "roof_type",
    "read_only": false,
    "required": false
@@ -835,13 +835,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "roi_band",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "whatsapp_opt_in",
    "read_only": false,
    "required": false
@@ -865,67 +865,67 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "fbclid",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "gclid",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "utm_source",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "utm_medium",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "utm_campaign",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "utm_content",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "utm_term",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "meta_ad_id",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "meta_adset_id",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "meta_campaign_id",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "meta_form_id",
    "read_only": false,
    "required": false
@@ -991,31 +991,31 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "client_ref",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "client_ref_provisoire",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "phone_is_foreign",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "page",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "note",
    "read_only": false,
    "required": false
@@ -1027,7 +1027,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "is_archived",
    "read_only": true,
    "required": false
@@ -1075,25 +1075,25 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "phone_normalise",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "email_normalise",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "whatsapp_normalise",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "appareil_id",
    "read_only": false,
    "required": false
@@ -1177,7 +1177,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "chauffage_electrique_hiver",
    "read_only": false,
    "required": false
@@ -1219,13 +1219,13 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "ObjetJSON",
    "nom": "reponses_categorie",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "secteur_industriel",
    "read_only": false,
    "required": false
@@ -1243,7 +1243,7 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "ListeJours",
    "nom": "jours_ouverture",
    "read_only": false,
    "required": false
@@ -1261,7 +1261,7 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "ListeMois",
    "nom": "fermeture_mois",
    "read_only": false,
    "required": false
@@ -1309,7 +1309,7 @@
    "required": false
   },
   {
-   "classe": "LeadDecimalField",
+   "classe": "CosPhiLead",
    "nom": "cos_phi",
    "read_only": false,
    "required": false
@@ -1321,7 +1321,7 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "ReleveConso",
    "nom": "releve_conso",
    "read_only": false,
    "required": false
@@ -1333,37 +1333,37 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "ice",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "rc",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "if_fiscal",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "adresse_siege",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "fonction_contact",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "contact_secondaire_fonction",
    "read_only": false,
    "required": false
@@ -1375,7 +1375,7 @@
    "required": false
   },
   {
-   "classe": "JSONField",
+   "classe": "TrancheDeclaree",
    "nom": "facture_tranche_declaree",
    "read_only": false,
    "required": false

@@ -61,7 +61,7 @@ class FicheTests(_Base):
         resp = self.api.patch(
             f'/api/django/crm/leads/{self.lead.pk}/',
             {'perdu': True}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('motif_perte', resp.data)
         self.lead.refresh_from_db()
         self.assertFalse(self.lead.perdu)
@@ -88,7 +88,7 @@ class FicheTests(_Base):
         resp = self.api.patch(
             f'/api/django/crm/leads/{self.lead.pk}/',
             {'perdu': True, 'motif_perte': '   '}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_perdu_faux_nexige_rien(self):
         resp = self.api.patch(

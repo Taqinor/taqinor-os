@@ -198,14 +198,18 @@ export function useLeadDraft(lead, { mode = lead ? 'edit' : 'create', currentUse
       // (une seule fois par échec — appelé ici, jamais au rendu) ; le même
       // texte alimente le chip d'état (SaveChip, LeadWorkspace.jsx) via
       // `state.saveError`.
-      const champErreur = err?.response?.status === 400 ? messageChampErreur(err.response.data) : null
+      // ERR-ENF11-FUZZ-CRM — une règle que le schéma ne dit pas (heure de fin,
+      // motif de perte, étape…) répond 409 avec les MÊMES erreurs par champ
+      // qu'un 400 : même message nommé, même signature « refusée » (sinon
+      // l'autosauvegarde réémettrait en boucle le même corps).
+      const refuse400 = err?.response?.status === 400 || err?.response?.status === 409
+      const champErreur = refuse400 ? messageChampErreur(err.response.data) : null
       const message = champErreur ?? (err?.response?.data?.detail ?? "Échec d'enregistrement — réessayez.")
-      const refuse400 = err?.response?.status === 400
       dispatch({ type: 'FLUSH_ERROR', error: message, refused: refuse400 ? signature : null })
       toast.error(message)
       // Erreurs PAR CHAMP d'un 400 DRF (critique Fable #6) : sans ce relais,
       // l'utilisateur ne savait jamais QUEL champ bloquait l'autosauvegarde.
-      if (err?.response?.status === 400 && err.response.data) {
+      if (refuse400 && err.response.data) {
         onFieldErrorsRef.current?.(err.response.data)
       }
       return false

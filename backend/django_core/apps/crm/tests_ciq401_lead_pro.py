@@ -199,27 +199,100 @@ class SaisieParLApi(TestCase):
             ('cos_phi', '0'),
             ('releve_conso', douze_plus_un),
             ('releve_conso', {'mois': [{'mois': '2026-08', 'kwh': -1}]}),
-            ('releve_conso', {'mois': [{'mois': '2026-08', 'kwh': 1},
-                                       {'mois': '2026-08', 'kwh': 2}]}),
         )
         for champ, valeur in cas:
             resp = self._patch({champ: valeur})
             self.assertEqual(resp.status_code, 400, (champ, valeur))
             self.assertIn(champ, resp.data, (champ, valeur))
 
+    def test_listes_de_mois_et_de_jours_sont_typees(self):
+        # ERR-ENF11-FUZZ-CRM — publiées « tableau d'entiers distincts » : un
+        # booléen ou un texte dans la liste est refusé comme avant (400).
+        for champ, valeur in (('mois_irrigation', [True]),
+                              ('fermeture_mois', ['3']),
+                              ('jours_ouverture', 'lundi')):
+            resp = self._patch({champ: valeur})
+            self.assertEqual(resp.status_code, 400, (champ, resp.data))
+            self.assertIn(champ, resp.data)
+        resp = self._patch({'mois_irrigation': [6, 7, 8], 'fermeture_mois': []})
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_le_lien_maps_suit_un_seul_predicat_schema_et_serveur(self):
+        # Un lien long (jusqu'à 500 signes, comme la colonne) est accepté ; le
+        # schéma de requête publie le MÊME motif que celui que le serveur applique.
+        long = 'https://www.google.com/maps/place/' + 'x' * 300
+        self.assertEqual(self._patch({'lien_maps': long}).status_code, 200)
+        hote_long = 'https://' + '.'.join(['a' * 63] * 5) + '.ma/'
+        self.assertEqual(self._patch({'lien_maps': hote_long}).status_code, 200)
+        for refuse in ('ftp://x.ma', 'https://x.ma/a b', 'x' * 20,
+                       'https://x.ma/' + 'y' * 500):
+            resp = self._patch({'lien_maps': refuse})
+            self.assertEqual(resp.status_code, 400, (refuse, resp.data))
+            self.assertIn('lien_maps', resp.data)
+        self.assertEqual(self._patch({'lien_maps': ''}).status_code, 200)
+
+    def test_cos_phi_strictement_positif_en_chaine_ou_en_nombre(self):
+        for valeur in ('0.001', '1', 0.5, '.5'):
+            resp = self._patch({'cos_phi': valeur})
+            self.assertEqual(resp.status_code, 200, (valeur, resp.data))
+        for valeur in ('0', 0, '0.0004', '-0.5', 1.001):
+            resp = self._patch({'cos_phi': valeur})
+            self.assertEqual(resp.status_code, 400, (valeur, resp.data))
+            self.assertIn('cos_phi', resp.data)
+
+    def test_un_decimal_vide_n_est_plus_lu_comme_null(self):
+        # Le formulaire envoie ``null`` (jamais ``""``) pour un décimal vidé.
+        self.assertEqual(self._patch({'facture_hiver': None}).status_code, 200)
+        resp = self._patch({'facture_hiver': ''})
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('facture_hiver', resp.data)
+
+    def test_releve_les_valeurs_texte_du_formulaire_restent_acceptees(self):
+        releve = {'mois': [{'mois': '2026-08', 'kwh': '17600.5'},
+                           {'mois': '2026-09', 'kwh': 12, 'cos_phi': '0.9'}]}
+        self.assertEqual(self._patch({'releve_conso': releve}).status_code, 200)
+        for mauvais in ({'mois': [{'mois': '2026-13', 'kwh': 1}]},
+                        {'mois': [{'mois': '2026-08', 'kwh': 1e12}]},
+                        {'mois': [{'mois': '2026-08', 'kwh': 1, 'cos_phi': 0}]},
+                        {'mois': [{'mois': '2026-08', 'kwh': True}]},
+                        {'source': 'declare'}):
+            resp = self._patch({'releve_conso': mauvais})
+            self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
+            self.assertIn('releve_conso', resp.data)
+
+    def test_motif_de_perte_manquant_est_un_refus_d_etat(self):
+        resp = self._patch({'perdu': True})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('motif_perte', resp.data)
+
+    def test_deux_lignes_du_meme_mois_sont_un_conflit_d_etat(self):
+        # ERR-ENF11-FUZZ-CRM — ``uniqueItems`` compare des lignes entières : la
+        # règle « un mois une fois » est un refus d'état (409), nommé.
+        resp = self._patch({'releve_conso': {'mois': [
+            {'mois': '2026-08', 'kwh': 1}, {'mois': '2026-08', 'kwh': 2}]}})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('releve_conso', resp.data)
+
+    def test_tranche_dont_le_maximum_precede_le_minimum_est_un_conflit(self):
+        resp = self._patch({'facture_tranche_declaree': {
+            'min_mad': 5000, 'max_mad': 4000}})
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('facture_tranche_declaree', resp.data)
+
     def test_heure_de_fin_avant_le_debut_refusee(self):
+        # ERR-ENF11-FUZZ-CRM — règle entre deux nombres : 409 (état), nommée.
         resp = self._patch({'heure_debut': 18, 'heure_fin': 8})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('heure_fin', resp.data)
         self._patch({'heure_debut': 8})
         resp = self._patch({'heure_fin': 6})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('heure_fin', resp.data)
 
     def test_reponses_hors_categorie_refusees(self):
         resp = self._patch({'categorie_commerciale': 'bureau',
                             'reponses_categorie': {'chambres': 3}})
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('reponses_categorie', resp.data)
 
     def test_douze_mois_acceptes_avec_registres_mt(self):

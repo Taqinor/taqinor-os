@@ -306,7 +306,8 @@ export default function PanneauScriptAppel({
         onLeadEcrit?.(data)
       })
       .catch((err) => {
-        const donnees = err?.response?.status === 400 ? err?.response?.data : null
+        const statutEcriture = err?.response?.status
+        const donnees = (statutEcriture === 400 || statutEcriture === 409) ? err?.response?.data : null
         setErreurs((e) => ({
           ...e,
           [entree.champ]: messageErreurServeur(entree, donnees)
