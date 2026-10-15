@@ -476,9 +476,13 @@ class CorpsFuzzTests(TestCase):
         )
         # QG4 : la création de produit est réservée à Directeur / Commercial
         # responsable — l'admin de la classe reçoit 403 avant toute validation.
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
         directeur = User.objects.create_user(
-            username='fuzz_stock_directeur', password='x', role_legacy='directeur',
-            company=self.a)
+            username='fuzz_stock_directeur', password='x', company=self.a,
+            role=Role.objects.create(
+                company=self.a, nom='Directeur', est_systeme=True,
+                permissions=list(dict(CANONICAL_SYSTEM_ROLES)['Directeur'])))
         api_directeur = auth_client(directeur)
         for fin, corps, champ in refuses:
             cli = api_directeur if fin == 'produits/' else api

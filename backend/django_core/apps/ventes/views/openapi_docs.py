@@ -21,7 +21,7 @@ from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
 )
 from ..serializers_facturation import (
-    AvoirSerializer, FactureSerializer, FactureWriteSerializer,
+    AvoirSerializer, FactureListeSerializer, FactureSerializer, FactureWriteSerializer,
     NoteDebitSerializer, PaiementSerializer, RetenueSubieSerializer,
 )
 
@@ -885,33 +885,36 @@ _MOTIFS_ABANDON = ['irrecouvrable', 'geste_commercial', 'ecart_reglement',
                    'liquidation', 'arrondi_caisse']
 
 
-class FactureAbandonnee(FactureSerializer):
+# CI #997 (5) — réponses d'ACTION : `FactureSerializer.to_representation` retire
+# `situation_vente` / `prochaines_echeances` hors du détail (`_vente_pdf` → None) ;
+# le schéma publié part donc de la forme LISTE (sans ces deux clés), jamais du détail.
+class FactureAbandonnee(FactureListeSerializer):
     """Réponse de ``abandonner-solde`` : la facture + le montant soldé."""
     montant_abandonne = s.FloatField()
 
 
-class FactureAbandonRepris(FactureSerializer):
+class FactureAbandonRepris(FactureListeSerializer):
     """Réponse de ``reprendre-abandon`` : la facture + l'abandon repris."""
     abandon_repris = s.IntegerField()
     montant_repris = s.CharField()
 
 
-class FactureRelancee(FactureSerializer):
+class FactureRelancee(FactureListeSerializer):
     """Réponse de ``relancer`` : la facture + l'e-mail éventuellement parti."""
     email_log_id = s.IntegerField(allow_null=True)
 
 
-class FactureEmise(FactureSerializer):
+class FactureEmise(FactureListeSerializer):
     """Réponse de ``emettre`` : la facture + les anomalies légales éventuelles."""
     anomalies = s.ListField(child=s.CharField(), required=False)
 
 
-class FactureCreeeDepuisBc(FactureSerializer):
+class FactureCreeeDepuisBc(FactureListeSerializer):
     """Réponse de ``creer-facture`` : la facture + l'avertissement doux."""
     warnings = s.ListField(child=s.CharField(), required=False)
 
 
-class FactureAnnulee(FactureSerializer):
+class FactureAnnulee(FactureListeSerializer):
     """Réponse de ``annuler`` (VNT4, ``facture_annulation.json``) : la
     facture + l'avoir de contre-passation (``null`` pour un brouillon)."""
     avoir = _ser('FactureAnnulationAvoir', {

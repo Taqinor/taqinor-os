@@ -2525,7 +2525,7 @@
   "RelancerFactureSerializer": {
    "fields": {
     "envoyer_email": [
-     "BooleanField",
+     "BooleenStrict",
      false,
      false,
      null,
