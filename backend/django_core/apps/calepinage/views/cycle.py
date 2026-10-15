@@ -106,7 +106,8 @@ def _drapeau(brut, defaut=True):
     })})
 @action(detail=True, methods=['post'], url_path='dupliquer',
         permission_classes=[PeutGererCalepinage],
-        parser_classes=PARSEURS_JSON)  # fuzz CI #997 (2) : un booléen JSON — un multipart n'en porte que des chaînes (« True »)
+        # fuzz CI #997 (2) : un booléen JSON — un multipart n'en porte que des chaînes (« True »)
+        parser_classes=PARSEURS_JSON)
 def dupliquer(self, request, pk=None):
     """CALX35 — duplique ce calepinage et rend la COPIE.
 

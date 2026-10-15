@@ -126,7 +126,8 @@ def _scan_class(app: str, relpath: str, node: ast.ClassDef):
     has_devise_accessor = False
     bad_defaults: list[str] = []
     for stmt in node.body:
-        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))                 and stmt.name in DEVISE_FIELD_NAMES:
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)
+                      )                 and stmt.name in DEVISE_FIELD_NAMES:
             has_devise_accessor = True
         targets: list[str] = []
         value = None

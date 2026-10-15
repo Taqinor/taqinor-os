@@ -333,7 +333,8 @@ class TypeDeCleTests(unittest.TestCase):
     """AMET100 - toute garde qui lit une baseline / allowlist declare `TYPE_DE_CLE` (lu par
     `audit_tache.py listes-figees`) : `par_symbole` = cle de contenu, `par_ligne` = numero de ligne."""
 
-    _BASELINE = re.compile(r"\w+_(?:allow|allowlist|exceptions|non_branches)\w*\.txt|exceptions_permanentes\.yml|_dette\.yml")
+    _BASELINE = re.compile(
+        r"\w+_(?:allow|allowlist|exceptions|non_branches)\w*\.txt|exceptions_permanentes\.yml|_dette\.yml")
     _TYPE = re.compile(r"(?m)^TYPE_DE_CLE\s*=\s*['\"](par_ligne|par_symbole)['\"]")
 
     def test_toute_garde_a_baseline_declare_son_type_de_cle(self):

@@ -112,7 +112,8 @@ from check_api_contract import (  # noqa: E402
     ANY, HOLE, FrontendCalls, frontend_files, normalise_call, resolve_template,
 )
 
-TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `ECHEC|fichier|METHODE|operation|nom` (jamais un numero de ligne)
+# AMET100 — cle de contenu `ECHEC|fichier|METHODE|operation|nom` (jamais un numero de ligne)
+TYPE_DE_CLE = "par_symbole"
 
 SNAPSHOT_PATH = ROOT / "docs" / "openapi-schema.yml"
 ALLOW_PATH = ROOT / "scripts" / "frontend_query_params_allow.txt"

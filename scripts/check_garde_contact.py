@@ -35,15 +35,20 @@ GARDES_RECONNUES = {"peut_contacter", "_lead_relancable", "motif_de_refus",
 #: qui possede le fichier (jamais corrigee depuis cette garde).
 LISTE_BLANCHE: dict[str, str] = {
     "backend/django_core/apps/crm/receivers_clients.py::_proposer_lien_parrainage_on_devis_accepted::wa.me":
-        "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au lead",
+        "lien de parrainage propose au COMMERCIAL du devis (destinataire interne, pas le prospect) ; aucun envoi au "
+        "lead",
     "backend/django_core/apps/crm/leads_notifications.py::_build_lead_wa_reply_url::wa.me":
-        "A CORRIGER (ACRM, session crm) : lien wa.me vers le prospect construit sans consulter peut_contacter ; brouillon que le vendeur clique, mais l'opposition n'est pas visible",
+        "A CORRIGER (ACRM, session crm) : lien wa.me vers le prospect construit sans consulter peut_contacter ; "
+        "brouillon que le vendeur clique, mais l'opposition n'est pas visible",
     "backend/django_core/apps/crm/visites_rdv.py::dispatch_appointment_reminder::wa.me":
-        "A CORRIGER (ACRM, session crm) : brouillon wa.me de rappel RDV vers le lead sans garde de contact (opposition non verifiee)",
+        "A CORRIGER (ACRM, session crm) : brouillon wa.me de rappel RDV vers le lead sans garde de contact (opposition "
+        "non verifiee)",
     "backend/django_core/apps/crm/cadence_filet.py::_poser_etape_de_filet::touche":
-        "A CORRIGER (LSVC5-5) : pose de filet sans garde propre ; liste blanche « appelants gardes » OU garde a ajouter, decision du proprietaire crm",
+        "A CORRIGER (LSVC5-5) : pose de filet sans garde propre ; liste blanche « appelants gardes » OU garde a "
+        "ajouter, decision du proprietaire crm",
     "backend/django_core/apps/crm/cadence_plan.py::initialiser_plan_relance::touche":
-        "A CORRIGER (session crm) : creation en masse du plan de relance, tache interne du vendeur ; garde de contact a la pose non verifiee",
+        "A CORRIGER (session crm) : creation en masse du plan de relance, tache interne du vendeur ; garde de contact "
+        "a la pose non verifiee",
     "backend/django_core/apps/crm/cadence_filet.py::assurer_prochaine_etape_apres_succes::touche":
         "A CORRIGER (session crm) : touche de suite posee sans garde de contact a la pose",
     "backend/django_core/apps/crm/cadence_signaux.py::poser_touche_signal::touche":
@@ -55,7 +60,8 @@ LISTE_BLANCHE: dict[str, str] = {
     "backend/django_core/apps/crm/cadence_reponses.py::_poser_etape_passation::touche":
         "A CORRIGER (session crm) : touche de passation posee sans garde de contact a la pose",
     "backend/django_core/apps/automation/actions.py::_send_email::email":
-        "A CORRIGER (LSVC4-3, session automation/crm) : e-mail sortant a un destinataire pouvant deriver d'un lead, sans peut_contacter",
+        "A CORRIGER (LSVC4-3, session automation/crm) : e-mail sortant a un destinataire pouvant deriver d'un lead, "
+        "sans peut_contacter",
 }
 
 GENRE_TOUCHE, GENRE_WAME, GENRE_MAIL = "touche", "wa.me", "email"

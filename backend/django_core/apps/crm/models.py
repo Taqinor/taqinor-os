@@ -875,7 +875,8 @@ class Lead(SoftDeleteModel):
 
     # ── Pipeline / CRM ──
     owner = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,  # on_delete: responsable commercial informatif — le lead survit au départ de l'utilisateur
+        # on_delete: responsable commercial informatif — le lead survit au départ de l'utilisateur
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='leads_assignes')
     canal = models.CharField(
         max_length=20, choices=Canal.choices, blank=True, null=True)
@@ -2155,8 +2156,8 @@ class LeadActivity(models.Model):
         blank=True,
         related_name='lead_activities',
     )
-    lead = models.ForeignKey(
-        Lead, on_delete=models.CASCADE, related_name='activites')  # on_delete: historique/chatter de Lead — suit son objet
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name='activites')
+    # on_delete: historique/chatter de Lead — suit son objet
     kind = models.CharField(max_length=15, choices=Kind.choices)
     field = models.CharField(max_length=100, blank=True, null=True)
     field_label = models.CharField(max_length=150, blank=True, null=True)
@@ -2199,7 +2200,8 @@ class LeadTag(models.Model):
     """Étiquette de lead gérée (Paramètres → CRM). Le champ Lead.tags reste un
     texte libre ; cette liste sert de suggestions + couleurs. Additif."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='lead_tags')
     nom = models.CharField(max_length=80)
     couleur = models.CharField(max_length=7, blank=True, default='')
@@ -2222,7 +2224,8 @@ class Canal(models.Model):
     canal critique contre le renommage/la suppression : 'site_web' est utilisé
     par le webhook du site web — le supprimer/renommer casserait le pipeline."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='canaux')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=80)
@@ -2250,7 +2253,8 @@ class MotifPerte(models.Model):
     pour une raison commerciale). Sert le signal qualité manquant au veto de
     divergence : le taux de junk PAR AD (``apps.adsengine.attribution``)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='motifs_perte')
     nom = models.CharField(max_length=150)
     archived = models.BooleanField(default=False)
@@ -2605,7 +2609,8 @@ class ChatSessionPublique(models.Model):
         FERMEE = 'fermee', 'Fermée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='chat_sessions_publiques')
     token = models.CharField(
         max_length=64, unique=True, default=_default_chat_token,
@@ -2660,10 +2665,11 @@ class BookingLink(models.Model):
     via le service ``book_appointment`` existant (même logique métier que la
     création interne)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company', on_delete=models.CASCADE,
         related_name='booking_links')
-    lead = models.ForeignKey(
-        'crm.Lead', on_delete=models.CASCADE, related_name='booking_links')  # on_delete: BookingLink est le détail de Lead — n'existe pas sans lui
+    lead = models.ForeignKey('crm.Lead', on_delete=models.CASCADE, related_name='booking_links')
+    # on_delete: BookingLink est le détail de Lead — n'existe pas sans lui
     token = models.CharField(
         max_length=64, unique=True, default=_default_booking_token,
         editable=False)
@@ -2809,7 +2815,8 @@ class SavedView(TenantModel):
     # SCA4 — `company` + timestamps hérités de core.models.TenantModel
     # (accesseur inverse par défaut : company.crm_savedview_set).
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: vue personnelle, sans objet sans son propriétaire
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        # on_delete: vue personnelle, sans objet sans son propriétaire
         related_name='crm_vues_enregistrees')
     page = models.CharField(
         max_length=64,

@@ -53,7 +53,8 @@ DECLARATION_RE = re.compile(
     # (?<!LE)STAGE : le vocabulaire solaire français contient « lestage » et
     # « délestage » (ballast, load-shedding) — un identifiant comme
     # CLES_STRUCTURE_LESTAGE n'est pas une liste d'étapes du funnel.
-    r"(?:const\s+|let\s+|var\s+)?([A-Za-z_][A-Za-z0-9_]*(?:(?<!LE)STAGE|PIPELINE)[A-Za-z0-9_]*)\s*=\s*[\[\(]([^\]\)]*)[\]\)]",
+    r"(?:const\s+|let\s+|var\s+)?([A-Za-z_][A-Za-z0-9_]*(?:(?<!LE)STAGE|PIPELINE)[A-Za-z0-9_]*)\s*=\s*"
+    r"[\[\(]([^\]\)]*)[\]\)]",
     re.IGNORECASE,
 )
 STRING_RE = re.compile(r"['\"]([^'\"]+)['\"]")

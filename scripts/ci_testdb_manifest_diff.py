@@ -234,7 +234,8 @@ _KIND_NOTE = {
         "renumbered AND its content changed (a renumber rewrites `dependencies` to chain behind the colliding "
         "migration, which is NOT in this dump) -> applying it now would be a dependency inversion, so: rebuild"
     ),
-    "DELETED": "gone from the tree, and its content is nowhere else; the dump records schema this tree no longer defines",
+    "DELETED": "gone from the tree, and its content is nowhere else; the dump records schema this tree no longer "
+    "defines",
 }
 
 

@@ -89,7 +89,8 @@ def _rejouer():
 _avant = _comptes()
 _sortie, _ret, _err = _rejouer()
 _apres = _comptes()
-_texte = _sortie + ('' if _ret is None else (_ret if isinstance(_ret, str) else json.dumps(_ret, default=str, ensure_ascii=False)))
+_texte = _sortie + ('' if _ret is None else (
+    _ret if isinstance(_ret, str) else json.dumps(_ret, default=str, ensure_ascii=False)))
 if _err:
     _texte += '\nERREUR : ' + _err
 if _err or (isinstance(_ret, dict) and _ret.get('repro') is False):
