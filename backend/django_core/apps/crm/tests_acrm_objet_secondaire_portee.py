@@ -65,9 +65,10 @@ class ObjetSecondairePorteeTests(TestCase):
         absent = self.api.post(f'{LEADS}{self.lead.pk}/convertir-client/',
                                {'mode': 'lier', 'client_id': 99999999},
                                format='json')
-        self.assertEqual(hors.status_code, 400)
+        # ERR-ENF11-FUZZ-CRM : hors portée = absent = 404 (même corps).
+        self.assertEqual(hors.status_code, 404)
         self.assertEqual(hors.data['client_id'], ['Client introuvable.'])
-        self.assertEqual(absent.status_code, 400)
+        self.assertEqual(absent.status_code, 404)
         # Enveloppe YAPIC3 identique, au ``request_id`` (par requête) près.
         hors_err = {k: v for k, v in hors.data['error'].items()
                     if k != 'request_id'}

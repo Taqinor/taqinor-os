@@ -27,6 +27,10 @@ from ..services import (
 )
 from . import _openapi as oa
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: ACHT20 — message unique d'une livraison expédiée (lignes et en-tête figés).
 MESSAGE_LIVRAISON_FIGEE = (
     "Livraison expédiée : annulez-la puis recréez-la.")
@@ -72,7 +76,13 @@ def _exiger_transition_livraison(liv, cible):
         f"{_VERBES_LIVRAISON.get(cible, 'changer son statut')}.")})
 
 
-@oa.listing(p0=oa.qs('mode_acheminement'), p1=oa.qs('statut'), p2=oa.qd('date_prevue'), p3=oa.qi('depot'), p4=oa.qi('installation'))
+@oa.listing(
+    p0=oa.qs('mode_acheminement'),
+    p1=oa.qs('statut'),
+    p2=oa.qd('date_prevue'),
+    p3=oa.qi('depot'),
+    p4=oa.qi('installation'),
+)
 class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """FG329 — livraisons planifiées. Lecture tout rôle, écriture
     responsable/admin. Filtrable par `installation`, `statut`, `depot`,
@@ -220,7 +230,7 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     numero_suivi=liv.numero_suivi,
                 )
             except Exception:  # pragma: no cover - défensif, best-effort
-                pass
+                logger.warning("livrer : échec ignoré, comportement dégradé", exc_info=True)
             # ACHT19 — notification + webhook « livrée » : une seule fois.
             liv.notifie_livree_le = timezone.now()
             liv.save(update_fields=['notifie_livree_le'])
@@ -236,10 +246,13 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         try:
             contre_transferer_stock_livraison(liv, request.user)
         except Exception:  # pragma: no cover - défensif, best-effort
-            pass
+            logger.warning("annuler : échec ignoré, comportement dégradé", exc_info=True)
         return self._set_statut(request, Livraison.Statut.ANNULEE)
 
-    @oa.extend_schema(request=oa.body('GenererRetourLivraisonRequete', motif=oa.s()), responses={201: RetourLivraisonSerializer})
+    @oa.extend_schema(
+        request=oa.body('GenererRetourLivraisonRequete', motif=oa.s()),
+        responses={201: RetourLivraisonSerializer},
+    )
     @action(detail=True, methods=['post'], url_path='generer-retour',
             permission_classes=[IsResponsableOrAdmin])
     def generer_retour(self, request, pk=None):
@@ -277,8 +290,8 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             f'inline; filename="bon-livraison-{liv.id}.pdf"')
         return resp
 
-    @oa.extend_schema(parameters=[oa.qi('client', required=True)], responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='portail',
+    @oa.extend_schema(parameters=[oa.qid('client', required=True)], responses=oa.LIST)
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='portail',
             permission_classes=[IsResponsableOrAdmin])
     def portail(self, request):
         """XSTK22 — section « Livraisons » du portail client (FG228) : les
@@ -287,8 +300,9 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ``monitoring.client_portal``)."""
         from .. import selectors
         company = request.user.company
-        client_id = request.query_params.get('client')
-        if company is None or not client_id:
+        # ERR-ENF11 : `client` = id 1..ID_MAX publié (``abc`` faisait un 500).
+        client_id = oa.id_requete(request, 'client', requis=True)
+        if company is None:
             return Response(
                 {'detail': 'client requis.'},
                 status=status.HTTP_400_BAD_REQUEST)

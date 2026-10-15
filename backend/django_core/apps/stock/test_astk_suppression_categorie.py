@@ -45,7 +45,7 @@ class SuppressionCategorieTests(TestCase):
         reponse = self.api.delete(
             f'/api/django/stock/categories/{self.categorie.pk}/')
 
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(reponse.status_code, 409, reponse.content)
         self.assertIn('Catégorie utilisée par 1 produit :',
                       reponse.json()['detail'])
         # persistance : relu en base
@@ -65,7 +65,7 @@ class SuppressionCategorieTests(TestCase):
         reponse = self.api.delete(
             f'/api/django/stock/categories/{self.categorie.pk}/')
 
-        self.assertEqual(reponse.status_code, 400, reponse.content)
+        self.assertEqual(reponse.status_code, 409, reponse.content)
 
     def test_categorie_sans_produit_supprimable(self):
         reponse = self.api.delete(

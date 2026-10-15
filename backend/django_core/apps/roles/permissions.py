@@ -290,3 +290,98 @@ class IsInternalWriterOrPortalClientOwner(BasePermission):
         if scope is None:
             return False
         return getattr(obj, self.owner_field, None) == scope
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ASEC50 / D-ASEC-4 (C-ASEC-015) — codes de la grille APPLIQUÉS côté serveur
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Les codes d'export, de suppression et de réaffectation de la grille de rôles
+# étaient décoratifs : décocher « Exporter » laissait l'export répondre 200.
+# ``DroitDeLaGrille(code)`` est LA classe paramétrée par code posée sur chaque
+# endpoint concerné, EN PLUS de sa garde existante (jamais à sa place). Elle
+# paramètre la primitive ``HasPermissionOrLegacy`` (aucune réimplémentation :
+# rôle fin → le code ; compte hérité sans rôle fin → palier responsable ;
+# superuser → oui) et n'y ajoute que le refus NOMMÉ (403 ``droit_manquant``)
+# et deux déclencheurs :
+#
+# * ``operation`` — action EN MASSE : la garde ne joue que si le champ
+#   ``action`` du corps vaut ``operation`` (p. ex. ``reassign`` du bulk leads) ;
+# * ``champ`` — modification d'un champ d'affectation par PUT/PATCH : la garde
+#   ne joue, au niveau OBJET, que si le corps CHANGE la valeur de ``champ``
+#   (réaffecter un lead en changeant son ``owner``) ; un corps qui renvoie la
+#   valeur courante n'est pas une réaffectation.
+#
+# Aucun littéral de code ici : chaque code vit à l'endpoint qui l'applique
+# (la garde inverse ASEC20 lit ces littéraux pour prouver la consommation).
+
+#: Code machine du 403 (le frontend s'y branche, comme ASEC10 / ASEC29).
+CODE_DROIT_MANQUANT = 'droit_manquant'
+
+#: Suffixe du code → libellé du geste dans le message de refus.
+_GESTE_PAR_SUFFIXE = {
+    'export': 'Exporter',
+    'supprimer': 'Supprimer',
+    'reassign': 'Réaffecter',
+    'assign': 'Affecter',
+}
+
+
+def _valeur_normalisee(valeur):
+    return '' if valeur in (None, '', 'null') else str(valeur)
+
+
+def _corps(request):
+    data = getattr(request, 'data', None)
+    return data if hasattr(data, 'get') else {}
+
+
+def corps_change_le_champ(request, obj, champ):
+    """Le corps de ``request`` porte-t-il ``champ`` avec une valeur DIFFÉRENTE
+    de celle de ``obj`` (clé étrangère comparée par son id) ?"""
+    data = _corps(request)
+    if champ not in data:
+        return False
+    attname = f'{champ}_id' if hasattr(type(obj), f'{champ}_id') else champ
+    return (_valeur_normalisee(data.get(champ))
+            != _valeur_normalisee(getattr(obj, attname, None)))
+
+
+def DroitDeLaGrille(code, *, operation=None, champ=None):
+    """ASEC50 — classe de permission DRF qui applique le code ``code`` de la
+    grille (voir l'en-tête de section). Toujours AVEC la garde existante :
+    ``[IsResponsableOrAdmin(), DroitDeLaGrille('<module>_export')()]``."""
+    from authentication.permissions import HasPermissionOrLegacy
+
+    geste = _GESTE_PAR_SUFFIXE.get(code.rsplit('_', 1)[-1], code)
+
+    class _DroitDeLaGrille(HasPermissionOrLegacy(code)):
+        message = {
+            'detail': f'Droit « {geste} » manquant ({code}).',
+            'code': CODE_DROIT_MANQUANT,
+        }
+
+        def has_permission(self, request, view):
+            if champ is not None:
+                return True  # tranché au niveau objet (valeur changée ?)
+            if (operation is not None
+                    and _corps(request).get('action') != operation):
+                return True
+            return super().has_permission(request, view)
+
+        def has_object_permission(self, request, view, obj):
+            if champ is None or not corps_change_le_champ(request, obj, champ):
+                return True
+            return super().has_permission(request, view)
+
+    suffixe = f'__{operation or champ}' if (operation or champ) else ''
+    _DroitDeLaGrille.__name__ = f'DroitDeLaGrille_{code}{suffixe}'
+    return _DroitDeLaGrille
+
+
+def droits_de_la_grille(view, **par_action):
+    """Instances des gardes ``DroitDeLaGrille`` déclarées pour l'action
+    COURANTE de ``view`` (``par_action`` : nom d'action DRF → liste de
+    classes). Sert les branches de ``get_permissions`` partagées par plusieurs
+    actions : seule l'action visée reçoit la garde supplémentaire."""
+    return [cls() for cls in par_action.get(getattr(view, 'action', None), ())]

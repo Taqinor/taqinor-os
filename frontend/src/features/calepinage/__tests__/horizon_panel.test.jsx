@@ -134,7 +134,7 @@ describe('CAL93 — l’écran', () => {
     expect(corps.valeur.points).toHaveLength(8)
     expect(corps.valeur.hauteurMaxDeg).toBe(12)
     expect(enregistrerLayoutCalepinage).not.toHaveBeenCalled()
-    expect(await screen.findByText(/prochain calcul de la simulation \(Production › Lancer\)/)).toBeInTheDocument()
+    expect(await screen.findByText(/simulation affichée est périmée : relancez-la \(Production › Lancer\)/)).toBeInTheDocument()
   })
 
   it('lecture en échec → Enregistrer désactivé, message affiché, aucun POST', async () => {

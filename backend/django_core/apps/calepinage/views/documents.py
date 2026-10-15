@@ -330,7 +330,7 @@ CalepinageViewSet.plan_cablage_dxf = plan_cablage_dxf
 # ── CALX312 — l'export JSON versionné du projet et de ses résultats ────────
 # Imports de SECTION (fichier append-only : l'en-tête ne se rouvre pas).
 
-#: La forme du contrat ``export_projet.json`` (douze clés) — jamais un
+#: La forme du contrat ``export_projet.json`` (quinze clés) — jamais un
 #: « type: object » vide, qui validerait tout (check_openapi_shapes, R1).
 EXPORT_PROJET_SCHEMA = inline_serializer('CalepinageExportProjet', {
     'format_version': drf_serializers.IntegerField(),

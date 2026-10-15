@@ -22,6 +22,10 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from .models import Equipement, Ticket, TicketSatisfaction
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 MAX_PIECES_JOINTES_PORTAIL = 5
 # ASAV24 — fenêtre de rejeu d'un signalement public identique (5 min).
 FENETRE_REJEU_SIGNALEMENT_S = 300
@@ -254,6 +258,7 @@ def ticket_public_satisfaction(request, token):
             ticket=ticket, note=note, commentaire=commentaire,
             sous_notes=sous_notes)
     except Exception:  # noqa: BLE001 — filet de course (OneToOne race)
+        logger.warning("ticket public satisfaction : échec ignoré, comportement dégradé", exc_info=True)
         return _noindex(Response(
             {'detail': 'Une réponse a déjà été enregistrée pour ce ticket.'},
             status=status.HTTP_409_CONFLICT))

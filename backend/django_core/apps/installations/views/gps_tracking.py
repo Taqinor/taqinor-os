@@ -95,7 +95,16 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
             qs = qs.filter(technicien_id=technicien)
         return qs
 
-    @oa.extend_schema(request=oa.body('PingGpsRequete', lat=oa.f(True), lng=oa.f(True), accuracy_m=oa.f(null=True), intervention=oa.i(null=True)), responses={201: oa.OBJ})
+    @oa.extend_schema(
+        request=oa.body(
+            'PingGpsRequete',
+            lat=oa.f(True),
+            lng=oa.f(True),
+            accuracy_m=oa.f(null=True),
+            intervention=oa.i(null=True),
+        ),
+        responses={201: oa.OBJ},
+    )
     @action(detail=False, methods=['post'], permission_classes=[IsAnyRole])
     def ping(self, request):
         """XFSM23 — le technicien poste sa position live. Corps :
@@ -139,7 +148,7 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
         return Response(data, status=201)
 
     @oa.extend_schema(responses=PositionTechnicienSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='carte-live')
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='carte-live')
     def carte_live(self, request):
         """XFSM23 — dernière position connue par technicien (vue superviseur
         carte temps réel), scopée à l'équipe visible de l'appelant."""

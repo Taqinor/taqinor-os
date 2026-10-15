@@ -33,10 +33,21 @@ vi.mock('../../../api/crmApi', async (importOriginal) =>
 vi.mock('../../../api/uxviewsApi', async () =>
   (await import('../../../test/devisListMocks.js')).uxviewsApiMock())
 
+// ADEV34 : espion sur la forme unique de la date locale (implémentation réelle
+// par défaut) — le test de la modale vérifie le CÂBLAGE (champ et max = la date
+// locale du helper), l'arithmétique de fuseau vit dans src/lib/dateLocale.test.mjs.
+vi.mock('../../../lib/dateLocale.js', async (importOriginal) => {
+  const m = await importOriginal()
+  return { ...m, todayLocalIso: vi.fn(m.todayLocalIso) }
+})
+
 import DevisList from '../DevisList'
 import ventesApi from '../../../api/ventesApi'
 import { renderListeVentes } from '../../../test/devisListRender.jsx'
 import { annoncerAffaireSignee, effacerAffaireSignee } from '../../../ui/dealSignedBus'
+import { documentContrat } from '../../../test/fixtures/contractSamples'
+import { toast } from '../../../ui'
+import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 const DEVIS = [{
   id: 515, reference: 'DEV-A15', client_nom: 'ACME', statut: 'envoye',
@@ -117,5 +128,77 @@ describe('ADEV15 — « Passer outre » à l\'acceptation', () => {
     await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
     expect(await screen.findByText(/client litigieux/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Passer outre/ })).toBeNull()
+  })
+})
+
+// VNT80 — un 409 qui NOMME un autre devis (`vente_active_existante.vente_active`,
+// exemple committé devis_prix_negocie.json) : la fête est retirée, le message
+// s'affiche SOUS la ligne et « Ouvrir <réf> » surligne ce devis (?devis=<id>).
+describe('VNT80 — acceptation refusée : vente active existante', () => {
+  it('message sous la ligne + « Ouvrir » défile jusqu’au devis nommé', async () => {
+    const refus = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.vente_active_existante
+    const cible = refus.vente_active
+    ventesApi.accepterDevis.mockRejectedValueOnce(Object.assign(new Error('409'), {
+      response: { status: 409, data: refus },
+    }))
+    const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {})
+    const user = userEvent.setup()
+    renderListeVentes(DevisList, {
+      devis: [...DEVIS, { ...DEVIS[0], id: cible.id, reference: cible.reference, statut: 'accepte' }],
+      auth: { role: 'admin', role_nom: 'admin', permissions: ['ventes_valider'] },
+    })
+    const row = screen.getByText('DEV-A15').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Accepter/ }))
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), 'Sami')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(refus.detail)
+    expect(effacerAffaireSignee).toHaveBeenCalledTimes(1)
+    await user.click(within(alerte).getByRole('button', { name: `Ouvrir ${cible.reference}` }))
+    await waitFor(() => expect(defile.mock.contexts.at(-1)).toBe(document.getElementById(`devis-row-${cible.id}`)))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+// ADEV34 — la date proposée par la modale est la date LOCALE (Africa/Casablanca,
+// via todayLocalIso), bornée à aujourd'hui : à 00:30 au Maroc (23:30 UTC la
+// veille) elle vaut déjà le lendemain UTC. Le refus serveur d'une date future
+// (400 nommant `date_acceptation`) est affiché depuis le CORPS de la réponse.
+describe("ADEV34 — date d'acceptation locale", () => {
+  // Le décalage réel de Casablanca dépend de la base tz du runtime (Node/ICU du
+  // poste ≠ runner CI) : l'arithmétique de fuseau est prouvée dans le test pur
+  // du helper (src/lib/dateLocale.test.mjs). Ici, la date locale du helper est
+  // FIXÉE au lendemain de l'instant UTC : la modale doit l'utiliser pour le champ
+  // ET le max — la forme UTC naïve (toISOString().slice(0, 10)) donnerait la veille.
+  const reelle = todayLocalIso.getMockImplementation()
+  afterEach(() => {
+    vi.useRealTimers()
+    todayLocalIso.mockImplementation(reelle)
+  })
+
+  it("à 23:30 UTC la veille : champ = date locale du jour, max = aujourd'hui", () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-07T23:30:00Z'))
+    todayLocalIso.mockImplementation(() => '2026-10-08')
+    ouvrir('admin')
+    const champ = screen.getByLabelText("Date d'acceptation")
+    expect(new Date().toISOString().slice(0, 10)).toBe('2026-10-07')
+    expect(champ.value).toBe('2026-10-08')
+    expect(champ.getAttribute('max')).toBe('2026-10-08')
+    expect(todayLocalIso).toHaveBeenCalled()
+  })
+
+  it('400 date_acceptation future : le message du corps est affiché', async () => {
+    const message = "La date d'acceptation ne peut pas être dans le futur."
+    const erreur = vi.spyOn(toast, 'error')
+    ventesApi.accepterDevis.mockRejectedValueOnce(Object.assign(new Error('400'), {
+      response: { status: 400, data: { date_acceptation: [message] } },
+    }))
+    const user = userEvent.setup()
+    ouvrir('admin')
+    await user.type(await screen.findByLabelText('Nom de la personne qui accepte'), 'Sami')
+    await user.click(screen.getByRole('button', { name: /Confirmer l'acceptation/ }))
+    await waitFor(() => expect(erreur).toHaveBeenCalledWith(message))
+    erreur.mockRestore()
   })
 })

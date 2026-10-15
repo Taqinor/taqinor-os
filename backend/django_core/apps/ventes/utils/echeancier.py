@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
 
-from apps.ventes.models import Avoir, Facture
+from apps.ventes.models import Facture
 import logging
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,15 @@ _MOTS_MONTANT = frozenset({'montant', 'mad', 'dh', 'dhs', 'amount', 'fixe'})
 
 class EcheancierInvalide(ValueError):
     """Échéancier refusé. Le message porté est en FRANÇAIS, prêt pour un 400."""
+
+
+class EcheancierIncoherent(EcheancierInvalide):
+    """CI #997 (4) — tranches BIEN FORMÉES dont l'ensemble viole une règle que
+    le schéma publié ne sait pas dire : somme ≠ 100 %, ou valeur > 100 lue
+    comme pourcentage selon l'unité déclarée (``unite`` / ``type``, synonymes
+    insensibles à la casse). Sous-classe : tout appelant qui attrape
+    ``EcheancierInvalide`` est inchangé ; l'API devis la rend en 409
+    ``ConflitEtat`` (même message), comme le plafond d'avoir."""
 
 
 def _mot_unite(valeur):
@@ -151,14 +160,18 @@ def normaliser_tranche(entree, index=0) -> dict:
             "négatif.")
 
     unite = unite_declaree(entree)
+    # CI #997 (4) — les deux refus d'UNITÉ sont des règles inter-clés
+    # (``EcheancierIncoherent``) : jugés APRÈS les contrôles de forme de la
+    # tranche (date, jalon…), qui gardent leur 400.
+    incoherence = None
     if unite == UNITE_PCT and valeur > 100:
-        raise EcheancierInvalide(
+        incoherence = (
             f"Tranche n°{index + 1} : un pourcentage ne peut pas dépasser 100 "
             f"(reçu {valeur:g}). Pour un montant en dirhams, déclarez "
             "« type » : « montant ».")
     if unite is None:
         if valeur > 100:
-            raise EcheancierInvalide(
+            incoherence = (
                 f"Tranche n°{index + 1} : la valeur {valeur:g} est ambiguë — "
                 "au-delà de 100 elle ne peut pas être un pourcentage. "
                 "Déclarez « type » : « montant » pour un montant en dirhams, "
@@ -192,6 +205,8 @@ def normaliser_tranche(entree, index=0) -> dict:
     # ``devis_replace_lines_entete.json``) : absents ⇒ clés absentes, un
     # échéancier d'hier sort identique à l'octet.
     sortie.update(_champs_jalon(entree, index))
+    if incoherence is not None:
+        raise EcheancierIncoherent(incoherence)
     return sortie
 
 
@@ -206,7 +221,7 @@ def _nombre_tranche(entree, cle, index, *, entier):
         if valeur != valeur or valeur < 0 or (
                 entier and valeur != int(valeur)):
             raise ValueError(brut)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise EcheancierInvalide(
             f"Tranche n°{index + 1} : « echeancier[{index}].{cle} » doit être "
             f"un nombre {'entier ' if entier else ''}positif (reçu « {brut} »).")
@@ -288,8 +303,117 @@ def controler_somme_echeancier(entries, tranches):
         if abs(total - 100.0) > TOLERANCE_SOMME_PCT:
             total_txt = (f"{total:g}" if total == int(total)
                          else f"{total:.2f}").replace('.', ',')
-            raise EcheancierInvalide(
+            # CI #997 (4) — règle d'ENSEMBLE, inexprimable au schéma : 409.
+            raise EcheancierIncoherent(
                 f"Total des tranches : {total_txt} % — il doit faire 100 %.")
+
+
+# ── CI #997 (4) — forme d'ÉCRITURE d'une tranche = forme PUBLIÉE ────────────
+# (api-fuzz PUT devis ``echeancier: [{}]`` : 400 « Total des tranches : 0 % »
+# sur un corps conforme). Une seule source pour le schéma
+# (:func:`schema_echeancier`) et le refus 400 (:func:`forme_tranche_ecriture`) ;
+# la LECTURE d'un échéancier stocké reste tolérante (``normaliser_tranche``).
+MOTIF_VALEUR_TEXTE = r'^[0-9]{1,12}(?:\.[0-9]{1,6})?$'
+MOTIF_ENTIER_TEXTE = r'^[0-9]{1,9}$'
+MOTIF_NOMBRE_TEXTE = r'^[0-9]{1,9}(?:[.,][0-9]{1,6})?$'
+MOTIF_DATE = r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+CLES_TEXTE = ('libelle', 'type', 'unite')
+
+
+def _est_nombre(valeur):
+    return isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
+
+
+def _texte_ou_nombre(brut, motif, *, entier=False):
+    """Vrai si ``brut`` a la forme publiée : nombre ≥ 0 (entier si demandé)
+    ou chaîne du ``motif``."""
+    import re
+    if _est_nombre(brut):
+        return brut >= 0 and (not entier or isinstance(brut, int)
+                              or float(brut).is_integer())
+    return isinstance(brut, str) and re.fullmatch(motif, brut) is not None
+
+
+def forme_tranche_ecriture(entree, index=0):
+    """Refuse (``EcheancierInvalide``, 400) une tranche hors de la forme
+    publiée par :func:`schema_echeancier`. Ne juge AUCUNE règle inter-clés
+    (unité, somme) : c'est ``EcheancierIncoherent`` (409)."""
+    import re
+    n = f"Tranche n°{index + 1}"
+    if not isinstance(entree, dict):
+        raise EcheancierInvalide(
+            f"{n} : chaque tranche doit être un objet "
+            "{libelle, type, pct_or_montant}.")
+    if 'pct_or_montant' not in entree:
+        raise EcheancierInvalide(
+            f"{n} : « pct_or_montant » est obligatoire — saisissez un "
+            "pourcentage ou un montant.")
+    brut = entree['pct_or_montant']
+    if brut is None or (isinstance(brut, str) and not brut.strip()):
+        raise EcheancierInvalide(
+            f"{n} : la tranche est vide — saisissez un pourcentage ou un "
+            "montant.")
+    if not _texte_ou_nombre(brut, MOTIF_VALEUR_TEXTE):
+        raise EcheancierInvalide(
+            f"{n} : « pct_or_montant » doit être un nombre positif "
+            f"(reçu « {brut} »).")
+    for cle in CLES_TEXTE:
+        valeur = entree.get(cle)
+        if valeur is not None and (not isinstance(valeur, str)
+                                   or '\x00' in valeur):
+            raise EcheancierInvalide(
+                f"{n} : « echeancier[{index}].{cle} » doit être un texte.")
+    for cle, motif, entier in (
+            ('delai_reglement_jours', MOTIF_ENTIER_TEXTE, True),
+            ('semaines_indicatives', MOTIF_NOMBRE_TEXTE, False)):
+        valeur = entree.get(cle)
+        if valeur not in (None, '') and not _texte_ou_nombre(
+                valeur, motif, entier=entier):
+            raise EcheancierInvalide(
+                f"{n} : « echeancier[{index}].{cle} » doit être un nombre "
+                f"{'entier ' if entier else ''}positif (reçu « {valeur} »).")
+    date = entree.get('date_prevue')
+    if date not in (None, '') and not (
+            isinstance(date, str) and re.fullmatch(MOTIF_DATE, date)):
+        raise EcheancierInvalide(
+            f"{n} : « echeancier[{index}].date_prevue » doit être une date "
+            f"au format AAAA-MM-JJ (reçu « {date} »).")
+
+
+def schema_echeancier():
+    """Forme PUBLIÉE de ``Devis.echeancier`` (OpenAPI 3.0) : null, ``""`` ou
+    une liste de tranches dont ``pct_or_montant`` est OBLIGATOIRE."""
+    from apps.ventes.utils.company_settings import JALONS_CONNUS
+    from core.champs_stricts import MOTIF_SANS_NUL
+
+    def nullable(*branches):
+        return {'nullable': True, 'anyOf': list(branches)}
+
+    vide = {'type': 'string', 'enum': ['']}
+    texte = {'type': 'string', 'nullable': True, 'pattern': MOTIF_SANS_NUL}
+    tranche = {
+        'type': 'object',
+        'required': ['pct_or_montant'],
+        'properties': {
+            **{cle: dict(texte) for cle in CLES_TEXTE},
+            'pct_or_montant': {'anyOf': [
+                {'type': 'number', 'minimum': 0},
+                {'type': 'string', 'pattern': MOTIF_VALEUR_TEXTE}]},
+            'date_prevue': nullable(
+                {'type': 'string', 'format': 'date'}, vide),
+            'jalon': nullable(
+                {'type': 'string', 'enum': [*JALONS_CONNUS, '']}),
+            'payeur': nullable(
+                {'type': 'string', 'enum': [*PAYEURS, '']}),
+            'delai_reglement_jours': nullable(
+                {'type': 'integer', 'minimum': 0},
+                {'type': 'string', 'pattern': MOTIF_ENTIER_TEXTE}, vide),
+            'semaines_indicatives': nullable(
+                {'type': 'number', 'minimum': 0},
+                {'type': 'string', 'pattern': MOTIF_NOMBRE_TEXTE}, vide),
+        },
+    }
+    return nullable({'type': 'array', 'items': tranche}, vide)
 
 
 def valider_echeancier(entries, *, controler_somme=True) -> list:
@@ -710,28 +834,6 @@ def schedule_for_devis(devis):
     return [(t['key'], t['valeur']) for t in tranches_normalisees(devis)]
 
 
-def factures_actives(devis):
-    """Factures de tranche non annulées du devis, dans l'ordre de création.
-
-    YOPSB13 — filtre en Python la relation ``factures`` PRÉCHARGÉE (prefetch de
-    DevisViewSet) au lieu de ``.exclude().order_by()`` : ce dernier clone le
-    manager, IGNORE le cache prefetch et ré-exécute une requête par appel (N+1
-    en liste), en perdant au passage les prefetch imbriqués paiements/avoirs.
-    Renvoie une liste — les 3 appelants la consomment déjà en liste/itération.
-    Hors liste (cache absent) : un seul SELECT, comportement inchangé."""
-    factures = sorted(devis.factures.all(), key=lambda f: f.id)
-    return [f for f in factures if f.statut != Facture.Statut.ANNULEE]
-
-
-def avoirs_correction(factures):
-    """ATOT36 — avoirs ÉMIS de type CORRECTION des ``factures`` : les seuls
-    remis au solde de l'échéancier (``next_tranche``, ``solde_devis``).
-    Lit le prefetch ``avoirs`` (aucune requête de plus en liste)."""
-    return [a for f in factures for a in f.avoirs.all()
-            if a.statut == Avoir.Statut.EMISE
-            and a.type == Avoir.Type.CORRECTION]
-
-
 def blended_tva_pct(devis) -> Decimal:
     """Taux de TVA mélangé du devis (TVA/HT×100), pour l'étiquette du PDF.
 
@@ -755,51 +857,6 @@ def _repartir_au_centime(total, poids):
     la porte historique de ses appelants."""
     from apps.facturation.totaux import repartir_au_centime
     return repartir_au_centime(total, poids)
-
-
-def ventilation_tva_tranche(devis, tranche, existantes=None):
-    """CIQ215 — ventilation ``[{taux, base_ht, montant}]`` (chaînes) d'une
-    tranche, ou None quand l'option retenue n'a qu'un taux (facture d'hier,
-    octet-identique).
-
-    Bases et TVA de la tranche réparties au prorata des bases (resp. des TVA)
-    par taux de l'option retenue (``option_totaux``), au centime par le plus
-    fort reste. La DERNIÈRE tranche prend le reste de CHAQUE taux, pour que
-    la somme des factures égale la ventilation du devis au centime. Aucun
-    taux ne change (convention 12)."""
-    from apps.ventes.utils.options import option_totaux
-    paniers = option_totaux(devis).get('tva_par_taux') or []
-    if len(paniers) < 2:
-        return None
-    taux = [Decimal(str(b['taux'])) for b in paniers]
-    bases_devis = {t: Decimal(str(b['base_ht'])) for t, b in zip(taux, paniers)}
-    tva_devis = {t: Decimal(str(b['montant'])) for t, b in zip(taux, paniers)}
-    ht, tva = Decimal(str(tranche['ht'])), Decimal(str(tranche['tva']))
-    bases = tvas = None
-    if tranche.get('is_last'):
-        precedentes = list(existantes if existantes is not None
-                           else factures_actives(devis))
-        if all(f.ventilation_tva for f in precedentes):
-            deja_b = {t: Decimal('0') for t in taux}
-            deja_t = {t: Decimal('0') for t in taux}
-            for f in precedentes:
-                for b in f.ventilation_tva:
-                    t = Decimal(str(b['taux']))
-                    if t in deja_b:
-                        deja_b[t] += Decimal(str(b['base_ht']))
-                        deja_t[t] += Decimal(str(b['montant']))
-            bases = {t: _q(bases_devis[t] - deja_b[t]) for t in taux}
-            tvas = {t: _q(tva_devis[t] - deja_t[t]) for t in taux}
-            if sum(bases.values()) != ht or sum(tvas.values()) != tva:
-                bases = tvas = None
-    if bases is None:
-        # ATOT6 — LE service unique de ventilation d'un document figé.
-        from apps.facturation.totaux import ventilation_document_fige
-        return ventilation_document_fige(
-            [{'taux': t, 'base_ht': bases_devis[t], 'montant': tva_devis[t]}
-             for t in taux], ttc=ht + tva, ht=ht, tva=tva)
-    return [{'taux': str(t), 'base_ht': str(_q(bases[t])),
-             'montant': str(_q(tvas[t]))} for t in taux]
 
 
 def _tranche_type(key, is_last=False):
@@ -1035,8 +1092,7 @@ def porte_facturation(devis, actives=None):
     ``'tranche'`` (un échéancier est en cours : seule la tranche suivante),
     ``'aucune'`` (complète, BC, consolidée, ou échéancier soldé).
 
-    Lit les factures PRÉCHARGÉES du devis (``factures_actives``, liste sans
-    N+1) ; la consolidée (``devis=None``) n'est visible que par
+    Lit les factures PRÉCHARGÉES du devis (liste sans N+1) ; la consolidée (``devis=None``) n'est visible que par
     ``FactureSource`` : une seule requête, et seulement pour un devis accepté
     sans facture directe (seul cas où elle change la réponse).
 

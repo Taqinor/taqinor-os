@@ -1,10 +1,47 @@
+from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
+from core.champs_stricts import (
+    ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict,
+    ListesStrictesMixin)
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import ContratMaintenance, PrestationContrat
+
+
+#: Bornes publiées des entiers du contrat (CI #997) : 50 ans, 10 ans en jours,
+#: 1000 visites ou déplacements par an, un an en heures.
+DUREE_MOIS_MAX = 600
+JOURS_MAX = 3650
+QUOTA_AN_MAX = 1000
+HEURES_MAX = 8760
+
+
+class _DecimalSansVide(DecimalSouple):
+    """Décimal nullable où ``""`` N'EST PAS « non renseigné » (seul ``null`` l'est).
+
+    ``DecimalField(allow_null=True)`` lit une chaîne vide comme ``None`` alors que le
+    schéma publié (motif décimal non vide) la déclare invalide : api-fuzz « accepted
+    schema-violating request » sur ``prestations[].prix_ht``. Les nombres JSON restent
+    acceptés (l'écran envoie ``null`` pour un prix à renseigner) ET le schéma le dit
+    (``DecimalSouple`` : chaîne OU nombre ; CI #997, ``prix_ht: 0`` était « invalide »
+    au schéma mais accepté)."""
+
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and not data.strip():
+            self.fail('invalid')
+        return serializers.Field.validate_empty_values(self, data)
+
+
+#: Texte et booléens stricts (``0`` pour un booléen → 400), décimaux en chaîne
+#: OU nombre publiés comme tels ; les entiers restent souples (l'écran de
+#: contrat envoie des chaînes numériques issues de ses champs de saisie).
+_MAPPING_CONTRAT = {
+    **ChampsStrictsSansDecimalMixin.serializer_field_mapping,
+    models.DecimalField: DecimalSouple,
+}
 
 
 class PrestationContratSerializer(serializers.ModelSerializer):
@@ -13,7 +50,10 @@ class PrestationContratSerializer(serializers.ModelSerializer):
     Éditable (CIQ648) par le PATCH du contrat : ``incluse``, ``frequence_an``
     et ``prix_ht`` seulement ; ``id`` désigne la prestation du contrat,
     ``type`` / ``libelle`` restent ceux semés (prestations nommées)."""
-    id = serializers.IntegerField(required=False)
+    serializer_field_mapping = _MAPPING_CONTRAT
+    id = EntierStrict(required=False)
+    prix_ht = _DecimalSansVide(
+        max_digits=10, decimal_places=2, required=False, allow_null=True)
 
     class Meta:
         model = PrestationContrat
@@ -22,8 +62,10 @@ class PrestationContratSerializer(serializers.ModelSerializer):
         read_only_fields = ['type', 'libelle']
 
 
-class ContratMaintenanceSerializer(SameCompanyFKSerializerMixin,
+class ContratMaintenanceSerializer(ListesStrictesMixin,
+                                   SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
+    serializer_field_mapping = _MAPPING_CONTRAT
     # ENF17 — client et chantier bornés à la société (les équipements le sont
     # par ``validate_equipements``).
     same_company_fields = ('client', 'installation')
@@ -71,6 +113,20 @@ class ContratMaintenanceSerializer(SameCompanyFKSerializerMixin,
                   'prestations', 'delai_intervention_heures', 'origine',
                   'date_creation']
         read_only_fields = ['derniere_visite', 'derniere_facturation', 'date_creation']
+        # CI #997 (api-fuzz) — bornes PUBLIÉES : ``duree_mois: 2147483646``
+        # faisait déborder l'échéance (date_debut + durée → an > 9999, 500) ;
+        # les délais SLA en jours alimentent un ``timedelta`` (débordement
+        # au-delà de ~2,7 M d'années) ; ``pieces_couvertes_pct`` est un
+        # pourcentage (0-100, l'aide du champ le disait déjà).
+        extra_kwargs = {
+            'duree_mois': {'max_value': DUREE_MOIS_MAX},
+            'sla_response_days': {'max_value': JOURS_MAX},
+            'sla_resolution_days': {'max_value': JOURS_MAX},
+            'visites_incluses_an': {'max_value': QUOTA_AN_MAX},
+            'deplacements_inclus_an': {'max_value': QUOTA_AN_MAX},
+            'pieces_couvertes_pct': {'max_value': 100},
+            'delai_intervention_heures': {'max_value': HEURES_MAX},
+        }
 
     def get_origine(self, obj) -> dict:
         return {'devis_id': obj.origine_devis_id,

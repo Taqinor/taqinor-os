@@ -76,6 +76,7 @@ def _responsables(company):
         from authentication.models import CustomUser
         base = list(CustomUser.objects.filter(company=company, is_active=True))
     except Exception:  # pragma: no cover - défensif
+        logger.warning("responsables : échec ignoré, comportement dégradé", exc_info=True)
         return []
     managers = [
         u for u in base

@@ -95,6 +95,7 @@ def resolve_prefs(user, event_type):
         pref = NotificationPreference.objects.filter(
             user=user, event_type=event_type).first()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("resolve prefs : échec ignoré, comportement dégradé", exc_info=True)
         pref = None
     if pref is None:
         return default_prefs_for(event_type)
@@ -112,6 +113,7 @@ def _is_email_configured():
         from apps.ventes.email_service import is_email_configured
         return is_email_configured()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("is email configured : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 
@@ -132,6 +134,7 @@ def _branded_html(company, sujet, corps):
             couleur_principale=identite.get('couleur_principale', ''),
         )
     except Exception:  # noqa: BLE001 — un email ne casse jamais sur ce point
+        logger.warning("branded html : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 
@@ -242,6 +245,7 @@ def _is_webpush_configured():
         public, private = resolve_vapid_keys()
         return bool(public and private)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("is webpush configured : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 
@@ -362,7 +366,7 @@ def _dispatch_webpush(user, title, body, link=None, approval_action=None):
                 try:
                     sub.delete()
                 except Exception:  # pragma: no cover - défensif
-                    pass
+                    logger.warning("dispatch webpush : échec ignoré, comportement dégradé", exc_info=True)
             else:
                 logger.warning('Web push échoué (sub %s) : %s', sub.pk, exc)
         except Exception as exc:  # pragma: no cover - défensif
@@ -403,6 +407,7 @@ def palier_utilisateur(user):
     try:
         return user.menu_tier
     except Exception:  # pragma: no cover - défensif
+        logger.warning("palier utilisateur : échec ignoré, comportement dégradé", exc_info=True)
         return getattr(user, 'role_legacy', None)
 
 
@@ -412,7 +417,7 @@ def est_manager(user):
         if getattr(user, 'is_admin_role', False):
             return True
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("est manager : échec ignoré, comportement dégradé", exc_info=True)
     return palier_utilisateur(user) in ('admin', 'responsable')
 
 
@@ -422,6 +427,7 @@ def regle_de_routage_active(company, event_type):
         return NotificationRoutingRule.objects.filter(
             company=company, event_type=event_type, enabled=True).exists()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("regle de routage active : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 
@@ -438,6 +444,7 @@ def resolve_recipients_reason(company, event_type):
         return (NotificationReason.ROUTING_RULE if exists
                 else NotificationReason.MANAGER)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("resolve recipients reason : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 
@@ -558,6 +565,7 @@ def _report_hors_fenetre(event_type, company, respect_quiet_hours,
         fenetre = notifications_selectors.fenetre_notifications(
             company, timezone.now())
     except Exception:  # pragma: no cover - défensif
+        logger.warning("report hors fenetre : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if fenetre.ouverte:
         return None
@@ -821,9 +829,13 @@ def _audit_notify(user, company, event_type, *, channel, ok, instance=None,
 
     Ne bloque JAMAIS l'envoi : toute erreur d'écriture d'audit est absorbée
     par `audit.recorder.record` lui-même (best-effort), et on l'entoure ici
-    d'une couche supplémentaire par prudence."""
+    d'une couche supplémentaire par prudence.
+
+    ENF20 — passe par `core.audit_registry` (rempli par apps.audit ready()) :
+    notifications n'importe plus apps.audit (contrat
+    ventes-does-not-import-audit, chemin transitif ventes→notifications)."""
     try:
-        from apps.audit import recorder
+        from core import audit_registry as recorder
         action = _AUDIT_CHANNEL_ACTION.get(channel, 'notify')
         if statut is None:
             statut = 'envoyé' if ok else 'échec'
@@ -859,11 +871,13 @@ def merged_preferences(user):
         for p in NotificationPreference.objects.filter(user=user):
             stored[p.event_type] = p
     except Exception:  # pragma: no cover - défensif
+        logger.warning("merged preferences : échec ignoré, comportement dégradé", exc_info=True)
         stored = {}
     try:
         from .module_map import event_types_masques
         masques = event_types_masques(getattr(user, 'company', None))
     except Exception:  # pragma: no cover - jamais priver d'un réglage
+        logger.warning("merged preferences : échec ignoré, comportement dégradé", exc_info=True)
         masques = frozenset()
     out = []
     for value, label in EventType.choices:
@@ -1012,6 +1026,7 @@ def whatsapp_bsp_actif():
     try:
         return isinstance(get_whatsapp_provider(), BspProvider)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("whatsapp bsp actif : échec ignoré, comportement dégradé", exc_info=True)
         return False
 
 

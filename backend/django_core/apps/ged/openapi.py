@@ -9,6 +9,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, inline_serializer
 from rest_framework import serializers as s
 
+from core.champs_stricts import ChaineStricte
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from apps.records.openapi import CibleModelField
@@ -31,6 +32,7 @@ ID = OpenApiTypes.INT
 DATE = OpenApiTypes.DATE
 FLAG = ['1', 'true', '0', 'false']
 FLAG_VRAI = ['1', 'true']
+STATUTS_CYCLE_VIE = [c for c, _ in LIFECYCLE_CHOICES]
 ID_OU_NULL = {'type': 'string', 'pattern': '^(null|[0-9]+)$'}
 
 
@@ -56,7 +58,7 @@ Q_DOCUMENTS = [
     Q_FOLDER,
     P('coffre', ID_OU_NULL, description="Coffre-fort, ou ``null`` (hors coffre)."),
     P('tag', ID, description='Tag de la taxonomie.'),
-    P('statut', enum=[c for c, _ in LIFECYCLE_CHOICES],
+    P('statut', enum=STATUTS_CYCLE_VIE,
       description='Statut du cycle de vie documentaire.'),
     P('proprietaire', ID, description='Propriétaire (utilisateur).'),
     P('contact', ID, description='Contact (client) assigné.'),
@@ -91,31 +93,37 @@ FAVORI_REPONSE = S('FavoriReponse', {'favori': s.BooleanField()})
 TELEVERSER_CORPS = S('TeleverserCorps', {
     'folder': s.IntegerField(),
     'file': s.FileField(),
-    'nom': s.CharField(required=False, allow_blank=True),
-    'description': s.CharField(required=False, allow_blank=True),
+    'nom': ChaineStricte(required=False, allow_blank=True, max_length=255),
+    'description': ChaineStricte(required=False, allow_blank=True),
 })
 SCAN_LOT_CORPS = S('ScanLotCorps', {
     'folder': s.IntegerField(),
-    'files': s.ListField(child=s.FileField(), allow_empty=False),
+    'files': s.ListField(
+        child=s.FileField(), allow_empty=False, min_length=1),
 })
 PHOTOS_CORPS = S('AssemblerPhotosCorps', {
     'folder': s.IntegerField(),
-    'photos': s.ListField(child=s.FileField(), allow_empty=False),
-    'nom': s.CharField(required=False, allow_blank=True),
-    'description': s.CharField(required=False, allow_blank=True),
+    'photos': s.ListField(
+        child=s.FileField(), allow_empty=False, min_length=1),
+    'nom': ChaineStricte(required=False, allow_blank=True, max_length=255),
+    'description': ChaineStricte(required=False, allow_blank=True),
 })
 LOT_SEPARE_CORPS = S('LotScansSepareCorps', {
     'folder': s.IntegerField(),
-    'files': s.ListField(child=s.FileField(), allow_empty=False),
-    'nom_base': s.CharField(required=False, allow_blank=True),
+    'files': s.ListField(
+        child=s.FileField(), allow_empty=False, min_length=1),
+    'nom_base': ChaineStricte(required=False, allow_blank=True, max_length=200),
 })
 IMPORT_MASSE_CORPS = S('ImportMasseCorps', {
     'folder': s.IntegerField(),
     'csv': s.FileField(),
     'zip': s.FileField(required=False),
 })
+# CI #997 fuzz — ``type_piece: null`` vaut « deviné » (``_txt(None)`` -> ``''``) :
+# publié nullable.
 OCR_CORPS = S('OcrPieceCorps', {
-    'type_piece': s.CharField(required=False, allow_blank=True)})
+    'type_piece': s.CharField(
+        required=False, allow_blank=True, allow_null=True)})
 VERSION_CORPS = S('VersionRestaurerCorps', {'version': s.IntegerField()})
 FICHIER_CORPS = S('FichierCorps', {'file': s.FileField()})
 COMMENTAIRE_CORPS = S('CommentaireCorps', {
@@ -401,7 +409,35 @@ def _cible_unique(a, b):
     ]}}
 
 
-#: Une entrée ACL cible exactement un dossier OU un document (création).
-ACL_CIBLE_UNIQUE = _cible_unique('folder', 'document')
+def _au_moins_un(*noms):
+    """Au moins UN des ``noms`` porte un entier (les autres absents ou nuls)."""
+    return {'anyOf': [{'required': [n], 'properties': {n: {'type': 'integer'}}}
+                      for n in noms]}
+
+
+#: Une entrée ACL cible exactement un dossier OU un document ET désigne au
+#: moins un principal (utilisateur, rôle ou client portail) — création.
+ACL_CIBLE_UNIQUE = {EXTENSION_CORPS_RESSERRE: {'allOf': [
+    _cible_unique('folder', 'document')[EXTENSION_CORPS_RESSERRE],
+    _au_moins_un('utilisateur', 'role', 'client')]}}
+
+#: Circuit multi-signataires (``CreerMultiSignatairesSerializer``) : au moins
+#: un destinataire, dont au moins un de rôle « signataire » (rôle absent =
+#: signataire) — « pas tous copie/approbateur ».
+CREER_MULTI_SIGNATAIRE = {EXTENSION_CORPS_RESSERRE: {
+    'required': ['document', 'destinataires'],
+    'properties': {'destinataires': {
+        'type': 'array', 'minItems': 1,
+        'not': {'items': {'required': ['role'], 'properties': {
+            'role': {'enum': ['copie', 'approbateur']}}}}}}}}
+#: Une politique de rétention cible au plus UN cabinet OU un dossier (création,
+#: ``PolitiqueRetentionSerializer.validate``) — jamais les deux à la fois.
+RETENTION_CIBLE_AU_PLUS_UNE = {EXTENSION_CORPS_RESSERRE: {'not': {
+    'required': ['cabinet', 'folder'],
+    'properties': {'cabinet': {'type': 'integer'},
+                   'folder': {'type': 'integer'}}}}}
 #: Un champ de signature cible exactement une demande OU un modèle (création).
 CHAMP_CIBLE_UNIQUE = _cible_unique('demande', 'modele')
+#: Un coffre-fort a exactement un propriétaire : employé OU client (création,
+#: ``services.validate_coffre_owner``).
+COFFRE_PROPRIETAIRE_UNIQUE = _cible_unique('proprietaire', 'client')

@@ -14,8 +14,12 @@ Run :
     docker compose exec django_core python manage.py test \
         core.tests.test_numbering -v 2
 """
+import importlib
 from decimal import Decimal
 
+# ENF20 — les modèles domaine sont résolus par libellé et le shim ventes par
+# import dynamique : core n'importe aucune app (contrat de fondation).
+from django.apps import apps as django_apps
 from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
@@ -35,7 +39,7 @@ def make_company(slug='core-num-co'):
 
 
 def make_client(company):
-    from apps.crm.models import Client
+    Client = django_apps.get_model('crm', 'Client')
     return Client.objects.create(
         company=company, nom='Num', prenom='Test',
         email='num@example.com', telephone='+212600000009', adresse='Rabat',
@@ -43,7 +47,7 @@ def make_client(company):
 
 
 def make_devis(company, client, reference):
-    from apps.ventes.models import Devis
+    Devis = django_apps.get_model('ventes', 'Devis')
     return Devis.objects.create(
         company=company, reference=reference, client=client,
         statut='brouillon', taux_tva=Decimal('20.00'),
@@ -56,28 +60,28 @@ class CoreNextReferenceTests(TestCase):
         self.client_obj = make_client(self.company)
 
     def test_starts_at_one_on_empty_table(self):
-        from apps.ventes.models import Devis
+        Devis = django_apps.get_model('ventes', 'Devis')
         self.assertEqual(
             next_reference(Devis, 'DEV', self.company), f'DEV-{MONTH}-0001')
 
     def test_uses_highest_existing_number_not_the_count(self):
         # Une seule ligne numérotée -0002 : count (1) régénérerait -0002 et
         # planterait — le service DOIT renvoyer -0003 (plus-haut-utilisé+1).
-        from apps.ventes.models import Devis
+        Devis = django_apps.get_model('ventes', 'Devis')
         make_devis(self.company, self.client_obj, f'DEV-{MONTH}-0002')
         self.assertEqual(
             next_reference(Devis, 'DEV', self.company), f'DEV-{MONTH}-0003')
 
     def test_clears_gaps(self):
-        from apps.ventes.models import Devis
+        Devis = django_apps.get_model('ventes', 'Devis')
         make_devis(self.company, self.client_obj, f'DEV-{MONTH}-0001')
         make_devis(self.company, self.client_obj, f'DEV-{MONTH}-0010')
         self.assertEqual(
             next_reference(Devis, 'DEV', self.company), f'DEV-{MONTH}-0011')
 
     def test_per_company_isolation(self):
-        from apps.crm.models import Client
-        from apps.ventes.models import Devis
+        Client = django_apps.get_model('crm', 'Client')
+        Devis = django_apps.get_model('ventes', 'Devis')
         other = make_company(slug='core-num-other')
         other_client = Client.objects.create(
             company=other, nom='Autre', email='a@example.com',
@@ -88,7 +92,7 @@ class CoreNextReferenceTests(TestCase):
             next_reference(Devis, 'DEV', self.company), f'DEV-{MONTH}-0001')
 
     def test_custom_padding_and_periods_match_historical(self):
-        from apps.ventes.models import Devis
+        Devis = django_apps.get_model('ventes', 'Devis')
         # Défauts explicites = forme mensuelle historique 4-pad.
         self.assertEqual(
             next_reference(Devis, 'DEV', self.company, padding=4, period='monthly'),
@@ -112,7 +116,7 @@ class CoreCreateWithReferenceRetryTests(TestCase):
         self.client_obj = make_client(self.company)
 
     def test_retries_when_a_concurrent_save_steals_the_number(self):
-        from apps.ventes.models import Devis
+        Devis = django_apps.get_model('ventes', 'Devis')
         calls = {'n': 0}
 
         def save_fn(ref):
@@ -132,7 +136,7 @@ class CoreCreateWithReferenceRetryTests(TestCase):
         self.assertTrue(devis.reference.startswith(f'DEV-{MONTH}-'))
 
     def test_two_sequential_creates_get_distinct_numbers(self):
-        from apps.ventes.models import Devis
+        Devis = django_apps.get_model('ventes', 'Devis')
         d1 = create_with_reference(
             Devis, 'DEV', self.company,
             lambda ref: make_devis(self.company, self.client_obj, ref))
@@ -144,7 +148,7 @@ class CoreCreateWithReferenceRetryTests(TestCase):
         self.assertEqual(d2.reference, f'DEV-{MONTH}-0002')
 
     def test_non_reference_integrity_errors_are_not_swallowed(self):
-        from apps.ventes.models import Devis
+        Devis = django_apps.get_model('ventes', 'Devis')
 
         def save_fn(ref):
             raise IntegrityError('null value in column "client_id"')
@@ -157,7 +161,7 @@ class VentesShimReExportsCoreTests(TestCase):
     """Le shim ventes ré-exporte les MÊMES objets que la fondation (bit-identique)."""
 
     def test_shim_reexports_are_the_same_objects(self):
-        from apps.ventes.utils import references as shim
+        shim = importlib.import_module('apps.ventes.utils.references')
         import core.numbering as core_num
         self.assertIs(shim.next_reference, core_num.next_reference)
         self.assertIs(shim.create_with_reference, core_num.create_with_reference)

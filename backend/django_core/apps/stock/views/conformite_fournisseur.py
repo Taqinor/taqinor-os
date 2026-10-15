@@ -1,9 +1,10 @@
+from django.http import Http404
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import DATE, INT, OBJET, P, PID, SchemaObjetUnique
+from ..openapi_helpers import DATE_OU_VIDE, INT, OBJET, P, PID, SchemaObjetUnique
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
     DocumentConformiteFournisseur, AchatsParametres,
@@ -78,14 +79,17 @@ class AchatsParametresViewSet(viewsets.ViewSet):
                            "paramètres."},
                 status=status.HTTP_403_FORBIDDEN)
         obj = AchatsParametres.for_company(request.user.company)
+        if str(pk) != str(obj.pk):
+            # ENF11 : identifiant inconnu (ou d'une autre société) -> 404.
+            raise Http404
         serializer = AchatsParametresSerializer(
             obj, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
-    @extend_schema(parameters=[P('periode', DATE, False, 'Date de référence (AAAA-MM-JJ)'),
-                               P('seuil_jours', INT)], responses=OBJET)
+    @extend_schema(parameters=[P('periode', DATE_OU_VIDE, False, 'Date de référence (AAAA-MM-JJ)'),
+                               P('seuil_jours', INT, mini=0, maxi=3650)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='checklist-cloture')
     def checklist_cloture(self, request):
         """NTP2P30 — wizard de clôture de fin de mois achats : agrège en

@@ -39,6 +39,8 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.parseurs import PARSEURS_JSON
+
 from ..permissions import PeutVoirCalepinage
 from ..serializers import forme_du_contrat
 from ..services.comparaison_projets import BORNE_PROJETS
@@ -55,7 +57,8 @@ __all__ = ['comparer_projets', 'comparatif_xlsx']
     responses=forme_du_contrat('CalepinageComparaisonProjets',
                                'calepinage_comparaison_projets.json'))
 @action(detail=False, methods=['post'], url_path='comparer-projets',
-        url_name='comparer-projets', permission_classes=[PeutVoirCalepinage])
+        url_name='comparer-projets', permission_classes=[PeutVoirCalepinage],
+        parser_classes=PARSEURS_JSON)  # fuzz CI #997 : liste d'ids = JSON, un multipart n'en porte que des chaînes
 def comparer_projets(self, request):
     """CALX341 — le comparatif de 1 à 5 calepinages de la société."""
     from ..services.comparaison_projets import (
@@ -63,6 +66,14 @@ def comparer_projets(self, request):
     )
 
     corps = request.data if isinstance(request.data, dict) else {}
+    ids = corps.get('ids')
+    if isinstance(ids, list) and len(ids) > BORNE_PROJETS:
+        # fuzz CI #997 (2) : le schéma publie ``maxItems`` sur la liste REÇUE ;
+        # six fois le même id était dédoublonné (1) puis accepté (200).
+        return Response(
+            {'ids': 'Au plus %d identifiants peuvent être indiqués '
+                    '(reçu : %d).' % (BORNE_PROJETS, len(ids))},
+            status=status.HTTP_400_BAD_REQUEST)
     try:
         # ACAL295 — l'APPELANT, pas sa seule société : un calepinage hors de
         # sa vue tombe en refus, avec le motif d'un identifiant absent.

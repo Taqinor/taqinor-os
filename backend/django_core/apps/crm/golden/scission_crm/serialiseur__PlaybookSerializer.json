@@ -7,7 +7,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "nom",
    "read_only": false,
    "required": true

@@ -73,11 +73,11 @@ const SEEDED = [
 
 const CLEAN_INT = (v) => Number.isInteger(v)
 
-test('estimateur de factures : valeurs entières, mêmes que le simulateur', () => {
+test('estimateur de factures : marches hiver / été du moteur (AGNR34), valeurs entières', () => {
   const months = estimerMois(600, 400)
   assert.equal(months.length, 12)
   months.forEach(v => assert.ok(CLEAN_INT(v), `mois non entier: ${v}`))
-  assert.deepEqual(months, [600, 567, 533, 500, 467, 433, 400, 400, 450, 500, 550, 600])
+  assert.deepEqual(months, [600, 600, 600, 600, 400, 400, 400, 400, 400, 400, 600, 600])
 })
 
 test('estimateur : été vide → 12 mois plats', () => {

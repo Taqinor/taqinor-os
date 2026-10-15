@@ -119,12 +119,18 @@ class DevisCycleActionsMixin:
         """
         from ..services import save_devis_as_preset
         devis = self.get_object()
-        nom = (request.data.get('nom') or '').strip()
+        corps = request.data if isinstance(request.data, dict) else {}
+        nom = corps.get('nom')
+        nom = nom.strip() if isinstance(nom, str) else ''
         if not nom:
             return Response(
                 {'detail': 'Le nom du modèle est obligatoire.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        description = (request.data.get('description') or '').strip()
+        # CI #997 — le corps suit sa forme publiée (``valider_corps``) : nom de
+        # 151 caractères → 500 DataError, ``description: {}`` lue « vide »,
+        # caractère nul refusé en base ; tout cela répond 400 nommé.
+        description = valider_corps(request, D.SavePresetRequest).get(
+            'description', '')
         try:
             preset = save_devis_as_preset(
                 devis, nom, description, user=request.user)
@@ -235,7 +241,8 @@ class DevisCycleActionsMixin:
         # Tour 3 M1 — corps hors schéma (``variante_pct: {}``…) = 400.
         valider_corps(request, D.DupliquerVarianteRequest)
         company = source.company
-        root = source.version_parent or source
+        from ..selectors import racine_groupe
+        root = racine_groupe(source)
 
         # QG9 — échelles depuis un pourcentage : override requête ``scales``
         # (rétro-compat) > override requête ``variante_pct`` > config société
@@ -379,7 +386,8 @@ class DevisCycleActionsMixin:
         """QJ15 — Liste les variantes liées à ce devis (même version_parent,
         toutes actives). Utilisé par la proposal côte-à-côte."""
         devis = self.get_object()
-        root = devis.version_parent or devis
+        from ..selectors import racine_groupe
+        root = racine_groupe(devis)
         siblings = (
             Devis.objects
             .filter(company=devis.company, version_parent=root, is_active=True)

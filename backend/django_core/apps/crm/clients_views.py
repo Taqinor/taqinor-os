@@ -18,6 +18,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.parametres_requete import choix_ou_400
 from core.parseurs import corps_valide
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
@@ -31,6 +32,7 @@ from .models import (
     PlanActivite, PlanCompte, Playbook, PlaybookEtape, PlaybookTache,
     RevueCompte, SalleVente, SalleVenteItem, VisiteExterne,
 )
+from .parcage import ApporteursParquesMixin
 from .serializers import LeadActivitySerializer, masquer_pii_dict
 from .serializers_clients import (
     AppareilEquipeSerializer, ClientSerializer, PartenaireSerializer,
@@ -45,15 +47,18 @@ from .serializers_clients import (
 from apps.records.serializers import ChatterActivitySerializer
 from .fiche_bulk import coerce_id_list
 from .params_requete import (
-    CorpsTexteMixin, entier_param, texte_param, valider_pagination)
+    CorpsTexteMixin, corps_objet, entier_param, texte_param,
+    valider_pagination)
 from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
 from . import activity
 from . import schema_docs as sd
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 
 
+@extend_schema_view(create=extend_schema(extensions=sd.SALLE_CIBLE_UNIQUE))
 class SalleVenteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
@@ -211,8 +216,9 @@ class PartenaireViewSet(CompanyScopedModelViewSet):
         })
 
 
-class ApporteurViewSet(CompanyScopedModelViewSet):
-    """NTCRM20 — Apporteurs d'affaires (registre B2B, CRUD interne)."""
+class ApporteurViewSet(ApporteursParquesMixin, CompanyScopedModelViewSet):
+    """NTCRM20 — Apporteurs d'affaires (registre B2B, CRUD interne) ; ACRM66 :
+    404 tant que le réglage société ``apporteurs_actif`` est éteint."""
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = ApporteurSerializer
     queryset = Apporteur.objects.select_related('company').all()
@@ -223,7 +229,9 @@ class ApporteurViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
-class DealEnregistreViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
+class DealEnregistreViewSet(ApporteursParquesMixin, _PorteeEnfantsMixin,
+                            CompanyScopedModelViewSet):
+    # ACRM66 — 404 (a-payer compris) tant que ``apporteurs_actif`` est éteint.
 
     """NTCRM20 — Deals enregistrés par un apporteur (protection anti-poaching).
 
@@ -292,6 +300,13 @@ class DefiViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
     serializer_class = DefiSerializer
     queryset = Defi.objects.select_related('company').all()
+
+    def get_queryset(self):
+        # CI #997 (fuzz) — ``?actif=`` était déclaré (booléen) mais jamais
+        # appliqué : filtre réel, ``true``/``false`` seuls (sinon 400).
+        qs = super().get_queryset()
+        actif = choix_ou_400(self.request, 'actif', ('true', 'false'))
+        return qs if actif is None else qs.filter(actif=(actif == 'true'))
 
     def get_permissions(self):
         if self.action in READ_ACTIONS or self.action == 'classement':
@@ -700,13 +715,14 @@ class ClientViewSet(CompanyScopedModelViewSet):
         elif self.action == 'relancer_dormance':
             return [HasPermissionOrLegacy('crm_modifier')()]
         elif self.action == 'export_xlsx':
-            # Export : garde propre (ASEC50, code ``crm_export``) — hors
-            # périmètre d'ACRM3.
-            return [IsAnyRole()]
+            # Export : garde propre (ASEC50 / D-ASEC-4, code ``crm_export``)
+            # — hors périmètre d'ACRM3.
+            return [IsAnyRole(), DroitDeLaGrille('crm_export')()]
         elif self.action in WRITE_ACTIONS + ['dupliquer']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            # ASEC50 — supprimer un client exige ``crm_supprimer``.
+            return [IsAdminRole(), DroitDeLaGrille('crm_supprimer')()]
         # ACRM21 (C-ACRM-014) — les autres @action (consolidation,
         # data-export, anonymize) sont gardées par CE QUE LEUR
         # DÉCORATEUR DÉCLARE (patron ``declared_action_permissions``) : le
@@ -733,13 +749,13 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=sd.corps('CrmClientsExportRequest', ids=serializers.ListField(child=serializers.IntegerField(), required=False)), responses=sd.EXPORT_XLSX)
     @action(detail=False, methods=['post'], url_path='export-xlsx',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole, DroitDeLaGrille('crm_export')])
     def export_xlsx(self, request):
         """Exporte une sélection de clients en .xlsx (société courante)."""
         from .exports import export_clients_xlsx
         # CI #956 (fuzz) — `{"ids": {}}` passait (objet vide « falsy » lu comme
         # « tout exporter ») : seule l'ABSENCE de la clé vaut tout exporter.
-        ids = request.data.get('ids', [])
+        ids = corps_objet(request).get('ids', [])
         try:
             ids = coerce_id_list(ids)
         except ValueError:
@@ -868,7 +884,10 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='data-export',
-            permission_classes=[IsResponsableOrAdmin])
+            # ASEC50 / D-ASEC-4 — l'export RGPD d'un client exige
+            # ``crm_export`` en plus du palier.
+            permission_classes=[IsResponsableOrAdmin,
+                                DroitDeLaGrille('crm_export')])
     def data_export(self, request, pk=None):
         """FG26 — bundle d'accès du sujet (RGPD) : toutes les données
         personnelles détenues sur un client + la liste de ses documents liés.
@@ -1053,7 +1072,7 @@ class LeadClientsActionsMixin:
             return [HasPermissionOrLegacy('crm_modifier')()]
         return super().get_permissions()
 
-    @extend_schema(request=sd.corps('CrmConvertirClientRequest', mode=serializers.ChoiceField(choices=['nouveau', 'lier', 'aucun']), client_id=serializers.IntegerField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmConvertirClientRequest', mode=serializers.ChoiceField(choices=['nouveau', 'lier', 'aucun']), client_id=serializers.IntegerField(required=False)), responses=sd.OBJ, extensions=sd.CONVERSION_LIER_CLIENT)
     @action(detail=True, methods=['post'], url_path='convertir-client',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def convertir_client(self, request, pk=None):
@@ -1082,9 +1101,10 @@ class LeadClientsActionsMixin:
                     request.user))
         except ClientIntrouvable as exc:
             # LEVÉ, pas renvoyé (même motif que `placement_cadences`) : le
-            # contrat de la vue reste la forme de son 200 ; DRF rend le 400
-            # ``{client_id: [...]}``.
-            raise DRFValidationError({'client_id': [str(exc)]})
+            # contrat de la vue reste la forme de son 200. ERR-ENF11-FUZZ-CRM :
+            # id bien formé hors portée = ressource introuvable, 404.
+            from rest_framework.exceptions import NotFound
+            raise NotFound({'client_id': [str(exc)]})
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1308,7 +1328,7 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
         return [IsAdminRole()]
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.param('metric', enum=ObjectifCommercial.Metric.values), sd.param('year', OpenApiTypes.INT), sd.param('period_type', enum=ObjectifCommercial.PeriodType.values), sd.P_OWNER_OU_NULL]))
+@extend_schema_view(list=extend_schema(parameters=[sd.param('metric', enum=ObjectifCommercial.Metric.values), sd.param('year', OpenApiTypes.INT), sd.param('period_type', enum=ObjectifCommercial.PeriodType.values), sd.P_OWNER_OU_NULL]), create=extend_schema(extensions=sd.OBJECTIF_PERIODE), update=extend_schema(extensions=sd.OBJECTIF_PERIODE))
 class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
     """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
 
@@ -1641,6 +1661,14 @@ class PlanCompteViewSet(_PorteeEnfantsMixin, ChatterViewSetMixin, CompanyScopedM
     queryset = PlanCompte.objects.select_related('client')
     serializer_class = PlanCompteSerializer
 
+    def get_queryset(self):
+        # CI #997 (fuzz) — ``?client=`` était déclaré (entier) mais jamais
+        # appliqué (le plan lu pour un client était celui d'un autre) : filtre
+        # réel, entier seul (sinon 400).
+        qs = super().get_queryset()
+        client = entier_param(self.request, 'client')
+        return qs if client is None else qs.filter(client_id=client)
+
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique']:
             return [IsAnyRole()]
@@ -1840,6 +1868,11 @@ class _LeadPlaybookPermission(IsAnyRole):
             request, view)
 
 
+@extend_schema(methods=['GET'], responses=LeadPlaybookProgressSerializer(many=True))
+@extend_schema(methods=['POST'], request=inline_serializer('LeadPlaybookCocherRequete', {
+    'tache': serializers.IntegerField(),
+    'fait': serializers.BooleanField(required=False, default=True),
+}), responses=LeadPlaybookProgressSerializer)
 @api_view(['GET', 'POST'])
 @permission_classes([_LeadPlaybookPermission])
 def lead_playbook_view(request, lead_id):

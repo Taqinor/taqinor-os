@@ -74,3 +74,33 @@ describe('AGNR13 — jamais une facture mensuelle d’exemple', () => {
       .toEqual(DEVIS_ENVOYE_LES_DEUX.etude_params.factures_mensuelles_reelles)
   }, 60000)
 })
+
+// AGNR34 (D-AGNR-1 option (a)) — deux factures ⇒ `factures_hiver_ete`, jamais
+// une série dérivée « réelle » ; la grille montre les marches du moteur « estimé ».
+const MARCHES = [500, 500, 500, 500, 1200, 1200, 1200, 1200, 1200, 1200, 500, 500]
+const DEUX_FACTURES = { hiver_mad: 500, ete_mad: 1200, ete_differente: true }
+
+describe('AGNR34 — deux factures hiver / été', () => {
+  it('hiver 500 / été 1 200 tapés ⇒ marches « estimé », corps factures_hiver_ete', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, { devis: DEVIS_REGISTRE })
+    await attendreStable(vue.container, act)
+    await taper(document.getElementById('gen-hiver'), '500')
+    await taper(document.getElementById('gen-ete'), '1200')
+    expect(cases().map((c) => Number(c.value))).toEqual(MARCHES)
+    expect(document.querySelectorAll('[data-testid^="mois-estime-"]')).toHaveLength(12)
+    const etude = await enregistrer(vue)
+    expect(etude.factures_hiver_ete).toEqual(DEUX_FACTURES)
+    expect(etude).not.toHaveProperty('factures_mensuelles_reelles')
+  }, 60000)
+
+  it('rouvert ⇒ grille « estimé » identique, ré-enregistré sans toucher ⇒ même clé', async () => {
+    const devis = { ...DEVIS_REGISTRE, etude_params: { ...DEVIS_REGISTRE.etude_params, factures_hiver_ete: DEUX_FACTURES } }
+    const vue = await monter(`/ventes/devis/nouveau?edit=${devis.id}`, { devis })
+    await attendreStable(vue.container, act)
+    expect(cases().map((c) => Number(c.value))).toEqual(MARCHES)
+    expect(document.querySelectorAll('[data-testid^="mois-estime-"]')).toHaveLength(12)
+    const etude = await enregistrer(vue)
+    expect(etude.factures_hiver_ete).toEqual(DEUX_FACTURES)
+    expect(etude).not.toHaveProperty('factures_mensuelles_reelles')
+  }, 60000)
+})

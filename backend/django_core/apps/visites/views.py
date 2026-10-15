@@ -44,6 +44,10 @@ from .serializers import VisiteRenvoiSerializer, VisiteTerrainSerializer
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.parsers import JSONParser, MultiPartParser
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Types MIME acceptés pour une photo de visite. ``records.storage`` valide
 #: déjà les octets magiques et la taille (10 Mo) ; on restreint en plus aux
 #: IMAGES — un PDF n'est pas une photo de toit.
@@ -331,7 +335,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             replanifier=True, date_requise=False,
             assigne_par_defaut=request.user)
         if erreurs:
-            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+            # CI #997 fuzz : une date déjà passée dépend de l'HORLOGE (état),
+            # pas de la forme du corps : 409, même corps ``{date_prevue: […]}``
+            # (l'écran l'affiche sous le champ). Toute autre erreur reste 400.
+            date_passee = erreurs == {
+                'date_prevue': [services.MESSAGE_DATE_PASSEE]}
+            return Response(erreurs, status=(
+                status.HTTP_409_CONFLICT if date_passee
+                else status.HTTP_400_BAD_REQUEST))
         return Response(selectors.contexte_visite_terrain(visite),
                         status=status.HTTP_201_CREATED)
 
@@ -684,6 +695,7 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         except Exception:  # pragma: no cover - courtier indisponible
             # Sans courtier, on exécute en ligne plutôt que de laisser la
             # visite bloquée « en cours » pour toujours.
+            logger.warning("assembler photos : échec ignoré, comportement dégradé", exc_info=True)
             assembler_photos_toit_task(visite.pk)
         visite.refresh_from_db()
         return self._agregat(visite)

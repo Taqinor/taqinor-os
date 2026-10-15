@@ -259,6 +259,69 @@ class TestBuilderOptionHorsReseau(TestCase):
         self.assertIn('Onduleur hybride Deye 5kW Monophasé', avec)
         self.assertNotIn('Onduleur hybride Deye 5kW Monophasé', sans)
 
+    def test_amot57_hors_reseau_avec_trait_d_union(self):
+        """AMOT57 (sonde VA S2) — « hors-réseau » écrit avec un trait d'union
+        était classé RÉSEAU : scénario « Sans batterie », batterie absente du
+        total. Il sert désormais l'option « Avec batterie », batterie comprise."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Jinko 550W', '10', '1100'),
+            ('Onduleur hors-réseau Deye 6kW', '1', '15000'),
+            ('Batterie Dyness 5 kWh', '1', '16000'),
+        ], reference='DEV-OFFG-0057')
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        self.assertEqual(data['scenario'], 'Avec batterie')
+        self.assertEqual(data['variantes_servables'], ['avec'])
+        avec = [it['designation'] for it in data['avec_items']]
+        self.assertIn('Batterie Dyness 5 kWh', avec)
+        self.assertIn('Onduleur hors-réseau Deye 6kW', avec)
+        self.assertNotIn('Onduleur hors-réseau Deye 6kW',
+                         [it['designation'] for it in data['sans_items']])
+
+    def test_amot57_onduleur_sans_le_mot_onduleur_est_provisionne(self):
+        """AMOT57 (sonde VA S3) — « Deye off-Grid 6kw » chiffré : la provision
+        de remplacement est imprimée, jamais « aucun onduleur chiffré »."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Jinko 550W', '10', '1100'),
+            ('Deye off-Grid 6kw', '1', '15000'),
+            ('Batterie Dyness 5 kWh', '1', '16000'),
+        ], reference='DEV-OFFG-0058')
+        data = build_quote_data(devis, {'pdf_mode': 'full'})
+        items = ' '.join(data['hypotheses']['items'])
+        self.assertIn('Provision de remplacement', items)
+        self.assertNotIn('aucun onduleur chiffré', items)
+
+
+class TestMoteurPdfOnduleurSansLeMot(SimpleTestCase):
+    """AMOT57 (moteur) — « Deye off-Grid 6kW » (nom réel, sans le mot
+    « onduleur ») est un ONDULEUR pour le moteur PDF comme pour le classifieur
+    partagé : garantie onduleur, marque « onduleurs », raccordement de la
+    phrase de méthode et vignette. Avant : rien de tout cela (test littéral)."""
+
+    LIGNES = [{'designation': 'Deye off-Grid 6kW Triphasé', 'marque': 'Deye',
+               'garantie_mois': 60}]
+
+    def _moteur(self):
+        from unittest import mock
+        from apps.ventes.quote_engine import generate_devis_premium as g
+        return g, mock.patch.multiple(g, SCENARIO='Avec batterie',
+                                      AVEC_ITEMS=self.LIGNES, SANS_ITEMS=[])
+
+    def test_garantie_marque_et_raccordement_lus_sur_la_ligne(self):
+        g, rendu = self._moteur()
+        with rendu:
+            self.assertIn((5, g._L('lg_gar_onduleur')), g._garanties_du_devis())
+            self.assertEqual(g._marques_du_devis(), {'onduleurs': ['Deye']})
+            self.assertIn(g._L('lg_racc_tri'), g._phrase_methode_etude())
+
+    def test_vignette_onduleur(self):
+        g, _ = self._moteur()
+        self.assertEqual(g.icon_img('Deye off-Grid 6kw'),
+                         g.icon_img('Onduleur hybride Deye 5kW'))
+        self.assertNotEqual(g.icon_img('Deye off-Grid 6kw'),
+                            g.icon_img('Accessoires'))
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 3. LA COMPOSITION HORS RÉSEAU

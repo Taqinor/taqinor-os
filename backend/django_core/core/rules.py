@@ -37,6 +37,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Iterator
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Opérateurs logiques de groupe.
 GROUP_OPERATORS = ('and', 'or', 'not')
 
@@ -350,6 +354,7 @@ def sequential_actions(
         try:
             result = runner(step)
         except Exception as exc:  # noqa: BLE001 — on isole l'action de l'appelant.
+            logger.warning("sequential actions : échec ignoré, comportement dégradé", exc_info=True)
             run.outcomes.append(ActionOutcome(step=step, ok=False, error=exc))
             if stop_on_error:
                 run.stopped_at = step.index

@@ -27,6 +27,10 @@ La forme normalisée d'un job est :
 """
 from celery import current_app
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _describe_schedule(schedule):
     """Rend une cadence Celery (crontab / timedelta / nombre) lisible.
@@ -95,11 +99,13 @@ def _from_periodic_tasks():
     try:
         from django_celery_beat.models import PeriodicTask
     except Exception:  # noqa: BLE001 — app non installée : dégradation propre.
+        logger.warning("from periodic tasks : échec ignoré, comportement dégradé", exc_info=True)
         return []
     out = []
     try:
         rows = list(PeriodicTask.objects.all())
     except Exception:  # noqa: BLE001 — table absente / non migrée.
+        logger.warning("from periodic tasks : échec ignoré, comportement dégradé", exc_info=True)
         return []
     for pt in rows:
         last = getattr(pt, 'last_run_at', None)

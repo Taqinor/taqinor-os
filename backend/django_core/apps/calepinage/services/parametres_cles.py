@@ -93,22 +93,28 @@ SOURCES_ADMISES = ('societe', 'mesure', 'saisie', 'texte')
 #: UNE LIGNE PAR CLÉ, AJOUTÉE EN FIN — voir la règle en tête de module.
 CLES_SIMULATION = (
     ('fenetre_annees', "Fenêtre d'années météo", 'années', 'PVGIS — seriescalc, fenêtre pluriannuelle'),  # CALX145
-    ('mode_meteo', 'Mode météo (année type ou fenêtre pluriannuelle)', '', 'HelioScope — TMY weather file primer'),  # CALX145
+    # CALX145
+    ('mode_meteo', 'Mode météo (année type ou fenêtre pluriannuelle)', '', 'HelioScope — TMY weather file primer'),
     ('modele_iam', "Modèle d'incidence (IAM)", '', 'PVsyst — Array incidence loss (IAM)'),  # CALX145
     ('b0_iam', 'Coefficient b0 du modèle ASHRAE', '', 'PVsyst — Array incidence loss (IAM)'),  # CALX145
     ('sigma_modele_pct', 'Incertitude de simulation (σ modèle)', '%', 'PVsyst — P50/P90 evaluations'),  # CALX145
-    ('sigma_biais_meteo_pct', 'Biais long terme de la source météo (σ)', '%', 'PVsyst — P50/P90 evaluations'),  # CALX145
-    ('sigma_meteo_saisi_pct', 'Variabilité interannuelle saisie (σ météo)', '%', 'PVsyst — P50/P90 evaluations'),  # CALX145
+    # CALX145
+    ('sigma_biais_meteo_pct', 'Biais long terme de la source météo (σ)', '%', 'PVsyst — P50/P90 evaluations'),
+    # CALX145
+    ('sigma_meteo_saisi_pct', 'Variabilité interannuelle saisie (σ météo)', '%', 'PVsyst — P50/P90 evaluations'),
     ('tolerance_validation_pct', "Tolérance d'écart admise face à PVGIS", '%', 'Décision fondateur 21/09/2026 — aucun verdict sans tolérance saisie'),  # CALX145
     ('resolution_minutes', 'Pas de temps de la simulation', 'minutes', 'PVGIS — seriescalc, pas horaire'),  # CALX145
     ('albedo_mensuel', 'Albédo du sol, mois par mois', '', 'PVsyst — Array and system losses'),  # CALX145
     ('annees_exploitation', "Durée d'exploitation simulée", 'années', 'PVsyst — Array and system losses'),  # CALX145
-    ('regle_qualite_module', 'Règle de qualité module (tolérance de puissance)', '', 'PVsyst — Module quality losses'),  # CALX145
+    # CALX145
+    ('regle_qualite_module', 'Règle de qualité module (tolérance de puissance)', '', 'PVsyst — Module quality losses'),
     ('lid_par_techno', 'Perte LID déclarée par technologie de cellule', '%', 'PVsyst — LID loss (aucune valeur par défaut proposée)'),  # CALX145
-    ('mismatch_fabricant_pct', 'Mismatch de fabrication entre modules', '%', 'PVsyst — Array and system losses'),  # CALX145
+    # CALX145
+    ('mismatch_fabricant_pct', 'Mismatch de fabrication entre modules', '%', 'PVsyst — Array and system losses'),
     ('modele_degradation', 'Modèle de dégradation pluriannuelle', '', 'PVsyst — Array and system losses'),  # CALX145
     ('thermique_par_pose', 'Coefficients Uc/Uv par type de pose', 'W/m²K et W/m³sK', 'PVsyst — Array thermal losses (Faiman)'),  # CALX145
-    ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),  # CALX145
+    # CALX145
+    ('attenuation_horizon', "Atténuation appliquée au profil d'horizon", '', 'PVGIS — printhorizon, profil DEM'),
     ('salissure_mensuelle_pct', 'Salissure, mois par mois (12 valeurs, ou une seule pour les douze)', '%', 'PVsyst — Soiling loss (facteurs MENSUELS, aucune valeur universelle par défaut)'),  # CALX161
     ('indisponibilite_fenetres', "Fenêtres d'arrêt de l'installation (début, fin, motif)", '', 'PVsyst — Unavailability loss (des périodes d\'arrêt explicites, jamais un forfait annuel)'),  # CALX176
     ('auxiliaires_w_constants', 'Auxiliaires — terme constant en marche', 'W', 'PVsyst — Auxiliaries consumption (terme constant au-dessus d\'un seuil)'),  # CALX175
@@ -132,7 +138,8 @@ CLES_ELECTRIQUE_SOCIETE = (
     ('seuil_alerte_dc_ac', "Seuil d'alerte du rapport DC/AC", '', 'PV*SOL — Configuration check'),  # CALX145
     ('correspondances_nomenclature', 'Correspondances de nomenclature du bordereau', '', 'Réglage société — aucun code article n\'est deviné'),  # CALX145
     ('regle_bom_structure', 'Règle de sortie de la structure hors bordereau électrique', '', 'Décision fondateur 21/09/2026 — la structure sort du bordereau électrique'),  # CALX145
-    ('cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n\'est supposée'),  # CALX145
+    # CALX145
+    ('cos_phi_par_defaut', 'Cos φ retenu à défaut de mesure', '', 'Réglage société — aucune valeur n\'est supposée'),
     ('seuil_bas_dc_ac', 'Seuil bas du rapport DC/AC (onduleur sous-utilisé)', '', 'OpenSolar — Inverter sizing and stringing recommendations'),  # CALX213
 )
 
@@ -198,7 +205,8 @@ TYPES_CLES = {
         'resolution_minutes': {'type': 'entier', 'minimum': 1},  # ACAL132
         'albedo_mensuel': {'type': 'table_mensuelle', 'minimum': 0, 'maximum': 1},  # ACAL132
         'annees_exploitation': {'type': 'entier', 'minimum': 1},  # ACAL132
-        'regle_qualite_module': {'type': 'enum', 'valeurs': ('quart_pvsyst', 'borne_basse', 'moyenne', 'aucune')},  # ACAL132
+        # ACAL132
+        'regle_qualite_module': {'type': 'enum', 'valeurs': ('quart_pvsyst', 'borne_basse', 'moyenne', 'aucune')},
         'lid_par_techno': {'type': 'table'},  # ACAL132
         'mismatch_fabricant_pct': {'type': 'pourcentage', 'minimum': 0, 'maximum': 100},  # ACAL132
         'modele_degradation': {'type': 'enum', 'valeurs': ('lineaire', 'exponentiel')},  # ACAL132
@@ -237,3 +245,99 @@ def type_de_cle(section, cle):
     l'ajout (la garde ``tests/test_acal_reglages_types.py`` l'interdit).
     """
     return dict(TYPES_CLES.get(section, {}).get(cle) or {})
+
+
+# ── CI #997 fuzz — LA FORME de chaque valeur ``table`` ───────────────────────
+#
+# Le type ``table`` disait seulement « objet ou liste » : un tableau d'items du
+# mauvais type (``regle_bom_structure.valeur = ["x"]``) était écrit tel quel,
+# et le schéma publié (« objet de nombres ou liste de nombres ») était de
+# toute façon FAUX pour les vraies saisies (une règle de structure porte sa
+# ``source`` texte, une ligne LID porte ``pct`` + ``source``…). Chaque clé
+# ``table`` déclare donc ICI sa forme, dans le sous-ensemble de JSON Schema
+# que lisent à la fois le validateur d'écriture (``services/parametres.py``)
+# et le contrat publié (``views/parametres.py``) : UNE déclaration, jamais
+# deux. Les formes décrivent ce que lit l'étape de chaque clé (``etapes/lid``,
+# ``etapes/thermique``, ``etapes/indisponibilite``, ``electrique``) ; aucun
+# seuil métier n'y est inventé (seules les bornes de nature : un pourcentage
+# dans [0, 100], une quantité positive ou nulle). La ``source`` d'une ligne
+# reste FACULTATIVE à l'écriture : l'étape qui lit une ligne sans source
+# l'écarte en le disant (D-CALX 7), et celle d'une règle de structure se
+# recolle depuis la provenance du registre (``_regle_structure``).
+#
+# Sous-ensemble : ``type`` (object/array/number/integer/string),
+# ``properties`` + ``required`` + ``additionalProperties`` (bool ou schéma),
+# ``minProperties``, ``items`` + ``minItems``, ``minimum`` / ``maximum``,
+# ``minLength``, ``anyOf``.
+_TEXTE = {'type': 'string', 'minLength': 1}
+_TEXTE_LIBRE = {'type': 'string'}
+_NOMBRE_POSITIF = {'type': 'number', 'minimum': 0}
+
+#: Provenance des bornes des formes (CALX384) : ``minimum: 0`` = grandeurs
+#: physiques ou comptages jamais négatifs (pct, uc_w_m2k, rails/pinces/crochets
+#: par module) ; ``maximum: 100`` = définition d'un pourcentage ; ``minProperties``
+#: / ``minItems`` = 1 : une table vide n'a aucun sens pour les lecteurs
+#: (etapes/lid.py, thermique, indisponibilite, nomenclature) ; les 5 clés requises
+#: de ``regle_bom_structure`` sont celles que lit core/electrique/nomenclature.py.
+FORMES_TABLES = {
+    SECTION_SIMULATION: {
+        # {technologie: {pct, source, reference?}} (etapes/lid.py)
+        'lid_par_techno': {
+            'type': 'object', 'minProperties': 1,
+            'additionalProperties': {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['pct'],
+                'properties': {
+                    'pct': {'type': 'number', 'minimum': 0, 'maximum': 100},
+                    'source': _TEXTE_LIBRE,
+                    'reference': _TEXTE_LIBRE}}},
+        # {type_pose: {uc_w_m2k, uv_w_m3sk?, source, reference?}}
+        # (etapes/thermique.py)
+        'thermique_par_pose': {
+            'type': 'object', 'minProperties': 1,
+            'additionalProperties': {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['uc_w_m2k'],
+                'properties': {
+                    'uc_w_m2k': _NOMBRE_POSITIF,
+                    'uv_w_m3sk': _NOMBRE_POSITIF,
+                    'source': _TEXTE_LIBRE,
+                    'reference': _TEXTE_LIBRE}}},
+        # [{debut, fin, motif?}] — dates ISO lues par etapes/indisponibilite.py
+        'indisponibilite_fenetres': {
+            'type': 'array', 'minItems': 1,
+            'items': {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['debut', 'fin'],
+                'properties': {
+                    'debut': _TEXTE, 'fin': _TEXTE,
+                    'motif': _TEXTE_LIBRE}}},
+    },
+    SECTION_ELECTRIQUE_SOCIETE: {
+        # {repère ou catégorie: identifiant produit} (electrique.py)
+        'correspondances_nomenclature': {
+            'type': 'object', 'minProperties': 1,
+            'additionalProperties': {'anyOf': [_TEXTE, {'type': 'integer'}]}},
+        # {rails_par_module, pinces_par_module, pinces_supplement,
+        #  crochets_par_module, crochets_minimum, source}
+        # (core/electrique/nomenclature.py::_lignes_structure)
+        'regle_bom_structure': {
+            'type': 'object', 'additionalProperties': False,
+            'required': ['rails_par_module', 'pinces_par_module',
+                         'pinces_supplement', 'crochets_par_module',
+                         'crochets_minimum'],
+            'properties': {
+                'rails_par_module': _NOMBRE_POSITIF,
+                'pinces_par_module': _NOMBRE_POSITIF,
+                'pinces_supplement': _NOMBRE_POSITIF,
+                'crochets_par_module': _NOMBRE_POSITIF,
+                'crochets_minimum': _NOMBRE_POSITIF,
+                'source': _TEXTE_LIBRE}},
+    },
+}
+
+
+def forme_de_table(section, cle):
+    """La forme JSON-Schema (sous-ensemble ci-dessus) de la table ``cle``,
+    ou ``None`` si la clé n'est pas une table. Lecture PURE."""
+    return FORMES_TABLES.get(section, {}).get(cle)

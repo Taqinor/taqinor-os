@@ -34,7 +34,8 @@ class ChecklistTemplate(models.Model):
     aujourd'hui — un chantier sans type spécifique reçoit donc la même checklist
     qu'avant (comportement préservé). Additif — aucune migration destructive."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='checklist_templates')
     nom = models.CharField(max_length=120)
     # Type d'installation qui auto-sélectionne ce template (résidentiel /
@@ -71,12 +72,14 @@ class ChecklistEtapeModele(models.Model):
     historiques sans template sont rattachées au template « Défaut » par la
     migration de données / l'amorçage paresseux)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='checklist_etapes')
     # N74 — template propriétaire (nullable pour la compat ; les étapes
     # orphelines sont migrées vers le template « Défaut »).
     template = models.ForeignKey(
-        ChecklistTemplate, on_delete=models.CASCADE,  # on_delete: étape/élément de ChecklistTemplate — n'existe pas sans lui
+        ChecklistTemplate,
+        on_delete=models.CASCADE,  # on_delete: étape/élément de ChecklistTemplate — n'existe pas sans lui
         null=True, blank=True, related_name='etapes')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=120)
@@ -127,7 +130,8 @@ class StageModele(models.Model):
     « Réceptionné » — FG70/N14) et toutes les vues/filtres actuels.
     Additif — company-scopée, aucune migration destructive."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='stages_chantier')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=120)
@@ -206,10 +210,12 @@ class CommissioningRecord(models.Model):
         NON_CONFORME = 'non_conforme', 'Non conforme'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='commissioning_records')
     installation = models.OneToOneField(
-        Installation, on_delete=models.CASCADE,  # on_delete: CommissioningRecord est le détail de Installation — n'existe pas sans lui
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: détail de Installation — n'existe pas sans lui
         related_name='commissioning_record')
     date_essai = models.DateField(null=True, blank=True)
     technicien = models.CharField(max_length=120, blank=True, null=True)
@@ -361,10 +367,12 @@ class CommissioningIVReading(models.Model):
     (``CommissioningRecord.ventes_recette_id``) pour réutiliser des courbes déjà
     saisies. Additif — company posée côté serveur."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='commissioning_iv_readings')
     record = models.ForeignKey(
-        CommissioningRecord, on_delete=models.CASCADE,  # on_delete: CommissioningIVReading est le détail de CommissioningRecord — n'existe pas sans lui
+        CommissioningRecord,
+        on_delete=models.CASCADE,  # on_delete: détail de CommissioningRecord — n'existe pas sans lui
         related_name='iv_readings')
     string_label = models.CharField(max_length=60)
     n_modules_serie = models.PositiveSmallIntegerField(null=True, blank=True)
@@ -414,7 +422,8 @@ class ReverificationMesure(models.Model):
     pures). Additif — company posée côté serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='reverifications')
     intervention_id = models.PositiveIntegerField()
     record_baseline = models.ForeignKey(
@@ -480,10 +489,12 @@ class RecettePompage(models.Model):
         NON_CONFORME = 'non_conforme', 'Non conforme'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='recettes_pompage')
     installation = models.OneToOneField(
-        Installation, on_delete=models.CASCADE,  # on_delete: RecettePompage est le détail de Installation — n'existe pas sans lui
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: RecettePompage est le détail de Installation — n'existe pas sans lui
         related_name='recette_pompage')
     date_essai = models.DateField(null=True, blank=True)
     technicien = models.ForeignKey(
@@ -561,10 +572,12 @@ class HandoverPack(models.Model):
     Un chantier ↔ un pack (unicité). Additif — company posée côté serveur ;
     aucun prix d'achat, aucun statut de devis touché (règle #4)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='handover_packs')
     installation = models.OneToOneField(
-        Installation, on_delete=models.CASCADE,  # on_delete: HandoverPack est le détail de Installation — n'existe pas sans lui
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: HandoverPack est le détail de Installation — n'existe pas sans lui
         related_name='handover_pack')
     titre = models.CharField(max_length=160, blank=True, null=True)
     # Pièces assemblées : [{type, libelle, reference, present}].
@@ -609,12 +622,16 @@ class StockReservation(models.Model):
     Entièrement additif ; multi-tenant (société posée côté serveur).
     """
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='stock_reservations')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='reservations')  # on_delete: StockReservation est le détail de Installation — n'existe pas sans lui
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: StockReservation est le détail de Installation — n'existe pas sans lui
+        related_name='reservations')
     produit = models.ForeignKey(
-        'stock.Produit', on_delete=models.CASCADE,  # on_delete: StockReservation est le détail de Produit — n'existe pas sans lui
+        'stock.Produit',
+        on_delete=models.CASCADE,  # on_delete: StockReservation est le détail de Produit — n'existe pas sans lui
         related_name='reservations')
     quantite = models.PositiveIntegerField(default=0)
     # Réservation engagée tant que `active` ET non `consomme` : elle pèse alors
@@ -659,10 +676,13 @@ class ChantierChecklistItem(models.Model):
     qui / quand. Le pourcentage d'avancement du chantier en dérive. Créés
     paresseusement depuis les étapes modèle à la première consultation."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='checklist_items')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='checklist')  # on_delete: étape/élément de Installation — n'existe pas sans lui
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: étape/élément de Installation — n'existe pas sans lui
+        related_name='checklist')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=120)
     ordre = models.PositiveIntegerField(default=0)
@@ -704,7 +724,8 @@ class ShotListSlot(models.Model):
         APRES = 'apres', 'Après'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='shotlist_slots')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=120)

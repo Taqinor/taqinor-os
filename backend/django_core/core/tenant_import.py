@@ -21,6 +21,10 @@ from __future__ import annotations
 import json
 import zipfile
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 EXPORT_FORMAT = 'taqinor-tenant-export/1'
 
 
@@ -157,6 +161,7 @@ def target_is_empty(company_id):
             if model.objects.filter(company_id=company_id).exists():
                 return False
         except Exception:  # noqa: BLE001 — modèle sans company_id → ignore
+            logger.warning("target is empty : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return True
 

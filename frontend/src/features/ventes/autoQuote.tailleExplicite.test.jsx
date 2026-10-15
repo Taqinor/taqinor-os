@@ -65,3 +65,18 @@ describe('QJR602 — la taille explicite est souveraine (aucun palier de 5 kWc)'
     expect(ventesApi.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 4, remise_globale: '0', target_kwc: 6.5 })
   })
 })
+
+// AGNR34 (D-AGNR-1 option (a)) — le corps que reçoit le serveur : ni douze
+// mois dérivés sous `factures_mensuelles_reelles`, ni conso calculée au
+// navigateur ; le serveur lit les deux factures du lead (source `facture_hiver_ete`).
+describe('AGNR34 — devis auto résidentiel : deux factures, aucune série fabriquée', () => {
+  it('lead hiver 800 / été 1 600 « été différent » : seul le distributeur déclaré voyage', async () => {
+    await createAutoQuote({
+      lead: { id: 5, type_installation: 'residentiel', facture_hiver: '800', facture_ete: '1600',
+              ete_differente: true, distributeur: 'onee' },
+      produits: [], discountStr: '0',
+    })
+    const corps = ventesApi.creerDevisAuto.mock.calls[0][0]
+    expect(corps).toEqual({ lead: 5, remise_globale: '0', etude_params: { distributeur: 'onee' } })
+  })
+})

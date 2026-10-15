@@ -33,10 +33,13 @@ class InterventionPreparation(models.Model):
     est requise AVANT que l'intervention puisse quitter « À préparer ». Additif —
     company-scopé, posé côté serveur."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='intervention_preparations')
     intervention = models.OneToOneField(
-        Intervention, on_delete=models.CASCADE, related_name='preparation')  # on_delete: InterventionPreparation est le détail de Intervention — n'existe pas sans lui
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: détail de Intervention — n'existe pas sans lui
+        related_name='preparation')
     # Kit d'outillage sélectionné (apps.outillage.KitOutillage). SET_NULL : si le
     # kit est supprimé, la préparation et ses lignes outils restent.
     kit = models.ForeignKey(
@@ -67,10 +70,12 @@ class PreparationMaterielLigne(models.Model):
     une rupture sur le disponible du SKU). Le produit catalogue est optionnel
     (les lignes libres restent traçables par désignation)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='preparation_materiel_lignes')
     preparation = models.ForeignKey(
-        InterventionPreparation, on_delete=models.CASCADE,  # on_delete: ligne de InterventionPreparation — n'existe pas sans son document parent
+        InterventionPreparation,
+        on_delete=models.CASCADE,  # on_delete: ligne de InterventionPreparation — n'existe pas sans son document parent
         related_name='materiel')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
@@ -97,10 +102,12 @@ class PreparationOutilLigne(models.Model):
     une case « coché » (chargé dans la camionnette). Référence un outil du
     catalogue Outillage (SET_NULL si l'outil est retiré du parc)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='preparation_outil_lignes')
     preparation = models.ForeignKey(
-        InterventionPreparation, on_delete=models.CASCADE,  # on_delete: ligne de InterventionPreparation — n'existe pas sans son document parent
+        InterventionPreparation,
+        on_delete=models.CASCADE,  # on_delete: ligne de InterventionPreparation — n'existe pas sans son document parent
         related_name='outils')
     outil = models.ForeignKey(
         'outillage.Outillage', on_delete=models.SET_NULL,
@@ -129,10 +136,13 @@ class ComponentSerial(models.Model):
     parc installé (sav.Equipement), exactement comme la checklist chantier (N9).
     Additif — company-scopé, posé côté serveur."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='component_serials')
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, related_name='serials')  # on_delete: ComponentSerial est le détail de Intervention — n'existe pas sans lui
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: ComponentSerial est le détail de Intervention — n'existe pas sans lui
+        related_name='serials')
     # Produit catalogue concerné (onduleur, panneau…). Optionnel : un composant
     # hors catalogue reste traçable par sa désignation libre.
     produit = models.ForeignKey(
@@ -174,10 +184,12 @@ class PhotoAnnotation(models.Model):
     est stocké en JSON (lignes/flèches/rectangles relatifs) — aucune nouvelle
     dépendance d'image. Additif — company-scopé."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='photo_annotations')
     attachment = models.OneToOneField(
-        'records.Attachment', on_delete=models.CASCADE,  # on_delete: pièce justificative de Attachment — suit son objet parent
+        'records.Attachment',
+        on_delete=models.CASCADE,  # on_delete: pièce justificative de Attachment — suit son objet parent
         related_name='annotation')
     # Calque de dessin : liste d'objets {type, points/coords, couleur}. Vide =
     # pas de dessin (seule la légende compte).
@@ -261,10 +273,13 @@ class MaterielConsommation(models.Model):
     RÉELLE (et non l'estimation du devis) pilote les mouvements de stock du
     chantier et la marge job-costing. Les prix d'achat restent internes."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='materiel_consommations')
     intervention = models.OneToOneField(
-        Intervention, on_delete=models.CASCADE, related_name='consommation')  # on_delete: MaterielConsommation est le détail de Intervention — n'existe pas sans lui
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: détail de Intervention — n'existe pas sans lui
+        related_name='consommation')
     valide = models.BooleanField(default=False)
     valide_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -289,10 +304,13 @@ class ConsommationLigne(models.Model):
     prévu — vérifié au service, pas au modèle. La consommation réelle de cette
     ligne (sur SKU catalogue) pilote le mouvement de stock à la validation."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='consommation_lignes')
     consommation = models.ForeignKey(
-        MaterielConsommation, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de MaterielConsommation — n'existe pas sans son document parent
+        MaterielConsommation,
+        on_delete=models.CASCADE,  # on_delete: ligne de MaterielConsommation — n'existe pas sans son document parent
+        related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='consommation_lignes')
@@ -345,10 +363,13 @@ class VoiceMemo(models.Model):
         RESERVE = 'reserve', 'Note sur réserve'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='voice_memos')
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, related_name='voice_memos')  # on_delete: pièce justificative de Intervention — suit son objet parent
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: pièce justificative de Intervention — suit son objet parent
+        related_name='voice_memos')
     cible = models.CharField(
         max_length=12, choices=Cible.choices, default=Cible.GENERAL)
     # Audio stocké (records.Attachment) — clé MinIO. SET_NULL : la suppression
@@ -392,12 +413,15 @@ class Reserve(models.Model):
         RECEPTION = 'reception', 'Réception'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='reserves')
     # CIQ628 — une réserve appartient à une intervention OU directement au
     # chantier (recette, réception) ; au moins l'une des deux (contrainte).
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, related_name='reserves',  # on_delete: pièce justificative de Intervention — suit son objet parent
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: pièce justificative de Intervention — suit son objet parent
+        related_name='reserves',
         null=True, blank=True)
     installation = models.ForeignKey(
         Installation, on_delete=models.CASCADE,  # on_delete: une réserve n'existe que sur SON chantier (CIQ628)
@@ -469,12 +493,16 @@ class ToolReturn(models.Model):
     statut + l'emplacement de l'outil dans le catalogue Outillage. Un outil non
     rendu est signalé (statut maintenu « En intervention »)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='tool_returns')
     intervention = models.ForeignKey(
-        Intervention, on_delete=models.CASCADE, related_name='tool_returns')  # on_delete: ToolReturn est le détail de Intervention — n'existe pas sans lui
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: ToolReturn est le détail de Intervention — n'existe pas sans lui
+        related_name='tool_returns')
     outil = models.ForeignKey(
-        'outillage.Outillage', on_delete=models.CASCADE,  # on_delete: ToolReturn est le détail de Outillage — n'existe pas sans lui
+        'outillage.Outillage',
+        on_delete=models.CASCADE,  # on_delete: ToolReturn est le détail de Outillage — n'existe pas sans lui
         related_name='tool_returns')
     rendu = models.BooleanField(default=False)
     emplacement_retour = models.ForeignKey(
@@ -502,7 +530,8 @@ class SafetyChecklistSlot(models.Model):
     Paramètres. Défauts semés (EPI portés, consignation électrique).
     `protege` verrouille un point système. Additif — company-scopé."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='safety_slots')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=200)
@@ -530,10 +559,13 @@ class SafetySignoff(models.Model):
     intervention). Coche chaque point de la checklist, avec qui + quand (patron
     d'audit existant)."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='safety_signoffs')
     intervention = models.OneToOneField(
-        Intervention, on_delete=models.CASCADE, related_name='safety_signoff')  # on_delete: SafetySignoff est le détail de Intervention — n'existe pas sans lui
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: SafetySignoff est le détail de Intervention — n'existe pas sans lui
+        related_name='safety_signoff')
     signe = models.BooleanField(default=False)
     signe_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -555,10 +587,13 @@ class SafetyCheckItem(models.Model):
     coché / par qui / quand. Matérialisé depuis les points actifs à la première
     consultation."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='safety_check_items')
     signoff = models.ForeignKey(
-        SafetySignoff, on_delete=models.CASCADE, related_name='items')  # on_delete: étape/élément de SafetySignoff — n'existe pas sans lui
+        SafetySignoff,
+        on_delete=models.CASCADE,  # on_delete: étape/élément de SafetySignoff — n'existe pas sans lui
+        related_name='items')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=200)
     ordre = models.PositiveIntegerField(default=0)
@@ -589,7 +624,8 @@ class FicheInterventionTemplate(models.Model):
     propres à l'intervention, pas des photos ni des consignes de sécurité).
     `protege` verrouille un gabarit système. Additif — company-scopé."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='fiche_intervention_templates')
     nom = models.CharField(max_length=120)
     # Clé du type d'intervention auquel ce gabarit s'applique
@@ -622,10 +658,12 @@ class FicheInterventionChamp(models.Model):
         MESURE = 'mesure', 'Mesure (avec unité)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='fiche_intervention_champs')
     template = models.ForeignKey(
-        FicheInterventionTemplate, on_delete=models.CASCADE,  # on_delete: FicheInterventionChamp est le détail de FicheInterventionTemplate — n'existe pas sans lui
+        FicheInterventionTemplate,
+        on_delete=models.CASCADE,  # on_delete: détail de FicheInterventionTemplate — n'existe pas sans lui
         related_name='champs')
     cle = models.CharField(max_length=40)
     libelle = models.CharField(max_length=150)
@@ -650,10 +688,13 @@ class FicheInterventionReleve(models.Model):
     SafetySignoff/SafetyCheckItem : un relevé par intervention, une valeur par
     champ). Additif — company-scopé, one-to-one avec l'intervention."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='fiche_intervention_releves')
     intervention = models.OneToOneField(
-        Intervention, on_delete=models.CASCADE, related_name='fiche_releve')  # on_delete: FicheInterventionReleve est le détail de Intervention — n'existe pas sans lui
+        Intervention,
+        on_delete=models.CASCADE,  # on_delete: détail de Intervention — n'existe pas sans lui
+        related_name='fiche_releve')
     template = models.ForeignKey(
         FicheInterventionTemplate, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='releves')
@@ -675,13 +716,16 @@ class FicheInterventionValeur(models.Model):
     décimale, texte: libre) pour rester simple et éviter une table par type de
     champ ; l'interprétation typée reste côté service/serializer."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='fiche_intervention_valeurs')
     releve = models.ForeignKey(
-        FicheInterventionReleve, on_delete=models.CASCADE,  # on_delete: FicheInterventionValeur est le détail de FicheInterventionReleve — n'existe pas sans lui
+        FicheInterventionReleve,
+        on_delete=models.CASCADE,  # on_delete: détail de FicheInterventionReleve — n'existe pas sans lui
         related_name='valeurs')
     champ = models.ForeignKey(
-        FicheInterventionChamp, on_delete=models.CASCADE,  # on_delete: FicheInterventionValeur est le détail de FicheInterventionChamp — n'existe pas sans lui
+        FicheInterventionChamp,
+        on_delete=models.CASCADE,  # on_delete: détail de FicheInterventionChamp — n'existe pas sans lui
         related_name='valeurs')
     valeur = models.TextField(blank=True, default='')
     renseigne_le = models.DateTimeField(null=True, blank=True)
@@ -714,7 +758,8 @@ class FieldOp(models.Model):
     jamais rejouer l'opération d'un autre. La société est posée côté serveur,
     JAMAIS lue du corps de requête. Additif — aucune table métier modifiée."""
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='installations_field_ops')
     # Clé d'idempotence générée par le terminal (UUID). Unique par société.
     client_op_id = models.CharField(max_length=64, db_index=True)

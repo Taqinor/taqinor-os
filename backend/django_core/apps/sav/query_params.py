@@ -117,6 +117,14 @@ CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
 ]}}
 
 
+#: ``?ordering=`` de la liste des problèmes : le tri par impact (calculé) et les
+#: tris simples du filtre de tri ; toute autre valeur → 400, vide = ordre par défaut.
+ORDRES_PROBLEME = tuple(
+    signe + nom for nom in ('impact', 'reference', 'titre', 'statut', 'created_at')
+    for signe in ('', '-'))
+ORDRES_PROBLEME_SCHEMA = {'type': 'string', 'enum': [*ORDRES_PROBLEME, '']}
+
+
 def archives_incluses(request):
     """``?archived=`` publié ``enum: ['1']`` : ``True`` pour ``1``, ``False``
     absent ; toute autre valeur, vide comprise, → 400 nommant le paramètre

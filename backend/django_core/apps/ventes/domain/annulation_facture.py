@@ -176,7 +176,7 @@ def _contre_passer(locked, user, motif=''):
     chatter, ``avoir_cree``, bascule ANNULÉE) : jamais un trou ni une
     réutilisation de numéro. Un ``BROUILLON-<id>`` n'a rien à contre-passer :
     il bascule seul. L'avoir d'une annulée ne double-compte pas : les
-    lecteurs (``avoirs_correction``, ``plan_facturation``) ne lisent que les
+    lecteurs (``plan_facturation``) ne lisent que les
     factures actives."""
     from core.numbering import est_reference_provisoire
     from ..models import Avoir, Facture

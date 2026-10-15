@@ -49,31 +49,31 @@
    "required": false
   },
   {
-   "classe": "IntegerField",
+   "classe": "EntierStrict",
    "nom": "period_year",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "IntegerField",
+   "classe": "EntierStrict",
    "nom": "period_month",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "IntegerField",
+   "classe": "EntierStrict",
    "nom": "period_quarter",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "cible",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "notes",
    "read_only": false,
    "required": false

@@ -888,6 +888,13 @@ RESPONSABLE_PERMISSIONS = [
     # ``IsAdminOrResponsableTier``, le code préserve cet accès (décochable ;
     # migration roles 0008_asec10_users_gerer_alignement).
     'users_gerer',
+    # ASEC50 / D-ASEC-4 — exports, réaffectations et affectation technicien
+    # désormais APPLIQUÉS côté serveur (``DroitDeLaGrille``) : ce palier les
+    # faisait déjà (export leads/clients/RGPD/DGI/rapport, réaffectation de
+    # lead / d'équipe SAV / de technicien) ; les codes préservent cet accès
+    # (décochables ; migration roles 0009_asec50_responsable_alignement).
+    'crm_export', 'crm_reassign', 'ventes_export', 'reporting_export',
+    'sav_reassign', 'technicien_assign',
 ]
 
 UTILISATEUR_PERMISSIONS = [

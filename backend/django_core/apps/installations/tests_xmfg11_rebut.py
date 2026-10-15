@@ -118,7 +118,14 @@ class TestRebut(TestCase):
             f'{BASE}/ordres-assemblage/{self.ordre.id}/declarer-rebut/', {
                 'produit': self.comp1.id, 'quantite': 1, 'motif': 'defaut',
             }, format='json')
-        resp = self.api.get(f'{BASE}/ordres-assemblage/rapport-rebuts/')
+        # ERR-ENF11-FUZZ-INSTALLATIONS — date illisible = 400 nommé (le
+        # filtre ORM levait), vide = borne non posée.
+        r_bad = self.api.get(f'{BASE}/ordres-assemblage/rapport-rebuts/',
+                             {'date_debut': 'abc'})
+        self.assertEqual(r_bad.status_code, 400, r_bad.content)
+        self.assertIn('date_debut', r_bad.json())
+        resp = self.api.get(f'{BASE}/ordres-assemblage/rapport-rebuts/',
+                            {'date_fin': ''})
         self.assertEqual(resp.status_code, 200, resp.content)
         entry = next(r for r in resp.data if r['produit_id'] == self.comp1.id)
         self.assertEqual(entry['quantite_totale'], 3)

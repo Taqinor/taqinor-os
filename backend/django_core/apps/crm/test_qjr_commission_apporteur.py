@@ -35,6 +35,7 @@ from django.test import TestCase
 from authentication.models import Company
 from apps.crm.models import Apporteur, DealEnregistre, Lead
 from apps.crm.clients_identite import resolve_client_for_lead
+from apps.parametres.models import CompanyProfile
 from apps.ventes.models import Devis, LigneDevis
 from core.events import devis_accepted
 
@@ -46,6 +47,8 @@ class CommissionOptionAccepteeTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor QJR22', slug='taqinor-qjr22')
+        CompanyProfile.objects.update_or_create(  # ACRM66 — réglage allumé
+            company=self.company, defaults={'apporteurs_actif': True})
         self.apporteur = Apporteur.objects.create(
             company=self.company, nom='Apporteur QJR22',
             taux_commission_pct=Decimal('5.00'))
@@ -123,6 +126,8 @@ class CommissionMonoOptionUnchangedTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             nom='Taqinor QJR22mono', slug='taqinor-qjr22mono')
+        CompanyProfile.objects.update_or_create(  # ACRM66 — réglage allumé
+            company=self.company, defaults={'apporteurs_actif': True})
         self.apporteur = Apporteur.objects.create(
             company=self.company, nom='Apporteur commission',
             taux_commission_pct=Decimal('5.00'))

@@ -60,6 +60,7 @@ def _managers(company, event_type=None):
         mgrs = [u for u in base if _is_manager(u)]
         return mgrs if mgrs else list(base)
     except Exception:  # pragma: no cover
+        logger.warning("managers : échec ignoré, comportement dégradé", exc_info=True)
         return []
 
 
@@ -348,7 +349,7 @@ def _already_notified_today(company, event_type, link):
                 created_at__date=today).exists():
             return True
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("already notified today : échec ignoré, comportement dégradé", exc_info=True)
     return not _reserver_emission(
         company, event_type, link, periode=date.today().isoformat())
 
@@ -414,6 +415,7 @@ def _sweep_da_soumise_stale(company):
         from django.utils import timezone as tz
         from apps.installations.selectors import demandes_achat_soumises_stale
     except Exception:  # pragma: no cover — installations indisponible
+        logger.warning("sweep da soumise stale : échec ignoré, comportement dégradé", exc_info=True)
         return 0
     try:
         cutoff = tz.now() - timedelta(days=DA_STALE_DAYS)
@@ -753,6 +755,7 @@ def _sweep_hot_leads(company, now=None):
         from apps.crm.models import Lead
         from apps.crm.stages import COLD, SIGNED
     except Exception:  # pragma: no cover — crm indisponible
+        logger.warning("sweep hot leads : échec ignoré, comportement dégradé", exc_info=True)
         return 0
 
     maintenant = now or tz.now()
@@ -854,7 +857,8 @@ def _sweep_reveiller_snoozes_approbations(company):
                     '⏰ De retour : approbation en attente',
                     link='/approbations', company=company)
             except Exception:  # pragma: no cover - défensif
-                pass
+                logger.warning(
+                    "sweep reveiller snoozes approbations : échec ignoré, comportement dégradé", exc_info=True)
         if rows:
             SnoozedItem.objects.filter(id__in=[r.id for r in rows]).delete()
         return len(rows)

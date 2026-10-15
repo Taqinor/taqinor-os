@@ -74,13 +74,30 @@ class UniciteReferentielsTests(TestCase):
             ('equipes', {'nom': 'E1'}, 'nom'),
         ]
 
-    def test_doublons_400_sous_le_champ(self):
+    def test_doublons_409_sous_le_champ(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — un doublon est un CONFLIT de données
+        # (409 unique_conflict), plus un 400 « données invalides » : le corps
+        # reste rangé sous le champ (écrans inchangés).
         for route, corps, champ in self._cas(self.tpl.id):
             r = self.api.post(f'{BASE}/{route}/', corps, format='json')
-            self.assertEqual(r.status_code, 400, (route, r.data))
+            self.assertEqual(r.status_code, 409, (route, r.data))
             self.assertIn(champ, r.data, route)
+            self.assertEqual(r.data['error']['code'], 'unique_conflict', route)
         self.assertEqual(StageModele.objects.filter(company=self.co).count(), 1)
         self.assertEqual(Equipe.objects.filter(company=self.co).count(), 1)
+
+    def test_cle_protegee_409_sous_le_champ(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — renommer la clé d'une étape PROTÉGÉE
+        # est refusé par l'état de l'étape (409), corps sous `cle`.
+        etape = ChecklistEtapeModele.objects.create(
+            company=self.co, template=self.tpl, cle='systeme', libelle='S',
+            protege=True)
+        r = self.api.patch(f'{BASE}/checklist-etapes/{etape.id}/',
+                           {'cle': 'autre'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('cle', r.data)
+        etape.refresh_from_db()
+        self.assertEqual(etape.cle, 'systeme')
 
     def test_autre_societe_accepte(self):
         api_b = _api(self.admin_b)
@@ -118,3 +135,99 @@ class UniciteReferentielsTests(TestCase):
                 r = self.api.post(f'{BASE}/{url}', corps, format='json')
                 self.assertEqual(r.status_code, 400, r.data)
                 self.assertIn(champ, r.data)
+
+    def test_motif_texte_publie_egale_refus_drf(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `nom: " "` (rogné en vide puis
+        # refusé) était conforme au schéma : la règle partagée de
+        # core.champs_stricts publie, côté requête, un motif qui accepte
+        # EXACTEMENT ce que DRF accepte (NUL refusé ; blanc rogné refusé quand
+        # le champ est obligatoire non blanc).
+        import re
+
+        from rest_framework.exceptions import ValidationError
+
+        from core.champs_stricts import (
+            MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, ChaineStricte,
+            _ChaineSansNul)
+        for valeur in ('ok', ' x ', ' ', '  ', '', 'a\x00b', '\x00',
+                       ' z', '\t\n'):
+            for champ, motif in ((ChaineStricte(), MOTIF_NON_BLANC_SANS_NUL),
+                                 (ChaineStricte(allow_blank=True),
+                                  MOTIF_SANS_NUL)):
+                try:
+                    champ.run_validation(valeur)
+                    accepte = True
+                except ValidationError:
+                    accepte = False
+                with self.subTest(valeur=valeur, motif=motif):
+                    self.assertEqual(bool(re.search(motif, valeur)), accepte)
+
+        class _Schema:
+            @staticmethod
+            def _map_serializer_field(champ, direction, bypass_extensions):
+                return {'type': 'string'}
+        ext = _ChaineSansNul(ChaineStricte())
+        self.assertEqual(
+            ext.map_serializer_field(_Schema, 'request')['pattern'],
+            MOTIF_NON_BLANC_SANS_NUL)
+        self.assertNotIn(
+            'pattern', ext.map_serializer_field(_Schema, 'response'))
+
+    def test_corps_stricts_ci997(self):
+        # CI #997 api-fuzz installations : un nombre pour un texte = 400 sur
+        # les ressources achat/stock/programme ; `membres` non liste = 400.
+        from apps.installations import serializers as S
+        from core.champs_stricts import ChaineStricte
+        for classe, champ in (
+                (S.CommandeCadreSerializer, 'note'),
+                (S.ContratPrixFournisseurSerializer, 'note'),
+                (S.PutAwaySerializer, 'note'), (S.ColisSerializer, 'note'),
+                (S.RetourMaterielSerializer, 'note'),
+                (S.PickListSerializer, 'note'),
+                (S.RegleReapproSerializer, 'note'),
+                (S.ProjetSerializer, 'description'),
+                (S.GpsConsentRecordSerializer, 'consent_ref')):
+            with self.subTest(classe=classe.__name__):
+                self.assertIsInstance(classe().fields[champ], ChaineStricte)
+        r = self.api.post(f'{BASE}/equipes/', {
+            'nom': 'E membres', 'membres': {}}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('membres', r.data)
+        r = self.api.post(f'{BASE}/equipes/', {
+            'nom': 'E membres', 'membres': []}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_corps_stricts_ci997_deuxieme_passe(self):
+        # CI #997 api-fuzz (2e passe) : TOUS les champs de ces 7 corps sont
+        # exacts (texte, booléen, entier, décimal-chaîne) — le fuzz nommait
+        # un champ à la fois (note, designation, actif, motif, montant…).
+        from apps.installations import serializers as S
+        from core.champs_stricts import (
+            BooleenStrict, ChaineStricte, DecimalStricte, EntierStrict)
+        attendus = (
+            (S.FraisImportSerializer, {
+                'montant': DecimalStricte, 'libelle': ChaineStricte}),
+            (S.ColisSerializer, {
+                'poids_kg': DecimalStricte, 'note': ChaineStricte}),
+            (S.SerieEntrepotSerializer, {
+                'note': ChaineStricte, 'numero_serie': ChaineStricte,
+                'reference_reception': ChaineStricte}),
+            (S.LivraisonLigneSerializer, {
+                'designation': ChaineStricte, 'quantite': EntierStrict}),
+            (S.PreuveLivraisonSerializer, {
+                'note': ChaineStricte, 'signataire_nom': ChaineStricte,
+                'gps_lat': DecimalStricte, 'gps_lng': DecimalStricte}),
+            (S.RetourLivraisonSerializer, {'motif': ChaineStricte}),
+            (S.RegleRangementSerializer, {
+                'actif': BooleenStrict, 'priorite': EntierStrict,
+                'categorie_produit': ChaineStricte}))
+        for classe, champs in attendus:
+            for nom, type_attendu in champs.items():
+                self.assertIsInstance(
+                    classe().fields[nom], type_attendu,
+                    (classe.__name__, nom))
+        refus = S.ColisSerializer(data={'poids_kg': 12.5}, partial=True)
+        self.assertFalse(refus.is_valid())
+        self.assertIn('poids_kg', refus.errors)
+        vide = S.ColisSerializer(data={'poids_kg': ''}, partial=True)
+        self.assertTrue(vide.is_valid(), vide.errors)

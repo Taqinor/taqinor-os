@@ -137,6 +137,16 @@ class ZSAV10ActionsGroupeesTest(TestCase):
         other_ticket.refresh_from_db()
         self.assertNotEqual(other_ticket.priorite, Ticket.Priorite.HAUTE)
 
+    def test_valeur_null_et_technicien_inconnu(self):
+        # CI #997 api-fuzz : `priorite: null` (énumération publiée) acceptée,
+        # technicien inconnu en 400 alors que la requête est conforme.
+        t1 = self._ticket()
+        r = self._post([t1.id], 'technicien', technicien=None, priorite=None)
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('priorite', r.data)
+        r = self._post([t1.id], 'technicien', technicien=99999999)
+        self.assertEqual(r.status_code, 404, r.data)
+
     def test_operation_inconnue_400(self):
         t1 = self._ticket()
         r = self._post([t1.id], 'demolir')
@@ -145,3 +155,25 @@ class ZSAV10ActionsGroupeesTest(TestCase):
     def test_ids_vide_400(self):
         r = self._post([], 'priorite', priorite='haute')
         self.assertEqual(r.status_code, 400, r.data)
+
+    def test_technicien_non_entier_400_et_ticket_intact(self):
+        # CI #997 api-fuzz (2e passe) : `technicien: {}` était lu faux (donc
+        # « désassigner ») et rendait 200 ; le corps déclaré est appliqué.
+        t1 = self._ticket(technicien_responsable=self.tech)
+        r = self._post([t1.id], 'technicien', technicien={})
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('technicien', r.data)
+        t1.refresh_from_db()
+        self.assertEqual(t1.technicien_responsable_id, self.tech.id)
+
+    def test_operation_objet_ou_liste_400_jamais_500(self):
+        # CI #997 api-fuzz (3e passe) : une operation objet n'est pas hachable
+        # (`{} in dict` -> TypeError -> 500) ; `operation` est une chaîne publiée.
+        t1 = self._ticket(technicien_responsable=self.tech)
+        for brut in ({}, [], ['statut'], 1, True, None):
+            r = self._post([t1.id], brut, statut='nouveau', priorite='basse',
+                           technicien=self.tech.id, motif='')
+            self.assertEqual(r.status_code, 400, (brut, r.content))
+            self.assertIn('operation', r.data)
+        t1.refresh_from_db()
+        self.assertEqual(t1.technicien_responsable_id, self.tech.id)

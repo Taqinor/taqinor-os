@@ -29,6 +29,10 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Contexte de la requête courante (isolé par thread/coroutine).
 _ctx: "contextvars.ContextVar[Optional[Dict[str, Any]]]" = (
     contextvars.ContextVar('obs_request_ctx', default=None))
@@ -112,7 +116,7 @@ class RequestObservabilityMiddleware:
                 from . import metrics
                 metrics.record_http_request(company_id, status, duration_ms)
             except Exception:  # noqa: BLE001 — l'observabilité ne casse jamais la requête
-                pass
+                logger.warning("call : échec ignoré, comportement dégradé", exc_info=True)
             # NTPLT51 — trace des requêtes lentes (WARNING au-delà du seuil).
             self._maybe_log_slow(ctx, duration_ms, capture)
             # NTPLT43 — access log structuré (opt-in).

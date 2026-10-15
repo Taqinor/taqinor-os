@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminRole
 from core.champs_stricts import ChaineStricte
+from core.conflit_etat import ConflitEtat
 from core.mixins import TenantMixin
 from core.throttling import LoginBannerThrottle
 from core.viewsets import CompanyScopedModelViewSet
@@ -261,9 +262,10 @@ class IdentityProviderViewSet(CompanyScopedModelViewSet):
         if exclude_pk is not None:
             qs = qs.exclude(pk=exclude_pk)
         if qs.exists():
-            raise DRFValidationError(
-                {'actif': 'Un fournisseur %s actif existe déjà pour cette '
-                          'société.' % protocol})
+            # CI #997 (3) — corps conforme, ÉTAT contraire : 409, pas 400.
+            raise ConflitEtat(
+                {'actif': ['Un fournisseur %s actif existe déjà pour cette '
+                           'société.' % protocol]})
 
     def perform_create(self, serializer):
         company = self.request.user.company

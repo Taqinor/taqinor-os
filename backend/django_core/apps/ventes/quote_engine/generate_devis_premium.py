@@ -83,6 +83,8 @@ from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402
 from .identite import (  # noqa: E402
     LEGALE_TAQINOR_LEGACY, mentions_legales as _mentions_legales,
     profil_renseigne as _profil_renseigne)
+# AMOT57 — « est-ce un onduleur ? » : LE classifieur partagé (« Deye off-Grid »).
+from apps.ventes.solar_classification import is_inverter  # noqa: E402
 
 
 def _esc(value):
@@ -1160,7 +1162,7 @@ def icon_img(des, _mar="", role=None):
     elif "batterie"     in d: key = "batterie"
     elif "smart meter"  in d: key = "smart meter"
     elif "wifi" in d or "dongle" in d: key = "wifi"
-    elif "onduleur"     in d: key = "onduleur"
+    elif is_inverter(d):      key = "onduleur"
     elif "structures"   in d: key = "structures"
     elif "socles"       in d: key = "socles"
     elif "accessoires"  in d: key = "accessoires"
@@ -1682,12 +1684,11 @@ def _garanties_du_devis():
                     return n
         return None
 
-    _ond = lambda d: "onduleur" in d                      # noqa: E731
     _pan = lambda d: "panneau" in d or "module" in d      # noqa: E731
     _bat = lambda d: "batterie" in d                      # noqa: E731
 
     out = []
-    n = _premier(_ond, "garantie_mois")
+    n = _premier(is_inverter, "garantie_mois")
     if n:
         out.append((n, _L("lg_gar_onduleur")))
     n = _premier(_pan, "garantie_mois")
@@ -1722,7 +1723,7 @@ def _marques_du_devis():
     familles = {"panneaux": [], "onduleurs": [], "batteries": []}
     predicats = (
         ("panneaux", lambda d: "panneau" in d or "module" in d),
-        ("onduleurs", lambda d: "onduleur" in d),
+        ("onduleurs", is_inverter),
         ("batteries", lambda d: "batterie" in d),
     )
     for it in _lignes_option_rendue():
@@ -3156,7 +3157,7 @@ def _phrase_methode_etude():
         precisions.append(i18n_labels.nom_option("Sans batterie", LANGUE_SORTIE, minuscule=True))
     noms = " ".join(str(it.get("designation") or "").lower()
                     for it in list(SANS_ITEMS) + list(AVEC_ITEMS)
-                    if "onduleur" in str(it.get("designation") or "").lower())
+                    if is_inverter(str(it.get("designation") or "")))
     if "triphas" in noms and "monophas" not in noms:
         precisions.append(_L("lg_racc_tri"))
     elif "monophas" in noms and "triphas" not in noms:

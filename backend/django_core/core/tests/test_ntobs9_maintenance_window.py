@@ -212,6 +212,19 @@ class MaintenanceWindowPermissionTest(TestCase):
         self.assertEqual(fenetre.statut, MaintenanceWindow.Statut.ANNULE)
         self.assertTrue(notify_mock.called)
 
+    def test_date_tres_ancienne_servie_en_utc(self):
+        # Le fuseau d'affichage d'une année < 1900 porte un décalage à secondes
+        # (LMT -00:30:20), invalide en RFC 3339 : les horodatages sont en UTC.
+        payload = {
+            'debute_le': '0966-06-15T08:53:27Z',
+            'termine_le': '2026-10-13T10:21:17Z',
+        }
+        resp = self._client(self.directeur).post(
+            '/api/django/core/maintenance-windows/', payload, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['debute_le'], '0966-06-15T08:53:27Z')
+        self.assertEqual(resp.data['termine_le'], '2026-10-13T10:21:17Z')
+
 
 class AuditRegistryTest(SimpleTestCase):
     """ENF20 — ``core.audit_registry`` : même inversion de dépendance que

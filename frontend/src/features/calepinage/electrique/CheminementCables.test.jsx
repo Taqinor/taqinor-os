@@ -6,8 +6,8 @@
      2. une valeur `null` rend un TIRET, jamais un `0` (`ch5`, sans norme
         électrique choisie) ;
      3. les omissions du serveur sont recopiées SANS reformulation ;
-     4. un 404 de la porte (route pas encore posée côté serveur, CALX224-226)
-        affiche l'état « pas encore calculable », jamais une erreur générique. */
+     4. un 404 de la porte (calepinage inconnu ou d'une autre société)
+        affiche « Calepinage introuvable », jamais une erreur générique. */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -130,12 +130,13 @@ describe('CheminementCables (CALX229)', () => {
     )
   })
 
-  it('404 (route pas encore posée) : état « pas encore calculable », jamais une erreur générique', async () => {
+  it('404 : un 404 affiche « Calepinage introuvable », jamais une erreur générique', async () => {
     refuser404()
 
     rendre()
 
-    expect(await screen.findByTestId('calx229-non-calcule')).toBeInTheDocument()
+    expect(await screen.findByTestId('calx229-introuvable')).toBeInTheDocument()
+    expect(screen.getByText('Calepinage introuvable')).toBeInTheDocument()
     expect(screen.queryByTestId('calx229-erreur')).toBeNull()
   })
 })

@@ -1212,7 +1212,7 @@ export default function DevisGenerator({
     setLeadId, setClientId, setDateValidite, setNote,
     setEcheancierSaisieBrut, echeancierAEnvoyer,
     setConditions, conditionsServies, setFHiver, setFEte,
-    setMonthly: poserMoisRelus, setDistributeur,
+    setMonthly: poserMoisRelus, setMoisDerives: poserMoisDerives, setDistributeur,
     setRealBillMode, setRealBillKwh, setDistributeurChoisi,
     consoStockee, modeInstallation, setLines,
     setLeadValeursModifiees, setTauxTva, setDiscountPct,
@@ -1621,7 +1621,7 @@ export default function DevisGenerator({
     facturesSaisies, selectedLead, marcheCi, ctxProfilCi,
     consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
     setEditDevis, setReserveEnregistrement,
-    setErreursChamps, baremeSociete, embedded, onEnregistre,
+    setErreursChamps, baremeSociete, embedded, onEnregistre, kpiTotal, provenanceMois, fHiver, fEte,
   })
 
   // EDC5 (fondateur 09/10/2026 — « revient d'un coup au devis ») — clavier
@@ -1743,7 +1743,7 @@ export default function DevisGenerator({
   const socleFactures = {
     marche: modeInstallation,
     fHiver, setFHiver: saisirFHiver, fEte, setFEte: saisirFEte, syncBillEstimator,
-    onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth, moisNonSaisis,
+    onHiverPaste, onEtePaste, handleEstimerMois, errors, monthly, setMonth, moisNonSaisis, provenanceMois,
     avisFactures,
     distributeur, setDistributeur: choisirDistributeur, realBillMode, setRealBillMode,
     realBillMad, setRealBillMad: saisirRealBillMad,

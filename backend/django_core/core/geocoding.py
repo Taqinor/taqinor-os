@@ -30,6 +30,10 @@ from .integrations import (
     register_provider,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class GeoPoint:
     """Point géographique simple (lat/lng + libellé résolu)."""
@@ -76,6 +80,7 @@ class NominatimGeocodingProvider(GeocodingProvider):
         try:
             import requests
         except Exception:  # noqa: BLE001
+            logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
         try:
             delai = float(self.config.get('timeout', 10))
@@ -95,6 +100,7 @@ class NominatimGeocodingProvider(GeocodingProvider):
                 lat=float(first['lat']), lng=float(first['lon']),
                 label=first.get('display_name', ''))
         except Exception:  # noqa: BLE001 — réseau/format : dégrade en None.
+            logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
 
 
@@ -119,6 +125,7 @@ class GenericKeyedGeocodingProvider(GeocodingProvider):
         try:
             import requests
         except Exception:  # noqa: BLE001
+            logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
         try:
             delai = float(self.config.get('timeout', 10))
@@ -139,6 +146,7 @@ class GenericKeyedGeocodingProvider(GeocodingProvider):
             return GeoPoint(lat=float(loc['lat']), lng=float(loc['lng']),
                             label=results[0].get('formatted', ''))
         except Exception:  # noqa: BLE001
+            logger.warning("geocode : échec ignoré, comportement dégradé", exc_info=True)
             return None
 
 

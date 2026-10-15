@@ -15,10 +15,15 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from core.champs_stricts import DecimalStricte
 from core.entite_scoping import EntiteScopeMixin
-from ..openapi_helpers import BINARY, DATE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
-from ..utils.params import corps_objet, date_ou_400, entier_ou_400
+from ..openapi_helpers import BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
+from ..utils.params import (
+    MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400,
+    id_corps, id_requete_ou_400, ids_requete_ou_400,
+)
 from core.viewsets import CompanyScopedModelViewSet
+from ..erreurs_achats import IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
 from authentication.permissions import (
@@ -100,17 +105,29 @@ def _params_bulk(donnees):
     for cle, valeur in params.items():
         if isinstance(valeur, (dict, list, bool)):
             raise ValidationError({cle: ['Valeur simple attendue.']})
-    for cle in ('mode', 'marque'):
-        if params.get(cle) is not None and not isinstance(params[cle], str):
+    # CI #997 fuzz (2) — mode/valeur/marque : textes NON nuls (le schéma ne les
+    # déclare pas nullables) ; mode non blanc ; valeur = décimal-chaîne publié
+    # (un nombre JSON était lu) — contrôlés quelle que soit l'action.
+    for cle in ('mode', 'valeur', 'marque'):
+        if cle in params and not isinstance(params[cle], str):
             raise ValidationError({cle: ['Texte attendu.']})
+    if 'mode' in params and not params['mode'].strip():
+        raise ValidationError({'mode': ['Ce champ ne peut être vide.']})
+    if 'valeur' in params:
+        VALEUR_BULK.run_validation(params['valeur'])
     if len(params.get('marque') or '') > 100:
         raise ValidationError({'marque': ['100 caractères au plus.']})
     for cle in ('garantie_mois', 'garantie_production_mois'):
         if cle in params:
             params[cle] = entier_ou_400(params[cle], cle, mini=0, maxi=2147483647)
     if params.get('categorie_id') not in (None, '', 'null'):
-        params['categorie_id'] = entier_ou_400(params['categorie_id'], 'categorie_id')
+        params['categorie_id'] = entier_ou_400(params['categorie_id'], 'categorie_id', maxi=2147483647)
     return params
+
+
+#: Valeur d'une édition de prix en masse : décimal-chaîne (l'écran envoie le
+#: texte saisi), le MÊME champ publie le schéma et valide le corps.
+VALEUR_BULK = DecimalStricte(max_digits=12, decimal_places=2, required=False)
 
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
@@ -294,7 +311,7 @@ def _texte_references(comptes):
                                                      'Id(s) de catégorie, séparés par virgule'),
                                                    P('show_archived', STR, False,
                                                      'true pour inclure les produits archivés', ['true', 'false']),
-                                                   P('entite', INT, False,
+                                                   P('entite', ID_OU_VIDE, False,
                                                      'Filtre optionnel par entité juridique (NTADM2)')]))
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
@@ -416,6 +433,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return [IsAdminRole()]
 
     def get_queryset(self):
+        # CI #997 fuzz — ``?entite=null`` était ignoré en silence (filtre NTADM2) : 400.
+        id_requete_ou_400(self.request, 'entite')
         qs = super().get_queryset()
         # ── STKCAT6 — filtre MANUEL par CATÉGORIE (`?categorie=<id[,id]>`) ──
         # Posé JUSTE APRÈS le scoping société de ``super()`` (donc avant les
@@ -436,7 +455,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                       if c.isdigit()]
         if categories:
             qs = qs.filter(categorie_id__in=categories)
-        if self.request.query_params.get('show_archived') == 'true':
+        if choix_ou_400(self.request.query_params.get('show_archived'),
+                        'show_archived', ('true', 'false')) == 'true':
             return qs.annotate(
                 nb_mouvements=Count('mouvements'),
                 premiere_date_mouvement=Min('mouvements__date'),
@@ -516,11 +536,14 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                                                                              'set_brand']),
                                  ids=serializers.ListField(child=serializers.IntegerField(), min_length=1),
                                  mode=serializers.CharField(required=False, help_text='percent ou fixed'),
-                                 valeur=serializers.DecimalField(max_digits=12, decimal_places=2, required=False),
-                                 garantie_mois=serializers.IntegerField(required=False, allow_null=True),
-                                 garantie_production_mois=serializers.IntegerField(required=False, allow_null=True),
+                                 valeur=VALEUR_BULK,
+                                 garantie_mois=serializers.IntegerField(required=False, allow_null=True, min_value=0,
+                                                                        max_value=2147483647),
+                                 garantie_production_mois=serializers.IntegerField(
+                                     required=False, allow_null=True, min_value=0, max_value=2147483647),
                                  categorie_id=serializers.IntegerField(required=False, allow_null=True),
-                                 marque=serializers.CharField(required=False, allow_blank=True)), responses=OBJET)
+                                 marque=serializers.CharField(required=False, allow_blank=True, max_length=100)),
+                   responses=OBJET)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
     def bulk(self, request):
@@ -536,8 +559,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if not isinstance(ids, list) or not ids:
             return Response({'detail': 'Sélectionnez au moins un produit.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        # ERR fuzz : un id non entier ({}, liste…) levait TypeError (500).
-        ids = [entier_ou_400(i, 'ids') for i in ids]
+        # ERR fuzz : un id non entier ({}, liste…) levait TypeError (500) ;
+        # CI #997 fuzz (2) : entier JSON seulement (``null``/``"5"`` lus).
+        if any(isinstance(i, bool) or not isinstance(i, int) for i in ids):
+            return Response({'detail': 'Identifiants entiers attendus.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         # ASTK20 (D-ASTK-3) — la variation de prix en masse = écriture du prix
         # catalogue : même helper que ProduitSerializer (jumeau unique).
         from ..serializers import peut_modifier_prix_catalogue
@@ -551,6 +577,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             result = apply_product_bulk(
                 company=request.user.company, user=request.user,
                 ids=ids, op=op, params=_params_bulk(donnees))
+        except IntrouvableMetier as exc:  # catégorie inconnue : ressource absente (404)
+            return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -570,13 +598,20 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                  "quantite_comptee": <int>}]}.
         """
         from ..services import apply_inventory_count
-        lignes = request.data.get('lignes') or []
+        donnees = corps_objet(request)  # CI #997 fuzz : `[null, null]` -> 400
+        lignes = donnees.get('lignes') or []
         if not isinstance(lignes, list) or not lignes:
             return Response({'detail': 'Aucune ligne de comptage fournie.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        motif = donnees.get('motif')
+        if motif is not None and not isinstance(motif, str):
+            raise serializers.ValidationError({'motif': ['Texte attendu.']})
+        if any(isinstance(lg, dict) and lg.get('produit') is not None
+               and id_corps(lg['produit']) is None for lg in lignes):
+            raise serializers.ValidationError({'lignes': ['Produit : identifiant entier attendu.']})
         result = apply_inventory_count(
             company=request.user.company, user=request.user,
-            motif=request.data.get('motif'), lignes=lignes)
+            motif=motif, lignes=lignes)
         return Response(result)
 
     @extend_schema(request=corps('ProduitExportXlsxCorps',
@@ -895,11 +930,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 f'/api/django/records/attachments/{piece.pk}/download/'},
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits (répétés ou séparés par virgule)'), P('symbology',
-                                                                                                       STR, False,
-                                                                                                       'Symbologie',
-                                                                                                       ['qr',
-                                                                                                        'code128']),
+    @extend_schema(parameters=[P('ids', STR, True, 'Ids produits (répétés ou séparés par virgule)',
+                                 pattern=MOTIF_IDS),
+                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
                                P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes',
@@ -920,13 +953,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from .. import labels
         from apps.ventes.utils.pdf import _html_to_pdf
 
-        ids = request.query_params.getlist('ids')
-        if len(ids) == 1 and ',' in ids[0]:
-            ids = ids[0].split(',')
-        ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
-        if not ids:
-            return Response({'detail': 'Sélectionnez au moins un produit.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        ids = ids_requete_ou_400(request)
 
         symbology = request.query_params.get('symbology', 'qr')
         if symbology not in ('qr', 'code128'):
@@ -1113,8 +1140,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
-    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)'), P('date_debut', DATE),
-                               P('date_fin', DATE)], responses=OBJET)
+    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)'), P('date_debut', DATE_OU_VIDE),
+                               P('date_fin', DATE_OU_VIDE)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='analyse-achats',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats(self, request):
@@ -1134,7 +1161,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois))
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE), P('date_fin', DATE)], responses={XLSX: BINARY})
+    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/export-xlsx',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats_export_xlsx(self, request):
@@ -1152,7 +1179,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois)
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE), P('date_fin', DATE)], responses={PDF: BINARY})
+    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses={PDF: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/pdf',
             permission_classes=[IsResponsableOrAdmin])
     def analyse_achats_pdf(self, request):
@@ -1810,7 +1837,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if not produit.is_archived:
             return Response(
                 {'detail': 'Ce produit n\'est pas archivé.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # ASTK94 — un homonyme actif sans SKU bloquerait le désarchivage par
         # la contrainte DB (500) : même garde que le serializer, 400 {nom}.
@@ -1834,7 +1861,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                         'supprimés définitivement.'
                     )
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # ASTK81 — mêmes références vivantes que destroy (helper commun) : on
         # archive au lieu de détacher/cascader. Les mouvements restent

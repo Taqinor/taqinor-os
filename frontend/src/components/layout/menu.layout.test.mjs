@@ -12,12 +12,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../test/readCss.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 // On retire les commentaires CSS AVANT toute analyse : plusieurs règles
 // décrivent l'invariant en clair dans un /* … */ (« min-height:0 indispensable »),
 // ce qui ferait passer le test même si la VRAIE déclaration disparaissait.
-const css = readFileSync(join(here, '..', '..', 'index.css'), 'utf8')
+const css = resolveCss(join(here, '..', '..', 'index.css'))
   .replace(/\/\*[\s\S]*?\*\//g, '')
 const html = readFileSync(join(here, '..', '..', '..', 'index.html'), 'utf8')
 

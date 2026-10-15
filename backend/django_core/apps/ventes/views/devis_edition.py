@@ -82,9 +82,10 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
     """QJR544 — les gardes d'une mise à jour d'en-tête, en UN point (PATCH
     ``perform_update`` et ``replace-lines`` avec ``entete``) :
 
-    * QJR521 — un devis remplacé / archivé ne se réactive jamais ;
-    * QJR516 — prédicat de modifiabilité (geste ENTETE), 400 {'statut'} et
-      l'exception « désactivation seule » conservés ;
+    * QJR521 — un devis remplacé / archivé ne se réactive jamais (409) ;
+    * QJR516 — prédicat de modifiabilité (geste ENTETE), {'statut'} et
+      l'exception « désactivation seule » conservés — 409 (refus d'état,
+      CI #997), plus 400 ;
     * ERR8 — lead / client d'une autre société refusés ;
     * QJR539 (``t17``) — correction d'un ENVOYÉ : une remise globale ENTRANTE
       plus profonde au-dessus du seuil n'est plus couverte par l'approbation
@@ -93,9 +94,11 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
 
     Lit le statut, ne l'écrit jamais (règle #4)."""
     from rest_framework.exceptions import ValidationError
+    from core.conflit_etat import ConflitEtat
     if (instance.is_active is False
             and validated_data.get('is_active') is True):
-        raise ValidationError({
+        # CI #997 (3) — corps conforme, devis REMPLACÉ : refus d'état, 409.
+        raise ConflitEtat({
             'is_active': 'Un devis remplacé ou archivé ne se réactive pas.'})
     from ..domain.modifiabilite import ENTETE, verdict
     if not verdict(instance, ENTETE)['modifiable']:
@@ -106,7 +109,9 @@ def _gardes_mise_a_jour(instance, validated_data, user, *, t17=True):
             and set(validated_data.keys()) <= {'is_active'}
         )
         if not only_deactivation:
-            raise ValidationError({
+            # CI #997 — refus d'ÉTAT (corps conforme, devis figé) : 409,
+            # même corps {'statut'} qu'avant.
+            raise ConflitEtat({
                 'statut': 'Devis figé — révisez-le (reviser) pour le '
                           'modifier.'})
     company = getattr(user, 'company', None)
@@ -239,6 +244,10 @@ class DevisEditionActionsMixin:
             return Response({'detail': 'Utilisateur sans société.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        # CI #997 — corps non objet (``[null, null]``) : 400, plus 500.
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list) or not lignes_in:
             return Response({'detail': 'Au moins une ligne est requise.'},

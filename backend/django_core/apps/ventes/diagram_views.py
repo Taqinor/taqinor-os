@@ -26,7 +26,8 @@ import re
 
 from django.http import HttpResponse, Http404
 from rest_framework.decorators import (
-    api_view, permission_classes, renderer_classes)
+    api_view, parser_classes, permission_classes, renderer_classes)
+from rest_framework.parsers import JSONParser
 from rest_framework.renderers import BaseRenderer
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
@@ -139,6 +140,7 @@ def _pdf_response(svg, nom_fichier):
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
 @renderer_classes(_RENDERERS)
+@parser_classes([JSONParser])  # CI #997 (D2) : JSON seul, aucun fichier
 def schema_unifilaire(request):
     """POST /ventes/schema-unifilaire/
 
@@ -146,6 +148,10 @@ def schema_unifilaire(request):
     aucune donnée : pur rendu. ?format=json → ``{params, svg}`` ;
     ?format=pdf → la même planche en PDF (PV40).
     """
+    # CI #997 — corps validé contre sa forme publiée (400 nommé : type JSON
+    # faux, corps non objet) ; un formulaire reçoit 415 (D2).
+    from core.parseurs import corps_valide
+    corps_valide(request, SH.SchemaUnifilaireRequest)
     params = normalize_diagram_params(request.data or {})
     svg = build_single_line_svg(params)
     format_demande = request.query_params.get('format')

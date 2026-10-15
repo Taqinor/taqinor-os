@@ -1,5 +1,6 @@
-"""APRF12 (C-APRF-004) — ``ca_devis_factures_par_clients``,
-``montants_factures_par_devis`` et ``carnet_commande_par_mois`` lisent des
+"""APRF12 (C-APRF-004) — ``ca_devis_factures_par_clients`` et
+``carnet_commande_par_mois`` (VNT105 : ``montants_factures_par_devis``,
+orpheline, est retirée) lisent des
 devis passés par ``devis_avec_totaux`` (APRF7) et des factures passées par
 ``factures_avec_montant_du`` (APRF11) : +10 devis sur un client n'ajoutent
 aucune requête, montants égaux au centime.
@@ -67,23 +68,20 @@ class CaClientsEnLotTests(TestCase):
     def _mesurer(self):
         from apps.ventes.selectors_facturation import (
             ca_devis_factures_par_clients, carnet_commande_par_mois,
-            montants_factures_par_devis,
         )
         with CaptureQueriesContext(connection) as ctx:
             ca = ca_devis_factures_par_clients(
                 self.company, [self.client_obj.id])
-            montants = montants_factures_par_devis(
-                self.devis_ids, self.company)
             carnet = carnet_commande_par_mois(
                 self.company, date(2026, 9, 1), date(2026, 9, 30))
-        return len(ctx.captured_queries), ca, montants, carnet
+        return len(ctx.captured_queries), ca, carnet
 
     def test_requetes_constantes_et_montants_exacts(self):
         from apps.ventes.models import Devis, Facture
         self._ajouter(3)
-        n_petit, _, _, _ = self._mesurer()
+        n_petit, _, _ = self._mesurer()
         self._ajouter(10)
-        n_grand, ca, montants, carnet = self._mesurer()
+        n_grand, ca, carnet = self._mesurer()
         self.assertEqual(n_petit, n_grand)
         # Montants égaux au centime à la lecture sans préchargement.
         attendu_devis = sum(
@@ -95,10 +93,34 @@ class CaClientsEnLotTests(TestCase):
         self.assertEqual(ca[self.client_obj.id]['ca_devis'], attendu_devis)
         self.assertEqual(ca[self.client_obj.id]['ca_factures'],
                          attendu_factures)
-        self.assertEqual(sum((v['ttc'] for v in montants.values()),
-                             Decimal('0')), attendu_factures)
         non_factures = sum(
             (Decimal(str(d.total_ttc)) for d in Devis.objects.filter(
                 pk__in=self.devis_ids, factures__isnull=True)),
             Decimal('0'))
         self.assertEqual(carnet.get('2026-09', Decimal('0')), non_factures)
+
+    def test_vnt87_chaine_comptee_une_fois_brouillon_hors_facture(self):
+        """VNT87 — une version REMPLACÉE n'est pas du CA devis (la chaîne
+        compte une fois) ; un brouillon n'est pas du CA facturé."""
+        from apps.ventes.models import Devis, Facture
+        from apps.ventes.selectors_facturation import (
+            ca_devis_factures_par_clients)
+        self._ajouter(2)  # k impair : une facture émise sur l'un des deux
+        v1, v2 = Devis.objects.filter(pk__in=self.devis_ids).order_by('pk')
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        Facture.objects.create(
+            company=self.company, reference=f'BROUILLON-APRF12-{_nxt()}',
+            client=self.client_obj, devis=v2,
+            statut=Facture.Statut.BROUILLON, montant_ht=Decimal('500'),
+            montant_tva=Decimal('100'), montant_ttc=Decimal('600'))
+        ca = ca_devis_factures_par_clients(
+            self.company, [self.client_obj.id])[self.client_obj.id]
+        self.assertEqual(ca['nb_devis'], 1)
+        self.assertEqual(ca['ca_devis'],
+                         Decimal(str(Devis.objects.get(pk=v2.pk).total_ttc)))
+        emises = Facture.objects.filter(
+            devis_id__in=self.devis_ids, statut=Facture.Statut.EMISE)
+        self.assertEqual(ca['nb_factures'], emises.count())
+        self.assertEqual(ca['ca_factures'], sum(
+            (Decimal(str(f.total_ttc)) for f in emises), Decimal('0')))

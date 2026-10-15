@@ -1,0 +1,399 @@
+/* ── Générateur de devis solaire (/ventes/devis/nouveau) ───── */
+.gen-page { max-width: 1100px; }
+
+/* FOUNDER 26/08/2026 — « la table [Lignes de Produits] n'est pas montrée
+   d'un coup, il faut défiler à gauche/droite, alors qu'elle n'utilise
+   qu'une partie de l'écran. Agrandis et retire le défilement. » Règle
+   append-only : NOUVELLE règle plutôt qu'une modification de `.gen-page`
+   ci-dessus, plus spécifique que l'ordre de cascade seul ne suffirait pas à
+   garantir sans risquer de repasser AU-DESSUS de l'override mobile
+   (`.gen-page { max-width: 100% }`, media ≤768px un peu plus haut dans ce
+   fichier) — bornée à `min-width: 769px` pour ne JAMAIS toucher au mobile,
+   qui garde son comportement existant (page pleine largeur, table empilée
+   en cartes sous 768px, cf. plus bas). 1100px ne laissait que ~812-940px
+   utiles à `.lines-table` (désignation/produit/villa/qté/prix/tva/total/
+   option/ordre/suppr.) une fois `.gen-page` et le padding de carte
+   déduits — assez pour forcer `.lines-table-wrap { overflow-x: auto }` à
+   défiler sur un moniteur large où il restait pourtant beaucoup de place à
+   droite. `.gen-page` n'est utilisée QUE par cet écran (jamais une classe
+   partagée) : l'élargir ne touche aucune autre page. Les autres sections de
+   l'écran (grilles Tailwind `sm:grid-cols-*`/`lg:grid-cols-*`, graphique
+   recharts en `width="100%"`) sont toutes responsives et absorbent la
+   largeur en plus sans rien casser — d'où élargir la page entière plutôt
+   qu'un « breakout » CSS isolé de la seule carte Lignes de Produits (la
+   sidebar a une largeur DYNAMIQUE — dépliée/repliée, `.sidebar`/
+   `.sidebar--collapsed` — un breakout en `100vw` calculerait faux dans un
+   des deux états). `.lines-table` reste en `table-layout: auto` (inchangé) :
+   les colonnes numériques gardent leur largeur fixe (`.col-num`, déjà
+   compactes et alignées à droite) et Désignation/Produit — les deux seules
+   colonnes SANS largeur fixe — absorbent naturellement tout l'espace
+   supplémentaire, sans toucher au balisage. */
+@media (min-width: 769px) {
+  .gen-page { max-width: 1440px; }
+}
+
+/* VX138(d) — bandeau d'actions sticky au scroll SUR TOUS LES PALIERS
+   (auparavant sticky uniquement sous la media query mobile) ; le contenu
+   spécifique mobile (marge de sécurité iOS, boutons pleine largeur) reste
+   dans la media query ci-dessous. */
+.gen-actions-sticky {
+  position: sticky;
+  bottom: 0;
+  /* MB3 — footer d'actions collant = palier --z-sticky (au-dessus du contenu
+     du générateur qui défile en dessous). Vit dans .layout-content. */
+  z-index: var(--z-sticky, 1100);
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+
+/* MB6 — Sous 768px, DEUX pieds `position: sticky; bottom: 0` cohabitent au
+   MÊME palier `--z-sticky` : ce bandeau d'actions (dans `.layout-content`) et
+   la barre d'onglets `.bottom-tabbar` (frère POSTÉRIEUR de `.layout-content`
+   dans `.layout-main`). À z-index égal, c'est l'ordre du DOM qui tranche — la
+   barre d'onglets est peinte APRÈS, donc AU-DESSUS : dès que les deux boîtes
+   se touchent, la NAVIGATION avale l'ACTION (bouton « Créer le devis »
+   inatteignable au pouce). Aujourd'hui seule la réserve basse de
+   `.layout-content` (MB1 : `padding-bottom: 52px + …`) les sépare — mesuré
+   66px de marge sur Chromium ET WebKit à 375×812 — et ce même commentaire MB1
+   anticipe sa perte (« même quand un moteur dégrade 100dvh en 100vh »).
+   On tranche donc explicitement : l'action prime sur la navigation. Un SEUL
+   cran au-dessus du palier collant, dérivé du jeton (jamais une valeur en dur,
+   barème MB3) : le bandeau reste SOUS les overlays (--z-overlay 1200) et les
+   modales (--z-modal 1300), donc une bottom-sheet le recouvre toujours
+   proprement. Aucun pixel ne bouge sur l'écran actuel (même géométrie, même
+   rendu) : seul l'ordre de peinture entre ces deux barres est fixé.
+   Portée : `.gen-actions-sticky` (générateur de devis) uniquement — aucun
+   autre écran n'a de pied collant à ce palier. */
+@media (max-width: 768px) {
+  .gen-actions-sticky { z-index: var(--z-sticky-raised); }
+}
+
+/* VX4 — carte du générateur tokenisée (dark mode réel sur l'écran le plus
+   stratégique ; VX17 a déjà migré .gen-metric / .lines-table et le chart). */
+.gen-card {
+  background: var(--card);
+  /* VX6 — rayon dérivé de --radius (radius-xl=14px) ; carte définie par son
+     liseré (shadow-card), plus d'ombre flottante au repos (F122). */
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+
+.gen-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--foreground);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to right, var(--muted), var(--card));
+}
+
+.gen-card-body { padding: 1.1rem 1.25rem; }
+
+.gen-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.9rem 1.1rem;
+}
+
+.gen-hint {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin: 0 0 0.85rem;
+}
+
+.gen-kwp {
+  padding: 0.5rem 0.75rem;
+  background: #f0f4ff;
+  border: 1px solid #c5d0ee;
+  border-radius: 6px;
+  font-weight: 700;
+  color: #0f1e35;
+  font-size: 1.05rem;
+  min-height: 2.4rem;
+  display: flex;
+  align-items: center;
+  /* VX138 — glyphes à largeur fixe : le kWc/kWh ne tremble plus horizontalement
+     pendant la frappe devant le client (même traitement que .gen-metric-value). */
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+}
+
+.gen-radio-group { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+
+.gen-radio {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #d8dee9;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: #fff;
+  transition: border-color var(--motion-base), background var(--motion-base);
+}
+
+.gen-radio.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  font-weight: 600;
+}
+
+.gen-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.gen-slider-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.gen-slider-row input[type="range"] { flex: 1; accent-color: #f28e2b; }
+
+.gen-slider-value { font-weight: 700; color: #0f1e35; min-width: 3rem; }
+
+.gen-actions-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+/* LB31 — re-based on --warning (was raw #f28e2b/#d97a1d, no dark variant);
+   single consumer, ListView.jsx « ⚡ Devis auto ». */
+.gen-btn-orange {
+  background: var(--warning);
+  color: var(--warning-foreground);
+  border: none;
+}
+
+@media (hover: hover) {
+  .gen-btn-orange:hover { background: color-mix(in oklch, var(--warning) 88%, black); }
+}
+
+.gen-monthly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+.gen-month { display: flex; flex-direction: column; gap: 0.2rem; }
+
+.gen-month-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-align: center;
+}
+
+/* Cartes métriques de la simulation */
+.gen-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+/* VX138 — comparateur Sans/Avec batterie : 2 colonnes NOMMÉES (mode « Les
+   deux ») au lieu d'une grille homogène de jusqu'à 6 cartes reliées par la
+   seule étoile ; la recommandation est un liseré porté par TOUTE la colonne. */
+.gen-compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+.gen-compare-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 10px);
+}
+
+.gen-compare-col-rec { border-color: var(--cat-gold); box-shadow: 0 0 0 2px var(--cat-gold); }
+
+.gen-compare-col-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: var(--text-eyebrow-tracking);
+}
+
+/* VX16 — rail récapitulatif STICKY du générateur (lg+ uniquement). Le masquage
+   mobile et la largeur sont gérés par les classes utilitaires ; ici on garantit
+   le comportement sticky + l'offset sous l'en-tête. */
+@media (min-width: 1024px) {
+  .gen-summary-rail {
+    position: sticky;
+    align-self: flex-start;
+    top: var(--header-h, 64px);
+  }
+}
+
+/* VX17 — cartes métriques du générateur : tokens de thème plutôt qu'hex codés
+   en dur (fonctionne en clair ET sombre). */
+.gen-metric {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  text-align: center;
+}
+
+.gen-metric-accent { background: var(--card); border-color: var(--border); }
+
+.gen-metric-rec { box-shadow: 0 0 0 2px var(--cat-gold); }
+
+.gen-metric-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  text-transform: uppercase;
+  letter-spacing: var(--text-eyebrow-tracking);
+}
+
+/* VX5 — métrique du générateur : chiffre héros en data typography `.num`. */
+.gen-metric-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin-top: 0.25rem;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+.gen-metric-unit { font-size: 0.72rem; color: var(--muted-foreground); }
+
+.gen-rec-badge {
+  font-size: 0.6rem;
+  background: var(--cat-gold);
+  color: var(--cat-navy);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-weight: 700;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.gen-chart-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: var(--text-eyebrow-tracking);
+  margin-bottom: 0.5rem;
+}
+
+/* Totaux par option */
+.gen-totals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid #eef2f7;
+  align-items: center;
+}
+
+.gen-discount-row { background: #f7f8fa; }
+
+.gen-total-item { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.gen-total-inline { flex-direction: row; align-items: center; gap: 0.5rem; }
+
+.gen-total-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: var(--text-eyebrow-tracking);
+  white-space: nowrap;
+}
+
+.gen-total-value { font-size: 1.15rem; font-weight: 700; color: #0f1e35; }
+
+.gen-total-value.orange { color: #f28e2b; }
+
+.gen-total-label.green, .gen-total-value.green { color: #16a34a; }
+
+/* VX138 — 3 paliers visuels sur la chaîne de totaux (paliers de typographie
+   F121 existants, `tokens.css`) : brut (tier-1, text-small) → remise/TVA
+   (tier-2, text-body medium) → total final (tier-3, text-h3 semibold) — le
+   TTC retenu devient le point focal au lieu d'un affichage plat à poids
+   uniforme. */
+.gen-tier-1 .gen-total-value { font-size: var(--text-small); }
+.gen-tier-2 .gen-discount-input { font-size: var(--text-body); font-weight: 500; }
+.gen-tier-3 .gen-total-value { font-size: var(--text-h3); font-weight: 700; }
+
+.gen-discount-input {
+  width: 72px;
+  text-align: center;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #c5d0ee;
+  border-radius: 5px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  background: #fff;
+}
+
+/* ── Modale formats PDF (devis) ────────────────────────────── */
+.pdf-format-options { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.pdf-format-options .gen-radio { flex: none; }
+
+.pdf-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.pdf-toggle small { color: #64748b; }
+
+.pdf-payment-box {
+  margin-left: 1.6rem;
+  padding: 0.5rem 1rem;
+  background: #f8f9fa;
+  border: 1px solid #eef2f7;
+  border-radius: var(--radius-md);
+}
+
+/* ── Client résolu depuis le lead (générateur) ─────────────── */
+.gen-resolved-client {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: #065f46;
+}
+

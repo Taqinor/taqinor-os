@@ -144,6 +144,13 @@ class IVCurveApiTest(TestCase):
         self.assertTrue(all(r['defaut_detecte'] for r in rows))
         self.assertEqual(len(rows), 1)
 
+    def test_filtres_mal_types_400(self):
+        # CI #997 — ``?defaut=null`` était ignoré en silence (200) et
+        # ``?recette=abc`` levait ValueError : 400 nommant le paramètre.
+        for params in ({'defaut': 'null'}, {'recette': 'abc'}):
+            resp = self.api.get(self.url, params)
+            self.assertEqual(resp.status_code, 400, (params, resp.data))
+
     def test_delete_recomputes_recette(self):
         # Une capture défectueuse rend la recette non_conforme.
         resp = self.api.post(self.url, {

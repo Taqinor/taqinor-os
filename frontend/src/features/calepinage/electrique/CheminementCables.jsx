@@ -18,11 +18,11 @@ import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
 
    LA SOURCE EST `GET calepinages/<pk>/troncons/` (CALX203, contrat
    `calepinage_troncons.json`) — SEULE porte de ce panneau, ajoutée EN FIN de
-   `calepinageApi.js` (`// CALX229`). CETTE ROUTE N'EXISTE PAS ENCORE CÔTÉ
-   SERVEUR au moment où cette lane est écrite (son producteur,
-   `services/troncons.py`, est CALX224-226, une lane différente de celle-ci) :
-   un 404 est donc un état ATTENDU et TRANSITOIRE, pas une panne — l'écran le
-   dit avec un état dédié plutôt que le message d'erreur générique.
+   `calepinageApi.js` (`// CALX229`). La route est servie par
+   `views/troncons.py` (CALX228, producteur `services/troncons.py`) : un 404
+   ne signifie donc plus « route pas déployée » mais « calepinage introuvable »
+   (identifiant inconnu ou d'une autre société) — l'écran le dit avec un état
+   dédié plutôt que le message d'erreur générique.
 
    ZÉRO CHIFFRE INVENTÉ (D-CALX 7), DANS LES DEUX SENS. `null` n'est JAMAIS
    affiché comme `0` : `formatNumber`/`formatPercent` (lib/format.js) rendent
@@ -35,7 +35,7 @@ import { celluleLongueur, libelleCote } from './CheminementCables.helpers'
    affiche tels quels, un champ à côté (jamais fondu dans) le motif.
    ========================================================================== */
 
-const CODE_NON_CALCULE = 'CALX229_NON_CALCULE'
+const CODE_INTROUVABLE = 'CALX229_INTROUVABLE'
 
 export default function CheminementCables({ calepinageId } = {}) {
   const { id: idRoute } = useParams()
@@ -46,7 +46,7 @@ export default function CheminementCables({ calepinageId } = {}) {
     {
       select: (r) => r.data,
       errorMessage: (err) => (err?.response?.status === 404
-        ? CODE_NON_CALCULE
+        ? CODE_INTROUVABLE
         : 'Métré des tronçons indisponible.'),
     },
   )
@@ -60,15 +60,15 @@ export default function CheminementCables({ calepinageId } = {}) {
     )
   }
 
-  if (error === CODE_NON_CALCULE) {
+  if (error === CODE_INTROUVABLE) {
     return (
       <>
         <RetourAtelier calepinageId={id} cle="cheminement-cables" />
         <EmptyState
-          data-testid="calx229-non-calcule"
+          data-testid="calx229-introuvable"
           tone="neutral"
-          title="Métré des tronçons pas encore calculable ici"
-          description="Cette porte serveur n’est pas encore déployée sur cet environnement (vague Électrique Pro) : aucune longueur ni chute n’est calculée, ce n’est pas une panne de l’écran."
+          title="Calepinage introuvable"
+          description="Ce calepinage n’existe pas (ou plus) pour votre société : aucun métré de tronçons n’est affiché."
         />
       </>
     )

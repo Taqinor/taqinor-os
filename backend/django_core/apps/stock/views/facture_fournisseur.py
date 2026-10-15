@@ -8,9 +8,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
-from ..openapi_helpers import BINARY, DATE, INT, LISTE, NUM, P, PDF, STR, corps
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
 from ..erreurs_achats import IntrouvableMetier
-from ..utils.params import date_ou_400
+from ..utils.params import corps_objet, date_ou_400, id_corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..models import FactureFournisseur
@@ -230,20 +230,24 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             detect_facture_fournisseur_doublon, log_doublon_override,
         )
         doublons = []
-        fournisseur_id = request.data.get('fournisseur')
+        # CI #997 fuzz — corps lu AVANT le sérialiseur : seules les formes
+        # typées atteignent le détecteur (``date_facture: {}`` faisait un 500).
+        donnees = corps_objet(request)
+        fournisseur_id = id_corps(donnees.get('fournisseur'))
         if fournisseur_id:
             from datetime import date as _date
-            date_facture = request.data.get('date_facture')
-            if isinstance(date_facture, str):
-                try:
-                    date_facture = _date.fromisoformat(date_facture)
-                except ValueError:
-                    date_facture = None
+            try:
+                date_facture = _date.fromisoformat(donnees.get('date_facture'))
+            except (TypeError, ValueError):
+                date_facture = None
+            if date_facture is not None and not 1 < date_facture.year < 9999:
+                date_facture = None  # ± 7 jours déborderait (OverflowError)
+            ref = donnees.get('ref_fournisseur')
             doublons = detect_facture_fournisseur_doublon(
                 request.user.company,
                 fournisseur_id=fournisseur_id,
-                ref_fournisseur=request.data.get('ref_fournisseur'),
-                montant_ttc=request.data.get('montant_ttc'),
+                ref_fournisseur=ref if isinstance(ref, str) else None,
+                montant_ttc=donnees.get('montant_ttc'),
                 date_facture=date_facture,
             )
         response = super().create(request, *args, **kwargs)
@@ -410,7 +414,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             self.get_serializer(facture).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('date_debut', DATE), P('date_fin', DATE)], responses=LISTE)
+    @extend_schema(parameters=[P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='releve-deductions-tva')
     def releve_deductions_tva(self, request):
         """XPUR17 — relevé de déductions TVA (achats) groupé PAR TAUX sur la

@@ -120,7 +120,7 @@ const calepinageApi = {
       api.post(`${pivot(id)}versions/${versionId}/restaurer/`),
 
     // CAL21 — variantes. `retenir` est une ACTION (elle dé-retient la
-    // précédente), jamais un PATCH de ressource — même patron qu'AO.
+    // précédente), jamais un PATCH de ressource.
     // ACAL109 — la clé `variantes` (GET liste brute, sans appelant) est
     // retirée : la liste se lit par `comparer()`.
     retenirVariante: (id, varianteId) =>
@@ -196,10 +196,9 @@ const calepinageApi = {
     // manque. Aucune coordonnée devinée côté écran.
     designContext: (id) => api.get(`${pivot(id)}design-context/`),
 
-    // SOLMVP15 — `importer-contour-ao` (CAL240) vivait ici. L'endpoint est
-    // parti avec l'app d'appels d'offres, qui sort du produit : il n'y a plus
-    // d'affaire dont reprendre le contour. Le contour de l'atelier reste
-    // `roof_layout.outline` (v2), posé par le tracé sur carte.
+    // SOLMVP15 — `importer-contour-ao` (CAL240), venu de AO, est retiré. Le
+    // contour de l'atelier reste `roof_layout.outline` (v2), posé par le tracé
+    // sur carte.
 
     // CAL24/CAL25 — le devis. Le chemin canonique de création vit dans
     // `apps/ventes/services` et n'est pas doublé : ces deux actions l'appellent.

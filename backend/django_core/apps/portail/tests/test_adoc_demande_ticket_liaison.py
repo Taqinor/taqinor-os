@@ -7,7 +7,7 @@ un 500, et un mauvais numéro n'était plus corrigeable (second POST sans effet,
 ``ticket_id`` en lecture seule au PATCH).
 
 Correctif : une résolution commune (``apps.sav.selectors.ticket_scoped`` +
-même client) refuse tout ticket inconnu POUR CE CLIENT avec le MÊME 400 que
+même client) refuse tout ticket inconnu POUR CE CLIENT avec le MÊME 404 (ENF11, ex-400) que
 l'id 999999, et l'action ``lier-ticket`` corrige la liaison tant que la
 demande n'est ni résolue ni refusée (409 sinon).
 
@@ -89,7 +89,7 @@ class DemandeTicketLiaisonTests(TestCase):
             {'ticket_id': ticket_id}, format='json')
 
     def _assert_refus_inchange(self, res):
-        self.assertEqual(res.status_code, 400, res.content)
+        self.assertEqual(res.status_code, 404, res.content)
         self.assertEqual(res.json(), {'detail': MESSAGE})
         self.demande.refresh_from_db()
         self.assertEqual(self.demande.statut,
@@ -104,7 +104,7 @@ class DemandeTicketLiaisonTests(TestCase):
         self._assert_refus_inchange(inexistant)
         self.assertEqual(res.content, inexistant.content)
 
-    def test_ticket_non_numerique_400(self):
+    def test_ticket_non_numerique_404(self):
         res = self._prendre('abc')
         self._assert_refus_inchange(res)
         self.assertEqual(res.content, self._prendre(999999).content)
@@ -131,7 +131,7 @@ class DemandeTicketLiaisonTests(TestCase):
 
         # La correction elle-même reste bornée au client.
         refus = self._lier(self.ticket_c2.id)
-        self.assertEqual(refus.status_code, 400, refus.content)
+        self.assertEqual(refus.status_code, 404, refus.content)
         self.assertEqual(refus.json(), {'detail': MESSAGE})
         self.demande.refresh_from_db()
         self.assertEqual(self.demande.ticket_id, self.bon_ticket_c1.id)

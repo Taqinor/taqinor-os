@@ -20,8 +20,9 @@ const TEXTE_CONFIRMATION_RESTAURATION = 'Remplace le dessin et vide le rendu 3D 
    CALX36 — L'HISTORIQUE DES VERSIONS ET LA RESTAURATION.
    ----------------------------------------------------------------------------
    Constat : `calepinageApi.js` expose déjà `versions`/`restaurerVersion`
-   (servis, `views/calepinages.py:413-458`), et AUCUN écran ne les appelait —
-   `FicheCalepinage.jsx` n'affichait que le NOMBRE de versions.
+   (actions `versions` et `restaurer-version` du `CalepinageViewSet`), et
+   `FicheCalepinage.jsx` n'affichait que le NOMBRE de versions : ce panneau
+   est l'écran qui les appelle.
 
    LA VERSION COURANTE est la PREMIÈRE de la liste : le sélecteur
    (`selectors.versions`) trie `-created_at` — la plus récente EST l'état
@@ -37,7 +38,8 @@ const TEXTE_CONFIRMATION_RESTAURATION = 'Remplace le dessin et vide le rendu 3D 
    ========================================================================== */
 
 /* ACAL23 — le motif d'un refus est celui du SERVEUR : 409 du verrou
-   `{roof_layout: [msg]}`, 409/400 `{detail}` ou un champ nommé. Jamais
+   `{roof_layout: [msg]}` (devis lié accepté, refusé, expiré ou remplacé ; un
+   devis envoyé se corrige sur place), 409/400 `{detail}` ou un champ nommé. Jamais
    reformulé ; repli générique seulement quand le serveur n'a rien dit. */
 function messageRefusServeur(err, repli) {
   const data = err?.response?.data

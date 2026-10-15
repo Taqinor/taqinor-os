@@ -13,19 +13,19 @@
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "objectifs_strategiques",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "potentiel_estime",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "concurrents_presents",
    "read_only": false,
    "required": false

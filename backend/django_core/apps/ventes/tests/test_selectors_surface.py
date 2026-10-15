@@ -38,7 +38,9 @@ VENTES = Path(__file__).resolve().parent.parent
 
 #: Texte des tâches SPL143-SPL147 (se repérer par NOM de symbole).
 PAR_PROPRIETAIRE = {
-    # SPL143 → selectors_facturation.py (29 fonctions + _SCORE_BANDS)
+    # SPL143 → selectors_facturation.py (29 fonctions + _SCORE_BANDS ; VNT105 :
+    # deux sommes orphelines retirées, reste_du_factures_brouillon et
+    # montants_factures_par_devis)
     'facturation': [
         'compter_factures', 'factures_echues', 'get_facture_scoped',
         'releve_client_portail', 'releve_client_pdf_bytes',
@@ -47,10 +49,10 @@ PAR_PROPRIETAIRE = {
         'comportement_paiement', 'date_encaissement_prevue',
         'references_factures', 'references_avoirs',
         'encours_clients_par_tiers', 'encours_ouvert_par_tiers',
-        'reste_du_factures_brouillon', 'ca_devis_factures_par_clients',
+        'ca_devis_factures_par_clients',
         'acompte_paye_pour_devis', 'etat_recouvrement_client',
         'analyse_facturation', 'devis_a_facturer', 'tranche_facturee',
-        'jours_impaye_facture', 'montants_factures_par_devis',
+        'jours_impaye_facture',
         'carnet_commande_par_mois', 'factures_via_bon_commande',
         'factures_du_devis', 'devis_deja_facture', 'kpis_factures',
     ],
@@ -158,11 +160,32 @@ class SurfaceSelectorsVentes(SimpleTestCase):
     def test_comptes_par_proprietaire(self):
         comptes = {p: len(n) for p, n in PAR_PROPRIETAIRE.items()}
         self.assertEqual(comptes, {
-            'facturation': 30, 'calepinage': 13, 'cadence': 10,
+            'facturation': 28, 'calepinage': 13, 'cadence': 10,
             'publicite': 9, 'portail': 8, 'stock': 6})
         tous = [n for noms in PAR_PROPRIETAIRE.values() for n in noms]
         self.assertEqual(len(tous), len(set(tous)))
         self.assertLessEqual(PRIVES, set(tous))
+
+    def test_sommes_de_factures_orphelines_retirees(self):
+        """VNT105 — les sommes de factures restées sans appelant après les
+        lots M1-M3 ne sont plus définies nulle part (ni ré-exportées)."""
+        from apps.ventes import selectors, selectors_facturation
+        from apps.ventes.utils import echeancier
+        retraits = (
+            (selectors, ('reste_du_factures_brouillon',
+                         'montants_factures_par_devis')),
+            (selectors_facturation, ('reste_du_factures_brouillon',
+                                     'montants_factures_par_devis')),
+            (echeancier, ('factures_actives', 'avoirs_correction',
+                          'ventilation_tva_tranche')),
+        )
+        for module, noms in retraits:
+            for nom in noms:
+                with self.subTest(module=module.__name__, nom=nom):
+                    self.assertFalse(hasattr(module, nom))
+        # Gardés : la migration facturation 0013 les lit.
+        self.assertTrue(callable(echeancier.cles_tranches))
+        self.assertTrue(callable(echeancier.tranches_normalisees))
 
     def test_noms_en_place_sur_la_facade(self):
         from apps.ventes import selectors
@@ -222,6 +245,18 @@ class SurfaceSelectorsVentes(SimpleTestCase):
                 self.assertIs(getattr(selectors, nom),
                               getattr(vente_facturation, nom))
                 self.assertNotIn(nom, definis)
+        # VNT109 — ``factures_de_la_vente`` : la façade DÉLÈGUE (fonction de
+        # lecture des autres domaines), le corps reste dans vente_facturation.
+        from unittest import mock
+        f_brouillon = mock.Mock(statut='brouillon')
+        f_emise = mock.Mock(statut='emise')
+        with mock.patch.object(vente_facturation, 'factures_de_la_vente',
+                               return_value=[f_brouillon, f_emise]) as lire:
+            self.assertEqual(selectors.factures_de_la_vente('d'),
+                             [f_brouillon, f_emise])
+            self.assertEqual(
+                selectors.factures_de_la_vente('d', emises=True), [f_emise])
+        lire.assert_called_with('d', inclure_annulees=False)
         source = (VENTES / 'vente_facturation.py').read_text(
             encoding='utf-8')
         for nom in ('plan_facturation', 'etat_vente', 'factures_de_la_vente',

@@ -240,7 +240,13 @@ class GardeSortieUnique(TestCase):
     # ── Les chemins de sortie ─────────────────────────────────────────────
 
     def _facture_directe(self, devis, inst, panneau):
-        from apps.ventes.domain.facturation_ops import facturer_devis_complet
+        import importlib
+
+        # ENF20 — le geste « facturer complet » n'est pas sur la façade ventes
+        # (seule sa vue l'appelle) : import dynamique délibéré du domaine
+        # (contrat vente-lue-par-la-facade).
+        facturer_devis_complet = importlib.import_module(
+            'apps.ventes.domain.facturation_ops').facturer_devis_complet
         facturer_devis_complet(
             devis=devis, user=self.user, company=self.company, paiements=[])
 

@@ -1,0 +1,73 @@
+/* ===== migrated from src/pages/crm/leadform-extra.css (P67) ===== */
+/* LW31 — tout le bandeau/sous-barre/menu/avertissements hand-rolled de
+   l'ancien LeadForm (avatar d'entête, LeadSummaryBar, sous-barre facture
+   inline, menu devis, bannière doublon, lien GPS) a été SUPPRIMÉ : LeadForm
+   est devenu un adaptateur vers LeadWorkspace (LW13) qui reconstruit ces
+   fonctions avec `ui/DropdownMenu`, un `Dialog` doublons, `.lw-gps-link` et
+   les formulaires de section — 0 usage JSX vivant restait ici (grep confirmé
+   classe par classe). `.form-error` reste : classe de message d'erreur
+   générique partagée par d'autres écrans hors fenêtre lead (ClientForm,
+   PlanActiviteDialog, ActivitiesPanel…) — hors périmètre LW31. */
+.form-error { color: #dc2626; font-size: 0.85rem; margin: 4px 0 0; }
+
+/* ===== migrated from src/pages/crm/leads/bulkactionbar.css (P67) ===== */
+/* Barre d'actions en masse — collante sous le filtre, surface tokenisée pour
+   que les primitifs Button rendent correctement en thème clair comme sombre. */
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  background: var(--card, #fff);
+  color: var(--card-foreground, #0f172a);
+  border: 1px solid var(--border, #e2e8f0);
+  border-left: 3px solid var(--primary, #0f172a);
+  border-radius: var(--radius, 10px);
+  box-shadow: var(--shadow-ui-sm, 0 2px 8px rgba(15, 23, 42, 0.12));
+}
+
+.bulk-bar-count {
+  font-size: 0.92rem;
+  white-space: nowrap;
+}
+
+.bulk-bar-count strong { font-size: 1.05rem; }
+
+.bulk-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.bulk-panel {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--border, #e2e8f0);
+}
+
+.bulk-field {
+  max-width: 240px;
+}
+
+.bulk-hint {
+  font-size: 0.78rem;
+  color: var(--muted-foreground, #64748b);
+}
+
+@media (max-width: 768px) {
+  .bulk-bar-actions {
+    width: 100%;
+  }
+  .bulk-field {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+}
+

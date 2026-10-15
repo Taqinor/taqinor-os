@@ -294,7 +294,11 @@ class IsolationSocieteTests(TestCase):
 
     def test_liste_gestion_isolee_par_societe(self):
         res = _auth(self.admin_a).get(URL_LIST)
-        ids = [row['id'] for row in res.data['results']] if isinstance(res.data, dict) and 'results' in res.data else [row['id'] for row in res.data]
+        ids = (
+            [row['id'] for row in res.data['results']]
+            if isinstance(res.data, dict) and 'results' in res.data
+            else [row['id'] for row in res.data]
+        )
         self.assertIn(self.msg_a.id, ids)
         self.assertNotIn(self.msg_b.id, ids)
 

@@ -386,6 +386,9 @@ const LUES_HORS_RENOMMAGE: Readonly<Record<string, string>> = {
   'accepte_par_nom': 'Lue, mais l’échantillon porte la chaîne VIDE — que le lecteur rend `null`, exactement comme une clé absente : indiscernable par renommage.',
   'date_acceptation': 'Lue, mais l’échantillon porte la chaîne VIDE : `null` avant comme après un renommage, donc indiscernable par renommage.',
   'note_client': 'QJR627 — lue (`resolveNoteClient`, `noteClient` de `lireProposal`, bloc « Note de votre conseiller » de la page), mais l’échantillon porte la chaîne VIDE : indiscernable par renommage. Garde propre : `tests/propositionNoteClient.test.ts`.',
+  'avenant.a_signer': 'VNT72 — lue par `resolveAvenant` (lib/avenant.ts, composant BandeauAvenant de la page) : hors lecteur typé `lireProposal`, et l’échantillon exemple ne permet pas l’exercice par renommage — garde propre : src/lib/avenant.test.ts.',
+  'avenant.remplace.reference': 'VNT72 — lue par `resolveAvenant` (« Avenant à <V1> » du BandeauAvenant) : hors lecteur typé `lireProposal` ; garde propre : src/lib/avenant.test.ts.',
+  'avenant.signe_le': 'VNT72 — lue par `resolveAvenant` (date de la confirmation « Avenant signé le … ») : hors lecteur typé `lireProposal` ; garde propre : src/lib/avenant.test.ts.',
 };
 
 /**

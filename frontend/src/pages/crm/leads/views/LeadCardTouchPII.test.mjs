@@ -11,10 +11,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'LeadCard.jsx'), 'utf8')
-const CSS = readFileSync(join(HERE, '../../../../index.css'), 'utf8')
+const CSS = resolveCss(join(HERE, '../../../../index.css'))
 
 test('LB17 : la case de sélection est enveloppée du label .kb-check-hit (cible ≥44px, pas de taille inline)', () => {
   assert.match(SRC, /<label\s*\n?\s*className="kb-check-hit"/)

@@ -64,12 +64,12 @@ class Qx22WhatsappPreviewTests(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.date_envoi, envoi)
 
-    def test_preview_no_phone_400(self):
+    def test_preview_no_phone_409(self):
         self.client_obj.telephone = ''
         self.client_obj.save(update_fields=['telephone'])
         resp = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/whatsapp-preview/',
             {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, Devis.Statut.BROUILLON)

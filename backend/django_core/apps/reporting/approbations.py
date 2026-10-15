@@ -30,18 +30,25 @@ import datetime
 from django.core.exceptions import PermissionDenied
 from django.utils import timezone
 from rest_framework.decorators import (
-    api_view, permission_classes, throttle_classes)
+    api_view, parser_classes, permission_classes, throttle_classes)
+from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.permissions import IsAnyRole
+from core.champs_stricts import ChaineStricte
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
 
 from .schema_fields import champ_choix
 from drf_spectacular.utils import inline_serializer
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _co(user):
@@ -440,16 +447,39 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
         # (palier approbateur + séparation des tâches) : 403, jamais 400.
         return 403, {'detail': str(exc) or 'Accès refusé.'}
     except Exception as exc:  # garde générique : jamais de 500 opaque
+        logger.warning("decider approbation core : échec ignoré, comportement dégradé", exc_info=True)
         return 400, {'detail': str(exc)}
 
     return 200, {'detail': 'Décision enregistrée.'}
 
 
-class DeciderApprobationSerializer(drf_serializers.Serializer):
+class _MotifDeRefusMixin:
+    """ERR-ENF11-FUZZ-REPORTING — un REFUS porte un motif non blanc : règle
+    rendue au CHAMP ``motif`` (400) et publiée (``REFUS_AVEC_MOTIF``) — la
+    requête « refuser » sans motif était conforme au schéma puis refusée."""
+
+    def validate(self, attrs):
+        if attrs.get('decision') == 'refuser' and not (
+                attrs.get('motif') or '').strip():
+            raise drf_serializers.ValidationError(
+                {'motif': ['Un motif de refus est obligatoire.']})
+        return attrs
+
+
+#: ``extensions`` de decider / decider-en-masse (``core.openapi_erreurs``).
+REFUS_AVEC_MOTIF = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'decision': {'enum': ['approuver']}}},
+    {'required': ['motif'], 'properties': {
+        'decision': {'enum': ['refuser']}, 'motif': {'pattern': r'\S'}}},
+]}}
+
+
+class DeciderApprobationSerializer(_MotifDeRefusMixin,
+                                   drf_serializers.Serializer):
     source = drf_serializers.ChoiceField(choices=sorted(_SOURCE_LOADERS))
     id = drf_serializers.IntegerField(min_value=1, max_value=2147483647)
     decision = champ_choix(['approuver', 'refuser'])
-    motif = drf_serializers.CharField(required=False, allow_blank=True)
+    motif = ChaineStricte(required=False, allow_blank=True)
 
 
 class _ItemDecisionSerializer(drf_serializers.Serializer):
@@ -457,10 +487,10 @@ class _ItemDecisionSerializer(drf_serializers.Serializer):
     id = drf_serializers.IntegerField(min_value=1, max_value=2147483647)
 
 
-class DeciderEnMasseSerializer(drf_serializers.Serializer):
+class DeciderEnMasseSerializer(_MotifDeRefusMixin, drf_serializers.Serializer):
     items = _ItemDecisionSerializer(many=True)
     decision = champ_choix(['approuver', 'refuser'])
-    motif = drf_serializers.CharField(required=False, allow_blank=True)
+    motif = ChaineStricte(required=False, allow_blank=True)
 
 
 class DeciderPushSerializer(drf_serializers.Serializer):
@@ -473,9 +503,10 @@ _APPROBATIONS_DECIDER_APPROBATION_REPONSE = inline_serializer('ApprobationsDecid
 
 
 @extend_schema(
-    request=DeciderApprobationSerializer,
+    request=DeciderApprobationSerializer, extensions=REFUS_AVEC_MOTIF,
     responses={200: _APPROBATIONS_DECIDER_APPROBATION_REPONSE})
 @api_view(['POST'])
+@parser_classes([JSONParser])  # ERR-ENF11-FUZZ-REPORTING : corps JSON publié
 @permission_classes([IsAnyRole])
 def decider_approbation(request):
     """XKB1 — ``POST reporting/approbations-en-attente/decider/``.
@@ -579,9 +610,10 @@ _APPROBATIONS_DECIDER_EN_MASSE_REPONSE = inline_serializer('ApprobationsDeciderE
 
 
 @extend_schema(
-    request=DeciderEnMasseSerializer,
+    request=DeciderEnMasseSerializer, extensions=REFUS_AVEC_MOTIF,
     responses={200: _APPROBATIONS_DECIDER_EN_MASSE_REPONSE})
 @api_view(['POST'])
+@parser_classes([JSONParser])  # `items` (liste d'objets) ne passe qu'en JSON
 @permission_classes([IsAnyRole])
 def decider_en_masse(request):
     """XKB1 — actions en masse : ``{items: [{source, id}], decision, motif}``.

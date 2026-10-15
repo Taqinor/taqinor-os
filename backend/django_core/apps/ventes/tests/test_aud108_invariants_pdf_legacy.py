@@ -275,6 +275,24 @@ class TestChaineSoldeQuittance(_BaseDocumentsLegacy):
         self.assertEqual(
             paiement.montant + self.facture.montant_du, self.GOLDEN_TTC)
 
+    def test_reste_du_sur_la_vente_seulement_avec_devis(self):
+        """VNT92 — facture sans devis : un seul solde (celui de la facture),
+        aucune ligne « Reste dû sur la vente » ; avec ``reste_vente`` posé,
+        la ligne suit le solde, montant et devis imprimés."""
+        html = self._rendu_recu()
+        self.assertNotIn('Reste dû sur la vente', html)
+        self.assertEqual(html.count('class="solde-block"'), 1)
+        ctx = self._ctx()
+        ctx.update(paiement=self._paiement(), client_nom='AUD108 Client',
+                   facture_reference=self.facture.reference, affectations=[],
+                   solde_restant=self.facture.montant_du, montant_lettres='',
+                   reste_vente={'devis_reference': 'DEV-AUD108',
+                                'reste_a_payer_ttc': '9550.00'})
+        html = _render_html('recu.html', ctx)
+        self.assertLess(html.index('Solde restant dû'),
+                        html.index('Reste dû sur la vente'))
+        self.assertIn('<strong>9550.00 MAD</strong> (devis DEV-AUD108)', html)
+
 
 class TestAucunPrixAchatDansLesCinqDocuments(_BaseDocumentsLegacy):
     """Invariant (b) — le prix d'achat ne fuit sur AUCUN document client."""

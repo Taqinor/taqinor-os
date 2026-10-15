@@ -34,6 +34,10 @@ AUD816 — deux manques de socle corrigés
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Registre en mémoire :
 # { target_name: {label, fields, provider, permission} }.
 _TARGETS: dict[str, dict] = {}
@@ -156,6 +160,7 @@ def _emettre_journal(target, spec, fields, count, company, user):
             user=user,
         )
     except Exception:  # noqa: BLE001 — jamais casser une écriture commitée
+        logger.warning("emettre journal : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).warning(
             "bulk_edit_applied non journalisé pour la cible %r", target,
             exc_info=True)

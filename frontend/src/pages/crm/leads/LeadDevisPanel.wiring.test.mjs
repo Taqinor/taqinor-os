@@ -16,6 +16,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8')
@@ -82,7 +83,7 @@ test('QJR589 — LeadDevisPanel monte BandeauDeriveLead sur le détail déjà lu
 // l'éditeur après l'enregistrement, EDC7/EDC11), `onVoirPdf` (barre en tête,
 // EDC4). Et la règle CSS EDC2 neutralise le plafond LDPQ1 SANS l'éditer
 // (surface append-only : la règle d'origine doit rester à l'octet).
-const CSS = read('../../../index.css')
+const CSS = resolveCss(join(HERE, '../../../index.css'))
 
 test('EDC10 — LeadDevisPanel passe onDirtyChange / onEnregistre / onVoirPdf à <DevisGenerator>', () => {
   const bloc = LDP_CODE.slice(LDP_CODE.indexOf('<DevisGenerator'))

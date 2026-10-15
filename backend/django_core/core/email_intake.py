@@ -27,6 +27,10 @@ from __future__ import annotations
 
 from .integrations import TYPE_EMAIL_IN, resolve_secret
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Handlers enregistrés par les apps métier (callables(InboundMessage, company)).
 _HANDLERS: list = []
 
@@ -84,6 +88,7 @@ def _dispatch(messages, company):
                 handler(msg, company)
                 handled += 1
             except Exception:  # noqa: BLE001 — un handler défaillant n'arrête rien.
+                logger.warning("dispatch : échec ignoré, comportement dégradé", exc_info=True)
                 continue
     return handled
 
@@ -147,6 +152,7 @@ def fetch_messages(config_obj):
     try:
         import imaplib
     except Exception:  # noqa: BLE001
+        logger.warning("fetch messages : échec ignoré, comportement dégradé", exc_info=True)
         return []
     out = []
     try:
@@ -161,6 +167,7 @@ def fetch_messages(config_obj):
                     out.append(_parse_email_message(msg_data[0][1]))
         conn.logout()
     except Exception:  # noqa: BLE001 — réseau/auth : dégrade en vide.
+        logger.warning("fetch messages : échec ignoré, comportement dégradé", exc_info=True)
         return out
     return out
 

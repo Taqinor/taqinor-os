@@ -2,13 +2,13 @@
  * CALX121 — LA COUPE TRANSVERSALE D'UNE RANGÉE SUR L'AUTRE : logique PURE.
  * ----------------------------------------------------------------------------
  * Constat de la tâche : le pas inter-rangées est déjà calculé par la géométrie
- * solaire (`apps/web/src/lib/roofPro2.ts:320-346`) puis vérifié par lancer de
- * rayons (`apps/web/src/scripts/roofPro11/scene3d.ts:1959-2008`,
- * `publishRowPitch`), mais le résultat n'est qu'un TEXTE — rien ne dessine la
+ * solaire (`describeRowPitch`, `apps/web/src/lib/roofPro2.ts`) puis vérifié par
+ * lancer de rayons (`publishRowPitch`, `apps/web/src/scripts/roofPro11/scene3d.ts`),
+ * mais le résultat n'est qu'un TEXTE — rien ne dessine la
  * coupe. Ce module ne repave rien et n'invente aucune géométrie : il MESURE le
  * pas sur les panneaux DÉJÀ POSÉS du document (`roof_layout` v2,
  * `zone.geometry.panels`), exactement comme `pasInterRangeeMesure`
- * (`scene3d.ts:2514`, « le plus petit écart entre deux rangées distinctes »)
+ * (`scene3d.ts`, « le plus petit écart entre deux rangées distinctes »)
  * et `pasMesure` (`ModeTerrain.jsx`) le font déjà pour leurs propres jeux de
  * données — aucune seconde formule de pas n'est introduite ici.
  *

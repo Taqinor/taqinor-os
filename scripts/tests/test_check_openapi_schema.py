@@ -89,7 +89,9 @@ class RatchetTests(unittest.TestCase):
     def test_committed_baseline_is_present_and_well_formed(self):
         # ENF11 (11/10/2026) : cliquet EXACT, la base ne porte plus que les avertissements
         # encore produits (239 -> 88) ; le plancher historique de 100 n'a plus de sens.
-        self.assertGreater(len(self.baseline), 0)
+        # ENF11 (14/10/2026) : 68 -> 0, l'etat cible (`--strict` vert) est atteint — une
+        # base VIDE est legitime ; le fichier reste present (en-tete) et bien forme.
+        self.assertTrue(cos.BASELINE_PATH.is_file())
         for entry in self.baseline:
             self.assertEqual(entry.count("|") >= 2, True, entry)
             self.assertIn(entry.split("|", 1)[0], ("Warning", "Error"), entry)
@@ -110,10 +112,12 @@ class RatchetTests(unittest.TestCase):
         self.assertTrue(cos.parse_log(log) - self.baseline)
 
     def test_an_already_baselined_finding_is_not_reported(self):
-        sample = sorted(self.baseline)[0]
-        severity, identity, msg = sample.split("|", 2)
-        log = _line("some/file.py:1", severity, identity, msg)
-        self.assertFalse(cos.parse_log(log) - self.baseline)
+        # ENF11 (14/10/2026) : la base reelle est vide (etat cible) — une base
+        # d'une entree est fabriquee a partir d'un constat genere.
+        log = _line("some/file.py:1", "Error", "AncienneVue", GUESS)
+        base = cos.parse_log(log)
+        self.assertEqual(len(base), 1)
+        self.assertFalse(cos.parse_log(log) - base)
 
 
 class CliquetExactTests(unittest.TestCase):

@@ -69,6 +69,17 @@ BLOCS_ABSENTS_CI = ('economies_mensuelles', 'economies_periodes',
                     'profils_comparatifs', 'tranche_tarifaire')
 
 
+def _sans_empreintes(valeur):
+    """Copie sans les clés d'empreinte/jeton (condensés hexadécimaux)."""
+    if isinstance(valeur, dict):
+        return {k: _sans_empreintes(v) for k, v in valeur.items()
+                if not (k.startswith('empreinte') or k.endswith('_hash')
+                        or k in ('token', 'jeton', 'request_id'))}
+    if isinstance(valeur, list):
+        return [_sans_empreintes(v) for v in valeur]
+    return valeur
+
+
 class Ciq300FonctionPureTests(SimpleTestCase):
 
     def test_liste_egale_au_contrat_partage(self):
@@ -190,7 +201,10 @@ class Ciq300PropositionReelleTests(TestCase):
                     self.assertNotIn(bloc, quote)
                 self.assertIsNone(p['mode_kpis']['payback'])
                 self.assertIsNone(p['mode_kpis']['economies_annuelles'])
-                blob = json.dumps(p)
+                # Les empreintes (sha256) et jetons sont écartés AVANT la
+                # recherche du prix d'achat : un condensé hexadécimal peut
+                # contenir « 7777 » par hasard (CI #997, shard 4).
+                blob = json.dumps(_sans_empreintes(p))
                 self.assertNotIn('prix_achat', blob)
                 self.assertNotIn('7777', blob)
 

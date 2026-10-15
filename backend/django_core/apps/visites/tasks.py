@@ -11,6 +11,10 @@ nom les rejetterait en silence. L'allowlist QX11 liste les deux noms.
 """
 from celery import shared_task
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # ── VT9 — ASSEMBLAGE DES PHOTOS DU TOIT ──────────────────────────────────────
 #
@@ -83,6 +87,7 @@ def _assembler(octets):
         import cv2
         import numpy as np
     except Exception:
+        logger.warning("assembler : échec ignoré, comportement dégradé", exc_info=True)
         return None, 'indisponible'
 
     images = []
@@ -138,6 +143,7 @@ def assembler_photos_toit_task(visite_id):
     try:
         image, cle = _assembler(octets)
     except Exception:  # pragma: no cover - défensif : jamais un 500 silencieux
+        logger.warning("assembler photos toit task : échec ignoré, comportement dégradé", exc_info=True)
         return _echec('echec')
     if image is None:
         return _echec(cle)

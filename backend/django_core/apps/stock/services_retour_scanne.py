@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 PREFIXE_CASIER_EXPEDITION = 'EXP'
 
 
+class CodeInconnu(ValueError):
+    """Le code scanné ne désigne rien dans la société (-> 404, pas 400)."""
+
+
 def _modele_bin():
     """``installations.BinLocation`` résolu par l'accesseur inverse de NOTRE
     string-FK — jamais un import de ``apps.installations.models``."""
@@ -63,7 +67,7 @@ def preparer_ligne_retour_scannee(company, code, *, quantite=1):
 
     resolu = resoudre_code_scanne(company, code)
     if resolu is None:
-        raise ValueError('Code inconnu dans cette société.')
+        raise CodeInconnu('Code inconnu dans cette société.')
     if resolu['type'] != 'produit':
         raise ValueError(
             'Ce code désigne un ' + resolu['type'] + ' : scannez le produit '

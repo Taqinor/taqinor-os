@@ -46,6 +46,19 @@ class TestSiteProfile(TestCase):
         self.assertEqual(sp.created_by_id, self.user.id)
         self.assertEqual(sp.facture_hiver, Decimal('1200'))
 
+    def test_decimaux_stricts_ci997(self):
+        """api-fuzz #997 : un décimal est une chaîne (``0`` nombre → 400,
+        comme le schéma) ; ``""`` vaut « non renseigné » (null)."""
+        url = '/api/django/crm/site-profiles/'
+        r = self.api.post(url, {'client': self.client_obj.id,
+                                'pompe_debit_m3h': 0}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('pompe_debit_m3h', r.data)
+        r = self.api.post(url, {'client': self.client_obj.id,
+                                'pompe_hmt_m': ''}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIsNone(r.data['pompe_hmt_m'])
+
     def test_client_must_be_same_company(self):
         foreign = Client.objects.create(company=self.other, nom='X')
         r = self.api.post('/api/django/crm/site-profiles/', {

@@ -35,6 +35,17 @@ class AccessReviewTests(TenantAPITestCase):
             campaign.items.filter(company=self.company).count(),
             campaign.items.count())
 
+    def test_textes_stricts_pas_de_nombre_converti(self):
+        # CI #997 fuzz : ``perimetre_ref: 0`` était converti en « 0 » (201).
+        for champ in ('perimetre_ref', 'nom'):
+            with self.subTest(champ=champ):
+                r = self._admin().post(
+                    self.BASE, {'nom': 'Q4', 'perimetre': 'all', champ: 0},
+                    format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn(champ, r.json())
+        self.assertFalse(AccessReviewCampaign.objects.exists())
+
     def test_non_admin_forbidden(self):
         r = self.client_as().post(self.BASE, {'nom': 'x'}, format='json')
         self.assertEqual(r.status_code, 403)

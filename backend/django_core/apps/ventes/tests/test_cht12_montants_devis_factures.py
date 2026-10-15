@@ -1,10 +1,10 @@
 """CHT12 — Sélecteurs batch de montants ventes (devis + factures liées).
 
-Couvre ``ventes.selectors.montants_devis`` et
-``ventes.selectors.montants_factures_par_devis`` : lecture EN BATCH scopée
-société, façon ``ca_devis_factures_par_clients`` — consommés par le P&L
-projet (``gestion_projet``, CHT13) via ``installations.selectors.
-devis_id_du_chantier``.
+Couvre ``ventes.selectors.montants_devis`` : lecture EN BATCH scopée
+société, façon ``ca_devis_factures_par_clients``. VNT105 — la somme des
+factures par devis (``montants_factures_par_devis``, sans appelant actif après
+M1-M3) est retirée avec ses tests ; le facturé d'une vente se lit par
+``factures_de_la_vente``.
 
 Run :
     python manage.py test apps.ventes.tests.test_cht12_montants_devis_factures -v2
@@ -16,7 +16,7 @@ from django.test import TestCase
 
 from apps.crm.models import Client
 from apps.ventes.models import Devis, Facture, LigneDevis
-from apps.ventes.selectors import montants_devis, montants_factures_par_devis
+from apps.ventes.selectors import montants_devis
 from authentication.models import Company
 
 _seq = itertools.count(1)
@@ -86,51 +86,42 @@ class TestMontantsDevis(TestCase):
         self.assertEqual(montants_devis([], self.company), {})
 
 
-class TestMontantsFacturesParDevis(TestCase):
+class TestLecteursSurLaVenteVNT87(TestCase):
+    """VNT87 — ``tranche_facturee`` et ``acompte_paye_pour_devis`` lisent la
+    CHAÎNE de versions (``installation.devis`` est souvent la V1) ; un
+    brouillon de tranche n'est pas facturé."""
+
     def setUp(self):
         self.company = make_company()
         self.client_obj = make_client(self.company)
-        self.devis = make_devis(self.company, self.client_obj, montant_ht=1000)
+        self.v2 = make_devis(self.company, self.client_obj, montant_ht=1000,
+                             statut=Devis.Statut.ACCEPTE)
+        self.v1 = make_devis(self.company, self.client_obj, montant_ht=1000,
+                             statut=Devis.Statut.ACCEPTE)
+        Devis.objects.filter(pk=self.v1.pk).update(
+            is_active=False, superseded_by=self.v2)
+        Devis.objects.filter(pk=self.v2.pk).update(version_parent=self.v1)
+        self.v1.refresh_from_db()
 
-    def test_agrege_plusieurs_factures_du_meme_devis(self):
-        make_facture(
-            self.company, self.client_obj, self.devis,
-            montant_ht=300, montant_ttc=360)
-        make_facture(
-            self.company, self.client_obj, self.devis,
-            montant_ht=700, montant_ttc=840)
-        out = montants_factures_par_devis([self.devis.id], self.company)
-        self.assertEqual(out[self.devis.id]['ht'], Decimal('1000'))
-        self.assertEqual(out[self.devis.id]['ttc'], Decimal('1200'))
+    def _acompte(self, statut):
+        facture = make_facture(self.company, self.client_obj, self.v2,
+                               montant_ht=100, montant_ttc=120, statut=statut)
+        Facture.objects.filter(pk=facture.pk).update(
+            type_facture=Facture.TypeFacture.ACOMPTE)
+        return facture
 
-    def test_facture_annulee_exclue_par_defaut(self):
-        make_facture(
-            self.company, self.client_obj, self.devis,
-            montant_ht=300, montant_ttc=360)
-        make_facture(
-            self.company, self.client_obj, self.devis,
-            montant_ht=700, montant_ttc=840, statut=Facture.Statut.ANNULEE)
-        out = montants_factures_par_devis([self.devis.id], self.company)
-        self.assertEqual(out[self.devis.id]['ht'], Decimal('300'))
+    def test_tranche_facturee_chaine_et_emises_seulement(self):
+        from apps.ventes.selectors import tranche_facturee
+        self._acompte(Facture.Statut.BROUILLON)
+        self.assertFalse(tranche_facturee(self.v1, 'acompte'))
+        self._acompte(Facture.Statut.EMISE)
+        self.assertTrue(tranche_facturee(self.v1, 'acompte'))
+        self.assertFalse(tranche_facturee(self.v1, 'solde'))
 
-    def test_exclure_annulee_false_inclut_tout(self):
-        make_facture(
-            self.company, self.client_obj, self.devis,
-            montant_ht=300, montant_ttc=360, statut=Facture.Statut.ANNULEE)
-        out = montants_factures_par_devis(
-            [self.devis.id], self.company, exclure_annulee=False)
-        self.assertEqual(out[self.devis.id]['ht'], Decimal('300'))
-
-    def test_devis_sans_facture_absent_du_resultat(self):
-        autre_devis = make_devis(self.company, self.client_obj, montant_ht=100)
-        out = montants_factures_par_devis([autre_devis.id], self.company)
-        self.assertEqual(out, {})
-
-    def test_scoping_societe(self):
+    def test_acompte_paye_lu_sur_la_chaine(self):
+        from apps.ventes.selectors import acompte_paye_pour_devis
+        self.assertFalse(acompte_paye_pour_devis(self.v1.id, self.company))
+        self._acompte(Facture.Statut.PAYEE)
+        self.assertTrue(acompte_paye_pour_devis(self.v1.id, self.company))
         autre = make_company()
-        autre_client = make_client(autre)
-        autre_devis = make_devis(autre, autre_client, montant_ht=100)
-        make_facture(
-            autre, autre_client, autre_devis, montant_ht=100, montant_ttc=120)
-        out = montants_factures_par_devis([autre_devis.id], self.company)
-        self.assertEqual(out, {})
+        self.assertFalse(acompte_paye_pour_devis(self.v1.id, autre))

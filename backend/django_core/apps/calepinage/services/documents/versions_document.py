@@ -190,6 +190,7 @@ def _sections_du_document(calepinage, code):
         return sections_retenues(
             parametres_de_societe(getattr(calepinage, 'company', None)))
     except Exception:  # réglage refusé : le rendu le dira
+        logger.warning("sections du document : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 

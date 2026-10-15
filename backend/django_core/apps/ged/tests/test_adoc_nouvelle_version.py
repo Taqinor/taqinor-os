@@ -52,7 +52,8 @@ class NouvelleVersionTests(TestCase):
         `store_attachment` (10 Mo, octets magiques) s'exécute."""
         upload = SimpleUploadedFile(nom, octets,
                                     content_type='application/pdf')
-        with mock.patch('apps.records.storage.get_minio_client') as client,                 mock.patch('apps.records.storage.ensure_uploads_bucket'):
+        with mock.patch('apps.records.storage.get_minio_client') as client, \
+                mock.patch('apps.records.storage.ensure_uploads_bucket'):
             self.client_minio = client.return_value
             return auth(user).post(self.url, {'file': upload},
                                    format='multipart')

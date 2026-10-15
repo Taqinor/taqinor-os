@@ -21,12 +21,14 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin
 from ..openapi_helpers import BOOL, INT, NUM, P, STR
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur
+from ..utils.params import choix_ou_400, decimal_ou_400
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -42,7 +44,7 @@ def _fenetre_mois_ou_400(valeur, valider):
 
 class IncidentQualiteFournisseurSerializer(MasqueMontantsAchatMixin,
                                            CompanyScopedRelationsMixin,
-                                           serializers.ModelSerializer):
+                                           ChampsStrictsMixin, serializers.ModelSerializer):
     champs_montants_achat = ('cout_impact_mad',)  # ERR-STK-PRIX-ACHAT-SUITE
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True, default='')
@@ -97,7 +99,9 @@ class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
         gravite = params.get('gravite')
         if gravite:
             qs = qs.filter(gravite=gravite)
-        resolu = params.get('resolu')
+        resolu = choix_ou_400(
+            params.get('resolu'), 'resolu',
+            ('0', 'false', 'False', '1', 'true', 'True'))
         if resolu in ('0', 'false', 'False'):
             qs = qs.filter(resolu=False)
         elif resolu in ('1', 'true', 'True'):
@@ -203,10 +207,12 @@ class ScmFournisseurActionsMixin:
         if produit_id:
             produit = Produit.objects.filter(
                 id=produit_id, company=company).first()
+        seuil_ecart_pct = request.query_params.get('seuil_ecart_pct')
+        decimal_ou_400(seuil_ecart_pct, 'seuil_ecart_pct')
         return Response(delai_mesure_vs_annonce(
             company, self.get_object(), produit,
             fenetre_mois=fenetre,
-            seuil_ecart_pct=request.query_params.get('seuil_ecart_pct')))
+            seuil_ecart_pct=seuil_ecart_pct))
 
 
 class ScmProduitTcoMixin:

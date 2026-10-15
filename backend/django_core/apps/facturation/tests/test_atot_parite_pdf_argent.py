@@ -121,7 +121,8 @@ def figures_lues(texte, lib_sous_total, lib_ttc):
             break
         if libelle.startswith(lib_sous_total) and 'ht_brut' not in lues:
             lues['ht_brut'] = montant
-        elif libelle.startswith('Remise globale'):
+        elif libelle.startswith(('Remise globale', 'Remise négociée')):
+            # VNT71 — facture d'avenant négocié : montant seul, sans « (x %) ».
             lues['remise'] = montant
         elif libelle == 'Arrondi commercial':
             lues['arrondi'] = montant
@@ -521,6 +522,94 @@ class ProchainesEcheancesPdfTests(TestCase):
                       texte_solde)
 
 
+class DetailFactureVenteApiTests(TestCase):
+    """VNT91 — le DÉTAIL d'une facture sert ``situation_vente``,
+    ``objet_vente``, ``garanties`` et ``prochaines_echeances`` lus par LA
+    fonction du PDF (``contexte_vente_facture``) — égaux au centime, clés du
+    contrat ``facture_situation_vente.json`` ; la LISTE ne les sert jamais et
+    son coût ne grandit pas avec le nombre de factures."""
+
+    ECHEANCIER = ProchainesEcheancesPdfTests.ECHEANCIER
+    setUp = SituationVentePdfTests.setUp
+
+    def _api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        return api
+
+    def test_detail_egal_au_contexte_du_pdf(self):
+        import json
+
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        from apps.ventes.utils.pdf import contexte_vente_facture
+        devis = creer_devis_388(self.company, self.user, self.client_obj,
+                                'DEV-VNT91-0388', self.ECHEANCIER)
+        acompte = creer_facture_tranche(devis, self.user, self.company, None)
+        r = self._api().get(f'/api/django/ventes/factures/{acompte.pk}/')
+        self.assertEqual(r.status_code, 200, r.content)
+        data = r.json()
+        contrat = json.loads(
+            (Path(settings.BASE_DIR) / 'apps' / 'facturation'
+             / 'contract_samples' / 'facture_situation_vente.json')
+            .read_text(encoding='utf-8'))
+        self.assertLessEqual(set(contrat['exemple']), set(data))
+        pdf = json.loads(json.dumps(contexte_vente_facture(acompte),
+                                    default=str))
+        self.assertEqual(data['situation_vente'], pdf['situation_vente'])
+        self.assertEqual(data['prochaines_echeances'],
+                         pdf['prochaines_echeances'])
+        self.assertEqual(data['objet_vente'], pdf['objet_vente'])
+        self.assertEqual(data['garanties'], pdf['garanties_vente'])
+        self.assertEqual(
+            [Decimal(e['montant_ttc']) for e in data['prochaines_echeances']],
+            [Decimal('29400.00'), Decimal('4600.00')])
+
+    def test_liste_sans_les_blocs_et_cout_constant(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from apps.ventes.models import Facture
+
+        def _ajouter(n):
+            for _ in range(n):
+                Facture.objects.create(
+                    company=self.company, client=self.client_obj,
+                    reference=f'FAC-VNT91-{Facture.objects.count() + 1}',
+                    statut=Facture.Statut.EMISE, taux_tva=Decimal('20'),
+                    montant_ht=Decimal('100'), montant_tva=Decimal('20'),
+                    montant_ttc=Decimal('120'), created_by=self.user)
+
+        def _liste():
+            with CaptureQueriesContext(connection) as ctx:
+                r = self._api().get('/api/django/ventes/factures/',
+                                    {'page_size': 100})
+            self.assertEqual(r.status_code, 200, r.content)
+            lignes = r.json()
+            lignes = lignes.get('results', lignes) \
+                if isinstance(lignes, dict) else lignes
+            for ligne in lignes:
+                self.assertNotIn('situation_vente', ligne)
+                self.assertNotIn('prochaines_echeances', ligne)
+            return len(lignes), len(ctx.captured_queries)
+
+        _ajouter(2)
+        # Appel de chauffe écarté : les caches PAR PROCESSUS (ContentType,
+        # droits, paramètres) se remplissent à la 1re requête de la liste —
+        # un coût fixe, indépendant du nombre de lignes. Ce que la garde
+        # mesure : le coût d'une liste CHAUDE ne grandit pas avec les lignes.
+        _liste()
+        n2, q2 = _liste()
+        _ajouter(3)
+        n5, q5 = _liste()
+        self.assertEqual((n2, n5), (2, 5))
+        self.assertEqual(q2, q5)
+
+
 class FiguresLuesTests(SimpleTestCase):
     """Test-du-test du lecteur : une chaîne sans « Total HT » alors qu'une
     remise est imprimée est vue comme Total HT = Sous-total, et l'oracle
@@ -544,4 +633,16 @@ class FiguresLuesTests(SimpleTestCase):
         self.assertEqual(lues['ht_net'], Decimal('17000.00'))
         self.assertEqual(lues['remise'], Decimal('3000.00'))
         self.assertEqual(len(lues['tva_par_taux']), 2)
+        self.assertTrue(verifier_chaine_document(None, figures=lues))
+
+    def test_remise_negociee_lue(self):
+        """VNT71 — « Remise négociée » (sans pourcentage) est lue comme la
+        remise : la chaîne de la facture d'avenant tient l'oracle."""
+        texte = ('Sous-total HT 46243.50 MAD Remise négociée −4624.35 MAD '
+                 'Arrondi commercial −65.82 MAD Total HT 41553.33 MAD '
+                 'TVA (10.00%) 783.69 MAD TVA (20.00%) 6662.98 MAD '
+                 'Total TTC 49000.00 MAD')
+        lues = figures_lues(texte, 'Sous-total HT', 'Total TTC')
+        self.assertEqual(lues['remise'], Decimal('4624.35'))
+        self.assertEqual(lues['arrondi'], Decimal('65.82'))
         self.assertTrue(verifier_chaine_document(None, figures=lues))

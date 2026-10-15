@@ -25,31 +25,31 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "concurrent_nom",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "concurrent_prix",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "devise",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "motif",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "notes",
    "read_only": false,
    "required": false

@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { fichiersPagesVentes } from './fichiersPagesVentes.mjs'
+import { lireSourcesFactureList } from './factureList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const read = (f) => readFileSync(path.join(__dirname, f), 'utf8')
@@ -52,7 +53,7 @@ test('le bandeau 5 statuts de DevisList n’est plus fait de div nus', () => {
 })
 
 test('le cockpit trésorerie rend ses 4 cartes en Stat', () => {
-  const src = read('FactureList.jsx')
+  const src = lireSourcesFactureList()
   const start = src.indexOf('cockpit trésorerie : 4 cartes KPI')
   assert.ok(start > 0, 'bloc trésorerie introuvable')
   const treso = src.slice(start, src.indexOf('Tabs + vues enregistrées', start))

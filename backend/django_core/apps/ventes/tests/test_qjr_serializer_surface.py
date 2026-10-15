@@ -325,12 +325,13 @@ class EcheancierResteEcrivable(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(len(self.devis.echeancier), 2)
 
-    def test_un_echeancier_ambigu_est_toujours_refuse_en_400(self):
+    def test_un_echeancier_ambigu_est_toujours_refuse_en_409(self):
+        # CI #997 (4) — règle inter-clés : 409 ``ConflitEtat`` (plus 400).
         reponse = self._patch([
             {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 750},
             {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 100},
         ])
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('echeancier', reponse.data)
         self.devis.refresh_from_db()
         self.assertIsNone(self.devis.echeancier)

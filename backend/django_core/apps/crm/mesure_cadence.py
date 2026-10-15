@@ -35,6 +35,8 @@ import datetime
 import logging
 import re
 
+logger = logging.getLogger(__name__)
+
 #: Les issues qui valent « on a eu le client au bout du fil ». Reprises à
 #: l'identique de ``kpi_cadences`` (``selectors.py``) et de la définition de
 #: CAD131 (« issue joint ou intéressé ») : deux KPI qui comptent « joint »
@@ -324,6 +326,7 @@ def enregistrer_geste_appareil(company, geste, user_agent):
             GesteRelanceAppareil.objects.filter(pk=ligne.pk).update(
                 total=F('total') + 1)
     except Exception:  # noqa: BLE001 — mesure best-effort, jamais bloquante
+        logger.warning("enregistrer geste appareil : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).warning(
             'CAD178: comptage du geste « %s » non enregistré', geste,
             exc_info=True)

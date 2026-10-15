@@ -25,12 +25,10 @@ import ventesApi from '../../api/ventesApi'
    calepinage ⇒ le bloc DISPARAÎT. Jamais un bloc vide, jamais un tiret qui
    laisserait croire à une donnée manquante.
 
-   ÉTAT DU SERVEUR AU MOMENT DE CETTE LANE, à dire et non à cacher :
-   `calepinage_du_devis` est un SÉLECTEUR Python (CAL28) qui n'est encore
-   publié par AUCUN serializer. La clé `calepinage` du détail devis est donc
-   absente aujourd'hui, et ce bloc reste invisible — exactement son
-   comportement « aucun calepinage ». Il s'allumera le jour où le détail la
-   publiera, sans qu'une ligne d'écran ne change.
+   ÉTAT DU SERVEUR : le détail devis publie la clé `calepinage` (méthode
+   `get_calepinage` du sérialiseur ventes, qui lit le sélecteur
+   `calepinage_du_devis`, CAL28). Elle est `null` sans calepinage lié, et le
+   bloc reste alors invisible.
    ========================================================================== */
 
 export default function BlocCalepinageDevis({ devisId }) {

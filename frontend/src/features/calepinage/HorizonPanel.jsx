@@ -152,7 +152,7 @@ export default function HorizonPanel({ calepinageId: idPropose, documentVivant =
       doc.appliquerSection('horizonProfile', valeur, res.empreinte)
       setMessage(
         propres.length >= 2
-          ? 'Profil d’horizon enregistré — appliqué au prochain calcul de la simulation (Production › Lancer).'
+          ? 'Profil d’horizon enregistré — la simulation affichée est périmée : relancez-la (Production › Lancer) pour l’appliquer.'
           : 'Profil retiré — aucun horizon n’est appliqué.',
       )
     } else if (res.conflit) {

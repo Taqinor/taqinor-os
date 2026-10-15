@@ -55,7 +55,14 @@ class TestDevisFreezeOnUpdate(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
+        # CI #997 — refus d'ÉTAT (corps conforme) : 409, corps {statut} gardé.
+        self.assertIn('Devis figé', str(r.data['statut']))
+        r = self.api.put(
+            f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('statut', r.data)
         devis.refresh_from_db()
         self.assertNotEqual(devis.note, 'edit')
 
@@ -64,14 +71,14 @@ class TestDevisFreezeOnUpdate(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_patch_expired_devis_rejected(self):
         devis = self._devis(3, Devis.Statut.EXPIRE)
         r = self.api.patch(
             f'/api/django/ventes/devis/{devis.id}/', {'note': 'edit'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_patch_draft_devis_still_editable(self):
         devis = self._devis(4, Devis.Statut.BROUILLON)
@@ -101,7 +108,7 @@ class TestDevisFreezeOnUpdate(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis-lignes/{ligne.id}/',
             {'quantite': '2'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.quantite, Decimal('1'))
 
@@ -125,7 +132,7 @@ class TestDevisFreezeOnUpdate(TestCase):
             {'devis': devis.id, 'produit': self.produit.id,
              'designation': 'Extra', 'quantite': '1',
              'prix_unitaire': '1000', 'remise': '0'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_delete_ligne_of_accepted_devis_rejected(self):
         devis = self._devis(9, Devis.Statut.ACCEPTE)
@@ -134,5 +141,5 @@ class TestDevisFreezeOnUpdate(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
             remise=Decimal('0'))
         r = self.api.delete(f'/api/django/ventes/devis-lignes/{ligne.id}/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertTrue(LigneDevis.objects.filter(id=ligne.id).exists())

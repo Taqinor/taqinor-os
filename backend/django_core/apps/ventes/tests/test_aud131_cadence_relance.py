@@ -127,18 +127,18 @@ class TestAud131GardeEtatRelanceManuelle(_Base):
     def test_relancer_une_facture_payee_est_refuse(self):
         facture = self._facture(statut=Facture.Statut.PAYEE)
         resp = self._post(facture, {'niveau': 1})
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertFalse(RelanceLog.objects.filter(facture=facture).exists())
 
     def test_relancer_une_facture_annulee_est_refuse(self):
         facture = self._facture(statut=Facture.Statut.ANNULEE)
         resp = self._post(facture, {'niveau': 1})
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_relancer_un_brouillon_est_refuse(self):
         facture = self._facture(statut=Facture.Statut.BROUILLON)
         resp = self._post(facture, {'niveau': 1})
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_prochaine_relance_non_date_est_refusee_en_400(self):
         # Niveau VALIDE : seule la date doit être en cause dans le 400.

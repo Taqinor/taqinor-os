@@ -11,7 +11,7 @@ import {
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
 import ventesApi from '../../../api/ventesApi'
-import FacturerVenteDialog from '../../ventes/vente/FacturerVenteDialog'
+import PanneauVente from '../../ventes/vente/PanneauVente'
 import installationsApi from '../../../api/installationsApi'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
@@ -36,7 +36,7 @@ import { reviserEtOuvrir } from '../../ventes/reviserDevis'
 import { jumpToField } from './jumpToField'
 import { missingFieldTarget } from './missingFields'
 import {
-  DEVIS_MINI_TRACK, porteFacturation, devisTrackCurrent, SECTIONS_ENVOI,
+  DEVIS_MINI_TRACK, devisTrackCurrent, SECTIONS_ENVOI,
   sectionsDepuisServeur, taillesDepuisServeur, optionsCountFromTailles,
   taillesFromOptionsCount, waArmed, devisIntent, lectureClientLabel,
 } from './devisTabLogique'
@@ -82,15 +82,29 @@ function jumpToMissingField(champ) {
 
 // QJR534 — le bouton « Réviser » porte SON `useNavigate` (monté seulement sur
 // une carte révisable) : le reste de l'onglet n'exige aucun contexte Router.
+// VNT80 — un refus qui nomme un autre devis s'affiche SOUS la carte avec
+// « Ouvrir <réf> », qui fait défiler jusqu'à la carte de la tête.
 function BoutonReviser({ devis }) {
   const navigate = useNavigate()
+  const [conflit, setConflit] = useState(null)
+  const ouvrir = (id) => document.getElementById(`devis-carte-${id}`)?.scrollIntoView({ block: 'center' })
   return (
-    <Button
-      type="button" size="sm" variant="outline"
-      onClick={() => reviserEtOuvrir({ devis, navigate })}
-    >
-      <Pencil size={14} aria-hidden="true" /> Réviser (nouvelle version)
-    </Button>
+    <>
+      <Button
+        type="button" size="sm" variant="outline"
+        onClick={() => { setConflit(null); reviserEtOuvrir({ devis, navigate, onConflit: setConflit }) }}
+      >
+        <Pencil size={14} aria-hidden="true" /> Réviser (nouvelle version)
+      </Button>
+      {conflit && (
+        <p className="basis-full text-sm text-destructive" role="alert">
+          {conflit.conflit}{' '}
+          <Button type="button" size="sm" variant="link" onClick={() => ouvrir(conflit.successeur.id)}>
+            Ouvrir {conflit.successeur.reference}
+          </Button>
+        </p>
+      )}
+    </>
   )
 }
 
@@ -109,6 +123,10 @@ export default function DevisTab({
   // historique (taille souhaitée du lead, sinon facture d'hiver) : le trajet
   // à 1 clic du commercial est INCHANGÉ.
   const [kwcCible, setKwcCible] = useState('')
+  // AGNR39 — au pompage, le champ solaire découle de la pompe : le champ
+  // « puissance cible » n'est pas affiché pour un lead agricole, la cible
+  // reste donc vide (le serveur la refuserait en la nommant).
+  const agricole = state.server?.type_installation === 'agricole'
   // QJR602 (D-QJR5-13) — la cible tapée ici part TELLE QUELLE : le devis
   // automatique n'arrondit plus au palier de 5 kWc, plus aucun avis à montrer.
   const [waBusy, setWaBusy] = useState(false)
@@ -387,20 +405,6 @@ export default function DevisTab({
     }
   }
 
-  const [facturerTarget, setFacturerTarget] = useState(null)
-  const genererFacture = (d) => {
-    setBusyAction(`f-${d.id}`)
-    setActionMsg(null)
-    ventesApi.genererFacture(d.id)
-      .then((res) => {
-        const f = res.data
-        setActionMsg(`${f.type_facture_display ?? 'Facture'} ${f.reference} créée.`)
-        onAction?.('refresh')
-      })
-      .catch((err) => setActionMsg(errorMessageFrom(err, 'Génération de facture impossible.')))
-      .finally(() => setBusyAction(null))
-  }
-
   const creerChantier = (d) => {
     setBusyAction(`c-${d.id}`)
     setActionMsg(null)
@@ -485,7 +489,7 @@ export default function DevisTab({
           {/* EZ5 — cible kWc facultative. `step="any"` + aucune validation
               bloquante : ce champ ne rejette ni n'arrondit jamais une saisie
               (même garde que le générateur). */}
-          <div className="lw-devis-kwc">
+          {!agricole && <div className="lw-devis-kwc">
             <label htmlFor="lw-devis-kwc" className="lw-devis-kwc-label">
               Puissance cible (kWc)
             </label>
@@ -501,7 +505,7 @@ export default function DevisTab({
               value={kwcCible}
               onChange={(e) => setKwcCible(e.target.value)}
             />
-          </div>
+          </div>}
         </div>
       ) : (
         <div className="lw-context-devis-missing">
@@ -528,7 +532,7 @@ export default function DevisTab({
           <p className="gen-hint">Aucun devis pour ce lead.</p>
         ) : (
           devisList.map((d) => (
-            <div key={d.id} className="lw-context-devis-card">
+            <div key={d.id} id={`devis-carte-${d.id}`} className="lw-context-devis-card">
               <div className="lw-context-devis-card-head">
                 <Checkbox
                   checked={wa.selected.includes(d.id)}
@@ -857,26 +861,9 @@ export default function DevisTab({
                     stages={DEVIS_MINI_TRACK}
                     current={devisTrackCurrent(d)}
                   />
+                  {/* VNT74/VNT75 — la vente LUE de `d.vente` ; facturer = `vente.peut`. */}
+                  <PanneauVente devis={d} onRafraichir={() => onAction?.('refresh')} />
                   <div className="lw-context-devis-actions">
-                    {porteFacturation(d) === 'libre' && (
-                      <Button
-                        type="button" size="sm"
-                        onClick={() => setFacturerTarget(d)}
-                      >
-                        🧾 Facturer (facture complète)
-                      </Button>
-                    )}
-                    {porteFacturation(d) !== 'aucune' && (
-                      <Button
-                        type="button" size="sm" variant="outline"
-                        disabled={busyAction === `f-${d.id}`}
-                        onClick={() => genererFacture(d)}
-                      >
-                        {busyAction === `f-${d.id}` ? '…'
-                          : porteFacturation(d) === 'tranche' ? '🧾 Générer la facture'
-                            : '🧾 Facturer par tranches (acompte…)'}
-                      </Button>
-                    )}
                     {d.chantier ? (
                       // CHT21(b) — span inerte devenu cliquable : deep-link
                       // réel vers la fiche chantier (patron ?id= déjà lu par
@@ -962,11 +949,6 @@ export default function DevisTab({
           </div>
         </DialogContent>
       </Dialog>
-      <FacturerVenteDialog
-        devis={facturerTarget}
-        onOpenChange={(o) => { if (!o) setFacturerTarget(null) }}
-        onDone={() => onAction?.('refresh')}
-      />
     </div>
   )
 }

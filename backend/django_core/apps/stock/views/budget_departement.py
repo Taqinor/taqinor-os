@@ -21,6 +21,7 @@ from core.mixins import TenantMixin
 from core.champs_stricts import ChampsStrictsMixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..openapi_helpers import BOOL, INT, NUM, OBJET, P, STR, corps
+from ..utils.params import booleen_requete_ou_400, entier_ou_400, valeur_unique_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
@@ -87,7 +88,8 @@ class EngagementBudgetSerializer(CompanyScopedRelationsMixin,
         read_only_fields = fields
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('annee', INT), P('mois', INT), P('actif', BOOL)]))
+@extend_schema_view(list=extend_schema(parameters=[P('annee', INT, mini=0, maxi=2147483647), P('mois', INT, mini=0, maxi=12),
+                                                   P('actif', BOOL)]))
 class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     """NTP2P4 — enveloppe budgétaire d'achat de la société.
 
@@ -110,16 +112,15 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        params = self.request.query_params
-        for key, col in (('annee', 'annee'), ('mois', 'mois')):
-            val = params.get(key)
-            if val:
-                qs = qs.filter(**{col: val})
-        actif = params.get('actif')
-        if actif in ('0', 'false', 'False'):
-            qs = qs.filter(actif=False)
-        elif actif in ('1', 'true', 'True'):
-            qs = qs.filter(actif=True)
+        # CI #997 fuzz — filtres stricts et bornés (``?actif=null`` ignoré en
+        # silence, ``?annee=abc`` / hors plage PostgreSQL finissaient en 500).
+        for key, maxi in (('annee', 2147483647), ('mois', 12)):
+            val = entier_ou_400(valeur_unique_ou_400(self.request, key), key, mini=0, maxi=maxi)
+            if val is not None:
+                qs = qs.filter(**{key: val})
+        actif = booleen_requete_ou_400(self.request, 'actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif)
         return qs
 
     @extend_schema(responses=OBJET)
@@ -147,12 +148,11 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
         société ? LECTURE SEULE — AUCUN engagement n'est posé : le
         simulateur tourne AVANT la soumission, c'est tout l'intérêt (voir le
         mur avant de le heurter). ``?montant=<mad>`` suffit."""
-        from decimal import Decimal, InvalidOperation
+        from decimal import Decimal
 
-        try:
-            montant = Decimal(request.query_params.get('montant') or '0')
-        except (InvalidOperation, TypeError):
-            montant = Decimal('0')
+        from ..utils.params import decimal_ou_400
+        montant = decimal_ou_400(
+            request.query_params.get('montant'), 'montant', Decimal('0'))
         verdict = selectors.verifier_budget_disponible(
             request.user.company, None, montant)
         budget = verdict.pop('budget', None)

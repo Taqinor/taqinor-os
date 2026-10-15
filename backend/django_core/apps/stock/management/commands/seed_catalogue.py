@@ -28,6 +28,7 @@ Run:
   docker compose exec django_core python manage.py seed_catalogue
   (options --company-slug, default: taqinor-demo ; --reappliquer-fiches)
 """
+import re
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand, CommandError
@@ -221,13 +222,15 @@ def is_offgrid(nom):
     ``apps.ventes.solar_design.is_offgrid_inverter`` : mot-clé hors-réseau,
     pas hybride, et — si « onduleur » est absent du nom — aucun mot-clé
     d'une AUTRE famille de produit (sinon on volerait un panneau/une
-    batterie/un accessoire nommé « ... off-grid ... » par un revendeur)."""
-    d = (nom or '').lower()
-    if not any(k in d for k in OFFGRID_KEYWORDS) or 'hybride' in d:
+    batterie/un accessoire nommé « ... off-grid ... » par un revendeur).
+
+    AMOT57 — traits d'union et soulignés valent une espace (« hors-réseau »,
+    « off_grid »), même normalisation que ``solar_classification`` et
+    ``solar.js`` (cas du contrat ``classification_lignes.json``)."""
+    d = re.sub(r'[-_]+', ' ', (nom or '').lower())
+    if not any(re.sub(r'[-_]+', ' ', k) in d for k in OFFGRID_KEYWORDS) or 'hybride' in d:
         return False
-    if 'onduleur' in d:
-        return True
-    return not any(k in d for k in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
+    return 'onduleur' in d or not any(k in d for k in OFFGRID_AUTRE_FAMILLE_KEYWORDS)
 
 
 def taux_tva_for(nom):

@@ -9,7 +9,10 @@ résultat interne, jamais imprimé au client. Les anciennes capacités par type
 de toit (GET) ont disparu avec CIQ114.
 """
 from drf_spectacular.utils import extend_schema
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
@@ -17,12 +20,43 @@ from . import openapi_shapes as SH
 from .roof_load import ChargeNonSourcee, verifier_charge_toiture
 
 
-@extend_schema(request=SH.RoofLoadRequest, responses=SH.RoofLoadResponse)
+#: ENF11 (api-fuzz « accepted schema-violating ») — champs du corps publié
+#: (``openapi_shapes.RoofLoadRequest``) : nombres JSON (ou null) / textes (ou
+#: null). Le calcul ignorait en silence ``"None"`` ou ``"abc"`` saisis pour un
+#: nombre (corps multipart lu comme texte) au lieu de refuser la saisie.
+_NOMBRES = ('charge_admissible_kg_m2', 'struct_masse_kg_m2',
+            'poids_module_kg', 'aire_module_m2', 'masse_layout_kg_m2',
+            'coefficient_securite')
+_TEXTES = ('charge_admissible_source', 'couverture', 'coefficient_source')
+
+
+def _corps_invalide(data):
+    """``{champ: [message]}`` du premier champ mal typé, sinon ``None``."""
+    if not isinstance(data, dict):
+        return {'detail': 'Corps JSON objet attendu.'}
+    for champ in _NOMBRES:
+        valeur = data.get(champ)
+        if valeur is not None and (isinstance(valeur, bool) or not isinstance(
+                valeur, (int, float))):
+            return {champ: ['Nombre attendu.']}
+    for champ in _TEXTES:
+        valeur = data.get(champ)
+        if valeur is not None and not isinstance(valeur, str):
+            return {champ: ['Texte attendu.']}
+    return None
+
+
+@extend_schema(request=SH.RoofLoadRequest, responses=SH.RoofLoadResponse,
+               extensions=SH.ROOF_LOAD_SOURCES)
 @api_view(['POST'])
+@parser_classes([JSONParser])  # ENF11/D2 : JSON seul, aucun envoi de fichier
 @permission_classes([IsAnyRole])
 def roof_load_check(request):
     """POST → vérification de charge (interne)."""
-    data = request.data or {}
+    data = request.data
+    invalide = _corps_invalide(data)
+    if invalide:
+        return Response(invalide, status=400)
     try:
         result = verifier_charge_toiture(
             charge_admissible_kg_m2=data.get('charge_admissible_kg_m2'),

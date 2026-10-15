@@ -31,6 +31,7 @@ from rest_framework.throttling import SimpleRateThrottle
 from core.champs_stricts import ChaineStricte
 
 from .branding import MARQUE_VIDE, company_pour_hote, marque_portail
+from .serializers import MarquePortailSerializer, ReleveComptePortailSerializer
 
 # ── NTPRT6 — forme déclarée de l'acceptation d'invitation ───────────────────
 #: ERR-ENF11-FUZZ-PORTAIL — le schéma dit la vérité : deux CHAÎNES JSON
@@ -72,6 +73,7 @@ class ThemePortailPublicThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(responses=MarquePortailSerializer)  # ENF11 — marque (branding.py)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -216,6 +218,7 @@ def _resoudre_compte_par_token(token):
     return compte
 
 
+@extend_schema(responses=ReleveComptePortailSerializer)  # ENF11 — relevé (ventes.selectors)
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])

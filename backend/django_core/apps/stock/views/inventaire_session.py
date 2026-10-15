@@ -68,7 +68,7 @@ class InventaireSessionViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             result = valider_inventaire_session(session, request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(result)
 
     @extend_schema(request=None, responses=InventaireSessionSerializer)

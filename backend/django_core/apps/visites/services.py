@@ -23,6 +23,10 @@ JAMAIS sur ``crm.Lead`` :
 import re
 import unicodedata
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ERR-QAH-VISITES-COUVERTURE-ENUM-SANS-AFFORDANCE — mots vides qu'on retire
 # d'une saisie libre AVANT de retenter la correspondance (« Bon état » →
 # « bon », « État moyen » → « moyen »). Volontairement COURT : ce n'est pas un
@@ -82,6 +86,7 @@ def _notifier_commercial_visite(visite, event_type, titre, corps):
             destinataire, event_type, titre, body=corps,
             link=f'/visites/{visite.pk}', company=visite.company)
     except Exception:  # pragma: no cover - défensif
+        logger.warning("notifier commercial visite : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -159,6 +164,7 @@ def notifier_valideurs_visite(visite, acteur=None):
                   "attend le feu vert du bureau d'études."),
             link=f'/visites/{visite.pk}', company=visite.company)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("notifier valideurs visite : échec ignoré, comportement dégradé", exc_info=True)
         return []
 
 
@@ -193,6 +199,7 @@ def emettre_visite_planifiee(visite, user):
             user=user, date_prevue=visite.date_prevue,
             commercial_nom=_commercial_nom(visite))
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("emettre visite planifiee : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return visite
 
@@ -224,6 +231,7 @@ def emettre_visite_terminee(visite, user):
             user=user, retour=selectors.retour_visite(visite),
             qualification=visite.qualification)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("emettre visite terminee : échec ignoré, comportement dégradé", exc_info=True)
         return None
     return visite
 

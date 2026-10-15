@@ -71,6 +71,35 @@ class TestSigneSansDevisActif(TestCase):
         self._devis(lead, statut=Devis.Statut.ACCEPTE)
         self.assertFalse(lead_signe_sans_devis_actif(lead))
 
+    def _v1_acceptee_v2_brouillon(self, lead):
+        """VNT86 — une vente en révision : V1 acceptée rendue inactive par
+        « Réviser », V2 brouillon qui la remplacera."""
+        v2 = self._devis(lead, statut=Devis.Statut.BROUILLON)
+        v1 = self._devis(lead, statut=Devis.Statut.ACCEPTE)
+        Devis.objects.filter(pk=v1.pk).update(is_active=False,
+                                              superseded_by=v2)
+        return v1
+
+    def test_vnt86_v1_en_revision_reste_la_vente(self):
+        """SIGNED avec une V1 acceptée en révision (inactive, V2 brouillon)
+        ⇒ la vente est en vigueur : pas de drapeau."""
+        lead = Lead.objects.create(
+            company=self.company, nom='Revision', stage=stages.SIGNED)
+        self._v1_acceptee_v2_brouillon(lead)
+        self.assertFalse(lead_signe_sans_devis_actif(lead))
+
+    def test_vnt86_sortie_de_signe_desaccepte_la_v1_en_revision(self):
+        """Sortie de « Signé » avec V1 acceptée + V2 brouillon ⇒ la V1 est
+        dés-acceptée (elle était la vente en vigueur, inactive ou non)."""
+        from apps.crm.fiche_funnel import desaccepter_devis_du_lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Sortie', stage=stages.SIGNED)
+        v1 = self._v1_acceptee_v2_brouillon(lead)
+        self.assertEqual(desaccepter_devis_du_lead(lead, self.user), 1)
+        v1.refresh_from_db()
+        self.assertEqual(v1.statut, Devis.Statut.ENVOYE)
+        self.assertTrue(lead_signe_sans_devis_actif(lead))
+
     def test_flag_false_when_not_signed(self):
         """Hors de l'étape Signé, rien à signaler même sans devis accepté."""
         lead = Lead.objects.create(

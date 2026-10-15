@@ -13,9 +13,27 @@ from core.serializers import CompanyScopedRelationsMixin
 # (type_fiche, bat_chimie) dans docs/api-contracts.md — son résolveur ne
 # suit pas les ré-exports de façade (deux classes ``FicheTechnique``).
 from .models_fiche_technique import FicheTechnique
+from .utils.params import UniciteEn409Mixin
 
 
-class FicheTechniqueSerializer(AttachmentSerializerMixin,
+class FichierFacultatifField(serializers.FileField):
+    """``FileField`` qui lit ``""`` comme « aucun fichier » (``None``).
+
+    Un corps JSON ne peut pas porter de fichier : ``"pdf": ""`` est la seule
+    forme d'« absence » qu'un client JSON (ou un formulaire vidé) sait écrire.
+    DRF le refusait (« La donnée soumise n'est pas un fichier ») alors que
+    ``AttachmentSerializerMixin`` traite déjà ``None``/``''`` comme « pas de
+    pièce jointe » ; une VRAIE donnée non vide qui n'est pas un fichier reste
+    refusée en 400."""
+
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and data == '' and self.allow_null:
+            return (True, None)
+        return super().validate_empty_values(data)
+
+
+class FicheTechniqueSerializer(UniciteEn409Mixin,
+                               AttachmentSerializerMixin,
                                CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """DC35 — datasheet rattachée à un produit. Expose en LECTURE quelques
@@ -28,7 +46,7 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
     relecture (``None`` pour une fiche antérieure à la bascule)."""
     attachment_fields = ('pdf',)
 
-    pdf = serializers.FileField(
+    pdf = FichierFacultatifField(
         write_only=True, required=False, allow_null=True)
     pdf_url = serializers.SerializerMethodField()
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
@@ -116,6 +134,16 @@ class FicheTechniqueSerializer(AttachmentSerializerMixin,
             'company', 'date_creation', 'date_mise_a_jour',
             'pdf_filename', 'pdf_size', 'pdf_mime',
         ]
+        # Les `validate_<champ>` ci-dessous lisent déjà `None` comme « vide »
+        # (liste vide / notice vide) : la colonne reste non nulle, c'est le
+        # validateur qui normalise. Sans `allow_null`, DRF refusait ce que le
+        # code accepte (api-fuzz #997).
+        extra_kwargs = {
+            'ond_compteurs_compatibles': {'allow_null': True},
+            'lim_marques': {'allow_null': True},
+            'log_marques': {'allow_null': True},
+            'struct_notice': {'allow_null': True},
+        }
 
     @extend_schema_field(serializers.URLField(allow_null=True))
     def get_pdf_url(self, obj):

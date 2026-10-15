@@ -16,8 +16,7 @@ CE QUI EST GARANTI PAR LE SOCLE, ET PAS RECODÉ
   ``calepinage_gerer`` (codes lus de ``apps/calepinage/permissions.py``, jamais
   écrits en littéral ici) ;
 * chaque ``@action`` déclare EN PLUS sa propre garde (``PeutVoirCalepinage`` /
-  ``PeutGererCalepinage``). ``get_permissions`` CUMULE les deux (patron
-  ``apps/ao/viewsets.py``) : la garde déclarée par l'action est un plafond
+  ``PeutGererCalepinage``). ``get_permissions`` CUMULE les deux : la garde déclarée par l'action est un plafond
   supplémentaire, jamais une substitution qui jetterait la garde du domaine.
 
 LES FILTRES SONT RÉELLEMENT SERVIS (leçon PV22)
@@ -43,13 +42,15 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
+from apps.records.openapi import ParsersParActionMixin
 from apps.records.serializers import ChatterActivitySerializer
 from apps.records.views import ChatterViewSetMixin
 from authentication.permissions import IsResponsableOrAdmin
+from core.champs_stricts import ChaineStricte
 from core.idempotency import (
     IDEMPOTENCY_KEY_HEADER, IdempotencyConflict, IdempotencyRecord,
     _fingerprint,
@@ -66,7 +67,8 @@ from ..permissions import (
     PeutVoirCalepinage,
 )
 from ..serializers import (
-    CalepinageLectureSerializer, CalepinageSerializer,
+    CalepinageLectureSerializer, CalepinageSerializer, ChampsPersonnalisesField,
+    ContraintesSiteCreationField,
     CalepinageVarianteSerializer, FORME_DETAIL_CALEPINAGE, corps_obligatoire,
     forme_du_contrat, forme_reponse,
 )
@@ -84,8 +86,9 @@ from ..services.devis import (
 )
 from ..services.approbation import LIBELLES_STATUT, statut_derive
 from ..services.layout import (
-    DocumentModifie, LayoutRefuse, empreinte_document, enregistrer_layout,
-    enregistrer_section, layout_decrit_une_geometrie,
+    CHAMPS_SECTION_ZONE, CLES_SECTION_RACINE, DocumentModifie, LayoutRefuse,
+    empreinte_document, enregistrer_layout, enregistrer_section,
+    layout_decrit_une_geometrie,
 )
 # ACAL196 — référence et aperçu : UNE définition, lue aussi par la liste.
 from ..services.presentation import image_apercu, reference_calepinage
@@ -102,6 +105,10 @@ from ..services.versions import VersionInvalide, restaurer_version
 from ..services.zones import natures_admises
 from .electrique import ElectriqueActionsMixin
 from .schema import SchemaUnifilaireMixin  # CAL195
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ['CalepinageViewSet', 'contexte_conception', 'detail_calepinage']
 
@@ -164,7 +171,7 @@ class ActionIdempotenteMixin:
                               json.dumps(reponse.data, default=str))})
         except Exception:  # l'idempotence est un CONFORT : elle
             # ne fait jamais échouer une action qui a déjà réussi.
-            pass
+            logger.warning("executer idempotent : échec ignoré, comportement dégradé", exc_info=True)
         return reponse
 
 
@@ -217,17 +224,29 @@ _CORPS_LAYOUT_RESSERRE = {EXTENSION_CORPS_RESSERRE: {
     'properties': {
         cle: {'type': 'object', 'minProperties': 1}
         for cle in ('roof_layout', 'layout')}}}
+#: ERR-ENF11-FUZZ-CALEPINAGE — ``layout/section`` : une clé RACINE de la liste
+#: blanche (valeur libre), ou ``zones`` avec ``zone_id`` et des ``champs`` pris
+#: dans ``CHAMPS_SECTION_ZONE`` (``services.layout.enregistrer_section``).
+_SECTION_RESSERRE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'cle': {'enum': list(CLES_SECTION_RACINE)}}},
+    {'required': ['zone_id', 'champs'], 'properties': {
+        'cle': {'enum': ['zones']},
+        'zone_id': {'type': 'string', 'minLength': 1},
+        'champs': {'type': 'object', 'minProperties': 1,
+                   'additionalProperties': False,
+                   'properties': {c: {} for c in CHAMPS_SECTION_ZONE}}}},
+]}}
 #: ``?etiquette=`` : identifiants entiers POSITIFS séparés par des virgules
 #: (jetons vides ignorés) — la règle de ``services/etiquettes.py``, publiée.
 _MOTIF_ETIQUETTES = (r'^\s*(?:0*[1-9][0-9]*)?\s*'
                      r'(?:,\s*(?:0*[1-9][0-9]*)?\s*)*$')
 _CREATION_COMMUNE = {
-    'titre': drf_serializers.CharField(required=False, allow_blank=True),
+    'titre': ChaineStricte(required=False, allow_blank=True, max_length=200),
     'responsable': drf_serializers.IntegerField(required=False,
                                                 allow_null=True),
-    'contraintes_site': drf_serializers.JSONField(required=False,
-                                                  allow_null=True),
-    'custom_data': drf_serializers.JSONField(required=False),
+    'contraintes_site': ContraintesSiteCreationField(required=False,
+                                                     allow_null=True),
+    'custom_data': ChampsPersonnalisesField(required=False, allow_null=True),
 }
 #: Un calepinage se crée par un LEAD ou par un CLIENT (jamais sans l'un des
 #: deux : 400 ``client``) — deux formes, ``oneOf``.
@@ -299,7 +318,7 @@ class _OrdreStatutDerive(filters.OrderingFilter):
                          description="Identifiant(s) d'étiquette, séparés par des virgules (ET logique)."),
     ]),
 )
-class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
+class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMixin,
                         ChatterViewSetMixin, ActionIdempotenteMixin,
                         ElectriqueActionsMixin, SortiesMixin,
                         SchemaUnifilaireMixin, CompanyScopedModelViewSet):
@@ -322,6 +341,10 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
                        'statut_derive']
 
     read_permission = CAL_VOIR
+
+    # Fuzz CI #997 : le corps de création est un objet JSON (responsable/custom_data
+    # typés) ; un multipart n'en porte que des chaînes → JSON seul, sans toucher aux uploads.
+    parsers_par_action = {'create': [JSONParser]}
 
     #: CALX347 — la décision d'approbation exige ``calepinage_approuver``, pas
     #: ``calepinage_gerer`` : un porteur de GÉRER seul n'y a pas droit, et un
@@ -613,8 +636,7 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     def layout(self, request, pk=None):
         """CAL18 — lit (GET) ou enregistre (POST) la conception du calepinage.
 
-        Patron exact de ``apps/ao/views.py::AppelOffreViewSet.layout`` : le
-        corps POST EST le layout sérialisé, et les enveloppes
+        Le corps POST EST le layout sérialisé, et les enveloppes
         ``{"layout": …}`` / ``{"roof_layout": …}`` sont acceptées telles
         quelles. SEULS ``roof_layout`` / ``layout_hash`` sont touchés — aucun
         statut n'est écrit (règle #4).
@@ -667,14 +689,18 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
 
     @extend_schema(
         request=inline_serializer('CalepinageLayoutSectionCorps', {
+            # ERR-ENF11-FUZZ-CALEPINAGE — jeton (vide admis : document encore
+            # vide) publié ; la liste blanche de `cle` vit dans _SECTION_RESSERRE
+            # (anyOf : racines OU zones), sans composant d'énumération neuf.
             'cle': drf_serializers.CharField(),
             'valeur': drf_serializers.JSONField(required=False),
             'zone_id': drf_serializers.CharField(required=False),
             'champs': drf_serializers.JSONField(required=False),
-            'base_empreinte': drf_serializers.CharField(required=False)}),
-        responses=_FORME_ECRITURE_LAYOUT)
+            'base_empreinte': drf_serializers.CharField(allow_blank=True)}),
+        responses=_FORME_ECRITURE_LAYOUT, extensions=_SECTION_RESSERRE)
     @action(detail=True, methods=['post'], url_path='layout/section',
-            permission_classes=[PeutLireOuEcrireCalepinage])
+            permission_classes=[PeutLireOuEcrireCalepinage],
+            parser_classes=[JSONParser])  # valeur/champs : objets JSON
     def layout_section(self, request, pk=None):
         """ACAL22 (C-ACAL-044) — écrit UNE section du document.
 
@@ -700,8 +726,13 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         except DocumentModifie as conflit:
             return Response(conflit.corps(), status=status.HTTP_409_CONFLICT)
         except LayoutRefuse as refus:
+            # ERR-ENF11-FUZZ-CALEPINAGE — une zone NOMMÉE absente du document
+            # est une ressource introuvable (404) ; zone_id absent reste 400.
+            introuvable = (refus.champ == 'zone_id'
+                           and corps.get('zone_id') not in (None, ''))
             return Response({refus.champ or 'roof_layout': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND if introuvable
+                            else status.HTTP_400_BAD_REQUEST)
         return Response(_reponse_ecriture(calepinage, resultat))
 
     # ── Le pont vers le devis : appeler, jamais refaire ────────────────────
@@ -962,8 +993,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
     def design_context(self, request, pk=None):
         """CAL231 — TOUT ce que l'atelier doit savoir d'un calepinage.
 
-        Jumeau NEUTRE de ``ventes``/``devis/<id>/design-context/`` (PV17) et de
-        ``ao``/``appels-offres/<id>/design-context/`` : mêmes sept clés,
+        Jumeau NEUTRE de ``ventes``/``devis/<id>/design-context/`` (PV17) :
+        mêmes sept clés,
         TOUJOURS présentes (contrat
         ``contract_samples/calepinage_design_context.json``). LECTURE PURE,
         bornée société par ``get_queryset`` (404 pour une autre société).
@@ -1005,11 +1036,8 @@ class CalepinageViewSet(PhotosSiteMixin, ReleveTerrainMixin,
         repère du lead) : plus de bannière tant que le lead ne bouge pas."""
         return self._geste_repere(request, service_repere.garder_repere)
 
-    # SOLMVP15 — l'action ``importer-contour-ao`` (CAL240) vivait ICI : elle
-    # reprenait dans ce calepinage le contour d'une toiture d'appel d'offres, en
-    # symétrie du sens inverse posé côté AO (CAL241). C'était un PONT, et rien
-    # d'autre : les deux bouts lisaient la toiture d'une autre app. Cette app
-    # sort du produit — il n'y a plus de toiture à reprendre, donc plus de pont.
+    # SOLMVP15 — l'action ``importer-contour-ao`` (CAL240) est retirée avec le
+    # module d'appels d'offres (il n'y a plus de toiture AO à reprendre).
     # Le contour de l'atelier, lui, n'a pas changé d'un champ : il vit dans
     # ``roof_layout['outline']`` (v2 canonique), et le tracé sur carte reste la
     # voie normale de le poser.
@@ -1094,8 +1122,8 @@ def _corps_de_layout(donnees):
     """Le document de conception d'un corps de requête, ou ``None``.
 
     Accepte le layout NU et les deux enveloppes historiques (``layout`` /
-    ``roof_layout``) — les mêmes que côté ventes et côté AO, pour qu'un même
-    client puisse parler aux trois portes sans se reformater.
+    ``roof_layout``) — les mêmes que côté ventes, pour qu'un même client
+    puisse parler aux deux portes sans se reformater.
     """
     if isinstance(donnees, dict):
         for enveloppe in ('layout', 'roof_layout'):
@@ -1476,10 +1504,9 @@ def _avertissements(geometrie, cible, contexte_devis):
 
 
 def _config_carte():
-    """Clés carte du builder 3D — MIROIR de ``ventes/views/roof_config.py``.
+    """Clés carte du builder 3D, lues comme ``ventes/views/roof_config.py``.
 
-    Mêmes variables d'environnement, même forme que les contextes devis et AO
-    (``apps/ao/selectors.py::_config_carte_builder`` fait exactement pareil) :
+    Mêmes variables d'environnement, même forme que le contexte devis :
     c'est de la CONFIGURATION, pas une donnée société — la lire ici évite de
     faire dépendre ce module de ventes pour une clé d'API.
     """
@@ -1636,6 +1663,7 @@ def _notifier_la_note(calepinage, auteur, texte):
                body=texte[:200], link='/calepinage/%d' % calepinage.pk,
                company=calepinage.company)
     except Exception:  # une notif ne casse jamais la note
+        logger.warning("notifier la note : échec ignoré, comportement dégradé", exc_info=True)
         logging.getLogger(__name__).exception(
             'ACAL293 : notification de la note en échec (calepinage %s)',
             calepinage.pk)

@@ -160,10 +160,11 @@ class RappelTests(TestCase):
         expedition = creer_expedition_transporteur(company=self.co, unite=colis)
         corps = {'produit': self.produit.id, 'type_mouvement': 'sortie',
                  'quantite': 12}
-        for url in ('/api/django/stock/scanner/mouvement/',
-                    '/api/django/stock/mouvements/'):
+        # CI #997 : le mouvement libre répond 409 (état), le scanner garde 400.
+        for url, attendu in (('/api/django/stock/scanner/mouvement/', 400),
+                             ('/api/django/stock/mouvements/', 409)):
             rep = self.api.post(url, corps, format='json')
-            self.assertEqual(rep.status_code, 400, rep.content)
+            self.assertEqual(rep.status_code, attendu, rep.content)
             self.assertIn('Batterie ASTK199', str(rep.json()))
             self.assertIn('10 unité(s) en quarantaine', str(rep.json()))
         with mock.patch.object(NoOpProvider, 'creer_expedition',

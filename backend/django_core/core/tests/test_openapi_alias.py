@@ -175,3 +175,60 @@ class ExpansionMiroirTests(SimpleTestCase):
         openapi_check.etendre_miroir_v1(chemins, self.EXCLUS)
         apres = sum(len(v) for v in chemins.values())
         self.assertEqual(apres, avant + 2)
+
+
+class MotsOperationTests(SimpleTestCase):
+    """ENF11 — ``core.openapi_operations.mots_operation`` départage deux routes
+    aux jetons de chemin égaux (``…/x/`` et ``…/x/{id}/``) SANS figer de
+    chaîne : chaque montage garde son préfixe (``django_`` / ``v1_``)."""
+
+    def _operation_ids(self):
+        from django.urls import path
+        from drf_spectacular.generators import SchemaGenerator
+        from drf_spectacular.types import OpenApiTypes
+        from drf_spectacular.utils import extend_schema
+        from rest_framework.response import Response
+        from rest_framework.views import APIView
+
+        from core.openapi_operations import mots_operation
+
+        class Collection(APIView):
+            schema = mots_operation(get='list', post='lancer_create')
+
+            @extend_schema(responses=OpenApiTypes.OBJECT)
+            def get(self, request):
+                return Response({})
+
+            @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+            def post(self, request):
+                return Response({})
+
+        class Detail(Collection):
+            schema = mots_operation()
+
+            @extend_schema(responses=OpenApiTypes.OBJECT)
+            def get(self, request, pk):
+                return Response({})
+
+        motifs = []
+        for montage in ('api/django/', 'api/v1/'):
+            motifs += [path(f'{montage}essai/objets/', Collection.as_view()),
+                       path(f'{montage}essai/objets/<int:pk>/', Detail.as_view())]
+        schema = SchemaGenerator(patterns=motifs).get_schema(request=None, public=True)
+        return {(chemin, methode): operation['operationId']
+                for chemin, item in schema['paths'].items()
+                for methode, operation in item.items()}
+
+    def test_mot_final_remplace_prefixe_de_montage_conserve(self):
+        ids = self._operation_ids()
+        self.assertEqual(ids[('/api/django/essai/objets/', 'get')], 'django_essai_objets_list')
+        self.assertEqual(ids[('/api/v1/essai/objets/', 'get')], 'v1_essai_objets_list')
+        self.assertEqual(ids[('/api/django/essai/objets/', 'post')],
+                         'django_essai_objets_lancer_create')
+        self.assertEqual(ids[('/api/django/essai/objets/{id}/', 'get')],
+                         'django_essai_objets_retrieve')
+
+    def test_aucune_collision_ni_suffixe_numerique(self):
+        ids = list(self._operation_ids().values())
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertFalse([i for i in ids if i.endswith('_2')])

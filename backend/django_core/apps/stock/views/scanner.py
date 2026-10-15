@@ -24,6 +24,8 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
+from core.champs_stricts import QUANTITE_MAX
+from ..erreurs_achats import debordement_compteur_en_409
 
 
 @extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=r'\S')], responses={
@@ -64,10 +66,15 @@ def scanner_resoudre_view(request):
     return Response(resultat)
 
 
-@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(),
-                             type_mouvement=serializers.CharField(), quantite=serializers.IntegerField(),
-                             bin_source=serializers.IntegerField(required=False, allow_null=True),
-                             bin_destination=serializers.IntegerField(required=False, allow_null=True),
+# CI #997 fuzz (2) — identifiants publiés 1..ID_MAX (``id_corps`` refuse 0).
+_ID = {'min_value': 1, 'max_value': 2147483647}
+
+
+@extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(**_ID),
+                             type_mouvement=serializers.CharField(),
+                             quantite=serializers.IntegerField(min_value=1, max_value=QUANTITE_MAX),
+                             bin_source=serializers.IntegerField(required=False, allow_null=True, **_ID),
+                             bin_destination=serializers.IntegerField(required=False, allow_null=True, **_ID),
                              reference=serializers.CharField(required=False),
                              note=serializers.CharField(required=False, allow_blank=True)), responses={
     201: inline_serializer('StockScannerMouvementResultat', {
@@ -80,8 +87,10 @@ def scanner_resoudre_view(request):
         'bin_source': serializers.IntegerField(allow_null=True),
         'bin_destination': serializers.IntegerField(allow_null=True),
     }),
+    # ``{detail}`` (refus du service) ou l'erreur de validation DRF nommant le
+    # champ (transfert sans casier, casier hazmat incompatible — contrats WMS).
     400: inline_serializer('StockScannerMouvementErreur', {
-        'detail': serializers.CharField(),
+        'detail': serializers.CharField(required=False),
     }),
 })
 @api_view(['POST'])
@@ -101,16 +110,33 @@ def scanner_mouvement_view(request):
         return Response({'detail': 'Le corps doit être un objet JSON.'},
                         status=status.HTTP_400_BAD_REQUEST)
     donnees = request.data
+    # CI #997 fuzz — un id non entier (``produit: {}``) faisait un TypeError ORM
+    # (500) ; un texte non textuel était enregistré tel quel.
+    from ..utils.params import id_corps
+    if any(donnees.get(c) is not None and id_corps(donnees.get(c)) is None
+           for c in ('produit', 'bin_source', 'bin_destination')) or any(
+               not isinstance(donnees.get(c, ''), str) for c in ('type_mouvement', 'reference', 'note')) or (
+               # CI #997 fuzz (2) : quantité ENTIÈRE JSON, référence non blanche.
+               isinstance(donnees.get('quantite'), bool) or not isinstance(donnees.get('quantite'), int)) or (
+               'reference' in donnees and not donnees['reference'].strip()):
+        return Response({'detail': 'Corps invalide : identifiants entiers, quantité entière et textes attendus.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    # CI #997 fuzz (3) — plafond métier publié (``maximum``), AVANT tout calcul.
+    if donnees['quantite'] > QUANTITE_MAX:
+        return Response({'detail': f'Quantité au plus égale à {QUANTITE_MAX}.'},
+                        status=status.HTTP_400_BAD_REQUEST)
     try:
-        mouvement = enregistrer_mouvement_scanne(
-            company=request.user.company, user=request.user,
-            produit_id=donnees.get('produit'),
-            type_mouvement=donnees.get('type_mouvement'),
-            quantite=donnees.get('quantite'),
-            bin_source_id=donnees.get('bin_source'),
-            bin_destination_id=donnees.get('bin_destination'),
-            reference=donnees.get('reference') or 'SCAN',
-            note=donnees.get('note') or '')
+        # Un casier (ou le stock) qui déborderait sa colonne : 409, pas 500.
+        with debordement_compteur_en_409():
+            mouvement = enregistrer_mouvement_scanne(
+                company=request.user.company, user=request.user,
+                produit_id=donnees.get('produit'),
+                type_mouvement=donnees.get('type_mouvement'),
+                quantite=donnees.get('quantite'),
+                bin_source_id=donnees.get('bin_source'),
+                bin_destination_id=donnees.get('bin_destination'),
+                reference=donnees.get('reference') or 'SCAN',
+                note=donnees.get('note') or '')
     except ValueError as exc:
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)
@@ -154,13 +180,18 @@ def scanner_retour_fournisseur_view(request):
     que le retour n'est pas validé (``retours-fournisseur/{id}/
     valider-scanne/``).
     """
-    from ..services_retour_scanne import preparer_ligne_retour_scannee
+    from ..services_retour_scanne import (
+        CodeInconnu, preparer_ligne_retour_scannee,
+    )
 
     try:
         ligne = preparer_ligne_retour_scannee(
             request.user.company,
             request.query_params.get('code'),
             quantite=request.query_params.get('quantite') or 1)
+    except CodeInconnu as exc:
+        return Response({'detail': str(exc)},
+                        status=status.HTTP_404_NOT_FOUND)
     except ValueError as exc:
         return Response({'detail': str(exc)},
                         status=status.HTTP_400_BAD_REQUEST)

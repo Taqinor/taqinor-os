@@ -168,6 +168,7 @@ class FolderPathTests(GedBase):
         self.assertEqual(resp.status_code, 400)
 
     def test_folder_rejects_parent_in_other_cabinet(self):
+        # CI #997 : parent d'un autre cabinet = objet inexistant pour la requête (404).
         cab_a2 = Cabinet.objects.create(company=self.co_a, nom='RH')
         parent = Folder.objects.create(
             company=self.co_a, cabinet=cab_a2, nom='Parent RH')
@@ -175,7 +176,7 @@ class FolderPathTests(GedBase):
         resp = api.post('/api/django/ged/dossiers/', {
             'cabinet': self.cab_a.id, 'parent': parent.id, 'nom': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_folder_tenant_isolation(self):
         Folder.objects.create(company=self.co_b, cabinet=self.cab_b, nom='Secret B')
@@ -347,11 +348,11 @@ class GedMoveEndpointTests(GedBase):
         b = Folder.objects.create(
             company=self.co_a, cabinet=self.cab_a, parent=a, nom='B')
         api = auth(self.admin_a)
-        # Déplacer A sous son propre descendant B → cycle → 400.
+        # Déplacer A sous son propre descendant B → cycle (état de l'arbre) → 409.
         resp = api.post(f'/api/django/ged/dossiers/{a.id}/deplacer/', {
             'parent': b.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_move_folder_endpoint_rejects_other_company_parent(self):
         b_parent = Folder.objects.create(
@@ -454,7 +455,8 @@ class DocumentVersionTests(GedBase):
         resp = api.post('/api/django/ged/documents/', {
             'folder': folder_b.id, 'nom': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-GED : id étranger = id absent → 404 (même corps).
+        self.assertEqual(resp.status_code, 404)
 
     def test_version_number_auto_increments(self):
         api = auth(self.admin_a)
@@ -482,7 +484,7 @@ class DocumentVersionTests(GedBase):
         resp = api.post('/api/django/ged/versions/', {
             'document': doc_b.id, 'file': _pdf('x.pdf', b'x'),
         }, format='multipart')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # ERR-ENF11-FUZZ-GED
 
     def test_checksum_compute_and_dedup(self):
         data = b'hello world'
@@ -2849,7 +2851,7 @@ class PartageGedTests(GedBase):
         resp = api.post('/api/django/ged/partages/', {
             'document': doc_b.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)  # ERR-ENF11-FUZZ-GED
 
     def test_list_partages_tenant_isolation(self):
         """A ne voit que ses propres partages, jamais ceux de B."""

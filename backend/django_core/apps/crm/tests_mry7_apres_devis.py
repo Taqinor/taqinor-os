@@ -252,25 +252,33 @@ class RefusTests(_Base):
             LeadActivity.objects.filter(lead=self.lead).count(), avant)
 
 
+def _helper_prive_nudge():
+    """ENF20 — test boîte blanche d'un helper PRIVÉ de ventes : import
+    dynamique délibéré (contrat vente-lue-par-la-facade)."""
+    import importlib
+    return importlib.import_module(
+        'apps.ventes.domain.recouvrement')._nudge_suppressed
+
+
 class SuppressionQJ4Tests(_Base):
     slug = 'mry7-qj4'
 
     def test_un_devis_a_cadence_active_supprime_le_nudge(self):
-        from apps.ventes.domain.recouvrement import _nudge_suppressed
+        _nudge_suppressed = _helper_prive_nudge()
         devis = self._devis('DEV-MRY7-0200')
         self._envoyer(devis)
         self.assertTrue(devis_a_cadence_active(devis.pk))
         self.assertTrue(_nudge_suppressed(devis, timezone.localdate()))
 
     def test_sans_cadence_le_comportement_QJ4_est_inchange(self):
-        from apps.ventes.domain.recouvrement import _nudge_suppressed
+        _nudge_suppressed = _helper_prive_nudge()
         devis = self._devis('DEV-MRY7-0201')
         self.assertFalse(devis_a_cadence_active(devis.pk))
         # Aucune relance planifiée, aucun contact récent : QJ4 passe.
         self.assertFalse(_nudge_suppressed(devis, timezone.localdate()))
 
     def test_une_cadence_entierement_traitee_rend_la_main_a_QJ4(self):
-        from apps.ventes.domain.recouvrement import _nudge_suppressed
+        _nudge_suppressed = _helper_prive_nudge()
         devis = self._devis('DEV-MRY7-0202')
         self._envoyer(devis)
         RelanceEtape.objects.filter(devis_id=devis.pk).update(

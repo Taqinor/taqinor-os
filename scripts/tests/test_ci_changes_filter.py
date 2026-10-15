@@ -327,8 +327,13 @@ class AgregateursChangesTests(unittest.TestCase):
         script = " ".join(s.get("run", "") for s in job["steps"])
         for fragment in ("api_fuzz_scope.py proprietaires", "api_fuzz_scope.py schema",
                          "api_fuzz_scope.py verdict", "--checks all",
-                         "--phases coverage", "--max-time 300"):
+                         "--phases coverage", "--max-time 1500",
+                         "--shard \"${{ matrix.shard }}/8\""):
             self.assertIn(fragment, script)
+        # CI #997 (14/10/2026) — 8 tranches déterministes, plus d'échantillon
+        # aléatoire : chaque tranche fuzze TOUT son lot.
+        self.assertEqual(job["strategy"]["matrix"]["shard"], list(range(8)))
+        self.assertFalse(job["strategy"]["fail-fast"])
         self.assertNotIn("continue-on-error", job)
         self.assertFalse(any("continue-on-error" in s for s in job["steps"]))
 

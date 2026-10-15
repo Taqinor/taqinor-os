@@ -40,10 +40,12 @@ class PlanificationUniqueTests(VisiteTerrainBase):
         return list(notes.values_list('body', flat=True))
 
     def test_create_date_passee_refusee(self):
+        # CI #997 fuzz : la date passée dépend de l'horloge (état), pas de la
+        # forme du corps -> 409, même corps ``{date_prevue: [...]}``.
         resp = self.api_bureau.post(
             URL, {'lead': self.lead.id, 'date_prevue': self.hier.isoformat()},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('date_prevue', resp.data)
         self.assertIn('passé', resp.data['date_prevue'][0])
         self.assertFalse(VisiteTerrain.objects.filter(lead=self.lead).exists())

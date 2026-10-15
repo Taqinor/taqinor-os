@@ -210,6 +210,15 @@ class TestPerformanceReceptionApiTest(TestCase):
         self.assertAlmostEqual(float(obj.pr_mesure), 0.76, places=4)
         self.assertEqual(obj.verdict, 'accepte')
 
+    def test_recette_inconnue_404(self):
+        # CI #997 — ``recette`` bien formée mais absente de la société : la
+        # requête est conforme, c'est la ressource qui manque (plus 400).
+        resp = self.api.post(self.url, {
+            'recette': 999999, 'pr_mesure': '0.80', 'pr_attendu': '0.80',
+        }, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertFalse(TestPerformanceReception.objects.exists())
+
 
 # ─────────────────────── API : attestation RE ───────────────────────
 

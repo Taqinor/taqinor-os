@@ -124,14 +124,16 @@ class TraceTests(_Base):
             company=self.company, lead=autre_lead, cadence='apres_devis',
             ordre=1, canal=RelanceEtape.Canal.WHATSAPP, libelle='Autre',
             due_at=MERCREDI, due_date=MERCREDI.date())
+        # ERR-ENF11-FUZZ-CRM : une touche d'un autre lead = id inconnu, 404.
         cas = (
-            ({'cle': 'apres_visite'}, 'cle'),
-            ({'cle': 'visite_proposition', 'langue': 'en'}, 'langue'),
-            ({'cle': 'visite_proposition', 'etape': autre_touche.pk}, 'etape'),
+            ({'cle': 'apres_visite'}, 'cle', 400),
+            ({'cle': 'visite_proposition', 'langue': 'en'}, 'langue', 400),
+            ({'cle': 'visite_proposition', 'etape': autre_touche.pk}, 'etape',
+             404),
         )
-        for corps, champ in cas:
+        for corps, champ, attendu in cas:
             resp = self._ouvert(**corps)
-            self.assertEqual(resp.status_code, 400, corps)
+            self.assertEqual(resp.status_code, attendu, corps)
             self.assertIn(champ, resp.data['erreurs'])
         self.assertFalse(LeadActivity.objects.filter(
             lead=self.lead, kind=LeadActivity.Kind.WHATSAPP).exists())

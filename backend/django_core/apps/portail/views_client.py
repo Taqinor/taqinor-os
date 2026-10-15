@@ -39,6 +39,15 @@ from rest_framework.response import Response
 from apps.roles.permissions import IsPortalClientUser, portal_scope_id
 
 from . import services
+from .serializers import (
+    AccepterDevisPortailReponseSerializer,
+    AccepterDevisPortailRequeteSerializer,
+    MesDevisPortailLigneSerializer,
+    MesDevisPortailListeSerializer,
+    MesFacturesPortailLigneSerializer,
+    MesFacturesPortailListeSerializer,
+    PayerFacturePortailReponseSerializer,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -522,11 +531,21 @@ def recherche_portail_client(request):
     return Response({'query': q, 'groups': groupes})
 
 
+#: ENF11 — ``{id}`` des routes de détail « Mes devis » / « Mes factures » : la
+#: PK entière du document (un ``ViewSet`` sans queryset ne permet pas à
+#: drf-spectacular de la typer). Formes de réponse : ``serializers.py``.
+_ID_DOCUMENT_PORTAIL = OpenApiParameter(
+    name='id', type=OpenApiTypes.INT, location=OpenApiParameter.PATH,
+    description="Identifiant du document du client connecté.",
+)
+
+
 class MesDevisPortailViewSet(viewsets.ViewSet):
     """NTPRT10 — « Mes devis » : liste, détail, acceptation."""
 
     permission_classes = [IsPortalClientUser]
 
+    @extend_schema(responses=MesDevisPortailListeSerializer)
     def list(self, request):
         # QJR565 (contrat ``mes_devis_liste.json``) — chaque ligne porte
         # ``mis_a_jour_le`` (correction après envoi, ISO|null), rendue telle
@@ -536,6 +555,8 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
         return Response(
             {'results': devis_du_client_portail(company, client_id)})
 
+    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL],
+                   responses=MesDevisPortailLigneSerializer)
     def retrieve(self, request, pk=None):
         from apps.ventes.selectors import devis_du_client_portail
         company, client_id = _scope(request)
@@ -545,6 +566,9 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
         return Response({'detail': 'Introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
 
+    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL],
+                   request=AccepterDevisPortailRequeteSerializer,
+                   responses=AccepterDevisPortailReponseSerializer)
     @action(detail=True, methods=['post'], url_path='accepter',
             permission_classes=[IsPortalClientUser])
     def accepter(self, request, pk=None):
@@ -686,6 +710,7 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
 
     permission_classes = [IsPortalClientUser]
 
+    @extend_schema(responses=MesFacturesPortailListeSerializer)
     def list(self, request):
         from apps.ventes.selectors import factures_du_client_portail
         company, client_id = _scope(request)
@@ -694,6 +719,8 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
             'paiement_en_ligne_actif': services.cmi_actif(),
         })
 
+    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL],
+                   responses=MesFacturesPortailLigneSerializer)
     def retrieve(self, request, pk=None):
         from apps.ventes.selectors import factures_du_client_portail
         company, client_id = _scope(request)
@@ -703,6 +730,8 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
         return Response({'detail': 'Introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
 
+    @extend_schema(parameters=[_ID_DOCUMENT_PORTAIL], request=None,
+                   responses=PayerFacturePortailReponseSerializer)
     @action(detail=True, methods=['post'], url_path='payer',
             permission_classes=[IsPortalClientUser])
     def payer(self, request, pk=None):

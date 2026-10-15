@@ -151,6 +151,14 @@ class DeclencherBoutonTests(TestCase):
             f'{URL}{self.bouton.pk}/declencher/', {}, format='json')
         self.assertEqual(res.status_code, 400)
 
+    def test_target_id_zero_est_une_valeur_pas_un_manquant(self):
+        # ``0`` (id inconnu) n'est plus lu comme « absent » : 200 `ok: false`
+        # du gestionnaire, plus le 400 « target_id requis ».
+        res = _auth(self.user).post(
+            f'{URL}{self.bouton.pk}/declencher/',
+            {'target_model': 'crm.lead', 'target_id': 0}, format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+
     def test_bouton_reserve_a_un_autre_palier_refuse_403(self):
         """Le bouton n'apparaît pas dans la liste d'un palier inférieur : il ne
         doit pas non plus se déclencher en visant son id directement."""

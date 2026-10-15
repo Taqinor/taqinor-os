@@ -5,6 +5,9 @@ set_translation() upsert, scoping société, et le câblage additif dans
 ProduitSerializer / ClauseSerializer (repli par défaut inchangé, variante
 demandée via ?locale= quand elle existe).
 """
+import importlib
+
+from django.apps import apps as django_apps
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 from django.contrib.auth import get_user_model
@@ -12,10 +15,13 @@ from django.contrib.auth import get_user_model
 from authentication.models import Company
 from core import i18n_content
 from core.models import ContentTranslation
-from apps.stock.models import Produit
-from apps.stock.serializers import ProduitSerializer
 
 User = get_user_model()
+# ENF20 — test d'intégration cross-couche : modèle résolu par libellé,
+# sérialiseur par import dynamique (core n'importe aucune app).
+Produit = django_apps.get_model('stock', 'Produit')
+ProduitSerializer = importlib.import_module(
+    'apps.stock.serializers').ProduitSerializer
 
 
 def make_produit(company, nom='Panneau solaire 450W'):

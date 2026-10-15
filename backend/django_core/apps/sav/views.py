@@ -21,8 +21,10 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
+from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
@@ -42,7 +44,8 @@ from .models import (
 from .dateutils import add_months
 from .query_params import (
     CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE, CORPS_TICKET_CLIENT_OU_EQUIPEMENT,
-    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, archives_incluses, choix_param, date_param, entier_param,
+    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, ORDRES_PROBLEME, ORDRES_PROBLEME_SCHEMA,
+    archives_incluses, choix_param, date_param, entier_param,
 )
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
 from .serializers import (
@@ -116,6 +119,12 @@ def _valider_corps(schema, data):
 
 
 _SCHEMA_REBUT = _sch('SavMettreAuRebutRequete', {'motif': ChaineStricte()})
+# CI #997 api-fuzz : corps lus PAR leur déclaration (un tableau/objet en corps
+# levait un 500 sur ``.get``).
+_SCHEMA_CHECKLIST_INIT = _sch('SavChecklistInitRequete', {
+    'template_id': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX)})
+_SCHEMA_FUSIONNER = _sch('SavFusionnerRequete', {
+    'doublon_id': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX)})
 
 
 # `description`/`cause_racine` peuvent être vides : l'écran « problème depuis
@@ -182,6 +191,20 @@ _CreerLeadReponse = _sch('SavCreerLeadReponse', {
 _MOTIF_STATUT = '^(' + '|'.join(c for c, _ in Ticket.Statut.choices) + ')$'
 _MOTIF_PRIORITE = '^(' + '|'.join(c for c, _ in Ticket.Priorite.choices) + ')$'
 
+# Corps de ``actions-groupees`` : déclaré ET appliqué (CI #997 api-fuzz, 2e passe :
+# ``technicien: {}`` était lu faux, donc « désassigner », au lieu d'être refusé).
+_SCHEMA_ACTIONS_GROUPEES = _sch('SavActionsGroupeesRequete', {
+    'ids': drf_serializers.ListField(child=drf_serializers.IntegerField(
+        min_value=1, max_value=ID_MAX), min_length=1),
+    'operation': drf_serializers.RegexField(
+        r'^(technicien|priorite|statut|annuler)$'),
+    'statut': drf_serializers.RegexField(_MOTIF_STATUT, required=False),
+    'technicien': drf_serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=ID_MAX),
+    'priorite': drf_serializers.RegexField(_MOTIF_PRIORITE, required=False),
+    'motif': ChaineStricte(required=False, allow_blank=True),
+})
+
 _RegistreGaranties = _sch('SavRegistreGaranties', {
     'today': drf_serializers.DateField(),
     'expiring_soon_days': drf_serializers.IntegerField(),
@@ -199,6 +222,12 @@ _RegistreGaranties = _sch('SavRegistreGaranties', {
 
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
+#: ``?garantie=`` du parc : l'énumération PUBLIÉE est celle que la vue applique
+#: (CI #997, api-fuzz : ``?garantie=AAA`` rendait la liste non filtrée en 200).
+_GARANTIES = (
+    'non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie',
+    'legale_uniquement')
+
 
 @extend_schema_view(list=extend_schema(
     parameters=[
@@ -209,7 +238,8 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
         OpenApiParameter('installation', ENTIER_ID, required=False),
         OpenApiParameter('client', ENTIER_ID, required=False),
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
-        OpenApiParameter('garantie', OpenApiTypes.STR, required=False, enum=['non_renseignee', 'hors_garantie', 'expire_bientot', 'sous_garantie', 'legale_uniquement']),
+        OpenApiParameter(
+            'garantie', OpenApiTypes.STR, required=False, enum=list(_GARANTIES)),
         OpenApiParameter('categorie', ENTIER_ID, required=False),
         OpenApiParameter('rebut', OpenApiTypes.STR, required=False, enum=['only', 'tous']),
     ]))
@@ -255,7 +285,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         installation = entier_param(self.request, 'installation')
         client = entier_param(self.request, 'client')
         statut = params.get('statut')
-        garantie = params.get('garantie')
+        garantie = choix_ou_400(self.request, 'garantie', _GARANTIES)
         categorie = entier_param(self.request, 'categorie')
         if produit:
             qs = qs.filter(produit_id=produit)
@@ -267,7 +297,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             qs = qs.filter(categorie_id=categorie)
         # ZMFG12 — parc actif par défaut : exclut les équipements au rebut.
         # ?rebut=tous pour tout voir ; ?rebut=only pour ne voir que le rebut.
-        rebut = params.get('rebut')
+        rebut = choix_ou_400(self.request, 'rebut', ('only', 'tous'))
         if self.action == 'list':
             if rebut == 'only':
                 qs = qs.filter(mis_au_rebut=True)
@@ -500,7 +530,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         # XSAV19 — ?public=1 encode l'URL publique « Signaler un problème »
         # (/e/<public_token>) au lieu du jeton interne EQUIP:<id> (scan
         # interne inchangé par défaut). Le jeton public est généré lazily.
-        public = request.query_params.get('public') in ('1', 'true')
+        public = choix_ou_400(
+            request, 'public', ('0', '1', 'true', 'false')) in ('1', 'true')
 
         # AGR621 — étiquette PUBLIQUE (coffret d'un forage isolé) : pied
         # « SAV : <téléphone société> · Chantier <référence> », chaque partie
@@ -667,6 +698,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     @extend_schema(
         request=_sch('SavCloturerDowntimeRequete', {
             'fin': drf_serializers.DateTimeField(required=False)}),
+        parameters=[OpenApiParameter('downtime_id', OpenApiTypes.INT, OpenApiParameter.PATH)],  # ENF11 — PK entière
         responses=EquipementDowntimeSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'downtime/(?P<downtime_id>[^/.]+)/cloturer',
@@ -948,9 +980,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 'actions_groupees',
                 # ZSAV6 — pièces unifiées (vue fusionnée) + fiche d'intervention.
                 'pieces_unifiees', 'worksheet']:
-            return [HasPermissionOrLegacy('sav_gerer')()]
-        elif self.action == 'destroy':
-            return [IsAdminRole()]
+            # ASEC50 / D-ASEC-4 — changer l'``equipe`` au PUT/PATCH est la
+            # même réaffectation que ``reaffecter-equipe`` : ``sav_reassign``.
+            return [HasPermissionOrLegacy('sav_gerer')()] + droits_de_la_grille(
+                self,
+                update=[DroitDeLaGrille('sav_reassign', champ='equipe')],
+                partial_update=[DroitDeLaGrille('sav_reassign', champ='equipe')])
+        # destroy, et toute action non listée : palier administrateur.
         return [IsAdminRole()]
 
     def _check_tenant(self, serializer):
@@ -1329,18 +1365,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
     }
 
     @extend_schema(
-        request=_sch('SavActionsGroupeesRequete', {
-            'ids': drf_serializers.ListField(child=drf_serializers.IntegerField(
-                min_value=1, max_value=ID_MAX), min_length=1),
-            'operation': drf_serializers.RegexField(
-                r'^(technicien|priorite|statut|annuler)$'),
-            'statut': drf_serializers.RegexField(_MOTIF_STATUT, required=False),
-            'technicien': drf_serializers.IntegerField(
-                required=False, allow_null=True),
-            'priorite': drf_serializers.RegexField(
-                _MOTIF_PRIORITE, required=False),
-            'motif': _CharF(required=False, allow_blank=True),
-        }),
+        request=_SCHEMA_ACTIONS_GROUPEES,
         extensions=CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE,
         responses=_sch('SavActionsGroupeesReponse', {
             'traites': drf_serializers.ListField(
@@ -1360,12 +1385,17 @@ class TicketViewSet(CompanyScopedModelViewSet):
         gardée (YDOCF1) — un ticket dont la transition est illégale est
         rapporté dans ``echecs`` plutôt que de faire échouer le lot entier.
         """
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Un objet JSON est attendu.'}, status=400)
         ids = request.data.get('ids') or []
         operation = request.data.get('operation')
         if not isinstance(ids, list) or not ids:
             return Response({'ids': 'Liste d\'identifiants requise.'},
                             status=400)
-        if operation not in self._ACTIONS_GROUPEES_VALEURS:
+        # CI #997 : un objet/une liste n'est pas hachable (``{} in dict`` → 500) —
+        # `operation` est une chaîne de l'énumération publiée, rien d'autre.
+        if (not isinstance(operation, str)
+                or operation not in self._ACTIONS_GROUPEES_VALEURS):
             return Response(
                 {'operation': 'Opération inconnue.'}, status=400)
         # ENF11 : `motif` est déclaré chaîne — un objet/nombre n'est plus avalé.
@@ -1376,10 +1406,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # clé de l'opération) est refusée, même quand l'opération ne la lit pas.
         for cle in ('statut', 'priorite'):
             valeur = request.data.get(cle)
-            if valeur is not None and (
+            if cle in request.data and (
                     not isinstance(valeur, str)
                     or valeur not in self._ACTIONS_GROUPEES_VALEURS[cle]):
                 return Response({cle: 'Valeur inconnue.'}, status=400)
+
+        _valider_corps(_SCHEMA_ACTIONS_GROUPEES, request.data)
 
         # ASAV25 — seuls les tickets VISIBLES (portée de l'utilisateur) sont
         # traités ; les autres ids sortent en échec « introuvable », sans
@@ -1417,8 +1449,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 technicien = get_user_model().objects.filter(
                     id=technicien_id, company=company).first()
                 if technicien is None:
-                    return Response(
-                        {'technicien': 'Technicien inconnu.'}, status=400)
+                    raise NotFound({'technicien': 'Technicien inconnu.'})
             for ticket in tickets:
                 old = Ticket.objects.get(pk=ticket.pk)
                 ticket.technicien_responsable = technicien
@@ -1532,7 +1563,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             TicketActiviteAFaireSerializer(instance).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=None, responses=TicketActiviteAFaireSerializer)
+    @extend_schema(request=None, responses=TicketActiviteAFaireSerializer,
+                   parameters=[OpenApiParameter('activite_id', OpenApiTypes.INT, OpenApiParameter.PATH)])
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/cocher',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1709,7 +1741,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(request=SavReaffecterEquipeRequete)
     @action(detail=True, methods=['post'], url_path='reaffecter-equipe',
-            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+            # ASEC50 / D-ASEC-4 — réaffecter l'équipe exige ``sav_reassign``.
+            permission_classes=[HasPermissionOrLegacy('sav_gerer'),
+                                DroitDeLaGrille('sav_reassign')])
     def reaffecter_equipe(self, request, pk=None):
         """NTSRV8 — Réaffecte le ticket à une autre équipe de maintenance.
 
@@ -1999,7 +2033,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             PieceConsommeeSerializer(piece).data, status=201)
 
-    @extend_schema(request=None, responses={204: None})
+    @extend_schema(request=None, responses={204: None},
+                   parameters=[OpenApiParameter('piece_id', OpenApiTypes.INT, OpenApiParameter.PATH)])
     @action(detail=True, methods=['delete'],
             url_path=r'pieces/(?P<piece_id>[^/.]+)',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2375,6 +2410,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
     @extend_schema(
         request=_sch('SavRetournerPretRequete', {
             'date_retour_reelle': drf_serializers.DateField(required=False)}),
+        parameters=[OpenApiParameter('pret_id', OpenApiTypes.INT, OpenApiParameter.PATH)],  # ENF11 — PK entière
         responses=PretEquipementSerializer)
     @action(detail=True, methods=['post'],
             url_path=r'prets-equipement/(?P<pret_id>[^/.]+)/retourner',
@@ -2456,9 +2492,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=TicketChecklistItemSerializer(many=True))
     @extend_schema(
         methods=['POST'],
-        request=_sch('SavChecklistInitRequete', {
-            'template_id': drf_serializers.IntegerField(
-                min_value=1, max_value=ID_MAX)}),
+        request=_SCHEMA_CHECKLIST_INIT,
         responses={
             200: TicketChecklistItemSerializer(many=True),
             201: TicketChecklistItemSerializer(many=True)})
@@ -2489,9 +2523,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return Response(TicketChecklistItemSerializer(items, many=True).data)
 
         if request.method == 'POST':
-            template_id = request.data.get('template_id')
-            if not template_id:
-                return Response({'detail': 'template_id requis.'}, status=400)
+            template_id = _valider_corps(
+                _SCHEMA_CHECKLIST_INIT, request.data)['template_id']
             try:
                 tmpl = MaintenanceChecklistTemplate.objects.get(
                     pk=template_id, company=ticket.company)
@@ -2646,9 +2679,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
 
-    @extend_schema(request=_sch('SavFusionnerRequete', {
-        'doublon_id': drf_serializers.IntegerField(
-            min_value=1, max_value=ID_MAX)}), responses=_sch(
+    @extend_schema(request=_SCHEMA_FUSIONNER, responses=_sch(
             'SavFusionnerReponse', {}, extra=True))
     @action(detail=True, methods=['post'], url_path='fusionner',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2667,17 +2698,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         déplacées, et le chatter du doublon perdrait toute trace de la
         fusion)."""
         principal = self.get_object()
-        doublon_id = request.data.get('doublon_id')
-        if not doublon_id:
-            return Response({'detail': 'doublon_id requis.'}, status=400)
-        try:
-            doublon_id = int(doublon_id)
-        except (TypeError, ValueError):
-            return Response({'detail': 'doublon_id invalide.'}, status=400)
+        doublon_id = _valider_corps(_SCHEMA_FUSIONNER, request.data)['doublon_id']
         if doublon_id == principal.pk:
-            return Response(
-                {'detail': "Un ticket ne peut pas être fusionné avec lui-même."},
-                status=status.HTTP_400_BAD_REQUEST)
+            # État des données (même ticket des deux côtés) : 409, pas 400.
+            raise ConflitEtat(
+                "Un ticket ne peut pas être fusionné avec lui-même.")
 
         # ASAV25 — le doublon doit être VISIBLE par l'utilisateur (sinon sa
         # fusion transférerait son chatter vers un ticket qu'il voit).
@@ -3273,8 +3298,8 @@ class CategorieTicketViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'list' and self.request.query_params.get(
-                'actif') == '0':
+        if self.action == 'list' and choix_ou_400(
+                self.request, 'actif', ('0',)) == '0':
             qs = qs.filter(actif=False)
         elif self.action == 'list':
             qs = qs.filter(actif=True)
@@ -3303,8 +3328,8 @@ class EquipeMaintenanceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.action == 'list' and self.request.query_params.get(
-                'actif') == '0':
+        if self.action == 'list' and choix_ou_400(
+                self.request, 'actif', ('0',)) == '0':
             qs = qs.filter(actif=False)
         elif self.action == 'list':
             qs = qs.filter(actif=True)
@@ -3460,7 +3485,7 @@ class CompatibilitePieceViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 @extend_schema_view(list=extend_schema(
     parameters=[
         OpenApiParameter('statut', OpenApiTypes.STR, required=False),
-        OpenApiParameter('ordering', OpenApiTypes.STR, required=False, enum=['impact', '-impact']),
+        OpenApiParameter('ordering', ORDRES_PROBLEME_SCHEMA, required=False),
     ]))
 class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     """NTSRV16 — CRUD des problèmes + rattachement/détachement des incidents.
@@ -3505,7 +3530,8 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         # lignes par société), puis l'ordre est REPROJETÉ en SQL via
         # Case/When — la pagination DRF reste donc exacte, et aucune
         # arithmétique de durée (non portable) n'est envoyée à la base.
-        ordering = (self.request.query_params.get('ordering') or '').strip()
+        ordering = choix_param(
+            self.request, 'ordering', ORDRES_PROBLEME, '')
         if ordering in ('impact', '-impact'):
             maintenant = timezone.now()
             lignes = []

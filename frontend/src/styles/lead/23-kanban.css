@@ -1,0 +1,617 @@
+/* ===== migrated from src/pages/crm/leads/views/kanban.css (P67) ===== */
+/* Kanban CRM leads — toutes les classes préfixées kb- (zéro collision avec
+   index.css). Identité navy/or de l'app, surfaces tokenisées (thème clair +
+   sombre), lecture « Odoo » au premier coup d'œil. */
+
+/* ---------- Tableau ---------- */
+
+/* LB2 — `height:100%` se résolvait en AUTO (le containing block `.lp-view-area`
+   n'avait pas de hauteur explicite avant le fix de chaîne ci-dessus) : le board
+   grandissait à la colonne la plus haute au lieu de se borner au viewport, la
+   page défilait sur des milliers de px et la scrollbar horizontale gisait sous
+   le fold (bug fondateur P0, recon2-03). `flex:1 1 auto` avec un ancêtre borné
+   se résout réellement. */
+.kb-board {
+  display: flex;
+  /* CAD177 (LB33/LB41, vérifié au rendu réel) : `stretch` calait la colonne sur
+     la hauteur du BOARD (single-line flex, cross-size définie) tandis que son
+     contenu débordait → l'en-tête sticky, borné par sa colonne, partait avec
+     elle (−2684 px au scroll). `flex-start` : la colonne épouse son contenu
+     (sticky tient sur tout le défilement) ; la règle min-height: 100% de `.kb-col`
+     garde les zones de dépôt pleine hauteur quand les colonnes sont courtes. */
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0.75rem;
+  /* LB41 (retour fondateur) — UN SEUL scrolleur pour tout le board, les DEUX
+     axes (patron Odoo o_kanban_renderer) : toutes les étapes défilent
+     ENSEMBLE verticalement — plus jamais un ascenseur par colonne. La
+     scrollbar horizontale reste au bas du viewport (le board reste borné par
+     la chaîne .lp-page → .lp-view-area, invariant LB33 #2 inchangé). */
+  overflow: auto;
+  /* En-têtes sticky ⇒ scroll-padding OBLIGATOIRE : tout scrollIntoView
+     (clavier, focus, tests) pose sa cible SOUS la bande d'en-tête épinglée —
+     sans ça, le haut d'une carte amenée en vue disparaît derrière l'en-tête
+     (attrapé par MB6 en CI : carte fraîchement créée masquée). */
+  scroll-padding-top: 4.5rem;
+  background: var(--muted, #f1f5f9);
+  border-radius: var(--radius-lg, 12px);
+}
+
+/* ---------- Colonnes ---------- */
+
+.kb-col {
+  flex: 0 0 272px;
+  display: flex;
+  flex-direction: column;
+  /* LB41 — plus de min-height:0 : la colonne grandit avec son CONTENU et
+     s'étire à la plus haute (align-items:stretch — PAS de height explicite,
+     il désactiverait le stretch) → zones de dépôt pleine hauteur ; c'est le
+     BOARD qui scrolle (patron Odoo : aucun overflow entre l'en-tête sticky
+     et le scrolleur). min-height:100% fait remplir la hauteur visible quand
+     TOUTES les colonnes sont courtes. `isolation` confine le palier z de
+     l'en-tête sticky à la colonne (garde MB3). */
+  min-height: 100%;
+  isolation: isolate;
+  background: var(--card, #ebeef3);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius, 10px);
+  border-top: 3px solid var(--kb-accent, var(--primary, #0b1f3a));
+  transition: background-color var(--motion-base) ease, box-shadow var(--motion-base) ease;
+}
+
+/* VX183(a) — iPad paysage (~1024px, sidebar 240px + kb-board padding/gaps
+   inclus dans le calcul) : 272px fixes ne montrent que ~3,7 des 6 colonnes
+   STAGES.py, défilement horizontal permanent. Palier resserré entre
+   900-1024px pour remonter à ≥5 colonnes visibles ; desktop (>1024px) inchangé. */
+@media (max-width: 1024px) and (min-width: 900px) {
+  .kb-col {
+    flex: 0 0 150px;
+  }
+}
+
+/* Colonne survolée pendant un drag : halo net + fond teinté couleur d'étape,
+   pour signaler clairement la zone de dépôt. */
+.kb-over {
+  box-shadow:
+    inset 0 0 0 2px var(--kb-accent),
+    var(--shadow-ui-md, 0 4px 12px rgba(15, 23, 42, 0.15));
+  background: color-mix(in srgb, var(--kb-accent) 12%, var(--card, #ebeef3));
+}
+
+.kb-col-header {
+  padding: 0.6rem 0.7rem 0.4rem;
+  /* LB41 — en-tête d'étape ÉPINGLÉ pendant le scroll vertical du board
+     (Odoo) : sticky dans le scrolleur .kb-board, fond opaque pour couvrir
+     les cartes qui glissent dessous (palier local via isolation sur .kb-col). */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card, #ebeef3);
+  border-radius: var(--radius, 10px) var(--radius, 10px) 0 0;
+}
+
+.kb-col-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kb-col-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--foreground, #0b1f3a);
+}
+
+.kb-col-count {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, #d7dde6);
+  background: var(--background, #fff);
+  color: var(--foreground, #0b1f3a);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* VX5 — montant catalogue KB en data typography `.num`. */
+.kb-col-money {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground, #64748b);
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+/* LB2 — `min-height:80px` empêchait JAMAIS le corps de déborder (il ne
+   pouvait que grandir) : avec `.kb-board` réellement borné ci-dessus,
+   `min-height:0` laisse enfin `overflow-y:auto` prendre effet par colonne. */
+.kb-col-body {
+  /* LB41 — le corps ne scrolle PLUS (le board est l'unique scrolleur) ;
+     flex:1 le fait remplir la colonne étirée → colonne courte = zone de
+     dépôt pleine hauteur quand même. */
+  /* HYGIÈNE D'AXE (round 4, même règle qu'au bloc mobile de `.kb-col`) :
+     ce corps est volontairement SANS `overflow` — il n'est donc pas un
+     conteneur de défilement et ne peut voler aucun geste. Si quelqu'un lui
+     rend un jour un `overflow-y: auto` (c'était son état d'avant LB41), il
+     DOIT écrire `overflow-x: clip` dans le même bloc : sinon l'axe X est
+     CALCULÉ en `auto` (spec Overflow niv. 3) et la première carte qui
+     déborde d'1 px rend la colonne balayable horizontalement — exactement
+     le bug « je balaie les leads au lieu des étapes ». Le seul scrolleur de
+     cartes du desktop est `.kb-board`, dont les DEUX axes sont déjà
+     explicites (`overflow: auto` desktop, `overflow: scroll hidden` mobile).
+     On ne pose pas `clip` ici : sans overflow il n'y a rien à corriger, et
+     un contexte de rognage raboterait l'ombre de survol et l'anneau de
+     focus des cartes (le padding latéral du corps est plus étroit qu'eux). */
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.35rem 0.55rem 0.6rem;
+}
+
+.kb-col-empty {
+  margin-top: 0.1rem;
+  padding: 1.1rem 0.5rem;
+  border: 2px dashed var(--border, #cbd5e1);
+  border-radius: var(--radius-sm, 8px);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted-foreground, #94a3b8);
+}
+
+/* ---------- Enveloppe draggable ---------- */
+
+.kb-drag-wrap {
+  border-radius: var(--radius, 10px);
+  outline: none;
+  touch-action: manipulation; /* scroll tactile naturel, drag sur appui long */
+}
+
+.kb-drag-wrap:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: 2px;
+}
+
+/* (E) — la carte ne « pop » plus au contact du doigt. `useDraggable` (dnd-kit)
+   pose `role="button"` sur l'enveloppe de la carte : la règle M155
+   `[role="button"]:active { transform: scale(0.985) }` — écrite pour de vrais
+   boutons — s'y appliquait donc, et `:active` remontant aussi la chaîne des
+   ancêtres, le moindre tap SUR un contrôle interne faisait sauter la carte
+   entière. Règle ajoutée (jamais une modification de M155, qui reste juste
+   pour les boutons) ; sa spécificité (0,3,0) l'emporte sur (0,2,0), donc
+   l'ordre dans le fichier n'y change rien. Les vrais <button> de la carte
+   gardent leur retour tactile via le sélecteur `button:active` de M155. */
+.kb-drag-wrap [role="button"]:active {
+  transform: none;
+}
+
+/* VX192 — carte chantier ouvrable au clavier : un <button> transparent qui
+   enveloppe la carte sans altérer sa mise en page (reset complet des styles
+   par défaut du bouton), focalisable au clavier avec un anneau visible. */
+.kb-card-open {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius, 10px);
+}
+
+.kb-card-open:focus-visible {
+  outline: 2px solid var(--ring, #f5a623);
+  outline-offset: 2px;
+}
+
+/* L'original reste en place comme repère pendant le drag (overlay au doigt). */
+.kb-drag-source .kb-card {
+  opacity: 0.35;
+  border: 1px dashed var(--border, #cbd5e1);
+  box-shadow: none;
+}
+
+.kb-drag-overlay .kb-card {
+  cursor: grabbing;
+  transform: rotate(2deg) scale(1.02);
+  /* VX135 — la carte sautait directement au tilt, sans transition de grab. */
+  transition: transform 120ms var(--ease-out);
+  box-shadow: var(--shadow-ui-lg, 0 10px 24px rgba(15, 23, 42, 0.25));
+}
+/* VX135 — ce tilt est un transform STATIQUE (ni animation ni transition) :
+   le garde global reduced-motion (index.css, en tête de fichier) ne
+   neutralise que les animations/transitions CSS déclaratives, jamais un
+   transform posé en dur — il échappe donc structurellement à ce garde.
+   `usePrefersReducedMotion()` ajoute cette classe (3 kanbans) pour le
+   désactiver explicitement à la source. */
+.kb-drag-overlay--flat .kb-card { transform: none; }
+
+/* ---------- Cartes ---------- */
+
+.kb-card {
+  position: relative;
+  padding: 0.6rem 0.7rem;
+  background: var(--background, #fff);
+  border: 1px solid var(--border, transparent);
+  border-radius: var(--radius, 10px);
+  box-shadow: var(--shadow-ui-xs, 0 1px 2px rgba(15, 23, 42, 0.08));
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: box-shadow var(--motion-base) ease, transform var(--motion-base) ease, border-color var(--motion-base) ease;
+}
+
+@media (hover: hover) {
+  .kb-card:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--kb-accent, var(--primary, #0b1f3a)) 40%, transparent);
+    box-shadow: var(--shadow-ui-md, 0 4px 10px rgba(15, 23, 42, 0.12));
+  }
+}
+
+.kb-card:active {
+  cursor: grabbing;
+}
+
+/* Petite poignée de glissé qui apparaît au survol (affordance « déplaçable »). */
+.kb-card::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--kb-accent, var(--primary, #0b1f3a)) 45%, transparent);
+  opacity: 0;
+  transition: opacity var(--motion-base) ease;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .kb-card:hover::before {
+    opacity: 1;
+  }
+}
+
+/* Étape en cours d'enregistrement (PATCH en vol) : carte gelée. */
+.kb-card-busy {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* VX149 — StatusAccentCard en liste plate (Ma journée) : padding resserré,
+   pas de curseur "grab" (pas de glisser-déposer hors kanban). */
+.kb-card-compact {
+  padding: 0.5rem 0.6rem;
+  cursor: default;
+}
+
+/* Lead perdu : nettement distinct mais il RESTE dans sa colonne d'étape. */
+.kb-card-perdu {
+  border-left: 3px solid var(--destructive, #dc2626);
+  background: color-mix(in srgb, var(--destructive, #dc2626) 7%, var(--background, #fff));
+}
+
+.kb-card-perdu .kb-card-sub,
+.kb-card-perdu .kb-tags,
+.kb-card-perdu .kb-card-foot {
+  filter: saturate(0.5);
+  opacity: 0.9;
+}
+
+.kb-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.kb-card-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--foreground, #0b1f3a);
+  overflow-wrap: anywhere;
+}
+
+.kb-badge-perdu {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--destructive, #dc2626);
+  color: var(--destructive-foreground, #fff);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Bouton « Devis auto » ⚡ */
+.kb-flash {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+  background: var(--cat-gold-soft, color-mix(in srgb, var(--warning, #f5a623) 16%, transparent));
+  color: var(--warning, #92600a);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--motion-base) ease, color var(--motion-base) ease, border-color var(--motion-base) ease;
+}
+
+@media (hover: hover) {
+  .kb-flash:hover:not(:disabled) {
+    background: var(--cat-gold, var(--warning, #f5a623));
+    border-color: var(--cat-gold, var(--warning, #f5a623));
+    color: #fff;
+  }
+}
+
+.kb-flash:focus-visible {
+  outline: 2px solid var(--ring, #94a3b8);
+  outline-offset: 1px;
+}
+
+/* Lead pas prêt pour le devis auto (champs manquants côté serveur) */
+.kb-flash:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.kb-card-sub {
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  color: var(--muted-foreground, #64748b);
+}
+
+/* ---------- Tags ---------- */
+
+.kb-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.kb-tag {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+/* ---------- Pied de carte ---------- */
+
+.kb-card-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+/* VX87 — nudge post-appel : « Appel terminé — noter le résultat ? »,
+   dismissable, jamais bloquant. */
+.kb-call-nudge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0.4rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  /* LB16 — `--color-info-muted` n'a jamais existé (le littéral rgba était donc
+     toujours utilisé) : re-basé sur un token réel (teinte info sur la carte). */
+  background: color-mix(in srgb, var(--info) 12%, var(--card));
+  font-size: 0.72rem;
+}
+
+.kb-call-nudge-text { flex: 1; color: var(--foreground); }
+
+.kb-call-nudge-log {
+  border: none;
+  background: var(--info);
+  color: var(--info-foreground);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.kb-call-nudge-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground, #64748b);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 0.72rem;
+}
+
+.kb-canal {
+  padding: 0.08rem 0.35rem;
+  border-radius: 4px;
+  background: var(--muted, #eef2f7);
+  color: var(--muted-foreground, #475569);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.kb-stars {
+  font-size: 0.8rem;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+
+.kb-star {
+  color: var(--border, #d1d5db);
+}
+
+.kb-star-on {
+  color: var(--cat-gold, var(--warning, #f5a623));
+}
+
+.kb-relance {
+  padding: 0.06rem 0.4rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 999px;
+  background: var(--background, #fff);
+  color: var(--muted-foreground, #475569);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.kb-relance-late {
+  border-color: color-mix(in srgb, var(--destructive, #dc2626) 35%, transparent);
+  background: color-mix(in srgb, var(--destructive, #dc2626) 8%, transparent);
+  color: var(--destructive, #dc2626);
+  font-weight: 600;
+}
+
+.kb-avatar {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--primary, #0b1f3a);
+  color: var(--primary-foreground, #fff);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 768px) {
+  /* LB42 — kanban mobile Odoo (kanban_controller.scss, vérifié 17.0) : UNE
+     étape quasi plein écran à la fois, 90% de large pour laisser DÉPASSER un
+     bord de la colonne suivante (seule affordance de navigation), balayage
+     horizontal aimanté par scroll-snap natif ; la COLONNE redevient le
+     scrolleur vertical (axes imbriqués : board = X aimanté, colonne = Y) —
+     l'en-tête sticky se re-résout tout seul contre la colonne. */
+  /* (C, révisé — « make the sweep the most pleasant possible ») : le vol du
+     geste diagonal venait du CUMUL mandatory + gestionnaires JS tactiles
+     (swipe de carte, TouchSensor) qui empêchaient le navigateur de poser son
+     propre verrou d'axe. Ces gestionnaires ont TOUS disparu (gestes purs) :
+     le navigateur départage seul colonne-Y / board-X dès les premiers pixels,
+     et `mandatory` redevient ce qu'il est chez les pagers natifs — un
+     claquement de page NET, jamais un repos entre deux colonnes (le flou du
+     `proximity` essayé en premier). `snap-stop: always` interdit de sauter
+     plusieurs étapes sur un grand balan, `start` reste l'ancrage atteignable,
+     et `overscroll-behavior-x: contain` coupe le chaînage horizontal en bout
+     de funnel (le rebond local, lui, reste). */
+  .kb-board {
+    gap: 0.6rem;
+    padding: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+    overflow: scroll hidden;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    /* L'axe de snap est X : sans `scroll-padding-left`, la position `start`
+       de la 1ʳᵉ colonne vaut scrollLeft = 8 px (le padding du board fait
+       partie du contenu scrollable) — `mandatory` TIRAIT le board de 0 à 8 px
+       dès la pose. Aligné sur le padding : chaque étape se pose avec la même
+       gouttière, zéro micro-correction. */
+    scroll-padding-left: 0.5rem;
+  }
+
+  .kb-col {
+    flex: 0 0 90%;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    min-height: 0;
+    overflow-y: auto;
+    /* ┌───────────────────────────────────────────────────────────────────┐
+       │ NE RETIRE JAMAIS CETTE LIGNE. Règle CSS (spec Overflow niv. 3) :  │
+       │ dès qu'UN axe vaut autre chose que `visible`, l'AUTRE axe encore  │
+       │ à `visible` est CALCULÉ en `auto`. `overflow-y: auto` ci-dessus   │
+       │ transformait donc AUSSI `.kb-col` en scrolleur HORIZONTAL — et il │
+       │ suffisait qu'une carte déborde d'1 px en largeur (les cartes AVEC │
+       │ devis : rangée L2 montant + budget de signaux) pour que la        │
+       │ colonne AVALE le balayage gauche/droite destiné au pager du board.│
+       │ Symptôme fondateur (2026-08-01) : « dans Devis envoyé / Relance   │
+       │ je finis par balayer les LEADS dans l'étape » — Nouveau/Contacté  │
+       │ (cartes sans montant, donc sans débord) marchaient bien.          │
+       │ `clip` et non `hidden` : `hidden` crée un vrai conteneur de       │
+       │ défilement (scrollable par programme, et il redevient une cible   │
+       │ de geste sur certains moteurs) ; `clip` n'en crée AUCUN — l'axe X │
+       │ ne peut plus jamais devenir un scrolleur ici.                     │
+       │ Le débord lui-même est étranglé à la source sur `.kb-card-value`  │
+       │ / `.kb-card-foot` (bloc APX2) — ceinture ET bretelles.            │
+       └───────────────────────────────────────────────────────────────────┘ */
+    overflow-x: clip;
+    /* (D) — la règle VX175(b) plus haut couvre `.kb-board` (l'axe X) mais PAS
+       `.kb-col`, qui est pourtant LE scrolleur vertical au téléphone : sans
+       `-webkit-overflow-scrolling: touch` le défilement de la colonne saccade
+       « pas à pas » sur Safari iOS (aucune inertie), et sans
+       `overscroll-behavior-y` il CHAÎNE — arrivé en bas de la colonne, la
+       poussée continue dans la page puis dans le pull-to-refresh. `contain`
+       (et non `none`) coupe uniquement le chaînage : le rebond élastique
+       LOCAL de la colonne, lui, reste — c'est l'accusé de réception « tu es
+       au bout », on ne le supprime pas. */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    /* La colonne est ICI le scrolleur : même règle que .kb-board — un
+       scrollIntoView n'enterre jamais le haut d'une carte sous l'en-tête
+       sticky (cause du rouge MB6 mobile-safari en CI). */
+    scroll-padding-top: 4.5rem;
+  }
+
+  /* Cible tactile confortable pour le bouton ⚡ */
+  .kb-flash {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1.05rem;
+  }
+}
+
+/* Sélecteur de responsable (avatar) sur la carte — poussé à droite du pied. */
+.kb-card-assignee { margin-left: auto; display: inline-flex; align-items: center; }
+
+/* Pastille horloge d'activité (activité ouverte la plus proche). */
+.kb-act-clock { font-size: 0.8rem; margin-left: 2px; }
+.kb-act-clock.overdue { filter: none; color: var(--destructive, #dc2626); }
+.kb-act-clock.today { color: var(--warning, #d97706); }
+.kb-act-clock.upcoming { color: var(--success, #16a34a); }
+
+/* Case de sélection sur la carte (actions en masse, T3). */
+.kb-card-check {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--primary, #0f172a);
+}
+.kb-card-selected {
+  outline: 2px solid var(--primary, #0f172a);
+  outline-offset: -1px;
+}
+

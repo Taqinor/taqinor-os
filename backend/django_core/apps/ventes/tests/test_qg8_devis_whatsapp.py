@@ -104,12 +104,12 @@ class DevisWhatsappActionTests(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.REFUSE)
 
-    def test_no_phone_400_keeps_status(self):
+    def test_no_phone_409_keeps_status(self):
         client_no_phone = Client.objects.create(
             company=self.company, nom='SansTel')
         devis = self._devis(client=client_no_phone)
         resp = self._post(devis)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
 

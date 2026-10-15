@@ -112,3 +112,11 @@ class DepuisDevisTests(TestCase):
         revision, _ = snapshot_revision_kit(self.kac, user=self.user)
         self.assertIsNotNone(ordre.revision_kit_numero)
         self.assertEqual(ordre.revision_kit_numero, revision.numero)
+
+    def test_corps_illisible_400_devis_inconnu_404(self):
+        # CI #997 api-fuzz : un tableau en `devis` levait un 500.
+        for corps in ({"devis": [None, None]}, {"devis": 0}, {}, [None, None]):
+            r = self.api.post(URL, corps, format="json")
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        r = self.api.post(URL, {"devis": self.devis.id + 9999}, format="json")
+        self.assertEqual(r.status_code, 404, r.content)

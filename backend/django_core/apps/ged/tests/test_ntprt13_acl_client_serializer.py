@@ -77,7 +77,7 @@ class AclClientSerializerTests(TestCase):
             'document': self.document.id, 'client': client_autre.id,
             'niveau': 'lecture',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
 
     def test_ni_utilisateur_ni_role_ni_client_refuse(self):
         resp = auth(self.admin).post(BASE, {

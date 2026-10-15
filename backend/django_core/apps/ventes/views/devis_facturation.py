@@ -130,6 +130,9 @@ class DevisFacturationActionsMixin:
         serializer = BonCommandeSerializer(bc)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    # api-only: VNT86-94 (14/10/2026) — porte manuelle fermée : plus d'appelant
+    # écran, le panneau de vente (VNT75/VNT79) sert la facturation ; gardé pour
+    # intégrations/scripts.
     @extend_schema(request=D.GenererFactureRequest,
                    responses={201: FactureSerializer, 403: D.ErreurGarde})
     @action(
@@ -198,6 +201,9 @@ class DevisFacturationActionsMixin:
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,
         )
 
+    # api-only: VNT86-94 (14/10/2026) — porte manuelle fermée : plus d'appelant
+    # écran, le panneau de vente (VNT75/VNT79) sert la facturation ; gardé pour
+    # intégrations/scripts.
     @extend_schema(request=D.FacturerCompletRequest,
                    responses={201: D.FacturerCompletResponse,
                               403: D.ErreurGarde})

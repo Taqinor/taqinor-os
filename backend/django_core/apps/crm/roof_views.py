@@ -11,7 +11,7 @@ Response:
   200 {"polygon": [], "source": "osm", "batiment": {...},
        "message": "Aucun bâtiment trouvé — tracez le contour manuellement."}
   404 lead not found or wrong company
-  400 le lead n'a pas de point GPS enregistré
+  409 le lead n'a pas de point GPS enregistré (état de la fiche, ERR-ENF11-FUZZ-CRM)
 
 CALX106 — `batiment` is ALWAYS served, with the same keys in all three cases
 (building found, no building, Overpass unreachable) : `osm_way_id`, `levels`,
@@ -22,6 +22,8 @@ French, why. Frozen by
 """
 
 from django.http import JsonResponse
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 
 from authentication.permissions import HasPermissionOrLegacy, IsAnyRole
@@ -55,6 +57,13 @@ def _leads_visibles(request):
     return vue.get_queryset()
 
 
+@extend_schema(responses={200: inline_serializer("LeadEmpreinteToit", {
+    # polygone OSM [[lat, lng], …] (vide : dessin manuel) + bloc bâtiment CALX106.
+    "polygon": serializers.ListField(child=serializers.JSONField()),
+    "source": serializers.CharField(),
+    "batiment": serializers.DictField(),
+    "message": serializers.CharField(required=False),
+}), 409: OpenApiResponse(description="Le lead n'a pas de point GPS enregistré.")})
 @api_view(["GET"])
 @permission_classes([IsAnyRole, HasPermissionOrLegacy('crm_voir')])
 def lead_roof_footprint(request, lead_id):
@@ -82,9 +91,11 @@ def lead_roof_footprint(request, lead_id):
 
     pin, _source, _contour_utilisable = repere_toit(lead)
     if pin is None:
+        # ERR-ENF11-FUZZ-CRM — requête conforme, c'est la FICHE qui n'a pas
+        # de repère : 409 (l'atelier n'appelle qu'avec une épingle).
         return JsonResponse(
             {"detail": _MSG_NO_PIN},
-            status=400,
+            status=409,
         )
 
     empreinte = fetch_building_footprint(pin["lat"], pin["lng"])

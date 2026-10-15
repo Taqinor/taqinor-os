@@ -496,6 +496,14 @@ class ConceptionElectriqueEndpointTest(TestCase):
         return ("/api/django/ventes/devis/%s/conception-electrique/"
                 % devis.id)
 
+    def test_post_corps_non_objet_400(self):
+        # ENF11 — ``[null, null]`` recalculait l'étude « sans surcharge ».
+        devis = self._make_devis(self.company)
+        resp = self.api.post(self._url(devis), [None, None], format="json")
+        self.assertEqual(resp.status_code, 400, resp.data)
+        devis.refresh_from_db()
+        self.assertIsNone(devis.electrical_design)
+
     def test_get_calcule_puis_persiste(self):
         devis = self._make_devis(self.company)
         self.assertIsNone(devis.electrical_design)

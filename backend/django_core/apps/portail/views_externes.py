@@ -568,6 +568,9 @@ class CandidatureFournisseurSerializer(serializers.Serializer):
         max_length=40, required=False, allow_blank=True, allow_null=True)
 
 
+@extend_schema(request=CandidatureFournisseurSerializer, responses={
+    201: inline_serializer('CandidatureFournisseurReponse', {
+        'detail': serializers.CharField()})})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([CandidatureFournisseurThrottle])

@@ -11,10 +11,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'ListView.jsx'), 'utf8')
-const CSS = readFileSync(join(HERE, '..', '..', '..', '..', 'index.css'), 'utf8')
+const CSS = resolveCss(join(HERE, '..', '..', '..', '..', 'index.css'))
 
 test('LB18 : LIST_COLUMNS déclare un modèle de colonnes (id/header/width), 13 colonnes', () => {
   const start = SRC.indexOf('const LIST_COLUMNS = [')

@@ -8,14 +8,14 @@ import logging
 from decimal import Decimal, InvalidOperation
 from django.db import models
 
-from .erreurs_achats import EtatIncompatible, IntrouvableMetier
+from .erreurs_achats import ConflitEtat, EtatIncompatible, IntrouvableMetier
 
 logger = logging.getLogger('stock.audit')
 
 BULK_ACTIONS = {'set_price', 'set_warranty', 'set_category', 'set_brand'}
 # ASTK92 — borne de la ``valeur`` d'une variation de prix en masse (le prix est
 # un DecimalField(10, 2) : au-delà, la sauvegarde échouerait en 500).
-BULK_VALEUR_MAX = Decimal('99999999')
+BULK_VALEUR_MAX = Decimal('99999999.99')
 
 
 def _dec(value):
@@ -78,7 +78,7 @@ def apply_product_bulk(*, company, user, ids, op, params):
         cid = params.get('categorie_id')
         categorie = Categorie.objects.filter(id=cid, company=company).first()
         if cid not in (None, '', 'null') and categorie is None:
-            raise ValueError("Catégorie introuvable dans cette société.")
+            raise IntrouvableMetier("Catégorie introuvable dans cette société.")
 
     for p in produits:
         if op == 'set_price':
@@ -1257,18 +1257,17 @@ def figer_inventaire_annuel(company, exercice, user):
     import json
     from django.core.serializers.json import DjangoJSONEncoder
     from django.utils import timezone
-    from rest_framework.exceptions import ValidationError
     from .models import InventaireAnnuel
     date_fin = datetime.date(exercice, 12, 31)
     # ASTK203 (C-ASTK-051) — un exercice NON CLOS (31/12 ≥ aujourd'hui) ne
-    # se fige pas : le snapshot « immuable » serait faux (mouvements à venir).
+    # se fige pas (le snapshot serait faux). CI #997 : refus d'ÉTAT -> 409.
     if date_fin >= timezone.localdate():
-        raise ValidationError({'exercice': [
+        raise ConflitEtat({'exercice': [
             f"L'exercice {exercice} n'est pas clos ({date_fin:%d/%m/%Y}) : "
             f'figez-le à partir du 01/01/{exercice + 1}.']})
     if InventaireAnnuel.objects.filter(
             company=company, exercice=exercice).exists():
-        raise ValueError(
+        raise EtatIncompatible(
             f"L'exercice {exercice} est déjà figé pour cette société.")
     data = valorisation_a_date(company, date_fin)
     total_valeur = data['total']
@@ -1381,7 +1380,7 @@ def check_negative_stock_guard(company, quantite_avant, quantite_apres):
     from .models import AchatsParametres
     parametres = AchatsParametres.for_company(company)
     if not parametres.stock_negatif_autorise:
-        raise ValueError(
+        raise EtatIncompatible(
             f'Stock insuffisant ({quantite_avant} disponible) — cette '
             'opération ferait passer le stock sous zéro.')
 

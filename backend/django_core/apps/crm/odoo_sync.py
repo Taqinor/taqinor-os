@@ -45,6 +45,10 @@ from django.db import transaction
 from apps.crm import services, stages
 from apps.crm.models import Lead
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 ODOO_USER_AGENT = 'erp-os-odoo-sync'
 
 # Champs crm.lead rapatriés (le champ `mobile` n'existe plus sur les Odoo
@@ -266,6 +270,7 @@ def odoo_call(config, model, method, payload, timeout=120):
             detail = json.loads(exc.read().decode('utf-8'))
             message = detail.get('message') or detail.get('name') or str(exc)
         except Exception:
+            logger.warning("odoo call : échec ignoré, comportement dégradé", exc_info=True)
             message = str(exc)
         raise OdooSyncError(
             f'Odoo {model}.{method} → HTTP {exc.code} : {message}') from exc

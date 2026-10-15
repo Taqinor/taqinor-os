@@ -1467,6 +1467,35 @@ def predecesseur_accepte(devis):
     return acceptes[0] if acceptes else None
 
 
+def racine_groupe(devis):
+    """VNT104 — l'OBJET racine du GROUPE DE PROPOSITION de ``devis``.
+
+    Trois notions qui ne se confondent jamais :
+
+    * le GROUPE de proposition (``version_parent``) : la racine et les devis
+      rattachés à elle — versions, variantes de taille, gammes sœurs ;
+    * la CHAÎNE de révision (``superseded_by``) : V1 → V2 d'UNE vente, lue par
+      :func:`devis_predecesseurs_revision_ids` ;
+    * la VENTE (``etat_vente``) : ce qui est signé, facturé et payé.
+
+    Lit ``devis.version_parent`` (une requête si la relation n'est pas
+    chargée)."""
+    return devis.version_parent or devis
+
+
+def groupe_proposition(devis):
+    """VNT104 — le queryset du GROUPE DE PROPOSITION de ``devis`` (racine +
+    devis dont ``version_parent`` est la racine), sans filtre de société, de
+    statut, ni tri ni verrou : l'appelant garde ses ``select_related`` /
+    ``select_for_update`` / ``filter`` / ``order_by``. La racine est lue par
+    son id (aucune requête). Voir :func:`racine_groupe`."""
+    from django.db.models import Q
+    from .models import Devis
+
+    racine = devis.version_parent_id or devis.pk
+    return Devis.objects.filter(Q(pk=racine) | Q(version_parent_id=racine))
+
+
 def instantane_accepte_en_vigueur(devis_id, company):
     """ACAL107 (D-ACAL-23) — l'instantané FIGÉ de la version ACCEPTÉE en
     vigueur de la chaîne de révision de ``devis_id``, ou ``None``.
@@ -1663,7 +1692,6 @@ from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
     references_avoirs,
     encours_clients_par_tiers,
     encours_ouvert_par_tiers,
-    reste_du_factures_brouillon,
     ca_devis_factures_par_clients,
     acompte_paye_pour_devis,
     etat_recouvrement_client,
@@ -1671,7 +1699,6 @@ from .selectors_facturation import (  # noqa: E402,F401 — ré-export (SPL143)
     devis_a_facturer,
     tranche_facturee,
     jours_impaye_facture,
-    montants_factures_par_devis,
     carnet_commande_par_mois,
     factures_via_bon_commande,
     factures_du_devis,
@@ -1743,6 +1770,19 @@ from .vente_facturation import (  # noqa: E402,F401 — ré-export (VNT23)
     etat_vente,
     etat_vente_map,
 )
+
+
+def factures_de_la_vente(devis, *, inclure_annulees=False, emises=False):
+    """VNT109 — LES factures de la vente de ``devis`` pour les autres
+    domaines (``vente_facturation.factures_de_la_vente`` : toute la chaîne de
+    versions, les quatre portes ; définie UNE fois, jamais recopiée).
+    ``emises`` ne garde que les ÉMISES (``STATUTS_EMIS`` : un brouillon est
+    prévu, jamais facturé)."""
+    from .vente_facturation import STATUTS_EMIS
+    from .vente_facturation import factures_de_la_vente as lire
+    factures = lire(devis, inclure_annulees=inclure_annulees)
+    return [f for f in factures if f.statut in STATUTS_EMIS] if emises \
+        else factures
 
 
 def devis_acceptes_actifs(company, *, lead_id=None, client_id=None,
@@ -1821,3 +1861,17 @@ def devis_signes_en_vigueur(company=None, *, lead_ids=None):
             vus.add(remplacant)
             remplacant = suivant.get(remplacant)
     return base.exclude(pk__in=exclus)
+
+
+def modules_vendus_du_devis(devis):
+    """ACAL274 / règle #4 — nombre de panneaux VENDUS d'un devis (lignes produit
+    non optionnelles, règle unique ``quote_engine.builder.panneaux_et_watt_lu``),
+    ou ``None`` quand les lignes n'en disent rien. Porte de lecture des autres
+    apps : le moteur de devis ne s'importe jamais hors d'``apps.ventes``."""
+    from .quote_engine.builder import panneaux_et_watt_lu
+
+    lignes = [li for li in devis.lignes.select_related('produit').all()
+              if getattr(li, 'type_ligne', 'produit') == 'produit'
+              and not getattr(li, 'optionnelle', False)]
+    nb, _watt = panneaux_et_watt_lu(lignes)
+    return int(nb) if nb else None

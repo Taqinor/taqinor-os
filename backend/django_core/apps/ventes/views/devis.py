@@ -1,5 +1,7 @@
 from drf_spectacular.utils import extend_schema_view
-from ..openapi_params import ENTITE, qint, qstr
+from ..openapi_params import (
+    ENTITE, choix_requete, entier_requete, qint, qstr,
+)
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from drf_spectacular.utils import OpenApiParameter
@@ -21,7 +23,7 @@ from authentication.permissions import (
 # NTPRT10 — garde du chemin canonique /proposal ouverte au client PROPRIÉTAIRE
 # depuis son portail (``apps.roles`` est une app FONDATION, pas un domaine).
 from apps.roles.permissions import (
-    is_portal_user, portal_scope_id,
+    DroitDeLaGrille, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 # AUD403 — brique UNIQUE du dépôt pour qu'un ``get_permissions()`` par action
@@ -53,8 +55,12 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-@extend_schema_view(list=extend_schema(
-    parameters=[qint('lead'), qstr('concevable', enum=['1', 'true']), qstr('statut'), ENTITE]))
+CONCEVABLE = ['1', 'true']
+
+
+@extend_schema_view(list=extend_schema(parameters=[
+    qint('lead'), qstr('concevable', enum=CONCEVABLE),
+    qstr('statut', enum=Devis.Statut.values), ENTITE]))
 class DevisViewSet(DevisEditionActionsMixin,
                    DevisCycleActionsMixin,
                    DevisEtudesActionsMixin,
@@ -173,15 +179,20 @@ class DevisViewSet(DevisEditionActionsMixin,
                 | Q(lead_id__in=lead_ids_du_responsable(user)))
         # Filtre optionnel ?lead=<id> — utilisé par le dialogue « Signé » (A2)
         # pour lister les devis d'un lead. Borné à la société par company_qs.
-        lead_id = self.request.query_params.get('lead')
-        if lead_id:
+        # CI #997 (2) — chaque paramètre publié est lu STRICTEMENT (400 nommé
+        # hors type / hors énumération, jamais ignoré ni 500 au filtre).
+        lead_id = entier_requete(self.request, 'lead')
+        if lead_id is not None:
             qs = qs.filter(lead_id=lead_id)
         # QJR636 — ?concevable=1 : les devis dont la toiture se calepine
         # encore (choix « Conception 3D »), APRÈS les portées ci-dessus.
-        if self.request.query_params.get('concevable') in ('1', 'true'):
+        if choix_requete(self.request, 'concevable', CONCEVABLE):
             from ..selectors import devis_concevables
             qs = devis_concevables(qs)
-        return qs
+        # ?statut= (consolidation de factures : devis ACCEPTÉS) était publié
+        # mais ignoré — la liste rendait tous les statuts.
+        statut = choix_requete(self.request, 'statut', Devis.Statut.values)
+        return qs.filter(statut=statut) if statut else qs
 
     def get_serializer_class(self):
         if self.action in ['create', 'update', 'partial_update']:
@@ -205,7 +216,11 @@ class DevisViewSet(DevisEditionActionsMixin,
             return [IsAnyRole()]
         if self.action in ('create', 'update', 'partial_update'):
             return [IsResponsableOrAdmin()]
-        # destroy, et toute future action non déclarée : fermé par défaut.
+        if self.action == 'destroy':
+            # ASEC50 / D-ASEC-4 — supprimer un devis exige ``ventes_supprimer``
+            # en plus du palier administrateur.
+            return [IsAdminRole(), DroitDeLaGrille('ventes_supprimer')()]
+        # toute future action non déclarée : fermé par défaut.
         return [IsAdminRole()]
 
     def destroy(self, request, *args, **kwargs):
@@ -467,9 +482,15 @@ class DevisViewSet(DevisEditionActionsMixin,
                 {'detail': 'Utilisateur sans société.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # CI #997 — corps non objet ou id non entier (``[null, null]``) : 400
+        # nommé, plus le TypeError du filtre ``pk=`` (500).
+        from core.champs_stricts import entier_ou_400
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         lead_obj = None
-        lead_id = request.data.get('lead')
-        client_id = request.data.get('client')
+        lead_id = entier_ou_400(request.data.get('lead'), 'lead')
+        client_id = entier_ou_400(request.data.get('client'), 'client')
         if lead_id:
             lead_obj = get_company_lead(company, lead_id)
             if lead_obj is None:

@@ -16,7 +16,7 @@ from authentication.permissions import IsAdminRole
 from core.champs_stricts import ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import AccessReviewCampaign, AccessReviewItem
+from .models import AccessReviewCampaign, AccessReviewItem, SodRule
 from .serializers import (
     AccessReviewCampaignSerializer, AccessReviewItemSerializer,
     SodRuleSerializer,
@@ -76,9 +76,11 @@ class SodRuleViewSet(CompanyScopedModelViewSet):
     serializer_class = SodRuleSerializer
     permission_classes = [IsAdminRole]
     parser_classes = [JSONParser]
+    #: ENF11 — modèle déclaré pour le schéma (type de ``{id}``) ; la lecture
+    #: réelle reste ``get_queryset`` (scopée société).
+    queryset = SodRule.objects.none()
 
     def get_queryset(self):
-        from .models import SodRule
         return SodRule.objects.filter(company=self.request.user.company)
 
     @extend_schema(responses=inline_serializer('SodViolationsListe', {

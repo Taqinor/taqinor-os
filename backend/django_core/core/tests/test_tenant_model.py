@@ -16,17 +16,19 @@ Couverture :
 
 La règle de complétude de la conversion de masse reste YDATA2 (hors ARC1).
 """
+from django.apps import apps as django_apps
 from django.db import models
 from django.test import TestCase
 
 from authentication.models import Company
 
-from apps.notifications.models import (
-    Annonce,
-    WhatsAppMessageLog,
-    WhatsAppTemplate,
-)
 from core.models import TenantModel, TimestampedModel
+
+# ENF20 — modèles de notifications résolus par libellé : core n'importe
+# aucune app (contrat core-foundation-is-a-base-layer).
+Annonce = django_apps.get_model('notifications', 'Annonce')
+WhatsAppMessageLog = django_apps.get_model('notifications', 'WhatsAppMessageLog')
+WhatsAppTemplate = django_apps.get_model('notifications', 'WhatsAppTemplate')
 
 
 class TenantModelAbstractTests(TestCase):
@@ -53,7 +55,6 @@ class TenantModelAbstractTests(TestCase):
         self.assertIn(
             company_field.remote_field.model,
             (Company, 'authentication.Company'))
-        from apps.notifications.models import WhatsAppTemplate
         self.assertIs(
             WhatsAppTemplate._meta.get_field('company').remote_field.model,
             Company)

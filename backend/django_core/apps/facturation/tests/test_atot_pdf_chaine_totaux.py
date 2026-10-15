@@ -224,3 +224,129 @@ class ObjetDeLaVenteTests(TestCase):
         self.assertIn('DEV-VNT35-V2', texte_v2)
         self.assertIn('48643.50 MAD', texte_v2)
         self.assertNotIn('7777', texte_v2)
+
+
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class RemiseNegocieeTests(TestCase):
+    """VNT71 — la facture COMPLÈTE d'un avenant négocié (388 : V1 acceptée
+    54 500 → V2 acceptée 49 000 par remise 10 % + arrondi 65,82) imprime
+    « Remise négociée −4624.35 MAD », montant seul, sans « (10 %) » ; la
+    chaîne reste juste (Sous-total − Remise − Arrondi = Total HT, Total HT
+    + TVA = 49000.00). Première vente, avoir et macro par défaut : ligne
+    « Remise globale (x %) » d'hier, octet pour octet."""
+
+    def setUp(self):
+        from apps.ventes.models import Devis
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self.v1 = creer_devis_388(self.company, self.user, self.client_obj,
+                                  'DEV-VNT71-V1', remise_globale=Decimal('0'))
+        self.v2 = creer_devis_388(self.company, self.user, self.client_obj,
+                                  'DEV-VNT71-V2', version=2,
+                                  version_parent=self.v1)
+        Devis.objects.filter(pk=self.v1.pk).update(
+            is_active=False, superseded_by=self.v2)
+
+    def _facture_complete(self, devis, reference):
+        from apps.ventes.domain.facturation_ops import (
+            copier_devis_sur_facture)
+        facture = Facture.objects.create(
+            company=self.company, client=self.client_obj, devis=devis,
+            reference=reference, statut=Facture.Statut.EMISE,
+            taux_tva=Decimal('20.00'))
+        copier_devis_sur_facture(facture, devis)
+        return Facture.objects.get(pk=facture.pk)
+
+    def _texte(self, generer, pk):
+        patcheur, boite = _capturer_pdf()
+        with patcheur:
+            generer(pk)
+        return _texte_pdf(boite['pdf'])
+
+    def test_avenant_negocie_facture_complete(self, _dl):
+        from apps.ventes.selectors import predecesseur_accepte
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        self.assertEqual(predecesseur_accepte(self.v2).pk, self.v1.pk)
+        facture = self._facture_complete(self.v2, 'FAC-VNT71-0001')
+        texte = self._texte(generate_facture_pdf, facture.pk)
+        self.assertRegex(texte, r'Remise négociée [−-] ?4624\.35 MAD')
+        self.assertNotIn('Remise globale', texte)
+        self.assertNotIn('Remise négociée (', texte)
+        motif = (r'Sous-total HT ' + _N + r' MAD Remise négociée [−-] ?' + _N
+                 + r' MAD Arrondi commercial [−-] ?' + _N + r' MAD Total HT '
+                 + _N + r' MAD(.*?)Total TTC ' + _N + r' MAD')
+        trouve = re.search(motif, texte[texte.rfind('Sous-total HT '):])
+        self.assertIsNotNone(trouve, texte[-1500:])
+        sous_total, remise, arrondi, total_ht = (
+            Decimal(x) for x in trouve.groups()[:4])
+        tva = sum((Decimal(x) for x in re.findall(
+            r'TVA \([0-9.]+%\) ' + _N + r' MAD', trouve.group(5))),
+            Decimal('0'))
+        ttc = Decimal(trouve.group(6))
+        self.assertEqual((sous_total, remise, arrondi, total_ht),
+                         (Decimal('46243.50'), Decimal('4624.35'),
+                          Decimal('65.82'), Decimal('41553.33')))
+        self.assertEqual(sous_total - remise - arrondi, total_ht)
+        self.assertEqual(total_ht + tva, ttc)
+        self.assertEqual(ttc, Decimal('49000.00'))
+
+    def test_premiere_vente_et_avoir_inchanges(self, _dl):
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.pdf import (
+            generate_avoir_pdf, generate_facture_pdf)
+        seul = creer_devis_388(self.company, self.user, self.client_obj,
+                               'DEV-VNT71-SEUL')
+        premiere = self._facture_complete(seul, 'FAC-VNT71-0002')
+        texte = self._texte(generate_facture_pdf, premiere.pk)
+        self.assertRegex(
+            texte, r'Remise globale \(10\.00 ?%\) [−-] ?4624\.35 MAD')
+        self.assertNotIn('Remise négociée', texte)
+        # L'avoir de la facture d'avenant garde sa ligne d'hier.
+        facture = self._facture_complete(self.v2, 'FAC-VNT71-0003')
+        avoir = Avoir.objects.create(
+            company=self.company, client=self.client_obj, facture=facture,
+            reference='AV-VNT71-0001', taux_tva=Decimal('20.00'),
+            remise_globale=facture.remise_globale)
+        for ligne in facture.lignes.all():
+            LigneAvoir.objects.create(
+                avoir=avoir, produit=ligne.produit,
+                designation=ligne.designation, quantite=ligne.quantite,
+                prix_unitaire=ligne.prix_unitaire, remise=ligne.remise,
+                taux_tva=ligne.taux_tva)
+        texte_avoir = self._texte(generate_avoir_pdf, avoir.pk)
+        self.assertIn('Remise globale (10.00%)', texte_avoir)
+        self.assertNotIn('Remise négociée', texte_avoir)
+
+    def test_macro_par_defaut_octet_identique(self, _dl):
+        from django.template import engines
+        moteur = engines['jinja2']
+        t = {'ht_brut': Decimal('100'), 'remise': Decimal('10'),
+             'arrondi': Decimal('0'), 'ht_net': Decimal('90'),
+             'tva_par_taux': [], 'ttc': Decimal('90')}
+        lib = {'sous_total': 'Sous-total HT',
+               'remise_globale': 'Remise globale',
+               'remise_negociee': 'Remise négociée', 'arrondi': 'Arrondi',
+               'total_ht': 'Total HT', 'tva': 'TVA', 'total_ttc': 'Total TTC',
+               'base_ht': 'Base HT'}
+        entete = "{% from '_chaine_totaux.html' import chaine_totaux %}"
+
+        def rendu(appel):
+            return moteur.from_string(entete + appel).render(
+                {'t': t, 'lib': lib})
+
+        defaut = rendu('{{ chaine_totaux(t, 10, lib) }}')
+        self.assertEqual(defaut, rendu(
+            '{{ chaine_totaux(t, 10, lib, remise_negociee=False) }}'))
+        self.assertIn('<span>Remise globale (10%)</span>', defaut)
+        negociee = rendu(
+            '{{ chaine_totaux(t, 10, lib, remise_negociee=True) }}')
+        self.assertIn('<span>Remise négociée</span>', negociee)
+        self.assertEqual(
+            negociee.replace('Remise négociée', 'Remise globale (10%)'),
+            defaut)

@@ -1,16 +1,31 @@
+import logging
+
 from django.core.mail import send_mail
 from django.conf import settings
 from django.http import Http404
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
+
+logger = logging.getLogger(__name__)
 
 
 class ContactThrottle(AnonRateThrottle):
     rate = '5/hour'
 
 
+@extend_schema(
+    request=inline_serializer('ContactRequete', {
+        'nom': serializers.CharField(max_length=100),
+        'email': serializers.EmailField(max_length=150),
+        'message': serializers.CharField(max_length=2000),
+        'numero': serializers.CharField(max_length=20, required=False, allow_blank=True),
+        'societe': serializers.CharField(max_length=100, required=False, allow_blank=True),
+    }),
+    responses=inline_serializer('ContactReponse', {'detail': serializers.CharField()}))
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([ContactThrottle])
@@ -50,6 +65,7 @@ def contact(request):
             fail_silently=False,
         )
     except Exception:
+        logger.warning('contact : envoi du message échoué', exc_info=True)
         return Response(
             {'detail': 'Erreur lors de l\'envoi. Veuillez réessayer.'},
             status=500,

@@ -276,10 +276,10 @@ def annoter_statut_derive(queryset):
 
 def _valider(decision, motif, roof_layout):
     """Les trois refus, dans l'ordre où un relecteur les corrigerait."""
-    if decision not in DECISIONS:
+    if not isinstance(decision, str) or decision not in DECISIONS:
         raise ApprobationRefusee(
             "Décision inconnue : "
-            f"« {decision if decision is not None else ''} ». Décisions "
+            f"« {decision if isinstance(decision, str) else ''} ». Décisions "
             f"admises : {', '.join(DECISIONS)}.", champ='decision')
     motif = motif.strip() if isinstance(motif, str) else ''
     if decision == REFUSE and not motif:

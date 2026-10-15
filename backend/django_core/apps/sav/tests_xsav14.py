@@ -160,7 +160,7 @@ class XSAV14TaxonomieTest(TestCase):
         resp = self.api.patch(
             f'/api/django/sav/tickets/{ticket.id}/',
             {'cause': cause_etrangere.id}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     # ── Pareto ───────────────────────────────────────────────────────────────
 

@@ -3,7 +3,6 @@ notes de débit, relances, remises, mandats) — déplacés tels quels de
 `serializers.py` par SPL148 (move only, sans ré-export)."""
 from decimal import Decimal
 
-from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -14,8 +13,11 @@ from .models import (
     MandatPaiement, RetenueSubie,
 )
 from .serializers import _fallback_taux_tva
-from core.champs_stricts import DecimalStricte
+from core.champs_stricts import (
+    BooleenStrict, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+)
 from core.mixins import SameCompanyFKSerializerMixin
+from core.unicite import UniciteEn409Mixin
 from .domain.bornes import montant_saisi, pourcentage_saisi
 
 
@@ -73,14 +75,16 @@ class _BornesArgentMixin:
             'Le prix unitaire ne peut pas être négatif.')
 
 
-class BonCommandeSerializer(SameCompanyFKSerializerMixin,
+class BonCommandeSerializer(ChampsStrictsSansDecimalMixin,
+                            SameCompanyFKSerializerMixin,
                             serializers.ModelSerializer):
+    # CI #997 — texte/booléens stricts (``signe_au_domicile: 0`` converti).
     # ASEC28 (C-ASEC-005) — FK inscriptibles bornées à la société de la
     # requête : un id étranger = 400 « objet inexistant », en PATCH comme en
     # création (la garde ERR13 de perform_create ne couvrait que la création).
     same_company_fields = ('client', 'devis', 'lead')
     client_nom = serializers.CharField(source='client.nom', read_only=True)
-    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True, default=None)
+    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True)
     has_facture = serializers.SerializerMethodField()
     # AUD118 — DISTINCT de `has_facture` : une facture ANNULÉE ne bloque plus
     # rien. `has_facture` reste le prédicat « une facture a déjà été émise »
@@ -205,10 +209,10 @@ class PaiementSerializer(serializers.ModelSerializer):
     # Champs d'affichage (lecture seule) pour la page Encaissements : référence
     # de la facture, nom du client et auteur de l'encaissement (« par qui »).
     facture_reference = serializers.CharField(
-        source='facture.reference', read_only=True, allow_null=True, default=None)
+        source='facture.reference', read_only=True, allow_null=True)
     client_nom = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
     # XFAC1 — avance non affectée : solde encore disponible pour ventilation.
     montant_disponible = serializers.DecimalField(
         max_digits=12, decimal_places=2, read_only=True)
@@ -222,7 +226,7 @@ class PaiementSerializer(serializers.ModelSerializer):
     # AFAC17 — auteur de l'annulation de saisie (contrat
     # ``paiement_annuler_saisie.json``).
     annule_par_nom = serializers.CharField(
-        source='annule_par.username', read_only=True, default=None)
+        source='annule_par.username', read_only=True, allow_null=True)
 
     # SCA45 — ``idempotency_key`` est OPTIONNEL : un encaissement MANUEL n'en a
     # pas (seuls les appels idempotents webhook/API en fournissent une). Il DOIT
@@ -381,13 +385,13 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
     # L853 — téléphone du client (lecture seule) : permet de valider/désactiver
     # le bouton WhatsApp côté front sans aller-retour 400. Jamais en écriture.
     client_telephone = serializers.CharField(
-        source='client.telephone', read_only=True, allow_null=True, default=None)
+        source='client.telephone', read_only=True, allow_null=True)
     statut_display = serializers.CharField(source='get_statut_display', read_only=True)
     type_facture_display = serializers.CharField(source='get_type_facture_display', read_only=True)
-    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True, default=None)
+    devis_reference = serializers.CharField(source='devis.reference', read_only=True, allow_null=True)
     # VX98 — auteur de la dernière modification (puce de fraîcheur). Lecture seule.
     updated_by_nom = serializers.CharField(
-        source='updated_by.username', read_only=True, allow_null=True, default=None)
+        source='updated_by.username', read_only=True, allow_null=True)
     # Ventilation TVA par taux (10 %/20 %), réconciliée au centime.
     tva_par_taux = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
@@ -400,6 +404,42 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
     # la règle « encaissable » vit au serveur (LA porte unique), l'écran la lit.
     encaissable = serializers.SerializerMethodField()
     motif_non_encaissable = serializers.SerializerMethodField()
+    # VNT91 — les blocs de la vente du PDF facture, lus par LA fonction du PDF
+    # (``utils/pdf.contexte_vente_facture``), servis au DÉTAIL seulement
+    # (``retrieve``) — jamais sur la liste paginée (un calcul par ligne = N+1).
+    # Au détail, ``objet_vente`` / ``garanties`` (instantanés du modèle)
+    # prennent la valeur imprimée (instantané d'une émise, vivante sinon).
+    situation_vente = serializers.SerializerMethodField()
+    prochaines_echeances = serializers.SerializerMethodField()
+
+    def _vente_pdf(self, obj):
+        if self.parent is not None or getattr(
+                self.context.get('view'), 'action', None) != 'retrieve':
+            return None
+        cache = self.context.setdefault('_vente_pdf', {})
+        if obj.pk not in cache:
+            from .utils.pdf import contexte_vente_facture
+            cache[obj.pk] = contexte_vente_facture(obj)
+        return cache[obj.pk]
+
+    @extend_schema_field(serializers.DictField(allow_null=True))
+    def get_situation_vente(self, obj):
+        return (self._vente_pdf(obj) or {}).get('situation_vente')
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_prochaines_echeances(self, obj):
+        return (self._vente_pdf(obj) or {}).get('prochaines_echeances', [])
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        vente = self._vente_pdf(instance)
+        if vente is None:  # liste, ou toute action autre que le détail
+            data.pop('situation_vente', None)
+            data.pop('prochaines_echeances', None)
+        elif vente:  # facture rattachée à un devis : les blocs du PDF
+            data['objet_vente'] = vente['objet_vente']
+            data['garanties'] = vente['garanties_vente']
+        return data
 
     def _motif_encaissement(self, obj):
         # Même fonction que la porte serveur ; aucune requête hors le
@@ -481,7 +521,8 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
-class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
+class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
+                             SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.
 
@@ -491,7 +532,8 @@ class FactureWriteSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
     lecture seule : `statut` ne bouge que par les actions dédiées
     (validation, paiement, abandon — AUD124/XFAC18). Liste `fields`
     EXPLICITE (plus d'`exclude=`) : tout nouveau champ du modèle doit y être
-    ajouté consciemment."""
+    ajouté consciemment. CI #997 — un BC déjà facturé (unicité de
+    ``bon_commande``) répond 409 ``unique_conflict``, plus 400."""
     same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
                            'entite', 'condition_paiement_ref')
 
@@ -689,7 +731,7 @@ class PromessePaiementSerializer(SameCompanyFKSerializerMixin,
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     created_by_username = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
 
     def validate_date_promise(self, value):
         from datetime import timedelta
@@ -733,7 +775,8 @@ class RelancerFactureSerializer(serializers.Serializer):
         max_length=2000)
     prochaine_relance = serializers.DateField(
         required=False, allow_null=True)
-    envoyer_email = serializers.BooleanField(default=False)
+    # CI #997 (5) : booléen STRICT — `0` était lu False et accepté (schéma : boolean).
+    envoyer_email = BooleenStrict(default=False)
 
     def validate_niveau(self, value):
         if value is None:
@@ -749,13 +792,11 @@ class RelancerFactureSerializer(serializers.Serializer):
         return value
 
 
-class FollowupLevelSerializer(serializers.ModelSerializer):
+class FollowupLevelSerializer(ChampsStrictsMixin,
+                              serializers.ModelSerializer):
     # ENF11 — taux et frais sont des décimaux transportés en CHAÎNE (le
     # schéma le déclare) : un nombre JSON est refusé en 400, plus converti.
-    serializer_field_mapping = {
-        **serializers.ModelSerializer.serializer_field_mapping,
-        models.DecimalField: DecimalStricte,
-    }
+    # CI #997 — texte et booléens aussi (``message: 0`` était converti).
 
     class Meta:
         from .models import FollowupLevel
@@ -773,7 +814,7 @@ class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
     mode_display = serializers.CharField(
         source='get_mode_display', read_only=True)
     responsable_username = serializers.CharField(
-        source='responsable.username', read_only=True, allow_null=True, default=None)
+        source='responsable.username', read_only=True, allow_null=True)
 
     class Meta:
         from .models import ParametrageRelanceClient
@@ -782,6 +823,20 @@ class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
                   'mode', 'mode_display', 'prochaine_relance_manuelle']
         read_only_fields = ['company']
 
+    def run_validation(self, data=serializers.empty):
+        """ENF11 (api-fuzz « rejected schema-compliant ») — un client DÉJÀ
+        paramétré, refusé par le seul validateur d'unicité de DRF, est un
+        refus d'ÉTAT : 409 ``unique_conflict`` (le corps est conforme). Mêlé
+        à une autre erreur, le 400 reste."""
+        try:
+            return super().run_validation(data)
+        except serializers.ValidationError as exc:
+            if exc.get_codes() != {'client': ['unique']}:
+                raise
+            from core.unicite import ConflitUnicite
+            raise ConflitUnicite(detail=str(exc.detail['client'][0]),
+                                 champs=['client']) from exc
+
 
 class RelanceLogSerializer(SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
@@ -789,7 +844,7 @@ class RelanceLogSerializer(SameCompanyFKSerializerMixin,
     # société si elle redevient inscriptible.
     same_company_fields = ('facture',)
     created_by_nom = serializers.CharField(
-        source='created_by.username', read_only=True, allow_null=True, default=None)
+        source='created_by.username', read_only=True, allow_null=True)
 
     class Meta:
         from .models import RelanceLog
@@ -806,7 +861,7 @@ class FactureActivitySerializer(SameCompanyFKSerializerMixin,
     # société si elle redevient inscriptible.
     same_company_fields = ('facture',)
     user_nom = serializers.CharField(
-        source='user.username', read_only=True, allow_null=True, default=None)
+        source='user.username', read_only=True, allow_null=True)
 
     class Meta:
         from .models import FactureActivity
@@ -831,7 +886,7 @@ class LigneRemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
     date_paiement = serializers.DateField(
         source='paiement.date_paiement', read_only=True)
     facture_reference = serializers.CharField(
-        source='paiement.facture.reference', read_only=True, allow_null=True, default=None)
+        source='paiement.facture.reference', read_only=True, allow_null=True)
 
     class Meta:
         model = LigneRemiseEncaissement
@@ -840,14 +895,18 @@ class LigneRemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
         read_only_fields = ['id']
 
 
-class RemiseEncaissementSerializer(SameCompanyFKSerializerMixin,
+class RemiseEncaissementSerializer(ChampsStrictsMixin,
+                                   SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
+    # CI #997 — texte/booléens stricts (``note: 0`` était converti) ; (2) le
+    # décimal aussi : ``montant_declare: 0`` (nombre JSON) → 400, l'écran
+    # envoie la chaîne saisie.
     # ASEC28 — le technicien d'une remise est un utilisateur de la société.
     same_company_fields = ('technicien',)
 
     lignes = LigneRemiseEncaissementSerializer(many=True, read_only=True)
     technicien_nom = serializers.CharField(
-        source='technicien.username', read_only=True, allow_null=True, default=None)
+        source='technicien.username', read_only=True, allow_null=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
     montant_lignes = serializers.DecimalField(
@@ -891,3 +950,17 @@ class MandatPaiementSerializer(SameCompanyFKSerializerMixin,
             'id', 'token', 'company', 'created_at', 'revoked_at',
             'statut', 'consentement_horodate',
         ]
+
+
+class FactureListeSerializer(FactureSerializer):
+    """CI #997 (api-fuzz « Response violates schema » sur ``GET factures/``) —
+    la LISTE paginée ne sert jamais les blocs de vente du détail (VNT91 :
+    ``situation_vente`` / ``prochaines_echeances``, un calcul par ligne) ;
+    le schéma de la liste ne les promet donc pas. Même lecture que le
+    détail pour tout le reste."""
+
+    situation_vente = None
+    prochaines_echeances = None
+
+    class Meta(FactureSerializer.Meta):
+        pass

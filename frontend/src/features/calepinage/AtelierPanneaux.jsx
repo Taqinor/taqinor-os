@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import calepinageApi from '../../api/calepinageApi'
 /* CALX27 — le droit d'ÉCRITURE métier du module. Même code que la garde
-   serveur de l'action (`PeutGererCalepinage`, `views/verrou.py`) : l'écran ne
+   serveur de l'action (`PeutGererCalepinage`, `services/verrou.py`) : l'écran ne
    propose pas un geste que l'API refusera. */
 /* CAL17 (moitié écran) — la FICHE de l'agrégat de détail. Le serveur publiait
    vingt et une clés que personne ne lisait. */

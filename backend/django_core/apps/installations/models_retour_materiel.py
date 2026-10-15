@@ -31,10 +31,13 @@ class RetourMateriel(models.Model):
         VALIDE = 'valide', 'Validé'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True, related_name='retours_materiel')
     installation = models.ForeignKey(
-        Installation, on_delete=models.CASCADE, related_name='retours_materiel')  # on_delete: RetourMateriel est le détail de Installation — n'existe pas sans lui
+        Installation,
+        on_delete=models.CASCADE,  # on_delete: RetourMateriel est le détail de Installation — n'existe pas sans lui
+        related_name='retours_materiel')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
     note = models.TextField(blank=True, null=True)
@@ -65,7 +68,9 @@ class RetourMaterielLigne(models.Model):
     """YSTCK4 — une ligne {produit, quantité} d'un retour de matériel."""
 
     retour = models.ForeignKey(
-        RetourMateriel, on_delete=models.CASCADE, related_name='lignes')  # on_delete: ligne de RetourMateriel — n'existe pas sans son document parent
+        RetourMateriel,
+        on_delete=models.CASCADE,  # on_delete: ligne de RetourMateriel — n'existe pas sans son document parent
+        related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='+')

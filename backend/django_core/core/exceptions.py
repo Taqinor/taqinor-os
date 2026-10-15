@@ -230,7 +230,7 @@ def _request_id_garanti(context) -> str:
             try:
                 cible.request_id = request_id
             except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
-                pass
+                logger.warning("request id garanti : échec ignoré, comportement dégradé", exc_info=True)
     return request_id
 
 
@@ -322,7 +322,7 @@ def _rate_limit_headers_for(exc, context):
                 'X-RateLimit-Remaining': '0',
             }
     except Exception:  # noqa: BLE001 — advisory headers, never break the 429
-        pass
+        logger.warning("rate limit headers for : échec ignoré, comportement dégradé", exc_info=True)
     return {}
 
 
@@ -385,6 +385,18 @@ def _corps_liste_en_objet(response) -> None:
         }
 
 
+def _detail_champ_en_texte(response) -> None:
+    """CI #997 (2) — un champ de formulaire littéralement nommé ``detail``
+    (``PointContact.detail``) qui échoue (caractère nul…) donnait
+    ``{"detail": ["…"]}`` à la racine du 400, alors que le schéma ``ErreurApi``
+    déclare ``detail`` en TEXTE. La clé racine est repliée en une chaîne ;
+    l'erreur par champ reste, en liste, sous ``error.fields.detail``."""
+    donnees = response.data
+    if isinstance(donnees, dict) and isinstance(donnees.get('detail'), list):
+        response.data = {
+            **donnees, 'detail': ' '.join(str(m) for m in donnees['detail'])}
+
+
 def taqinor_exception_handler(exc, context):
     """`REST_FRAMEWORK['EXCEPTION_HANDLER']` — enveloppe UNIQUE pour toute
     réponse d'erreur DRF, y compris les exceptions non reconnues par DRF
@@ -432,6 +444,7 @@ def taqinor_exception_handler(exc, context):
     code = _code_for(exc)
     if code == 'validation_error':
         _corps_liste_en_objet(response)
+        _detail_champ_en_texte(response)
     envelope = {
         'code': code,
         'message': _message_for(exc, code),

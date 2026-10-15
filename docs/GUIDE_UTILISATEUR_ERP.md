@@ -674,12 +674,11 @@ modÃ¨le** sur un nouveau devis.
 
 ### Calepinage
 
-**Ce que ça fait.** L'atelier Calepinage est le lieu où vous concevez une installation solaire : vous saisissez le site (toiture, terrain ou ombrière), choisissez les équipements (panneaux, onduleurs, structure), et vous consultez la simulation (production, pertes, batterie). Le calepinage est indépendant du statut du devis, et reste modifiable tant qu'aucun bon de commande n'est signé.
+**Ce que ça fait.** L'atelier Calepinage est le lieu où vous concevez une installation solaire : vous saisissez le site (toiture, terrain ou ombrière), choisissez les équipements (panneaux, onduleurs, structure), et vous consultez la simulation (production, pertes, batterie). Le calepinage suit le statut du devis lié : tant que le devis est en brouillon ou envoyé, il se corrige sur place (la correction est tracée) ; dès que le devis est accepté, refusé ou expiré, le calepinage passe en lecture seule (409) et seul le geste « Réviser (v2) » du devis rouvre une conception. Un calepinage sans devis lié n'est jamais verrouillé.
 
-**Où le trouver.** Trois portes d'entrée :
+**Où le trouver.** Deux portes d'entrée :
 1. Menu **VENTES** → **Calepinage** pour lister tous vos calepinages ou en créer un nouveau.
 2. Fiche **lead** dans le CRM : le bouton **Calepinage** ouvre ou crée l'atelier pour ce lead.
-3. Fiche **Appel d'offres** (AO) : l'onglet **Calepinages** liste les ateliers liés à cette affaire.
 
 **Le parcours : 10 étapes pour concevoir une installation.**
 
@@ -733,11 +732,11 @@ Une fois simulé, vous consultez :
 **Étape 8 — Générer ou synchroniser le devis (bouton du calepinage).**
 Vous cliquez **Générer le devis** (crée une ligne par équipement). Si vous changez ensuite la composition du calepinage, vous cliquez **Resynchroniser** pour mettre à jour les lignes du devis. Les prix, eux, restent gelés à la génération.
 
-**Étape 9 — Comparer les variantes (onglet « Versions »).**
-Vous créez plusieurs variantes du calepinage (panneaux différents, orientation alternative, batterie ou non) et comparez-les côte à côte : production, coût, économies.
+**Étape 9 — Comparer les variantes (lien « Comparer les variantes », page `/calepinage/:id/variantes`).**
+Vous créez plusieurs variantes du calepinage (panneaux différents, orientation alternative, batterie ou non) et comparez-les côte à côte : production, coût, économies. Ce n'est pas l'onglet « Versions », qui garde l'historique gelé des modifications.
 
 **Étape 10 — Compiler les documents et archiver (groupe « Dossiers »).**
-- **Documents** : l'atelier génère une planche d'installation (PDF/SVG), une note de calcul justificative, et un export CSV (8 760 heures).
+- **Documents** : l'atelier génère une planche d'installation (PDF/SVG), une note de calcul justificative. L'export CSV de la série horaire de production (8 760 heures) est un téléchargement distinct, possible une fois le calepinage simulé.
 - **Dossiers réglementaires** : onglet qui regroupe les fiches produits et schémas (si compilés ; sinon le bouton reste inactif tant que toutes les données n'y sont pas).
 - **Versions** : historique gelé de chaque calepinage modifié.
 

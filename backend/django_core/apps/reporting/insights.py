@@ -384,6 +384,16 @@ def _marge_devis(devis):
     return {'ca_ht': ca_ht, 'cout': cout, 'marge': marge}
 
 
+def _facture_ht_vente(devis):
+    """VNT109 — « facturé » HT d'un chantier = Σ HT des factures ÉMISES de
+    la vente de son devis (toute la chaîne de versions : un acompte re-pointé
+    sur la V2 reste au chantier de la V1), lues par la façade ventes ; jamais
+    un brouillon (prévu) ni une annulée. Préchargez ``devis__factures``."""
+    from apps.ventes.selectors import factures_de_la_vente
+    return sum((Decimal(f.total_ht) for f in factures_de_la_vente(
+        devis, emises=True)), Decimal('0')) if devis else Decimal('0')
+
+
 _INSIGHTS_JOB_COSTING_REPONSE = inline_serializer('InsightsJobCostingReponse', {
     'internal': drf_serializers.JSONField(allow_null=True),
     'total_invoiced_ht': drf_serializers.JSONField(allow_null=True),
@@ -406,29 +416,21 @@ def job_costing(request):
     de marge par chantier + récap mensuel.
 
     HYPOTHÈSE DE LIAISON : on privilégie le chemin devis→chantier (le chantier
-    porte un FK `devis`). Les factures sont rattachées par leur FK `devis` au
-    MÊME devis que le chantier. C'est le lien fiable et documenté ici ; la
-    facturation directe chantier↔facture n'existe pas dans le modèle.
+    porte un FK `devis`). VNT109 — le facturé est celui de la VENTE de ce
+    devis (factures ÉMISES de toute la chaîne de versions, façade
+    ``apps.ventes.selectors.factures_de_la_vente``) : un acompte re-pointé sur
+    la V2 reste au chantier de la V1, un brouillon n'est jamais facturé.
     """
     co = _co(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
     from apps.installations.models import Installation
-    from apps.ventes.models import Facture
 
     chantiers = (Installation.objects
                  .filter(**co)
                  .select_related('client', 'devis')
-                 .prefetch_related('devis__lignes__produit'))
-
-    # Factures non annulées, indexées par devis_id (chemin devis→chantier).
-    factures = (Facture.objects.filter(**co)
-                .exclude(statut=Facture.Statut.ANNULEE)
-                .exclude(devis__isnull=True)
-                .prefetch_related('lignes'))
-    invoiced_by_devis = defaultdict(Decimal)
-    for f in factures:
-        invoiced_by_devis[f.devis_id] += Decimal(f.total_ht)
+                 .prefetch_related('devis__lignes__produit',
+                                   'devis__factures__lignes'))
 
     rows = []
     monthly = defaultdict(lambda: {'invoiced': Decimal('0'),
@@ -437,8 +439,7 @@ def job_costing(request):
     total_cost = Decimal('0')
 
     for ch in chantiers:
-        invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
-                    if ch.devis_id else Decimal('0'))
+        invoiced = _facture_ht_vente(ch.devis)
         cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
                 else Decimal('0'))
         margin = invoiced - cost
@@ -1115,7 +1116,7 @@ def profitability(request):
     Retourne pour chaque valeur de segment :
       - segment_value   : valeur du segment
       - count           : nombre de chantiers
-      - revenue_ht      : CA facturé HT (somme Factures non annulées)
+      - revenue_ht      : CA facturé HT (factures ÉMISES de la vente, VNT109)
       - cost_estimate   : coût matière estimé (HT achat × qté)  [INTERNE]
       - margin          : marge brute  [INTERNE]
       - margin_pct      : taux de marge  [INTERNE]
@@ -1125,7 +1126,6 @@ def profitability(request):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     from apps.installations.models import Installation
-    from apps.ventes.models import Facture
 
     segment_field = request.query_params.get('segment', 'type_installation')
     allowed = {'type_installation', 'canal'}
@@ -1138,20 +1138,12 @@ def profitability(request):
     end = _qdate(request.query_params.get('to'))
 
     chantiers_qs = Installation.objects.filter(**co).select_related(
-        'devis', 'lead').prefetch_related('devis__lignes__produit')
+        'devis', 'lead').prefetch_related('devis__lignes__produit',
+                                          'devis__factures__lignes')
     if start:
         chantiers_qs = chantiers_qs.filter(date_creation__date__gte=start)
     if end:
         chantiers_qs = chantiers_qs.filter(date_creation__date__lte=end)
-
-    # Factures non annulées par devis_id.
-    factures = (Facture.objects.filter(**co)
-                .exclude(statut=Facture.Statut.ANNULEE)
-                .exclude(devis__isnull=True)
-                .prefetch_related('lignes'))
-    invoiced_by_devis = defaultdict(Decimal)
-    for f in factures:
-        invoiced_by_devis[f.devis_id] += Decimal(f.total_ht)
 
     buckets: dict = defaultdict(lambda: {
         'count': 0, 'revenue': Decimal('0'), 'cost': Decimal('0')
@@ -1163,8 +1155,7 @@ def profitability(request):
         else:  # canal
             key = (ch.lead.canal if ch.lead_id and ch.lead else '') or '—'
 
-        invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
-                    if ch.devis_id else Decimal('0'))
+        invoiced = _facture_ht_vente(ch.devis)
         cost = (_marge_devis(ch.devis)['cout'] if ch.devis_id
                 else Decimal('0'))
         buckets[key]['count'] += 1

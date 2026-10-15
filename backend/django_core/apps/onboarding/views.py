@@ -61,24 +61,41 @@ _CHAMPS_RESUME_PROGRESSION = {
 }
 
 
-_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetMarquerFaitReponse', {
-    **_CHAMPS_RESUME_PROGRESSION,
-})
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE = inline_serializer(
+    'ViewsOnboardingProgressViewSetMarquerFaitReponse',
+    {
+        **_CHAMPS_RESUME_PROGRESSION,
+    })
 
 
-_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_TOUT_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerToutReponse', {
-    **_CHAMPS_RESUME_PROGRESSION,
-})
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_TOUT_REPONSE = inline_serializer(
+    'ViewsOnboardingProgressViewSetIgnorerToutReponse',
+    {
+        **_CHAMPS_RESUME_PROGRESSION,
+    })
 
 
-_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetIgnorerReponse', {
-    **_CHAMPS_RESUME_PROGRESSION,
-})
+_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE = inline_serializer(
+    'ViewsOnboardingProgressViewSetIgnorerReponse',
+    {
+        **_CHAMPS_RESUME_PROGRESSION,
+    })
 
 
 _VIEWS_ONBOARDING_PROGRESS_VIEW_SET_LIST_REPONSE = inline_serializer('ViewsOnboardingProgressViewSetListReponse', {
     **_CHAMPS_RESUME_PROGRESSION,
 })
+
+
+#: ENF11 — paramètres de chemin des deux ``ViewSet`` sans queryset ci-dessous
+#: (drf-spectacular ne peut pas les typer seul) : l'item de la checklist est
+#: désigné par sa PK entière, un tour guidé par sa CLÉ texte.
+_ID_ITEM_CHECKLIST = [OpenApiParameter(
+    'id', OpenApiTypes.INT, OpenApiParameter.PATH,
+    description="Identifiant de l'item de la checklist « Premiers pas ».")]
+_CLE_TOUR = [OpenApiParameter(
+    'id', OpenApiTypes.STR, OpenApiParameter.PATH,
+    description='Clé du tour guidé (ex. « devis »).')]
 
 
 class OnboardingProgressViewSet(viewsets.ViewSet):
@@ -94,7 +111,8 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             self._company(request), request.user)
         return Response(resume)
 
-    @extend_schema(request=None, responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE)
+    @extend_schema(request=None, parameters=_ID_ITEM_CHECKLIST,
+                   responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_IGNORER_REPONSE)
     @action(detail=True, methods=['post'], url_path='ignorer',
             permission_classes=[IsAuthenticated])
     def ignorer(self, request, pk=None):
@@ -112,7 +130,8 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
             resume_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
-    @extend_schema(request=None, responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE)
+    @extend_schema(request=None, parameters=_ID_ITEM_CHECKLIST,
+                   responses=_VIEWS_ONBOARDING_PROGRESS_VIEW_SET_MARQUER_FAIT_REPONSE)
     @action(detail=True, methods=['post'], url_path='marquer-fait',
             permission_classes=[IsAuthenticated])
     def marquer_fait(self, request, pk=None):
@@ -144,7 +163,8 @@ class ProductTourViewSet(viewsets.ViewSet):
     def list(self, request):
         return Response(tours_pour_utilisateur(self._company(request), request.user))
 
-    @extend_schema(request=None, responses=_ProductTourSerializer(many=True))
+    @extend_schema(request=None, parameters=_CLE_TOUR,
+                   responses=_ProductTourSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='vu',
             permission_classes=[IsAuthenticated])
     def vu(self, request, pk=None):
@@ -153,7 +173,8 @@ class ProductTourViewSet(viewsets.ViewSet):
             tours_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
-    @extend_schema(request=None, responses=_ProductTourSerializer(many=True))
+    @extend_schema(request=None, parameters=_CLE_TOUR,
+                   responses=_ProductTourSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='revoir',
             permission_classes=[IsAuthenticated])
     def revoir(self, request, pk=None):

@@ -3,9 +3,11 @@ import { render, screen, cleanup, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { initState } from './draftCore'
-import { exempleContrat } from '../../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
 import DevisTab from './DevisTab'
+import ventesApi from '../../../api/ventesApi'
+import { openPdfBlob } from '../../../utils/pdfBlob'
 import {
   devisTrackCurrent, devisIntent, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
@@ -13,6 +15,7 @@ import {
   lectureClientLabel,
 } from './devisTabLogique'
 import { missingFieldTarget } from './missingFields'
+import { resolveCss } from '../../../test/readCss.mjs'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
    `.num`, actions facture/chantier busy-par-id), CTA « Devis automatique »
@@ -21,7 +24,7 @@ import { missingFieldTarget } from './missingFields'
    props contrôlées, comme le fera réellement ContextRail). */
 
 const {
-  genererFacture, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
+  apercuFacturerVente, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
   getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
@@ -31,7 +34,9 @@ const {
     { id: 41, nom: 'Panneau Longi 610W', marque: 'Longi', prix_vente: 1400, prix_achat: 1000 },
   ]
   return {
-    genererFacture: vi.fn(() => Promise.resolve({ data: { reference: 'FAC-1', type_facture_display: 'Facture' } })),
+    // VNT75 — « Facturer… » du panneau ouvre FacturerVenteDialog, qui lit
+    // l'aperçu serveur (réponse fournie par le test depuis devis_facturer.json).
+    apercuFacturerVente: vi.fn(),
     createFromDevis: vi.fn(() => Promise.resolve({ data: { reference: 'CHT-1' } })),
     whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
     // QJR538 — l'aperçu sans effet : réponse fournie par le test depuis
@@ -63,9 +68,13 @@ const {
     reviserDevis: vi.fn(() => Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })),
   }
 })
-vi.mock('../../../api/ventesApi', () => ({
-  default: { genererFacture, shareLinkDevis, getOffresTaillesDevis, reviserDevis },
+vi.mock('../../../api/ventesApi', async () => ({
+  default: {
+    apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis,
+    ...(await import('../../../test/mocksVentesEcrans.js')).gestesFactureVente(),
+  },
 }))
+vi.mock('../../../utils/pdfBlob', async (orig) => (await import('../../../test/mocksVentesEcrans.js')).pdfBlobSansOuverture(await orig()))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
 vi.mock('../../../api/stockApi', () => ({ default: { getProduits } }))
 // NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
@@ -174,6 +183,24 @@ describe('LW21 — CTA devis automatique', () => {
     expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '3' })
   })
 
+  // AGNR39 — au pompage, aucune cible kWc : ni champ, ni cible envoyée ; le
+  // C&I garde le champ et sa cible.
+  it('lead agricole : pas de champ « puissance cible », intention sans cible', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ type_installation: 'agricole' }) })
+    expect(document.getElementById('lw-devis-kwc')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', 'auto')
+  })
+
+  it('lead industriel : le champ « puissance cible » reste et sa cible voyage', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ type_installation: 'industriel' }) })
+    await user.type(screen.getByLabelText(/Puissance cible/), '40')
+    await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', { mode: 'auto', targetKwc: '40' })
+  })
+
   it('QJR599 — devis_auto pas prêt → « Nouveau devis (édition complète) » reste proposé', async () => {
     const user = userEvent.setup()
     const { onAction } = renderTab({
@@ -223,51 +250,58 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     date_creation: '2026-01-05', option_acceptee: 'A', chantier: null,
   }
 
-  it('carte rend référence, statut, total .num et « Générer la facture »/« Créer le chantier »', () => {
+  it('carte rend référence, statut, total .num et « Créer le chantier » ; sans `vente` aucun « Facturer »', () => {
     renderTab({ state: leadState({ devis: [devisAccepte] }) })
     expect(screen.getByText('DEV-2026-001')).toBeInTheDocument()
     expect(screen.getByText('Accepté')).toBeInTheDocument()
     expect(document.querySelector('.num')).toHaveTextContent('15 000')
-    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Facturer|Générer la facture/ })).toBeNull()
     expect(screen.getByRole('button', { name: /Créer le chantier/ })).toBeInTheDocument()
   })
 
-  it('« Générer la facture » appelle ventesApi puis onAction(\'refresh\')', async () => {
-    const user = userEvent.setup()
-    const { onAction } = renderTab({ state: leadState({ devis: [devisAccepte] }) })
-    await user.click(screen.getByRole('button', { name: /Facturer par tranches/ }))
-    await waitFor(() => expect(genererFacture).toHaveBeenCalledWith(1))
-    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
-    expect(await screen.findByText(/FAC-1 créée/)).toBeInTheDocument()
-  })
-
-  // ATOT31 — les boutons suivent `solde.porte_facturation` du contrat
-  // `devis_solde.json` (exemples COMMITTÉS, jamais un mock inventé).
-  const avecPorte = (variante) => ({
+  // VNT75 — les boutons suivent `vente.peut` du contrat `vente_etat.json`
+  // (exemples COMMITTÉS, jamais un mock inventé) ; plus de repli `'libre'`.
+  const avecVente = (variante) => ({
     ...devisAccepte,
-    solde: exempleContrat('ventes', 'devis_solde', variante).solde,
+    vente: exempleContrat('ventes', 'vente_etat', variante).vente,
   })
 
-  it('porte aucune masque generer-facture', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple_tout_facture')] }) })
-    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
+  it('« Facturer l’acompte » ouvre « Facturer la vente » (aperçu serveur)', async () => {
+    apercuFacturerVente.mockResolvedValue({ data: documentContrat('ventes', 'devis_facturer').apercu_get.reponse_200 })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [avecVente('exemple')] }) })
+    await user.click(screen.getByRole('button', { name: /Facturer l.acompte/ }))
+    await waitFor(() => expect(apercuFacturerVente).toHaveBeenCalledWith(1))
+    expect(await screen.findByText(/Facturer — DEV-2026-001/)).toBeInTheDocument()
   })
 
-  it('porte tranche', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple')] }) })
-    expect(screen.getByRole('button', { name: /Générer la facture/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Facturer \(facture complète\)/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Facturer par tranches/ })).toBeNull()
+  it('porte aucune (tout facturé) : aucun bouton « Facturer »', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_tout_facture')] }) })
+    expect(screen.queryByRole('button', { name: /Facturer/ })).toBeNull()
   })
 
-  it('porte libre', () => {
-    renderTab({ state: leadState({ devis: [avecPorte('exemple_vide')] }) })
-    expect(screen.getByRole('button', { name: /Facturer \(facture complète\)/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Facturer par tranches/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Générer la facture/ })).toBeNull()
+  it('acompte payé : seul le geste suivant (`peut.facturer_solde`)', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple_acompte_paye_solde_a_faire')] }) })
+    expect(screen.getByRole('button', { name: /Facturer (le solde|la tranche suivante)/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Facturer l.acompte/ })).toBeNull()
+  })
+
+  it('vente neuve : seul « Facturer l’acompte » (`peut.facturer_acompte`)', () => {
+    renderTab({ state: leadState({ devis: [avecVente('exemple')] }) })
+    expect(screen.getByRole('button', { name: /Facturer l.acompte/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Facturer/ })).toHaveLength(1)
+  })
+
+  it('version remplacée / révision en cours : jamais de « Facturer »', () => {
+    renderTab({
+      state: leadState({
+        devis: [
+          avecVente('exemple_version_remplacee'),
+          { ...avecVente('exemple_revision_en_cours'), id: 2, reference: 'DEV-2' },
+        ],
+      }),
+    })
+    expect(screen.queryByRole('button', { name: /Facturer/ })).toBeNull()
   })
 
   it('« Créer le chantier » appelle installationsApi puis onAction(\'refresh\')', async () => {
@@ -294,6 +328,269 @@ describe('LW21 — cartes devis + actions facture/chantier', () => {
     renderTab({ state: leadState({ devis: [{ ...devisAccepte, statut: 'brouillon' }] }) })
     expect(screen.queryByRole('button', { name: /Générer la facture|Facturer/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Créer le chantier/ })).toBeNull()
+  })
+})
+
+// VNT74 — le panneau de vente lit `d.vente` (exemples COMMITTÉS de
+// vente_etat.json) ; absent ⇒ rien ; une réponse sans la clé garde l'état.
+describe('VNT74 — panneau de vente (lecture seule)', () => {
+  const carteVente = (variante, extra = {}) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    return {
+      id: ex.id, reference: ex.reference, statut: 'accepte', total_ttc: '49000.00',
+      date_creation: '2026-10-10', chantier: null, is_active: ex.vente.est_tete,
+      vente: ex.vente, ...extra,
+    }
+  }
+
+  it('acompte en brouillon : pastille « Brouillon », bilan lu du serveur', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple_acompte_brouillon')] }) })
+    const panneau = screen.getByTestId('panneau-vente')
+    const ligne = within(panneau).getByTestId('facture-vente-117')
+    expect(within(ligne).getByText('BROUILLON-117')).toBeInTheDocument()
+    expect(within(ligne).getByText('Brouillon')).toBeInTheDocument()
+    expect(within(ligne).queryByText('Émise')).toBeNull()
+    expect(within(panneau).getByText('Prix convenu')).toBeInTheDocument()
+    expect(within(panneau).getByText("L'acompte est en brouillon : émettez-le.")).toBeInTheDocument()
+  })
+
+  it('facture émise : pastille « Émise » et payé', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('facture-vente-118')
+    expect(within(ligne).getByText('Émise')).toBeInTheDocument()
+    expect(within(ligne).getByText(/Payé/)).toBeInTheDocument()
+  })
+
+  it('version remplacée : « Remplacé par » la tête, aucun bouton dans le panneau', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple_version_remplacee')] }) })
+    const panneau = screen.getByTestId('panneau-vente')
+    expect(within(panneau).getByText(/Remplacé par DEV-202610-0021/)).toBeInTheDocument()
+    expect(within(panneau).queryAllByRole('button')).toHaveLength(0)
+  })
+
+  it('sans `vente` ⇒ rien', () => {
+    renderTab({ state: leadState({ devis: [carteVente('exemple', { vente: null })] }) })
+    expect(screen.queryByTestId('panneau-vente')).toBeNull()
+  })
+
+  it('une réponse sans la clé `vente` (PATCH / refresh) garde l’état du dernier GET détail', () => {
+    const avec = carteVente('exemple_acompte_brouillon')
+    const { rerender, onAction } = renderTab({ state: leadState({ devis: [avec] }) })
+    expect(screen.getByTestId('panneau-vente')).toBeInTheDocument()
+    const sansCle = { ...avec }
+    delete sansCle.vente
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [sansCle] })} onAction={onAction} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    expect(within(screen.getByTestId('panneau-vente')).getByText('BROUILLON-117')).toBeInTheDocument()
+  })
+})
+
+// VNT76 — les gestes PAR facture du panneau suivent `facture.peut` ; un refus
+// serveur s'affiche sous CETTE facture (role=alert), jamais en toast.
+describe('VNT76 — panneau : Émettre, PDF, Envoyer, Encaisser, Reçu par paiement', () => {
+  const carte = (variante) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    return {
+      id: ex.id, reference: ex.reference, statut: 'accepte', total_ttc: '49000.00',
+      date_creation: '2026-10-10', chantier: null, is_active: true, vente: ex.vente,
+    }
+  }
+
+  it('brouillon : Émettre + PDF seulement ; Émettre → POST emettre puis rafraîchit le lead', async () => {
+    ventesApi.emettreFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('facture-vente-117')
+    expect(within(ligne).queryByRole('button', { name: 'Encaisser' })).toBeNull()
+    expect(within(ligne).queryByRole('button', { name: 'WhatsApp' })).toBeNull()
+    expect(within(ligne).getByRole('button', { name: 'PDF' })).toBeInTheDocument()
+    await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
+    await waitFor(() => expect(ventesApi.emettreFacture).toHaveBeenCalledWith(117))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('refus serveur : message sous CETTE facture avec sa référence, aucun toast', async () => {
+    const refus = documentContrat('ventes', 'devis_facturer').erreurs_403.credit_hold
+    ventesApi.emettreFacture.mockRejectedValue({ response: { status: 403, data: refus } })
+    const toastErreur = vi.spyOn(toast, 'error')
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_brouillon')] }) })
+    const ligne = screen.getByTestId('facture-vente-117')
+    await user.click(within(ligne).getByRole('button', { name: 'Émettre' }))
+    expect(await within(ligne).findByRole('alert')).toHaveTextContent(`BROUILLON-117 : ${refus.detail}`)
+    expect(toastErreur).not.toHaveBeenCalled()
+  })
+
+  it('émise payée : Envoyer (WhatsApp / e-mail) et Reçu PAR paiement encaissé', async () => {
+    ventesApi.whatsappFacture.mockResolvedValue({ data: {} })
+    ventesApi.recuPdfPaiement.mockResolvedValue({ data: new Blob(['%PDF']), headers: {} })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carte('exemple_acompte_paye_solde_a_faire')] }) })
+    const ligne = screen.getByTestId('facture-vente-118')
+    expect(within(ligne).queryByRole('button', { name: 'Émettre' })).toBeNull()
+    await user.click(within(ligne).getByRole('button', { name: 'WhatsApp' }))
+    await waitFor(() => expect(ventesApi.whatsappFacture).toHaveBeenCalledWith(118, { modele: 'facture', langue: 'fr' }))
+    await user.click(within(ligne).getByRole('button', { name: /Reçu du paiement/ }))
+    await waitFor(() => expect(ventesApi.recuPdfPaiement).toHaveBeenCalledWith(301))
+    await waitFor(() => expect(openPdfBlob).toHaveBeenCalledWith(expect.any(Blob), 'Quittance_301.pdf'))
+  })
+})
+
+// VNT77 — Annuler / Supprimer / Modifier le montant suivent `facture.peut`
+// (palier serveur) ; variantes dérivées des exemples COMMITTÉS de vente_etat.
+describe('VNT77 — panneau : Annuler, Supprimer, Modifier le montant', () => {
+  const carteAvec = (variante, retouche) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    const factures = ex.vente.factures.map((f) => ({ ...f, ...retouche(f) }))
+    return {
+      id: ex.id, reference: ex.reference, statut: 'accepte', total_ttc: '49000.00',
+      date_creation: '2026-10-10', chantier: null, is_active: true,
+      vente: { ...ex.vente, factures },
+    }
+  }
+
+  it('Commercial (peut fermé par le serveur) : aucun des trois', () => {
+    const ferme = (f) => ({ peut: { ...f.peut, annuler: false, supprimer: false, modifier_montant: false } })
+    renderTab({ state: leadState({ devis: [carteAvec('exemple_acompte_brouillon', ferme)] }) })
+    const ligne = screen.getByTestId('facture-vente-117')
+    expect(within(ligne).queryByRole('button', { name: /Annuler|Supprimer|Modifier le montant/ })).toBeNull()
+  })
+
+  it('Responsable : brouillon 14 700 → 15 000 ⇒ montant-tranche puis rafraîchit', async () => {
+    ventesApi.montantTrancheFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    const { onAction } = renderTab({
+      state: leadState({ devis: [carteAvec('exemple_acompte_brouillon', () => ({ total_ttc: '14700.00' }))] }),
+    })
+    const ligne = screen.getByTestId('facture-vente-117')
+    await user.click(within(ligne).getByRole('button', { name: 'Modifier le montant' }))
+    const champ = within(ligne).getByLabelText(/Montant TTC de BROUILLON-117/)
+    await user.clear(champ)
+    await user.type(champ, '15 000')
+    await user.click(within(ligne).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(ventesApi.montantTrancheFacture).toHaveBeenCalledWith(117, '15000'))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+  })
+
+  it('brouillon : Supprimer (BROUILLON-<id>) confirme puis DELETE', async () => {
+    ventesApi.supprimerFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carteAvec('exemple_acompte_brouillon', () => ({}))] }) })
+    await user.click(within(screen.getByTestId('facture-vente-117')).getByRole('button', { name: 'Supprimer' }))
+    await user.click(await screen.findByTestId('supprimer-brouillon-confirmer'))
+    await waitFor(() => expect(ventesApi.supprimerFacture).toHaveBeenCalledWith(117))
+  })
+
+  it('émise sans argent : confirmation nommant l’avoir, puis annulation', async () => {
+    ventesApi.annulerFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    renderTab({
+      state: leadState({ devis: [carteAvec('exemple_acompte_paye_solde_a_faire', () => ({ montant_paye: '0.00', paiements: [] }))] }),
+    })
+    await user.click(within(screen.getByTestId('facture-vente-118')).getByRole('button', { name: 'Annuler' }))
+    expect(await screen.findByTestId('annulation-avoir')).toHaveTextContent(/avoir de contre-passation/)
+    await user.click(screen.getByRole('button', { name: 'Annuler la facture' }))
+    await waitFor(() => expect(ventesApi.annulerFacture).toHaveBeenCalledWith(118, undefined))
+  })
+
+  it('émise avec argent : la directive est obligatoire avant l’annulation', async () => {
+    ventesApi.annulerFacture.mockResolvedValue({ data: {} })
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [carteAvec('exemple_acompte_paye_solde_a_faire', () => ({}))] }) })
+    await user.click(within(screen.getByTestId('facture-vente-118')).getByRole('button', { name: 'Annuler' }))
+    const confirmer = await screen.findByRole('button', { name: 'Annuler la facture' })
+    expect(confirmer).toBeDisabled()
+    await user.click(screen.getByRole('radio', { name: 'Rembourser' }))
+    await user.click(confirmer)
+    await waitFor(() => expect(ventesApi.annulerFacture).toHaveBeenCalledWith(118, { acompte: { action: 'rembourser' } }))
+  })
+})
+
+// VNT78 (D-VNT-2) — « Prix négocié » monté dans le panneau : tête acceptée
+// seulement ; le succès relit le lead, qui sert la V2 acceptée.
+describe('VNT78 — panneau : Prix négocié', () => {
+  const NEGO = documentContrat('ventes', 'devis_prix_negocie')
+  const enCarte = (variante, extra = {}) => ({
+    statut: 'accepte', date_creation: '2026-10-10', chantier: null, is_active: true,
+    vente: exempleContrat('ventes', 'vente_etat', variante).vente, ...extra,
+  })
+
+  it('tête 54 500 avec 15 000 facturés ⇒ aperçu, application, V2 affichée', async () => {
+    ventesApi.prixNegocie.mockImplementation((id, body) => Promise.resolve({
+      data: body.mode === 'apercu' ? NEGO.reponse_apercu_200 : NEGO.reponse_appliquer_201,
+    }))
+    const tete = enCarte('exemple_acompte_paye_solde_a_faire', { id: 318, reference: 'DEV-202610-0010', total_ttc: '54500.00' })
+    const user = userEvent.setup()
+    const { onAction, rerender } = renderTab({ state: leadState({ devis: [tete] }) })
+    await user.click(screen.getByRole('button', { name: 'Prix négocié' }))
+    await user.type(screen.getByLabelText(/Nouveau prix TTC/), '49000')
+    await user.click(screen.getByRole('button', { name: /Voir les effets/ }))
+    expect(await screen.findByLabelText(/Effets du prix négocié/)).toHaveTextContent('10,00 %')
+    await user.click(screen.getByRole('button', { name: /Appliquer le prix négocié/ }))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    expect(ventesApi.prixNegocie).toHaveBeenLastCalledWith(318, { prix_ttc: '49000', mode: 'appliquer' })
+    expect(await screen.findByText(/Version 2 créée/)).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    const v2 = NEGO.reponse_appliquer_201.devis_v2
+    const remplacee = enCarte('exemple_version_remplacee', { id: 318, reference: 'DEV-202610-0010', total_ttc: '54500.00', is_active: false })
+    rerender(
+      <MemoryRouter>
+        <DevisTab
+          state={leadState({ devis: [remplacee, enCarte('exemple', { id: v2.id, reference: v2.reference, total_ttc: '49000.00' })] })}
+          onAction={onAction} wa={waState()}
+          onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+        />
+      </MemoryRouter>,
+    )
+    const panneaux = screen.getAllByTestId('panneau-vente')
+    expect(within(panneaux[0]).getByText(new RegExp(`Remplacé par ${v2.reference}`))).toBeInTheDocument()
+    expect(within(panneaux[0]).queryByRole('button', { name: 'Prix négocié' })).toBeNull()
+    expect(within(panneaux[1]).getByRole('button', { name: 'Prix négocié' })).toBeInTheDocument()
+  })
+
+  it('jamais sur une version remplacée ni pendant une révision', () => {
+    renderTab({
+      state: leadState({
+        devis: [
+          enCarte('exemple_version_remplacee', { id: 1, reference: 'DEV-1', is_active: false }),
+          enCarte('exemple_revision_en_cours', { id: 2, reference: 'DEV-2' }),
+        ],
+      }),
+    })
+    expect(screen.queryByRole('button', { name: 'Prix négocié' })).toBeNull()
+  })
+})
+
+// VNT80 — un 409 qui nomme un autre devis (forme unique `successeur`, exemple
+// committé devis_prix_negocie.json) s'affiche SOUS la carte ; « Ouvrir <réf> »
+// fait défiler jusqu'à la carte de la tête.
+describe('VNT80 — conflit nommant un autre devis : erreur sous la carte + « Ouvrir »', () => {
+  it('Réviser refusé (version remplacée) : message sous la carte, Ouvrir défile vers la tête', async () => {
+    const refus = documentContrat('ventes', 'devis_prix_negocie').erreurs_409.version_remplacee
+    reviserDevis.mockRejectedValueOnce({ response: { status: 409, data: refus } })
+    const defile = vi.spyOn(window.HTMLElement.prototype, 'scrollIntoView')
+    const user = userEvent.setup()
+    const base = { statut: 'accepte', total_ttc: '49000.00', date_creation: '2026-10-10', chantier: null }
+    renderTab({
+      state: leadState({
+        devis: [
+          { ...base, id: 410, reference: 'DEV-202610-0009', is_active: true, revision_possible: true },
+          { ...base, id: refus.successeur.id, reference: refus.successeur.reference, is_active: true },
+        ],
+      }),
+    })
+    const carte = document.getElementById('devis-carte-410')
+    await user.click(within(carte).getByRole('button', { name: /Réviser/ }))
+    expect(await within(carte).findByRole('alert')).toHaveTextContent(refus.detail)
+    await user.click(within(carte).getByRole('button', { name: `Ouvrir ${refus.successeur.reference}` }))
+    expect(defile.mock.contexts.at(-1)).toBe(document.getElementById(`devis-carte-${refus.successeur.id}`))
   })
 })
 
@@ -982,7 +1279,6 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
   // vérifierait que l'attribut `class` serait passé au vert pendant tout le bug —
   // c'est la DÉFINITION CSS qui manquait, donc c'est elle qu'on épingle.
   it('la boîte « Modifier les options » porte une classe de largeur RÉELLEMENT définie', async () => {
-    const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })
@@ -994,8 +1290,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     expect(boite.className).toMatch(/lw-context-devis-edit-tailles/)
 
     // `process.cwd()` est la racine `frontend/` sous vitest (`root` du config).
-    const css = readFileSync(
-      join(globalThis.process.cwd(), 'src', 'index.css'), 'utf8')
+    const css = resolveCss(join(globalThis.process.cwd(), 'src', 'index.css'))
     const regle = css.match(/\.lw-context-devis-edit-tailles\s*\{[^}]*\}/)
     expect(regle, '.lw-context-devis-edit-tailles doit être DÉFINIE dans index.css').not.toBeNull()
     expect(regle[0]).toMatch(/max-width/)

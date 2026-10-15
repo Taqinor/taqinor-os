@@ -121,6 +121,17 @@ def liste_ids(donnees, nom='ids'):
         raise ValidationError({nom: 'Une liste d\'identifiants entiers est attendue.'})
 
 
+def corps_objet(request):
+    """Corps de requête GARANTI objet JSON (``.get`` disponible).
+
+    CI #997 (fuzz) — un corps tableau (``[null, null]``) levait
+    ``AttributeError`` (500) dans les actions qui lisent ``request.data.get``
+    (leads/bulk, exports xlsx, réservation publique) : 400 à la place."""
+    if not hasattr(request.data, 'get'):
+        raise ValidationError({'detail': 'Un objet JSON est attendu.'})
+    return request.data
+
+
 def verifier_corps_texte(request, champs):
     """400 si le corps n'est pas un objet ou si l'un de ``champs`` n'est ni
     absent, ni ``null``, ni du texte.
@@ -183,3 +194,42 @@ class UniciteEn409Mixin:
             champs = [c for c in exc.detail if c != 'non_field_errors']
             premier = next(iter(exc.detail.values()))[0]
             raise ConflitUnicite(detail=str(premier), champs=champs) from exc
+
+
+def _corps_gps():
+    """ERR-ENF11-FUZZ-CRM — corps PUBLIÉS et VALIDÉS de ``resoudre-gps`` et
+    ``ville-statut`` (``(x or '').strip()`` levait sur un nombre : 500 ;
+    ``gps_lat: "abc"`` était avalé). Mêmes noms de composants qu'avant."""
+    from apps.parametres.requetes_strictes import FlottantStrict
+    from core.champs_stricts import BooleenStrict, ChaineStricte
+    from core.openapi_erreurs import MOTIF_NON_BLANC
+
+    from . import schema_docs as sd
+
+    def texte():
+        return ChaineStricte(required=False, allow_blank=True)
+
+    resoudre = sd.corps('CrmResoudreGpsRequest', adresse=texte(), lien=texte(),
+                        ville=texte())
+    ville = sd.corps(
+        'CrmVilleStatutRequest', ville=texte(),
+        gps_lat=FlottantStrict(required=False),
+        gps_lng=FlottantStrict(required=False),
+        proches=BooleenStrict(required=False))
+    #: Au moins un repère NON BLANC : un lien, une adresse ou une ville.
+    regle = {'anyOf': [
+        {'required': [nom], 'properties': {nom: {'pattern': MOTIF_NON_BLANC}}}
+        for nom in ('lien', 'adresse', 'ville')]}
+    return resoudre, ville, regle
+
+
+def corps_lu(request, corps):
+    """Corps validé par le sérialiseur PUBLIÉ (``core.parseurs.corps_valide``) :
+    400 nommant le champ, ``validated_data`` sinon."""
+    from core.parseurs import corps_valide
+    return corps_valide(request, corps)
+
+
+CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, _REGLE_GPS = _corps_gps()
+#: ``extensions`` de ``resoudre-gps`` (règle combinée au corps publié).
+RESOUDRE_GPS_REPERE = {'x-corps-resserre': _REGLE_GPS}

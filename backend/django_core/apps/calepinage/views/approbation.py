@@ -101,7 +101,8 @@ def _statut_du_refus(refus, corps):
     409 pour un refus d'ÉTAT de la conception."""
     mal_forme = (refus.champ == 'motif'
                  or (refus.champ == 'decision'
-                     and corps.get('decision') not in DECISIONS))
+                     and not (isinstance(corps.get('decision'), str)
+                              and corps.get('decision') in DECISIONS)))
     return (status.HTTP_400_BAD_REQUEST if mal_forme
             else status.HTTP_409_CONFLICT)
 

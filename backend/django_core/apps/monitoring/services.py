@@ -562,7 +562,7 @@ def emettre_certificat_carbone(company, *, installation_id=None, client_id=None,
         company=company, installation_id=installation_id, client_id=client_id,
         periode_debut=periode_debut, periode_fin=periode_fin).exists()
     if deja_emis:
-        raise ValueError(
+        raise CertificatCarboneDoublon(
             'Un certificat carbone existe déjà pour cette cible et cette '
             'période exacte (anti-double-comptage).')
 
@@ -680,10 +680,21 @@ def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
 class CertificatCarboneError(ValueError):
     """Émission refusée ; ``champ`` nomme le champ fautif (``None`` = global)."""
 
-    def __init__(self, message, champ=None):
+    def __init__(self, message, champ=None, etat=False, introuvable=False):
         super().__init__(message)
         self.message = message
         self.champ = champ
+        # CI #997 fuzz — ``True`` : refus d'ÉTAT des données (aucune production
+        # mesurée, certificat déjà émis) = 409, le corps était conforme.
+        self.etat = etat
+        # CI #997 fuzz (2) — ``True`` : identifiant BIEN FORMÉ qui ne désigne
+        # aucun système de la société = 404 (même corps qu'il soit absent ou
+        # d'une autre société — aucun oracle).
+        self.introuvable = introuvable
+
+
+class CertificatCarboneDoublon(ValueError):
+    """Certificat identique déjà émis (même société, cible, période)."""
 
 
 def emettre_certificat_carbone_mesure(company, *, installation_id=None,
@@ -710,18 +721,20 @@ def emettre_certificat_carbone_mesure(company, *, installation_id=None,
             company, installation_id)
         if installation is None:
             raise CertificatCarboneError(
-                'Système inconnu.', champ='installation_id')
+                'Système inconnu.', champ='installation_id',
+                introuvable=True)
     tonnes, has_data = tco2_evitees_periode(
         company, installation=installation, client_id=client_id,
         since=periode_debut, until=periode_fin)
     if not has_data:
         raise CertificatCarboneError(
             'Aucune production mesurée sur la période : aucun certificat '
-            'chiffré ne peut être émis.')
+            'chiffré ne peut être émis.', etat=True)
     try:
         return emettre_certificat_carbone(
             company, installation_id=installation_id or None,
             client_id=client_id or None, periode_debut=periode_debut,
             periode_fin=periode_fin, tco2_evitees=tonnes)
     except ValueError as exc:
-        raise CertificatCarboneError(str(exc)) from exc
+        raise CertificatCarboneError(
+            str(exc), etat=isinstance(exc, CertificatCarboneDoublon)) from exc

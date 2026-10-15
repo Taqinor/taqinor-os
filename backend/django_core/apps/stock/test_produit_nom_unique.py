@@ -26,7 +26,11 @@ from django.test import TestCase, TransactionTestCase
 
 from apps.stock.models import Produit
 from core.test_utils import WideTeardownTimeoutMixin
-from apps.ventes.domain import facturation_ops as domaine_facturation_ops
+
+# ENF20 — test boîte blanche d'un helper PRIVÉ de ventes : import dynamique
+# délibéré (contrat vente-lue-par-la-facade ; la façade n'exporte pas `_x`).
+domaine_facturation_ops = importlib.import_module(
+    'apps.ventes.domain.facturation_ops')
 
 MIGRATION_DEDOUBLONNAGE = 'apps.stock.migrations.0134_dedoublonnage_produit_nom_sans_sku'
 CONTRAINTE = 'stock_produit_company_nom_sans_sku_uniq'

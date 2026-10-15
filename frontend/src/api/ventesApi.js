@@ -104,10 +104,6 @@ const ventesApi = {
   regenererOverride: (id, chemin) =>
     api.delete(`/ventes/devis/${id}/overrides/`, { params: { chemin } }),
   deleteDevis: (id) => api.delete(`/ventes/devis/${id}/`),
-  // « Facturer » un devis accepté : facture complète + paiements déjà reçus en
-  // UN appel atomique. Contrat : apps/ventes/contract_samples/devis_facturer_complet.json.
-  facturerComplet: (devisId, { paiements = [] } = {}) =>
-    api.post(`/ventes/devis/${devisId}/facturer-complet/`, { paiements }),
   // VNT45 (D-VNT-3) — « Facturer la vente » : aperçu (plan, prochaine tranche,
   // acompte proposé, état de la vente) puis création de la facture d'une nature
   // donnée. Contrat : apps/ventes/contract_samples/devis_facturer.json.
@@ -364,8 +360,6 @@ const ventesApi = {
   // (réponse 202 initiale de journalVentes / export-comptable) : poller
   // jusqu'à {status:'ready', download_url, filename} ou {status:'error'}.
   exportStatus: (jobId) => api.get(`/ventes/export/status/${jobId}/`),
-  // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
-  genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
   // QX29 — « Relances du jour » : devis nécessitant une action (envoyés sans
   // réponse par palier de cadence, acceptés non facturés — réutilise le
   // sélecteur ZFAC12, refusés sans motif, expirant bientôt). Miroir de
@@ -580,6 +574,18 @@ const ventesApi = {
   // Contrat partagé : `apps/ventes/contract_samples/ventes_economie.json`
   // (CALX280, servi par l'action CALX288).
   getEconomieDevis: (id) => api.get(`/ventes/devis/${id}/economie/`),
+
+  // VNT73 — « Prix négocié » (contrat `apps/ventes/contract_samples/devis_prix_negocie.json`).
+  // `data` = exactement UN de `prix_ttc` / `remise_pct`, plus `mode`
+  // ('apercu' = simulation sans effet, 'appliquer' = crée la V2).
+  prixNegocie: (id, data) => api.post(`/ventes/devis/${id}/prix-negocie/`, data),
+  // Pose le lien de signature de l'avenant ET la tâche unique (idempotent).
+  demanderSignatureAvenant: (id) => api.post(`/ventes/devis/${id}/avenant/demander-signature/`, {}),
+
+  // VNT77 — « Modifier le montant » d'un BROUILLON de tranche (VNT67) : le TTC
+  // tapé part tel quel, le serveur réécrit HT / TVA et l'échéancier (409 sur une émise).
+  montantTrancheFacture: (id, montantTtc) =>
+    api.post(`/ventes/factures/${id}/montant-tranche/`, { montant_ttc: montantTtc }),
 }
 
 // 409 « déjà accepté » sur un POST d'acceptation : le devis EST accepté (clic

@@ -25,7 +25,7 @@
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "montant_prevu",
    "read_only": false,
    "required": false
@@ -43,7 +43,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "commentaire",
    "read_only": false,
    "required": false

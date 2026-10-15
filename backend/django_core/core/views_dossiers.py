@@ -34,7 +34,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from . import dossiers as dossiers_service
-from .champs_stricts import BooleenStrict, ChaineStricte
+from .champs_stricts import BooleenStrict, ChaineStricte, TexteLie
 from .mixins import SameCompanyFKSerializerMixin
 from .parseurs import corps_valide
 from .models import (
@@ -81,7 +81,9 @@ class DossierLienSerializer(CompanyScopedRelationsMixin, serializers.ModelSerial
 # même nom auraient produit le même composant OpenAPI "DossierChecklistItem"
 # pour deux formes différentes — collision de nom, jamais de comportement.
 class DossierWorkflowChecklistItemSerializer(CompanyScopedRelationsMixin, serializers.ModelSerializer):
-    fait_par_username = serializers.CharField(
+    # Toujours servi (même sans auteur) : un PATCH du dossier (partial) OMETTAIT
+    # la clé alors que le schéma la déclare requise.
+    fait_par_username = TexteLie(
         source='fait_par.username', read_only=True, default='')
 
     class Meta:
@@ -176,7 +178,9 @@ _CIBLE_LIEN = inline_serializer('DossierCibleLien', {
     'cle_modele': serializers.RegexField(
         r'^[A-Za-z_]\w*\.[A-Za-z_]\w*$',
         help_text='« app_label.model », ex. crm.lead.'),
-    'object_id': serializers.IntegerField(min_value=1),
+    # Plafonné à la colonne (``PositiveIntegerField``) : au-delà, l'INSERT
+    # levait « integer out of range » (500) sur une requête conforme.
+    'object_id': serializers.IntegerField(min_value=1, max_value=2147483647),
     'libelle': ChaineStricte(required=False, allow_blank=True),
 })
 _TYPE_INCONNU = ("Type d'objet introuvable — attendu « app_label.model » "
@@ -185,7 +189,8 @@ _TYPE_INCONNU = ("Type d'objet introuvable — attendu « app_label.model » "
 # étape OU coche d'une étape) ; ``{}`` était conforme puis refusé.
 _CHECKLIST_AJOUT = inline_serializer('DossierChecklistAjout', {
     'libelle': ChaineStricte(max_length=200),
-    'ordre': serializers.IntegerField(required=False, min_value=0),
+    'ordre': serializers.IntegerField(
+        required=False, min_value=0, max_value=2147483647),
 })
 _NOTE = inline_serializer('DossierNoterRequest', {'body': ChaineStricte()})
 _CHECKLIST_COCHE = inline_serializer('DossierChecklistCoche', {

@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from './test/readCss.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -68,7 +69,7 @@ function unguardedHoverSelectors(rawSource) {
 }
 
 test('index.css : aucun :hover non gardé par @media (hover: hover)', () => {
-  const css = readFileSync(join(here, 'index.css'), 'utf8')
+  const css = resolveCss(join(here, 'index.css'))
   const unguarded = unguardedHoverSelectors(css)
   assert.deepEqual(unguarded, [],
     `:hover non gardé(s) trouvé(s) dans index.css (doivent être dans @media (hover: hover)) : ${unguarded.join(' | ')}`)

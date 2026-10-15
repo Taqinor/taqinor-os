@@ -17,7 +17,9 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.champs_stricts import ChampsStrictsMixin
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import RapportDefinition
@@ -25,6 +27,10 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RapportDefinitionSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
@@ -178,7 +184,11 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
                                      enum=['csv', 'xlsx'])],
         responses={(200, 'text/csv'): OpenApiTypes.STR,
                    (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
-    @action(detail=True, methods=['get'], url_path='export')
+    # ASEC50 / D-ASEC-4 — la garde du viewset (``ScopedPermission``) ET le
+    # code ``reporting_export`` : décocher « Exporter » ferme l'export.
+    @action(detail=True, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission,
+                                DroitDeLaGrille('reporting_export')])
     def export(self, request, pk=None):
         """NTEXT11 — export ``?format=csv|xlsx`` de la définition rejouée.
 
@@ -238,6 +248,7 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
                 contenu = workbook_bytes(
                     entetes, lignes, sheet_title=base[:31])
             except Exception:  # pragma: no cover - dépend d'openpyxl
+                logger.warning("export : échec ignoré, comportement dégradé", exc_info=True)
                 return Response(
                     {'detail': "Export xlsx indisponible sur ce serveur : "
                                "réessayez au format csv."},

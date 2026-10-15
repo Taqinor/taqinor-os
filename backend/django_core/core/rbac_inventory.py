@@ -50,9 +50,13 @@ _PUBLIC_SEGMENT = "public"
 PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/token",                       # obtention/refresh/verify JWT
     "api/django/contact",                     # formulaire de contact (park-able)
-    "api/django/auth/signup-demande",         # N101b — demande d'inscription design-partner : parquée (TENANT_SIGNUP_ENABLED off → 404), throttlée + pot de miel, ne crée JAMAIS de compte (approbation fondateur en console)
+    # N101b — demande d'inscription design-partner : parquée (TENANT_SIGNUP_ENABLED off → 404), throttlée + pot de miel,
+    # ne crée JAMAIS de compte (approbation fondateur en console)
+    "api/django/auth/signup-demande",
     "api/django/reporting/calendar",          # flux ICS calendrier tokenisé
-    "api/django/reporting/rapports-partages",  # NTDATA39 — rendu public d'un rapport via LIEN SIGNÉ expirant (7 j), throttlé, token opaque non énumérable ; jamais la pièce jointe
+    # NTDATA39 — rendu public d'un rapport via LIEN SIGNÉ expirant (7 j), throttlé, token opaque non énumérable ; jamais
+    # la pièce jointe
+    "api/django/reporting/rapports-partages",
     "api/django/rh/pointages/kiosque",        # guichet kiosque device-PIN throttlé
     "api/django/rh/promesses-embauche",       # promesse d'embauche tokenisée
     "api/django/gestion-projet/portail",      # portail avancement/CSAT tokenisé
@@ -79,7 +83,8 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/marketing/intake/",
     # Auth publiques (JWT obtention/refresh, inscription société onboarding) :
     "api/django/auth/token",                  # obtention/refresh/verify JWT (auth.urls)
-    "api/django/auth/register-company",       # inscription société (onboarding) — ASEC13 : parquée (TENANT_SIGNUP_ENABLED off → 404)
+    # inscription société (onboarding) — ASEC13 : parquée (TENANT_SIGNUP_ENABLED off → 404)
+    "api/django/auth/register-company",
     # Sondes/metrics montées sous core/ (déplacées depuis /health) :
     "api/django/core/health",                 # sondes liveness/readiness
     "api/django/core/metrics",                # métriques (probe monitoring)

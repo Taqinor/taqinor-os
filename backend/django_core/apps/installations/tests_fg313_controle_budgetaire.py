@@ -110,6 +110,20 @@ class TestControleBudgetaire(TestCase):
         })
         self.assertEqual(r.status_code, 400, r.data)
 
+    def test_parametres_illisibles_400_jamais_500(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `montant=NaN` faisait un 500
+        # (comparaison Decimal), `projet=abc` un 500 ORM, `categorie=` était
+        # lu « materiel » : 400 nommant le paramètre.
+        for params, champ in (({'montant': 'NaN'}, 'montant'),
+                              ({'montant': '5', 'projet': 'abc'}, 'projet'),
+                              ({'montant': '5', 'categorie': ''}, 'categorie')):
+            r = self.api.get(f'{BASE}/controle-budgetaire/', params)
+            self.assertEqual(r.status_code, 400, (params, r.data))
+            self.assertIn(champ, r.data)
+        r = self.api.get(f'{BASE}/controle-budgetaire/',
+                         {'montant': '', 'projet': ''})
+        self.assertEqual(r.status_code, 200, r.data)
+
     def test_other_company_budget_not_seen(self):
         other = make_company()
         projet_o = make_projet_budget(other, materiel=999999)

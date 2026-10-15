@@ -56,6 +56,14 @@
    {
     "attrs": {},
     "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_reassign__reassign"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_supprimer__delete"
    }
   ]
  },
@@ -116,6 +124,10 @@
    {
     "attrs": {},
     "classe": "IsAdminRole"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_supprimer"
    }
   ]
  },
@@ -166,6 +178,10 @@
    {
     "attrs": {},
     "classe": "HasPermissionOrLegacy_crm_voir"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_export"
    }
   ]
  },
@@ -326,6 +342,10 @@
    {
     "attrs": {},
     "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_reassign__owner"
    }
   ]
  },
@@ -486,6 +506,10 @@
    {
     "attrs": {},
     "classe": "IsResponsableOrAdmin"
+   },
+   {
+    "attrs": {},
+    "classe": "DroitDeLaGrille_crm_reassign__owner"
    }
   ]
  },

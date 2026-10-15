@@ -17,7 +17,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.champs_stricts import BooleenStrict
+from core.champs_stricts import BooleenStrict, ChampsStrictsMixin
 from core.mixins import TenantMixin
 from core.parseurs import ObjetJSON
 
@@ -25,6 +25,10 @@ from .models import Classeur, ClasseurPartageInterne
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.parsers import JSONParser
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 _CELL_REF_RE = re.compile(r'\b([A-Z]+)([0-9]+)\b')
 _RANGE_RE = re.compile(r'\b([A-Z]+[0-9]+):([A-Z]+[0-9]+)\b')
@@ -82,6 +86,7 @@ def _cell_value(classeur, ref, *, user, _visiting=None):
     try:
         return evaluate_formula(classeur, formule, user=user, _visiting=_visiting)
     except Exception:  # pragma: no cover - dégradation défensive
+        logger.warning("cell value : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -119,6 +124,7 @@ def _resolve_linked_range(classeur, saved_query_id, *, user):
     try:
         rows = data_explorer.run_query(sq.dataset, classeur.company, user, sq.spec)
     except Exception:  # pragma: no cover - dégradation défensive
+        logger.warning("resolve linked range : échec ignoré, comportement dégradé", exc_info=True)
         return []
     # Aplati les lignes en une liste de valeurs numériques (premier champ
     # numérique de chaque ligne) — représentation simple pour SOMME/moyenne.
@@ -165,7 +171,7 @@ def evaluate_formula(classeur, formule, *, user, _visiting=None):
     return evaluer_formule(translated, context)
 
 
-class ClasseurSerializer(serializers.ModelSerializer):
+class ClasseurSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     # ERR-ENF11-FUZZ-REPORTING — OBJETS JSON non nuls : ``null`` était conforme
     # au schéma ``{}`` publié puis refusé par le champ de modèle (400).
     cellules = ObjetJSON(required=False)
@@ -245,5 +251,6 @@ class ClasseurViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             valeur = evaluate_formula(classeur, formule, user=request.user)
         except Exception as exc:
+            logger.warning("evaluer : échec ignoré, comportement dégradé", exc_info=True)
             return Response({'detail': str(exc)}, status=400)
         return Response({'valeur': valeur})

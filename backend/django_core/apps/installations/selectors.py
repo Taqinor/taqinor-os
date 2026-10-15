@@ -47,20 +47,9 @@ def calepinage_retenu_du_chantier(installation):
 
     Renvoie ``None`` quand le chantier n'a pas de devis, ou quand ce devis n'a
     pas de calepinage avec une variante retenue."""
-    from apps.calepinage.selectors import calepinage_retenu_pour_devis
+    from .calepinage_retenu import bloc_calepinage_retenu
 
-    if installation is None or not installation.devis_id:
-        return None
-    bloc = calepinage_retenu_pour_devis(installation.devis_id, installation.company)
-    if bloc is None:
-        return None
-    return {
-        'calepinage_id': bloc['id'],
-        'kwc': bloc['kwc'],
-        'nb_modules': bloc['nb_modules'],
-        'planche_url': bloc['planche_url'],
-        'plan_pose_url': f'/ventes/devis/{installation.devis_id}/3d',
-    }
+    return bloc_calepinage_retenu(installation)
 
 
 def devis_id_du_chantier(company, chantier_id):
@@ -2504,8 +2493,9 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
         bloc = _bloc(jour)
         for tech in eligibles:
             # FG302 — indisponibilité sur TOUT le bloc.
-            if any(ressource_indisponible(company, tech.id, j, j)
-                   for j in bloc):
+            if ressource_indisponible(company, tech.id, bloc[0], bloc[-1]) \
+                    and any(ressource_indisponible(company, tech.id, j, j)
+                            for j in bloc):
                 continue
             # FG300 — conflit : le technicien (principal OU membre d'équipe)
             # porte déjà une intervention active sur un jour du bloc →

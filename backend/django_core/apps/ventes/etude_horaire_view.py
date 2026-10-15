@@ -35,13 +35,21 @@ uniquement.
 from __future__ import annotations
 
 import logging
+import math
 
+from django.http import QueryDict
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes,
+)
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from core.champs_stricts import ChaineStricte, non_blanc
+
+from .dimensionnement import CRITERES
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +67,83 @@ def _num(valeur, defaut=None):
         return float(valeur)
     except (TypeError, ValueError):
         return defaut
+
+
+#: CI #997 api-fuzz — drapeaux publiés ``boolean`` au schéma : un vrai
+#: booléen JSON (``{}``, ``0``, ``"oui"`` passaient en silence par leur
+#: « vérité » Python). En formulaire (multipart / urlencoded, où tout voyage en
+#: chaîne), seules « true » / « false » (casse libre) sont lues.
+DRAPEAUX = ('dimensionner', 'ete_differente')
+
+
+def _drapeau(corps, nom):
+    """``True``/``False`` d'un drapeau du corps (absent → ``False``), ou
+    ``None`` quand sa valeur n'est pas un booléen (→ 400 côté vue)."""
+    if nom not in corps:
+        return False
+    valeur = corps.get(nom)
+    if isinstance(valeur, bool):
+        return valeur
+    if isinstance(corps, QueryDict) and isinstance(valeur, str) and (
+            valeur.strip().lower() in ('true', 'false')):
+        return valeur.strip().lower() == 'true'
+    return None
+
+
+#: CI #997 api-fuzz — séries publiées « 12 nombres ou null » :
+#: ``conso_kwh_mensuelles: true`` (ou une chaîne) passait en silence (200) et
+#: une liste d'une autre longueur était ignorée sans un mot. En formulaire,
+#: chaque valeur répétée doit se lire comme un nombre.
+SERIES_12 = ('factures_mensuelles', 'conso_kwh_mensuelles')
+
+
+def _serie_12(corps, nom):
+    """``(True, liste | None)`` pour 12 nombres finis (absent/null → None),
+    ``(False, None)`` pour toute autre forme (→ 400 côté vue)."""
+    if nom not in corps:
+        return True, None
+    formulaire = isinstance(corps, QueryDict)
+    brutes = corps.getlist(nom) if formulaire else corps.get(nom)
+    if brutes is None:
+        return True, None
+    types = (str,) if formulaire else (int, float)
+    if not isinstance(brutes, list) or len(brutes) != 12 or any(
+            isinstance(v, bool) or not isinstance(v, types) for v in brutes):
+        return False, None
+    try:
+        valeurs = [float(v) for v in brutes]
+    except (ValueError, OverflowError):
+        return False, None
+    return all(map(math.isfinite, valeurs)), valeurs
+
+
+#: CI #997 (2) — forme publiée des champs scalaires : un champ PRÉSENT a son
+#: type JSON exact (``critere: "\f"``, ``lat: "0"``, ``devis: null`` étaient
+#: lus en silence) ; un champ absent reste facultatif.
+_ENTIERS = ('devis', 'lead')
+_NOMBRES = ('lat', 'lon', 'facture_hiver', 'facture_ete', 'kwc',
+            'batterie_kwh')
+_TEXTES = ('ville', 'raccordement')
+
+
+def _champ_hors_forme(corps):
+    """Nom du premier champ scalaire présent hors de sa forme publiée, ou
+    ``None``."""
+    def _nombre(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool)
+    regles = [(_ENTIERS, lambda v: _nombre(v) and isinstance(v, int)),
+              (_NOMBRES, _nombre),
+              # CI #997 (3) — motif publié : non blanc ET aucun nul.
+              (_TEXTES, lambda v: isinstance(v, str) and '\x00' not in v
+               and non_blanc(v)),
+              (('occupation',), lambda v: isinstance(v, str)),
+              (('equipements',), lambda v: isinstance(v, dict)),
+              (('critere',), lambda v: v in CRITERES)]
+    for noms, valide in regles:
+        for nom in noms:
+            if nom in corps and not valide(corps.get(nom)):
+                return nom
+    return None
 
 
 class _DevisDepuisLead:
@@ -131,7 +216,7 @@ def _profil_depuis_corps(corps):
     conso, source, detail = profil_depuis_factures(
         facture_hiver_mad=_num(corps.get('facture_hiver')),
         facture_ete_mad=_num(corps.get('facture_ete')),
-        ete_differente=bool(corps.get('ete_differente')),
+        ete_differente=bool(_drapeau(corps, 'ete_differente')),
         factures_mensuelles_mad=corps.get('factures_mensuelles'),
         conso_kwh_mensuelles=corps.get('conso_kwh_mensuelles'))
 
@@ -236,7 +321,7 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
             help_text='L-QA1 — profil lu directement sur ce lead SANS devis '
                       'persisté (écran générateur), scopé société. Un `devis` '
                       'fourni en même temps PRIME toujours sur `lead`.'),
-        'ville': serializers.CharField(required=False),
+        'ville': ChaineStricte(required=False),
         'lat': serializers.FloatField(required=False),
         'lon': serializers.FloatField(required=False),
         'facture_hiver': serializers.FloatField(
@@ -244,19 +329,25 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
         'facture_ete': serializers.FloatField(required=False),
         'ete_differente': serializers.BooleanField(required=False),
         'factures_mensuelles': serializers.ListField(
-            child=serializers.FloatField(), required=False,
+            child=serializers.FloatField(), required=False, allow_null=True,
+            min_length=12, max_length=12,
             help_text='12 factures MAD réelles'),
         'conso_kwh_mensuelles': serializers.ListField(
-            child=serializers.FloatField(), required=False,
+            child=serializers.FloatField(), required=False, allow_null=True,
+            min_length=12, max_length=12,
             help_text='12 consommations kWh saisies'),
-        'occupation': serializers.ChoiceField(
-            choices=OCCUPATIONS, required=False),
+        # Une occupation hors des valeurs servies est IGNORÉE (repli
+        # documenté de ``OCCUPATIONS``) : le schéma publie un texte libre.
+        'occupation': serializers.CharField(
+            required=False, allow_blank=True,
+            help_text='Servies : ' + ', '.join(OCCUPATIONS) + ' ; toute '
+                      'autre valeur est ignorée (repli documenté).'),
         'equipements': serializers.DictField(required=False),
-        'raccordement': serializers.CharField(required=False),
+        'raccordement': ChaineStricte(required=False),
         'kwc': serializers.FloatField(required=False),
         'batterie_kwh': serializers.FloatField(required=False),
         'dimensionner': serializers.BooleanField(required=False),
-        'critere': serializers.CharField(required=False),
+        'critere': serializers.ChoiceField(choices=CRITERES, required=False),
     }),
     responses={
         200: inline_serializer('EtudeHorairePreviewResponse', {
@@ -304,6 +395,10 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
 )
 @api_view(['POST'])
 @permission_classes([IsAnyRole])
+# CI #997 (D2) — JSON seul, comme l'écran l'envoie : en formulaire,
+# ``equipements`` (objet publié) voyageait en chaîne « {} » et une requête
+# conforme était refusée. Un corps multipart reçoit 415.
+@parser_classes([JSONParser])
 def etude_horaire_preview(request):
     """CJ2a — Aperçu du moteur horaire + dimensionnement, SANS devis persisté.
 
@@ -333,7 +428,10 @@ def etude_horaire_preview(request):
     valent ``null`` quand ils ne sont pas calculables, jamais une clé absente —
     l'écran n'a ainsi jamais à deviner.
 
-    ``400`` seulement quand le corps est inexploitable (pas un objet JSON).
+    ``400`` seulement quand le corps est inexploitable (pas un objet JSON,
+    ``equipements`` non-objet, drapeau ``dimensionner``/``ete_differente``
+    non booléen, ``factures_mensuelles``/``conso_kwh_mensuelles`` autre
+    chose que 12 nombres ou null).
     """
     corps = request.data if isinstance(request.data, dict) else None
     if corps is None:
@@ -350,6 +448,29 @@ def etude_horaire_preview(request):
         return Response(
             {'detail': 'Corps de requête invalide : « equipements » doit '
                        'être un objet JSON (ex. {"piscine": true}).'},
+            status=400)
+
+    for nom in DRAPEAUX:
+        if _drapeau(corps, nom) is None:
+            return Response(
+                {'detail': f'Corps de requête invalide : « {nom} » doit être '
+                           'un booléen (true / false).'},
+                status=400)
+    for nom in SERIES_12:
+        valide, valeurs = _serie_12(corps, nom)
+        if not valide:
+            return Response(
+                {'detail': f'Corps de requête invalide : « {nom} » doit être '
+                           'une liste de 12 nombres (ou null).'},
+                status=400)
+        if valeurs is not None and isinstance(corps, QueryDict):
+            corps = corps.copy()
+            corps[nom] = valeurs  # la liste lue, plus la dernière chaîne
+    hors_forme = _champ_hors_forme(corps)
+    if hors_forme:
+        return Response(
+            {'detail': f'Corps de requête invalide : « {hors_forme} » ne '
+                       'suit pas sa forme publiée.'},
             status=400)
 
     company = getattr(request.user, 'company', None)
@@ -424,20 +545,23 @@ def etude_horaire_preview(request):
     etude = None
     kwc = _num(corps.get('kwc'))
     if kwc and kwc > 0:
-        etude = calculer_etude_horaire(
-            kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat, lon=lon,
-            occupation=occupation, equipements=equipements,
-            source_conso=source, detail_conso=detail,
-            tranches=tranches, charges_fixes_mad=charges_fixes,
-            jour_reference=jour_reference,
-            **_batterie_de_l_apercu(devis, _num(corps.get('batterie_kwh'))))
+        batterie = _batterie_de_l_apercu(devis, _num(corps.get('batterie_kwh')))
+        etude = _bloc_enregistre_du_devis(devis, corps, kwc, occupation,
+                                          batterie)
+        if etude is None:
+            etude = calculer_etude_horaire(
+                kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
+                lon=lon, occupation=occupation, equipements=equipements,
+                source_conso=source, detail_conso=detail,
+                tranches=tranches, charges_fixes_mad=charges_fixes,
+                jour_reference=jour_reference, **batterie)
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '
                 'chantier non résolue par PVGIS (ni GPS, ni ville reconnue).')
 
     dimensionnement = None
-    if corps.get('dimensionner'):
+    if _drapeau(corps, 'dimensionner'):
         dimensionnement = _dimensionner(
             company=company, conso=conso, ville=ville, lat=lat, lon=lon,
             occupation=occupation, equipements=equipements, corps=corps,
@@ -511,23 +635,81 @@ def _batterie_de_l_apercu(devis, batterie_kwh_corps):
         return {'batterie_kwh_utile': batterie_kwh_corps}
 
 
+def _meme_ville(ville_corps, ville_chantier):
+    """La ville envoyée par l'écran désigne-t-elle le chantier (vide = oui) ?"""
+    tapee = (ville_corps or '').strip().casefold()
+    return not tapee or tapee == (ville_chantier or '').strip().casefold()
+
+
 def _localisation(corps, devis, lead=None):
-    """(ville, lat, lon) — corps d'abord, puis le chantier du devis/lead."""
+    """(ville, lat, lon) — corps d'abord, puis le chantier du devis/lead.
+
+    ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — l'écran envoie TOUJOURS la
+    ville de calcul du lead : le GPS du chantier n'était donc jamais lu, et
+    l'aperçu chiffrait la table PVGIS de la ville pendant que le bloc du devis
+    (``etude_horaire._etude_horaire_pour_devis`` : ville du chantier + GPS du
+    lead) chiffrait le point exact. Le GPS du chantier est désormais repris
+    dès que la ville envoyée EST celle du chantier ; une autre ville tapée
+    (simulation) garde le comportement d'avant, sans GPS emprunté.
+    """
     ville = (corps.get('ville') or '').strip() or None
     lat = _num(corps.get('lat'))
     lon = _num(corps.get('lon'))
     source_localisation = devis if devis is not None else (
         _DevisDepuisLead(lead) if lead is not None else None)
-    if source_localisation is not None and not (ville or (lat and lon)):
+    if source_localisation is not None and not (lat and lon):
         try:
             from apps.crm.selectors import site_location_for_devis
             loc = site_location_for_devis(source_localisation) or {}
+            if not _meme_ville(ville, loc.get('site_ville')):
+                return ville, lat, lon
             ville = ville or loc.get('site_ville')
             lat = lat if lat is not None else loc.get('gps_lat')
             lon = lon if lon is not None else loc.get('gps_lng')
         except Exception:  # noqa: BLE001 — lead illisible ⇒ pas de localisation
             logger.warning("etude_horaire_view._localisation : erreur ignorée (mode dégradé)", exc_info=True)
     return ville, lat, lon
+
+
+def _bloc_enregistre_du_devis(devis, corps, kwc, occupation, batterie):
+    """ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — le bloc RANGÉ du devis,
+    servi TEL QUEL quand l'écran décrit ce que le document chiffre.
+
+    L'« Édition complète » recalculait l'étude en direct pendant que le PDF,
+    l'API et la proposition lisent le bloc rangé : deux calculs, et chaque
+    argument qui diverge (localisation, batterie, occupation) ou chaque
+    caprice de PVGIS rendait deux chiffres. Tant que l'écran n'explore rien
+    — même kWc et même batterie que le devis, ni GPS ni autre ville ni autre
+    occupation demandés — l'aperçu rend le bloc que
+    ``domain.etudes.bloc_horaire_enregistre_pour`` juge frais ET que le moteur
+    accepte : écran et document lisent alors la MÊME étude. Sinon ``None`` et
+    l'aperçu recalcule comme avant. Ne lève jamais.
+    """
+    if (devis is None or corps.get('lat') not in (None, '')
+            or corps.get('lon') not in (None, '')):
+        return None
+    try:
+        from apps.crm.selectors import site_location_for_devis
+        from apps.ventes.domain.etudes import bloc_horaire_enregistre_pour
+        bloc = bloc_horaire_enregistre_pour(devis, kwc)
+        if bloc is None or bloc.get('occupation') != occupation:
+            return None
+        loc = site_location_for_devis(devis) or {}
+        if not _meme_ville(corps.get('ville'), loc.get('site_ville')):
+            return None
+        capacite = batterie.get('batterie_kwh_utile')
+        if capacite and 'batterie_rendement' not in batterie:
+            return None  # une AUTRE batterie essayée à l'écran
+        rangee = bloc.get('batterie_kwh_utile')
+        if bool(capacite) != bool(rangee) or (
+                capacite and abs(float(capacite) - float(rangee)) > 0.05):
+            return None
+        return {cle: valeur for cle, valeur in bloc.items()
+                if not str(cle).startswith('_')}
+    except Exception:  # noqa: BLE001 — un aperçu ne casse jamais : recalcul
+        logger.warning("bloc enregistré illisible pour l'aperçu",
+                       exc_info=True)
+        return None
 
 
 def _dimensionner(*, company, conso, ville, lat, lon, occupation, equipements,

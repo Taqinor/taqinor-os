@@ -10,9 +10,9 @@ import {
   controlerKwhDeclare, factureMad, ONEE_TRANCHES,
 } from './solar.js'
 
-test('DEV-202609-0108 : estimerMois(1, 1600) a deux mois sous le plancher', () => {
+test('DEV-202609-0108 : estimerMois(1, 1600) a ses six mois d’hiver sous le plancher', () => {
   const ctl = controlerFacturesSaisies(estimerMois(1, 1600), { factureHiverLead: 3000 })
-  assert.deepEqual(ctl.sousPlancher, [1, 12])
+  assert.deepEqual(ctl.sousPlancher, [1, 2, 3, 4, 11, 12])
   assert.ok(Math.abs(ctl.plancher - 39.936) < 1e-9)
   assert.equal(ctl.plancher, chargesFixesTtc())
 })

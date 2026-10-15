@@ -80,7 +80,10 @@ ignore_imports =
 # ENF20 — exception RETIRÉE : la façade lit désormais le noyau dans la feuille
 # pure `apps.ventes.domain.noyau_totaux` (aucun import d'app), plus
 # `apps.ventes.selectors` ; l'arête qu'elle élaguait n'existe plus.
-    apps.sav.models -> apps.sav.selectors
+# ENF20 — exception `apps.sav.models -> apps.sav.selectors` RETIRÉE :
+# `Ticket.couverture` lit `droits_restants` dans la feuille pure
+# `apps.sav.droits_contrat` (ne lit que sav.Ticket ; sav.selectors la
+# ré-exporte). Ce contrat n'a plus AUCUNE exception.
 # ODX17 — `apps.ventes.models` ends with a transitional RE-EXPORT shim
 # (`from apps.facturation.models import Facture, ...`, kept until ODX22 so all
 # existing callers of `apps.ventes.models.Facture` keep working). That single
@@ -154,14 +157,10 @@ source_modules =
     apps.ventes
 forbidden_modules =
     apps.audit
-# YEVNT5 — the notifications satellite writes a best-effort audit line per
-# `notify()` channel (lazy `from apps.audit import recorder` inside
-# `_audit_notify`). That is notifications' OWN cross-cutting logging, not ventes
-# coupling to audit: the M4 intent (ventes must not DIRECTLY reach audit) holds.
-# Ignore only this one satellite→satellite edge so the transitive
-# ventes→notifications→audit path does not trip the forbidden contract.
-ignore_imports =
-    apps.notifications.services -> apps.audit.recorder
+# ENF20 — l'exception YEVNT5 `apps.notifications.services -> apps.audit.recorder`
+# est RETIRÉE : `_audit_notify` journalise via `core.audit_registry` (rempli par
+# apps.audit ready()), plus aucun chemin transitif ventes→notifications→audit.
+# Ce contrat n'a plus AUCUNE exception.
 # ENF20 — les 6 exceptions stock.services / automation.engine /
 # dataimport.services -> apps.audit.recorder|models sont RETIRÉES : ces modules
 # journalisent désormais via `core.audit_registry` (inversion de dépendance,
@@ -474,56 +473,6 @@ ignore_imports =
 # AUD231 — le test des huit balayages beat a DÉMÉNAGÉ dans apps/pos/tests
 # (contrat core = couche de base, fix-ci #620) : plus aucune arête core.tests
 # vers les domaines, les exceptions mortes sont retirées (06/09/2026).
-# SOL13/SOL14 + YHARD — tests noyau cross-couche révélés par l'inversion : le
-# filtre « sociétés ayant tel module » s'appuie sur une société d'adminops.
-# (SOLMVP23 — l'exception « registre des traitements CNDP → dossier RH réel »
-# est retirée avec la sortie du module RH du MVP solaire : le test ne couvre
-# plus que les fournisseurs DSR des apps gardées.)
-    core.tests.test_sol14_societes_avec_module -> apps.adminops.models
-# YRBAC6/YRBAC9 — two core SECURITY-RATCHET *test* modules deliberately import
-# real domain serializers/models to prove the core masking mixins actually strip
-# sensitive fields (prix_achat/marge) and that no public endpoint leaks. These
-# are cross-layer integration tests, not production `core` coupling: the base-
-# layer intent (core PRODUCTION code imports downward only) holds. Ignore only
-# these specific test→domain edges.
-    core.tests.test_sensitive_field_leak -> apps.stock.serializers
-    core.tests.test_sensitive_field_leak -> apps.stock.models
-    core.tests.test_public_endpoint_hardening -> apps.ventes.models
-    core.tests.test_public_endpoint_hardening -> apps.crm.models
-# ASEC17 — même test : il relit le journal (AuditLog) de l'alerte de sécurité de la bannière.
-    core.tests.test_public_endpoint_hardening -> apps.audit.models
-    core.tests.test_registre_traitements -> apps.crm.models
-# YHARD4/YHARD10 — two more core cross-layer INTEGRATION tests: YHARD4 asserts
-# the i18n content-translation layer round-trips a real domain serializer, and
-# YHARD10's export-anonymise UAT-clone command is proven against a real
-# crm.Client. Same rationale as the YRBAC6/9 exceptions above — test-only
-# cross-layer edges, not production `core` coupling (core prod code imports
-# downward only). Ignore just these specific test→domain edges.
-    core.tests.test_yhard4_i18n_content -> apps.stock.models
-    core.tests.test_yhard4_i18n_content -> apps.stock.serializers
-    core.tests.test_yhard10_export_anonymise -> apps.crm.models
-# NTAI24 — l'index sémantique cross-module est une FONDATION qui ne cite que
-# des CHAÎNES (« crm.lead ») : le code de production n'importe aucune app. Son
-# test, lui, indexe un lead/client RÉEL pour prouver que le branchement
-# post_save/post_delete fonctionne de bout en bout. Même motif test→domaine que
-# les exceptions ci-dessus ; l'intention base-layer tient.
-    core.tests.test_ntai24_search_index -> apps.crm.models
-# ARC1/2/6 + SCA30-33 — les tests des primitives noyau (TenantModel, viewset
-# scopé, numérotation, kit DocumentMetier) exercent la primitive contre de VRAIS
-# modèles/viewsets domaine ; même motif que les exceptions ci-dessus (arêtes
-# test→domaine, jamais du couplage `core` de production — le code prod de core
-# n'importe plus records.views depuis le fold repair, cf. document_viewset qui
-# INJECTE désormais le chatter mixin).
-    core.tests.test_tenant_model -> apps.notifications.models
-    core.tests.test_numbering -> apps.crm.models
-    core.tests.test_numbering -> apps.ventes.models
-    core.tests.test_numbering -> apps.ventes.utils.references
-    core.tests.test_company_scoped_viewset -> apps.crm.clients_views
-    core.tests.test_company_scoped_viewset -> apps.sav.views
-    core.tests.test_company_scoped_viewset -> apps.installations.views.transporteur
-    core.tests.test_documents_viewset -> apps.records.views
-    core.tests.test_documents_status -> apps.installations.models_demande_achat
-    core.tests.test_documents_status -> apps.installations.models_ordre_soustraitance
 # AUD422 — AUCUNE exception ajoutée, et c'est délibéré : la suite de déni
 # cross-tenant RLS (`core/tests/test_rls_cross_tenant_denial.py`) peuple des
 # lignes RÉELLES dans les cinq tables argent en résolvant ses modèles par
@@ -540,19 +489,15 @@ ignore_imports =
 # purge des sociétés démo journalise via `core.audit_registry` (rempli par
 # apps.audit ready()). L'arête fondation `core.tests.test_wir50_security_beat
 # -> authentication.tasks` n'atteint plus aucun domaine.
-# NTEXT21 — l'onglet custom « objet_custom_lie » (points d'extension UI
-# déclaratifs, ``core.ui_extensions``) est une FONDATION pure : ``cible`` est
-# une CHAÎNE opaque, et le contenu réel est résolu par un gestionnaire
-# ENREGISTRÉ par l'app propriétaire (``apps.customfields`` se branche depuis
-# son propre ``ready()`` — même patron que ``core.workflow.
-# register_delegation_resolver``, déjà toléré ci-dessus). Le test, lui, monte
-# un VRAI Client/Devis/CustomRecord pour prouver le résolveur bout-en-bout —
-# même motif test→domaine que toutes les exceptions précédentes ; le code
-# PRODUCTION de core (`core/ui_extensions.py`, `core/ui_extensions_api.py`)
-# n'importe toujours aucune app métier.
-    core.tests.test_ntext21_ui_onglets -> apps.crm.models
-    core.tests.test_ntext21_ui_onglets -> apps.customfields.models
-    core.tests.test_ntext21_ui_onglets -> apps.ventes.models
+# ENF20 — les 24 exceptions `core.tests.* -> apps.<domaine>.*` (SOL14, YRBAC6/9,
+# ASEC17, YHARD4/10, NTAI24, ARC1/2/6 + SCA30-33, NTEXT21) sont RETIRÉES : ces
+# tests d'intégration cross-couche résolvent désormais leurs modèles par
+# libellé (`django_apps.get_model('crm', 'Client')`, même patron qu'AUD422) et
+# leurs sérialiseurs/vues/shims par `importlib.import_module(...)` (patron
+# déjà présent dans core/tests : test_aprf16, test_qx37, test_nombre_lettres).
+# `test_documents_viewset -> apps.records.views` reste couvert par l'arête
+# fondation `core.** -> apps.records.**` ci-dessus. Ne pas réintroduire
+# d'import statique `from apps.<domaine>` dans core/tests.
 
 # AOF33 — `core.calepinage` est le MOTEUR de calepinage, partagé par DEUX
 # consommateurs qui ne peuvent pas s'importer l'un l'autre (`apps.ao` pour la
@@ -828,9 +773,13 @@ forbidden_modules =
 # (échéancier, sélecteurs de facturation, module de lecture, domaine de
 # facturation) ; ils passent par `apps.ventes.selectors` / `apps.ventes.services`
 # (CLAUDE.md, « Cross-app boundary »). Seuls les imports DIRECTS sont jugés.
-# `ignore_imports` : les 4 arêtes de TESTS existantes (sonde R3-E du 12/10/2026 :
-# sans la 4e, le contrat est BROKEN), nommées une à une, jamais un joker ; la
-# liste ne peut que rétrécir.
+# `ignore_imports` : VIDE (ENF20, 14/10/2026). Les 4 arêtes de TESTS de la
+# sonde R3-E (crm crx20/mry7 -> domain.recouvrement, installations astk et
+# stock produit_nom_unique -> domain.facturation_ops) testent des helpers du
+# domaine que la façade n'exporte pas (`_x` privés, `facturer_devis_complet`
+# appelé par sa seule vue) : elles les chargent par `importlib.import_module`
+# (test boîte blanche délibéré, politique QJR645 « un test importe depuis
+# apps.ventes.domain.<module> »). Aucun code de PRODUCTION n'y est exempté.
 [importlinter:contract:vente-lue-par-la-facade]
 name = Les autres domaines lisent la vente par la facade ventes, jamais ses internes de facturation (VNT9)
 type = forbidden
@@ -853,8 +802,3 @@ forbidden_modules =
     apps.ventes.domain.recouvrement
     apps.ventes.domain.facturation_vente
     apps.ventes.domain.annulation_facture
-ignore_imports =
-    apps.crm.tests_crx20_stage_events -> apps.ventes.domain.recouvrement
-    apps.crm.tests_mry7_apres_devis -> apps.ventes.domain.recouvrement
-    apps.installations.tests_astk_garde_sortie_unique -> apps.ventes.domain.facturation_ops
-    apps.stock.test_produit_nom_unique -> apps.ventes.domain.facturation_ops

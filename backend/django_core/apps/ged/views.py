@@ -35,12 +35,13 @@ from authentication.permissions import (
 )
 # SCA4 — base transverse UNIQUE des viewsets scopés société : tout NOUVEAU
 # ModelViewSet inscriptible part d'ici (scoping + forçage de `company` garantis).
+from core.parametres_requete import choix_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 # `records` est une app de fondation : son registre de cibles autorisées
 # (ALLOWED_TARGETS) et son validateur `resolve_target` sont réutilisés tels quels
 # pour la liaison polymorphe GED6 — on n'invente pas un schéma de FK générique.
 from apps.records.openapi import (
-    CibleQuerySerializer, ParsersParActionMixin,
+    CibleQuerySerializer, ParsersParActionMixin, cible_requete_ou_400,
 )
 from apps.records.serializers import CibleIntrouvable, resolve_target
 
@@ -48,8 +49,9 @@ from . import openapi as oa, selectors, services
 from .corps_requete import (
     GedArchiverLegalementCorps,
     GedDemandeDispositionCorps, GedDemandeSignatureCorps, GedLegalHoldCorps,
-    GedMotifCorps, GedOperationsLotCorps, _date_iso, _entier_borne, _id_filtre,
-    _pk, _pks, _txt, conflit_archivage, corps_valide, lignes_csv_invalides, refus_cycle_vie,
+    GedMotifCorps, GedOperationsLotCorps, GedVerrouCorps, _date_iso,
+    _entier_borne, _id_filtre, _pk, _pks, _txt, conflit_archivage, corps_valide,
+    lignes_csv_invalides, refus_cycle_vie,
 )
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, ArchivageLegalError, Cabinet,
@@ -309,7 +311,7 @@ class FolderViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         `get_object()` (404 cross-société). Le parent cible est résolu DANS la
         société courante — un id d'une autre société est introuvable (404). Le
         recalcul du chemin matérialisé de tout le sous-arbre est délégué à
-        `services.move_folder` (refus de cycle / cabinet différent → 400)."""
+        `services.move_folder` (refus de cycle / cabinet différent → 409)."""
         folder = self.get_object()
         raw_parent = request.data.get('parent', None)
         new_parent = None
@@ -322,8 +324,9 @@ class FolderViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         try:
             services.move_folder(folder, new_parent)
         except ValueError as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            # CI #997 fuzz — son propre parent / cycle / autre cabinet : l'état
+            # de l'arbre s'oppose à un corps conforme au schéma -> 409.
+            raise _conflit(str(exc))
         folder.refresh_from_db()
         data = FolderSerializer(folder, context={'request': request}).data
         return Response(data)
@@ -366,6 +369,7 @@ class FolderViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response({'favori': True})
 
 
+@extend_schema_view(create=extend_schema(extensions=oa.COFFRE_PROPRIETAIRE_UNIQUE))
 class CoffreViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED8 — Coffres-forts par employé/client (ACL propriétaire + admin).
 
@@ -468,7 +472,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         # texte) n'a pas de `.get` : la lecture de l'opération le tolère et
         # laisse la validation du corps répondre 400, jamais une 500 ici.
         if (self.action == 'operations_lot'
-                and isinstance(self.request.data, dict)
+                and isinstance(self.request.data, Mapping)
                 and self.request.data.get('operation') == 'telecharger_zip'):
             return [IsAnyRole()]
         # WIR174 — GOUVERNANCE documentaire (legal hold, caviardage définitif) :
@@ -553,7 +557,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if tag is not None:
             qs = qs.filter(tag_assignments__tag_id=tag).distinct()
         # GED17 — filtre par statut du cycle de vie documentaire (?statut=…).
-        statut = self.request.query_params.get('statut')
+        statut = choix_ou_400(self.request, 'statut', oa.STATUTS_CYCLE_VIE)
         if statut:
             qs = qs.filter(statut=statut)
         # ZGED5 — filtres par propriétaire/contact assigné.
@@ -575,12 +579,12 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         Body : `{"tag": <id>}`. Le document est company-scopé (et ACL coffre)
         via `get_object()` ; le tag est résolu DANS la société courante."""
         document = self.get_object()
-        tag_id = request.data.get('tag')
-        if not tag_id:
+        # ERR-ENF11-FUZZ-GED — `0` est un id bien formé (inconnu → 404).
+        if (tag_id := _pk(request.data.get('tag'), 'tag')) is None:
             return Response({'tag': 'Tag requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         tag = DocumentTag.objects.filter(
-            company=request.user.company, pk=_pk(tag_id, 'tag')).first()
+            company=request.user.company, pk=tag_id).first()
         if tag is None:
             return Response({'tag': 'Tag inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -631,8 +635,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             'contact': document.contact_id,
         }
         if 'proprietaire' in data:
-            proprietaire_id = data.get('proprietaire')
-            if proprietaire_id in (None, '', 'null'):
+            # CI #997 (3) fuzz ged — identifiant lu SÛREMENT (`_pk`) : une liste
+            # ou un objet (`{"contact": [null, null]}`) est un 400 nommé, jamais
+            # une 500 ; hors plage 32 bits -> 404 (aucune ligne).
+            proprietaire_id = _pk(data.get('proprietaire'), 'proprietaire')
+            if proprietaire_id is None:
                 document.proprietaire = None
             else:
                 from django.contrib.auth import get_user_model
@@ -645,8 +652,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                         status=status.HTTP_404_NOT_FOUND)
                 document.proprietaire = user
         if 'contact' in data:
-            contact_id = data.get('contact')
-            if contact_id in (None, '', 'null'):
+            contact_id = _pk(data.get('contact'), 'contact')
+            if contact_id is None:
                 document.contact_id = None
             else:
                 from apps.crm.selectors import get_company_client
@@ -1369,16 +1376,15 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         bornée à ce document et à la société courante (jamais cross-société ni
         cross-document). Écriture : responsable/admin."""
         document = self.get_object()
-        version_id = request.data.get('version')
-        if not version_id:
+        # ERR-ENF11-FUZZ-GED — `0` est un id BIEN FORMÉ (inconnu → 404).
+        version_id = _pk(request.data.get('version'), 'version')
+        if version_id is None:
             return Response(
                 {'version': 'L\'identifiant de version est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        # La version source est bornée à ce document et à la société courante.
         source_version = (DocumentVersion.objects
                           .filter(company=request.user.company,
-                                  document=document,
-                                  pk=_pk(version_id, 'version'))
+                                  document=document, pk=version_id)
                           .first())
         if source_version is None:
             return Response(
@@ -1583,7 +1589,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
-    @extend_schema(request=GedMotifCorps, responses=DocumentSerializer)
+    @extend_schema(request=GedVerrouCorps, responses=DocumentSerializer)
     @action(detail=True, methods=['post'], url_path='verrouiller')
     def verrouiller(self, request, pk=None):
         """ZGED9 — Pose le verrou d'AVERTISSEMENT léger (« en cours
@@ -1593,8 +1599,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         try:
             services.assert_not_archive_legalement(document)  # ADOC22
+            # CI #997 (3) fuzz ged — motif validé par le corps publié (NUL ou
+            # > 300 caractères = `DataError` 500 ; non-texte = 500 plus loin).
             doc = services.verrouiller_avertissement(
-                document, request.user, motif=request.data.get('motif', ''))
+                document, request.user, motif=corps_valide(
+                    GedVerrouCorps, request).get('motif', ''))
         except ArchivageLegalError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1670,9 +1679,10 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         """
         document = self.get_object()
         target = request.data.get('statut')
-        if not target:
+        # Liste/objet : non hachable -> 500 dans la machine à états.
+        if not target or not isinstance(target, str):
             return Response(
-                {'statut': 'Le statut cible est requis.'},
+                {'statut': 'Le statut cible est requis (chaîne).'},
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             doc = services.change_lifecycle_status(
@@ -2448,8 +2458,7 @@ class DocumentLienViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         if document:
             qs = qs.filter(document_id=document)
         # Reverse lookup : tous les documents liés à (model, id).
-        model = self.request.query_params.get('model')
-        oid = self.request.query_params.get('id')
+        model, oid = cible_requete_ou_400(self.request)
         if model and oid:
             try:
                 ct, _ = resolve_target(
@@ -2472,14 +2481,14 @@ class DocumentLienViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         # 2) document : borné à la société (jamais lié à un doc d'une autre).
-        doc_id = request.data.get('document')
-        if not doc_id:
+        doc_id = _pk(request.data.get('document'), 'document')
+        if doc_id is None:
             return Response({'document': 'Document requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
         # ASEC38 — document VISIBLE de l'appelant (ACL coffre + GED19) et
         # écriture ACL exigée : lier modifie le document.
         document = selectors.documents_visible_to_user(
-            request.user).filter(pk=_pk(doc_id, 'document')).first()
+            request.user).filter(pk=doc_id).first()
         if document is None:
             return Response({'document': 'Document inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
@@ -2536,7 +2545,8 @@ class DocumentTagViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         """Documents portant ce tag (ACL coffre appliquée). `?descendants=1`
         inclut les documents des sous-tags de la taxonomie."""
         tag = self.get_object()
-        include = request.query_params.get('descendants') in ('1', 'true')
+        include = choix_ou_400(
+            request, 'descendants', oa.FLAG_VRAI) in ('1', 'true')
         docs = selectors.documents_with_tag(tag, include_descendants=include)
         # Recroise avec l'ACL coffre-fort (un tag ne contourne pas le coffre).
         visible = selectors.documents_visible_to_user(request.user)
@@ -2627,7 +2637,8 @@ class DemandeApprobationViewSet(CorpsObjetMixin, TenantMixin, viewsets.ReadOnlyM
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
-        if self.request.query_params.get('en_attente') in ('1', 'true'):
+        if choix_ou_400(
+                self.request, 'en_attente', oa.FLAG_VRAI) in ('1', 'true'):
             from .models import APPROBATION_EN_ATTENTE
             qs = qs.filter(statut=APPROBATION_EN_ATTENTE)
         return qs
@@ -2722,7 +2733,7 @@ class PartageGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
-        actif = self.request.query_params.get('actif')
+        actif = choix_ou_400(self.request, 'actif', oa.FLAG)
         if actif in ('1', 'true'):
             qs = qs.filter(actif=True)
         elif actif in ('0', 'false'):
@@ -2751,7 +2762,9 @@ class PartageGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             PartageGedSerializer(partage, context={'request': request}).data)
 
 
-@extend_schema_view(list=extend_schema(parameters=[oa.Q_ACTIF]))
+@extend_schema_view(list=extend_schema(parameters=[oa.Q_ACTIF]),
+                    create=extend_schema(
+                        extensions=oa.RETENTION_CIBLE_AU_PLUS_UNE))
 class PolitiqueRetentionViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """GED22 — CRUD des politiques de rétention (scopé société).
 
@@ -2784,7 +2797,7 @@ class PolitiqueRetentionViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
         qs = selectors.politiques_retention_for_company(
             self.request.user.company).select_related(
             'company', 'cabinet', 'folder', 'created_by')
-        actif = self.request.query_params.get('actif')
+        actif = choix_ou_400(self.request, 'actif', oa.FLAG)
         if actif in ('1', 'true'):
             qs = qs.filter(actif=True)
         elif actif in ('0', 'false'):
@@ -2971,7 +2984,7 @@ class LegalHoldViewSet(CorpsObjetMixin, TenantMixin,
         document = self.request.query_params.get('document')
         if document:
             qs = qs.filter(document_id=document)
-        actif = self.request.query_params.get('actif')
+        actif = choix_ou_400(self.request, 'actif', oa.FLAG)
         if actif in ('1', 'true'):
             qs = qs.filter(actif=True)
         elif actif in ('0', 'false'):
@@ -3052,7 +3065,7 @@ class ModeleDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet)
 
     def get_queryset(self):
         qs = super().get_queryset()
-        actif = self.request.query_params.get('actif')
+        actif = choix_ou_400(self.request, 'actif', oa.FLAG)
         if actif in ('1', 'true'):
             qs = qs.filter(actif=True)
         elif actif in ('0', 'false'):
@@ -3323,7 +3336,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         resp['X-Content-Type-Options'] = 'nosniff'
         return resp
 
-    @extend_schema(request=CreerMultiSignatairesSerializer,
+    @extend_schema(request=CreerMultiSignatairesSerializer, extensions=oa.CREER_MULTI_SIGNATAIRE,
                    responses={201: DemandeSignatureDocumentSerializer})
     @action(detail=False, methods=['post'], url_path='creer-multi')
     def creer_multi(self, request):
@@ -3334,9 +3347,9 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
         "parallele", "expires_at"?: <iso>, "relance_cadence_jours"?: <int>}`.
         Le document est borné à la société (404 cross-société).
         `company`/`created_by` posés côté serveur."""
-        document_id = request.data.get('document')
+        document_id = _pk(request.data.get('document'), 'document')
         destinataires = request.data.get('destinataires') or []
-        if not document_id:
+        if document_id is None:  # `0` : id bien formé (inconnu → 404)
             return Response(
                 {'document': 'Le document à signer est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -3352,7 +3365,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
             return Response(entree.errors, status=status.HTTP_400_BAD_REQUEST)
         valide = entree.validated_data
         document = (Document.objects.filter(company=request.user.company)
-                    .filter(pk=_pk(document_id, 'document')).first())
+                    .filter(pk=document_id).first())
         if document is None:
             return Response(
                 {'document': 'Document inconnu.'},
@@ -3925,7 +3938,7 @@ class ValidationOcrDocumentViewSet(CorpsObjetMixin, TenantMixin, mixins.ListMode
         qs = super().get_queryset().filter(
             company=self.request.user.company,
             document_id__in=selectors.document_ids_visibles(self.request.user))
-        en_attente = self.request.query_params.get('en_attente')
+        en_attente = choix_ou_400(self.request, 'en_attente', oa.FLAG_VRAI)
         if en_attente in ('1', 'true'):
             qs = qs.filter(valide=False)
         return qs

@@ -141,6 +141,13 @@ class Ntwms33EndpointTests(Ntwms33Base):
         res = auth(self.admin).get(self.URL, {'quantite': 10})
         self.assertEqual(res.status_code, 400)
 
+    def test_zone_inconnue_renvoie_404_et_quantite_negative_400(self):
+        # Fuzz #997 : zone bien formée mais inconnue = 404 (plus 400).
+        res = auth(self.admin).get(self.URL, {'zone': 'ZZZ'})
+        self.assertEqual(res.status_code, 404)
+        res = auth(self.admin).get(self.URL, {'zone': 'A', 'quantite': -5})
+        self.assertEqual(res.status_code, 400)
+
     def test_endpoint_refuse_lanonyme(self):
         self.assertEqual(
             APIClient().get(self.URL, {'zone': 'A'}).status_code, 401)

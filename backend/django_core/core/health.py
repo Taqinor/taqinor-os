@@ -25,6 +25,10 @@ from __future__ import annotations
 from django.core.cache import cache
 from django.db import connection
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 STATUS_OK = 'ok'
 STATUS_DOWN = 'down'
 STATUS_DEGRADED = 'degraded'
@@ -52,6 +56,7 @@ def _check_db_connections(cur):
             'saturated': ratio >= CONN_SATURATION_DEGRADED_RATIO,
         }
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning("check db connections : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 
@@ -62,6 +67,7 @@ def _check_db():
             cur.fetchone()
             conn_info = _check_db_connections(cur)
     except Exception as exc:  # noqa: BLE001
+        logger.warning("check db : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'database', 'status': STATUS_DOWN, 'detail': str(exc)}
 
     if conn_info and conn_info['saturated']:
@@ -91,6 +97,7 @@ def _check_cache():
             'detail': '' if ok else 'Lecture/écriture cache incohérente.',
         }
     except Exception as exc:  # noqa: BLE001
+        logger.debug("check cache : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'cache', 'status': STATUS_DOWN, 'detail': str(exc)}
 
 
@@ -106,6 +113,7 @@ def _check_broker():
             'detail': 'Aucun worker Celery n\'a répondu au ping.',
         }
     except Exception as exc:  # noqa: BLE001
+        logger.warning("check broker : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'broker', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
 
 
@@ -116,6 +124,7 @@ def _check_storage():
         name = type(default_storage).__name__
         return {'name': 'storage', 'status': STATUS_OK, 'detail': name}
     except Exception as exc:  # noqa: BLE001
+        logger.warning("check storage : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'storage', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
 
 
@@ -139,6 +148,7 @@ def _check_beat():
     try:
         age = metrics_infra.beat_heartbeat_age_seconds()
     except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning("check beat : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'beat', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
     if age is None:
         return {
@@ -162,6 +172,7 @@ def _check_queue():
     try:
         length = metrics_infra.redis_queue_length()
     except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning("check queue : échec ignoré, comportement dégradé", exc_info=True)
         return {'name': 'queue', 'status': STATUS_UNKNOWN, 'detail': str(exc)}
     if length is None:
         return {
@@ -234,6 +245,7 @@ def _check_redis_memory():
         try:
             result = _redis_memory_ratio(url)
         except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.warning("check redis memory : échec ignoré, comportement dégradé", exc_info=True)
             details.append(f'{label}: injoignable ({exc})')
             continue
         if result is None:
@@ -278,6 +290,7 @@ def _check_queue_depth():
         try:
             length = metrics_infra.redis_queue_length(queue_name)
         except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.warning("check queue depth : échec ignoré, comportement dégradé", exc_info=True)
             details.append(f'{queue_name}: injoignable ({exc})')
             continue
         if length is None:

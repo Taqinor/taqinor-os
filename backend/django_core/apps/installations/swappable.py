@@ -36,6 +36,7 @@ def _provider(company, field):
         prof = CompanyProfile.get(company)
         return (getattr(prof, field, '') or '').strip()
     except Exception:  # pragma: no cover - défensif
+        logger.warning("provider : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 

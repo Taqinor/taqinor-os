@@ -213,6 +213,10 @@ class NTSRV16ProblemeTest(TestCase):
         self.api.post(
             f"/api/django/sav/problemes/{leger['id']}/lier-ticket/",
             {'ticket': self.tickets[0].pk}, format='json')
+        # CI #997 api-fuzz : `?ordering=` est une énumération publiée.
+        resp = self.api.get('/api/django/sav/problemes/?ordering=AAA')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('ordering', resp.json())
         resp = self.api.get('/api/django/sav/problemes/?ordering=-impact')
         self.assertEqual(resp.status_code, 200, resp.content)
         payload = resp.json()

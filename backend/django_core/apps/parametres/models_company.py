@@ -138,6 +138,16 @@ class CompanyProfile(models.Model):
         verbose_name='Salles de vente digitales actives',
         help_text='OFF = salles de vente parquées (rien servi, rien '
                   'supprimé). ON = salles de vente servies comme avant.')
+    # ── ACRM66 (D-ACRM-6 (iii)=(b), 09/10/2026) — apporteurs PARQUÉS ──
+    # Aucun écran. OFF par défaut : `apporteurs/`, `deals-enregistres/` (et
+    # `a-payer/`) répondent 404 et aucune commission n'est calculée au devis
+    # accepté — rien n'est supprimé. ON : comportement d'avant. Lu UNIQUEMENT
+    # par `apps.crm.parcage`.
+    apporteurs_actif = models.BooleanField(
+        default=False,
+        verbose_name="Apporteurs d'affaires et deals enregistrés actifs",
+        help_text='OFF = apporteurs parqués (routes 404, aucune commission '
+                  'calculée, rien supprimé). ON = comportement d\'avant.')
     round_robin_plafond_leads_ouverts = models.PositiveIntegerField(
         default=20,
         verbose_name='Plafond de leads ouverts par commercial',
@@ -915,7 +925,9 @@ class CompanyProfile(models.Model):
     # elle retombe simplement en accès complet (jamais restrictif par défaut).
     plan = models.ForeignKey(
         'adminops.PlanLicence',
-        on_delete=models.SET_NULL,  # on_delete: un palier supprimé du catalogue ne doit jamais emporter la société — repli sur l'accès complet (jamais restrictif par défaut)
+        # un palier supprimé du catalogue ne doit jamais emporter la société — repli sur l'accès complet (jamais
+        # restrictif par défaut)
+        on_delete=models.SET_NULL,  # on_delete: palier supprimé ≠ société supprimée — repli sur l'accès complet
         null=True, blank=True,
         related_name='+',
         verbose_name='Plan de licence',

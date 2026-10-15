@@ -1,6 +1,8 @@
 """ERR-ENF11-FUZZ-GED — lecture SÛRE des identifiants, dates et textes d'un corps JSON
 (``views.py`` est un fichier-mur : les aides vivent ici, importées par les vues)."""
-from django.core.validators import RegexValidator
+from drf_spectacular.extensions import (
+    OpenApiSerializerExtension, OpenApiSerializerFieldExtension,
+)
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers as drf_serializers
@@ -146,7 +148,9 @@ def _id_corps(**kw):
 
 
 def _non_vide(**kw):
-    return ChaineStricte(validators=[RegexValidator(r'\S')], **kw)
+    # Non blanc = ``allow_blank=False`` après rognage (DRF) : le motif publié
+    # vient de ``ChaineStricte`` (non blanc ET sans NUL), pas d'un validateur.
+    return ChaineStricte(**kw)
 
 
 class _CourrielStrict(drf_serializers.EmailField):
@@ -188,6 +192,11 @@ class GedMotifCorps(drf_serializers.Serializer):
     motif = ChaineStricte(required=False, allow_blank=True)
 
 
+class GedVerrouCorps(drf_serializers.Serializer):
+    # `Document.verrou_avertissement_motif` est un CharField(max_length=300).
+    motif = ChaineStricte(required=False, allow_blank=True, max_length=300)
+
+
 class GedArchiverLegalementCorps(drf_serializers.Serializer):
     motif = ChaineStricte(required=False, allow_blank=True)
     retain_until = _DateIsoStricte(required=False, allow_null=True)
@@ -222,14 +231,17 @@ _PARAMS_PAR_OPERATION = {
 }
 
 
+_OPERATIONS_LOT = [
+    'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
+    'partager', 'demander_signature', 'demander_revue']
+
+
 class GedOperationsLotCorps(drf_serializers.Serializer):
     # ERR-ENF11-FUZZ-GED : ``min_length`` publie ``minItems: 1`` (``[]``
     # était « conforme » puis refusé « liste vide »).
     documents = drf_serializers.ListField(
         child=_id_corps(), allow_empty=False, min_length=1)
-    operation = drf_serializers.ChoiceField(choices=[
-        'tagger', 'detaguer', 'deplacer', 'corbeille', 'telecharger_zip',
-        'partager', 'demander_signature', 'demander_revue'])
+    operation = drf_serializers.ChoiceField(choices=_OPERATIONS_LOT)
     params = drf_serializers.DictField(required=False)
 
     def validate(self, attrs):
@@ -239,6 +251,39 @@ class GedOperationsLotCorps(drf_serializers.Serializer):
             sous.is_valid(raise_exception=True)
             attrs['params'] = dict(sous.validated_data)
         return attrs
+
+
+class _OperationsLotParamsPublies(OpenApiSerializerExtension):
+    """CI #997 fuzz ged (2) — ``params`` dépend de ``operation`` (``validate``) :
+    ``tagger``/``detaguer`` exigent ``params.tag``, ``deplacer`` ``params.folder``,
+    ``demander_signature`` type ``signataire_nom``/``signataire_email`` ; les
+    autres opérations ignorent ``params``. Publié en REQUÊTE (``{operation:
+    "tagger"}`` sans tag était « conforme » puis refusé 400). Enums enveloppés
+    (``anyOf``) : le post-traitement des enums ne renomme rien."""
+    target_class = 'apps.ged.corps_requete.GedOperationsLotCorps'
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+
+        def branche(operations, classe=None, *, params_requis=False):
+            propres = {'operation': {'anyOf': [{'enum': operations}]}}
+            if classe is not None:
+                propres['params'] = auto_schema._map_serializer(
+                    classe(), 'request', bypass_extensions=True)
+            requis = ['operation'] + (['params'] if params_requis else [])
+            return {'properties': propres, 'required': requis}
+
+        sans_params = [op for op in _OPERATIONS_LOT
+                       if op not in _PARAMS_PAR_OPERATION]
+        return {**schema, 'anyOf': [
+            branche(['tagger', 'detaguer'], _ParamsTag, params_requis=True),
+            branche(['deplacer'], _ParamsDossier, params_requis=True),
+            branche(['demander_signature'], _ParamsSignature),
+            branche(sans_params),
+        ]}
 
 
 def conflit_archivage(document):
@@ -282,3 +327,98 @@ def refus_cycle_vie(exc, cible):
     connu = cible in {code for code, _ in LIFECYCLE_CHOICES}
     return Response({'detail': str(exc)}, status=(
         status.HTTP_409_CONFLICT if connu else status.HTTP_400_BAD_REQUEST))
+
+
+def schema_groupe_conditions(profondeur=3):
+    """ERR-ENF11-FUZZ-GED — l'arbre ``core.rules`` tel que
+    ``validate_condition_group`` l'accepte, publié en REQUÊTE (il l'était en
+    objet libre : ``{}``, le défaut, était « conforme » puis refusé en 400).
+    Groupe ET/OU (``op`` facultatif seulement sans ``operator``), groupe NON
+    (une seule condition) ou feuille (``field`` non vide + opérateur connu) ;
+    déplié sur ``profondeur`` niveaux, sans référence récursive."""
+    from core.rules import GROUP_OPERATORS, LEAF_OPERATORS
+    feuille = {'type': 'object', 'required': ['field', 'operator'], 'properties': {
+        'field': {'type': 'string', 'minLength': 1},
+        'operator': {'type': 'string', 'enum': list(LEAF_OPERATORS)},
+        'op': {'not': {'enum': list(GROUP_OPERATORS)}}}}
+    if profondeur <= 0:
+        return feuille
+    enfants = schema_groupe_conditions(profondeur - 1)
+    et_ou = {'type': 'object', 'required': ['conditions'],
+             'anyOf': [{'required': ['op']}, {'not': {'required': ['operator']}}],
+             'properties': {'op': {'type': 'string', 'enum': ['and', 'or']},
+                            'conditions': {'type': 'array', 'minItems': 1,
+                                           'items': enfants}}}
+    non = {'type': 'object', 'required': ['op', 'conditions'], 'properties': {
+        'op': {'type': 'string', 'enum': ['not']},
+        'conditions': {'type': 'array', 'minItems': 1, 'maxItems': 1,
+                       'items': enfants}}}
+    return {'anyOf': [et_ou, non, feuille]}
+
+
+def _feuille_sans_champ_lisible(noeud):
+    """Vrai si une feuille de l'arbre porte un ``field`` FAIT D'ESPACES : le
+    schéma publié (``minLength`` + motif non blanc) le déclare invalide,
+    ``validate_condition_group`` n'exige que « non vide » (CI #997 fuzz)."""
+    import re
+    if not isinstance(noeud, dict):
+        return False
+    if isinstance(noeud.get('conditions'), (list, tuple)):
+        return any(_feuille_sans_champ_lisible(c) for c in noeud['conditions'])
+    champ = noeud.get('field')
+    return isinstance(champ, str) and re.search(r'\S', champ) is None
+
+
+def erreurs_groupe_conditions(valeur):
+    """Erreurs d'un arbre de conditions : ``core.rules`` + feuille au ``field``
+    non blanc (règle publiée au schéma de requête)."""
+    from core.rules import validate_condition_group
+    erreurs = validate_condition_group(valeur)
+    if not erreurs and _feuille_sans_champ_lisible(valeur):
+        erreurs = ["feuille sans 'field' (chaîne non blanche) valide."]
+    return erreurs
+
+
+class GroupeConditionsField(drf_serializers.JSONField):
+    """Arbre de conditions ``core.rules`` validé AU CHAMP (création ET mise à
+    jour : un PATCH posait ``{}`` sans contrôle) ; erreurs de
+    ``validate_condition_group`` rendues sous le nom du champ (400)."""
+
+    def to_internal_value(self, data):
+        valeur = super().to_internal_value(data)
+        erreurs = erreurs_groupe_conditions(valeur)
+        if erreurs:
+            raise drf_serializers.ValidationError(erreurs)
+        return valeur
+
+
+class _GroupeConditionsSchema(OpenApiSerializerFieldExtension):
+    target_class = 'apps.ged.corps_requete.GroupeConditionsField'
+
+    def map_serializer_field(self, auto_schema, direction):
+        if direction == 'request':
+            return schema_groupe_conditions()
+        return auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+
+
+class SectionsModeleField(drf_serializers.JSONField):
+    """Sections conditionnelles d'un modèle de document (NTDOC21) : liste
+    d'objets, ``null`` lu comme « aucune section » ; la validation fine est
+    ``ModeleDocumentSerializer.validate_sections``."""
+
+
+class _SectionsModeleSchema(OpenApiSerializerFieldExtension):
+    """CI #997 fuzz — le champ était publié en JSON libre (``{}`` « conforme »
+    puis refusé « liste d'objets »). Côté REQUÊTE : liste (ou ``null``)
+    d'objets dont ``conditions`` est absente, ``{}`` ou un arbre valide."""
+    target_class = 'apps.ged.corps_requete.SectionsModeleField'
+
+    def map_serializer_field(self, auto_schema, direction):
+        if direction != 'request':
+            return auto_schema._map_serializer_field(
+                self.target, direction, bypass_extensions=True)
+        return {'type': 'array', 'nullable': True, 'items': {
+            'type': 'object', 'properties': {'conditions': {
+                'anyOf': [{'type': 'object', 'maxProperties': 0},
+                          schema_groupe_conditions()]}}}}

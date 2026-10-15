@@ -15,6 +15,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const lf = (s) => s.replace(/\r\n/g, '\n')
@@ -23,7 +24,7 @@ const lire = (p) => lf(readFileSync(p, 'utf8'))
 const CLIENTS = lire(join(HERE, 'ClientList.jsx'))
 const FORECAST = lire(join(HERE, 'forecast/ForecastPage.jsx'))
 const MAFILE = lire(join(HERE, '../activities/MesActivitesPage.jsx'))
-const CSS = lf(readFileSync(join(HERE, '../../index.css'), 'utf8'))
+const CSS = lf(resolveCss(join(HERE, '../../index.css')))
 
 /** Tous les .jsx de pages/crm/ (recursif), hors tests. */
 function fichiersCrm(dir = HERE, acc = []) {

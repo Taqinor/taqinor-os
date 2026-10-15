@@ -109,6 +109,16 @@ class PorteUniqueTest(BaseApiCalepinage):
                 ('depuis-modele', depuis_modele),
                 ('reprise du tracé public', reprise))
 
+    def test_creation_corps_multipart_refuse_415(self):
+        # CI #997 fuzz : ``responsable``/``custom_data`` sont typés (clé, objet
+        # JSON) — un formulaire n'en porte que des chaînes : JSON seul (415).
+        lead = self._lead('Villa multipart')
+        reponse = self.api.post(
+            URL, {'lead_id': lead.pk, 'responsable': 'None'},
+            format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.content)
+        self.assertFalse(Calepinage.objects.filter(lead_id=lead.pk).exists())
+
     def test_chaque_porte_ecrit_chatter_client_et_meme_titre(self):
         for rang, (nom, geste) in enumerate(self._portes()):
             with self.subTest(porte=nom):

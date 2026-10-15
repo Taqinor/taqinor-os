@@ -102,6 +102,11 @@ class AbonnesPointDeSauvegardeTests(TestCase):
 
     def setUp(self):
         self.company = make_company('adev54')
+        # ACRM66 — réglage allumé : la panne injectée dans la commission du
+        # deal reste atteinte (éteint, le récepteur sort avant).
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'apporteurs_actif': True})
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
 

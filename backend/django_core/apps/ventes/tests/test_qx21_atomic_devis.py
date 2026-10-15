@@ -65,6 +65,13 @@ class Qx21AtomicDevisTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(Devis.objects.count(), 0)
 
+    def test_atomic_corps_tableau_400(self):
+        # CI #997 — ``[null, null]`` levait AttributeError (500).
+        resp = self.api.post('/api/django/ventes/devis/atomic/',
+                             [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(Devis.objects.count(), 0)
+
     def test_atomic_create_rollback_on_bad_product(self):
         other = Company.objects.create(slug='qx21-other', nom='Other')
         foreign = Produit.objects.create(

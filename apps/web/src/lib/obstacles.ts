@@ -11,7 +11,7 @@
  * obstructions et en déduit la surface utile et le calepinage.
  *
  * Aucune dépendance, aucun DOM, aucune carte → testé (tests/obstacles.test.ts).
- * La colle carte/tracé/édition vit dans src/scripts/roof-tool-pro3.ts.
+ * La colle carte/tracé/édition vit dans src/scripts/roof-tool-pro11.ts.
  */
 import type { LngLat } from './roof';
 

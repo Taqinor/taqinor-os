@@ -15,6 +15,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
 from drf_spectacular.utils import inline_serializer
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _co(user):
     """Return company filter kwargs or None for superuser."""
@@ -288,7 +292,7 @@ def dashboard(request):
                 **co, date_creation__date__gte=p_start,
                 date_creation__date__lte=p_end).count()
         except Exception:
-            pass
+            logger.warning("dashboard : échec ignoré, comportement dégradé", exc_info=True)
         from apps.crm.models import Lead
         curr_from = _qdate(request.query_params.get('from'))
         curr_to = _qdate(request.query_params.get('to'))

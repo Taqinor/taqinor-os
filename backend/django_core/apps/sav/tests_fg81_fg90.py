@@ -134,6 +134,21 @@ class TestSavSlaSettings(TestCase):
         self.assertEqual(sla.sla_resolution_days, 14)
         self.assertTrue(sla.sla_breach_enabled)
 
+    def test_api_delais_en_jours_bornes_400(self):
+        # CI #997 api-fuzz (3e passe) : ces délais alimentent des timedelta
+        # (SLA, alerte, auto-clôture, récidive, avance des visites) ; un entier
+        # à 10 chiffres faisait déborder le calcul. Le schéma publie maximum 3650.
+        for cle in ('sla_response_days', 'sla_resolution_days',
+                    'sla_warning_days', 'auto_cloture_jours',
+                    'recidive_fenetre_jours', 'visites_avance_jours'):
+            r = self.api.post('/api/django/sav/sla-settings/',
+                              {cle: 3651}, format='json')
+            self.assertEqual(r.status_code, 400, (cle, r.content))
+            self.assertIn(cle, r.data)
+            ok = self.api.post('/api/django/sav/sla-settings/',
+                               {cle: 3650}, format='json')
+            self.assertEqual(ok.status_code, 200, (cle, ok.content))
+
     def test_sla_due_at_computed_at_ticket_creation(self):
         """FG81 — sla_due_at = date_ouverture + resolution_days si breach activé."""
         sla = SavSlaSettings.get(self.co)
@@ -256,6 +271,16 @@ class TestMaintenanceChecklist(TestCase):
         self.assertIn(r.status_code, [200, 201])
         items = TicketChecklistItem.objects.filter(ticket=t)
         self.assertEqual(items.count(), 3)
+
+    def test_init_checklist_corps_illisible_400(self):
+        # CI #997 api-fuzz : `template_id: [null, null]` levait un 500.
+        t = make_ticket(self.co, self.user, self.client, self.inst)
+        for corps in ({'template_id': [None, None]}, {'template_id': 0},
+                      {}, [None, None]):
+            r = self.api.post(
+                f'/api/django/sav/tickets/{t.pk}/checklist/', corps,
+                format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
 
     def test_init_checklist_idempotent(self):
         """FG82 — Initialiser deux fois ne duplique pas les items."""
@@ -691,3 +716,96 @@ class TestFg84MonitoringHistory(TestCase):
         r = other_api.get(
             f'/api/django/monitoring/configs/{self.config.pk}/history/')
         self.assertEqual(r.status_code, 404)
+
+
+class CorpsStrictsCi997Tests(TestCase):
+    """CI #997 api-fuzz : le schéma publié dit EXACTEMENT ce que le serveur lit
+    (texte/booléen stricts, JSON non nuls déclarés listes, décimal sans chaîne
+    vide)."""
+
+    def _refus(self, classe, corps, champ):
+        ser = classe(data=corps, partial=True)
+        self.assertFalse(ser.is_valid(), (classe.__name__, corps))
+        self.assertIn(champ, ser.errors)
+
+    def test_types_stricts(self):
+        from apps.sav import serializers as S
+        for classe, corps, champ in (
+                (S.AlarmeOnduleurSerializer, {'description': 0}, 'description'),
+                (S.WarrantyClaimSerializer, {'description': 0}, 'description'),
+                (S.CategorieEquipementSerializer, {'alias_email': 0},
+                 'alias_email'),
+                (S.CompatibilitePieceSerializer, {'note': 0}, 'note'),
+                (S.EquipeMaintenanceSerializer, {'actif': 0}, 'actif'),
+                (S.EquipeMaintenanceSerializer, {'membres': {}}, 'membres'),
+                (S.KbArticleSerializer, {'tags': None}, 'tags'),
+                (S.KbArticleSerializer, {'tags': [1]}, 'tags'),
+                (S.WorksheetMaintenanceModeleSerializer, {'champs': None},
+                 'champs'),
+                (S.ReponseTypeSerializer, {'canaux_autorises': {}},
+                 'canaux_autorises')):
+            with self.subTest(classe=classe.__name__, corps=corps):
+                self._refus(classe, corps, champ)
+
+    def test_valeurs_conformes_acceptees(self):
+        from apps.sav import serializers as S
+        for classe, corps in (
+                (S.KbArticleSerializer, {'tags': ['a', '']}),
+                (S.WorksheetMaintenanceModeleSerializer,
+                 {'champs': [{'cle': 'p', 'type': 'nombre'}]}),
+                (S.ReponseTypeSerializer, {'canaux_autorises': None}),
+                (S.ReponseTypeSerializer, {'canaux_autorises': ['email']})):
+            with self.subTest(classe=classe.__name__, corps=corps):
+                ser = classe(data=corps, partial=True)
+                self.assertTrue(ser.is_valid(), ser.errors)
+
+    def test_prix_prestation_chaine_vide_refusee(self):
+        from apps.sav.serializers_maintenance import PrestationContratSerializer
+        for valeur, ok in (('', False), ('  ', False), (None, True),
+                           ('12.50', True), (12.5, True)):
+            ser = PrestationContratSerializer(data={'prix_ht': valeur},
+                                              partial=True)
+            with self.subTest(valeur=valeur):
+                self.assertEqual(ser.is_valid(), ok, ser.errors)
+
+    def test_deuxieme_passe_corps_stricts(self):
+        # CI #997 api-fuzz (2e passe) : TOUS les champs de ces corps sont exacts
+        # (booléen 0, entier chaîne, nombre pour un décimal-chaîne → 400).
+        from apps.sav import serializers as S
+        from apps.sav.serializers_maintenance import (
+            ContratMaintenanceSerializer, PrestationContratSerializer)
+        for classe, corps, champ in (
+                (S.KbArticleSerializer, {'actif': 0}, 'actif'),
+                (S.KbArticleSerializer, {'corps': 0}, 'corps'),
+                (S.WorksheetMaintenanceModeleSerializer, {'actif': 0}, 'actif'),
+                (S.WarrantyClaimSerializer, {'fournisseur_id_ext': '5'},
+                 'fournisseur_id_ext'),
+                (S.WarrantyClaimSerializer, {'cout_recupere': 5},
+                 'cout_recupere'),
+                (ContratMaintenanceSerializer, {'actif': 0}, 'actif'),
+                (ContratMaintenanceSerializer, {'notes': 0}, 'notes'),
+                (ContratMaintenanceSerializer, {'equipements': {}},
+                 'equipements'),
+                (PrestationContratSerializer, {'incluse': 0}, 'incluse'),
+                (PrestationContratSerializer, {'id': '1'}, 'id')):
+            ser = classe(data=corps, partial=True)
+            self.assertFalse(ser.is_valid(), (classe.__name__, corps))
+            self.assertIn(champ, ser.errors, (classe.__name__, corps))
+
+    def test_deuxieme_passe_valeurs_conformes(self):
+        # Les écrans envoient `prix`/`prix_ht` en chaîne OU nombre, une
+        # réclamation sans coût (`""`) et un fournisseur numérique : acceptés.
+        from apps.sav import serializers as S
+        from apps.sav.serializers_maintenance import (
+            ContratMaintenanceSerializer, PrestationContratSerializer)
+        for classe, corps in (
+                (S.WarrantyClaimSerializer, {'cout_recupere': ''}),
+                (S.WarrantyClaimSerializer, {'cout_recupere': '12.50',
+                                             'fournisseur_id_ext': 5}),
+                (ContratMaintenanceSerializer, {'prix': '1200.00'}),
+                (ContratMaintenanceSerializer, {'prix': 1200}),
+                (ContratMaintenanceSerializer, {'duree_mois': '12'}),
+                (PrestationContratSerializer, {'prix_ht': 0}),
+                (PrestationContratSerializer, {'prix_ht': '0'})):
+            ser = classe(data=corps, partial=True)
+            self.assertTrue(ser.is_valid(), (classe.__name__, corps, ser.errors))

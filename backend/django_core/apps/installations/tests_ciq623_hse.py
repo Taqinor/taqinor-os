@@ -91,7 +91,7 @@ class HseMinimalTest(TestCase):
             convention_signee_le=date(2027, 3, 1))
         r = self.api.patch(f'{CHANTIERS}{chantier.id}/',
                            {'statut': 'en_cours'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
         self.assertTrue(any('Documents de sécurité' in m
                             for m in r.data['statut']))
         self._documents(chantier)

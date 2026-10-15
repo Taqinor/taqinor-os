@@ -16,7 +16,9 @@ from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
-from .params_requete import booleen_param, liste_ids
+from .params_requete import (
+    CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, RESOUDRE_GPS_REPERE, booleen_param,
+    corps_lu, corps_objet, liste_ids)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -39,6 +41,7 @@ from . import schema_docs as sd
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +233,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         serializer = self.get_serializer(
             instance, context={
                 **self.get_serializer_context(),
-                'include_chatter_recent': True,
+                'include_chatter_recent': True, 'include_vente': True,  # VNT70
             })
         return Response(serializer.data)
 
@@ -795,7 +798,12 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 new_lead.pk, exc_info=True)
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx']:
+        if self.action in READ_ACTIONS + [
+                'export_xlsx', 'historique', 'jalons_devis',
+                # AGR516 — les réalisations proches sont une LECTURE de la
+                # fiche : même garde fine que l'@action (sinon le
+                # `[IsAdminRole()]` final).
+                'references_proches']:
             # VTA4 (12/09/2026, bug CI #25 en sens inverse) — la lecture des
             # leads exige le code fin ``crm_voir`` : ce get_permissions PRIME
             # sur tout, donc l'attribut ``read_permission`` posé sur la classe
@@ -804,12 +812,6 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             # comptes historiques sans Role fin ; tous les rôles métier seedés
             # (Responsable :509, Commercial resp :641, Commercial :682,
             # Viewer :807) portent déjà crm_voir.
-            return [HasPermissionOrLegacy('crm_voir')()]
-        elif self.action in ('historique', 'jalons_devis',
-                             # AGR516 — les réalisations proches sont une
-                             # LECTURE de la fiche : même garde fine que
-                             # l'@action (sinon `[IsAdminRole()]` final).
-                             'references_proches'):
             # CRX19/CRX37 — l'historique COMPLET d'un lead (et ses jalons
             # devis, qui sont le même historique vu côté ventes) exige
             # ``crm_voir``. get_permissions() PRIME sur le permission_classes
@@ -817,7 +819,9 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             # — `historique` retombait sur IsAnyRole (ouvert à TOUT porteur de
             # rôle) et `jalons_devis`, absent de toutes les listes, sur le
             # `return [IsAdminRole()]` final (403 pour la Commerciale).
-            return [HasPermissionOrLegacy('crm_voir')()]
+            # ASEC50 / D-ASEC-4 — l'export exige EN PLUS ``crm_export``.
+            return [HasPermissionOrLegacy('crm_voir')()] + droits_de_la_grille(
+                self, export_xlsx=[DroitDeLaGrille('crm_export')])
         elif self.action == 'resume_associe':
             # AGR534 — la permission DÉCLARÉE sur l'@action (responsable ou
             # admin) ; get_permissions() PRIME sur elle (bug CI #25), d'où
@@ -852,10 +856,19 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             'ville_statut',
         ]:
             # L'archivage réversible est ouvert à la Commerciale.
-            return [IsResponsableOrAdmin()]
+            # ASEC50 / D-ASEC-4 — réaffecter (bulk ``reassign`` ou changement
+            # d'``owner`` au PATCH) exige ``crm_reassign`` ; la suppression en
+            # masse ``delete`` exige ``crm_supprimer``.
+            return [IsResponsableOrAdmin()] + droits_de_la_grille(
+                self,
+                bulk=[DroitDeLaGrille('crm_reassign', operation='reassign'),
+                      DroitDeLaGrille('crm_supprimer', operation='delete')],
+                update=[DroitDeLaGrille('crm_reassign', champ='owner')],
+                partial_update=[DroitDeLaGrille('crm_reassign', champ='owner')])
         elif self.action == 'destroy':
-            # La suppression DÉFINITIVE reste réservée à l'admin/propriétaire.
-            return [IsAdminRole()]
+            # La suppression DÉFINITIVE reste réservée à l'admin/propriétaire
+            # ET exige ``crm_supprimer`` (ASEC50).
+            return [IsAdminRole(), DroitDeLaGrille('crm_supprimer')()]
         # SPL75 — les actions des mixins (cadence…) se gardent elles-mêmes ;
         # la chaîne finit sur _RepliIsAdminMixin ([IsAdminRole()]).
         return super().get_permissions()
@@ -1118,7 +1131,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         lead = self.get_object()
         return Response({'results': lead_jalons_devis(lead)})
 
-    @extend_schema(request=None, responses=LeadActivitySerializer)
+    @extend_schema(request=None, responses=LeadActivitySerializer,
+                   parameters=[sd.P_ACTIVITE_ID])
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/epingler',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -1139,7 +1153,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data)
 
-    @extend_schema(request=None, responses=LeadActivitySerializer)
+    @extend_schema(request=None, responses=LeadActivitySerializer,
+                   parameters=[sd.P_ACTIVITE_ID])
     @action(detail=True, methods=['post'],
             url_path=r'activites/(?P<activite_id>[^/.]+)/desepingler',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
@@ -1158,7 +1173,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         return Response(LeadActivitySerializer(
             act, context={'request': request}).data)
 
-    @extend_schema(request=sd.corps('CrmResoudreGpsRequest', adresse=serializers.CharField(required=False), lien=serializers.CharField(required=False), ville=serializers.CharField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=CORPS_RESOUDRE_GPS, responses=sd.OBJ, extensions=RESOUDRE_GPS_REPERE)
     @action(detail=False, methods=['post'], url_path='resoudre-gps',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def resoudre_gps(self, request):
@@ -1173,30 +1188,30 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         (géocodeur), ``ville`` (centre-ville approximatif)."""
         from .geolocalisation import (
             coords_depuis_adresse, coords_depuis_lien_maps)
-        lien = (request.data.get('lien') or '').strip()
-        if lien:
+        corps = corps_lu(request, CORPS_RESOUDRE_GPS)  # ERR-ENF11-FUZZ-CRM
+        if lien := corps.get('lien', '').strip():
             coords = coords_depuis_lien_maps(lien)
-            if coords is None:
+            if coords is None:  # rien à trouver dans ce lien : 404
                 return Response(
                     {'detail': 'Aucune coordonnée trouvée dans ce lien '
                                'Google Maps.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
             lat, lng, precision = (*coords, 'lien')
         else:
             resultat = coords_depuis_adresse(
-                request.data.get('adresse'), request.data.get('ville'))
+                corps.get('adresse'), corps.get('ville'))
             if resultat is None:
                 return Response(
                     {'detail': "Adresse introuvable (ni géocodable, ni une "
                                'ville connue du gazetier).'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
             lat, lng, precision = resultat
         return Response({
             'gps_lat': str(lat), 'gps_lng': str(lng),
             'precision': precision,
         })
 
-    @extend_schema(request=sd.corps('CrmVilleStatutRequest', ville=serializers.CharField(required=False, allow_blank=True), gps_lat=serializers.FloatField(required=False), gps_lng=serializers.FloatField(required=False), proches=serializers.BooleanField(required=False)), responses=sd.OBJ)
+    @extend_schema(request=CORPS_VILLE_STATUT, responses=sd.OBJ)
     @action(detail=False, methods=['post'], url_path='ville-statut',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def ville_statut(self, request):
@@ -1211,7 +1226,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         les villes ERP triées par distance (vide sans position)."""
         from apps.parametres.villes_resolution import (
             resoudre_ville, villes_proches)
-        ville = (request.data.get('ville') or '').strip()
+        ville = corps_lu(request, CORPS_VILLE_STATUT).get('ville', '').strip()
         resultat = resoudre_ville(ville)
         position = None
         proches = []
@@ -1266,7 +1281,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     # dossier. La lecture des visites passe par le SÉLECTEUR de ``apps.visites``
     # (frontière M3) : ce module n'importe jamais ses modèles.
 
-    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False), proprietaire_inconnu=serializers.BooleanField(required=False)), responses=inline_serializer('CrmLeadLocataire', {
+    @extend_schema(request=sd.corps('CrmLocataireRequest', proprietaire=serializers.DictField(required=False), proprietaire_inconnu=serializers.BooleanField(required=False)), extensions=sd.LOCATAIRE_SUITE, responses=inline_serializer('CrmLeadLocataire', {
         'locataire': serializers.BooleanField(),
         'propose': serializers.ListField(child=serializers.CharField()),
         'motif_perte': serializers.CharField(),
@@ -1461,7 +1476,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
             act, context={'request': request}).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)), ids=sd.ids_requis()), responses=sd.OBJ)
+    @extend_schema(request=sd.corps('CrmBulkLeadsRequest', action=serializers.ChoiceField(choices=sorted(BULK_ACTIONS)), ids=sd.ids_requis()), responses=sd.OBJ, extensions=sd.corps_bulk(BULK_ACTIONS))
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[IsResponsableOrAdmin])
     def bulk(self, request):
@@ -1472,8 +1487,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         'archive'|'unarchive'|'delete', + paramètres de l'action}. La société et
         l'acteur viennent du serveur ; la règle métier (funnel, garde-fous,
         Historique « en masse ») vit dans services.apply_bulk_action."""
-        from .fiche_bulk import BULK_ACTIONS, BULK_ADMIN_ONLY, apply_bulk_action
-        op = request.data.get('action')
+        from .fiche_bulk import BULK_ACTIONS, BULK_ADMIN_ONLY, ReferenceInconnue, apply_bulk_action
+        op = corps_objet(request).get('action')
         ids = request.data.get('ids') or []
         # ENF11 (api-fuzz) — `action: {}` (non hachable) levait TypeError (500).
         if not isinstance(op, str) or op not in BULK_ACTIONS:
@@ -1495,7 +1510,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                 queryset=self._leads_en_portee())
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND if isinstance(
+                                exc, ReferenceInconnue) else status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
     @extend_schema(request=sd.corps('CrmLeadsExportRequest', ids=sd.ids_requis()), responses=sd.EXPORT_XLSX)
@@ -1508,7 +1524,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         sélection). Borné à la société de l'utilisateur."""
         from .exports import export_leads_xlsx
         from .fiche_bulk import coerce_id_list
-        raw_ids = request.data.get('ids') or []
+        raw_ids = corps_objet(request).get('ids') or []
         if not isinstance(raw_ids, list) or not raw_ids:
             return Response({'detail': 'Sélectionnez au moins un lead.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -2047,9 +2063,9 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         pour cette page (autre page, autre utilisateur, id inconnu) sont
         silencieusement ignorés — jamais d'erreur pour un id étranger."""
         from django.db import transaction
-        page = request.data.get('page')
+        page = corps_objet(request).get('page')
         ids = liste_ids(request.data, 'ids')
-        if not page or not isinstance(page, str):
+        if not isinstance(page, str) or not page.strip():
             return Response(
                 {'detail': "Paramètres 'page' et 'ids' (liste) requis."},
                 status=status.HTTP_400_BAD_REQUEST)

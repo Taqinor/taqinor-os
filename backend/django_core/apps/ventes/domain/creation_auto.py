@@ -334,7 +334,7 @@ def _fr_nombre(valeur):
 
 
 def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
-                               journal_auto=None):
+                               journal_auto=None, target_kwc=None):
     """AGR124 — devis automatique AGRICOLE (pompage) par le serveur.
 
     Entrées : ``crm.selectors.entrees_pompage_du_lead`` (AGR404), lues par
@@ -349,6 +349,13 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     (provenance ``lead``). Le type du lead n'est JAMAIS changé (D-AGR-9) ;
     aucun statut touché (règle #4). ``journal_auto['alertes']`` reçoit les
     alertes de l'étude et les articles « prix à renseigner » omis."""
+    # AGNR39 — une puissance cible n'a aucun sens au pompage (le champ découle
+    # de la pompe) : refusée en la NOMMANT (400), jamais ignorée en silence.
+    if target_kwc not in (None, ''):
+        from rest_framework.exceptions import ValidationError
+        raise ValidationError({'target_kwc': (
+            "La puissance cible ne s'applique pas au pompage : le champ "
+            "solaire découle de la pompe retenue (HMT et débit du lead).")})
     # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
     if taux_tva is None:
         from apps.ventes.utils.company_settings import tva_standard
@@ -526,7 +533,7 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 field='type_installation')
         return _build_devis_auto_agricole(
             lead=lead, user=user, company=company, taux_tva=taux_tva,
-            journal_auto=journal_auto)
+            journal_auto=journal_auto, target_kwc=target_kwc)
     if marche and marche != 'residentiel':
         raise AutoDevisError(
             "L'auto-devis ne gère que le résidentiel pour l'instant. Pour "

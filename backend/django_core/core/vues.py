@@ -81,6 +81,7 @@ def tier_de(user):
     try:
         return (getattr(user, 'menu_tier', '') or '').strip()
     except Exception:  # pragma: no cover - défensif (user exotique)
+        logger.warning("tier de : échec ignoré, comportement dégradé", exc_info=True)
         return ''
 
 

@@ -526,6 +526,16 @@ class TestDC35FicheTechniqueAPI(DCBase):
         # company forcé sur la société du demandeur, jamais celle du body.
         self.assertEqual(fiche.company_id, self.company.id)
 
+    def test_doublon_de_produit_409(self):
+        """ENF11 — une 2e fiche pour le même produit : état des données = 409."""
+        url = '/api/django/stock/fiches-techniques/'
+        premiere = self.client.post(
+            url, {'produit': self.produit.id, 'pmax_wc': '550'}, format='json')
+        self.assertEqual(premiere.status_code, 201, premiere.content)
+        doublon = self.client.post(
+            url, {'produit': self.produit.id, 'pmax_wc': '600'}, format='json')
+        self.assertEqual(doublon.status_code, 409, doublon.content)
+
     def test_queryset_scoped_to_company(self):
         from apps.stock.models import FicheTechnique
         other_prod = Produit.objects.create(

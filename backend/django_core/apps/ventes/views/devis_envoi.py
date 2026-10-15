@@ -45,6 +45,24 @@ def _gamme_envoi_payload(devis):
     }
 
 
+def _corps_lien_invalide(corps):
+    """ENF11 (api-fuzz « accepted schema-violating ») — types STRICTS du
+    corps de ``share-link``, vérifiés AVANT tout effet : ``envoi: {}`` ou
+    ``otp_lecture: "false"`` étaient lus par leur vérité (« false » valait
+    vrai), ``niveau: null`` ignoré. Rend le message d'un 400, ou ``None``.
+    ``sections`` garde sa garde dédiée (whitelist + booléens)."""
+    if not isinstance(corps, dict):
+        return 'Corps JSON objet attendu.'
+    for cle in ('envoi', 'otp_lecture'):
+        if cle in corps and not isinstance(corps[cle], bool):
+            return f'{cle} : booléen attendu.'
+    if 'niveau' in corps and corps['niveau'] not in ('standard', 'confiance'):
+        return "niveau invalide (attendu : 'standard' ou 'confiance')."
+    if 'gamme_envoi' in corps and not isinstance(corps['gamme_envoi'], str):
+        return 'gamme_envoi : texte attendu.'
+    return None
+
+
 def _appliquer_gamme_envoi(devis, mode):
     """GAMME — applique le mode d'envoi demandé (no-op hors paire de gammes)."""
     from ..services import regler_envoi_gamme
@@ -129,6 +147,10 @@ class DevisEnvoiActionsMixin:
         absent/false → comportement d'avant, byte-identique."""
         from ..models import ShareLink
         devis = self.get_object()
+        invalide = _corps_lien_invalide(request.data)
+        if invalide:
+            return Response({'detail': invalide},
+                            status=status.HTTP_400_BAD_REQUEST)
         # ADEV20 (C-ADEV-021) — un code de lecture exigé d'un client qu'aucun
         # canal ne peut joindre rendrait le lien illisible pour toujours : 400
         # qui nomme ``otp_lecture``, AVANT tout effet (gamme, mint, statut).
@@ -448,8 +470,10 @@ class DevisEnvoiActionsMixin:
         phone = devis_recipient_phone(devis)
         if not normalize_phone_e164(phone):
             return Response(
+                # ENF11 — le numéro vient de la FICHE client, pas du corps :
+                # refus d'état (409), la requête est valide.
                 {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         langue = request.data.get('langue')
         if langue is None:
@@ -505,8 +529,10 @@ class DevisEnvoiActionsMixin:
         phone = devis_recipient_phone(devis)
         if not normalize_phone_e164(phone):
             return Response(
+                # ENF11 — le numéro vient de la FICHE client, pas du corps :
+                # refus d'état (409), la requête est valide.
                 {'detail': 'Numéro de téléphone invalide.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         langue = request.data.get('langue')
         if langue is None:

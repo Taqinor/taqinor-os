@@ -11,8 +11,6 @@ Deux endpoints de calcul (lecture seule, tout rôle) exposent le service :
 * ``productible`` : productible PVGIS au point GPS exact (repli manuel
   hors-ligne — fonctionne sans réseau).
 """
-import math
-
 from django.db.models import F
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -28,7 +26,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, entier_ou_400, nombre_ou_400
 
 from .models import SettingsAuditLog
 from .models_tariff import TariffSettings
@@ -72,17 +70,6 @@ def _settings(request):
     return TariffSettings.get(
         company=request.user.company if request.user.company_id else None
     )
-
-
-def _float_fini(valeur):
-    """ENF12 (semgrep nan-injection) — ``float`` FINI ou ``ValueError``.
-
-    ``float('nan')`` / ``float('inf')`` passaient tels quels (clé de cache,
-    appel d'API externe, comparaisons toujours fausses)."""
-    nombre = float(valeur)
-    if not math.isfinite(nombre):
-        raise ValueError('valeur non finie')
-    return nombre
 
 
 @extend_schema(responses=TariffSettingsSerializer)
@@ -231,18 +218,15 @@ def get_productible(request):
     Query : lat, lon, peakpower? (kWc), tilt?, azimuth?. Ne lève jamais : si
     PVGIS est injoignable (réseau bloqué), retourne la source 'manual'."""
     obj = _settings(request)
-    lat = request.query_params.get('lat')
-    lon = request.query_params.get('lon')
-    peak = request.query_params.get('peakpower', 1.0)
-    tilt = request.query_params.get('tilt', None)
-    azimuth = request.query_params.get('azimuth', None)
-    try:
-        peak = _float_fini(peak)
-    except (TypeError, ValueError):
-        peak = 1.0
+    # ENF11 — le schéma déclare des NOMBRES : une valeur illisible est un 400
+    # nommant le paramètre (``int('abc')`` levait un 500) ; absent/vide garde
+    # le repli documenté (coordonnées manquantes → productible manuel).
+    params = request.query_params
+    lat = nombre_ou_400(params.get('lat'), 'lat')
+    lon = nombre_ou_400(params.get('lon'), 'lon')
+    peak = nombre_ou_400(params.get('peakpower'), 'peakpower', defaut=1.0)
+    tilt = entier_ou_400(params.get('tilt'), 'tilt', maxi=2147483647)
+    azimuth = entier_ou_400(params.get('azimuth'), 'azimuth', maxi=2147483647)
     result = pvgis_client.fetch_productible(
-        obj, lat, lon, peakpower_kwc=peak,
-        tilt=int(tilt) if tilt not in (None, '') else None,
-        azimuth=int(azimuth) if azimuth not in (None, '') else None,
-    )
+        obj, lat, lon, peakpower_kwc=peak, tilt=tilt, azimuth=azimuth)
     return Response(result)

@@ -12,13 +12,58 @@ Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \\
         -Modules "apps.facturation.tests.test_afac_pdf_facture_ar_libelles"
 """
+import ast
+import re
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.conf import settings
+from django.test import SimpleTestCase, TestCase
 
 _CTR = [0]
+
+#: VNT93 — un appel ``_L('…')`` / ``_L("…")`` à argument LITTÉRAL (les
+#: appels dynamiques ``_L(r.mode)`` passent par ``TEXTES_AR``, couverts
+#: ailleurs).
+_APPEL_L = re.compile(r"""_L\(\s*(['"])(.+?)\1\s*\)""")
+
+
+def _gabarit(nom):
+    return (Path(settings.BASE_DIR) / 'templates' / 'pdf' / nom).read_text(
+        encoding='utf-8')
+
+
+def _repli_du_macro(source):
+    """Le dict de repli français du macro ``_L`` (``{{ { … }.get(cle,
+    cle) }}``), ``None`` si le gabarit n'en a pas (repli = la clé, qui est
+    alors le texte français lui-même)."""
+    if '{{ {' not in source:
+        return None
+    bloc = source.split('{{ {', 1)[1].split('}.get(cle, cle)', 1)[0]
+    return ast.literal_eval('{' + bloc + '}')
+
+
+def cles_sans_traduction(source):
+    """VNT93 — les clés ``_L`` littérales de ``source`` à qui il manque une
+    traduction arabe (``LIBELLES['ar']`` ou ``TEXTES_AR``), un libellé
+    français (``LIBELLES['fr']``, ou la clé est un texte d'affichage de
+    ``TEXTES_AR``, français par construction) ou le repli du macro (sauf
+    texte d'affichage, rendu tel quel par ``.get(cle, cle)``)."""
+    from apps.ventes.utils.libelles_ar import LIBELLES, TEXTES_AR
+    repli = _repli_du_macro(source)
+    manques = {}
+    for cle in sorted({m[1] for m in _APPEL_L.findall(source)}):
+        texte = cle in TEXTES_AR
+        trous = [nom for nom, ok in (
+            ('ar', cle in LIBELLES['ar'] or texte),
+            ('fr', cle in LIBELLES['fr'] or texte),
+            ('repli', repli is None or cle in repli or texte)) if not ok]
+        if trous:
+            manques[cle] = trous
+    return manques
+
 
 #: Clés AFAC58 (libellés ajoutés après XSAL13) — leurs valeurs ``fr`` ne
 #: doivent JAMAIS apparaître dans la page arabe.
@@ -234,3 +279,80 @@ class GarantiesFactureTests(TestCase):
         self.assertIn(libelle('garanties', 'ar'), html)
         for designation in attendu:
             self.assertIn(designation, html)
+
+
+class CataloguesLibellesGabaritsTests(SimpleTestCase):
+    """VNT93 — chaque clé ``_L`` littérale de ``facture.html`` et de
+    ``recu.html`` a sa traduction arabe (``LIBELLES['ar']``/``TEXTES_AR``),
+    son libellé français ET son repli dans le dict du macro : le macro
+    imprime la CLÉ brute quand elle manque au repli (``.get(cle, cle)``)."""
+
+    def test_facture_et_recu_couverts(self):
+        for nom in ('facture.html', 'recu.html'):
+            with self.subTest(gabarit=nom):
+                source = _gabarit(nom)
+                self.assertTrue(_APPEL_L.findall(source), nom)
+                self.assertEqual(cles_sans_traduction(source), {}, nom)
+
+    def test_cle_ajoutee_sans_catalogue_detectee(self):
+        """Test-du-test : une clé neuve absente des trois catalogues est
+        signalée, et une clé présente au catalogue mais absente du repli
+        du macro aussi."""
+        source = _gabarit('facture.html')
+        source = source.replace("'page': 'Page',", '', 1)
+        source += "{{ _L('cle_neuve_vnt93') }}"
+        manques = cles_sans_traduction(source)
+        self.assertEqual(manques['cle_neuve_vnt93'], ['ar', 'fr', 'repli'])
+        self.assertEqual(manques['page'], ['repli'])
+
+
+@patch('apps.ventes.utils.pdf._download', return_value=None)
+class RenduArabeSansCleBruteTests(TestCase):
+    """VNT93 — rendu RÉEL (WeasyPrint, texte PyMuPDF) d'un acompte arabe
+    du 388 qui imprime les blocs de la vente (objet, part, prochaines
+    échéances, situation, déjà payé) : aucune clé brute (``snake_case``)
+    ni libellé français de ces blocs dans la page."""
+
+    ECHEANCIER = [{'type': 'acompte', 'libelle': 'Acompte',
+                   'unite': 'montant', 'pct_or_montant': 15000},
+                  {'type': 'materiel', 'pct_or_montant': 60},
+                  {'type': 'solde', 'pct_or_montant': 10}]
+
+    def test_acompte_arabe(self, _dl):
+        from apps.crm.models import Client
+        from apps.ventes.domain.encaissements import (
+            recalculer_statut_paiement)
+        from apps.ventes.models import Paiement
+        from apps.ventes.tests._quote_engine_common import (
+            make_client, make_company, make_user)
+        from apps.ventes.tests.test_echeancier_somme_total import (
+            creer_devis_388)
+        from apps.ventes.utils.echeancier import creer_facture_tranche
+        from apps.ventes.utils.libelles_ar import LIBELLES
+        from apps.ventes.utils.pdf import generate_facture_pdf
+        company = make_company()
+        user = make_user(company)
+        client = make_client(company)
+        Client.objects.filter(pk=client.pk).update(langue_document='ar')
+        client.refresh_from_db()
+        devis = creer_devis_388(company, user, client,
+                                f'DEV-VNT93-{_nxt()}', self.ECHEANCIER)
+        acompte = creer_facture_tranche(devis, user, company, None)
+        Paiement.objects.create(
+            company=company, facture=acompte, montant=Decimal('15000'),
+            date_paiement=date(2026, 10, 12), mode=Paiement.Mode.VIREMENT)
+        recalculer_statut_paiement(acompte)
+        boite = {}
+        with patch('apps.ventes.utils.pdf._upload_pdf',
+                   side_effect=lambda b, k: boite.__setitem__('pdf', b)):
+            generate_facture_pdf(acompte.pk)
+        texte = _texte(boite['pdf'])
+        cles = {m[1] for m in _APPEL_L.findall(_gabarit('facture.html'))}
+        for cle in sorted(c for c in cles if '_' in c):
+            with self.subTest(cle=cle):
+                self.assertNotIn(cle, texte)
+        for cle in ('objet_vente', 'situation_vente_au',
+                    'prochaines_echeances', 'paye_sur_la_vente',
+                    'reste_du_sur_la_vente', 'deja_paye'):
+            with self.subTest(fr=cle):
+                self.assertNotIn(LIBELLES['fr'][cle].lower(), texte.lower())

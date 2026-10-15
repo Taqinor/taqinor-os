@@ -1,0 +1,1599 @@
+/* ════════════════════════════════════════════════════════════════════════
+   Lead Workspace (LW) — cockpit 3 zones, autosauvegarde sans perte.
+   Bloc APPEND-ONLY : tokens sémantiques UNIQUEMENT, zéro hex (dark-mode par
+   tokens), tints via color-mix. Voir docs/design/lead-workspace-blueprint.md.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── LW10 : shell (enveloppes + grille + bandeau) ────────────────────────── */
+
+/* Enveloppe Dialog quasi plein écran (liste/kanban ≥768px). Neutralise le
+   padding/gap/scroll du DialogContent de base ; la grille interne gère tout. */
+.lw-dialog {
+  width: min(1440px, 96vw);
+  height: min(920px, 94dvh);
+  max-width: 96vw;
+  max-height: 94dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Enveloppe Sheet bas pleine hauteur (<768px). */
+.lw-sheet {
+  height: 100dvh;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Enveloppe pleine page (/crm/leads/:id) — même grille, sans overlay. */
+.lw-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Racine interne : colonne flex — bandeau (auto), bannières (auto), corps
+   (1fr, min-height:0), pied (auto). Le corps est le SEUL à s'étirer. */
+.lw-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+/* Bandeau : liseré 2px de l'accent module CRM en haut (jamais un fond). */
+.lw-topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-top: 2px solid var(--module-accent-azur);
+  border-bottom: 1px solid var(--border);
+}
+.lw-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.lw-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+.lw-title {
+  margin: 0;
+  min-width: 0;
+  /* LW33 — échelle typo stricte (blueprint D4#3) : titre de dialogue = chrome
+     compact, pas le « nom du lead » (ce rôle est .lw-rail-name → --text-h2,
+     ci-dessous) ; --text-body, line-height propre gardé (titre 1 ligne
+     tronquée, pas un paragraphe). */
+  font-size: var(--text-body);
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lw-archived-badge {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+}
+.lw-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lw-nav-pos {
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chip d'état de sauvegarde (autosauvegarde). */
+.lw-savechip {
+  font-size: var(--text-small);
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  line-height: 1.4;
+}
+.lw-savechip--saving {
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+}
+.lw-savechip--saved {
+  color: var(--success);
+  background: color-mix(in oklch, var(--success) 14%, transparent);
+}
+.lw-savechip--error {
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 14%, transparent);
+  border-color: color-mix(in oklch, var(--destructive) 40%, transparent);
+  cursor: pointer;
+}
+/* RÈGLE FONDATEUR 08/09/2026 — chip d'erreur NOMMÉ (fieldLabels.js) : le
+   message peut être long (« Non enregistré — « <Label> » : <texte serveur> »),
+   tronqué visuellement (titre HTML porte le texte complet) ; « Réessayer »
+   reste un second bouton distinct, toujours visible à côté. */
+.lw-savechip-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+.lw-savechip-group .lw-savechip--error {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lw-savechip-retry {
+  font-size: var(--text-small);
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
+  background: transparent;
+  color: var(--destructive);
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Bannières (brouillon restauré / stale). */
+.lw-banner {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.5rem 1rem 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-small);
+  color: var(--foreground);
+}
+.lw-banner-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.lw-banner--info {
+  border: 1px solid color-mix(in oklch, var(--info) 40%, transparent);
+  background: color-mix(in oklch, var(--info) 10%, transparent);
+}
+.lw-banner--warning {
+  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+
+/* Corps : la grille 3 zones (edit) ou colonne unique (create). */
+.lw-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lw-body--edit {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr) 384px;
+  /* Rangée BORNÉE à la hauteur du corps : sans ça, la rangée implicite grandit
+     avec le contenu et chaque zone ne peut plus défiler indépendamment (piège
+     de la classe P0). Avec min-height:0 sur .lw-body, cette rangée fixe donne
+     à chaque .lw-zone une hauteur définie → overflow-y:auto opérant. */
+  grid-template-rows: minmax(0, 1fr);
+}
+.lw-body--create {
+  display: block;
+  overflow-y: auto;
+}
+
+/* Chaque zone est son PROPRE conteneur de défilement (cause racine P0
+   éliminée : plus jamais un excès clippé faute de min-height:0). */
+.lw-zone {
+  min-height: 0;
+  overflow-y: auto;
+}
+.lw-rail-identity {
+  border-right: 1px solid var(--border);
+  padding: 1rem;
+}
+.lw-center {
+  padding: 0;
+}
+.lw-rail-context {
+  border-left: 1px solid var(--border);
+  padding: 1rem;
+}
+/* LW33 — le nom du lead est LE titre --text-h2 de la fenêtre (blueprint
+   D4#3) : seul élément du bloc .lw-* promu à ce palier. */
+.lw-rail-name {
+  margin: 0;
+  font-size: var(--text-h2);
+  line-height: var(--text-h2-lh);
+  letter-spacing: var(--text-h2-ls);
+  font-weight: 600;
+  color: var(--foreground);
+}
+.lw-rail-sub {
+  margin: 0.15rem 0 0;
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+}
+.lw-rail-hint {
+  margin: 0.5rem 0 0;
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+}
+
+/* Le <form> de création ne casse jamais la grille/le scroll (display:contents). */
+.lw-form {
+  display: contents;
+}
+
+/* Pied de création. LW34 — passe par `ui/FormActions` (barre collante mobile
+   déjà gérée par le kit) ; cette classe ne garde que ce que FormActions ne
+   fixe pas déjà (rester un item flex non-écrasable de .lw-root). */
+.lw-footer-create {
+  flex: 0 0 auto;
+}
+.lw-footer-error {
+  margin-right: auto;
+  font-size: var(--text-small);
+  color: var(--destructive);
+}
+
+/* LW34 — barre-pouce mobile (<768) : Appeler/WhatsApp/Note toujours
+   atteignables sans défiler le formulaire, safe-area iOS respectée. Item
+   flex non-écrasable de .lw-root (même famille que .lw-topbar/.lw-footer-
+   create), sous le corps scrollable. */
+.lw-thumbbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.lw-thumbbar-btn {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.25rem;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-size: var(--text-small);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.lw-thumbbar-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+.lw-thumbbar-btn[aria-disabled="true"],
+.lw-thumbbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .lw-thumbbar-btn:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: color-mix(in oklch, var(--muted-foreground) 8%, transparent);
+  }
+}
+
+/* LW34 — ContextRail dans un Sheet à la demande (768-1023, bouton
+   « Contexte »). Padding du kit neutralisé : .lw-zone.lw-rail-context a déjà
+   le sien (1rem) — même patron que .lw-dialog/.lw-sheet (p-0, la grille
+   interne gère tout). */
+.lw-context-sheet {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* LW34 — 768-1023 : rail identité + centre en 2 colonnes ; le rail contexte
+   quitte la grille (LeadWorkspace.jsx le rend dans un Sheet à la demande via
+   le bouton « Contexte » du bandeau — patron LeadDevisPanel). Données
+   préservées, aucune perte de zone : juste un 3e panneau qui devient un
+   panneau à la demande plutôt qu'un panneau toujours visible. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .lw-body--edit {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  /* Le squelette d'ouverture (LW25) rend encore 3 panneaux ; à ce palier le
+     rail contexte réel n'est plus dans la grille (Sheet à la demande) — son
+     ombre de squelette doit disparaître avec lui, sinon elle déborde du
+     gabarit 2 colonnes (3e enfant sans piste dédiée). */
+  .lw-body--edit .lw-rail-context.lw-skeleton-pane {
+    display: none;
+  }
+}
+
+/* LW34 — <768 : empilement — bande identité compacte → sections accordéon →
+   onglets contexte (ordre DOM naturel ; le rail contexte reste EN LIGNE ici,
+   seule la tablette le sort en Sheet). SEUL breakpoint restant du bloc
+   .lw-* : la bande morte 721-767px de l'ancien .lead-form-layout à 720px
+   (recon 04 §5) a disparu avec lui. */
+@media (max-width: 767px) {
+  .lw-body--edit {
+    display: block;
+    overflow-y: auto;
+  }
+  .lw-body--edit .lw-zone {
+    overflow: visible;
+  }
+  .lw-rail-identity {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .lw-rail-context {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+}
+
+/* ── LW11 : centre (nav-chips sticky, sections repliables, port des champs) ── */
+
+/* Nav-chips horizontaux STICKY en tête du centre (scroll-spy). LW33 (retour
+   QA visuelle orchestrateur) — à centre étroit (~750px), la rangée déborde
+   sans AUCUN indice qu'elle défile : scrollbar masquée (déjà présente à
+   l'œil comme un artefact, pas une affordance) + dégradé de bord (mask-image)
+   pour suggérer « il y a plus à droite ». Le scroll horizontal existait déjà
+   (overflow-x:auto) — seul l'indice manquait. */
+.lw-secnav {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+}
+.lw-secnav::-webkit-scrollbar { display: none; }
+.lw-secnav-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .lw-secnav-chip:hover {
+    color: var(--foreground);
+    background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+  }
+}
+.lw-secnav-chip[aria-current="true"] {
+  color: var(--foreground);
+  font-weight: 600;
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, transparent);
+  border-color: color-mix(in oklch, var(--module-accent-azur) 30%, transparent);
+}
+.lw-secnav-icon {
+  flex: 0 0 auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ROUND 5 — BANDEAU « À COMPLÉTER ».
+   L'ordre des sections ne bouge JAMAIS (mémoire spatiale : un formulaire qui
+   se réorganise selon le contexte se relit à chaque ouverture au lieu de
+   s'apprendre — Office 2000, Findlater & McGrenere, NN/g). L'intuition
+   fondateur « voir d'abord ce qui manque selon l'étape » est donc livrée par
+   ce bandeau, qui POINTE : les sections restent à leur place.
+   Il est ÉPINGLÉ juste sous le rail de sections (`.lw-secnav`, sticky top:0)
+   — d'où le `top` qui vaut la hauteur de ce rail : les deux ne se recouvrent
+   jamais, quel que soit le défilement.
+   Il n'existe QUE s'il a quelque chose à dire : rien n'est rendu quand tout
+   va bien (aucune règle « état vide » ici — c'est le JSX qui ne rend rien).
+   ══════════════════════════════════════════════════════════════════════════ */
+.lw-todo {
+  position: sticky;
+  /* Sous `.lw-secnav` (0.5rem + 0.5rem de padding + ~1.6rem de chip). */
+  top: 2.6rem;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  /* Teinte d'alerte DILUÉE dans la carte : le bandeau se remarque sans crier,
+     et le texte porte `--warning-text` — le token déjà validé AA sur fond
+     clair ET sombre (design/tokens.css), jamais une couleur locale.
+     a11y — ATTENTION : ce token est validé AA contre `--card` PUR (4,7:1 sur
+     blanc). La teinte assombrit le fond et mange cette marge : à 18 % le
+     rendu réel était #f6e9da, soit 4,22:1 — SOUS le plancher (axe `serious`,
+     échec e2e LB/E6). Le plafond calculé est ~11,7 % ; on tient 10 %
+     (≈4,58:1) plutôt que de changer la couleur du texte, ce qui casserait la
+     bascule clair/sombre de `--warning-text`. Ne pas ré-augmenter. */
+  background: color-mix(in oklch, var(--warning) 10%, var(--card));
+  border-bottom: 1px solid color-mix(in oklch, var(--warning-text) 25%, transparent);
+}
+.lw-todo-label {
+  font-size: var(--text-small);
+  font-weight: 700;
+  color: var(--warning-text);
+  margin-right: 0.15rem;
+}
+.lw-todo-chip {
+  display: inline-flex;
+  align-items: center;
+  /* ≥44px sous le doigt : la hauteur vient du padding + min-height, jamais
+     d'une cible invisible plus grande que le dessin (piège d'accessibilité). */
+  min-height: 44px;
+  padding: 0.25rem 0.7rem;
+  border-radius: 9999px;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--warning-text);
+  background: var(--card);
+  border: 1px solid color-mix(in oklch, var(--warning-text) 35%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .lw-todo-chip:hover {
+    background: color-mix(in oklch, var(--warning-text) 12%, var(--card));
+  }
+}
+/* Au pointeur FIN, 44px de haut pour une chip textuelle est disproportionné :
+   la contrainte tactile ne s'applique qu'au doigt. */
+@media (pointer: fine) {
+  .lw-todo-chip { min-height: 28px; }
+}
+
+/* Coche « section complète » — un signe, jamais une boîte. Elle n'apparaît
+   que sur une section REPLIÉE : ouverte, la section se lit d'elle-même. */
+.lw-section-done {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--success);
+}
+
+/* Pile des sections. */
+.lw-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+/* Une section = une carte à liseré, jamais flottante au repos. */
+.lw-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-section-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: var(--foreground);
+  border-radius: var(--radius-md);
+}
+@media (hover: hover) {
+  .lw-section-head:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 6%, transparent);
+  }
+}
+.lw-section-icon {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+/* LW33 — titre de section = --text-h3 (blueprint D4#3). */
+.lw-section-title {
+  flex: 1 1 auto;
+  font-size: var(--text-h3);
+  line-height: var(--text-h3-lh);
+  font-weight: 600;
+}
+.lw-section-chevron {
+  flex: 0 0 auto;
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+}
+.lw-section-body {
+  padding: 0 0.85rem 0.85rem;
+}
+
+/* Bannière doublon live (VX239) + lien — tones sémantiques, jamais de hex. */
+.lw-dup-warning {
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-small);
+  color: var(--foreground);
+  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-dup-link {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--info);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.lw-gps-link {
+  color: var(--info);
+  font-size: var(--text-small);
+  text-decoration: none;
+}
+@media (hover: hover) {
+  .lw-gps-link:hover {
+    text-decoration: underline;
+  }
+}
+
+/* ── LW14 : rail identité — identité, contact, chips QX28, pile d'actions ──── */
+
+.lw-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-avatar {
+  flex: 0 0 auto;
+}
+.lw-rail-headtext {
+  min-width: 0;
+}
+/* Nom du lead (échelle --text-h2). Complète la règle .lw-rail-name existante. */
+.lw-rail-headtext .lw-rail-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.lw-rail-archived {
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+}
+
+.lw-rail-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-contact-link {
+  font-size: var(--text-small);
+  color: var(--info);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (hover: hover) {
+  .lw-rail-contact-link:hover {
+    text-decoration: underline;
+  }
+}
+
+.lw-rail-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+/* LWC2 — bande « Faits clés » : l'information que la pile de boutons occupait
+   sans la donner (montant du dernier devis, canal, dernier échange). Tokens
+   sémantiques uniquement → lisible en clair comme en sombre. */
+.lw-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-facts-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.lw-facts-label {
+  flex: 0 0 auto;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-facts-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--foreground);
+  text-align: right;
+}
+.lw-facts-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lw-facts-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+}
+
+/* LWC2 — 2 CTA côte à côte + menu « ⋯ » (au lieu de 6 boutons empilés). */
+.lw-rail-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lw-rail-actions > * {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  justify-content: center;
+}
+.lw-rail-actions-more {
+  flex: 0 0 auto;
+  width: 44px;
+  min-width: 44px;
+  font-size: var(--text-body);
+  line-height: 1;
+}
+.lw-rail-actions-menu [role="menuitem"] {
+  min-height: 44px;
+}
+/* Sous 768 px, la barre-pouce (.lw-thumbbar) porte déjà WhatsApp : ce bouton
+   serait un doublon dans le rail. */
+@media (max-width: 767px) {
+  .lw-rail-actions-wa {
+    display: none;
+  }
+}
+
+/* ── LW15 : triade (responsable · prochaine action · relance) ──────────────── */
+
+.lw-rail-triade {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.lw-rail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+/* LW33 — micro-label MAJUSCULE tracké : même famille que l'utilitaire
+   .text-eyebrow (design/tokens.css) — --text-caption reste un palier de
+   l'échelle typo officielle (recon 06), pas une valeur inventée. */
+.lw-rail-label {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.lw-rail-nextact {
+  font-size: var(--text-small);
+  color: var(--foreground);
+}
+.lw-rail-nextact[data-state="overdue"] {
+  color: var(--destructive);
+}
+.lw-rail-nextact-empty {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.lw-rail-nextact-cta {
+  font-size: var(--text-small);
+  color: var(--info);
+  text-decoration: underline;
+}
+
+/* ── LW16/LWC1 : StageControl — UNE pilule compacte + menu ▾ des autres ────── */
+
+.lw-stage {
+  margin-bottom: 0.6rem;
+}
+/* LWC1 — la rangée des 6 pastilles (90-120 px) devient une seule ligne de
+   ≤44 px : pilule de l'étape courante + « depuis X j » inline + chevron. Toute
+   la ligne est le déclencheur du menu (cible tactile pleine largeur). */
+.lw-stagepill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .lw-stagepill:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 8%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lw-stagepill {
+    transition: none;
+  }
+}
+.lw-stagepill-chev {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: var(--text-small);
+  line-height: 1;
+}
+/* Ancienneté d'étape : neutre par défaut, chauffe avec la rampe rotting. Le
+   compteur de jours passe par `.num` dans le JSX (StageControl.jsx, LW33) —
+   ce `font-variant-numeric` reste pour le mot « depuis…j » hors du span.num. */
+.lw-stage-since {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lw-stage-since--warning {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  /* --warning-text (VX194a) : l'ambre PLEIN sur sa teinte 12% rend 2.6:1 à
+     12px — axe E6 (critique AA). Le jeton texte-sur-fond-warning est fait
+     pour ça (repasse sur --warning en sombre, où le contraste s'inverse). */
+  color: var(--warning-text);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-stage-since--danger {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 9999px;
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+/* Menu des AUTRES étapes : items ≥44 px (tactile), pastille de couleur gardée
+   pour que l'identité visuelle d'une étape survive au compactage. */
+.lw-stage-menu [role="menuitem"] {
+  min-height: 44px;
+}
+
+/* ── LW17 : score expliqué (popover des raisons) ──────────────────────────── */
+
+.lw-rail-score {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+.lw-rail-score-pop {
+  width: 18rem;
+}
+.lw-rail-score-title {
+  margin: 0 0 0.5rem;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--foreground);
+}
+.lw-rail-score-reasons {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-rail-score-reasons li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-small);
+  color: var(--foreground);
+}
+.lw-rail-score-empty {
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+}
+.lw-rail-score-foot {
+  margin: 0.6rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+}
+
+/* ── LW18 : bannières intelligentes (doublons · client_match · carte) ─────── */
+
+.lw-banner-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-small);
+  color: var(--foreground);
+}
+.lw-banner-card--warning {
+  border: 1px solid color-mix(in oklch, var(--warning) 45%, transparent);
+  background: color-mix(in oklch, var(--warning) 12%, transparent);
+}
+.lw-banner-card--info {
+  border: 1px solid color-mix(in oklch, var(--info) 40%, transparent);
+  background: color-mix(in oklch, var(--info) 10%, transparent);
+}
+.lw-banner-link {
+  color: var(--info);
+  font-size: var(--text-small);
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.lw-dup-dialog {
+  max-width: 40rem;
+}
+
+/* ── « Modifier les options » — LA BOÎTE DOIT TENIR SES TROIS CARTES ──────────
+ *
+ * Cette classe était POSÉE sur le `DialogContent` (DevisTab.jsx) mais DÉFINIE
+ * NULLE PART : la boîte retombait donc sur le `max-w-lg` (32 rem) du composant
+ * de base, et trois cartes d'ajustement — chacune avec son champ panneaux, sa
+ * banque batterie et ses deux boutons pas-à-pas — s'écrasaient dans une demi-
+ * largeur d'écran. C'est exactement ce que le fondateur voyait : cartes à
+ * l'étroit, pas-à-pas rognés, valeurs coupées.
+ *
+ * Le `max-height` et le défilement interne viennent DÉJÀ du composant de base
+ * (`max-h-[calc(100dvh-2rem)] overflow-y-auto`) : on n'en pose pas un second
+ * qui divergerait. Seule la LARGEUR manquait.
+ *
+ * La grille des cartes est re-déclarée en `auto-fit` : ses classes Tailwind
+ * (`sm:grid-cols-2 lg:grid-cols-3`) réagissent au VIEWPORT, pas au conteneur —
+ * dans une boîte modale, elles ne décrivent donc pas la place réellement
+ * disponible. `auto-fit` la lit, elle. */
+.lw-context-devis-edit-tailles {
+  max-width: min(96vw, 1160px);
+}
+.lw-context-devis-edit-tailles [data-testid='offres-tailles-cartes'] {
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+}
+.lw-dup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-small);
+}
+.lw-dup-table th,
+.lw-dup-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.lw-dup-table th {
+  font-size: var(--text-caption);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+}
+
+/* ── LW19 : rail contexte — onglets (Historique · Devis · Activités ·
+   Pièces) — tokens uniquement, zéro hex (D4#6). ──────────────────────────── */
+
+.lw-context-tabs {
+  width: 100%;
+  justify-content: flex-start;
+  /* 5 onglets + compteurs ne tiennent pas toujours sur la largeur du rail :
+     sans retour à la ligne, la rangée force un défilement HORIZONTAL de tout
+     le panneau et « Pièces » disparaît hors écran (incident du 07/09/2026).
+     La rangée passe sur deux lignes au besoin — tout reste visible. */
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+  height: auto;
+}
+
+.lw-context-timeline,
+.lw-context-devis {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Onglet Activités : bouton « Appliquer un plan » au-dessus du panneau. */
+.lw-context-activites-head {
+  margin-bottom: 0.5rem;
+}
+
+/* ── LW20 : onglet Historique — en-tête multi-touch, filtre, notes épinglées. ── */
+
+/* En-tête multi-touch (points-contact/) — silencieux si vide (aucune règle
+   d'état vide nécessaire : le bloc n'est simplement pas rendu). */
+.lw-context-touch-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--info) 8%, transparent);
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+}
+
+/* Filtre par type (Tous/Notes/Appels/E-mails/Devis/Système), persisté. */
+.lw-context-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.lw-context-filter-chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: var(--text-small);
+  color: var(--muted-foreground);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .lw-context-filter-chip:hover {
+    color: var(--foreground);
+    background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+  }
+}
+.lw-context-filter-chip.is-active {
+  color: var(--foreground);
+  font-weight: 600;
+  background: color-mix(in oklch, var(--module-accent-azur) 14%, transparent);
+  border-color: color-mix(in oklch, var(--module-accent-azur) 30%, transparent);
+}
+
+/* Notes épinglées (ChatterTimeline pinned=true) — section dédiée en tête,
+   hors chronologie. */
+.lw-context-chatter-pinned {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px dashed var(--border);
+}
+.lw-context-pin-badge {
+  margin-right: 0.3rem;
+  font-size: 0.9em;
+}
+.lw-context-pin-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-standard),
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .chatter-item:hover .lw-context-pin-toggle {
+    opacity: 1;
+  }
+}
+.lw-context-pin-toggle:focus-visible {
+  opacity: 1;
+}
+@media (hover: hover) {
+  .lw-context-pin-toggle:hover {
+    background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
+    color: var(--foreground);
+  }
+}
+
+/* ── LW21 : onglet Devis — CTA devis auto, cartes chaîne document. ───────── */
+
+/* CTA « Devis automatique » (prêt) / liste des champs manquants (pas prêt). */
+.lw-context-devis-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lw-context-devis-missing {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--warning) 40%, transparent);
+  background: color-mix(in oklch, var(--warning) 10%, transparent);
+}
+.lw-context-missing-list {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-context-missing-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--info);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--text-small);
+}
+
+/* Cartes devis (chaîne document, statut devis JAMAIS le funnel lead). */
+.lw-context-devis-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-context-devis-card {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-context-devis-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lw-context-devis-ref {
+  flex: 1 1 auto;
+  text-align: left;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+  color: var(--foreground);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .lw-context-devis-ref:hover {
+    text-decoration: underline;
+  }
+}
+.lw-context-devis-card-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: var(--text-small);
+}
+.lw-context-devis-date {
+  color: var(--muted-foreground);
+}
+/* QJ-VUES (fondateur 09/09/2026) — compteur de lectures client, toujours
+   visible sur chaque carte devis de la fiche lead. Discret tant que personne
+   n'a lu ; encre pleine dès la première lecture humaine. */
+.lw-context-devis-lectures {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+.lw-context-devis-lectures.is-lu {
+  color: var(--foreground);
+  font-weight: 500;
+}
+/* QJ-ARBRE (fondateur 09/09/2026) — Suivi commercial scindé : cadence à
+   gauche, arbre « Historique en un coup d'œil » à droite. auto-fit : les deux
+   colonnes s'empilent d'elles-mêmes sur panneau étroit, sans media query. */
+.lw-suivi-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+  align-items: start;
+  margin-top: 0.25rem;
+}
+.lw-suivi-split-col {
+  min-width: 0;
+}
+/* L'arbre : rail vertical + une icône par type, une ligne par événement,
+   groupé par jour — le détail complet reste dans l'onglet Historique. */
+.lw-arbre {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.75rem;
+  background: var(--card);
+}
+.lw-arbre-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+.lw-arbre-titre {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.lw-arbre-compte {
+  font-size: 0.7rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.lw-arbre-defile {
+  max-height: 22rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+.lw-arbre-jour-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+  margin: 0.5rem 0 0.2rem;
+}
+.lw-arbre-jour:first-child .lw-arbre-jour-label {
+  margin-top: 0;
+}
+.lw-arbre-liste {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--border);
+}
+.lw-arbre-ligne {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0 0.18rem 0.55rem;
+  margin-left: -1px;
+  border-left: 2px solid transparent;
+  font-size: 0.8rem;
+  min-width: 0;
+}
+.lw-arbre-ligne.is-jalon {
+  border-left-color: var(--primary);
+}
+.lw-arbre-ligne.is-gagne {
+  border-left-color: var(--success, #16a34a);
+}
+.lw-arbre-ligne.is-perdu {
+  border-left-color: var(--destructive);
+}
+.lw-arbre-puce {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted-foreground);
+}
+.lw-arbre-ligne.is-jalon .lw-arbre-puce { color: var(--primary); }
+.lw-arbre-ligne.is-gagne .lw-arbre-puce { color: var(--success, #16a34a); }
+.lw-arbre-ligne.is-perdu .lw-arbre-puce { color: var(--destructive); }
+.lw-arbre-texte {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lw-arbre-corps {
+  color: var(--muted-foreground);
+}
+.lw-arbre-badge {
+  margin-left: 0.3rem;
+  font-size: 0.7rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.lw-arbre-heure {
+  flex: none;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+.lw-context-devis-track {
+  margin: 0.1rem 0;
+}
+/* L-NIV-UI — niveau de la page client (standard/confiance) + OTP lecture,
+   choisis AVANT le premier mint et re-postables ensuite (même carte que les
+   actions Page client/WhatsApp ci-dessous, jamais un second écran). */
+.lw-context-devis-niveau {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+.lw-context-devis-niveau-select select {
+  font-size: 0.85rem;
+}
+.lw-context-devis-otp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.lw-context-devis-niveau-badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.lw-context-devis-niveau-hint {
+  margin: 0;
+}
+/* L-SECT (fondateur 24/08/2026) — cases « ce que le client reçoit », dans le
+   dialogue « Envoyer au client ». Une case par ligne : la liste se lit comme
+   un sommaire de la page client, pas comme une barre d'outils. */
+.lw-context-devis-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+.lw-context-devis-section {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* L5 — Page client / WhatsApp / Aperçu interne : TOUJOURS visibles (jamais
+   gardées par un survol), contrairement aux actions secondaires ci-dessous
+   (facture/chantier, réservées au devis accepté) — c'est précisément ce que
+   le fondateur reproche : ces liens n'étaient découvrables que dans l'outil
+   3D. */
+.lw-context-devis-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+/* L-INTPREV (fondateur 25/08/2026) — ligne DISCRÈTE sous les boutons Page
+   client/WhatsApp : un second lien (jeton interne) que le commercial peut
+   copier/ouvrir sans jamais notifier le client ni compter comme une
+   consultation. Volontairement plus petite/plus sobre que les boutons
+   ci-dessus — un texte-lien, pas un bouton de premier plan. */
+.lw-context-devis-apercu-interne {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+}
+.lw-context-devis-apercu-interne-btn,
+.lw-context-devis-apercu-interne-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+/* Survol gardé derrière `@media (hover: hover)` comme tous les :hover du
+   fichier (contrat hover-compat) : sur tactile le lien reste sobre, sans
+   état de survol collant après le tap. */
+@media (hover: hover) {
+  .lw-context-devis-apercu-interne-btn:hover,
+  .lw-context-devis-apercu-interne-open:hover {
+    color: var(--foreground);
+    text-decoration: underline;
+  }
+}
+.lw-context-devis-apercu-interne-btn:disabled,
+.lw-context-devis-apercu-interne-open:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* LW33 — actions secondaires (Facture/Chantier, devis accepté) révélées au
+   survol de la carte, patron "group-hover" (blueprint D4#7, sans reflow :
+   uniquement opacity, l'espace reste réservé par le flex normal). GARDÉ
+   derrière `@media (hover: hover)` : sur tactile (aucun hover fiable), ces
+   actions sont des CTA métier de premier plan (générer facture/chantier) —
+   jamais masquées, toujours visibles. `:focus-within` garde l'accès clavier
+   même sur pointeur fin. */
+.lw-context-devis-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+@media (hover: hover) {
+  .lw-context-devis-actions {
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-standard);
+  }
+  .lw-context-devis-card:hover .lw-context-devis-actions,
+  .lw-context-devis-actions:focus-within {
+    opacity: 1;
+  }
+}
+
+/* ── LW22 : barre d'envoi WhatsApp multi-devis FR/Darija. ─────────────────── */
+
+.lw-context-wa-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.lw-context-wa-langue {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+/* LW33 — seul vrai « corps » de texte du bloc .lw-* (message WhatsApp
+   multi-lignes lu comme du contenu, pas un label) : --text-body. */
+.lw-context-wa-preview {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--muted);
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: var(--text-body);
+  line-height: var(--text-body-lh);
+  margin: 0;
+}
+.lw-context-wa-links {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+}
+.lw-context-wa-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+/* ── LW36 : AppointmentBooker (satellite embarqué par SectionVisite) —
+   30 blocs de style en ligne migrés vers tokens (recon 04 §2). Radius 6/8
+   -> --radius-sm/--radius-md (correspondance exacte, 6px/8px). ─────────── */
+.lw-booker {
+  margin-top: 0.75rem;
+}
+.lw-booker-upcoming {
+  margin-bottom: 0.5rem;
+}
+.lw-booker-upcoming-label {
+  font-size: var(--text-caption);
+  color: var(--muted-foreground);
+  margin-bottom: 0.25rem;
+}
+.lw-booker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.lw-booker-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  background: var(--muted);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-small);
+}
+.lw-booker-datetime {
+  font-weight: 500;
+}
+.lw-booker-notes {
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  flex: 1;
+}
+/* Actions texte discrètes (Agenda/Confirmer WhatsApp/Annuler) — jamais un
+   Button plein (trop lourd pour une ligne dense) : jeton de lien nu. */
+.lw-booker-link {
+  font-size: var(--text-caption);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.lw-booker-link--muted { color: var(--muted-foreground); }
+.lw-booker-link--success { color: var(--success); }
+.lw-booker-link--destructive { color: var(--destructive); }
+.lw-booker-link--push { margin-left: auto; }
+.lw-booker-link:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.lw-booker-wa-preview {
+  margin-top: 0.375rem;
+  padding: 0.5rem 0.625rem;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+}
+.lw-booker-wa-preview-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.lw-booker-wa-preview-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  font-family: inherit;
+}
+.lw-booker-wa-preview-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.lw-booker-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding: 0.625rem;
+  background: var(--muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.lw-booker-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+}
+.lw-booker-field--date { flex: 1 1 180px; }
+.lw-booker-field--notes { flex: 2 1 200px; }
+.lw-booker-error {
+  width: 100%;
+  color: var(--destructive);
+  font-size: var(--text-caption);
+}
+.lw-booker-form-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* ── LW25 : squelette d'ouverture (crossfade FadeSwap, en forme de grille) ── */
+
+/* Enveloppe de FadeSwap du corps (édition) : même remplissage flexible que
+   .lw-body ci-dessus — la mise en page réelle vient de la couche VISIBLE
+   (squelette ou grille), positionnée en absolu par FadeSwap (ui/FadeSwap.jsx). */
+.lw-skeleton-swap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lw-skeleton-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.lw-skeleton-pane--center {
+  padding: 1rem;
+  gap: 0.75rem;
+}
+
+/* LW13/LW25 — variante PAGE : `.route-fade` (enveloppe de transition de
+   route, hauteur auto) casse la chaîne height:100% entre `.layout-content`
+   (le scrolleur borné du shell) et `.lw-root` : les zones grandissaient au
+   contenu et la page défilait d'un bloc (exactement la classe de bug P0).
+   On ne borne QUE la route du workspace via :has() — les autres pages
+   gardent leur croissance naturelle + scroll de .layout-content. */
+.layout-content > .route-fade:has(> .lw-page) {
+  height: 100%;
+}
+.lw-page {
+  height: 100%;
+  min-height: 0;
+}
+
+/* LW25(bis) — FadeSwap coupe la chaîne de hauteur : son enveloppe (block) et
+   ses deux calques enfants n'ont aucune hauteur -> `.lw-body { flex:1 }`
+   était inerte (parent non-flex) et les zones grandissaient au contenu (la
+   page/le dialog défilaient d'un bloc — vérifié par sonde Playwright).
+   L'enveloppe devient l'item flex de .lw-root, chaque calque une colonne
+   flex pleine hauteur ; le calque squelette absolu (inset-0) n'est pas
+   affecté. */
+.lw-skeleton-swap {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lw-skeleton-swap > [aria-hidden] {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* E6 (axe AA) — Badge tone=warning du kit rend l'ambre plein sur teinte 12%
+   (2.6:1 à 12px). Sur les surfaces du workspace on force le jeton texte
+   AA-sûr sans toucher le kit global. */
+.lw-badge-aa {
+  color: var(--warning-text);
+  /* 4.34:1 encore court de 4.5 : on éclaircit la teinte (8% au lieu des 15%
+     du kit) — toujours dérivée du jeton, jamais un hex. */
+  background: color-mix(in oklch, var(--warning) 8%, var(--card));
+}
+

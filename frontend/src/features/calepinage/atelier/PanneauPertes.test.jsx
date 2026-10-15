@@ -134,7 +134,7 @@ describe('CALX18 — le total est celui des postes SAISIS, avec sa mention', () 
     })
     expect(screen.getByTestId('cal-pertes-mention')).toHaveTextContent(
       'ces postes ne sont plus transmis à PVGIS : la chaîne de pertes les '
-      + 'applique un à un (lot 3) ; un poste devenu calculable par la chaîne '
+      + 'applique un à un ; un poste devenu calculable par la chaîne '
       + 'y sera écarté et le dira',
     )
   })

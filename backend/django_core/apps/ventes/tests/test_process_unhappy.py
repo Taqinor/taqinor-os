@@ -84,7 +84,7 @@ class TestDevisExpireUnhappyPath(TenantAPITestCase):
         resp_patch = api.patch(f'/api/django/ventes/devis/{devis.id}/', {
             'statut': Devis.Statut.ACCEPTE,
         }, format='json')
-        self.assertEqual(resp_patch.status_code, 400, resp_patch.data)
+        self.assertEqual(resp_patch.status_code, 409, resp_patch.data)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.EXPIRE)
 

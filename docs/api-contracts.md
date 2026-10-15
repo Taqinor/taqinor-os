@@ -506,6 +506,8 @@
     detail:texte, recipients:liste
 - frontend/src/api/ventesApi.js :: deletePreset -> /api/django/ventes/presets/<>
     detail:texte
+- frontend/src/api/ventesApi.js :: demanderSignatureAvenant -> /api/django/ventes/devis/<>/avenant/demander-signature
+    code:texte, detail:texte, share_link:inconnu, tache_id:inconnu
 - frontend/src/api/ventesApi.js :: dgiConformiteFacture -> /api/django/ventes/factures/<>/dgi-conformite
     conforme:booleen, detail:texte, problemes:inconnu
 - frontend/src/api/ventesApi.js :: dupliquerVarianteGamme -> /api/django/ventes/devis/<>/dupliquer-variante-gamme
@@ -520,8 +522,6 @@
     alertes:inconnu, bilan:inconnu, composition:inconnu, economie_ci:inconnu, entrees_resolues:inconnu, hypotheses:inconnu, methode:inconnu, niveau_donnees:inconnu, production:inconnu, profil_charge:inconnu, regime_8221_suggere:inconnu, sous_reserve_visite:inconnu, taille:inconnu, version_moteur:inconnu
 - frontend/src/api/ventesApi.js :: exportStatus -> /api/django/ventes/export/status/<>
     detail:texte, download_url:inconnu, filename:inconnu, status:texte
-- frontend/src/api/ventesApi.js :: facturerComplet -> /api/django/ventes/devis/<>/facturer-complet
-    credit_hold:booleen, detail:inconnu, facture_id:inconnu, facture_reference:inconnu, montant_du:texte, montant_paye:texte, paiements:liste, sale_warning:booleen, statut:inconnu, total_ttc:texte
 - frontend/src/api/ventesApi.js :: genererPdfDevis -> /api/django/ventes/devis/<>/generer-pdf
     detail:texte, task_id:inconnu
 - frontend/src/api/ventesApi.js :: genererPdfFacture -> /api/django/ventes/factures/<>/generer-pdf

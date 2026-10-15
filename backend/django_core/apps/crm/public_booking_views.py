@@ -10,6 +10,7 @@ confiance que ``public_chat_views.py`` : jeton long/imprévisible (comme
 générique).
 """
 from .openapi_public import PUBLIC_DETAIL
+from .params_requete import corps_objet
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import (
@@ -20,6 +21,10 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from .visites_rdv import BookingLinkUnavailable, resolve_booking_link, reserver_creneau_public
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PublicBookingRateThrottle(SimpleRateThrottle):
@@ -41,6 +46,11 @@ class PublicBookingRateThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(responses={200: inline_serializer('PublicBookingStatut', {
+    'valid': serializers.BooleanField(),
+    'prenom': serializers.CharField(allow_blank=True),
+    'expires_at': serializers.DateTimeField(),
+}), 404: PUBLIC_DETAIL})
 @api_view(['GET'])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -91,7 +101,7 @@ def public_booking_reserve(request, token):
     lien par un UPDATE conditionnel, la perdante ressort en 410."""
     from django.utils.dateparse import parse_datetime
 
-    raw = request.data.get('scheduled_at')
+    raw = corps_objet(request).get('scheduled_at')
     try:
         scheduled_at = parse_datetime(str(raw)) if raw else None
     except ValueError:
@@ -152,4 +162,4 @@ def _tracer_reservation(request, link):
             request=request,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
-        pass
+        logger.warning("tracer reservation : échec ignoré, comportement dégradé", exc_info=True)

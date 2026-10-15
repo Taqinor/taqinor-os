@@ -6,10 +6,13 @@ plans de compte, playbooks), déplacés de
 module importe ``.serializers``, jamais l'inverse.
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import RegexValidator
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .champs_api import MAPPING_BOOLEEN_STRICT
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
+
+from .champs_api import MAPPING_STRICT_COMPLET, MAPPING_TEXTE_STRICT, IcePublie
 from .params_requete import UniciteEn409Mixin
 from .models import (
     ConcurrentPerte, EquipeCommerciale, EtapePlanActivite, ForecastEntry,
@@ -36,7 +39,7 @@ class SalleVenteItemSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = ['created_at']
 
 
-class SalleVenteSerializer(_CompanyScopedRelationsMixin,
+class SalleVenteSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
                            serializers.ModelSerializer):
     """NTCRM17 — salle de vente digitale (écran interne, authentifié).
 
@@ -115,7 +118,7 @@ class ApporteurSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'token_acces']
 
 
-class DealEnregistreSerializer(_LeadEnPorteeMixin,
+class DealEnregistreSerializer(IdInconnu404Mixin, _LeadEnPorteeMixin,
                                _CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
     """NTCRM20 — deal enregistré par un apporteur. La fenêtre de protection
@@ -152,6 +155,7 @@ class DealEnregistreSerializer(_LeadEnPorteeMixin,
 
 class DefiSerializer(serializers.ModelSerializer):
     """NTCRM23 — défi d'équipe. ``company`` posé côté serveur."""
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     metrique_display = serializers.CharField(
         source='get_metrique_display', read_only=True)
@@ -226,10 +230,15 @@ class PartenaireSerializer(serializers.ModelSerializer):
     quitté cette app — reprend nativement sa propre surface API. Aucun champ
     n'a changé : seule la maison a bougé.
     """
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     certification_expiree = serializers.BooleanField(read_only=True)
     rang_certification = serializers.IntegerField(read_only=True)
+    # CI #997 (2) : liste FERMÉE publiée (motif), éléments texte stricts.
     specialites = serializers.ListField(
-        child=serializers.CharField(), required=False)
+        child=ChaineStricte(validators=[RegexValidator(
+            '^(?:' + '|'.join(Partenaire.SPECIALITES_CLES) + ')$',
+            message='Spécialité inconnue.')]),
+        required=False)
 
     class Meta:
         model = Partenaire
@@ -298,7 +307,8 @@ class PartenaireSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ClientSerializer(UniciteEn409Mixin, _CompanyScopedRelationsMixin,
+class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
+                       _CompanyScopedRelationsMixin,
                        serializers.ModelSerializer):
     # CRX13 — la liste de prix négociée et la fiche du répertoire unifié sont
     # deux relations SORTANTES (ventes/tiers) : sans re-scope, un PATCH pouvait
@@ -404,6 +414,8 @@ class ClientSerializer(UniciteEn409Mixin, _CompanyScopedRelationsMixin,
         model = Client
         fields = '__all__'
         read_only_fields = ['date_modification']
+        # CI #997 (fuzz) — motif d'ICE publié (validation : ``validate_ice``).
+        extra_kwargs = {'ice': {'validators': [IcePublie()]}}
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_created_by_nom(self, obj):
@@ -453,6 +465,7 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
     (ACRM52)."""
     champs_lead_portee = ('filleul_lead',)
     champs_client_portee = ('parrain', 'filleul_client')
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     parrain_nom = serializers.CharField(
         source='parrain.nom', read_only=True,
@@ -493,12 +506,14 @@ class ParrainageSerializer(_LeadEnPorteeMixin, _ClientEnPorteeMixin,
         return value
 
 
-class ObjectifCommercialSerializer(_CompanyScopedRelationsMixin,
+class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
+                                   _CompanyScopedRelationsMixin,
                                    serializers.ModelSerializer):
     """Sérialise un objectif commercial + champs lecture optionnels."""
 
     # CRX13 — le porteur de l'objectif doit être un utilisateur de la société.
     scoped_relations = ('owner',)
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
 
     owner_nom = serializers.SerializerMethodField()
     metric_display = serializers.SerializerMethodField()
@@ -517,6 +532,12 @@ class ObjectifCommercialSerializer(_CompanyScopedRelationsMixin,
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification',
         ]
+        # ERR-ENF11-FUZZ-CRM — bornes publiées (``0`` était « conforme » puis
+        # lu comme absent : « Requis pour un objectif mensuel »).
+        extra_kwargs = {
+            'period_month': {'min_value': 1, 'max_value': 12},
+            'period_quarter': {'min_value': 1, 'max_value': 4},
+        }
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_owner_nom(self, obj):
@@ -581,6 +602,7 @@ class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer)
     dans ``perform_create``. Le lead doit appartenir à la même société
     (validate_lead). ``lead_nom`` est en lecture seule pour l'UI.
     """
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
     saisi_par_nom = serializers.SerializerMethodField()
@@ -637,7 +659,7 @@ class EtapePlanActiviteSerializer(_CompanyScopedRelationsMixin,
 
 
 class PlanActiviteSerializer(serializers.ModelSerializer):
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     etapes = EtapePlanActiviteSerializer(many=True, read_only=True)
 
     class Meta:
@@ -651,7 +673,7 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
     # CRX13 — responsable ET membres (M2M) : le ``ManyRelatedField`` délègue à
     # son ``child_relation``, promu lui aussi.
     scoped_relations = ('responsable', 'membres')
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
 
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True,
@@ -666,6 +688,17 @@ class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
         ]
         read_only_fields = ['company', 'date_creation']
 
+    def to_internal_value(self, data):
+        # CI #997 (fuzz) — ``membres`` = ``{}`` passait pour une liste vide
+        # (``ManyRelatedField`` accepte tout itérable) alors que le schéma
+        # déclare un tableau : 400 nommé pour tout JSON non-liste.
+        if (hasattr(data, 'get') and not hasattr(data, 'getlist')
+                and data.get('membres') is not None
+                and not isinstance(data.get('membres'), list)):
+            raise serializers.ValidationError(
+                {'membres': "Une liste d'identifiants est attendue."})
+        return super().to_internal_value(data)
+
 
 class ForecastEntrySerializer(UniciteEn409Mixin, _LeadEnPorteeMixin,
                               _CompanyScopedRelationsMixin,
@@ -675,6 +708,7 @@ class ForecastEntrySerializer(UniciteEn409Mixin, _LeadEnPorteeMixin,
     # validateur d'unicité aussi, sinon « déjà utilisé » sur un lead voisin
     # resterait un oracle d'existence.
     scoped_relations = ('lead',)
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
 
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True)
@@ -711,7 +745,7 @@ class ForecastSnapshotSerializer(serializers.ModelSerializer):
         ]
 
 
-class RevueCompteSerializer(_CompanyScopedRelationsMixin,
+class RevueCompteSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
                             serializers.ModelSerializer):
     # CRX13 — ``plan`` est la SEULE frontière société de ce modèle (RevueCompte
     # n'a pas de ``company`` propre) : sans re-scope, une revue pouvait être
@@ -733,6 +767,7 @@ class PlanCompteSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
                            serializers.ModelSerializer):
     # CRX13 — le client du plan de compte, à la CRÉATION comme au PATCH.
     scoped_relations = ('client',)
+    serializer_field_mapping = MAPPING_STRICT_COMPLET  # CI #997 (2) : tous types JSON exacts
 
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
@@ -752,13 +787,14 @@ class PlanCompteSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
         ]
 
 
-class PlaybookTacheSerializer(serializers.ModelSerializer):
+class PlaybookTacheSerializer(IdInconnu404Mixin, serializers.ModelSerializer):
     class Meta:
         model = PlaybookTache
         fields = ['id', 'etape', 'libelle', 'obligatoire', 'ordre']
 
 
-class PlaybookEtapeSerializer(_CompanyScopedRelationsMixin,
+class PlaybookEtapeSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
+                              _CompanyScopedRelationsMixin,
                               serializers.ModelSerializer):
     scoped_relations = ('playbook',)
     stage_display = serializers.SerializerMethodField()
@@ -775,7 +811,7 @@ class PlaybookEtapeSerializer(_CompanyScopedRelationsMixin,
 
 
 class PlaybookSerializer(serializers.ModelSerializer):
-    serializer_field_mapping = MAPPING_BOOLEEN_STRICT  # ENF11
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
     etapes = PlaybookEtapeSerializer(many=True, read_only=True)
 
     class Meta:

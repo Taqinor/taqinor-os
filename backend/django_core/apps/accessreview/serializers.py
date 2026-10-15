@@ -5,7 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.roles.permissions_registre import ALL_PERMISSIONS
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import AccessReviewCampaign, AccessReviewItem, SodRule
@@ -34,7 +34,8 @@ class AccessReviewItemSerializer(SameCompanyFKSerializerMixin,
             'id', 'role_snapshot', 'reviewer', 'decided_at', 'created_at']
 
 
-class AccessReviewCampaignSerializer(serializers.ModelSerializer):
+class AccessReviewCampaignSerializer(ChampsStrictsMixin,
+                                     serializers.ModelSerializer):
     items = AccessReviewItemSerializer(many=True, read_only=True)
 
     class Meta:

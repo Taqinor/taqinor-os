@@ -124,6 +124,13 @@ class TestListePrixViewSetTenantIsolation(TestCase):
         created = ListePrix.objects.get(id=resp.data['id'])
         self.assertEqual(created.company_id, self.company.id)
 
+    def test_devise_strictement_en_chaine(self):
+        # CI #997 — ``devise: 0`` était converti en « 0 » (201) : 400.
+        api = self._api_for(self.admin)
+        resp = api.post('/api/django/ventes/listes-prix/', {
+            'nom': 'Liste typée', 'devise': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_normal_role_forbidden_from_creating(self):
         api = self._api_for(self.normal)
         resp = api.post('/api/django/ventes/listes-prix/', {'nom': 'X'}, format='json')

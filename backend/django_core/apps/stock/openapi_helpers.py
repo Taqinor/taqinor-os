@@ -4,13 +4,18 @@ vues stock/achats (statuts, corps, paramètres de requête, exports binaires).
 Aucune logique métier : uniquement des constructeurs drf-spectacular, pour que
 chaque ``@extend_schema`` reste sur une ligne lisible.
 """
+from decimal import Decimal
 from typing import Any, Dict, List
 
-from drf_spectacular.extensions import OpenApiSerializerExtension
+from drf_spectacular.extensions import OpenApiSerializerExtension, OpenApiSerializerFieldExtension
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
+from django.db import models
 from rest_framework import serializers
+
+from core.champs_stricts import DecimalSouple
+from core.serializers import ChampsTexteBooleenStricts
 
 STR = OpenApiTypes.STR
 INT = OpenApiTypes.INT
@@ -41,6 +46,85 @@ def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, p
     return OpenApiParameter(
         name=name, type=typ, location=OpenApiParameter.QUERY,
         required=required, description=desc or name, enum=enum)
+
+
+class NombreStrict(serializers.FloatField):
+    """CI #997 fuzz — nombre JSON réel : un booléen (``false`` lu 0.0) ou une
+    chaîne (``"50"``) étaient convertis en silence alors que le schéma publie
+    ``number`` ; ils répondent 400."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class DecimalSoupleStock(DecimalSouple):
+    """CI #997 fuzz (2) — décimal stock/achats que des écrans envoient en
+    NOMBRE JSON : chaîne OU nombre (publié ``anyOf``, ``DecimalSouple``). Une
+    chaîne VIDE n'est pas un décimal : 400 (le schéma ne la publie pas ;
+    ``null`` reste « non renseigné » sur un champ nullable). ``borne_min`` /
+    ``borne_max`` sont PUBLIÉES (branche nombre, motif chaîne non signé) mais
+    contrôlées par le ``validate_<champ>`` du sérialiseur : le message métier
+    épinglé par les tests reste le sien (patron ``EntierBornePublie``)."""
+
+    def __init__(self, borne_min=None, borne_max=None, **kwargs):
+        super().__init__(**kwargs)
+        if borne_min is not None:
+            self.min_value = Decimal(str(borne_min))
+        if borne_max is not None:
+            self.max_value = Decimal(str(borne_max))
+
+    def validate_empty_values(self, data):
+        if isinstance(data, str) and not data.strip():
+            self.fail('invalid')
+        return super().validate_empty_values(data)
+
+
+#: Bornes MÉTIER publiées par sérialiseur (``validate_<champ>`` les applique
+#: déjà) : décimal -> ``DecimalSoupleStock(borne_min, borne_max)``, entier ->
+#: ``EntierBornePublie``. Tenu ici : ``serializers.py`` est un fichier-mur.
+BORNES_PUBLIEES = {
+    'ProduitSerializer': {
+        'prix_achat': (0, None), 'prix_vente': (0, None), 'tva': (0, 100),
+        'tarif_location_jour': (0, None), 'tarif_location_semaine': (0, None),
+        'tarif_location_mois': (0, None), 'quantite_stock': (0, None),
+        'seuil_alerte': (0, None)},
+    'PaiementFournisseurSerializer': {'montant': ('0.01', None)},
+    'AcompteFournisseurSerializer': {'montant': ('0.01', None)},
+    'KitComposantSerializer': {'quantite': ('0.01', None), 'taux_perte_pct': (0, '99.99')},
+}
+
+
+class ChampsStrictsSouplesMixin:
+    """Mixin de ``ModelSerializer`` (CI #997 fuzz 2) : texte et booléens
+    stricts, décimaux ``DecimalSoupleStock`` (chaîne ou nombre, vide refusé) et
+    bornes métier de ``BORNES_PUBLIEES`` publiées. À placer AVANT
+    ``serializers.ModelSerializer``."""
+    serializer_field_mapping = {
+        **ChampsTexteBooleenStricts.serializer_field_mapping,
+        models.DecimalField: DecimalSoupleStock,
+    }
+
+    def build_standard_field(self, field_name, model_field):
+        classe, kwargs = super().build_standard_field(field_name, model_field)
+        bornes = BORNES_PUBLIEES.get(type(self).__name__, {}).get(field_name)
+        if bornes and issubclass(classe, DecimalSoupleStock):
+            kwargs.update(borne_min=bornes[0], borne_max=bornes[1])
+        elif bornes and issubclass(classe, serializers.IntegerField):
+            classe = EntierBornePublie
+            kwargs.update(borne_validee='min', min_value=bornes[0])
+        return classe, kwargs
+
+
+class ChampsStrictsProduitMixin(ChampsStrictsSouplesMixin):
+    """Fiche produit (CI #997 fuzz) : texte, booléens et décimaux stricts
+    (``ChampsStrictsSouplesMixin`` — les écrans envoient des nombres JSON) +
+    flottants stricts (``NombreStrict``)."""
+    serializer_field_mapping = {
+        **ChampsStrictsSouplesMixin.serializer_field_mapping,
+        models.FloatField: NombreStrict,
+    }
 
 
 PID = OpenApiParameter(
@@ -80,6 +164,30 @@ class EntierBornePublie(serializers.IntegerField):
         super().__init__(**kwargs)
         classe = MinValueValidator if borne_validee == 'min' else MaxValueValidator
         self.validators = [v for v in self.validators if not isinstance(v, classe)]
+
+
+class _DecimalSoupleStockBorne(OpenApiSerializerFieldExtension):
+    """CI #997 fuzz (2) — la borne basse métier d'un ``DecimalSoupleStock`` est
+    publiée AUSSI sur la branche chaîne : ``>= 0`` -> motif non signé, ``> 0``
+    -> motif strictement positif (la branche nombre la porte déjà en
+    ``minimum``). Sinon ``"-5"`` passait pour conforme et répondait 400."""
+    target_class = 'apps.stock.openapi_helpers.DecimalSoupleStock'
+    priority = 1
+
+    def map_serializer_field(self, auto_schema, direction):
+        from core.champs_stricts import _DecimalChaineNonVide
+        from .schema_contraintes import _motif_decimal_positif
+        champ = self.target
+        schema = _DecimalChaineNonVide(champ).map_serializer_field(auto_schema, direction)
+        borne = champ.min_value
+        if direction != 'request' or borne is None or borne < 0:
+            return schema
+        for branche in schema.get('anyOf', ()):
+            motif = branche.get('pattern')
+            if motif and motif.startswith('^-?'):
+                branche['pattern'] = (_motif_decimal_positif(motif) if borne > 0
+                                      else '^' + motif[3:])
+        return schema
 
 
 class _EmplacementTiersNomme(OpenApiSerializerExtension):
@@ -134,3 +242,15 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
             branches[1]['required'] = ['periodicite']
             branches.append({'not': {'anyOf': [{'required': ['periodicite']}, {'required': ['mois']}]}})
         return {**schema, 'properties': {**schema['properties'], 'montant_alloue': montant}, 'anyOf': branches}
+
+
+#: ENF11 — date de requête facultative lue par ``date_ou_400`` / ``_date_param`` :
+#: une valeur VIDE (``?fin=``) vaut « non renseignée ». Le schéma publie donc
+#: « date OU chaîne vide », ce que le serveur accepte.
+DATE_OU_VIDE = {'oneOf': [
+    {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+#: CI #997 fuzz — filtre d'identifiant lu par ``utils.params.id_requete_ou_400`` :
+#: un id 1..2147483647, ou la chaîne vide (= filtre non posé).
+ID_OU_VIDE = {'oneOf': [
+    {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}, {'type': 'string', 'enum': ['']}]}

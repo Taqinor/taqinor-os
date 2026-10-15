@@ -102,6 +102,13 @@ class XFAC1AvancesTests(TestCase):
             r = self.api.post(url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.data))
 
+    def test_enregistrer_avance_corps_tableau_400(self):
+        # CI #997 — ``[null, null]`` levait AttributeError (500).
+        r = self.api.post('/api/django/ventes/paiements/enregistrer-avance/',
+                          [None, None], format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(Paiement.objects.exists())
+
     def test_avances_non_affectees_client_non_entier_400(self):
         # ENF11 — ``?client=abc`` levait ValueError (500).
         r = self.api.get(

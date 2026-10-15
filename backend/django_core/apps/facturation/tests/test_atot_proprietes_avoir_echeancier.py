@@ -136,17 +136,18 @@ class ProprietesAvoirEcheancierTests(_Base):
         total = Avoir.objects.get(pk=r.data['id'])
         self.assertEqual(Decimal(str(total.total_ttc)), ttc)
         verifier_chaine_document(total)
-        # Plus rien à créditer : tout avoir supplémentaire = 400 (plafond).
+        # Plus rien à créditer : tout avoir supplémentaire = 409 (plafond,
+        # refus d'état — CI #997).
         r = self.api.post(
             f'/api/django/ventes/factures/{facture.id}/creer-avoir/',
             {'lignes': [{'designation': 'Trop', 'quantite': '1',
                          'prix_unitaire': '10', 'taux_tva': '20',
                          'produit': self.produit.id}]}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.api.post(f'/api/django/ventes/avoirs/{total.id}/annuler/', {},
                       format='json')
 
-        # Avoirs partiels successifs : Σ actifs ≤ TTC, refus en 400 au-delà.
+        # Avoirs partiels successifs : Σ actifs ≤ TTC, refus en 409 au-delà.
         for fraction in fractions:
             ht = max(_q(Decimal(str(relire(facture).total_ht))
                         * fraction / 100), CENT)
@@ -155,7 +156,7 @@ class ProprietesAvoirEcheancierTests(_Base):
                 {'lignes': [{'designation': 'Partiel', 'quantite': '1',
                              'prix_unitaire': str(ht), 'taux_tva': '20',
                              'produit': self.produit.id}]}, format='json')
-            self.assertIn(r.status_code, (201, 400), r.data)
+            self.assertIn(r.status_code, (201, 409), r.data)
             actifs = sum((Decimal(str(a.total_ttc)) for a in
                           Avoir.objects.filter(facture=facture).exclude(
                               statut=Avoir.Statut.ANNULEE)), ZERO)
@@ -350,3 +351,168 @@ class ProprietesAvoirEcheancierTests(_Base):
             self.assertEqual(
                 [t['valeur'] for t in tranches_normalisees(devis)],
                 [30, 60, 10])
+
+
+# ── VNT90 — invariants de `etat_vente` après gestes aléatoires ─────────────
+
+#: Gestes appliqués au hasard sur UNE vente (brouillons et révision compris).
+GESTES_VENTE = ('emise', 'brouillon', 'emettre_brouillon', 'supprimer_brouillon',
+                'paiement', 'rejet', 'avoir_correction', 'avoir_geste',
+                'avoir_retour', 'annulation', 'revision')
+
+geste_strategie = st.tuples(st.sampled_from(GESTES_VENTE),
+                            st.integers(min_value=5, max_value=60),
+                            st.integers(min_value=0, max_value=9))
+
+LIGNE_VNT90 = {'prix_unitaire': Decimal('40000'), 'quantite': Decimal('1'),
+               'remise': Decimal('0'), 'taux_tva': Decimal('20')}
+
+
+class ProprietesEtatVenteTests(_Base):
+    """VNT90 — sur une vente persistée soumise à une suite aléatoire de gestes
+    (paiements, rejets, avoirs correction/geste/retour, annulations,
+    brouillons créés/supprimés/émis, révision) : ``reste_a_payer = prix −
+    payé − avoirs de réduction`` (− abandon éventuel) ; ``reste_a_facturer
+    ≥ 0`` ; un brouillon ne change ni ``emis_ttc`` ni ``reste_a_payer`` ; un
+    avoir de correction rend du facturable, un geste non ; ``solde`` ==
+    ``vente`` clé à clé là où les définitions coïncident. Documents réels,
+    aucun mock."""
+
+    def _facture(self, devis, statut, ttc):
+        from apps.ventes.models import Facture
+        ht = _q(ttc / Decimal('1.2'))
+        return Facture.objects.create(
+            company=self.company, client=self.client_obj, devis=devis,
+            reference=f'FAC-VNT90-{uuid.uuid4().hex[:10]}', statut=statut,
+            taux_tva=Decimal('20'), montant_ht=ht, montant_tva=ttc - ht,
+            montant_ttc=ttc)
+
+    def _etat(self, tete):
+        from apps.ventes.models import Devis
+        from apps.ventes.utils.echeancier import solde_devis
+        from apps.ventes.vente_facturation import etat_vente
+        tete = Devis.objects.get(pk=tete.pk)
+        return etat_vente(tete, self.admin), solde_devis(tete)
+
+    def _attendu(self, factures):
+        """(émis net, payé, avoirs de réduction, abandons) relus en base."""
+        from apps.ventes.models import Facture
+        emis = paye = reduction = abandon = ZERO
+        for f in Facture.objects.filter(pk__in=[x.pk for x in factures]):
+            if f.statut == Facture.Statut.ANNULEE:
+                continue
+            paye += Decimal(str(f.montant_paye))
+            if f.statut == Facture.Statut.BROUILLON:
+                continue
+            emis += Decimal(str(f.total_ttc))
+            abandon += Decimal(str(f.abandon_montant or 0))
+            for a in f.avoirs.filter(statut='emise'):
+                if a.type == 'correction':
+                    emis -= Decimal(str(a.total_ttc))
+                else:
+                    reduction += Decimal(str(a.total_ttc))
+        return emis, paye, reduction, abandon
+
+    def _verifier(self, tete, prix, factures):
+        e, s = self._etat(tete)
+        emis, paye, reduction, abandon = self._attendu(factures)
+        self.assertEqual(Decimal(e['prix_convenu_ttc']), prix)
+        self.assertEqual(Decimal(e['emis_ttc']), _q(emis))
+        self.assertEqual(Decimal(e['paye_ttc']), _q(paye))
+        self.assertGreaterEqual(Decimal(e['reste_a_facturer_ttc']), ZERO)
+        self.assertEqual(Decimal(e['reste_a_payer_ttc']),
+                         _q(prix - paye - reduction - abandon))
+        for cle_solde, cle_vente in (
+                ('total_ttc', 'prix_convenu_ttc'), ('facture', 'emis_ttc'),
+                ('paye', 'paye_ttc'), ('brouillons', 'brouillons_ttc'),
+                ('restant', 'reste_a_payer_ttc'),
+                ('reste_a_facturer', 'reste_a_facturer_ttc')):
+            self.assertEqual(Decimal(str(s[cle_solde])),
+                             Decimal(e[cle_vente]), cle_solde)
+        return e
+
+    def _parmi(self, factures, statuts, i):
+        from apps.ventes.models import Facture
+        vivantes = [f for f in Facture.objects.filter(
+            pk__in=[x.pk for x in factures]).order_by('pk')
+            if f.statut in statuts]
+        return vivantes[i % len(vivantes)] if vivantes else None
+
+    def _avoir(self, f, type_avoir, somme):
+        from apps.ventes.models import Avoir
+        ht = _q(somme / Decimal('1.2'))
+        Avoir.objects.create(
+            company=self.company, facture=f, client=self.client_obj,
+            type=type_avoir, reference=f'AV-VNT90-{uuid.uuid4().hex[:10]}',
+            statut=Avoir.Statut.EMISE, montant_ht=ht,
+            montant_tva=somme - ht, montant_ttc=somme)
+
+    @PROPRIETES
+    @given(gestes=st.lists(geste_strategie, min_size=3, max_size=12))
+    def test_invariants_etat_vente_apres_gestes(self, gestes):
+        import datetime
+
+        from apps.ventes.models import Devis, Facture, Paiement
+        self._contexte()
+        tete = self._devis([dict(LIGNE_VNT90)])
+        prix = Decimal(self._etat(tete)[0]['prix_convenu_ttc'])
+        factures, revisee = [], False
+        emises = (Facture.Statut.EMISE, Facture.Statut.PAYEE,
+                  Facture.Statut.EN_RETARD)
+        brouillon = (Facture.Statut.BROUILLON,)
+        types_avoir = {'avoir_correction': 'correction',
+                       'avoir_geste': 'geste_commercial',
+                       'avoir_retour': 'retour'}
+        for geste, pct, i in gestes:
+            avant = self._verifier(tete, prix, factures)
+            montant = _q(Decimal(avant['reste_a_facturer_ttc']) * pct / 100)
+            f = self._parmi(factures, brouillon if 'brouillon' in geste
+                            and geste != 'brouillon' else emises, i)
+            du = Decimal(str(f.montant_du)) if f is not None else ZERO
+            if geste in ('emise', 'brouillon') and montant >= 1:
+                factures.append(self._facture(
+                    tete, Facture.Statut.EMISE if geste == 'emise'
+                    else Facture.Statut.BROUILLON, montant))
+                if geste == 'brouillon':
+                    apres = self._verifier(tete, prix, factures)
+                    for cle in ('emis_ttc', 'reste_a_payer_ttc'):
+                        self.assertEqual(apres[cle], avant[cle], cle)
+            elif geste == 'emettre_brouillon' and f is not None:
+                Facture.objects.filter(pk=f.pk).update(
+                    statut=Facture.Statut.EMISE)
+            elif geste == 'supprimer_brouillon' and f is not None:
+                factures = [x for x in factures if x.pk != f.pk]
+                f.delete()
+            elif geste == 'paiement' and f is not None:
+                # Jamais un reliquat minuscule (abandon automatique sous
+                # tolérance) : tout le dû, ou en laisser au moins 100.
+                somme = du if pct >= 40 else min(_q(du * pct / 100), du - 100)
+                if somme >= 1:
+                    Paiement.objects.create(
+                        company=self.company, facture=f, montant=somme,
+                        date_paiement=datetime.date(2026, 10, 12),
+                        mode='virement')
+            elif geste == 'rejet' and f is not None:
+                p = f.paiements.filter(statut='encaisse').first()
+                if p is not None:
+                    Paiement.objects.filter(pk=p.pk).update(statut='rejete')
+            elif geste in types_avoir and f is not None:
+                somme = _q(du * pct / 100)
+                if somme >= 1:
+                    self._avoir(f, types_avoir[geste], somme)
+                    apres = self._verifier(tete, prix, factures)
+                    ecart = (Decimal(apres['reste_a_facturer_ttc'])
+                             - Decimal(avant['reste_a_facturer_ttc']))
+                    attendu = somme if geste == 'avoir_correction' else ZERO
+                    self.assertEqual(ecart, attendu, geste)
+            elif geste == 'annulation' and f is not None:
+                if not f.paiements.exists() and not f.avoirs.exists():
+                    Facture.objects.filter(pk=f.pk).update(
+                        statut=Facture.Statut.ANNULEE)
+            elif geste == 'revision' and not revisee:
+                v2 = self._devis([dict(LIGNE_VNT90)], version=2,
+                                 version_parent=tete)
+                Devis.objects.filter(pk=tete.pk).update(
+                    is_active=False, superseded_by=v2)
+                tete, revisee = v2, True
+            self._verifier(tete, prix, factures)

@@ -1,8 +1,11 @@
+from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte, ChampsStrictsSansDecimalMixin
+from core.champs_stricts import (
+    ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalStricte,
+    IdInconnu404Mixin, MotifUrlPublie)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import ConflitUnicite
 
@@ -20,6 +23,8 @@ from .models import (
     TypeChampSignature, ValidationOcrDocument, VueGedEnregistree,
 )
 from . import services
+from .corps_requete import (
+    GroupeConditionsField, SectionsModeleField, erreurs_groupe_conditions)
 
 
 class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
@@ -43,8 +48,14 @@ class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
     # ERR-QAH-GED-TAG-CREATION-SLUG — le formulaire « Nouveau tag » n'envoie
     # que le nom : le slug est FACULTATIF et, absent, dérivé du nom côté
     # serveur (unique par société, suffixe -2, -3… en cas de collision).
-    slug = serializers.SlugField(
-        max_length=110, required=False, allow_blank=True)
+    # CI #997 fuzz — le motif publié accepte désormais le slug VIDE (jusqu'ici
+    # ``SlugField`` publiait ``^[-a-zA-Z0-9_]+$`` : ``""`` était « invalide »
+    # au schéma mais accepté) ; pas de rognage, le motif vaut pour la valeur brute.
+    slug = ChaineStricte(
+        max_length=110, required=False, allow_blank=True,
+        trim_whitespace=False,
+        validators=[RegexValidator(
+            r'^[-a-zA-Z0-9_]*$', message='Identifiant (slug) invalide.')])
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('parent',)
@@ -107,7 +118,7 @@ class DocumentTagSerializer(ChampsStrictsSansDecimalMixin,
         return slug
 
 
-class DocumentTagAssignmentSerializer(ChampsStrictsSansDecimalMixin,
+class DocumentTagAssignmentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                       SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """GED9 — Application d'un tag à un document. `document` et `tag` doivent
     appartenir à la société courante ; `company`/`created_by` posés serveur."""
@@ -140,7 +151,7 @@ class DocumentTagAssignmentSerializer(ChampsStrictsSansDecimalMixin,
         return attrs
 
 
-class CoffreSerializer(ChampsStrictsSansDecimalMixin,
+class CoffreSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """GED8 — Coffre-fort par employé/client (ACL propriétaire + admin).
 
@@ -250,23 +261,26 @@ class FolderSerializer(ChampsStrictsSansDecimalMixin,
     def validate(self, attrs):
         """Cabinet et parent doivent appartenir à la société de l'utilisateur,
         et le parent doit vivre dans le même cabinet."""
+        # CI #997 fuzz — hors société ou autre cabinet = objet INEXISTANT pour
+        # cette requête : 404 (même corps qu'une FK inconnue), plus 400.
+        from rest_framework.exceptions import NotFound
         request = self.context.get('request')
         cabinet = attrs.get('cabinet') or getattr(self.instance, 'cabinet', None)
         parent = attrs.get('parent', getattr(self.instance, 'parent', None))
         if request is not None:
             cid = request.user.company_id
             if cabinet is not None and cabinet.company_id != cid:
-                raise serializers.ValidationError({'cabinet': 'Cabinet inconnu.'})
+                raise NotFound({'cabinet': 'Cabinet inconnu.'})
             if parent is not None and parent.company_id != cid:
-                raise serializers.ValidationError({'parent': 'Dossier parent inconnu.'})
+                raise NotFound({'parent': 'Dossier parent inconnu.'})
         if parent is not None and cabinet is not None \
                 and parent.cabinet_id != cabinet.id:
-            raise serializers.ValidationError(
+            raise NotFound(
                 {'parent': 'Le parent doit appartenir au même cabinet.'})
         return attrs
 
 
-class DocumentVersionSerializer(ChampsStrictsSansDecimalMixin,
+class DocumentVersionSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                 SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
         source='uploaded_by.username', read_only=True, allow_null=True)
@@ -309,7 +323,7 @@ class DocumentVersionSerializer(ChampsStrictsSansDecimalMixin,
         return value
 
 
-class DocumentSerializer(ChampsStrictsSansDecimalMixin,
+class DocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                          SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     folder_nom = serializers.CharField(source='folder.nom', read_only=True, allow_null=True)
     created_by_nom = serializers.CharField(
@@ -352,8 +366,16 @@ class DocumentSerializer(ChampsStrictsSansDecimalMixin,
     # ERR-ENF11-FUZZ-GED — ``URLField(blank=True)`` publiait ``format: uri`` :
     # la valeur vide servie pour un document ordinaire violait son propre
     # schéma. Champ texte (vide permis) ; l'URL non vide reste validée.
+    # CI #997 : le motif http(s) est PUBLIÉ (le fuzz envoyait 2000 « 0 » conformes
+    # au schéma, refusés « URL invalide ») ; l'acceptation reste celle de
+    # ``URLValidator`` (validate_url_externe), le motif n'est qu'un sous-ensemble.
     url_externe = ChaineStricte(
-        max_length=2000, required=False, allow_blank=True)
+        max_length=2000, required=False, allow_blank=True,
+        validators=[MotifUrlPublie()])
+
+    # CI #997 fuzz — métadonnées typées : un OBJET (le schéma le disait libre,
+    # ``[null, null]`` était « conforme » puis refusé « Format invalide »).
+    custom_data = serializers.DictField(required=False)
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('folder', 'coffre')
@@ -599,7 +621,7 @@ class DemandeApprobationSerializer(ChampsStrictsSansDecimalMixin,
         ]
 
 
-class PartageGedSerializer(ChampsStrictsSansDecimalMixin,
+class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                            serializers.ModelSerializer):
     """GED20 — Partage public d'un document par lien tokenisé.
 
@@ -927,7 +949,7 @@ class DemandeSignatureDocumentSerializer(ChampsStrictsSansDecimalMixin,
             obj.token, 'demande', request=self.context.get('request')) or None
 
 
-class ChampSignatureSerializer(ChampsStrictsSansDecimalMixin,
+class ChampSignatureSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED3 — Champ positionné sur le PDF à signer (demande OU modèle,
     exactement l'un des deux). `company` posée CÔTÉ SERVEUR (jamais lue du
@@ -998,6 +1020,13 @@ class TypeChampSignatureSerializer(ChampsStrictsSansDecimalMixin,
 
     `company`/`created_by` posés côté serveur. `code` unique par société
     (garde base + validation applicative pour un message FR clair)."""
+    # CI #997 fuzz — décimaux transportés en CHAÎNE (comme le schéma le dit) :
+    # un nombre JSON était converti en silence. Aucun écran ne les écrit.
+    largeur_defaut = DecimalStricte(
+        max_digits=5, decimal_places=2, required=False)
+    hauteur_defaut = DecimalStricte(
+        max_digits=5, decimal_places=2, required=False)
+
     class Meta:
         model = TypeChampSignature
         fields = [
@@ -1042,6 +1071,17 @@ class RoutageDocumentaireSerializer(ChampsStrictsSansDecimalMixin,
             'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        # CI #997 api-fuzz : ``tags_defaut`` = ``{}`` passait pour une liste
+        # vide (``ManyRelatedField`` accepte tout itérable) alors que le
+        # schéma déclare un tableau → 400 nommé pour tout JSON non-liste.
+        if (hasattr(data, 'get') and not hasattr(data, 'getlist')
+                and data.get('tags_defaut') is not None
+                and not isinstance(data.get('tags_defaut'), list)):
+            raise serializers.ValidationError(
+                {'tags_defaut': "Une liste d'identifiants est attendue."})
+        return super().to_internal_value(data)
 
     def validate(self, attrs):
         request = self.context.get('request')
@@ -1123,6 +1163,12 @@ class VueGedEnregistreeSerializer(ChampsStrictsSansDecimalMixin,
             'created_at', 'updated_at',
         ]
         read_only_fields = ['utilisateur', 'created_at', 'updated_at']
+        # CI #997 fuzz — `criteres` est publié en JSON libre (null compris) :
+        # `validate_criteres` lit null comme « aucun critère ».
+        extra_kwargs = {'criteres': {'allow_null': True}}
+
+    def validate_criteres(self, valeur):
+        return {} if valeur is None else valeur
 
     @extend_schema_field(OpenApiTypes.BOOL)
     def get_est_a_moi(self, obj):
@@ -1193,6 +1239,9 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
     document généré (le dossier peut être templaté par le contexte de fusion)."""
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
+    # CI #997 fuzz — `sections` est publié liste d'objets (ou null, lu comme
+    # « aucune section » par `validate_sections`), plus en JSON libre.
+    sections = SectionsModeleField(required=False, allow_null=True)
 
     class Meta:
         model = ModeleDocument
@@ -1210,9 +1259,7 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
         arbre de conditions est validé par ``core.rules`` (FG367) AVANT
         persistance — un arbre malformé est refusé ici plutôt que d'être
         silencieusement évalué à False au rendu."""
-        from core.rules import validate_condition_group
-
-        if valeur in (None, ''):
+        if valeur is None:
             return []
         if not isinstance(valeur, list):
             raise serializers.ValidationError(
@@ -1221,10 +1268,10 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
             if not isinstance(section, dict):
                 raise serializers.ValidationError(
                     f"Section #{index + 1} : un objet est attendu.")
-            conditions = section.get('conditions')
-            if not conditions:
+            conditions = section.get('conditions', {})
+            if conditions == {}:
                 continue
-            erreurs = validate_condition_group(conditions)
+            erreurs = erreurs_groupe_conditions(conditions)
             if erreurs:
                 raise serializers.ValidationError(
                     f"Section #{index + 1} — conditions invalides : "
@@ -1282,7 +1329,7 @@ class QuotaStockageSerializer(ChampsStrictsSansDecimalMixin,
         return services.quota_depasse(obj.company)
 
 
-class DepotPublicSerializer(ChampsStrictsSansDecimalMixin,
+class DepotPublicSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                             SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED7 — Gestion (côté propriétaire) d'un lien de dépôt public.
 
@@ -1334,7 +1381,7 @@ class ExigenceDossierSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class DemandeDocumentSerializer(ChampsStrictsSansDecimalMixin,
+class DemandeDocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                 SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED8 — Demande d'une pièce nommée (interne ou contact externe)."""
     same_company_fields = ('folder', 'exigence', 'utilisateur')
@@ -1377,7 +1424,7 @@ class ValidationOcrDocumentSerializer(ChampsStrictsSansDecimalMixin,
         ]
 
 
-class AnnotationDocumentSerializer(ChampsStrictsSansDecimalMixin,
+class AnnotationDocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                    SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED16 — Annotation/tampon posé sur l'image d'une version (couche
     séparée — n'affecte jamais le fichier original)."""
@@ -1394,7 +1441,7 @@ class AnnotationDocumentSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['auteur', 'created_at']
 
 
-class RegleDossierSerializer(ChampsStrictsSansDecimalMixin,
+class RegleDossierSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                              SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED19 — Règle d'action automatique à l'upload dans un dossier.
 
@@ -1402,6 +1449,11 @@ class RegleDossierSerializer(ChampsStrictsSansDecimalMixin,
     vue via `core.rules.validate_condition_group` avant persistance."""
     same_company_fields = ('folder',)
     folder_nom = serializers.CharField(source='folder.nom', read_only=True, allow_null=True)
+    condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
+    # CI #997 api-fuzz : un JSONField publie « n'importe quoi » (null compris) et
+    # DRF refuse null — la liste d'étapes est déclarée (liste d'objets).
+    actions = serializers.ListField(
+        child=serializers.DictField(), required=False)
 
     class Meta:
         model = RegleDossier
@@ -1431,9 +1483,14 @@ class ExecutionRegleDossierSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = fields
 
 
-class RegleApprobationGedSerializer(ChampsStrictsSansDecimalMixin,
+class RegleApprobationGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                     serializers.ModelSerializer):
     """XGED20 — Routage conditionnel des approbations par métadonnées."""
+    condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
+    # CI #997 api-fuzz : chaîne d'ids utilisateur déclarée (jamais null).
+    approbateurs = serializers.ListField(
+        child=serializers.IntegerField(min_value=1), required=False)
+
     class Meta:
         model = RegleApprobationGed
         fields = [
@@ -1443,7 +1500,7 @@ class RegleApprobationGedSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
-class AclGedSerializer(ChampsStrictsSansDecimalMixin,
+class AclGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """WIR163 — Droit d'accès GED19 par dossier/document (héritage + override).
 
@@ -1527,13 +1584,14 @@ class TamponSocieteSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = ['created_at']
 
 
-class RegleAclMetadonneeSerializer(ChampsStrictsSansDecimalMixin,
+class RegleAclMetadonneeSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                    SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED21 — ACL automatique pilotée par métadonnées (couche dynamique,
     évaluée à chaque lecture par `selectors.acl_effective` — jamais de ligne
     `AclGed` matérialisée)."""
     role_nom = serializers.CharField(
         source='role.nom', read_only=True, allow_null=True)
+    condition_group = GroupeConditionsField()  # ERR-ENF11-FUZZ-GED : arbre publié
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('role',)
@@ -1606,7 +1664,7 @@ class LotEnvoiSerializer(ChampsStrictsSansDecimalMixin,
         read_only_fields = fields
 
 
-class PlanificationDocumentSerializer(ChampsStrictsSansDecimalMixin,
+class PlanificationDocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                       SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED15 — Activité planifiée sur un document (« relancer le J+7 »)."""
     same_company_fields = ('document', 'assigne_a')

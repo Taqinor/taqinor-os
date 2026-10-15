@@ -45,6 +45,24 @@ describe('CalepinageRetenuCard (CAL213)', () => {
     expect(screen.getByRole('button', { name: 'Plan de pose 3D' })).toBeInTheDocument()
   })
 
+  it('ACAL274 : affiche le kWc VENDU puis le dessin et l’écart', () => {
+    render(wrap(<CalepinageRetenuCard calepinage={{
+      ...CALEPINAGE, kwc: 6.6, nb_modules: 12, kwc_source: 'devis',
+      dessin_kwc: 8.52, ecart_kwc: 1.92,
+    }}
+    />))
+    expect(screen.getByText('6.6 kWc')).toBeInTheDocument()
+    expect(screen.getByText(/vendus/)).toBeInTheDocument()
+    expect(screen.getByText(/dessin : 8\.52 kWc/)).toHaveTextContent('écart +1.92 kWc')
+    expect(screen.queryByText('8.52 kWc')).not.toBeInTheDocument()
+  })
+
+  it('ACAL274 : sans kWc vendu, aucune mention vendus ni dessin', () => {
+    render(wrap(<CalepinageRetenuCard calepinage={{ ...CALEPINAGE, kwc_source: 'calepinage' }} />))
+    expect(screen.queryByText(/vendus/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/dessin :/)).not.toBeInTheDocument()
+  })
+
   it('navigue vers la planche puis vers le plan de pose au clic', async () => {
     const user = userEvent.setup()
     render(wrap(<CalepinageRetenuCard calepinage={CALEPINAGE} />))

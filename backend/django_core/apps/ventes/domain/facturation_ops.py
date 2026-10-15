@@ -1513,6 +1513,12 @@ class AvoirRefuse(Exception):
         self.motif = motif
 
 
+class AvoirPlafondDepasse(AvoirRefuse):
+    """CI #997 (3) — le montant crédité dépasse le reste créditable de la
+    facture : refus d'ÉTAT (le reste dépend des avoirs, notes de débit et
+    abandons déjà posés, jamais du corps seul) — les vues répondent 409."""
+
+
 def _quantites_retour(facture):
     """(vendu, déjà retourné) par produit — lus sur la facture VERROUILLÉE.
 
@@ -1643,8 +1649,8 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
     remise globale et palier repris (au prorata pour un retour, le dernier
     retour portant le solde au centime), ventilation TVA (ATOT6), garde du
     plafond, re-stockage, chatter, ``avoir_cree``, recalcul du statut de
-    paiement (ATOT8). Lève ``AvoirRefuse`` (400) — rien n'est alors écrit.
-    Renvoie l'avoir (PDF généré par l'appelant, hors transaction)."""
+    paiement (ATOT8). Lève ``AvoirRefuse`` (400 ; ``AvoirPlafondDepasse``,
+    409) — rien n'est alors écrit. Renvoie l'avoir (PDF généré par l'appelant, hors transaction)."""
     from django.db import transaction
 
     from apps.stock.services import (
@@ -1737,7 +1743,7 @@ def creer_avoir_facture(*, facture, user, motif, mode='correction',
         plafond = (reste_creditable + locked.notes_debit_total
                    - (locked.abandon_montant or Decimal('0')))
         if avoir.total_ttc - plafond > Decimal('0.01'):
-            raise AvoirRefuse(
+            raise AvoirPlafondDepasse(
                 ('Le retour dépasse' if est_retour else "L'avoir dépasse")
                 + f' le montant restant de la facture '
                   f'({max(plafond, Decimal("0")):.2f} MAD).')

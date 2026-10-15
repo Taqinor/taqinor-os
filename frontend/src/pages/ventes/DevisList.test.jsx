@@ -106,7 +106,7 @@ import { toast } from '../../ui'
 // uniquement — aucune assertion n'est modifiée.
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { formatMAD } from '../../lib/format'
-import { exempleContrat } from '../../test/fixtures/contractSamples'
+import { exempleContrat, documentContrat } from '../../test/fixtures/contractSamples'
 // NTI18N12 — bascule de locale réelle pour le bloc de tests « calendrier
 // hégirien » en fin de fichier (I18nProvider n'est PAS monté ailleurs dans
 // ce fichier : useI18n() y retombe sur son repli hors-provider, locale='fr').
@@ -808,7 +808,7 @@ describe('DevisList — VX216(a) : seam devis↔chantier visible côté vendeur'
       devis: [{
         id: 72, reference: 'DEV-VX216-C', client_nom: 'ACME', statut: 'envoye',
         date_creation: '2026-07-01', total_ttc: 20000, nb_options: 1, version: 1,
-        is_active: true,
+        is_active: true, revision_possible: true,
         chantier: { id: 7, reference: 'CH-2026-07-0007', statut: 'planifie' },
       }],
     })
@@ -1450,5 +1450,73 @@ describe('DevisList — CIQ324 : acceptation C&I (identité d\'entreprise)', () 
     await waitFor(() => expect(ventesApi.accepterDevis).toHaveBeenCalledTimes(1))
     expect(Object.keys(ventesApi.accepterDevis.mock.calls[0][1]).sort())
       .toEqual(['date', 'nom', 'option'])
+  })
+})
+
+// VNT79 — la ligne lit `d.vente` (VNT68, exemples COMMITTÉS de vente_etat.json) :
+// une puce de résumé ouvre la sous-ligne PanneauVente, UN bouton « Facturer… »
+// suivant `vente.peut`, jamais sur une version remplacée, plus aucune
+// comparaison de compteurs ; « Réviser » lit `revision_possible`.
+describe('DevisList — VNT79 : puce de vente, sous-ligne, bouton unique « Facturer… »', () => {
+  const accepte = (variante, extra = {}) => {
+    const ex = exempleContrat('ventes', 'vente_etat', variante)
+    return {
+      id: ex.id, reference: ex.reference, client_nom: 'ACME', statut: 'accepte',
+      date_creation: '2026-10-10', total_ttc: 49000, nb_options: 1, version: 2,
+      is_active: ex.vente.est_tete, revision_possible: true, vente: ex.vente, ...extra,
+    }
+  }
+
+  it('acompte en brouillon : la puce ouvre la sous-ligne (BROUILLON-117) ; aucun bouton de tranche', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: [accepte('exemple_acompte_brouillon')] })
+    const row = screen.getByText('DEV-202610-0021').closest('tr')
+    expect(within(row).queryByRole('button', { name: /Générer facture|Facturer par tranches|facture complète/ })).toBeNull()
+    expect(within(row).queryByRole('button', { name: 'Facturer…' })).toBeNull()
+    await user.click(within(row).getByRole('button', { name: /Vente de DEV-202610-0021/ }))
+    const panneau = await screen.findByTestId('panneau-vente')
+    expect(within(panneau).getByText('BROUILLON-117')).toBeInTheDocument()
+    expect(within(panneau).queryByRole('button', { name: /Facturer/ })).toBeNull()
+  })
+
+  it('vente neuve : UN bouton « Facturer… » qui ouvre « Facturer la vente »', async () => {
+    vi.spyOn(ventesApi, 'apercuFacturerVente').mockResolvedValue({
+      data: documentContrat('ventes', 'devis_facturer').apercu_get.reponse_200,
+    })
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: [accepte('exemple')] })
+    const row = screen.getByText('DEV-202610-0021').closest('tr')
+    expect(within(row).getAllByRole('button', { name: /^Facturer/ })).toHaveLength(1)
+    await user.click(within(row).getByRole('button', { name: 'Facturer…' }))
+    await waitFor(() => expect(ventesApi.apercuFacturerVente).toHaveBeenCalledWith(502))
+    // APRF8 — la facture créée relit la SEULE ligne (GET devis/<id>/), jamais la liste.
+    vi.spyOn(ventesApi, 'facturerVente').mockResolvedValue({ data: documentContrat('ventes', 'devis_facturer').exemple })
+    ventesApi.getDevisById.mockClear()
+    const fetchAvant = fetchDevis.mock.calls.length
+    await user.click(await screen.findByRole('button', { name: 'Créer la facture' }))
+    await waitFor(() => expect(ventesApi.getDevisById).toHaveBeenCalledWith(502))
+    expect(fetchDevis.mock.calls.length).toBe(fetchAvant)
+  })
+
+  it('tout facturé (9 sur 10 tranches n’est plus une chaîne) : aucun « Facturer… »', () => {
+    renderList({ loading: false, devis: [accepte('exemple_tout_facture', { solde: { tranches_facturees: '9', tranches_total: '10' } })] })
+    const row = screen.getByText('DEV-202610-0021').closest('tr')
+    expect(within(row).queryByRole('button', { name: /Facturer|Échéancier complet/ })).toBeNull()
+  })
+
+  it('version remplacée affichée : jamais de « Facturer… »', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: [accepte('exemple_version_remplacee')] })
+    await user.click(screen.getByRole('button', { name: /versions remplacées/i }))
+    const row = screen.getByText('DEV-202610-0020').closest('tr')
+    expect(within(row).queryByRole('button', { name: 'Facturer…' })).toBeNull()
+  })
+
+  it('« Réviser » suit `revision_possible` du serveur', async () => {
+    const user = userEvent.setup()
+    renderList({ loading: false, devis: [accepte('exemple', { revision_possible: false })] })
+    const row = screen.getByText('DEV-202610-0021').closest('tr')
+    await user.click(within(row).getByRole('button', { name: /Plus d'actions/ }))
+    expect(screen.queryByRole('menuitem', { name: /Réviser/ })).toBeNull()
   })
 })

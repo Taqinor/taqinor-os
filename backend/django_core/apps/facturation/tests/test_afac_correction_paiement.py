@@ -111,7 +111,8 @@ class CorrectionPaiementTests(TestCase):
         p = self._paiement(a)
         r = self.api.post(f'{BASE}/{p.id}/reaffecter/',
                           {'facture_cible': c.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 (3) — corps conforme, refus d'état : 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'facture_autre_client')
         self.assertEqual(self._relire(p).facture_id, a.id)
 
@@ -120,9 +121,57 @@ class CorrectionPaiementTests(TestCase):
         p = self._paiement(a)
         r = self.api.post(f'{BASE}/{p.id}/reaffecter/',
                           {'facture_cible': brouillon.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'cible_non_encaissable')
         self.assertEqual(self._relire(p).facture_id, a.id)
+
+    def test_reaffecter_vers_sa_propre_facture_409(self):
+        """CI #997 (3) (cas m0NLEi) — ``facture_cible`` = la facture qui
+        porte déjà le paiement : corps conforme, refus d'ÉTAT (409), plus
+        400 ; rien ne bouge."""
+        a = self._facture()
+        p = self._paiement(a)
+        r = self.api.post(f'{BASE}/{p.id}/reaffecter/',
+                          {'facture_cible': a.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertEqual(r.data['code'], 'cible_invalide')
+        self.assertEqual(self._relire(p).facture_id, a.id)
+
+    def test_corps_hors_forme_400_cible_inconnue_404(self):
+        """CI #997 (2) (cas YBtEw0 / FpSMFC) — un corps tableau ou un motif
+        ``[null, null]`` levaient AttributeError (500) ; ``"5"``/``5.5``
+        étaient lus en entier. 400 nommé ; un id bien formé inconnu → 404."""
+        a, b = self._facture(), self._facture(ttc='5000')
+        p = self._paiement(a)
+        for corps in ([None, None], {'facture_cible': str(b.id)},
+                      {'facture_cible': 1.5}, {'facture_cible': True}):
+            r = self.api.post(f'{BASE}/{p.id}/reaffecter/', corps,
+                              format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        r = self.api.post(f'{BASE}/{p.id}/reaffecter/',
+                          {'facture_cible': b.id + 10_000}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        for corps in ({'motif': [None, None]}, {'motif': 5}, [None, None]):
+            r = self.api.post(f'{BASE}/{p.id}/annuler-saisie/', corps,
+                              format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        self.assertEqual(self._relire(p).facture_id, a.id)
+        self.assertEqual(self._relire(p).statut, 'encaisse')
+
+    def test_liste_factures_client_entier_strict(self):
+        """CI #997 (2) (cas ipA7RV / yHzkf8) — ``?client=null`` était
+        ignoré (200, liste entière) : 400 nommé ; un entier filtre."""
+        a = self._facture()
+        self._facture(client=self.autre_client)
+        for url in ('/api/django/ventes/factures/',
+                    '/api/django/facturation/factures/'):
+            for qs in ('client=null', 'client=null&client=null',
+                       'client=abc', f'client={a.client_id}&client=1'):
+                r = self.api.get(f'{url}?{qs}')
+                self.assertEqual(r.status_code, 400, (url, qs, r.data))
+            r = self.api.get(url, {'client': self.client_obj.id})
+            self.assertEqual(r.status_code, 200, r.data)
+            self.assertEqual([f['id'] for f in r.data['results']], [a.id])
 
     # ── annuler la saisie ───────────────────────────────────────────────
     def test_annuler_saisie_hors_paye(self):
@@ -194,11 +243,11 @@ class CorrectionPaiementTests(TestCase):
         LigneRemiseEncaissement.objects.create(remise=remise, paiement=p)
         r = self.api.post(f'{BASE}/{p.id}/reaffecter/',
                           {'facture_cible': b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'paiement_remis_en_banque')
         r = self.api.post(f'{BASE}/{p.id}/annuler-saisie/',
                           {'motif': 'Erreur'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'paiement_remis_en_banque')
         p = self._relire(p)
         self.assertEqual(p.facture_id, a.id)

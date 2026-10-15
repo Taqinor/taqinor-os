@@ -6,6 +6,8 @@ from apps.records.champs_stricts import (
     ChampsStrictsBornesMixin, ChampsStrictsLitterauxMixin, DecimalLitteral,
 )
 
+from core.unicite import UniciteEn409Mixin
+
 from .models import (
     AbonnementMonitoring, CertificatCarbone, CleaningEvent, MonitoringConfig,
     MonitoringSettings, ProductionReading, ProductionWarranty,
@@ -35,7 +37,7 @@ class MonitoringConfigSerializer(ChampsStrictsBornesMixin,
         # `company` posée côté serveur ; identifiants jamais relus du serveur.
         read_only_fields = ['last_sync', 'date_modification']
 
-    def get_provider_label(self, obj):
+    def get_provider_label(self, obj) -> str:  # ENF11 — type au schéma
         return dict(available_providers()).get(obj.provider, obj.provider)
 
     # CI #993 — booléen publié (SerializerMethodField sans type = chaîne :
@@ -125,7 +127,7 @@ class CleaningEventSerializer(ChampsStrictsBornesMixin,
         return value
 
 
-class ProductionWarrantySerializer(ChampsStrictsBornesMixin,
+class ProductionWarrantySerializer(ChampsStrictsLitterauxMixin,
                                    serializers.ModelSerializer):
     class Meta:
         model = ProductionWarranty
@@ -174,6 +176,36 @@ class MonitoringSettingsSerializer(ChampsStrictsLitterauxMixin,
         read_only_fields = ['date_modification']
 
 
+#: CI #997 fuzz — les décimaux dont le serveur refuse la valeur NULLE ou hors
+#: borne la publient dans leur motif (forme littérale ``DecimalLitteral``) :
+#: montant d'abonnement STRICTEMENT positif (12 chiffres, 2 décimales), taux de
+#: disponibilité garanti dans ]0 ; 100], compensation par jour ≥ 0.
+MOTIF_MONTANT_POSITIF = (
+    r'^(?:0*[1-9][0-9]{0,9}(?:\.[0-9]{1,2})?|0+\.(?:[1-9][0-9]?|0[1-9]))$')
+MOTIF_TAUX_GARANTI = (
+    r'^(?:0*[1-9][0-9]?(?:\.[0-9]{1,2})?|0*100(?:\.0{1,2})?'
+    r'|0+\.(?:[1-9][0-9]?|0[1-9]))$')
+MOTIF_COMPENSATION = r'^[0-9]{1,8}(?:\.[0-9]{1,2})?$'
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_MONTANT_POSITIF})
+class _MontantPositifLitteral(DecimalLitteral):
+    """Montant par période : chaîne décimale > 0."""
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_TAUX_GARANTI})
+class _TauxGarantiLitteral(DecimalLitteral):
+    """Taux de disponibilité garanti : chaîne décimale dans ]0 ; 100]."""
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_COMPENSATION})
+class _CompensationLitterale(DecimalLitteral):
+    """Compensation par jour d'indisponibilité : chaîne décimale ≥ 0."""
+
+
 class AbonnementMonitoringSerializer(serializers.ModelSerializer):
     """ASAV100 — abonnement de supervision. ``client_id`` est résolu côté
     serveur depuis le système (lecture seule) ; statut, motif et échéance ne
@@ -184,7 +216,7 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     installation_id = serializers.IntegerField(min_value=1)
     # Aucun chiffre inventé : le montant est obligatoire à la saisie.
-    montant = serializers.DecimalField(
+    montant = _MontantPositifLitteral(
         max_digits=12, decimal_places=2, required=True)
 
     class Meta:
@@ -200,11 +232,22 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
 
+    def validate_montant(self, value):
+        # La règle est AUSSI publiée dans le motif du champ (corps conforme).
+        if value <= 0:
+            raise serializers.ValidationError('Saisir le montant par période.')
+        return value
 
-class SlaDisponibiliteSerializer(serializers.ModelSerializer):
+
+class SlaDisponibiliteSerializer(UniciteEn409Mixin, ChampsStrictsBornesMixin,
+                                 serializers.ModelSerializer):
     """ASAV101 — SLA de disponibilité d'un système. Le taux garanti est SAISI
     (aucun défaut, CIQ644) ; la compensation par jour vient de la saisie
     (0 = aucune compensation chiffrée). ``company`` posée côté serveur."""
+    disponibilite_garantie_pct = _TauxGarantiLitteral(
+        max_digits=5, decimal_places=2)
+    compensation_mad_par_jour_indispo = _CompensationLitterale(
+        max_digits=10, decimal_places=2, required=False)
 
     class Meta:
         model = SlaDisponibilite
@@ -214,8 +257,6 @@ class SlaDisponibiliteSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['created_at', 'updated_at']
-        extra_kwargs = {'disponibilite_garantie_pct': {
-            'required': True, 'allow_null': False}}
 
     def validate_installation(self, value):
         request = self.context.get('request')

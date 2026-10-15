@@ -145,3 +145,53 @@ class VitalsRetentionTests(TestCase):
     def test_policy_registered_in_shared_registry(self):
         from core.retention import list_retention_policies
         self.assertIn('reporting_web_vitals', list_retention_policies())
+
+
+class VitalsTypesStrictsTests(TestCase):
+    """CI #997 fuzz — ``navigation_id`` / ``route`` sont des textes : un
+    nombre JSON n'est plus converti en chaîne."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='vx61-strict', defaults={'nom': 'VX61 Strict'})[0]
+        self.user = User.objects.create_user(
+            username='vx61_strict', password='x', company=self.company)
+        self.api = _auth(self.user)
+
+    def test_navigation_id_et_route_non_texte_refuses(self):
+        for champ in ('navigation_id', 'route'):
+            with self.subTest(champ=champ):
+                resp = self.api.post(VITALS_URL, {
+                    'route': '/x', 'metric': 'LCP', 'value': 1,
+                    'rating': 'good', 'navigation_id': 'n', champ: 0,
+                }, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertIn(champ, resp.data)
+        self.assertFalse(WebVitalMetric.objects.exists())
+
+    def test_value_non_nombre_refusee(self):
+        """CI #997 fuzz (2) — ``value: false`` était lu 0.0 (201) ; seul un
+        nombre JSON réel est accepté, le schéma publiant ``number``."""
+        corps = {'route': '/x', 'metric': 'LCP', 'rating': 'good',
+                 'navigation_id': 'n'}
+        for faux in (False, True, '12', None, [1]):
+            resp = self.api.post(VITALS_URL, {**corps, 'value': faux},
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (faux, resp.data))
+            self.assertIn('value', resp.data)
+        resp = self.api.post(VITALS_URL, {**corps, 'value': 12},
+                             format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(WebVitalMetric.objects.get().value, 12.0)
+
+    def test_route_trop_longue_tronquee_et_schema_sans_borne(self):
+        """Le beacon n'est jamais rejeté pour une route longue (tronquée à
+        255) : le schéma n'annonce donc pas de ``maxLength``."""
+        from apps.reporting.vitals import WebVitalRequeteSerializer
+        resp = self.api.post(VITALS_URL, {
+            'route': '/' + 'a' * 400, 'metric': 'LCP', 'value': 1.5,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(len(WebVitalMetric.objects.get().route), 255)
+        self.assertIsNone(
+            WebVitalRequeteSerializer().fields['route'].max_length)

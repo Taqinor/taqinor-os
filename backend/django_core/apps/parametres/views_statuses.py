@@ -26,13 +26,16 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
 
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parametres_requete import choix_ou_400
 
 from .models import SettingsAuditLog
 from .models_statuses import StatutConfig
 from .serializers_statuses import StatutConfigSerializer
 from .requetes_strictes import StatutsBulkRequestSerializer, valider_corps
-from .statuses_defaults import VALID_DOMAINES, default_statuses
+from .statuses_defaults import (
+    VALID_DOMAINES, default_keys, default_statuses,
+)
 from .views_common import SettingsAuditedMixin
 
 READ_ACTIONS = ['list', 'retrieve', 'effective']
@@ -85,10 +88,27 @@ def effective_statuses(company, domaine):
     return rows
 
 
-@extend_schema_view(list=extend_schema(parameters=[OpenApiParameter(
-    'domaine', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
-    enum=_DOMAINE_ENUM,
-    description='Ne garder que les statuts de ce domaine.')]))
+#: ENF11 (api-fuzz « rejected schema-compliant request ») — la clé d'un statut
+#: n'existe que dans SON domaine (``StatutConfigSerializer.validate``) : le
+#: corps publié de la création / du remplacement apparie chaque domaine à ses
+#: seules clés canoniques.
+CLE_DU_DOMAINE_CORPS = {
+    'oneOf': [{
+        'required': ['domaine', 'cle'],
+        'properties': {
+            'domaine': {'enum': [domaine]},
+            'cle': {'enum': sorted(default_keys(domaine))},
+        }} for domaine in _DOMAINE_ENUM]}
+_CLE_DU_DOMAINE = extend_schema(
+    extensions={EXTENSION_CORPS_RESSERRE: CLE_DU_DOMAINE_CORPS})
+
+
+@extend_schema_view(
+    list=extend_schema(parameters=[OpenApiParameter(
+        'domaine', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+        enum=_DOMAINE_ENUM,
+        description='Ne garder que les statuts de ce domaine.')]),
+    create=_CLE_DU_DOMAINE, update=_CLE_DU_DOMAINE)
 class StatutConfigViewSet(SettingsAuditedMixin, TenantMixin,
                           viewsets.ModelViewSet):
     """Surcharges d'affichage des statuts métier (N58).

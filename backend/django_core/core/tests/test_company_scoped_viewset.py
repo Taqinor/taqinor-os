@@ -96,9 +96,16 @@ class DefaultScopedPermissionARC55Tests(SimpleTestCase):
     def test_pilots_keep_own_get_permissions(self):
         """Chaque pilote surcharge get_permissions : DRF ne consulte donc jamais
         le permission_classes de la base → 401/403 byte-identiques."""
-        from apps.crm.clients_views import ClientViewSet
-        from apps.installations.views.transporteur import TransporteurViewSet
-        from apps.sav.views import CauseDefaillanceViewSet
+        import importlib
+
+        # ENF20 — vues des pilotes chargées par import dynamique : core
+        # n'importe aucune app (contrat core-foundation-is-a-base-layer).
+        ClientViewSet = importlib.import_module(
+            "apps.crm.clients_views").ClientViewSet
+        TransporteurViewSet = importlib.import_module(
+            "apps.installations.views.transporteur").TransporteurViewSet
+        CauseDefaillanceViewSet = importlib.import_module(
+            "apps.sav.views").CauseDefaillanceViewSet
         for vs in (ClientViewSet, TransporteurViewSet, CauseDefaillanceViewSet):
             self.assertIn(
                 "get_permissions", vs.__dict__,

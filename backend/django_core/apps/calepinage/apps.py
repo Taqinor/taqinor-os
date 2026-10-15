@@ -7,9 +7,8 @@ class CalepinageConfig(AppConfig):
     """AppConfig du module « apps.calepinage » (CAL4 — généré par startapp_erp).
 
     Le module Calepinage est AUTONOME : on y conçoit une toiture pour un lead,
-    un client, un devis ou une affaire d'appel d'offres. Il ne REMPLACE rien —
-    le geste « Concevoir la toiture (3D) » de la fiche lead garde exactement sa
-    sémantique, et l'atelier 2D opposable des appels d'offres garde ses modèles.
+    un client ou un devis. Il ne REMPLACE rien — le geste « Concevoir la
+    toiture (3D) » de la fiche lead garde exactement sa sémantique.
     Le module est une PORTE SUPPLÉMENTAIRE (décision fondateur du 19/09/2026).
 
     ODX2 — ``module_manifest`` : déclaré une fois, collecté génériquement par
@@ -35,8 +34,7 @@ class CalepinageConfig(AppConfig):
         'description': (
             "Conception de toiture et calepinage photovoltaïque : implantation "
             "des modules, variantes comparées, versions horodatées et "
-            "rattachement à un lead, un client, un devis ou une affaire "
-            "d'appel d'offres."
+            "rattachement à un lead, un client ou un devis."
         ),
         'categorie': 'Commercial',
     }

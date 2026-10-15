@@ -29,6 +29,10 @@ from __future__ import annotations
 from django.http import JsonResponse
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # YRBAC6/YRBAC7 — Registre central des champs sensibles
 # ─────────────────────────────────────────────────────────────────────────────
@@ -166,6 +170,7 @@ class DisabledModuleMiddleware:
             try:
                 manifests = modules_infra.collect_manifests()
             except Exception:  # noqa: BLE001 - jamais casser le pipeline HTTP
+                logger.warning("installable : échec ignoré, comportement dégradé", exc_info=True)
                 manifests = {}
             self._installable_keys = {
                 k for k, m in manifests.items() if m.get('installable')
@@ -189,6 +194,7 @@ class DisabledModuleMiddleware:
             from authentication.cookie_auth import CookieJWTAuthentication
             result = CookieJWTAuthentication().authenticate(request)
         except Exception:  # noqa: BLE001 - jeton invalide ⇒ pas de blocage
+            logger.warning("company : échec ignoré, comportement dégradé", exc_info=True)
             return None
         if result is None:
             return None

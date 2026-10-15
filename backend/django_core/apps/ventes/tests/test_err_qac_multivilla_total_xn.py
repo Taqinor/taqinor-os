@@ -124,9 +124,7 @@ class TestEcheancier(SimpleTestCase):
                      'valeur': Decimal('70'), 'unite': echeancier.UNITE_PCT}]
         p1 = mock.patch.object(echeancier, 'tranches_normalisees',
                                return_value=tranches)
-        p2 = mock.patch.object(echeancier, 'factures_actives',
-                               return_value=[])
-        with p1, p2:
+        with p1:
             return echeancier.next_tranche(_devis(n), lignes=LIGNES, option='')
 
     def test_acompte_suit_le_total_x3(self):

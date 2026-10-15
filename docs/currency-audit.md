@@ -55,26 +55,26 @@ with no rate column at all — mono-MAD in practice.
 | facturation | Paiement | `apps/facturation/models.py:843` | escompte_montant, montant |
 | facturation | Avoir | `apps/facturation/models.py:1067` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
 | facturation | LigneAvoir | `apps/facturation/models.py:1185` | prix_unitaire, remise, taux_tva |
-| ged | ModeleDocument | `apps/ged/models.py:2328` | corps_html |
-| ged | LotEnvoi | `apps/ged/models.py:3240` | total |
+| ged | ModeleDocument | `apps/ged/models.py:2393` | corps_html |
+| ged | LotEnvoi | `apps/ged/models.py:3351` | total |
 | installations | RegleApprobationAchat | `apps/installations/models_approbation_achat.py:38` | montant_max, montant_min |
-| installations | ApprobationBCF | `apps/installations/models_approbation_bcf.py:72` | montant_approuve |
-| installations | CommandeCadreLigne | `apps/installations/models_commande_cadre.py:70` | prix_negocie |
-| installations | ContratPrixLigne | `apps/installations/models_contrat_prix.py:82` | prix_convenu, remise_pct |
-| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:194` | prix_estime |
+| installations | ApprobationBCF | `apps/installations/models_approbation_bcf.py:73` | montant_approuve |
+| installations | CommandeCadreLigne | `apps/installations/models_commande_cadre.py:71` | prix_negocie |
+| installations | ContratPrixLigne | `apps/installations/models_contrat_prix.py:83` | prix_convenu, remise_pct |
+| installations | DemandeAchatLigne | `apps/installations/models_demande_achat.py:195` | prix_estime |
 | installations | ReceptionNonFacturee | `apps/installations/models_gr_ir.py:22` | montant_provision |
 | installations | FraisImport | `apps/installations/models_landed_cost.py:28` | montant |
 | installations | Livraison | `apps/installations/models_livraison.py:19` | cout_transport |
 | installations | OrdreSousTraitance | `apps/installations/models_ordre_soustraitance.py:66` | montant, montant_realise |
-| installations | RFQOffre | `apps/installations/models_rfq.py:81` | montant_ht |
-| monitoring | AbonnementMonitoring | `apps/monitoring/models.py:418` | montant |
+| installations | RFQOffre | `apps/installations/models_rfq.py:82` | montant_ht |
+| monitoring | AbonnementMonitoring | `apps/monitoring/models.py:430` | montant |
 | parametres | TariffSettings | `apps/parametres/models_tariff.py:74` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
 | publicapi | BulkJob | `apps/publicapi/models.py:541` | total |
-| sav | Ticket | `apps/sav/models.py:645` | cout |
-| sav | WarrantyClaim | `apps/sav/models.py:1414` | cout_recupere |
-| sav | ContratMaintenance | `apps/sav/models.py:1530` | prix |
-| sav | PrestationContrat | `apps/sav/models.py:1860` | prix_ht |
+| sav | Ticket | `apps/sav/models.py:656` | cout |
+| sav | WarrantyClaim | `apps/sav/models.py:1439` | cout_recupere |
+| sav | ContratMaintenance | `apps/sav/models.py:1557` | prix |
+| sav | PrestationContrat | `apps/sav/models.py:1883` | prix_ht |
 | statuspage | UptimeDayBucket | `apps/statuspage/models.py:164` | echantillons_total |
 | stock | AchatsParametres | `apps/stock/models.py:426` | ras_tva_actif, seuil_deviation_prix_pct, tolerance_prix_absolu_mad, tolerance_prix_pct |
 | stock | ToleranceRapprochementCategorie | `apps/stock/models.py:576` | tolerance_prix_absolu_mad, tolerance_prix_pct |

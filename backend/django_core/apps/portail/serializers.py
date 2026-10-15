@@ -11,10 +11,12 @@ serveur et ``lien_ged`` sert la relecture AUTHENTIFIÉE de la dernière version
 (jamais une URL de média statique). La GED reste dans le produit (décision
 fondateur du 21/09/2026, SOLMVP16b).
 """
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import EntierNullableEnLecture
 from core.champs_stricts import EntierStrict
 from core.mixins import SameCompanyFKSerializerMixin
 
@@ -96,7 +98,9 @@ def _resoudre_chantier(company, chantier_id):
 # ── FG228 — Comptes portail client ─────────────────────────────────────────
 
 class ComptePortailClientSerializer(SameCompanyFKSerializerMixin,
+                                    ChampsStrictsMixin,
                                     serializers.ModelSerializer):
+    # CI #997 api-fuzz — `actif` booléen STRICT (un `0` désactivait en silence).
     # SOLMVP16 — la classe a quitte le shim compta : la FK `client` (crm.Client)
     # est ecrivable, donc validee meme-societe (AUD601, check_fk_scoping).
     same_company_fields = ('client',)
@@ -184,7 +188,10 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
 
     # WIR95 — voir ``AcceptationDevisPortailSerializer.devis_id`` ci-dessus.
     client_id = serializers.IntegerField(min_value=0)
-    lead_id = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    # CI #997 (3) — idem ``fichier`` : formulaire multipart, pas de ``null``
+    # (écrit « None » → « entier valide requis ») ; sans lead = champ OMIS à
+    # l'écriture, mais ``null`` servi à la lecture (schéma de RÉPONSE nullable).
+    lead_id = EntierNullableEnLecture(min_value=0)
     # AUD148 (b) — le ``FileField`` était sérialisé tel quel et rendu en lien
     # DIRECT par l'écran, alors que ``settings/base.py`` ne définit NI
     # ``MEDIA_URL`` NI ``MEDIA_ROOT`` (seules des constantes MinIO), qu'aucune
@@ -192,8 +199,12 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
     # ``location /media/`` : le lien était mort par construction. Le champ
     # reste ÉCRIVABLE (le dépôt WIR94 vers la GED se déclenche au ``save()``)
     # mais n'est plus RENDU — on n'expose jamais une URL de média statique.
-    fichier = serializers.FileField(
-        write_only=True, required=False, allow_null=True)
+    # CI #997 (3) — jamais ``allow_null`` : le dépôt est un formulaire
+    # multipart (``DocumentClientPortailViewSet``) qui ne sait pas écrire un
+    # ``null`` (un client le sérialise en texte « None » → « La donnée soumise
+    # n'est pas un fichier ») ; l'absence de fichier = champ OMIS. Le schéma ne
+    # publie donc plus ``nullable`` sur ce champ binaire.
+    fichier = serializers.FileField(write_only=True, required=False)
     fichier_present = serializers.SerializerMethodField()
     lien_ged = serializers.SerializerMethodField()
 
@@ -295,3 +306,98 @@ class DemandeTicketPortailSerializer(serializers.ModelSerializer):
         """AUD142 — le chantier DOIT appartenir à la société de l'appelant."""
         return _valider_id_cross_app(
             self, value, _resoudre_chantier, 'Chantier')
+
+
+# ── ENF11 — formes de SCHÉMA des ViewSets self-service « Mes devis » et
+# « Mes factures » (``views_client``) ─────────────────────────────────────────
+# Ces ``viewsets.ViewSet`` rendent des dicts de sélecteurs ``ventes`` : sans
+# forme déclarée, drf-spectacular journalisait « unable to guess serializer »
+# et baptisait la liste ``…_retrieve`` comme le détail (collision
+# d'operationId). Une ligne reflète les sélecteurs ``ventes``
+# ``devis_du_client_portail`` / ``factures_du_client_portail`` (contrats
+# ``contract_samples/mes_devis_liste.json`` et ``mes_factures_liste.json``).
+# ``many=False`` : la liste est une ENVELOPPE ``{results: [...]}``.
+class MesDevisPortailLigneSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    date_creation = serializers.CharField(allow_null=True)
+    date_validite = serializers.CharField(allow_null=True)
+    total_ttc = serializers.CharField()
+    accepte = serializers.BooleanField()
+    mis_a_jour_le = serializers.CharField(allow_null=True)
+    deux_options = serializers.BooleanField()
+    options = serializers.ListField(child=serializers.DictField())
+    exige_identite_entreprise = serializers.BooleanField()
+    conditions_titre = serializers.CharField(allow_blank=True)
+    conditions = serializers.ListField(child=serializers.JSONField())
+
+
+class MesFacturesPortailLigneSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    reference = serializers.CharField()
+    statut = serializers.CharField()
+    statut_display = serializers.CharField()
+    date_emission = serializers.CharField(allow_null=True)
+    date_echeance = serializers.CharField(allow_null=True)
+    montant_ttc = serializers.CharField()
+    montant_du = serializers.CharField()
+    montant_exigible = serializers.CharField()
+    payee = serializers.BooleanField()
+    payable = serializers.BooleanField()
+
+
+@extend_schema_serializer(many=False)
+class MesDevisPortailListeSerializer(serializers.Serializer):
+    results = MesDevisPortailLigneSerializer(many=True)
+
+
+@extend_schema_serializer(many=False)
+class MesFacturesPortailListeSerializer(serializers.Serializer):
+    results = MesFacturesPortailLigneSerializer(many=True)
+    paiement_en_ligne_actif = serializers.BooleanField()
+
+
+class MarquePortailSerializer(serializers.Serializer):
+    """Marque publique du portail (``branding.marque_portail`` / ``MARQUE_VIDE``)."""
+    nom_affichage = serializers.CharField(allow_blank=True)
+    logo_url = serializers.CharField(allow_blank=True)
+    couleur_primaire = serializers.CharField(allow_blank=True)
+    couleur_secondaire = serializers.CharField(allow_blank=True)
+
+
+class ReleveComptePortailSerializer(serializers.Serializer):
+    """Relevé self-service (``ventes.selectors.releve_client_portail``)."""
+    client = serializers.DictField()
+    lignes = serializers.ListField(child=serializers.DictField())
+    paiements = serializers.ListField(child=serializers.DictField())
+    avoirs = serializers.ListField(child=serializers.DictField())
+    totaux = serializers.DictField(child=serializers.CharField())
+    solde_courant = serializers.CharField()
+    balance_agee = serializers.DictField(child=serializers.CharField())
+
+
+class AccepterDevisPortailRequeteSerializer(serializers.Serializer):
+    """Corps de ``POST mes-devis/{id}/accepter/`` (QX9, APDF35, CIQ321)."""
+    nom = serializers.CharField()
+    consent_esign = serializers.BooleanField()
+    accepte_conditions = serializers.BooleanField()
+    option = serializers.CharField(required=False, allow_blank=True)
+    entreprise = serializers.DictField(required=False, allow_null=True)
+
+
+class AccepterDevisPortailReponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    reference = serializers.CharField()
+    statut = serializers.CharField()
+
+
+class PayerFacturePortailReponseSerializer(serializers.Serializer):
+    """Réponse de ``POST mes-factures/{id}/payer/`` (NTPRT11, repli virement)."""
+    paiement_id = serializers.IntegerField()
+    reference = serializers.CharField(allow_null=True)
+    statut = serializers.CharField()
+    montant = serializers.CharField()
+    paiement_en_ligne_actif = serializers.BooleanField()
+    virement = serializers.DictField()

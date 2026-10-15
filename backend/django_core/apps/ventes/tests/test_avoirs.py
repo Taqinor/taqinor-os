@@ -161,7 +161,8 @@ class TestAvoirs(TestCase):
 
     def test_avoir_exceeding_remaining_rejected(self):
         # Une ligne d'avoir à 20 000 HT (24 000 TTC) dépasse les 17 000 TTC
-        # créditables de la facture → 400, aucun avoir persisté.
+        # créditables de la facture → 409 (refus d'état, CI #997), aucun
+        # avoir persisté.
         api = self._api(self.admin)
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
@@ -170,7 +171,7 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '20000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('dépasse', resp.data['detail'])
         self.assertEqual(Avoir.objects.count(), 0)
 
@@ -188,7 +189,8 @@ class TestAvoirs(TestCase):
                          'quantite': '1', 'prix_unitaire': '5000',
                          'taux_tva': '20'}]},
             format='json')
-        self.assertEqual(r2.status_code, 400)
+        # CI #997 (3) : plafond d'avoir dépassé = conflit d'état (409), corps conforme.
+        self.assertEqual(r2.status_code, 409, r2.data)
         self.assertEqual(Avoir.objects.count(), 1)
 
     def test_corps_hors_schema_400_jamais_500(self):
@@ -211,6 +213,20 @@ class TestAvoirs(TestCase):
             with self.subTest(corps=corps):
                 resp = api.post(url, corps, format='json')
                 self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(Avoir.objects.count(), 0)
+
+    def test_motif_et_ligne_strictement_types(self):
+        # CI #997 (2) (cas 6kYQk5) — ``motif: 0`` créait l'avoir (201, motif
+        # « 0 ») ; ``produit: "5"`` / ``designation: 5`` étaient convertis.
+        api = self._api(self.admin)
+        url = f'/api/django/facturation/factures/{self.facture.id}/creer-avoir/'
+        ligne = {'produit': self.onduleur.id, 'designation': 'X',
+                 'quantite': '1', 'prix_unitaire': '1'}
+        for corps in ({'motif': 0}, {'motif': None},
+                      {'lignes': [dict(ligne, produit=str(self.onduleur.id))]},
+                      {'lignes': [dict(ligne, designation=5)]}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
         self.assertEqual(Avoir.objects.count(), 0)
 
     # ── AUD126 — la garde de plafond est SÉRIALISÉE ──
@@ -313,7 +329,7 @@ class TestAvoirConcurrenceAUD126(TransactionTestCase):
         for thread in threads:
             thread.join(timeout=90)
 
-        self.assertEqual(sorted(resultats), [201, 400], resultats)
+        self.assertEqual(sorted(resultats), [201, 409], resultats)
         self.facture.refresh_from_db()
         self.assertEqual(Avoir.objects.filter(facture=self.facture).count(), 1)
         self.assertLessEqual(

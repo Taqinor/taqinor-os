@@ -49,7 +49,7 @@ export function documentContrat(app, nom) {
   if (!existsSync(chemin)) {
     throw new Error(
       `Exemple de contrat introuvable : ${chemin}. Le contrat part EN PREMIER `
-      + '(PACT10) — voir backend/django_core/apps/ao/contract_samples/README.md',
+      + '(PACT10) — voir backend/django_core/apps/calepinage/contract_samples/README.md',
     )
   }
   return JSON.parse(readFileSync(chemin, 'utf8'))

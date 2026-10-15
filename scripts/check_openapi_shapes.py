@@ -101,7 +101,9 @@ SIGNATURE_NON_DEVINABLE = "unable to guess serializer"
 # BAISSER : chaque vue qui gagne un serialiseur reel le fait descendre, et
 # c'est la seule direction autorisee. Baisser ce nombre est un progres a
 # committer ; le remonter est un refus.
-PLAFOND_NON_DEVINABLES = 14
+# ENF11 (14/10/2026) : 14 -> 0 — la base d'avertissements OpenAPI est vide
+# (`check_openapi_schema.py --strict` vert) ; plus aucune vue « non devinable ».
+PLAFOND_NON_DEVINABLES = 0
 
 # --- R3 : vocabulaire des endpoints AGREGES ----------------------------------
 # Detection par le CHEMIN, jamais par la forme du `return` (cf. en-tete).

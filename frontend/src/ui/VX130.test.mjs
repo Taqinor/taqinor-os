@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const TOASTER_SRC = readFileSync(join(HERE, 'Toaster.jsx'), 'utf8')
@@ -18,7 +19,7 @@ const TOASTER_CODE_ONLY = TOASTER_SRC
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/\/\/.*$/gm, '')
 const TOAST_LIB_SRC = readFileSync(join(HERE, '..', 'lib', 'toast.js'), 'utf8')
-const INDEX_CSS = readFileSync(join(HERE, '..', 'index.css'), 'utf8')
+const INDEX_CSS = resolveCss(join(HERE, '..', 'index.css'))
 const EMPTY_STATE_SRC = readFileSync(join(HERE, 'EmptyState.jsx'), 'utf8')
 const ERROR_BOUNDARY_SRC = readFileSync(join(HERE, 'ErrorBoundary.jsx'), 'utf8')
 

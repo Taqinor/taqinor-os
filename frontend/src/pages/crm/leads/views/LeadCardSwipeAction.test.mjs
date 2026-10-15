@@ -13,12 +13,13 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { resolveCss } from '../../../../test/readCss.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = readFileSync(join(HERE, 'LeadCard.jsx'), 'utf8')
 const KANBAN = readFileSync(join(HERE, 'KanbanView.jsx'), 'utf8')
 // views → leads → crm → pages → src/index.css
-const CSS = readFileSync(join(HERE, '..', '..', '..', '..', 'index.css'), 'utf8')
+const CSS = resolveCss(join(HERE, '..', '..', '..', '..', 'index.css'))
 
 // Découpe le corps d'une règle CSS `selecteur {` à partir d'un décalage donné,
 // en équilibrant les accolades (les commentaires du bloc n'en contiennent pas).

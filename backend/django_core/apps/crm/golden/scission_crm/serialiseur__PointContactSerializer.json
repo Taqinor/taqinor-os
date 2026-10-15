@@ -37,7 +37,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "source",
    "read_only": false,
    "required": false
@@ -49,19 +49,19 @@
    "required": false
   },
   {
-   "classe": "IntegerField",
+   "classe": "EntierStrict",
    "nom": "ordre",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "detail",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "cout",
    "read_only": false,
    "required": false

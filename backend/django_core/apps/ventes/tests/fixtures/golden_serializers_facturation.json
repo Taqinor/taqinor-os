@@ -375,7 +375,7 @@
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -389,7 +389,7 @@
      false
     ],
     "reference": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
@@ -403,7 +403,7 @@
      false
     ],
     "signe_au_domicile": [
-     "BooleanField",
+     "BooleenStrict",
      false,
      false,
      null,
@@ -928,6 +928,13 @@
      null,
      false
     ],
+    "prochaines_echeances": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
+     false
+    ],
     "reference": [
      "CharField",
      true,
@@ -968,6 +975,13 @@
      false,
      false,
      null,
+     false
+    ],
+    "situation_vente": [
+     "SerializerMethodField",
+     true,
+     false,
+     "*",
      false
     ],
     "statut": [
@@ -1483,14 +1497,14 @@
      false
     ],
     "message": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "nom": [
-     "CharField",
+     "ChaineStricte",
      false,
      true,
      null,
@@ -2511,7 +2525,7 @@
   "RelancerFactureSerializer": {
    "fields": {
     "envoyer_email": [
-     "BooleanField",
+     "BooleenStrict",
      false,
      false,
      null,
@@ -2592,7 +2606,7 @@
      false
     ],
     "fichier_pdf": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
@@ -2613,7 +2627,7 @@
      true
     ],
     "montant_declare": [
-     "DecimalField",
+     "DecimalStricte",
      false,
      true,
      null,
@@ -2627,14 +2641,14 @@
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "reference": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,

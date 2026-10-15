@@ -6874,7 +6874,7 @@ def dupliquer_kit(kit, user=None, facteur_echelle=None):
             facteur = Decimal(str(facteur_echelle))
         except (InvalidOperation, TypeError, ValueError):
             raise ValueError("Facteur d'échelle invalide.")
-        if facteur <= 0:
+        if not facteur.is_finite() or facteur <= 0:  # NaN : 400, jamais 500
             raise ValueError("Le facteur d'échelle doit être positif.")
 
     copie = Kit.objects.create(

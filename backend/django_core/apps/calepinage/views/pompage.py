@@ -38,6 +38,7 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from core.champs_stricts import ChaineStricte
 from core.pompage.selection import selection_pompe, selection_variateur, tension_produit
@@ -48,6 +49,10 @@ from ..serializers import forme_du_contrat
 from ..services import pompage as dim
 from .calepinages import CalepinageViewSet, contexte_conception
 from ..services.valeurs import nombre as _nombre
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 __all__ = ['pompage']
 
@@ -87,6 +92,7 @@ def _site(calepinage, request):
     try:
         contexte = contexte_conception(calepinage, request)
     except Exception:  # le pompage survit à une carte muette
+        logger.warning("site : échec ignoré, comportement dégradé", exc_info=True)
         return None, None, None
     pin = ((contexte or {}).get('geometrie') or {}).get('pin') or {}
     ville = ((contexte or {}).get('calepinage') or {}).get('client_ville') or None
@@ -173,7 +179,8 @@ def _champs_corps():
     responses=forme_du_contrat('CalepinagePompageReponse',
                                'calepinage_pompage.json'))
 @action(detail=True, methods=['post'], url_path='pompage',
-        permission_classes=[PeutVoirCalepinage])
+        permission_classes=[PeutVoirCalepinage],
+        parser_classes=[JSONParser])  # corps JSON seul : un multipart n'a pas de null
 def pompage(self, request, pk=None):
     """CAL159 — puits, besoin, réservoir, pompe/variateur et volumes mensuels.
 

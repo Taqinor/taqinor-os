@@ -103,11 +103,12 @@ class PrixAchatCatalogueImportTests(TestCase):
         rep = self._import(self.tech_resp, apercu='true')
         self.assertEqual(rep.status_code, 403)
         # CI #998 — le corps 403 porte un ``request_id`` hexadécimal aléatoire
-        # qui peut contenir « 820 » : le prix ne doit pas figurer dans la
-        # réponse HORS cet identifiant (le test était intermittent).
-        corps = rep.json()
+        # (au premier niveau ET sous ``error``) qui peut contenir « 820 » : le
+        # prix ne doit pas figurer dans la réponse HORS cet identifiant.
+        corps = {k: v for k, v in rep.json().items() if k != 'request_id'}
         corps.get('error', {}).pop('request_id', None)
         self.assertNotIn('820', json.dumps(corps))
+        self.assertNotIn('prix_achat', corps)
         rep = self._import(self.tech_resp, ecraser='true')
         self.assertEqual(rep.status_code, 403)
         self.prix.refresh_from_db()

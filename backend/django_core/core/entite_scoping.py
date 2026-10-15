@@ -28,6 +28,10 @@ from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'entite_id_demandee',
     'filtre_entite_demandee',
@@ -41,21 +45,18 @@ __all__ = [
 def entite_id_demandee(request):
     """``?entite=<id>`` normalisé en entier, ou ``None``.
 
-    Une valeur absente, vide ou non numérique vaut « pas de filtre » — jamais
-    une erreur 500 ni une liste vide surprise.
+    Une valeur absente ou vide vaut « pas de filtre ». CI #997 — une valeur
+    non entière (``?entite=null``, ``abc``) répond 400 nommant le paramètre,
+    comme le schéma ``integer`` le déclare (elle était ignorée en silence) ;
+    jamais une erreur 500.
     """
     if request is None:
         return None
     params = getattr(request, 'query_params', None)
     if params is None:
         return None
-    brut = params.get('entite')
-    if brut in (None, ''):
-        return None
-    try:
-        return int(brut)
-    except (TypeError, ValueError):
-        return None
+    from core.champs_stricts import entier_ou_400
+    return entier_ou_400(params.get('entite'), 'entite')
 
 
 def filtre_entite_demandee(qs, request, champ='entite'):
@@ -198,9 +199,15 @@ class EntiteScopeMixin:
         super().initial(request, *args, **kwargs)
         if request.method not in ('POST', 'PUT', 'PATCH'):
             return
+        # CI #997 api-fuzz : une méthode que la route ne porte pas (``action``
+        # nul — ex. PUT sur une @action POST seule) est un 405 : le contrôle
+        # d'entité ne doit pas répondre 400/403 à sa place.
+        if hasattr(self, 'action') and self.action is None:
+            return
         try:
             data = request.data
         except Exception:  # noqa: BLE001 — corps illisible : le parseur DRF
+            logger.warning("initial : échec ignoré, comportement dégradé", exc_info=True)
             return           # de la vue tranchera (400/415), jamais un 500 ici
         if not hasattr(data, 'get') or self.entite_field not in data:
             return

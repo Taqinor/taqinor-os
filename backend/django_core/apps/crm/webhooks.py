@@ -2202,7 +2202,7 @@ def _map_and_link_lead(raw, data, company):
                 # ci-dessous (best-effort, jamais un blocage long).
                 _time.sleep(0.15)
         except Exception:  # noqa: BLE001 — cache indisponible : no-op
-            pass
+            logger.warning("map and link lead : échec ignoré, comportement dégradé", exc_info=True)
 
     dup_ids, match_fort = [], False
 

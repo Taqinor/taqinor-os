@@ -38,7 +38,8 @@ class SeuilApprobationBCF(models.Model):
     Multi-tenant : la société est posée côté serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_seuils_approbation_bcf')
     # Montant d'achat (HT, MAD) jusqu'auquel un Responsable peut approuver.
@@ -77,12 +78,14 @@ class ApprobationBCF(models.Model):
     Multi-tenant : la société est posée côté serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_approbations_bcf')
     # Bon de commande fournisseur approuvé (string-FK vers stock).
     bcf = models.ForeignKey(
-        'achats.BonCommandeFournisseur', on_delete=models.CASCADE,  # on_delete: ApprobationBCF est le détail de BonCommandeFournisseur — n'existe pas sans lui
+        'achats.BonCommandeFournisseur',
+        on_delete=models.CASCADE,  # on_delete: détail de BonCommandeFournisseur — n'existe pas sans lui
         related_name='installations_approbations')
     # Palier appliqué (PROPRE à ce workflow). max_length=20 couvre 'responsable'.
     palier = models.CharField(max_length=20, choices=PALIER_CHOICES)

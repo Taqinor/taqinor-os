@@ -97,7 +97,7 @@ class PaymentLinkTests(TestCase):
             montant=Decimal('1200.00'), date_paiement=timezone.localdate(),
             mode=Paiement.Mode.VIREMENT)
         resp = self._create_link()
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_pay_page_exposes_minimum(self):
         link_token = self._create_link().data['token']

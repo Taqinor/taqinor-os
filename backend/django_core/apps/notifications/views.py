@@ -23,7 +23,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from core.champs_stricts import ChaineStricte, entier_ou_400
+from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
 from core.parametres_requete import choix_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
@@ -53,6 +53,10 @@ from .services import (
     publish_annonce, resolve_vapid_keys, EVENEMENTS_ROUTABLES_CHOIX, set_template_approval_status,
     submit_template_for_approval,
 )
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _q(nom, type_, description, **kw):
@@ -84,10 +88,10 @@ _PREFERENCE_LIGNE = inline_serializer('PreferenceEffective', many=True, fields={
     'routable': serializers.BooleanField(),
 })
 _PREFERENCE_REQUEST = inline_serializer('PreferenceEcriture', {
-    'in_app': serializers.BooleanField(required=False),
-    'whatsapp': serializers.BooleanField(required=False),
-    'email': serializers.BooleanField(required=False),
-    'push': serializers.BooleanField(required=False),
+    'in_app': BooleenStrict(required=False),
+    'whatsapp': BooleenStrict(required=False),
+    'email': BooleenStrict(required=False),
+    'push': BooleenStrict(required=False),
 })
 _PREFERENCE_ID = OpenApiParameter(
     'id', OpenApiTypes.STR, OpenApiParameter.PATH,
@@ -266,16 +270,17 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
             return Response(
                 {'detail': "Type d'événement inconnu."},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 fuzz : vrais booléens JSON seuls (``{}`` était lu « vrai »).
+        corps = type(_PREFERENCE_REQUEST)(data=request.data)
+        corps.is_valid(raise_exception=True)
         pref, _ = NotificationPreference.objects.get_or_create(
             user=request.user, event_type=event_type,
             defaults={'company': request.user.company})
         # Société toujours alignée côté serveur sur celle de l'utilisateur.
         if pref.company_id != request.user.company_id:
             pref.company = request.user.company
-        data = request.data
-        for field in ('in_app', 'whatsapp', 'email', 'push'):
-            if field in data:
-                pref.__dict__[field] = bool(data[field])
+        for field, valeur in corps.validated_data.items():
+            pref.__dict__[field] = valeur
         pref.save()
         return Response(NotificationPreferenceSerializer(pref).data)
 
@@ -883,14 +888,14 @@ def attention_summary(request):
             for source in appro._SOURCE_LOADERS:
                 nb_approbations += len(appro._SOURCE_LOADERS[source](company))
         except Exception:  # pragma: no cover - défensif, jamais de 500
-            pass
+            logger.warning("attention summary : échec ignoré, comportement dégradé", exc_info=True)
 
     nb_mentions = 0
     try:
         nb_mentions = notif_selectors.mentions_non_lues(
             request.user, company).count()
     except Exception:  # pragma: no cover - défensif
-        pass
+        logger.warning("attention summary : échec ignoré, comportement dégradé", exc_info=True)
 
     return Response({
         'actions_dues': en_retard + aujourdhui + nb_approbations,

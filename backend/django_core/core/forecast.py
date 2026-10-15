@@ -26,6 +26,10 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Iterable, Sequence
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Import défensif : statsmodels est pré-approuvé et épinglé dans requirements,
 # mais le code degrade proprement s'il est absent au runtime (image non encore
 # reconstruite). On ne lève jamais : on bascule sur le repli pur Python.
@@ -33,6 +37,7 @@ try:  # pragma: no cover - dépend de l'environnement
     from statsmodels.tsa.holtwinters import ExponentialSmoothing as _ExpSmoothing
     _HAS_STATSMODELS = True
 except Exception:  # pragma: no cover - ImportError ou échec de dépendance
+    logger.warning("<module> : échec ignoré, comportement dégradé", exc_info=True)
     _ExpSmoothing = None
     _HAS_STATSMODELS = False
 
@@ -205,6 +210,7 @@ def _forecast_holt_winters(
         slope = (out[-1] - out[0]) / (horizon - 1) if horizon > 1 else 0.0
         return out, 'holt-winters', slope
     except Exception:
+        logger.warning("forecast holt winters : échec ignoré, comportement dégradé", exc_info=True)
         return None
 
 

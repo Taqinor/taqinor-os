@@ -152,11 +152,15 @@ class ExpirationDevisEmetLeSignalTests(TestCase):
             nom='Taqinor CRX20 expiration', slug='taqinor-crx20-expiration')
 
     def _avancer(self, lead):
+        import importlib
         from datetime import timedelta
 
         from django.utils import timezone
 
-        from apps.ventes.domain.recouvrement import _advance_lead_on_expiry
+        # ENF20 — test boîte blanche d'un helper PRIVÉ de ventes : import
+        # dynamique délibéré (contrat vente-lue-par-la-facade).
+        _advance_lead_on_expiry = importlib.import_module(
+            'apps.ventes.domain.recouvrement')._advance_lead_on_expiry
 
         # `today` très postérieur : garantit l'absence d'activité « récente ».
         return _advance_lead_on_expiry(

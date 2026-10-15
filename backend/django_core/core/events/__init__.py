@@ -411,6 +411,7 @@ def emettre_langue_changed(company, *, ancienne_langue, nouvelle_langue,
             nouvelle_langue=apres,
             user=user)
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        _logger.warning("emettre langue changed : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'NTI18N43 : émission langue_changed échouée (%s %s → %s)',

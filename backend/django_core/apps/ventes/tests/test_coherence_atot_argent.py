@@ -97,3 +97,19 @@ class CoherenceArgentTests(_Base):
         self.assertEqual(len(sorties[1]), 1)
         self.assertAlmostEqual(sorties[1][0].valeurs['net_facture'],
                                25200.0, places=2)
+
+    def test_vnt87_deux_brouillons_ne_sont_pas_une_chaine_engagee(self):
+        """VNT87 — ``_factures_actives_par_devis`` = ÉMISES seulement : deux
+        brouillons concurrents sur un devis envoyé ne sont pas « engagés en
+        aval » ; une facture émise l'est."""
+        devis = self.devis(Devis.Statut.ENVOYE)
+        for _ in range(2):
+            self._facture('1200', devis=devis)  # brouillons (défaut)
+        self.assertEqual(self.run_rule('DOC_LIEN_DEVIS_NON_ACCEPTE', devis,
+                                       _Ctx(self.company)), [])
+        emise = self._facture('1200', devis=devis,
+                              statut=Facture.Statut.EMISE)
+        out = self.run_rule('DOC_LIEN_DEVIS_NON_ACCEPTE', devis,
+                            _Ctx(self.company))
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0].valeurs['factures'], [emise.reference])

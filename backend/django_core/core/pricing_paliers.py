@@ -34,6 +34,10 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Iterable, Optional
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 MODE_VOLUME = 'volume'
 MODE_GRADUATED = 'graduated'
 
@@ -47,6 +51,7 @@ def _to_decimal(value, default=Decimal('0')) -> Decimal:
     try:
         return Decimal(str(value))
     except Exception:  # noqa: BLE001 — entrée non numérique quelconque
+        logger.warning("to decimal : échec ignoré, comportement dégradé", exc_info=True)
         return default
 
 

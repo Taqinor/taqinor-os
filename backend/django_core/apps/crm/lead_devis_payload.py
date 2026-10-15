@@ -73,6 +73,22 @@ def lignes_devis_du_lead(obj, context):
     # `apps.ventes.selectors.devis_modifiabilite` — la MÊME règle que le
     # détail du devis, jamais recopiée ici.
     from apps.ventes.selectors import devis_modifiabilite
+    # VNT70 (contrat ``lead_devis_ligne.json``) — DÉTAIL seulement (drapeau
+    # ``include_vente`` de ``LeadViewSet.retrieve``) : ``solde`` et ``vente``
+    # d'un devis ACCEPTÉ, null sinon, lus par UN appel à la façade
+    # ``etat_vente_map`` (lot : coût constant en nombre de factures) ; la
+    # liste ``crm/leads/`` ne porte pas ces clés.
+    vente_de = {}
+    if context.get('include_vente'):
+        soldes, ventes = {}, {}
+        acceptes = [d for d in rows if d.statut == 'accepte']
+        if acceptes:
+            from apps.ventes.selectors import etat_vente_map
+            ventes = etat_vente_map(
+                acceptes, getattr(context.get('request'), 'user', None),
+                soldes=soldes)
+        vente_de = {d.id: {'solde': soldes.get(d.id), 'vente': ventes.get(d.id)}
+                    for d in rows}
     return [
         {
             'id': d.id,
@@ -98,6 +114,7 @@ def lignes_devis_du_lead(obj, context):
             # déjà chargée ; null si jamais corrigé. Le cockpit dit alors
             # « lu le X — avant la correction du Y ».
             'corrige_le': _corrige_le(d),
+            **vente_de.get(d.id, {}),
         }
         for d in rows
     ]

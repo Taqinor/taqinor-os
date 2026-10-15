@@ -1,5 +1,7 @@
 from django.urls import path, include
+from drf_spectacular.utils import extend_schema_view
 from rest_framework.routers import DefaultRouter
+from .corps_requetes import SCHEMA_LOGOUT
 from .views import (
     RegisterView,
     RegisterCompanyView,
@@ -53,7 +55,8 @@ urlpatterns = [
     # XPLT19 — bascule de société active (utilisateur multi-sociétés).
     path('auth/switch-company/', SwitchCompanyView.as_view(),
          name='auth_switch_company'),
-    path('auth/logout/', LogoutView.as_view(), name='auth_logout'),
+    path('auth/logout/', extend_schema_view(post=SCHEMA_LOGOUT)(LogoutView).as_view(),
+         name='auth_logout'),
     path('auth/token/refresh/', CookieTokenRefreshView.as_view(), name='auth_token_refresh'),
     # Double authentification (2FA TOTP) — opt-in par utilisateur (N96).
     path('auth/2fa/status/', TwoFactorStatusView.as_view(), name='auth_2fa_status'),

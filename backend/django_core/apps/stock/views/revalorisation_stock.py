@@ -2,6 +2,8 @@ from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
+from rest_framework.fields import empty
 from rest_framework.response import Response
 from ..openapi_helpers import INT, P
 from core.viewsets import CompanyScopedModelViewSet
@@ -44,13 +46,25 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
                 {'detail': 'Corps illisible : un objet JSON est attendu.'},
                 status=status.HTTP_400_BAD_REQUEST)
         donnees = request.data
-        try:
-            produit_id = int(donnees.get('produit'))
-        except (TypeError, ValueError):
+        produit_id = donnees.get('produit')
+        if isinstance(produit_id, bool) or not isinstance(produit_id, int):
+            # CI #997 fuzz (2) : entier JSON seulement (``"5"``/``true`` lus).
             return Response(
                 {'detail': 'Le champ « produit » doit être un identifiant '
                            'entier.', 'champ': 'produit'},
                 status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(donnees.get('motif', ''), str):
+            # CI #997 fuzz — `motif: [null, null]` était enregistré « [None, None] ».
+            return Response(
+                {'detail': 'Le champ « motif » doit être un texte.', 'champ': 'motif'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 fuzz (2) — coût validé par le champ PUBLIÉ (chaîne ou
+        # nombre JSON, vide/booléen/null -> 400), plus lu brut par Decimal().
+        try:
+            nouveau_cout = self.get_serializer().fields['nouveau_cout'].run_validation(
+                donnees.get('nouveau_cout', empty))
+        except ValidationError as exc:
+            return Response({'nouveau_cout': exc.detail}, status=status.HTTP_400_BAD_REQUEST)
         produit = Produit.objects.filter(
             company=request.user.company, id=produit_id).first()
         if produit is None:
@@ -60,7 +74,7 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
         try:
             revalorisation = creer_revalorisation(
                 company=request.user.company, produit=produit,
-                nouveau_cout=donnees.get('nouveau_cout'),
+                nouveau_cout=nouveau_cout,
                 motif=donnees.get('motif'), user=request.user)
         except (ValueError, TypeError, ArithmeticError) as exc:
             return Response(
@@ -74,7 +88,7 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
         if instance.statut == RevalorisationStock.Statut.VALIDEE:
             return Response(
                 {'detail': 'Cette revalorisation est validée : verrouillée.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -82,7 +96,7 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
         if instance.statut == RevalorisationStock.Statut.VALIDEE:
             return Response(
                 {'detail': 'Cette revalorisation est validée : verrouillée.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(request=None, responses=RevalorisationStockSerializer)
@@ -96,5 +110,5 @@ class RevalorisationStockViewSet(CompanyScopedModelViewSet):
             valider_revalorisation(revalorisation)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(revalorisation).data)

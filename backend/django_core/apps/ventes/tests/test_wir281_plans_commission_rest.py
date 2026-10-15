@@ -260,7 +260,29 @@ class TestResoudre(TestCase):
     def test_owner_dune_autre_societe_refuse(self):
         _, etranger = another_tenant()
         r = self.api.get(f'{BASE}/resoudre/?owner={etranger.id}')
+        self.assertEqual(r.status_code, 404, r.content)
+
+    def test_owner_zero_404_et_illisible_400(self):
+        # ENF11 — ``0`` est un id bien formé, inconnu : 404 ; « abc » : 400.
+        self.assertEqual(
+            self.api.get(f'{BASE}/resoudre/?owner=0').status_code, 404)
+        self.assertEqual(
+            self.api.get(f'{BASE}/resoudre/?owner=abc').status_code, 400)
+
+    def test_actif_strict_et_owner_nom_rendu_au_patch(self):
+        # ENF11 — ``actif: 0`` n'est plus converti en silence ; le PATCH
+        # d'un plan par défaut rend ``owner_nom`` (null), comme le GET.
+        defaut = PlanCommission.objects.create(
+            company=self.company, owner=None,
+            base=PlanCommission.Base.CA_DEVIS_SIGNE, taux_pct=Decimal('2'))
+        r = self.api.patch(f'{BASE}/{defaut.id}/', {'actif': 0},
+                           format='json')
         self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.patch(f'{BASE}/{defaut.id}/', {'actif': False},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('owner_nom', r.data)
+        self.assertIsNone(r.data['owner_nom'])
 
     def test_resoudre_gate_par_prix_achat_voir(self):
         role = Role.objects.create(

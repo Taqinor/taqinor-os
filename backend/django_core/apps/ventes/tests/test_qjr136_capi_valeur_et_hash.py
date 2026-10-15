@@ -185,7 +185,7 @@ class LeRenouvellementNHeritePasDeLAttribution(TestCase):
         self.devis = Devis.objects.create(
             company=self.company, reference='DEV-QJR136-ATTR',
             client=self.client_obj, lead=self.lead,
-            statut=Devis.Statut.ACCEPTE, taux_tva=Decimal('20'),
+            statut=Devis.Statut.EXPIRE, taux_tva=Decimal('20'),
             etude_params={
                 'scenario': 'Sans batterie',
                 'attribution': {'fbclid': 'CLIC-DU-SOURCE',

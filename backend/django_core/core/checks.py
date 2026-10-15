@@ -34,6 +34,10 @@ import os
 from django.conf import settings
 from django.core.checks import Error, Tags, register
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Suffixes d'un module de réglages qui se déclare « production ».
 MODULES_PRODUCTION = ('.prod', '.production')
 
@@ -358,6 +362,7 @@ def verifier_garantie_rls(app_configs=None, **kwargs):
     try:
         attributs = lire_attributs_role(role)
     except Exception as exc:  # noqa: BLE001 — base injoignable : signaler, pas bloquer
+        logger.warning("verifier garantie rls : échec ignoré, comportement dégradé", exc_info=True)
         messages.append(CheckWarning(
             f'POSTGRES_RLS_ENABLED=1 : impossible de vérifier les attributs du '
             f'rôle runtime « {role} » ({type(exc).__name__}).',

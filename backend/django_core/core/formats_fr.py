@@ -53,6 +53,10 @@ de polices, pas par le moteur de rendu.
 from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 __all__ = [
     'ESPACE_FINE', 'ESPACE_INSECABLE', 'SEPARATEUR_DECIMAL',
     'CODEPOINT_ESPACE_FINE', 'FORMAT_TEXTE_XLSX',
@@ -145,19 +149,21 @@ def police_couvre_codepoint(chemin, codepoint=CODEPOINT_ESPACE_FINE):
     try:
         from fontTools.ttLib import TTFont
     except Exception:
+        logger.warning("police couvre codepoint : échec ignoré, comportement dégradé", exc_info=True)
         return None
     police = None
     try:
         police = TTFont(chemin, fontNumber=0, lazy=True)
         return codepoint in police.getBestCmap()
     except Exception:
+        logger.warning("police couvre codepoint : échec ignoré, comportement dégradé", exc_info=True)
         return None
     finally:
         if police is not None:
             try:
                 police.close()
             except Exception:
-                pass
+                logger.warning("police couvre codepoint : échec ignoré, comportement dégradé", exc_info=True)
 
 
 def _polices_fontconfig(familles):
@@ -166,6 +172,7 @@ def _polices_fontconfig(familles):
         import shutil
         import subprocess
     except Exception:
+        logger.warning("polices fontconfig : échec ignoré, comportement dégradé", exc_info=True)
         return []
     binaire = shutil.which('fc-match')
     if not binaire:
@@ -177,6 +184,7 @@ def _polices_fontconfig(familles):
                 [binaire, '-f', '%{file}', str(famille)],
                 capture_output=True, text=True, timeout=5)
         except Exception:
+            logger.warning("polices fontconfig : échec ignoré, comportement dégradé", exc_info=True)
             continue
         chemin = (issue.stdout or '').strip()
         if chemin and chemin not in chemins:
@@ -197,6 +205,7 @@ def _polices_matplotlib(familles=None, repli=True):
         from matplotlib import rcParams
         from matplotlib.font_manager import FontProperties, findfont
     except Exception:
+        logger.warning("polices matplotlib : échec ignoré, comportement dégradé", exc_info=True)
         return []
     if familles is None:
         familles = rcParams.get('font.family') or ['sans-serif']
@@ -208,6 +217,7 @@ def _polices_matplotlib(familles=None, repli=True):
             chemin = findfont(FontProperties(family=[str(famille)]),
                               fallback_to_default=repli)
         except Exception:
+            logger.warning("polices matplotlib : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if chemin and chemin not in chemins:
             chemins.append(chemin)

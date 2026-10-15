@@ -111,6 +111,7 @@ def _count_maintenances_dues(company):
             if contrat.is_due():
                 due += 1
         except Exception:  # pragma: no cover - défensif (date malformée)
+            logger.warning("count maintenances dues : échec ignoré, comportement dégradé", exc_info=True)
             continue
     return due
 

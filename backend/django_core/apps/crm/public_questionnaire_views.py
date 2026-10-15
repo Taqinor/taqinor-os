@@ -41,6 +41,10 @@ from .questionnaire import (
     sections_a_servir,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 #: Corps CONSTANT de tout échec de résolution (jeton inconnu OU expiré) —
 #: aucune distinction qui aiderait à énumérer les jetons.
 _INTROUVABLE = {'detail': 'Introuvable.'}
@@ -201,4 +205,4 @@ def _tracer_reponse(request, lien, section):
             request=request,
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
-        pass
+        logger.warning("tracer reponse : échec ignoré, comportement dégradé", exc_info=True)

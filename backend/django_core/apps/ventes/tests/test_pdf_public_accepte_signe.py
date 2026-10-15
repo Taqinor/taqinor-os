@@ -240,3 +240,29 @@ class TestAvenantSigneParLeClient(TestCase):
         self.assertEqual(evenements, [])
         capi.assert_not_called()
         webhook.assert_not_called()
+
+    @patch('apps.ventes.domain.cycle_vie._store_signed_pdf')
+    def test_proposal_data_sert_le_bloc_avenant(self, _store_pdf):
+        """VNT61 — la page publique lit ``avenant`` : à signer, puis signé
+        (``signe_le`` daté) — contrat ``proposal_data.json`` › ``notes_vnt2``."""
+        url = f'/api/django/public/proposal/{self.link.token}/data/'
+        r = DjangoClient().get(url)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['avenant'], {
+            'a_signer': True, 'remplace': {'reference': 'DEV-VNT61-10'},
+            'signe_le': None})
+        self.assertEqual(self._signer().status_code, 200)
+        avenant = DjangoClient().get(url).json()['avenant']
+        self.assertIs(avenant['a_signer'], False)
+        signature = DevisSignature.objects.get(devis=self.v2)
+        self.assertEqual(avenant['signe_le'], signature.signed_at.isoformat())
+
+    def test_avenant_public_absent_hors_avenant(self):
+        """Clé ABSENTE (``None``) hors avenant : la version remplacée, et une
+        V2 acceptée dont la version précédente n'a jamais été vendue."""
+        from apps.ventes.domain.negociation import avenant_public
+        v1 = Devis.objects.get(reference='DEV-VNT61-10')
+        self.assertIsNone(avenant_public(v1))
+        Devis.objects.filter(pk=v1.pk).update(statut='refuse')
+        self.v2.refresh_from_db()
+        self.assertIsNone(avenant_public(self.v2))

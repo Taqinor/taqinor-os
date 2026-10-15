@@ -1,12 +1,15 @@
-from decimal import Decimal
-
 from drf_spectacular.utils import extend_schema_field
-from django.db.models import Q
+from django.db.models import DecimalField, Q
 from rest_framework import serializers
 
+from core.champs_stricts import (
+    ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalSouple,
+    DecimalSoupleMixin,
+)
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ListeJSON, ObjetJSON
 from core.serializers import (
-    CompanyScopedPrimaryKeyRelatedField, request_company_id,
+    ChampsStrictsMixin, CompanyScopedPrimaryKeyRelatedField, request_company_id,
 )
 from .models import (
     Devis, LigneDevis, BonCommande, DevisActivity, DevisPreset,
@@ -103,7 +106,7 @@ def _messages_decimaux(fields, noms):
             champ.error_messages['max_decimal_places'] = MSG_DEUX_DECIMALES
 
 
-class LigneDevisSerializer(SameCompanyFKSerializerMixin,
+class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """La ligne d'un devis, telle que l'écran la lit et l'écrit.
 
@@ -270,15 +273,22 @@ class EcheancierTrancheSerializer(serializers.Serializer):
     ('acompte' / 'intermediaire' / 'solde') : seule une valeur d'unité y est
     lue comme une déclaration d'unité.
     """
-    libelle = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True)
-    type = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True)
-    unite = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True)
+    # CI #997 (4) — textes STRICTS (forme publiée : chaîne sans nul, null) ;
+    # la forme entière est jugée par ``utils.echeancier.forme_tranche_ecriture``.
+    libelle = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True,
+        trim_whitespace=False)
+    type = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True,
+        trim_whitespace=False)
+    unite = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True,
+        trim_whitespace=False)
     # JSONField (et non FloatField) : la valeur brute doit atteindre
     # ``normaliser_tranche``, seule source de la règle ET des messages FR.
-    pct_or_montant = serializers.JSONField(required=False)
+    # CI #997 (4) — null atteint aussi ``forme_tranche_ecriture`` (message
+    # « tranche vide » nommant la tranche, jamais un 500).
+    pct_or_montant = serializers.JSONField(required=False, allow_null=True)
     # AGR219 (contrat AGR200) — date prévue FACULTATIVE (ISO AAAA-MM-JJ,
     # null = non prévue). JSONField : la valeur brute atteint
     # ``normaliser_tranche``, seule source de la règle ET du message FR
@@ -296,23 +306,46 @@ class EcheancierTrancheSerializer(serializers.Serializer):
     payeur = serializers.JSONField(required=False, allow_null=True)
 
     def validate(self, attrs):
-        from .utils.echeancier import EcheancierInvalide, normaliser_tranche
+        from .utils.echeancier import (
+            EcheancierIncoherent, EcheancierInvalide, forme_tranche_ecriture,
+            normaliser_tranche)
+        index = self.context.get('index', 0)
         try:
-            normaliser_tranche(dict(attrs), self.context.get('index', 0))
+            forme_tranche_ecriture(self.initial_data, index)
+            normaliser_tranche(dict(attrs), index)
+        except EcheancierIncoherent:
+            pass  # CI #997 (4) — règle inter-clés : 409, jugée par le mixin
         except EcheancierInvalide as exc:
             raise serializers.ValidationError(str(exc))
         return attrs
 
 
 class EcheancierValidationMixin:
-    """QJR21 — refuse en 400 un échéancier dont une valeur est ambiguë.
+    """QJR21 — refuse un échéancier hors forme (400) ou incohérent (409).
 
     Monté sur les DEUX sérialiseurs Devis (lecture et écriture) : le champ
     ``echeancier`` est un JSONField accepté tel quel depuis le corps de la
     requête, une saisie en dirhams y passait donc sans aucun contrôle.
+
+    CI #997 (4) (api-fuzz ``PUT devis``, ``echeancier: [{}]``) — une tranche
+    hors de la forme PUBLIÉE (``utils.echeancier.schema_echeancier`` :
+    ``pct_or_montant`` obligatoire…) reste un 400 ; des tranches bien formées
+    dont l'ENSEMBLE viole une règle que le schéma ne sait pas dire (somme ≠
+    100 %, valeur > 100 selon l'unité déclarée — ``EcheancierIncoherent``)
+    répondent 409 ``ConflitEtat`` sous ``echeancier``, même message, et
+    seulement quand tout le reste du corps est valide (``validate``).
     """
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        incoherence = getattr(self, '_echeancier_incoherent', None)
+        if incoherence:
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'echeancier': [incoherence]})
+        return attrs
+
     def validate_echeancier(self, value):
+        self._echeancier_incoherent = None
         if value is None or value == '' or value == []:
             return value
         if not isinstance(value, list):
@@ -330,14 +363,20 @@ class EcheancierValidationMixin:
                 # Message PLAT sous la clé « echeancier » : l'écran affiche la
                 # phrase telle quelle, sans dépiler un non_field_errors imbriqué.
                 raise serializers.ValidationError(
-                    [str(m) for msgs in tranche.errors.values()
+                    [str(m) if cle == 'non_field_errors'
+                     else f"Tranche n°{index + 1} : « {cle} » : {m}"
+                     for cle, msgs in tranche.errors.items()
                      for m in (msgs if isinstance(msgs, (list, tuple))
                                else [msgs])])
         # AGNR12 — somme d'un échéancier tout en % = 100 %, aucune tranche
-        # vide (LA règle de ``utils.echeancier.valider_echeancier``).
-        from .utils.echeancier import EcheancierInvalide, valider_echeancier
+        # vide (LA règle de ``utils.echeancier.valider_echeancier``) ;
+        # CI #997 (4) — incohérence d'ensemble : 409 posé par ``validate``.
+        from .utils.echeancier import (
+            EcheancierIncoherent, EcheancierInvalide, valider_echeancier)
         try:
             valider_echeancier(value)
+        except EcheancierIncoherent as exc:
+            self._echeancier_incoherent = str(exc)
         except EcheancierInvalide as exc:
             raise serializers.ValidationError(str(exc))
         return value
@@ -362,72 +401,19 @@ class TiersPayeurValidationMixin:
     # ── CIQ214 — retenue, pénalités, caution : SEULEMENT à la demande du
     # client (D-CIQ-14), jamais de valeur par défaut ; formes normalisées
     # (enregistrer → rouvrir → enregistrer sans toucher = entête identique).
-
-    @staticmethod
-    def _pct_ci(champ, brut, *, strict=True):
-        try:
-            if isinstance(brut, bool) or brut in (None, ''):
-                raise ValueError(brut)
-            valeur = Decimal(str(brut).replace(',', '.'))
-            if not valeur.is_finite():
-                raise ValueError(brut)
-        except (TypeError, ValueError, ArithmeticError):
-            raise serializers.ValidationError(
-                f"« {champ} » : un pourcentage numérique est attendu.")
-        if valeur < 0 or valeur > 100 or (strict and valeur == 0):
-            raise serializers.ValidationError(
-                f"« {champ} » doit être compris entre 0 et 100 %.")
-        return float(valeur)
+    # CI #997 (2) — forme publiée ET validation : ``domain/conditions_ci``.
 
     def validate_retenue_garantie(self, value):
-        if value in (None, {}, ''):
-            return None
-        if not isinstance(value, dict):
-            raise serializers.ValidationError(
-                "Retenue de garantie : un objet {taux_pct, liberation} est "
-                "attendu.")
-        liberation = value.get('liberation') or 'reception_definitive'
-        if liberation != 'reception_definitive':
-            raise serializers.ValidationError(
-                "« retenue_garantie.liberation » : seule la réception "
-                "définitive libère la retenue (reception_definitive).")
-        return {'taux_pct': self._pct_ci('retenue_garantie.taux_pct',
-                                         value.get('taux_pct')),
-                'liberation': liberation}
+        from .domain.conditions_ci import retenue
+        return retenue(value)
 
     def validate_penalites_retard_livraison(self, value):
-        if value in (None, {}, ''):
-            return None
-        if not isinstance(value, dict):
-            raise serializers.ValidationError(
-                "Pénalités de retard : un objet {taux_pct_par_semaine, "
-                "plafond_pct} est attendu.")
-        for cle, libelle in (('taux_pct_par_semaine', 'le taux par semaine'),
-                             ('plafond_pct', 'le plafond')):
-            if value.get(cle) in (None, ''):
-                raise serializers.ValidationError(
-                    f"Pénalités de retard : {libelle} "
-                    f"(penalites_retard_livraison.{cle}) est obligatoire — "
-                    "taux et plafond vont ensemble.")
-        return {
-            'taux_pct_par_semaine': self._pct_ci(
-                'penalites_retard_livraison.taux_pct_par_semaine',
-                value.get('taux_pct_par_semaine')),
-            'plafond_pct': self._pct_ci(
-                'penalites_retard_livraison.plafond_pct',
-                value.get('plafond_pct')),
-        }
+        from .domain.conditions_ci import penalites
+        return penalites(value)
 
     def validate_caution(self, value):
-        if value in (None, {}, ''):
-            return None
-        if not isinstance(value, dict) or not str(
-                value.get('nature') or '').strip():
-            raise serializers.ValidationError(
-                "Caution : la nature (caution.nature) est obligatoire.")
-        return {'nature': str(value['nature']).strip(),
-                'montant_ou_pct': value.get('montant_ou_pct'),
-                'plafond': value.get('plafond')}
+        from .domain.conditions_ci import caution
+        return caution(value)
 
 
 class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
@@ -591,9 +577,40 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
 
     @extend_schema_field(serializers.DictField(child=serializers.CharField()))
     def get_solde(self, obj):
-        from .utils.echeancier import solde_devis
-        s = solde_devis(obj)
-        return {k: str(v) for k, v in s.items()}
+        return self._lot_vente(obj, 'solde')
+
+    # VNT68 — l'état de la vente (contrat ``vente_etat.json``), liste ET
+    # détail : ``solde`` et ``vente`` d'UNE page sont calculés ensemble, en
+    # lot (``etat_vente_map`` sous ``ventes_prechargees``) — le nombre de
+    # requêtes ne grandit pas avec le nombre de devis.
+    vente = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.DictField())
+    def get_vente(self, obj):
+        return self._lot_vente(obj, 'vente')
+
+    def _lot_vente(self, obj, cle):
+        """``solde`` / ``vente`` de ``obj``, calculés pour toute la page au
+        premier appel ; chaque valeur est lue UNE fois (un second rendu du
+        même devis recalcule : jamais un état d'avant une écriture)."""
+        lots = self.context.setdefault('_lot_vente', {})
+        if cle not in lots.get(obj.pk, {}):
+            from .vente_facturation import etat_vente_map
+            page = getattr(self.parent, 'instance', None)
+            rows = list(page) if isinstance(
+                self.parent, serializers.ListSerializer) and page is not None else []
+            rows = rows if obj.pk is not None and obj in rows else [obj]
+            request = self.context.get('request')
+            soldes = {}
+            ventes = etat_vente_map(rows, getattr(request, 'user', None),
+                                    soldes=soldes)
+            for d in rows:
+                lots[d.pk] = {'vente': ventes[d.pk], 'solde': soldes[d.pk]}
+        entree = lots[obj.pk]
+        valeur = entree.pop(cle)
+        if not entree:
+            del lots[obj.pk]
+        return valeur
 
     # Expiration calculée À LA VOLÉE (T7) — jamais persistée, ne touche pas le
     # lead. `is_expired` = en attente + date de validité dépassée.
@@ -968,7 +985,7 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
-class DevisWriteSerializer(SameCompanyFKSerializerMixin,
+class DevisWriteSerializer(DecimalSoupleMixin, SameCompanyFKSerializerMixin,
                            TiersPayeurValidationMixin,
                            EcheancierValidationMixin,
                            serializers.ModelSerializer):
@@ -1025,7 +1042,17 @@ class DevisWriteSerializer(SameCompanyFKSerializerMixin,
     ENF17 — ``client``, ``lead`` et ``entite`` sont BORNÉS à la société de la
     requête : l'id d'une autre société reçoit la réponse d'un id absent
     (400 « objet inexistant ») au lieu du « Client/Lead inconnu. » de la vue.
+
+    CI #997 — décimaux en ``DecimalSouple`` : chaîne OU nombre JSON (le
+    générateur envoie des nombres), publiés ``anyOf`` au schéma.
     """
+    # CI #997 — décimaux souples (générateur : chaîne OU nombre) + texte et
+    # booléens STRICTS (``reference_commande_client: 0`` était converti).
+    serializer_field_mapping = {
+        **ChampsStrictsSansDecimalMixin.serializer_field_mapping,
+        DecimalField: DecimalSouple,
+    }
+
     same_company_fields = ('client', 'lead', 'entite')
 
     # ENF11 — lecture seule (posée par ``/accepter/``) : DRF retire
@@ -1134,12 +1161,17 @@ class DevisWriteSerializer(SameCompanyFKSerializerMixin,
     # ATOT21 — la remise globale bornée 0-100 (2 décimales) au sérialiseur :
     # PATCH « 150 » répondait 500 (contrainte ck_devis_remise_globale_0_100).
     def get_fields(self):
+        from .domain.conditions_ci import publier
         fields = super().get_fields()
         _messages_decimaux(fields, ('remise_globale',))
+        publier(fields)  # CI #997 (2) — retenue / pénalités / caution
         return fields
 
     def validate_remise_globale(self, value):
         return _borne_saisie(value, 'remise_globale', 'pourcentage')
+
+    def validate_acompte_montant(self, value):  # CI #997 (2) : -1 → 500
+        return _borne_saisie(value, 'acompte_montant', 'montant')
 
     def create(self, validated_data):
         """ASEC22 — l'auteur est TOUJOURS ``request.user`` (le corps ne
@@ -1257,7 +1289,8 @@ class _BooleenStrict(serializers.BooleanField):
         self.fail('invalid', input=data)
 
 
-class ListePrixSerializer(serializers.ModelSerializer):
+class ListePrixSerializer(ChampsStrictsSansDecimalMixin,
+                          serializers.ModelSerializer):
     """XSAL1/XSAL2 — liste de prix clients + ses règles de paliers.
     `company` toujours forcée côté serveur (jamais acceptée du body — voir
     ListePrixViewSet.perform_create)."""
@@ -1277,7 +1310,42 @@ class ListePrixSerializer(serializers.ModelSerializer):
 
 # ── PVMRQ — Réglages « offre à deux gammes » par société (fondateur 18/08) ──
 
-class ParametresGammesSerializer(serializers.ModelSerializer):
+class _MarquesParGamme(ObjetJSON):
+    """CI #997 — ``marques`` publié EXACT : objet non nul ``{slot: {rôle:
+    marque texte}}`` (``_erreurs_marques``) ; ``null`` était conforme au
+    schéma ``{}`` puis refusé « Ce champ ne peut être nul. »."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+        from .models import ROLES_AUTO_COMPOSITION
+
+        super().__init__(**kwargs)
+        roles = {'type': 'object', 'additionalProperties': False,
+                 'properties': {r: {'type': 'string'}
+                                for r in ROLES_AUTO_COMPOSITION}}
+        set_override(self, 'field', {
+            'type': 'object', 'additionalProperties': False,
+            'properties': {slot: roles for slot in ParametresGammes.SLOTS}})
+
+
+class _OrdreLignes(ListeJSON):
+    """CI #997 — ``ordre_lignes`` publié EXACT : liste de rôles connus,
+    uniques (``_erreurs_ordre_lignes``) ; ``{}`` était conforme au schéma
+    ``{}`` puis refusé."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+        from .models import ROLES_AUTO_COMPOSITION
+
+        super().__init__(element=str, **kwargs)
+        set_override(self, 'field', {
+            'type': 'array', 'uniqueItems': True,
+            'items': {'type': 'string',
+                      'enum': list(ROLES_AUTO_COMPOSITION)}})
+
+
+class ParametresGammesSerializer(ChampsStrictsSansDecimalMixin,  # CI #997 (2)
+                                 serializers.ModelSerializer):
     """PVMRQ — réglages « gammes » de la société (singleton, GET/PATCH).
 
     ``marques`` est validé avec la MÊME règle que ``ParametresGammes.clean()``
@@ -1291,6 +1359,8 @@ class ParametresGammesSerializer(serializers.ModelSerializer):
     ``ROLES_AUTO_COMPOSITION`` uniques. Liste vide = ordre canonique du
     simulateur (comportement historique).
     """
+    marques = _MarquesParGamme(required=False)
+    ordre_lignes = _OrdreLignes(required=False)
 
     class Meta:
         model = ParametresGammes
@@ -1476,7 +1546,7 @@ class OffreTailleRegenerationSerializer(serializers.Serializer):
         return value
 
 
-class PlanCommissionSerializer(SameCompanyFKSerializerMixin,
+class PlanCommissionSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
     """WIR281/XSAL6 - plan de commission d'un commercial (ou plan PAR DEFAUT
     de la societe quand ``owner`` est nul).
@@ -1494,8 +1564,8 @@ class PlanCommissionSerializer(SameCompanyFKSerializerMixin,
     ENF17 — ``owner`` d'une AUTRE societe = id absent (400 « objet
     inexistant »), avant la garde de la vue (« Commercial inconnu. »)."""
     same_company_fields = ('owner',)
-    owner_nom = serializers.CharField(
-        source='owner.username', read_only=True, allow_null=True, default=None)
+    owner_nom = serializers.CharField(  # ENF11 : sans default, PATCH la rend
+        source='owner.username', read_only=True, allow_null=True)
     base_display = serializers.CharField(
         source='get_base_display', read_only=True, allow_null=True, default=None)
 

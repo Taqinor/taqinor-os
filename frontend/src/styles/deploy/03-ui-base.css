@@ -1,0 +1,395 @@
+/* ── Page layout ──────────────────────────────────────── */
+.page {
+  max-width: 1200px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+/* VX122 — la voix typographique de marque enfin branchée sur le titre de
+   page legacy le plus répété (66 écrans) : échelle F121 h1 (tokens.css) +
+   police d'affichage (déjà chargée, jusqu'ici system-ui par défaut, VX3). */
+.page-header h2 {
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  line-height: var(--text-h1-lh);
+  letter-spacing: var(--text-h1-ls);
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+}
+
+/* I35 — Motif d'en-tête de page réutilisable (composant PageHeader). Classes
+   préfixées `pageheader-` pour ne PAS entrer en conflit avec `.page-header`
+   ci-dessus, déjà utilisé tel quel par les pages existantes. */
+.pageheader { margin-bottom: 1.5rem; }
+.pageheader-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.pageheader-heading { min-width: 0; }
+/* APX32 — LE bug transverse : ces deux couleurs étaient des hex NUS, sans
+   aucun override sombre. `ListShell` consomme ce PageHeader et compte 56
+   écrans : sur le fond nuit (oklch 15,7 %), le titre #0f172a et le sous-titre
+   #64748b étaient quasi invisibles. Tokens sémantiques désormais — clair ET
+   sombre suivent le thème, comme partout ailleurs. */
+.pageheader-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+}
+.pageheader-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+}
+.pageheader-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.pageheader-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+}
+
+.page-loading {
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  padding: 2rem 0;
+}
+
+.page-error {
+  color: var(--destructive);
+  font-size: 0.9rem;
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 0.9rem;
+  padding: 3rem 0;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  /* N64 — min-height (et non height fixe) pour que le libellé ne soit pas
+     rogné quand le texte est agrandi à 200 %. Rendu identique au repos. */
+  min-height: 36px;
+  padding: 0 14px;
+  /* VX6 — un seul langage de rayon : bouton dérivé de --radius (radius-md=8px). */
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: background var(--motion-base), border-color var(--motion-base), box-shadow var(--motion-base), transform var(--motion-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn:active:not(:disabled) { transform: translateY(1px); }
+
+/* VX4 — bouton primaire sur les tokens sémantiques (suit le thème). */
+.btn-primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-color: var(--primary);
+}
+@media (hover: hover) {
+  .btn-primary:hover:not(:disabled) {
+    background: color-mix(in oklch, var(--primary) 88%, black);
+    border-color: color-mix(in oklch, var(--primary) 88%, black);
+    box-shadow: var(--shadow-primary-hover);
+  }
+}
+
+.btn-outline {
+  background: #ffffff;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+@media (hover: hover) {
+  .btn-outline:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #1e293b;
+  }
+}
+
+.btn-success {
+  background: #16a34a;
+  color: #ffffff;
+  border-color: #16a34a;
+}
+@media (hover: hover) {
+  .btn-success:hover:not(:disabled) {
+    background: #15803d;
+    border-color: #15803d;
+  }
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: #ffffff;
+  border-color: #ef4444;
+}
+@media (hover: hover) {
+  .btn-danger:hover:not(:disabled) {
+    background: #dc2626;
+    border-color: #dc2626;
+  }
+}
+
+.btn-sm {
+  /* N64 — min-height : pas de rognage à 200 % (rendu identique au repos). */
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+}
+
+/* ── Table ──────────────────────────────────────────────
+   VX4 — dark mode réel : surface carte, entêtes muted, filets bordure, texte
+   foreground — tous tokenisés (l'ombre au repos reste retirée, cf. VX6). */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card);
+  /* VX6 — rayon dérivé de --radius ; discipline F122 : la table ne « flotte »
+     plus au repos (fin de l'ombre) — elle se définit par son liseré (le filet
+     d'entête + les bordures de lignes). */
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  font-size: 0.875rem;
+}
+
+/* APX34 — les tables CSS legacy obéissent ENFIN à la préférence de densité.
+   `useDensity()` pilotait déjà les 56 écrans DataTable (32/40 px) et la densité
+   par vue est livrée (NTUX17) : le SEUL trou restant était ici, sur les ~66
+   écrans qui rendent encore une `<table className="data-table">` à la main —
+   basculer la préférence ne les changeait pas d'un pixel. Le padding vertical
+   dérive maintenant de `--row-py`, le token défini par `[data-density]` dans
+   tokens.css et qui n'avait JAMAIS eu de consommateur. Le padding horizontal
+   est inchangé (la densité ne joue que sur la hauteur de ligne). */
+.data-table th {
+  background: var(--muted);
+  padding-block: var(--row-py);
+  padding-inline: 14px;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  /* VX122 — tracking « eyebrow » unifié sur le token unique (remplace 0.04em
+     codé en dur, divergent de .lines-table th ci-dessous avant cette tâche). */
+  letter-spacing: var(--text-eyebrow-tracking);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.data-table td {
+  /* APX34 — même dérivation que `th` ci-dessus (les deux divergeaient de 1 px
+     sans raison : 10 vs 11). */
+  padding-block: var(--row-py);
+  padding-inline: 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  vertical-align: middle;
+}
+
+.data-table tbody tr:last-child td { border-bottom: none; }
+
+@media (hover: hover) {
+  .data-table tbody tr:hover { background: var(--muted); }
+}
+
+.ta-right { text-align: right; }
+/* VX5 — colonnes numériques des tables legacy (cellules alignées à droite) en
+   data typography `.num` : chiffres tabulaires à zéro barré, colonnes alignées.
+   (Le DataTable /ui applique déjà tabular-nums à ses colonnes numeric/right.) */
+.data-table td.ta-right {
+  font-variant-numeric: tabular-nums slashed-zero;
+  font-feature-settings: 'tnum' 1, 'zero' 1;
+  letter-spacing: -0.01em;
+}
+
+.actions-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── VX7 — passe « calm color » (recette Linear : chrome désaturé / signal
+   saturé). Modifieur `.calm-list` sur les tables denses (DevisList, leads
+   ListView, StockList, FactureList) : (a) séparateurs de lignes adoucis à
+   ~60 % d'opacité (le filet structure sans crier) ; (b) actions de ligne
+   révélées au survol de la ligne (opacité 0 → 1, aucun reflow — l'espace reste
+   réservé). Aucune information n'est retirée, seulement re-pesée. */
+.calm-list.data-table td {
+  border-bottom-color: color-mix(in oklch, var(--border) 60%, transparent);
+}
+.calm-list .actions-cell {
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+/* Toujours visibles au clavier (focus dans la ligne) et sur tactile (pas de
+   survol) : on ne révèle « au survol » que là où le survol existe vraiment. */
+.calm-list .actions-cell:focus-within { opacity: 1; }
+@media (hover: hover) {
+  .calm-list tbody tr:hover .actions-cell { opacity: 1; }
+}
+@media (hover: none) {
+  .calm-list .actions-cell { opacity: 1; }
+}
+
+/* ── Badge ────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 50px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── Modal ────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-overlay, 1200);
+  /* Marges sûres : une modale haute ne touche ni l'encoche ni l'indicateur. */
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+           max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+}
+
+.modal {
+  /* VX4 — surface de modale tokenisée (suit le dark mode). */
+  background: var(--card);
+  color: var(--card-foreground);
+  /* VX6 — rayon dérivé de --radius (radius-xl=14px) ; la modale est un calque
+     FLOTTANT, elle garde son ombre forte (F122). */
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-modal);
+  width: 100%;
+  max-width: 580px;
+  /* VX175(c) — seul bloc 100vh du fichier resté SANS repli 100dvh (tous les
+     autres — #root, .layout, etc. — ont la paire) : sur mobile, la barre
+     d'adresse dynamique fait que 100vh dépasse le viewport RÉEL visible → le
+     bas de la modale était rogné sous la barre. dvh suit le viewport réel. */
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-lg  { max-width: 720px; }
+.modal-xl  { max-width: 960px; }
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--foreground);
+  margin: 0;
+}
+
+.modal-close {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted-foreground);
+  font-size: 1rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--motion-base), color var(--motion-base);
+}
+@media (hover: hover) {
+  .modal-close:hover { background: var(--muted); color: var(--foreground); }
+}
+
+/* Le <form> s'intercale entre .modal et .modal-body : sans contrainte de
+   hauteur il grandit avec son contenu et .modal-body ne défile jamais
+   (seul Tab « scrollait » en forçant le focus). On le borne en colonne flex. */
+.modal > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Barre de défilement visible (le contenu long doit se voir) */
+.modal-body::-webkit-scrollbar { width: 10px; }
+.modal-body::-webkit-scrollbar-track { background: var(--muted); }
+.modal-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-md); }
+@media (hover: hover) {
+  .modal-body::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+}
+
+/* LW34 — l'ancien navigateur de sections .lead-form-layout/.lead-nav* (rail
+   152px, breakpoint 720px) appartenait au LeadForm pré-LW13 : 0 usage JSX
+   vivant (grep confirmé — LeadWorkspace/SectionsPane utilisent .lw-secnav/
+   .lw-sections, un patron entièrement différent). Bloc supprimé — c'est lui
+   qui créait la bande morte 721-767px (recon 04 §5) : le seul breakpoint qui
+   reste dans la fenêtre lead est 768 (.lw-* + ResponsiveDialog). */
+

@@ -199,17 +199,19 @@ class TestAsav102RegistreApi(TestCase):
         self.assertEqual(set(lst.data), set(exemple))
         self.assertEqual(set(lst.data['results'][0]),
                          set(exemple['results'][0]))
-        # Doublon exact refusé (anti-double-comptage).
-        self.assertEqual(self._emettre().status_code, 400)
+        # Doublon exact refusé (anti-double-comptage) : refus d'ÉTAT = 409.
+        self.assertEqual(self._emettre().status_code, 409)
 
     def test_refus_sans_production_cible_ou_autre_societe(self):
         r = self._emettre(periode_debut='2025-01-01', periode_fin='2025-06-30')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # aucune production : refus d'ÉTAT
         self.assertIn('detail', r.data)
         r = self._emettre(client_id=self.inst.client_id)
         self.assertEqual(r.status_code, 400)
+        # Système d'une autre société : id bien formé mais inconnu = 404
+        # (CI #997 fuzz (2)), même corps qu'un id absent.
         r = self._emettre(installation_id=self.inst_b.id)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
         self.assertIn('installation_id', r.data)
         self.assertEqual(CertificatCarbone.objects.count(), 0)
 

@@ -22,7 +22,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -292,6 +292,16 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     # de collection répond 405 (exclu du schéma).
     http_method_names = ['get', 'post', 'head', 'options']
 
+    @property
+    def allowed_methods(self):
+        # CI #997 fuzz (« Invalid Allow header ») : sur la liste, POST (= ``create``,
+        # 405, exclu du schéma) n'est pas annoncé ; il reste servi pour
+        # l'action de détail ``rapprocher``.
+        methodes = super().allowed_methods
+        if (self.action_map or {}).get('post') == 'create':
+            return [m for m in methodes if m != 'POST']
+        return methodes
+
     def get_queryset(self):
         """AUD146 — Honore `?statut=` : la file « À rapprocher » était fausse.
 
@@ -353,10 +363,14 @@ class DocumentClientPortailViewSet(_PortailBaseViewSet):
     serializer_class = DocumentClientPortailSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_depot']
-    parser_classes = [MultiPartParser, FormParser, JSONParser]  # dépôt d'un fichier (JSON sans fichier)
+    # CI #997 fuzz (2) : un document se DÉPOSE avec son fichier — formulaire
+    # seul. En JSON le champ ``fichier`` (publié ``uri``) ne peut pas porter de
+    # fichier : tout corps « conforme » y était refusé 400. ``marquer_traite``
+    # (sans corps) garde le JSON, seul appel de l'écran.
+    parser_classes = [MultiPartParser]
 
     @extend_schema(request=None, responses=DocumentClientPortailSerializer)
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], parser_classes=[JSONParser])
     def marquer_traite(self, request, pk=None):
         doc = self.get_object()
         if not doc.traite:
@@ -456,7 +470,7 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
         """ADOC118 — résolution commune à ``prendre_en_charge`` et
         ``lier-ticket`` : le ticket doit exister dans la société de la demande
         (``apps.sav.selectors.ticket_scoped``, lecture cross-app) ET appartenir
-        au même client. Renvoie le ticket, ou ``None`` (→ 400 nommé)."""
+        au même client. Renvoie le ticket, ou ``None`` (→ 404 identique)."""
         from apps.sav.selectors import ticket_scoped
 
         try:
@@ -471,8 +485,11 @@ class DemandeTicketPortailViewSet(_PortailBaseViewSet):
         return ticket
 
     def _refus_ticket(self):
+        # ENF11 (api-fuzz « rejected schema-compliant request ») — un entier
+        # conforme au schéma qui ne désigne aucun ticket de ce client est un
+        # id INCONNU : 404, corps identique pour tous les cas (jamais 400).
         return Response({'detail': self.TICKET_INCONNU},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_404_NOT_FOUND)
 
     @extend_schema(request=_TICKET_ID_OPT, responses=DemandeTicketPortailSerializer)
     @action(detail=True, methods=['post'])

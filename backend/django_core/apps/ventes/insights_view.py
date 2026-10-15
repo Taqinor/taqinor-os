@@ -12,10 +12,10 @@ Buckets renvoyés :
   - au_dela : tout ce qui dépasse les buckets ci-dessus
   - sans_echeance : factures actives sans date_echeance fixée
 """
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
 from . import openapi_shapes as SH
-from .openapi_params import PERIODE, qstr
+from .openapi_params import PERIODE, qdate_ou_vide, qstr
 from decimal import Decimal
 from datetime import timedelta
 import calendar
@@ -214,8 +214,7 @@ def cash_flow_forecast(request):
 
 @extend_schema(
     parameters=[
-        OpenApiParameter('debut', OpenApiTypes.DATE, required=False),
-        OpenApiParameter('fin', OpenApiTypes.DATE, required=False),
+        qdate_ou_vide('debut'), qdate_ou_vide('fin'),
         qstr('export', enum=['csv'])] + PERIODE,
     responses={
         (200, 'application/json'): SH.AnalyseFacturationLigne,
@@ -233,7 +232,7 @@ def analyse_facturation_view(request):
     ``exports.period_bounds`` — accepte aussi ``?month=``/``?quarter=``/
     ``?start=&end=``). ``?export=csv`` télécharge le même agrégat en CSV.
     Factures annulées exclues du CA. Lecture pure, cross-company isolé."""
-    from .exports import period_bounds
+    from .exports import period_bounds, valider_periode
     from .selectors import analyse_facturation
 
     user = request.user
@@ -246,6 +245,9 @@ def analyse_facturation_view(request):
     if 'fin' in params and 'end' not in params:
         params['end'] = params['fin']
     try:
+        # ENF11 — les alias renseignés ont la forme publiée, même éclipsés.
+        valider_periode({'start': params.get('debut'),
+                         'end': params.get('fin')})
         debut, fin = period_bounds(params)
     except (ValueError, TypeError):
         return Response({'detail': 'Période invalide.'}, status=400)

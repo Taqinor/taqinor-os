@@ -27,6 +27,8 @@ from ..serializers_commissioning import (
     CommissioningRecordSerializer, HandoverPackSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -89,7 +91,17 @@ def seed_types_intervention(company):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-@oa.listing(p0=oa.qs('annule'), p1=oa.qs('art33'), p2=oa.qs('dossier_statut'), p3=oa.qs('mine'), p4=oa.qs('parc'), p5=oa.qs('regime'), p6=oa.qs('statut'), p7=oa.qs('type_installation'), p8=oa.qi('technicien'))
+@oa.listing(
+    p0=oa.qs('annule'),
+    p1=oa.qs('art33'),
+    p2=oa.qs('dossier_statut'),
+    p3=oa.qs('mine'),
+    p4=oa.qs('parc'),
+    p5=oa.qs('regime'),
+    p6=oa.qs('statut'),
+    p7=oa.qs('type_installation'),
+    p8=oa.qi('technicien'),
+)
 class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Chantiers + historique « chatter ». Tout est scopé à la société du
     user ; l'acteur et la société sont posés côté serveur, jamais lus du corps.
@@ -305,7 +317,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         PATCH écrits en base — le comportement d'avant, où les gates
         tournaient avant la sauvegarde."""
         from django.db import transaction
-        from rest_framework.exceptions import PermissionDenied, ValidationError
+        from core.conflit_etat import ConflitEtat
+        from rest_framework.exceptions import PermissionDenied
         from ..services import (
             TransitionRefusee, changer_statut_chantier, est_directeur,
             verifier_reouverture_cloture,
@@ -362,9 +375,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     # s'évaluer sur l'état d'avant (comportement historique).
                     etat_avant=old)
             except TransitionRefusee as exc:
-                raise ValidationError({'statut': exc.raisons})
+                # CI #997 api-fuzz : refus d'ÉTAT (machine d'états, gates,
+                # verrou) = 409, corps toujours rangé sous `statut`.
+                raise ConflitEtat({'statut': exc.raisons})
 
-    @oa.extend_schema(request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.idf(True)), responses={200: InstallationSerializer, 201: InstallationSerializer})
+    @oa.extend_schema(
+        request=oa.body('CreerChantierDepuisDevisRequete', devis=oa.idf(True)),
+        responses={200: InstallationSerializer, 201: InstallationSerializer},
+    )
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
     def creer_depuis_devis(self, request):
@@ -393,7 +411,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
-    @oa.extend_schema(parameters=[oa.qf('kwc'), oa.qf('kw_ac'), oa.qs('niveau'), oa.qs('hors_reseau'), oa.qs('type_installation')], responses=oa.OBJ)
+    @oa.extend_schema(
+        parameters=[oa.qf('kwc'), oa.qf('kw_ac'), oa.qs('niveau'), oa.qs('hors_reseau'), oa.qs('type_installation')],
+        responses=oa.OBJ,
+    )
     @action(detail=False, methods=['get'], url_path='regime-suggestion',
             permission_classes=[IsAnyRole])
     def regime_suggestion(self, request):
@@ -427,7 +448,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(responses=InstallationActivitySerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='historique',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsAnyRole])
     def historique(self, request, pk=None):
         inst = self.get_object()
@@ -447,7 +468,16 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(InstallationActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
-    @oa.extend_schema(request=oa.body('MiseEnServiceRequete', date_mise_en_service=oa.d(), mes_pv_notes=oa.s(null=True), mes_production_test=oa.dec(null=True), mes_tension=oa.dec(null=True)), responses=InstallationSerializer)
+    @oa.extend_schema(
+        request=oa.body(
+            'MiseEnServiceRequete',
+            date_mise_en_service=oa.d(),
+            mes_pv_notes=oa.s(null=True),
+            mes_production_test=oa.dec(null=True),
+            mes_tension=oa.dec(null=True),
+        ),
+        responses=InstallationSerializer,
+    )
     @action(detail=True, methods=['post'], url_path='mise-en-service',
             permission_classes=[IsResponsableOrAdmin])
     def mise_en_service(self, request, pk=None):
@@ -482,11 +512,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             changer_statut_chantier(
                 inst, Installation.Statut.MISE_EN_SERVICE, request.user,
                 champs_supplementaires=champs)
-        except TransitionRefusee as exc:
+        except TransitionRefusee as exc:  # ERR-ENF11 : refus d'état = 409
             return Response(
                 {'detail': 'Étape bloquée par un gate.',
                  'raisons': exc.raisons},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # Note de chatter explicite incluant les valeurs mesurées (production /
         # tension) quand elles sont renseignées — pas seulement la date.
         mesures = []
@@ -557,7 +587,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     sender=inst.__class__, installation=inst,
                     user=request.user, company=inst.company)
             except Exception:  # pragma: no cover - défensif, best-effort
-                pass
+                logger.warning("annuler : échec ignoré, comportement dégradé", exc_info=True)
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
@@ -619,7 +649,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'completion': round(100 * done / len(items)) if items else None,
         })
 
-    @oa.extend_schema(request=oa.body('CocherChecklistRequete', cle=oa.s(True), fait=oa.b(), equipements=oa.lst()), responses=oa.OBJ)
+    @oa.extend_schema(
+        request=oa.body('CocherChecklistRequete', cle=oa.s(True), fait=oa.b(), equipements=oa.lst()),
+        responses=oa.OBJ,
+    )
     @action(detail=True, methods=['post'], url_path='cocher-checklist',
             permission_classes=[IsResponsableOrAdmin])
     def cocher_checklist(self, request, pk=None):
@@ -634,9 +667,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ensure_checklist_items(inst)
         cle = request.data.get('cle')
         item = inst.checklist.filter(cle=cle).first()
-        if item is None:
+        if item is None:  # ERR-ENF11 : clé bien formée mais inconnue = 404
             return Response({'detail': 'Étape inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_404_NOT_FOUND)
         fait = bool(request.data.get('fait', True))
         item.fait = fait
         item.fait_par = request.user if fait else None
@@ -687,7 +720,17 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'resultats_series': resultats_series,
         })
 
-    @oa.extend_schema(request=oa.body('SeriesLotRequete', lignes=oa.lst(), texte=oa.s(), produit=oa.i(null=True), non_releves=oa.lst(), fichier=oa.serializers.FileField(required=False)), responses=oa.OBJ)
+    @oa.extend_schema(
+        request=oa.body(
+            'SeriesLotRequete',
+            lignes=oa.lst(),
+            texte=oa.s(),
+            produit=oa.i(null=True),
+            non_releves=oa.lst(),
+            fichier=oa.serializers.FileField(required=False),
+        ),
+        responses=oa.OBJ,
+    )
     @action(parser_classes=oa.JSON_AND_UPLOAD_PARSERS, detail=True, methods=['post'], url_path='series-lot',
             permission_classes=[IsResponsableOrAdmin])
     def series_lot(self, request, pk=None):
@@ -746,7 +789,17 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'manquantes': _gate_check_series(inst),
         })
 
-    @oa.extend_schema(request=oa.body('ChecklistPhotoRequete', attachment=oa.i(True), cle=oa.s(null=True), latitude=oa.f(null=True), longitude=oa.f(null=True), precision_m=oa.f(null=True)), responses={201: PhotoChecklistMetaSerializer})
+    @oa.extend_schema(
+        request=oa.body(
+            'ChecklistPhotoRequete',
+            attachment=oa.idf(True),
+            cle=oa.s(null=True),
+            latitude=oa.f(null=True),
+            longitude=oa.f(null=True),
+            precision_m=oa.f(null=True),
+        ),
+        responses={201: PhotoChecklistMetaSerializer},
+    )
     @action(detail=True, methods=['post'], url_path='checklist-photo',
             permission_classes=[IsResponsableOrAdmin])
     def checklist_photo(self, request, pk=None):
@@ -763,10 +816,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         "precision_m": <float, optionnel>}``.
         """
         inst = self.get_object()
-        attachment_id = request.data.get('attachment')
-        if not attachment_id:
-            return Response({'detail': 'attachment requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # ERR-ENF11 : id 1..ID_MAX strict (`0` était lu « absent »).
+        attachment_id = oa.id_entier(oa.corps_objet(request).get('attachment'), 'attachment')
 
         from apps.records.models import Attachment
         from apps.records.serializers import resolve_target
@@ -816,7 +867,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     # Même patron que FG69 (Intervention.signer_client) : Data-URL PNG tracée
     # à l'écran (SignaturePad.jsx), complémentaire — ne remplace JAMAIS
     # l'e-signature légale loi 53-05 des contrats.
-    @oa.extend_schema(request=oa.body('SignerChantierRequete', signature_client=oa.s(True), signataire_nom=oa.s(), motif_override_signature=oa.s(), motif_override=oa.s(), signataire_fonction=oa.s(), signataire_societe=oa.s(), cosignataire_nom=oa.s(), cosignataire_fonction=oa.s(), cosignataire_organisme=oa.s()), responses=InstallationSerializer)
+    @oa.extend_schema(
+        request=oa.SignerChantierRequete,  # ERR-ENF11 : déclaration = validation
+        responses=InstallationSerializer,
+    )
     @action(detail=True, methods=['post'], url_path='signer-client',
             permission_classes=[IsResponsableOrAdmin])
     def signer_client(self, request, pk=None):
@@ -830,19 +884,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         reste possible avec un motif explicite (`motif_override_signature`,
         patron `motif_override_acompte`), journalisé au chatter. Les
         changements eux-mêmes sont désormais suivis (`TRACKED_FIELDS`)."""
-        from ..signature_validation import erreur_signature_client
         inst = self.get_object()
-        brut = request.data.get('signature_client')
-        sig = brut.strip() if isinstance(brut, str) else ''
-        nom = (request.data.get('signataire_nom') or '').strip()
-        motif = (request.data.get('motif_override_signature')
-                 or request.data.get('motif_override') or '').strip()
         # ADOC78 — data-URL PNG/JPEG base64 bornée seulement (plus aucune
-        # URL http/file injectée dans <img src> du PV/BL, ni « null »).
-        erreur = erreur_signature_client(sig)
-        if erreur:
-            return Response({'signature_client': erreur},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # URL http/file injectée dans <img src> du PV/BL, ni « null ») :
+        # ERR-ENF11, contrôlée par le sérialiseur qui la publie.
+        corps = oa.corps_valide(oa.SignerChantierRequete, request)
+        sig = corps['signature_client']
+        nom = (corps.get('signataire_nom') or '').strip()
+        motif = (corps.get('motif_override_signature')
+                 or corps.get('motif_override') or '').strip()
         if inst.signe_le and not motif:
             return Response(
                 {'detail': (
@@ -866,8 +916,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 ('signataire_fonction', 120), ('signataire_societe', 255),
                 ('cosignataire_nom', 120), ('cosignataire_fonction', 120),
                 ('cosignataire_organisme', 255)):
-            if champ in request.data:
-                valeur = (request.data.get(champ) or '').strip()[:longueur]
+            if champ in corps:
+                valeur = (corps.get(champ) or '').strip()[:longueur]
                 setattr(inst, champ, valeur or None)
                 fields.append(champ)
         client = inst.client
@@ -896,6 +946,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             from apps.documents.builders import figer_documents_signes
             figer_documents_signes(inst)
         except Exception as exc:  # la signature prime
+            logger.warning("signer client : échec ignoré, comportement dégradé", exc_info=True)
             logging.getLogger(__name__).warning(
                 "ADOC71 — gel GED du PV/BL du chantier %s impossible : %s",
                 inst.pk, exc)
@@ -962,7 +1013,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     'Aucun fournisseur indiqué et aucun fournisseur par '
                     'défaut sur les produits manquants.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état du chantier
         try:
             bon, nb = draft_bcf_for_shortfall(
                 inst, fournisseur, request.user, company)
@@ -985,7 +1036,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             oa.qf('tarif', desc='Tarif (MAD/kWh).'),
             oa.qf('co2', desc='Facteur CO2 (kg/kWh).'),
         ],
-        responses=oa.PDF)
+        responses={**oa.PDF, 409: oa.OBJ})  # 409 : chantier sans puissance (état)
     @action(detail=True, methods=['get'], url_path='rapport-energie',
             permission_classes=[IsAnyRole])
     def rapport_energie(self, request, pk=None):
@@ -1007,9 +1058,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # champ, jamais un PDF à zéros, un 500 ou un défaut silencieux.
         params, erreurs = energy_report.valider_parametres_rapport(
             request.query_params, inst.puissance_installee_kwc)
-        if erreurs:
+        if erreurs:  # ERR-ENF11 : seule la puissance manquante (état) = 409
             return Response({champ: [msg] for champ, msg in erreurs.items()},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT if set(erreurs) == {
+                                'puissance_installee_kwc'} else status.HTTP_400_BAD_REQUEST)
         pdf_bytes = energy_report.render_energy_report_pdf(inst, params)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
@@ -1018,7 +1070,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── FG74 — Gantt multi-chantier (lecture seule) ──────────────────────────
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='gantt',
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='gantt',
             permission_classes=[IsAnyRole])
     def gantt(self, request):
         """FG74 — vue Gantt multi-chantier : une ligne par chantier avec les barres
@@ -1064,7 +1116,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     _RELEVE_PHASES = ('releve', 'drone')
 
     @oa.extend_schema(responses=AttachmentSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='releves',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='releves',
             permission_classes=[IsAnyRole])
     def releves(self, request, pk=None):
         """FG75 — liste les relevés de toiture / drone attachés au chantier."""
@@ -1079,7 +1131,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from apps.records.serializers import AttachmentSerializer
         return Response(AttachmentSerializer(qs, many=True).data)
 
-    @oa.extend_schema(request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(), phase=oa.s()), responses={201: AttachmentSerializer})
+    @oa.extend_schema(
+        request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(), phase=oa.s()),
+        responses={201: AttachmentSerializer},
+    )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-releve',
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_releve(self, request, pk=None):
@@ -1157,7 +1212,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         type_inst = inst.type_installation
         if not type_inst:
             return Response({'detail': "Le chantier n'a pas de type d'installation."},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état
         if type_inst == Installation.TypeInstallation.AGRICOLE:
             # AGR605 — plan agricole semé une seule fois (pose,
             # mise_en_service, controle ; jamais de raccordement).
@@ -1254,7 +1309,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
 
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='a-facturer',
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='a-facturer',
             permission_classes=[IsResponsableOrAdmin])
     def a_facturer(self, request):
         """YSERV7 — chantiers à tranche d'échéancier due (jalon atteint ou
@@ -1336,7 +1391,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 return Response(
                     {'detail': "La recette pompage est réservée à un "
                                "chantier agricole (pompage solaire)."},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état
             if recette is not None:
                 return Response(recette_pompage_envelope(inst, recette, ctx))
             recette = RecettePompage.objects.create(
@@ -1372,8 +1427,18 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(CommissioningRecordSerializer(record).data)
 
     # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
-    @oa.extend_schema(request=oa.body('ReserveChantierRequete', description=oa.s(True), origine=oa.s(), bloquante=oa.b(), date_echeance=oa.d(null=True), responsable=oa.s()), responses={200: oa.LIST, 201: oa.OBJ})
-    @action(detail=True, methods=['get', 'post'], url_path='reserves',
+    @oa.extend_schema(
+        request=oa.body(
+            'ReserveChantierRequete',
+            description=oa.s(True),
+            origine=oa.s(),
+            bloquante=oa.b(),
+            date_echeance=oa.d(null=True),
+            responsable=oa.s(),
+        ),
+        responses={200: oa.LIST, 201: oa.OBJ},
+    )
+    @action(pagination_class=None, detail=True, methods=['get', 'post'], url_path='reserves',
             permission_classes=[IsAnyRole])
     def reserves(self, request, pk=None):
         """CIQ628 — GET : réserves du chantier (format du contrat
@@ -1414,7 +1479,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(reserve_contrat(reserve),
                         status=status.HTTP_201_CREATED)
 
-    @oa.extend_schema(parameters=[oa.OpenApiParameter('rid', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('LeverReserveRequete', resolution=oa.s()), responses=oa.OBJ)
+    @oa.extend_schema(
+        parameters=[oa.OpenApiParameter('rid', oa.ID_SCHEMA, oa.OpenApiParameter.PATH)],
+        request=oa.body('LeverReserveRequete', resolution=oa.s()),
+        responses=oa.OBJ,
+    )
     @action(detail=True, methods=['post'],
             url_path=r'reserves/(?P<rid>\d+)/lever',
             permission_classes=[IsResponsableOrAdmin])
@@ -1424,13 +1493,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from django.db.models import Q
         from ..services import lever_reserve_chantier, reserve_contrat
         inst = self.get_object()
+        # ERR-ENF11 : un `rid` hors clé entière PostgreSQL est une réserve
+        # introuvable (404 JSON), jamais une erreur de base.
         reserve = Reserve.objects.filter(
             Q(installation=inst) | Q(intervention__installation=inst),
-            company=inst.company, pk=rid).first()
+            company=inst.company, pk=rid).first() if int(rid) <= oa.ID_MAX else None
         if reserve is None:
             return Response({'detail': 'Réserve introuvable.'},
                             status=status.HTTP_404_NOT_FOUND)
-        resolution = oa.corps_objet(request).get('resolution') or ''
+        resolution = oa.corps_objet(request).get('resolution', '')
         if not isinstance(resolution, str):
             return Response({'resolution': 'Texte attendu.'},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -1454,9 +1525,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         inst = self.get_object()
         try:
             prononcer_reception_definitive(inst, request.user)
-        except ReceptionDefinitiveRefusee as exc:
+        except ReceptionDefinitiveRefusee as exc:  # ERR-ENF11 : état = 409
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(reception_contrat(inst))
 
     # ── CH4 — pack de remise client (handover) ──────────────────────────────
@@ -1493,7 +1564,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'persiste': False,
         })
 
-    @oa.extend_schema(request=oa.body('AvancerEtapeRequete', etape=oa.s(True), motif_override_acompte=oa.s(), motif_derogation_8221=oa.s()), responses=InstallationSerializer)
+    @oa.extend_schema(
+        request=oa.body(
+            'AvancerEtapeRequete',
+            etape=oa.s(True),
+            motif_override_acompte=oa.s(),
+            motif_derogation_8221=oa.s(),
+        ),
+        responses=InstallationSerializer,
+    )
     @action(detail=True, methods=['post'], url_path='avancer-etape',
             permission_classes=[IsResponsableOrAdmin])
     def avancer_etape(self, request, pk=None):
@@ -1509,22 +1588,24 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         )
         inst = self.get_object()
         stages = stages_actifs(inst.company)
+        # ERR-ENF11 : états (aucune étape, dernière atteinte, gate) = 409 ;
+        # clé d'étape bien formée mais inconnue = 404.
         if not stages:
             return Response({'detail': 'Aucune étape configurée.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         cle = request.data.get('etape')
         if cle:
             cible = next((s for s in stages if s.cle == cle), None)
             if cible is None:
                 return Response({'detail': 'Étape inconnue.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_404_NOT_FOUND)
         else:
             courante = etape_courante(inst)
             idx = next((k for k, s in enumerate(stages)
                         if courante is not None and s.id == courante.id), -1)
             if idx + 1 >= len(stages):
                 return Response({'detail': 'Dernière étape déjà atteinte.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
             cible = stages[idx + 1]
         # Gate propre à l'ÉTAPE demandée (le choix de la cible est la
         # responsabilité de cet adaptateur) ; la chaîne de gardes du STATUT est
@@ -1533,7 +1614,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if raisons:
             return Response(
                 {'detail': 'Étape bloquée par un gate.', 'raisons': raisons},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # ADAPTATEUR (AUD316) — ce chemin, l'écran de timeline poussé par le
         # produit, écrivait `statut` lui-même et ne tirait qu'une PARTIE de la
         # cascade : ni `verifier_gate_acompte_planification` (YSERV1), ni
@@ -1559,7 +1640,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Étape bloquée par un gate.',
                  'raisons': exc.raisons},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         activity.log_note(
             inst, request.user, f"Étape avancée : « {cible.libelle} ».")
         return Response(

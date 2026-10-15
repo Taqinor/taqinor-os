@@ -8,9 +8,9 @@ convenu d'un produit à une date (d'après les contrats en vigueur).
 `company` propre) sont scopées par leur contrat parent. Cross-app :
 ``stock.Fournisseur`` / ``stock.Produit`` en string-FK. Montants INTERNES.
 """
-from core.champs_stricts import date_ou_400, entier_ou_400
+from core.champs_stricts import date_ou_400
 
-from rest_framework import viewsets, status
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -98,7 +98,10 @@ class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
         c.save(update_fields=['statut', 'date_modification'])
         return Response(self.get_serializer(c).data)
 
-    @oa.extend_schema(parameters=[oa.qi('produit', required=True), oa.qi('fournisseur'), oa.qd('date')], responses=oa.OBJ)
+    @oa.extend_schema(
+        parameters=[oa.qid('produit', required=True), oa.qidv('fournisseur'), oa.qdv('date')],
+        responses=oa.OBJ,
+    )
     @action(detail=False, methods=['get'], url_path='prix-convenu')
     def prix_convenu(self, request):
         """FG318 — prix convenu d'un produit à une date, d'après les contrats en
@@ -106,18 +109,11 @@ class ContratPrixFournisseurViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet)
         (optionnelle, YYYY-MM-DD). Lecture seule, montant INTERNE."""
         # ERR-ENF11-FUZZ-INSTALLATIONS : identifiants entiers >= 1 et date
         # stricte (400 nommant le paramètre) ; ``produit`` reste requis.
-        produit_id = entier_ou_400(
-            request.query_params.get('produit'), 'produit', mini=1)
-        if not produit_id:
-            return Response(
-                {'produit': 'Paramètre `produit` requis.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        produit_id = oa.id_requete(request, 'produit', requis=True)
         a_la_date = date_ou_400(request.query_params.get('date'), 'date')
         result = selectors.prix_convenu_fournisseur(
             request.user.company, produit_id,
-            fournisseur_id=entier_ou_400(
-                request.query_params.get('fournisseur'), 'fournisseur',
-                mini=1),
+            fournisseur_id=oa.id_requete(request, 'fournisseur'),
             a_la_date=a_la_date)
         return Response(result)
 

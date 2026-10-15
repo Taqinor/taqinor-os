@@ -143,8 +143,8 @@ INSTALLED_APPS = [
     # apps.ao.models.
     'apps.ao',
     # CAL4 — Calepinage autonome (conception de toiture pour un lead, un
-    # client, un devis ou une affaire d'AO). Module NEUF, additif : il ne
-    # remplace ni l'atelier 3D ventes ni le calepinage 2D opposable de l'AO.
+    # client ou un devis). Module additif : il ne remplace pas l'atelier 3D
+    # ventes.
     'apps.calepinage',
     # ODX12 — Portail self-service client (FG228–233). Sorti de compta en
     # préservant les tables physiques (SeparateDatabaseAndState). Chargé AVANT
@@ -845,6 +845,11 @@ SPECTACULAR_SETTINGS = {
         # ses codes de pièce ; le « code » des paliers API (core.ApiUsagePlan) garde
         # son nom historique « CodeEnum ». Nommage de schéma uniquement.
         'CodeEnum': 'core.models.ApiUsagePlan.Palier',
+        # CI #997 (14/10/2026) — `ordre_lignes` ET les rôles par gamme de
+        # `marques` (ParametresGammes) publient le MÊME jeu
+        # ROLES_AUTO_COMPOSITION : un seul nom de schéma, sinon drf-spectacular
+        # signale « multiple names for the same choice set ». Nommage seulement.
+        'RoleAutoCompositionEnum': 'apps.ventes.models.ROLES_AUTO_COMPOSITION',
         'CodeRemiseDocumentEnum': 'apps.calepinage.views.remise_document.CODES_REMISE',
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
@@ -989,6 +994,56 @@ SPECTACULAR_SETTINGS = {
         # SOLMVP30b). Le schéma régénéré (ci-après) confirme qu'aucune
         # collision « multiple names for the same choice set » ne réapparaît
         # sur les jeux entree/sortie restants (installations.GeofenceAlert…).
+        #
+        # ENF11 (14/10/2026) — les 16 dernières signatures de la base d'avertissements
+        # OpenAPI : un nom STABLE pour chaque jeu de choix partagé par plusieurs
+        # composants sous un même nom de champ (sinon `Statut4b1Enum`… et
+        # « multiple names for the same choice set »). Nommage uniquement.
+        # — champ « statut » (12 jeux)
+        'DevisStatutEnum': 'apps.ventes.models.Devis.Statut',
+        'FactureStatutEnum': 'apps.facturation.models.Facture.Statut',
+        'InstallationStatutEnum':
+            'apps.installations.models_installation.Installation.Statut',
+        'DemandeAchatStatutEnum':
+            'apps.installations.models_demande_achat.DemandeAchat.Statut',
+        'StatutIncidentPublicEnum': 'apps.statuspage.models.IncidentPublic.Statut',
+        'StatutApprobationEnum': 'apps.ged.models.APPROBATION_CHOICES',
+        'StatutBrouillonEmiseAnnuleeEnum':
+            'apps.ventes.models_commissioning.AttestationConformite.Statut',
+        'StatutBrouillonValideAnnuleEnum': 'apps.achats.models.RetourFournisseur.Statut',
+        'StatutBrouillonValideEnum':
+            'apps.installations.models_retour_materiel.RetourMateriel.Statut',
+        'StatutActifClosEnum': 'apps.stock.models_consignation.DepotConsignation.Statut',
+        'StatutPlanifieEnCoursTermineEnum':
+            'apps.installations.models_comptage.SessionComptage.Statut',
+        'StatutPlanifieEnCoursTermineAnnuleEnum':
+            'core.maintenance_windows.MaintenanceWindow.Statut',
+        # — autres champs
+        'CanalAcquisitionEnum': 'apps.crm.models.Lead.Canal',
+        'CanalRelanceEnum': 'apps.crm.models_cadence.RelanceEtape.Canal',
+        'CanalEnvoiRapportEnum': 'apps.reporting.models.SavedReport.CANAL_CHOICES',
+        'GraviteInfoWarningCritiqueEnum': 'apps.sav.models.AlarmeOnduleur.Gravite',
+        'GraviteMineureMajeureCritiqueEnum':
+            'apps.stock.models_incident_fournisseur.IncidentQualiteFournisseur.Gravite',
+        'KindActiviteEnum': 'apps.records.models.Activity.Kind',
+        'KindDemandePersonneEnum': 'core.models.DataSubjectRequest.KIND_CHOICES',
+        'ModePaiementClientEnum': 'apps.facturation.models.Paiement.Mode',
+        'ModePaiementFournisseurEnum': 'apps.achats.models.PaiementFournisseur.Mode',
+        'ModeImportEnum': 'apps.dataimport.views._MODES',
+        'NiveauAclEnum': 'apps.ged.models.ACL_CHOICES',
+        'PrioriteTroisNiveauxEnum': 'apps.crm.models.Lead.Priorite',
+        'PrioriteQuatreNiveauxEnum': 'apps.sav.models.Ticket.Priorite',
+        'RaccordementLeadEnum': 'apps.crm.models.Lead.Raccordement',
+        'RaccordementInstallationEnum':
+            'apps.installations.models_installation.Installation.Raccordement',
+        'Regime8221Enum': 'apps.ventes.models_regulatory.REGIME_CHOICES',
+        'LeadSourceEnum': 'apps.crm.models.Lead.Source',
+        # Clés de `_SOURCE_LOADERS` (déjà triées : le ChoiceField les trie).
+        'SourceApprobationEnum': 'apps.reporting.approbations._SOURCE_LOADERS',
+        'TypeInstallationLeadEnum': 'apps.crm.models.Lead.TypeInstallation',
+        'TypeInstallationChantierEnum':
+            'apps.installations.models_installation.Installation.TypeInstallation',
+        'MetriqueCommercialeEnum': 'apps.crm.models_clients.ObjectifCommercial.Metric',
     },
 }
 
@@ -2022,4 +2077,7 @@ CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
 # (`sweeps._sweep_hot_leads`), mêmes valeurs que les défauts du module.
 HOT_LEAD_SCORE_THRESHOLD = 60
 HOT_LEAD_MINUTES_OUVREES = 30
-ICS_TOKEN_MAX_AGE_DAYS, BI_WIDGET_CACHE_TTL, AI_GUARD_MAX_CHARS, AI_TOXIC_TERMS, TENANT_TASK_RATE_LIMITS = 180, 300, 6000, None, None  # ENF28 : défauts de reporting.calendar et core (bi_cache, ai, tenant_ratelimit) ; None = repli du module
+# ENF28 : défauts de reporting.calendar et core (bi_cache, ai, tenant_ratelimit) ; None = repli du module
+ICS_TOKEN_MAX_AGE_DAYS, BI_WIDGET_CACHE_TTL, AI_GUARD_MAX_CHARS, AI_TOXIC_TERMS, TENANT_TASK_RATE_LIMITS = (
+    180, 300, 6000, None, None
+)

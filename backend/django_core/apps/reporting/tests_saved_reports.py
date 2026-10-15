@@ -57,6 +57,20 @@ class SavedReportModelTests(TestCase):
             f'/api/django/reporting/saved-reports/{other_sr.id}/')
         self.assertEqual(res.status_code, 404)
 
+    def test_definition_nulle_400_et_cible_inconnue_404(self):
+        """ERR-ENF11-FUZZ-REPORTING — ``definition`` est un OBJET non nul
+        (publié tel quel) ; une cible bien formée inconnue de la société
+        répond 404 (elle répondait 400)."""
+        url = '/api/django/reporting/saved-reports/'
+        res = self.api.post(url, {'name': 'X', 'definition': None},
+                            format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertIn('definition', res.data)
+        res = self.api.post(url, {'name': 'X', 'target_kind': 'dashboard',
+                                  'cible_id': 987654}, format='json')
+        self.assertEqual(res.status_code, 404, res.data)
+        self.assertIn('cible_id', res.data)
+
     def test_recipient_list_parsing(self):
         sr = SavedReport.objects.create(
             company=self.company, name='R',
@@ -165,3 +179,38 @@ class ScheduledReportSelectionTests(TestCase):
                 return_value=monday):
             self.assertEqual(email_saved_reports(), 1)
         self.assertEqual(len(mail.outbox), 1)
+
+
+class SavedReportTypesStrictsTests(TestCase):
+    """CI #997 fuzz — booléens, entiers et textes du rapport sauvegardé : le
+    type JSON déclaré, sans coercition silencieuse (``pinned: 0``…)."""
+
+    URL = '/api/django/reporting/saved-reports/'
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='StrictCo')
+        self.user = User.objects.create_user(
+            username='strict_owner', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = _auth(self.user)
+
+    def test_types_non_conformes_refuses_400(self):
+        base = {'name': 'Rapport', 'target_kind': 'sales',
+                'schedule': 'daily', 'recipients': 'a@b.com'}
+        for champ, valeur in (('pinned', 0), ('pinned', 'true'),
+                              ('name', 0), ('recipients', 5),
+                              ('heure_envoi', '8'), ('jour_du_mois', 1.0)):
+            with self.subTest(champ=champ, valeur=valeur):
+                res = self.api.post(self.URL, {**base, champ: valeur},
+                                    format='json')
+                self.assertEqual(res.status_code, 400, res.data)
+                self.assertIn(champ, res.data)
+        self.assertFalse(SavedReport.objects.exists())
+
+    def test_types_conformes_acceptes(self):
+        res = self.api.post(self.URL, {
+            'name': '0', 'target_kind': 'sales', 'schedule': 'none',
+            'pinned': False, 'heure_envoi': 8, 'jour_du_mois': 1,
+            'recipients': '', 'destinataires_whatsapp': '',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.data)

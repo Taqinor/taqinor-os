@@ -2,8 +2,7 @@
 
 LE CONSTAT ET LA DOCTRINE REPRISE
 ----------------------------------
-La fabrique AO ÉCHOUE plutôt que d'inventer
-(``apps/ao/fabrique/rendus/note_calcul.py``) : c'est la bonne doctrine pour
+La note de calcul ÉCHOUE plutôt que d'inventer : c'est la bonne doctrine pour
 une note de calcul. Ici la pièce est ADMINISTRATIVE, donc elle doit rester
 REMPLISSABLE — mais sans jamais qu'une valeur par défaut ne se déguise en
 donnée. D'où la règle unique de ce module :
@@ -1058,37 +1057,52 @@ def _liste_saisie(valeur, champ):
 
 
 def _booleen(valeur):
-    if isinstance(valeur, str):
-        return valeur.strip().lower() in ('1', 'true', 'vrai', 'oui', 'on')
-    return bool(valeur)
+    """``actif`` : un booléen JSON, ou « true » / « false » en formulaire —
+    toute autre valeur est refusée 400 (``{}`` ou ``5`` étaient lus « faux » /
+    « vrai » en silence, CI #997 fuzz (2))."""
+    if isinstance(valeur, bool):
+        return valeur
+    if isinstance(valeur, str) and valeur.strip().lower() in ('true', 'false'):
+        return valeur.strip().lower() == 'true'
+    raise GabaritRefuse({'actif': (
+        "« actif » se donne en booléen (true ou false) "
+        f"(reçu : {type(valeur).__name__}).")})
 
 
 def _premier_element_fautif(liste, cles, prefixe):
-    """Le chemin NOMMÉ de l'élément fautif d'une liste, ou le préfixe."""
+    """Le chemin NOMMÉ de l'élément fautif d'une liste, ou le préfixe.
+
+    Même ordre de contrôle que ``GabaritDossierReglementaire._erreur_pieces``
+    / ``_erreur_champs`` (élément par élément) : le chemin nomme l'élément
+    dont le message est celui du modèle."""
+    from ..models import GabaritDossierReglementaire as Gabarit
+
     if not isinstance(liste, list):
         return prefixe
+    plein = Gabarit._texte_plein
+    champs = prefixe == 'champs'
     vus = set()
     for rang, element in enumerate(liste):
+        chemin = f'{prefixe}[{rang}]'
         if not isinstance(element, dict):
-            return f'{prefixe}[{rang}]'
-        code = str(element.get('code') or '').strip()
-        if not code or code in vus:
-            return f'{prefixe}[{rang}].code'
-        vus.add(code)
+            return chemin
+        code = element.get('code')
+        if not plein(code) or code.strip() in vus:
+            return f'{chemin}.code'
+        vus.add(code.strip())
         for cle in cles[1:]:
-            if prefixe == 'champs' and cle in ('type', 'cle_calepinage'):
+            if champs and cle in ('type', 'cle_calepinage'):
                 continue
-            if not str(element.get(cle) or '').strip():
-                return f'{prefixe}[{rang}].{cle}'
-    if prefixe == 'champs':
-        from ..models import GabaritDossierReglementaire as Gabarit
-
-        for rang, element in enumerate(liste):
-            if str(element.get('type') or 'texte') not in Gabarit.TYPES_CHAMP:
-                return f'champs[{rang}].type'
-            cle = element.get('cle_calepinage')
-            if cle and cle not in Gabarit.CLES_PREREMPLISSAGE:
-                return f'champs[{rang}].cle_calepinage'
+            if not plein(element.get(cle)):
+                return f'{chemin}.{cle}'
+        if champs:
+            if element.get('type', 'texte') not in Gabarit.TYPES_CHAMP:
+                return f'{chemin}.type'
+            if ('cle_calepinage' in element and element['cle_calepinage']
+                    not in Gabarit.CLES_PREREMPLISSAGE):
+                return f'{chemin}.cle_calepinage'
+        if not isinstance(element.get('obligatoire', not champs), bool):
+            return f'{chemin}.obligatoire'
     return prefixe
 
 
@@ -1102,6 +1116,8 @@ def _valider(gabarit):
     lieu d'un 400 nommé. ``clean()`` passe ensuite : son message, plus
     précis, l'emporte sur le même champ."""
     from django.core.exceptions import ValidationError
+
+    from ..models import GabaritDossierReglementaire
 
     bruts = {}
     exclus = [f.name for f in gabarit._meta.fields
@@ -1125,9 +1141,15 @@ def _valider(gabarit):
                 nom = _premier_element_fautif(gabarit.champs, _CLES_CHAMP,
                                               champ)
             erreurs[nom] = ' '.join(messages)
-        raise GabaritRefuse(erreurs)
-    from ..models import GabaritDossierReglementaire
-
+        # Deux éléments au même code (rien d'autre à reprocher au corps) : un
+        # CONFLIT entre éléments — un schéma ne sait pas exprimer l'unicité
+        # d'une clé d'objet (CI #997 api-fuzz (3)), 409 comme le doublon de
+        # gabarit ci-dessous.
+        conflit = all(GabaritDossierReglementaire.FRAGMENT_DOUBLON in texte
+                      for texte in erreurs.values())
+        raise GabaritRefuse(
+            erreurs,
+            statut=HTTPStatus.CONFLICT if conflit else HTTPStatus.BAD_REQUEST)
     doublon = (GabaritDossierReglementaire.objects
                .filter(company=gabarit.company, pays=gabarit.pays,
                        code=gabarit.code)
@@ -1156,6 +1178,10 @@ def _appliquer(gabarit, donnees):
             raise GabaritRefuse({champ: (
                 f"« {champ} » se donne en texte (reçu : "
                 f"{type(valeur).__name__}).")})
+        if isinstance(valeur, str) and '\x00' in valeur:
+            # Un NUL casserait l'INSERT (colonne texte, 500) : refusé nommé.
+            raise GabaritRefuse({champ: (
+                f"« {champ} » ne peut pas contenir de caractère nul.")})
         setattr(gabarit, champ, valeur)
 
 

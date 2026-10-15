@@ -125,7 +125,7 @@ class ValidationTests(Wir163Base):
             'document': self.doc_b.id, 'utilisateur': self.normal_a.id,
             'niveau': 'lecture',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertFalse(
             AclGed.objects.filter(document=self.doc_b).exists())
 

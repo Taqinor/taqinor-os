@@ -112,3 +112,84 @@ class ParametresRequeteStrictsTests(SimpleTestCase):
                 nombre_ou_400(mauvais, 'h')
         with self.assertRaises(ValidationError):
             nombre_ou_400('-1', 'h', mini=0)
+
+
+class SchemaChampsStrictsTests(SimpleTestCase):
+    """ENF11 — ce que le schéma publie pour une chaîne stricte (aucun
+    caractère nul) et pour une clé primaire entière (au moins 1)."""
+
+    def _schema(self, champ, direction='request'):
+        from drf_spectacular.openapi import AutoSchema
+        from drf_spectacular.plumbing import ComponentRegistry
+        auto = AutoSchema()
+        auto.registry = ComponentRegistry()
+        return auto._map_serializer_field(champ, direction)
+
+    def test_chaine_stricte_publie_un_motif_sans_nul(self):
+        import re
+
+        from core.champs_stricts import (
+            MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, ChaineStricte)
+        # Blanc interdit (défaut DRF) : nul ET blanc refusés.
+        schema = self._schema(ChaineStricte())
+        self.assertEqual(schema['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+        self.assertTrue(re.search(MOTIF_NON_BLANC_SANS_NUL, 'texte é\n'))
+        self.assertIsNone(re.search(MOTIF_NON_BLANC_SANS_NUL, 'a\x00b'))
+        self.assertIsNone(re.search(MOTIF_NON_BLANC_SANS_NUL, '   '))
+        # Blanc permis : seul le nul est refusé.
+        schema = self._schema(ChaineStricte(allow_blank=True))
+        self.assertEqual(schema['pattern'], MOTIF_SANS_NUL)
+        self.assertTrue(re.search(MOTIF_SANS_NUL, ''))
+        self.assertIsNone(re.search(MOTIF_SANS_NUL, 'a\x00b'))
+        self.assertNotIn('pattern', self._schema(ChaineStricte(), 'response'))
+
+    def test_cle_primaire_entiere_vaut_au_moins_un_en_requete(self):
+        from django.contrib.auth import get_user_model
+        from rest_framework import serializers
+        champ = serializers.PrimaryKeyRelatedField(
+            queryset=get_user_model().objects.all())
+        self.assertEqual(self._schema(champ)['minimum'], 1)
+        self.assertNotIn('minimum', self._schema(champ, 'response'))
+
+    def test_non_blanc_suit_str_strip_et_le_motif_publie(self):
+        """CI #997 (2) — ``\\u001c`` seul : blanc pour DRF (``str.strip``),
+        non blanc pour ``\\s`` de la regex Rust du validateur ; le motif
+        publié l'exclut donc explicitement, comme ``non_blanc``."""
+        import re
+
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, non_blanc
+        for texte in ('\u001c', '\u001f ', ' \f', '\u0000'):
+            self.assertFalse(non_blanc(texte), repr(texte))
+            self.assertIsNone(re.search(MOTIF_NON_BLANC_SANS_NUL, texte))
+        self.assertTrue(non_blanc('a\u001c'))
+        self.assertTrue(re.search(MOTIF_NON_BLANC_SANS_NUL, 'a\u001c'))
+
+    def test_decimal_souple_chaine_au_motif_publie(self):
+        """CI #997 (2) — ``prix_cible_kwc: ""`` valait ``null`` (201) ;
+        ``+1``, ``1e2``, ``1_0`` ou un saut de ligne final passaient par
+        ``Decimal``. Une chaîne suit le motif publié ; un nombre reste lu."""
+        from decimal import Decimal
+
+        from rest_framework import serializers
+
+        from core.champs_stricts import DecimalSouple
+        champ = DecimalSouple(max_digits=10, decimal_places=2,
+                              allow_null=True, required=False)
+        for brut in ('', ' ', ' 1', '+1', '1e2', '1_0', '5\n', '123456789'):
+            with self.assertRaises(serializers.ValidationError, msg=repr(brut)):
+                champ.run_validation(brut)
+        self.assertIsNone(champ.run_validation(None))
+        self.assertEqual(champ.run_validation('5.'), Decimal('5'))
+        self.assertEqual(champ.run_validation(12.5), Decimal('12.50'))
+
+    def test_date_stricte_aaaa_mm_jj(self):
+        from datetime import date
+
+        from rest_framework import serializers
+
+        from core.champs_stricts import DateStricte
+        champ = DateStricte(allow_null=True, required=False)
+        for brut in ('', '2026-1-5', '20261005', 0):
+            with self.assertRaises(serializers.ValidationError, msg=repr(brut)):
+                champ.run_validation(brut)
+        self.assertEqual(champ.run_validation('2026-10-05'), date(2026, 10, 5))

@@ -174,10 +174,11 @@ class EtudeHoraireEquipementsTests(TestCase):
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
 
-    def test_equipements_chaine_multipart_400(self):
+    def test_equipements_chaine_multipart_415(self):
+        # CI #997 (D2) — la vue est JSON seul : le formulaire, où
+        # ``equipements`` voyage en chaîne, reçoit 415 (plus 400).
         response = self.api.post(URL, CORPS_FUZZ, format='multipart')
-        self.assertEqual(response.status_code, 400, response.content)
-        self.assertIn('equipements', response.json()['detail'])
+        self.assertEqual(response.status_code, 415, response.content)
 
     def test_equipements_chaine_json_400(self):
         response = self.api.post(URL, {'equipements': 'piscine'},
@@ -189,3 +190,81 @@ class EtudeHoraireEquipementsTests(TestCase):
             URL, {'facture_hiver': 900, 'equipements': {'piscine': True}},
             format='json')
         self.assertEqual(response.status_code, 200, response.content)
+
+    def test_drapeau_non_booleen_400(self):
+        """CI #997 api-fuzz (cas fkaboo) : ``dimensionner: {}`` était lu par
+        sa « vérité » Python → 200. Un drapeau publié ``boolean`` n'accepte
+        qu'un vrai booléen JSON."""
+        corps_fuzz = {
+            'devis': 0, 'lead': 0, 'ville': '0', 'lat': 0, 'lon': 0,
+            'facture_hiver': 0, 'facture_ete': 0, 'ete_differente': False,
+            'factures_mensuelles': [], 'conso_kwh_mensuelles': [],
+            'occupation': 'presence_jour', 'equipements': {},
+            'raccordement': '0', 'kwc': 0, 'batterie_kwh': 0,
+            'dimensionner': {}, 'critere': '0'}
+        response = self.api.post(URL, corps_fuzz, format='json')
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertIn('dimensionner', response.json()['detail'])
+        for nom, brut in (('dimensionner', 1), ('dimensionner', 'true'),
+                          ('dimensionner', None), ('ete_differente', 0),
+                          ('ete_differente', [])):
+            with self.subTest(nom=nom, brut=brut):
+                response = self.api.post(
+                    URL, {'facture_hiver': 900, nom: brut}, format='json')
+                self.assertEqual(response.status_code, 400, response.content)
+                self.assertIn(nom, response.json()['detail'])
+
+    def test_champs_scalaires_forme_publiee(self):
+        """CI #997 (2) (cas EpXQ7i) — ``critere: "\\f"`` passait (200) comme
+        ``lat: "0"`` ou ``devis: null`` : un champ PRÉSENT suit sa forme
+        publiée (400 nommé) ; une occupation hors liste reste ignorée.
+        CI #997 (3) (O3EAyQ) — un nul dans ville/raccordement sort du motif."""
+        for nom, brut in (('critere', '\f'), ('critere', 'x'),
+                          ('ville', ' '), ('ville', '\u001c'),
+                          ('ville', 'a\u0000'), ('raccordement', 'm\u0000o'),
+                          ('raccordement', 0), ('lat', '0'), ('kwc', True),
+                          ('devis', None), ('lead', 1.5), ('occupation', 5),
+                          ('equipements', '')):
+            response = self.api.post(
+                URL, {'facture_hiver': 900, nom: brut}, format='json')
+            self.assertEqual(response.status_code, 400, (nom, brut))
+            self.assertIn(nom, response.json()['detail'])
+        response = self.api.post(
+            URL, {'facture_hiver': 900, 'critere': 'economie_max',
+                  'occupation': 'inconnue'}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+
+    def test_drapeau_booleen_accepte(self):
+        response = self.api.post(
+            URL, {'facture_hiver': 900, 'dimensionner': False,
+                  'ete_differente': False}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNone(response.data['dimensionnement'])
+        # CI #997 (D2) — JSON seul : un formulaire reçoit 415.
+        response = self.api.post(
+            URL, {'facture_hiver': '900', 'dimensionner': 'false'},
+            format='multipart')
+        self.assertEqual(response.status_code, 415, response.content)
+
+    def test_serie_12_nombres_sinon_400(self):
+        """CI #997 api-fuzz (cas CnCcjq) : ``conso_kwh_mensuelles=True`` en
+        formulaire répondait 200. Les deux séries publiées « 12 nombres ou
+        null » refusent toute autre forme en 400 nommant le champ."""
+        for nom in ('conso_kwh_mensuelles', 'factures_mensuelles'):
+            for brut in (True, 'abc', [1] * 11, [True] * 12, ['1'] * 12, {}):
+                with self.subTest(nom=nom, brut=brut):
+                    response = self.api.post(
+                        URL, {'facture_hiver': 900, nom: brut}, format='json')
+                    self.assertEqual(response.status_code, 400,
+                                     response.content)
+                    self.assertIn(nom, response.json()['detail'])
+        response = self.api.post(
+            URL, {'conso_kwh_mensuelles': [400] * 12,
+                  'factures_mensuelles': None}, format='json')
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data['consommation']['source'],
+                         'kwh_mensuels_saisis')
+        # CI #997 (D2) — JSON seul : le formulaire reçoit 415.
+        response = self.api.post(
+            URL, {'conso_kwh_mensuelles': ['400'] * 12}, format='multipart')
+        self.assertEqual(response.status_code, 415, response.content)

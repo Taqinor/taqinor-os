@@ -47,3 +47,21 @@ class ProposalErreurNeutreTests(TestCase):
             self.assertNotIn(fragment, corps)
         # La pile est journalisée côté serveur.
         self.assertTrue(any(SECRET in ligne for ligne in journal.output))
+
+    def test_regle_dure_sans_onduleur_409_neutre(self):
+        # ENF11 — la RÈGLE DURE du moteur (aucune option sans onduleur) est
+        # un refus tenant au contenu du devis : 409 au message neutre, pas
+        # le 500 « momentanément indisponible » ; jamais le texte brut.
+        api = APIClient()
+        api.force_authenticate(self.user)
+        refus = ValueError(
+            "Devis DEV-ADEV31-1 : aucune option ne contient d'onduleur — "
+            "génération du PDF à options refusée (règle de sécurité).")
+        with mock.patch(
+                'apps.ventes.quote_engine.generate_premium_devis_pdf',
+                side_effect=refus):
+            resp = api.get(
+                '/api/django/ventes/devis/%s/proposal/' % self.devis.pk)
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('onduleur', resp.json()['detail'])
+        self.assertNotIn('DEV-ADEV31-1', resp.content.decode())

@@ -375,6 +375,30 @@ def avenant_a_signer(devis):
     return predecesseur_accepte(devis) is not None
 
 
+def avenant_public(devis):
+    """VNT61 (contrat ``proposal_data.json`` › ``notes_vnt2``) — le bloc
+    ``avenant`` de la page publique : ``{a_signer, remplace: {reference},
+    signe_le}`` pour un devis ACCEPTÉ qui remplace une vente acceptée, sinon
+    ``None`` (clé ABSENTE, jamais ``null``). ``a_signer`` = même règle que
+    :func:`avenant_a_signer`. Lecture pure."""
+    from apps.ventes.models import Devis, DevisSignature
+    from apps.ventes.selectors import predecesseur_accepte
+    if getattr(devis, 'pk', None) is None \
+            or devis.statut != Devis.Statut.ACCEPTE:
+        return None
+    precedent = predecesseur_accepte(devis)
+    if precedent is None:
+        return None
+    signature = DevisSignature.objects.filter(devis_id=devis.pk).first()
+    return {
+        'a_signer': signature is None,
+        'remplace': {'reference': precedent.reference},
+        'signe_le': (signature.signed_at.isoformat()
+                     if signature is not None and signature.signed_at
+                     else None),
+    }
+
+
 def signer_avenant(devis, *, nom, ip=None, user_agent='', consentement=True,
                    signature_image='', signed_at_client=None,
                    on_behalf_of='', entreprise=None):

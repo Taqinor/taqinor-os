@@ -356,6 +356,10 @@ class ActivityViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         company = _company(request)
+        # Le schéma déclare le corps OBLIGATOIRE : une requête SANS corps (ni
+        # Content-Length) créait un à-faire vide. ``{}`` reste un corps valide.
+        if int(request.META.get('CONTENT_LENGTH') or 0) == 0:
+            raise drf.ValidationError({'detail': 'Corps JSON obligatoire.'})
         _exiger_objet(request)
         model, oid = cible_corps_ou_400(request.data)
         # XKB4 — à-faire personnel : pas de cible métier (model/id absents).

@@ -4,7 +4,7 @@
 // composant ; seules exceptions au verbatim : les refs écrites passent sous
 // les noms `facturesEcartConfirmeRef` / `forcerSansJetonRef` (règle
 // react-hooks/immutability).
-import { erreursConditions } from '../../echeancierEdition'
+import { erreursConditions, erreurEcheancier } from '../../echeancierEdition'
 import {
   controlerFacturesSaisies,
   isHybridInverter, isReseauInverter, isOffgridInverter, isPanel, isPompe, texteClassement,
@@ -12,7 +12,7 @@ import {
   controlerKwhDeclare, MESSAGE_KWH_INCOHERENT,
 } from '../../solar'
 import { CATEGORIE_NON_PRECISEE } from '../../../../pages/ventes/generator/PanneauCommercial'
-import { etatVersEcritures, baremePourDerivation } from '../etatDevis'
+import { etatVersEcritures, baremePourDerivation, facturesHiverEte } from '../etatDevis'
 import ventesApi from '../../../../api/ventesApi'
 import { erreursTarifDeclare } from '../etudeMarcheBloc'
 import { toast } from '../../../../ui/confirm'
@@ -32,6 +32,7 @@ const LIBELLES_CHAMPS_ENTETE = {
   prix_cible_kwc: 'Prix cible / kWc',
   statut: 'Statut',
   etude_params: 'Étude',
+  echeancier: 'Échéancier de paiement',
 }
 const champsEntete = (err) => {
   const { fieldErrors } = getApiError(err)
@@ -59,7 +60,8 @@ export function usePersistanceDevis(ctx) {
     farmIrrigation, attestationAgricole, farmHmtStatic, farmHmtDrawdown, pompageSaisie, clear,
     marquerEnregistre, recommended, consoAnnuelleReelle, facturesSaisies, selectedLead, marcheCi,
     ctxProfilCi, consoCiConnue, aujourdhuiIso, ecoAvecCalendrier,
-    setEditDevis, setReserveEnregistrement, setErreursChamps, baremeSociete,
+    setEditDevis, setReserveEnregistrement, setErreursChamps, baremeSociete, kpiTotal = null,
+    provenanceMois = [], fHiver = '', fEte = '',
     // EDC7 (contrat EDC) — rester dans l'éditeur après l'enregistrement.
     embedded = false, onEnregistre = null,
   } = ctx
@@ -78,6 +80,11 @@ export function usePersistanceDevis(ctx) {
     if (editId && Object.keys(erreursConditions(conditions)).length) {
       e.conditions = 'Conditions du client incomplètes : voir sous les champs.'
     }
+    // AGNR37 — un échéancier ENVOYÉ dont les tranches ne totalisent pas le
+    // devis bloque AVANT toute écriture : raison sous la carte, bandeau nommé.
+    const refusEcheancier = editId && echeancierAEnvoyer.current
+      && erreurEcheancier(echeancierSaisie, kpiTotal)
+    if (refusEcheancier) e.submit = `${LIBELLES_CHAMPS_ENTETE.echeancier} : ${refusEcheancier}`
     // CIQ125 — commercial ET industriel : sans consommation (saisie, ou
     // reprise de la fiche lead par le serveur) ni taille explicite,
     // l'enregistrement est refusé SOUS le champ.
@@ -299,8 +306,14 @@ export function usePersistanceDevis(ctx) {
 
   const entreesReellesEcran = (consoDejaConnue) => {
     const entrees = {}
-    if (facturesSaisies) {
+    // AGNR34 (D-AGNR-1 option (a)) — douze mois TAPÉS ⇒ `factures_mensuelles_reelles` ;
+    // des mois estimés depuis hiver / été ⇒ `factures_hiver_ete` (le moteur
+    // dérive lui-même les marches) — jamais une série dérivée envoyée « réelle ».
+    const deuxFactures = facturesHiverEte(fHiver, fEte)
+    if (provenanceMois.length === 12 && provenanceMois.every(p => p === 'tapee')) {
       entrees.factures_mensuelles_reelles = monthly.map(v => parseFloat(v) || 0)
+    } else if (facturesSaisies && deuxFactures) {
+      entrees.factures_hiver_ete = deuxFactures
     }
     // Conso annuelle : la source la plus DIRECTE d'abord (l'étude du marché,
     // qui descend de la saisie « consommation »), puis la facture réelle QF4,
@@ -601,6 +614,8 @@ export function usePersistanceDevis(ctx) {
         // champ et le bandeau le NOMME (jamais la phrase générique).
         const parChamp = champsEntete(err)
         setErreursChamps(parChamp)
+        // AGNR37 — le refus `echeancier` (AGNR12) s'affiche aussi sous la carte.
+        if (parChamp.echeancier) setErrors(prev => ({ ...prev, echeancier: parChamp.echeancier }))
         msg = Object.entries(parChamp)
           .map(([champ, texte]) => `${LIBELLES_CHAMPS_ENTETE[champ]} : ${texte}`).join(' · ')
       } else if (!editDevis && issueInconnue(err)) {

@@ -26,15 +26,18 @@ from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
+    OpenApiParameter, PolymorphicProxySerializer, extend_schema,
+    extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -186,10 +189,11 @@ _VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_FLEET_REPONSE = inline_serializer('ViewsMo
 })
 
 
-_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetBenchmarkReponse', {
-    'systems_ranked': drf_serializers.JSONField(allow_null=True),
-    'systems': drf_serializers.JSONField(allow_null=True),
-})
+_VIEWS_MONITORING_CONFIG_VIEW_SET_BENCHMARK_REPONSE = inline_serializer(
+    'ViewsMonitoringConfigViewSetBenchmarkReponse', {
+        'systems_ranked': drf_serializers.JSONField(allow_null=True),
+        'systems': drf_serializers.JSONField(allow_null=True),
+    })
 
 
 _VIEWS_MONITORING_CONFIG_VIEW_SET_SOILING_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetSoilingReponse', {
@@ -229,29 +233,31 @@ _VIEWS_MONITORING_CONFIG_VIEW_SET_CO2_REPONSE = inline_serializer('ViewsMonitori
 })
 
 
-_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetClientPortalReponse', {
-    'client': drf_serializers.JSONField(allow_null=True),
-    'systems_count': drf_serializers.JSONField(allow_null=True),
-    'total_production_kwh': drf_serializers.JSONField(allow_null=True),
-    'economies_mad': drf_serializers.JSONField(allow_null=True),
-    'co2_kg': drf_serializers.JSONField(allow_null=True),
-    'co2_tonnes': drf_serializers.JSONField(allow_null=True),
-    'tarif_mad_par_kwh': drf_serializers.JSONField(allow_null=True),
-    'co2_kg_par_kwh': drf_serializers.JSONField(allow_null=True),
-})
+_VIEWS_MONITORING_CONFIG_VIEW_SET_CLIENT_PORTAL_REPONSE = inline_serializer(
+    'ViewsMonitoringConfigViewSetClientPortalReponse', {
+        'client': drf_serializers.JSONField(allow_null=True),
+        'systems_count': drf_serializers.JSONField(allow_null=True),
+        'total_production_kwh': drf_serializers.JSONField(allow_null=True),
+        'economies_mad': drf_serializers.JSONField(allow_null=True),
+        'co2_kg': drf_serializers.JSONField(allow_null=True),
+        'co2_tonnes': drf_serializers.JSONField(allow_null=True),
+        'tarif_mad_par_kwh': drf_serializers.JSONField(allow_null=True),
+        'co2_kg_par_kwh': drf_serializers.JSONField(allow_null=True),
+    })
 
 
-_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE = inline_serializer('ViewsMonitoringConfigViewSetOmMetricsReponse', {
-    'installation': drf_serializers.JSONField(allow_null=True),
-    'window_days': drf_serializers.JSONField(allow_null=True),
-    'production_kwh': drf_serializers.JSONField(required=False, allow_null=True),
-    'expected_kwh': drf_serializers.JSONField(required=False, allow_null=True),
-    'pr_pct': drf_serializers.JSONField(required=False, allow_null=True),
-    'availability_pct': drf_serializers.JSONField(required=False, allow_null=True),
-    'degradation_pct_per_year': drf_serializers.JSONField(required=False, allow_null=True),
-    'soiling_suspected': drf_serializers.JSONField(required=False, allow_null=True),
-    'monthly_pr': drf_serializers.JSONField(required=False, allow_null=True),
-})
+_VIEWS_MONITORING_CONFIG_VIEW_SET_OM_METRICS_REPONSE = inline_serializer(
+    'ViewsMonitoringConfigViewSetOmMetricsReponse', {
+        'installation': drf_serializers.JSONField(allow_null=True),
+        'window_days': drf_serializers.JSONField(allow_null=True),
+        'production_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+        'expected_kwh': drf_serializers.JSONField(required=False, allow_null=True),
+        'pr_pct': drf_serializers.JSONField(required=False, allow_null=True),
+        'availability_pct': drf_serializers.JSONField(required=False, allow_null=True),
+        'degradation_pct_per_year': drf_serializers.JSONField(required=False, allow_null=True),
+        'soiling_suspected': drf_serializers.JSONField(required=False, allow_null=True),
+        'monthly_pr': drf_serializers.JSONField(required=False, allow_null=True),
+    })
 
 
 class MonitoringEmailOmReportSerializer(serializers.Serializer):
@@ -1048,6 +1054,28 @@ class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
             sla.installation, window_days=window))
 
 
+_PERIODE_CERTIFICAT = {
+    'periode_debut': serializers.DateField(),
+    'periode_fin': serializers.DateField(),
+}
+#: CI #997 fuzz (2) — un certificat vise UN système OU UN client, jamais les
+#: deux ni aucun (400 ``Choisissez soit un système, soit un client``) : deux
+#: formes, ``oneOf``, comme la création d'un calepinage (lead OU client).
+_CORPS_CERTIFICAT_CARBONE = PolymorphicProxySerializer(
+    component_name='CertificatCarboneEmission', resource_type_field_name=None,
+    serializers=[
+        inline_serializer('CertificatCarboneParSysteme', {
+            'installation_id': serializers.IntegerField(min_value=1),
+            **_PERIODE_CERTIFICAT}),
+        inline_serializer('CertificatCarboneParClient', {
+            'client_id': serializers.IntegerField(min_value=1),
+            **_PERIODE_CERTIFICAT}),
+    ])
+
+
+@extend_schema_view(create=extend_schema(
+    request=_CORPS_CERTIFICAT_CARBONE,
+    responses={201: CertificatCarboneSerializer}))
 class CertificatCarboneViewSet(CompanyScopedModelViewSet):
     """ASAV102 (D-ASAV-4 option (b), ASAV93) — registre des certificats
     carbone (NTNRG27) : liste + émission. Responsable/admin seulement ;
@@ -1082,4 +1110,8 @@ class CertificatCarboneViewSet(CompanyScopedModelViewSet):
                 periode_debut=data['periode_debut'],
                 periode_fin=data['periode_fin'])
         except CertificatCarboneError as exc:
+            if exc.etat:
+                raise ConflitEtat(exc.message)
+            if exc.introuvable:
+                raise NotFound(_erreur_service(exc))
             raise serializers.ValidationError(_erreur_service(exc))

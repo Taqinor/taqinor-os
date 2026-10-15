@@ -256,3 +256,20 @@ class TestSoldeProjeteDuPlanVNT19(_BaseSolde):
         self.assertEqual(solde['porte_facturation'], 'libre')
         self.assertEqual(solde['reste_a_facturer'], '49000.00')
         self.assertEqual(solde['restant'], '49000.00')
+
+    def test_solde_inchange_sous_le_lot_de_la_page(self):
+        """VNT68 — servi en lot (``ventes_prechargees``, liste des devis),
+        ``solde`` garde ses clés et ses valeurs : la chaîne Kharbachi rend
+        le même solde, version par version, avec ou sans lot, et le lot est
+        retiré à la sortie."""
+        from apps.ventes.vente_facturation import (
+            chaine_vente, ventes_prechargees)
+        v3 = self._chaine_kharbachi()
+        ids = [d.pk for d in chaine_vente(v3)]
+        attendus = {i: solde_devis(Devis.objects.get(pk=i)) for i in ids}
+        versions = list(Devis.objects.filter(pk__in=ids))
+        with ventes_prechargees(versions):
+            servis = {d.pk: solde_devis(d) for d in versions}
+        self.assertEqual(servis, attendus)
+        self.assertEqual(servis[v3.pk]['restant'], Decimal('34300.00'))
+        self.assertFalse(any(hasattr(d, '_lot_vente') for d in versions))

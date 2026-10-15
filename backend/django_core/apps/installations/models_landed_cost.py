@@ -39,11 +39,13 @@ class FraisImport(models.Model):
         AUTRE = 'autre', 'Autre frais'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_frais_import')
     dossier = models.ForeignKey(
-        'installations.DossierImport', on_delete=models.CASCADE,  # on_delete: FraisImport est le détail de DossierImport — n'existe pas sans lui
+        'installations.DossierImport',
+        on_delete=models.CASCADE,  # on_delete: FraisImport est le détail de DossierImport — n'existe pas sans lui
         related_name='frais')
     # max_length=20 couvre 'manutention' (11) / 'tva_import' (10).
     categorie = models.CharField(
@@ -78,11 +80,13 @@ class LandedCostLigne(models.Model):
     INTERNES. Multi-tenant : société posée côté serveur."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
         null=True, blank=True,
         related_name='installations_landed_cost_lignes')
     dossier = models.ForeignKey(
-        'installations.DossierImport', on_delete=models.CASCADE,  # on_delete: ligne de DossierImport — n'existe pas sans son document parent
+        'installations.DossierImport',
+        on_delete=models.CASCADE,  # on_delete: ligne de DossierImport — n'existe pas sans son document parent
         related_name='landed_lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.SET_NULL,

@@ -138,7 +138,7 @@ describe('ERR-QAC-FACTURES-ECRAN-INVRAISEMBLABLES — contrôle des factures à 
     await cliquerEnregistrer()
     const erreur = await screen.findByTestId('erreur-enregistrement')
     expect(erreur).toHaveTextContent(/inférieure\(s\) aux lignes fixes/)
-    expect(erreur).toHaveTextContent(/mois 1, 12/)
+    expect(erreur).toHaveTextContent(/mois 1, 2, 3, 4, 11, 12/)
     expect(ventesApi.patchDevis).not.toHaveBeenCalled()
     expect(ventesApi.patchEtudeParams).not.toHaveBeenCalled()
   })

@@ -46,9 +46,10 @@ logger = logging.getLogger("apps.ventes.services")
 class SyncLayoutError(Exception):
     """Le devis n'est pas dans un état où son calepinage peut être resynchronisé.
 
-    ``revision_possible`` distingue les deux refus : un devis ENVOYÉ peut être
-    révisé (une nouvelle version repart en brouillon), un devis
-    accepté/refusé/expiré est clos.
+    ``revision_possible`` distingue les deux refus : un devis accepté, refusé
+    ou expiré peut être révisé (V2 repart en brouillon) tant qu'il n'est pas
+    remplacé ; un devis remplacé est clos. Un devis ENVOYÉ ne lève plus ce
+    refus : il se corrige sur place, tracé (QJR557, D-QJR5-5).
     """
 
     def __init__(self, detail, *, revision_possible=False):
@@ -216,10 +217,10 @@ def reconcilier(devis, intention):
     Comportement par statut — le statut est LU, JAMAIS écrit (règle #4) :
 
     * ``brouillon`` — mise à jour chirurgicale (voir plus bas) ;
-    * ``envoye``    — ``SyncLayoutError(revision_possible=True)`` : le client a
-      déjà cette version sous les yeux, le bon geste est « Réviser » ;
-    * ``accepte`` / ``refuse`` / ``expire`` — ``SyncLayoutError`` : document
-      clos, aucune révision de calepinage possible.
+    * ``envoye``    — resynchronisé SUR PLACE, la correction est tracée
+      (QJR557, D-QJR5-5) ;
+    * ``accepte`` / ``refuse`` / ``expire`` — ``SyncLayoutError``
+      (409, ``revision_possible=True`` : le bon geste est « Réviser (v2) »).
 
     Mise à jour chirurgicale, sur un brouillon :
 

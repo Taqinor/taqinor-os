@@ -133,11 +133,9 @@ class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanySc
     # ── Actions de regroupement ──────────────────────────────────────────────
     def _attach(self, request, link_model, field, serializer_class):
         projet = self.get_object()
-        target_id = request.data.get(field)
-        if not target_id:
-            return Response(
-                {'detail': f"Le champ « {field} » est requis."},
-                status=status.HTTP_400_BAD_REQUEST)
+        # ERR-ENF11 : id 1..ID_MAX strict (`0` était lu « absent », `abc`
+        # faisait un 500 ORM) ; absent → 400 nommant le champ.
+        target_id = oa.id_entier(oa.corps_objet(request).get(field), field)
         company = request.user.company
         # Résout l'objet cible (chantier/devis/ticket) via la métadonnée du FK
         # string — jamais d'import des modèles d'une autre app. Tenant-check :
@@ -145,10 +143,10 @@ class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanySc
         target_model = link_model._meta.get_field(field).related_model
         target = (target_model.objects
                   .filter(pk=target_id, company=company).first())
-        if target is None:
+        if target is None:  # ERR-ENF11 : inconnu OU d'une autre société = 404
             return Response(
                 {field: 'Objet inconnu pour cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         # Idempotent : ne duplique pas un rattachement déjà présent (on ne passe
         # PAS par la validation du serializer, qui rejetterait le doublon via le
         # contrôle d'unicité — get_or_create EST le comportement idempotent voulu).
@@ -159,21 +157,30 @@ class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanySc
             serializer_class(obj).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
-    @oa.extend_schema(request=oa.body('AttacherChantierRequete', installation=oa.i(True)), responses={200: ProjetChantierSerializer, 201: ProjetChantierSerializer})
+    @oa.extend_schema(
+        request=oa.body('AttacherChantierRequete', installation=oa.idf(True)),
+        responses={200: ProjetChantierSerializer, 201: ProjetChantierSerializer},
+    )
     @action(detail=True, methods=['post'])
     def attacher_chantier(self, request, pk=None):
         """FG291 — rattache un chantier (`installation`) au programme."""
         return self._attach(
             request, ProjetChantier, 'installation', ProjetChantierSerializer)
 
-    @oa.extend_schema(request=oa.body('AttacherDevisRequete', devis=oa.i(True)), responses={200: ProjetDevisSerializer, 201: ProjetDevisSerializer})
+    @oa.extend_schema(
+        request=oa.body('AttacherDevisRequete', devis=oa.idf(True)),
+        responses={200: ProjetDevisSerializer, 201: ProjetDevisSerializer},
+    )
     @action(detail=True, methods=['post'])
     def attacher_devis(self, request, pk=None):
         """FG291 — rattache un devis (`devis`) au programme (statut intact)."""
         return self._attach(
             request, ProjetDevis, 'devis', ProjetDevisSerializer)
 
-    @oa.extend_schema(request=oa.body('AttacherTicketRequete', ticket=oa.i(True)), responses={200: ProjetTicketSerializer, 201: ProjetTicketSerializer})
+    @oa.extend_schema(
+        request=oa.body('AttacherTicketRequete', ticket=oa.idf(True)),
+        responses={200: ProjetTicketSerializer, 201: ProjetTicketSerializer},
+    )
     @action(detail=True, methods=['post'])
     def attacher_ticket(self, request, pk=None):
         """FG291 — rattache un ticket SAV (`ticket`) au programme (statut

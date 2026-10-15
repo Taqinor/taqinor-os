@@ -118,7 +118,9 @@ class LienPaiementTests(TestCase):
         from apps.ventes.payments.providers import (
             _REGISTRY, available_providers, providers_lien_actifs,
         )
-        for cle in ('mock_tokenized', 'nimporte', 'x' * 41, 12):
+        for cle in ('mock_tokenized', 'nimporte', 'x' * 41, 12,
+                    # ENF11 — présent mais vide / objet / nul : jamais « noop ».
+                    '', {}, None):
             with self.subTest(cle=cle):
                 r = self._lien({'provider': cle})
                 self.assertEqual(r.status_code, 400, r.data)

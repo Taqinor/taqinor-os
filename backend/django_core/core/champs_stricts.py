@@ -10,6 +10,8 @@ import re
 from datetime import date
 
 from django.db import models
+from django.core import validators as _validateurs
+from django.core.exceptions import ValidationError as _ErreurDjango
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 from rest_framework.fields import SkipField, empty
@@ -22,6 +24,126 @@ class ChaineStricte(serializers.CharField):
         if not isinstance(data, str):
             self.fail('invalid')
         return super().to_internal_value(data)
+
+
+#: Motif publié d'une chaîne SANS caractère nul : DRF refuse ``\u0000`` dans
+#: tout ``CharField`` (``ProhibitNullCharactersValidator``) alors que le schéma
+#: l'autorisait — le fuzz envoyait une chaîne « conforme » et recevait 400.
+MOTIF_SANS_NUL = r'^[^\u0000]*$'
+#: CI #997 (2) — « non blanc » au sens de DRF (``str.strip``) : le validateur
+#: du schéma (regex Rust) ne compte pas ``\u001c``-``\u001f`` dans ``\s``,
+#: Python si — ``"\u001c"`` seul était publié conforme puis refusé « vide ».
+MOTIF_NON_BLANC_SANS_NUL = r'^[^\u0000]*[^\s\u0000\u001c-\u001f][^\u0000]*$'
+
+
+def non_blanc(texte):
+    """Vrai si la chaîne ``texte`` porte un caractère ni blanc (``str.strip``)
+    ni nul — la règle de ``MOTIF_NON_BLANC_SANS_NUL``."""
+    return any(not c.isspace() and c != '\u0000' for c in texte)
+
+
+#: Validateurs dont drf-spectacular publie lui-même le motif/format.
+_VALIDATEURS_PUBLIES = (
+    _validateurs.RegexValidator, _validateurs.EmailValidator,
+    _validateurs.URLValidator, _validateurs.FileExtensionValidator)
+
+
+#: Sous-ensemble sûr des URL que ``URLValidator`` accepte (http(s), hôte à
+#: points, chemin simple) ; vide permis (champ facultatif).
+MOTIF_URL_HTTP = r'^(|https?://[a-z]{1,10}\.[a-z]{2,10}(/[A-Za-z0-9._~/-]*)?)$'
+
+
+#: URL « souple » (IdP SSO : ports, requêtes, hôtes à étiquettes longues) :
+#: http(s), puis au moins un signe ni blanc ni de contrôle ; vide permis.
+#: C'est LE MÊME prédicat côté serveur (``UrlHttpSouple``) et côté schéma.
+MOTIF_URL_HTTP_SOUPLE = r'^(|https?://[^\s\x00-\x1f]+)$'
+URL_HTTP_SOUPLE_MAX = 253
+_RE_URL_HTTP_SOUPLE = re.compile(MOTIF_URL_HTTP_SOUPLE)
+
+
+class UrlHttpSouple:
+    """Validateur dont l'acceptation égale EXACTEMENT le schéma publié
+    (``MOTIF_URL_HTTP_SOUPLE`` + ``maxLength: 253``) : tout ce que le schéma
+    refuse, le serveur le refuse, et inversement — plus de 400 sur un corps
+    « conforme » (hôte à étiquettes de 63 signes) ni de 2xx sur un corps hors
+    schéma. ``fullmatch`` : ``$`` Python tolérerait un ``\\n`` final."""
+
+    code = 'invalid'
+    message = 'Saisissez une URL valide.'
+
+    def __call__(self, value):
+        if (not isinstance(value, str) or len(value) > URL_HTTP_SOUPLE_MAX
+                or not _RE_URL_HTTP_SOUPLE.fullmatch(value)):
+            raise _ErreurDjango(self.message, code=self.code)
+
+    def __eq__(self, autre):
+        return isinstance(autre, UrlHttpSouple)
+
+    def __hash__(self):
+        return hash(UrlHttpSouple)
+
+
+class MotifUrlPublie(_validateurs.RegexValidator):
+    """Valide avec ``URLValidator`` (acceptation inchangée) mais PUBLIE un
+    ``pattern`` dans le schéma : un champ texte « URL » dont la déclaration ne
+    dit rien laisse le fuzz envoyer une chaîne conforme et recevoir un 400.
+    Le motif publié est un sous-ensemble de ce que ``URLValidator`` accepte."""
+
+    def __init__(self, message='URL invalide.'):
+        super().__init__(regex=MOTIF_URL_HTTP, message=message, code='invalid')
+
+    def __call__(self, value):
+        _validateurs.URLValidator(message=self.message, code=self.code)(value)
+
+
+class _ChaineSansNul(OpenApiSerializerFieldExtension):
+    """ENF11 (api-fuzz « rejected schema-compliant request ») — une chaîne
+    stricte publie ``pattern`` : aucun caractère nul (seule règle que DRF ajoute
+    sans la déclarer). Une chaîne qui porte déjà un motif, un format ou une
+    énumération est laissée telle quelle (son propre motif prime)."""
+    target_class = 'core.champs_stricts.ChaineStricte'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        champ = self.target
+        if direction != 'request' or schema.get('type') != 'string' or any(
+                cle in schema for cle in ('pattern', 'format', 'enum')):
+            return schema
+        # Un validateur propre au champ (slug, e-mail, URL, extension de
+        # fichier) est publié par drf-spectacular APRÈS cette extension et
+        # seulement si aucun `pattern`/`format` n'est déjà posé : on lui
+        # laisse la place (son motif prime sur la règle générique).
+        if any(isinstance(v, _VALIDATEURS_PUBLIES) for v in champ.validators):
+            return schema
+        schema = dict(schema)
+        # Non blanc = rogné ET (blanc interdit OU longueur minimale) : « " " »
+        # est rogné en vide puis refusé ; sans rognage, « " " » passe.
+        non_blanc = champ.trim_whitespace and (
+            not champ.allow_blank or schema.get('minLength', 0) >= 1)
+        schema['pattern'] = (
+            MOTIF_NON_BLANC_SANS_NUL if non_blanc else MOTIF_SANS_NUL)
+        return schema
+
+
+class _ClePrimaireEntiere(OpenApiSerializerFieldExtension):
+    """ENF11 (api-fuzz « rejected schema-compliant request ») — une clé
+    primaire entière (série ``AutoField``) vaut au moins 1 : le schéma
+    publiait n'importe quel entier et ``0`` répondait 400 « objet inexistant ».
+    Le ``minimum`` n'est posé que côté requête, sur une clé de type entier."""
+    target_class = 'rest_framework.relations.PrimaryKeyRelatedField'
+    match_subclasses = True
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request' or schema.get('type') != 'integer' \
+                or 'minimum' in schema:
+            return schema
+        schema = dict(schema)
+        schema['minimum'] = 1
+        return schema
 
 
 def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
@@ -40,6 +162,16 @@ def entier_ou_400(valeur, nom, defaut=None, mini=None, maxi=None):
 
 
 _DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}\Z')
+
+
+class DateStricte(serializers.DateField):
+    """``DateField`` limité à ``AAAA-MM-JJ`` (``format: date``) : DRF lisait
+    aussi ``2026-1-5`` et ``20261005`` (``date.fromisoformat`` de 3.11)."""
+
+    def to_internal_value(self, value):
+        if not isinstance(value, str) or not _DATE_ISO.match(value):
+            self.fail('invalid', format='AAAA-MM-JJ')
+        return super().to_internal_value(value)
 
 
 def date_ou_400(valeur, nom):
@@ -90,6 +222,88 @@ class DecimalStricte(serializers.DecimalField):
         return super().validate_empty_values(data)
 
 
+class DecimalBornee(DecimalStricte):
+    """CI #997 (2) — ``DecimalStricte`` dont le motif publié suit la borne
+    basse : avec ``min_value >= 0`` (prix, coût) il n'a plus de signe ``-``
+    (``"-1"`` était « conforme » au schéma puis refusé en 400)."""
+
+
+def _motif_decimal(champ):
+    """Le motif EXACT publié par ``_DecimalChaineNonVide`` pour ``champ``
+    (lu comme le validateur du schéma, regex Rust : ``re.fullmatch`` — un
+    saut de ligne final n'y passe pas)."""
+    entiers, decimales = champ.max_whole_digits, champ.decimal_places
+    if not entiers or decimales is None:
+        return r'^-?(?:\d+(?:\.\d*)?|\.\d+)$'
+    return (fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
+            fr'|\.\d{{1,{decimales}}})$')
+
+
+class DecimalSouple(serializers.DecimalField):
+    """CI #997 api-fuzz (``POST ventes/devis/ {"taux_tva": 0}``) — décimal
+    accepté en CHAÎNE **ou** en NOMBRE JSON, et PUBLIÉ ainsi (``anyOf`` motif
+    | nombre borné, voir ``_DecimalChaineNonVide``) : des clients envoient des
+    nombres (générateur de devis), le serveur ne les refuse pas. Un nombre
+    hors bornes ou un booléen → 400 ; un nombre dans les bornes est arrondi
+    au demi supérieur à ``decimal_places`` (bruit flottant ``0.1 + 0.2``).
+
+    CI #997 (2) — une CHAÎNE suit le motif publié : ``""``, des blancs autour,
+    ``+1``, ``1e2`` ou ``1_0`` (que ``Decimal`` lit) → 400 ; ``""`` ne vaut
+    plus ``null`` en silence (``null`` reste le « non renseigné » publié)."""
+
+    def validate_empty_values(self, data):
+        return serializers.Field.validate_empty_values(self, data)
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or (
+                isinstance(data, str)
+                and not re.fullmatch(_motif_decimal(self), data)):
+            self.fail('invalid')
+        if isinstance(data, (int, float)):
+            from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+            try:
+                valeur = Decimal(repr(data))
+            except (InvalidOperation, ValueError):
+                self.fail('invalid')
+            if not valeur.is_finite():
+                self.fail('invalid')
+            borne = borne_decimal(self)
+            if borne is not None and valeur > borne:
+                self.fail('max_value', max_value=borne)
+            if borne is not None and valeur < -borne:
+                self.fail('min_value', min_value=-borne)
+            if self.decimal_places is not None:
+                try:
+                    valeur = valeur.quantize(
+                        Decimal(1).scaleb(-self.decimal_places),
+                        ROUND_HALF_UP)
+                except InvalidOperation:
+                    self.fail('invalid')
+            data = format(valeur, 'f')
+        return super().to_internal_value(data)
+
+
+def borne_decimal(champ):
+    """Plus grande valeur absolue qu'un ``DecimalField`` accepte (``None`` si
+    le champ ne la borne pas) : ``999.99`` pour ``max_digits=5, places=2``."""
+    from decimal import Decimal
+    if not champ.max_whole_digits or champ.decimal_places is None:
+        return None
+    return Decimal(10) ** champ.max_whole_digits - Decimal(1).scaleb(
+        -champ.decimal_places)
+
+
+class DecimalSoupleMixin:
+    """Mixin de ``ModelSerializer`` : les décimaux de modèle deviennent des
+    ``DecimalSouple`` (chaîne ou nombre, publiés comme tels). À placer AVANT
+    ``serializers.ModelSerializer`` dans les bases."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.DecimalField: DecimalSouple,
+    }
+
+
 class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
     r"""ENF11 (api-fuzz « rejected schema-compliant request ») — le motif que
     drf-spectacular publie pour un décimal-chaîne (``^-?\d{0,N}(?:\.\d{0,M})?$``)
@@ -106,14 +320,38 @@ class _DecimalChaineNonVide(OpenApiSerializerFieldExtension):
         if 'pattern' not in schema or not champ.max_whole_digits:
             return schema
         schema = dict(schema)
-        entiers, decimales = champ.max_whole_digits, champ.decimal_places
-        schema['pattern'] = (
-            fr'^-?(?:\d{{1,{entiers}}}(?:\.\d{{0,{decimales}}})?'
-            fr'|\.\d{{1,{decimales}}})$')
+        schema['pattern'] = _motif_decimal(champ)
+        if (isinstance(champ, DecimalBornee) and champ.min_value is not None
+                and champ.min_value >= 0):
+            schema['pattern'] = schema['pattern'].replace('^-?', '^', 1)
         if isinstance(champ, DecimalStricte) and champ.allow_null:
             motif = schema.pop('pattern')
             schema['anyOf'] = [{'pattern': motif}, {'maxLength': 0}]
+        if isinstance(champ, DecimalSouple) and direction == 'request':
+            schema = _chaine_ou_nombre(schema, champ)
         return schema
+
+
+def _chaine_ou_nombre(schema, champ):
+    """``anyOf`` [décimal-chaîne au motif, nombre JSON borné] d'une
+    ``DecimalSouple`` (``nullable`` porté par chaque branche, OpenAPI 3.0)."""
+    from decimal import Decimal
+    branche = {k: schema.pop(k) for k in ('type', 'format', 'pattern')
+               if k in schema}
+    nombre = {'type': 'number'}
+    borne = borne_decimal(champ)
+    bornes = {'minimum': [champ.min_value], 'maximum': [champ.max_value]}
+    if borne is not None:
+        bornes['minimum'].append(-borne)
+        bornes['maximum'].append(borne)
+    for cle, choix in (('minimum', max), ('maximum', min)):
+        valeurs = [Decimal(str(v)) for v in bornes[cle] if v is not None]
+        if valeurs:
+            nombre[cle] = float(choix(valeurs))
+    if schema.pop('nullable', False):
+        branche['nullable'] = nombre['nullable'] = True
+    schema['anyOf'] = [branche, nombre]
+    return schema
 
 
 class TexteLie(serializers.CharField):
@@ -177,6 +415,38 @@ class BooleenStrict(serializers.BooleanField):
         return data
 
 
+#: CI #997 fuzz (3) — plafond MÉTIER d'une quantité de stock saisie en une
+#: fois (mouvement libre, scan) : publié en ``maximum`` et appliqué AVANT tout
+#: calcul. Le schéma annonçait tout l'entier 32 bits : ``2147483646`` en entrée
+#: faisait déborder ``quantite_stock`` (ou le casier) au save — 500.
+QUANTITE_MAX = 1_000_000
+
+
+class EntierNullableEnLecture(serializers.IntegerField):
+    """Entier écrit SANS ``null`` mais lu avec ``null`` (CI #997 api-fuzz
+    « Response violates schema », portail/documents-client-portail : ``lead_id``
+    d'un dépôt sans lead). Le formulaire multipart ne sait pas écrire un
+    ``null`` (il part en texte « None » → 400), donc la REQUÊTE ne publie pas
+    ``nullable`` ; la RÉPONSE, elle, le publie : la clé revient ``null``."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('required', False)
+        super().__init__(**kwargs)
+
+
+class _EntierNullableEnLecture(OpenApiSerializerFieldExtension):
+    target_class = 'core.champs_stricts.EntierNullableEnLecture'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'response':
+            return schema
+        schema = dict(schema)
+        schema['nullable'] = True
+        return schema
+
+
 class EntierStrict(serializers.IntegerField):
     """Entier JSON réel : ``"5"``, ``5.0`` et ``true`` sont refusés (400)."""
 
@@ -216,6 +486,16 @@ class ChampsStrictsEntiersMixin:
     }
 
 
+class ChampsStrictsBornesMixin:
+    """``ChampsStrictsEntiersMixin`` avec des décimaux ``DecimalBornee`` (motif
+    publié sans signe quand le champ est borné à 0 ou plus)."""
+
+    serializer_field_mapping = {
+        **ChampsStrictsEntiersMixin.serializer_field_mapping,
+        models.DecimalField: DecimalBornee,
+    }
+
+
 class ChampsStrictsSansDecimalMixin:
     """Variante de ``ChampsStrictsMixin`` SANS les décimaux (lane GED/records/
     notifications : leurs clients envoient encore des nombres JSON pour
@@ -243,3 +523,55 @@ class TypageStrictMixin:
         models.SmallIntegerField: EntierStrict,
         models.PositiveSmallIntegerField: EntierStrict,
     }
+
+
+class ListesStrictesMixin:
+    """CI #997 api-fuzz — un champ M2M (``ManyRelatedField``) accepte tout
+    itérable : ``{}`` passait pour une liste vide alors que le schéma déclare
+    un tableau. Toute valeur non nulle qui n'est pas une liste → 400 nommé.
+    À placer en TÊTE des bases du sérialiseur."""
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'get') and not hasattr(data, 'getlist'):
+            for nom, champ in self.fields.items():
+                valeur = data.get(nom)
+                if (isinstance(champ, serializers.ManyRelatedField)
+                        and not champ.read_only and valeur is not None
+                        and not isinstance(valeur, list)):
+                    raise serializers.ValidationError(
+                        {nom: ["Une liste d'identifiants est attendue."]})
+        return super().to_internal_value(data)
+
+
+def _ids_inconnus_seulement(erreurs, champs):
+    """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
+    sur des champs de relation par clé primaire."""
+    if not isinstance(erreurs, dict) or not erreurs:
+        return False
+    for nom, details in erreurs.items():
+        champ = champs.get(nom)
+        relation = getattr(champ, 'child_relation', champ)
+        if not isinstance(relation, serializers.PrimaryKeyRelatedField):
+            return False
+        if not isinstance(details, list) or not details or any(
+                getattr(d, 'code', None) != 'does_not_exist' for d in details):
+            return False
+    return True
+
+
+class IdInconnu404Mixin:
+    """ERR-ENF11-FUZZ-CRM/GED — un identifiant BIEN FORMÉ (``0`` compris) qui
+    ne désigne aucune ligne de la société répond 404, plus 400 : la requête est
+    conforme au schéma, c'est la ressource qui manque. Le corps reste celui de
+    DRF (``{champ: ["Clé primaire « n » non valide…"]}``), IDENTIQUE pour un id
+    inexistant et un id d'une autre société (aucun oracle). Toute autre erreur,
+    seule ou mêlée, garde le 400. À placer en tête des bases du sérialiseur."""
+
+    def is_valid(self, *, raise_exception=False):
+        valide = super().is_valid(raise_exception=False)
+        if not valide and raise_exception:
+            from rest_framework.exceptions import NotFound
+            if _ids_inconnus_seulement(self.errors, self.fields):
+                raise NotFound(self.errors)
+            raise serializers.ValidationError(self.errors)
+        return valide

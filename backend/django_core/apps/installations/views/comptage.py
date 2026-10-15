@@ -78,7 +78,10 @@ class SessionComptageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
-    @oa.extend_schema(request=oa.body('AjouterLigneComptageRequete', produit=oa.i(True)), responses={201: ComptageLigneSerializer})
+    @oa.extend_schema(
+        request=oa.body('AjouterLigneComptageRequete', produit=oa.i(True)),
+        responses={201: ComptageLigneSerializer},
+    )
     @action(detail=True, methods=['post'], url_path='ajouter-ligne')
     def ajouter_ligne(self, request, pk=None):
         """FG324 — ajoute un SKU à compter ; la quantité théorique est

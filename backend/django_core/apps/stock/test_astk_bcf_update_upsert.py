@@ -80,6 +80,32 @@ class BcfUpdateUpsertTests(TestCase):
         relu = self.api.get(f'{URL}{self.bcf.pk}/').data
         self.assertEqual(relu['lignes'], detail['lignes'])
 
+    def test_devise_chaine_decimale_stricte(self):
+        """CI #997 fuzz — `prix_achat_unitaire_devise` : "" = non renseigné
+        (null), un nombre JSON est refusé en 400 nommant le champ."""
+        from apps.stock.serializers import LigneBonCommandeFournisseurSerializer
+        base = {'designation': 'x', 'quantite': 1, 'prix_achat_unitaire': '0'}
+        ok = LigneBonCommandeFournisseurSerializer(
+            data={**base, 'prix_achat_unitaire_devise': ''}, partial=True)
+        self.assertTrue(ok.is_valid(), ok.errors)
+        self.assertIsNone(ok.validated_data['prix_achat_unitaire_devise'])
+        ko = LigneBonCommandeFournisseurSerializer(
+            data={**base, 'prix_achat_unitaire_devise': 12}, partial=True)
+        self.assertFalse(ko.is_valid())
+        self.assertIn('prix_achat_unitaire_devise', ko.errors)
+
+    def test_designation_ligne_texte_json_seulement(self):
+        """CI #997 fuzz — `designation` imbriquée : un nombre JSON est refusé."""
+        from apps.stock.serializers import LigneBonCommandeFournisseurSerializer
+        base = {'quantite': 1, 'prix_achat_unitaire': '0'}
+        ko = LigneBonCommandeFournisseurSerializer(
+            data={**base, 'designation': 0}, partial=True)
+        self.assertFalse(ko.is_valid())
+        self.assertIn('designation', ko.errors)
+        ok = LigneBonCommandeFournisseurSerializer(
+            data={**base, 'designation': 'Transport'}, partial=True)
+        self.assertTrue(ok.is_valid(), ok.errors)
+
     def test_ligne_sans_id_reste_une_creation(self):
         payload = self._payload_ecran()
         payload['lignes'].append({'produit': self.produit.pk, 'quantite': 1,

@@ -276,8 +276,23 @@ def declarer_liens(doc: dict) -> int:
     return ajoutes
 
 
-def preparer_schema(doc: dict, proprietaires=None, resoudre=None) -> tuple[dict, dict]:
-    """Schéma fuzzé + statistiques. ``proprietaires`` vide/None = tout garder."""
+def partager_chemins(chemins, shard: str | None):
+    """Partition DÉTERMINISTE des chemins en N tranches (« i/N ») : le chemin de
+    rang k (ordre trié) va à la tranche k % N. Chaque tranche fuzze TOUT son
+    lot ; l'union des N tranches = toute la surface, à chaque run — plus
+    d'échantillon aléatoire tronqué par `--max-time` (CI #997, 14/10/2026)."""
+    if not shard:
+        return set(chemins)
+    i, n = (int(x) for x in shard.split("/", 1))
+    if n < 1 or not 0 <= i < n:
+        raise ValueError(f"tranche invalide : {shard!r} (attendu i/N avec 0 <= i < N)")
+    return {chemin for k, chemin in enumerate(sorted(chemins)) if k % n == i}
+
+
+def preparer_schema(doc: dict, proprietaires=None, resoudre=None,
+                    shard: str | None = None) -> tuple[dict, dict]:
+    """Schéma fuzzé + statistiques. ``proprietaires`` vide/None = tout garder ;
+    ``shard`` (« i/N ») ne garde que la tranche i des chemins retenus."""
     voulus = set(proprietaires or ())
     caches: dict = {}
 
@@ -289,6 +304,9 @@ def preparer_schema(doc: dict, proprietaires=None, resoudre=None) -> tuple[dict,
         return bool(caches[gabarit] & voulus)
 
     sortie = copy.deepcopy(filtrer_schema(doc, garder))
+    if shard:
+        retenus = partager_chemins(sortie["paths"].keys(), shard)
+        sortie["paths"] = {c: v for c, v in sortie["paths"].items() if c in retenus}
     liens = declarer_liens(sortie)
     operations = sum(
         1 for item in sortie["paths"].values() for m in _METHODES if m in (item or {})
@@ -397,9 +415,10 @@ def _cmd_proprietaires(_args) -> int:
 def _cmd_schema(args) -> int:
     doc = json.loads(Path(args.entree).read_text(encoding="utf-8"))
     resoudre = resolveur_django() if args.proprietaires else None
-    sortie, stats = preparer_schema(doc, args.proprietaires, resoudre)
+    sortie, stats = preparer_schema(doc, args.proprietaires, resoudre, shard=args.shard)
     Path(args.sortie).write_text(json.dumps(sortie), encoding="utf-8")
     portee = f" — propriétaires : {' '.join(args.proprietaires)}" if args.proprietaires else ""
+    portee += f" — tranche {args.shard}" if args.shard else ""
     print(f"Schéma fuzzé : {stats['operations']} opération(s) sur {stats['chemins']} "
           f"chemin(s), {stats['liens']} lien(s) stateful déclaré(s){portee}")
     return 0
@@ -431,6 +450,7 @@ def main(argv=None) -> int:
     p_schema.add_argument("--in", dest="entree", required=True)
     p_schema.add_argument("--out", dest="sortie", required=True)
     p_schema.add_argument("--proprietaires", nargs="*", default=[])
+    p_schema.add_argument("--shard", default=None, help="tranche i/N des chemins (CI matricielle)")
     p_schema.set_defaults(func=_cmd_schema)
     p_verdict = sous.add_parser("verdict")
     p_verdict.add_argument("--rapport", required=True)

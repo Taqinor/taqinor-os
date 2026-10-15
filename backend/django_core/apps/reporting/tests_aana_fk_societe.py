@@ -49,7 +49,8 @@ class TestFkSociete(TestCase):
 
     def test_destinataire_autre_societe_refuse(self):
         resp = self._alerte([self.etranger.pk])
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # ERR-ENF11-FUZZ-REPORTING : étranger = absent → 404 (même corps).
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('destinataires_utilisateurs', resp.data)
         self.assertFalse(KpiAlerte.objects.filter(company=self.co_a).exists())
 
@@ -75,9 +76,9 @@ class TestFkSociete(TestCase):
             }, format='json')
 
         resp = poster(etrangere.pk)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         absent = poster(999999)
-        self.assertEqual(absent.status_code, 400, absent.data)
+        self.assertEqual(absent.status_code, 404, absent.data)
         self.assertEqual(
             [str(e.code) for e in resp.data['metric_definition']],
             [str(e.code) for e in absent.data['metric_definition']])
@@ -90,7 +91,7 @@ class TestFkSociete(TestCase):
         resp = self.api.post(f'{BASE}/dashboard-config/', {
             'user': self.etranger.pk, 'cards': [],
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('user', resp.data)
         self.assertFalse(DashboardConfig.objects.filter(
             user=self.etranger).exists())

@@ -308,7 +308,7 @@ class ContratWmsCasiersTests(WmsBase):
         self.assertEqual(rep.status_code, 200, rep.content)
         self.assertMemesCles(rep.json(), contrat['exemple'], 'ligne retour')
         rep = self.api.get(url, {'code': 'INCONNU-ASTK'})
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 404)
         self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
 
 

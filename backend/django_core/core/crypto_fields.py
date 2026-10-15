@@ -39,6 +39,10 @@ from functools import lru_cache
 
 from django.db import models
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Marqueur de texte chiffré : permet à des lignes claires (historiques) et
 # chiffrées de cohabiter dans la même colonne pendant une migration en ligne.
 CIPHER_PREFIX = 'enc:'
@@ -61,6 +65,7 @@ def _build_fernet(keys_tuple):
     try:
         from cryptography.fernet import Fernet, MultiFernet
     except Exception:  # pragma: no cover - cryptography absent = dégradation
+        logger.warning("build fernet : échec ignoré, comportement dégradé", exc_info=True)
         return None
     try:
         fernets = [Fernet(k.encode() if isinstance(k, str) else k)
@@ -68,6 +73,7 @@ def _build_fernet(keys_tuple):
     except Exception:
         # Clé mal formée : on dégrade en « pas de chiffrement » plutôt que de
         # faire crasher tout l'ORM. La garde de configuration est ailleurs.
+        logger.warning("build fernet : échec ignoré, comportement dégradé", exc_info=True)
         return None
     if not fernets:
         return None
@@ -109,6 +115,7 @@ def decrypt_value(value):
     try:
         return fernet.decrypt(token.encode('ascii')).decode('utf-8')
     except Exception:
+        logger.warning("decrypt value : échec ignoré, comportement dégradé", exc_info=True)
         return value
 
 

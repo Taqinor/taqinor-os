@@ -56,7 +56,7 @@ const MOIS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
    c'est la phrase que `PanneauPertes.test.jsx` (et un lecteur humain) doivent
    retrouver mot pour mot. */
 const MENTION_TOTAL = 'ces postes ne sont plus transmis à PVGIS : la chaîne '
-  + 'de pertes les applique un à un (lot 3) ; un poste devenu calculable par '
+  + 'de pertes les applique un à un ; un poste devenu calculable par '
   + 'la chaîne y sera écarté et le dira'
 
 function nombre(brut) {

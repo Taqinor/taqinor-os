@@ -141,6 +141,12 @@ class TestFG68DateRangeFilter(TestCase):
         r = self.api.get('/api/django/installations/interventions/calendrier/',
                          {'date_from': '2026-06-01', 'date_to': '2026-06-30'})
         self.assertEqual(r.status_code, 200)
+        # ERR-ENF11-FUZZ-INSTALLATIONS — date illisible = 400 nommé.
+        r_bad = self.api.get(
+            '/api/django/installations/interventions/calendrier/',
+            {'date_from': 'abc'})
+        self.assertEqual(r_bad.status_code, 400)
+        self.assertIn('date_from', r_bad.json())
         # Résultat est une liste de {technicien, interventions}
         self.assertIsInstance(r.data, list)
         self.assertGreaterEqual(len(r.data), 1)

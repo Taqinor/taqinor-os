@@ -50,7 +50,10 @@ from __future__ import annotations
 import json
 import os
 import atexit
+import io
 import re
+import struct
+import zipfile
 import zlib
 
 import requests
@@ -280,7 +283,15 @@ def _remplacer_ids_fk(objet, table=None):
     for nom, valeur in list(objet.items()):
         entree = _entree(nom, table)
         if entree is not None and not isinstance(valeur, dict):
-            objet[nom] = _remplacer_valeur(valeur, entree)
+            nouvelle = _remplacer_valeur(valeur, entree)
+            # CI #997 : une clé réécrite — MÊME à l'identique — est revalidée
+            # sur sa valeur VIVANTE (chaîne du fil d'un corps formulaire contre
+            # ``type: integer``) : le cas positif basculait NÉGATIF et la
+            # réponse 201 devenait « API accepted schema-violating request »
+            # (POST portail/documents-client-portail/, client_id=0&lead_id=0).
+            # On n'écrit donc que lorsque l'id change réellement.
+            if nouvelle != valeur:
+                objet[nom] = nouvelle
         elif isinstance(valeur, dict):
             _remplacer_ids_fk(valeur, table)
         elif isinstance(valeur, list):
@@ -397,9 +408,370 @@ def _journal_couverture():
 atexit.register(_journal_couverture)
 
 
+# ── 5. Fichiers dont le FORMAT n'est pas exprimable au schéma ──────────
+# Un gabarit de dossier réglementaire se dépose en PDF SEULEMENT (règle
+# métier, « le fichier reçu n'en est pas un » sinon) ; OpenAPI ne dit que
+# ``format: binary``. Un cas POSITIF reçoit donc un fichier minimal VALIDE du
+# format que l'opération lit (PDF, image, CSV) au lieu d'octets quelconques —
+# même nature que les ids réels : l'existence/le format d'une donnée que le
+# schéma ne peut pas porter. CI #997 (2) : le dépôt GED accepte PDF/PNG/JPEG/
+# WebP (``store_attachment``), assemble ses photos avec Pillow, ouvre ses
+# scans comme images et lit un CSV de métadonnées — des octets vides y étaient
+# refusés 400 « rejected schema-compliant request ».
+_PDF_MINIMAL = b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+# CI #997 fuzz (2) — même règle pour l'import d'un tarif fournisseur (un
+# classeur xlsx, ``_classeur_lisible``) et d'une fiche constructeur PVsyst
+# (``PVObject_=`` module/onduleur, ``parse_pan_ond_bytes``) : un classeur VIDE
+# (aucune ligne -> rapport d'erreurs 200, rien d'écrit) et un module sans clé.
+_NS_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+_NS_PKG = 'http://schemas.openxmlformats.org/package/2006/relationships'
+_NS_XLSX = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
+_TYPE_OOXML = 'application/vnd.openxmlformats-officedocument.spreadsheetml'
+_XLSX_PARTIES = {
+    '[Content_Types].xml': (
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        f'<Override PartName="/xl/workbook.xml" ContentType="{_TYPE_OOXML}.sheet.main+xml"/>'
+        f'<Override PartName="/xl/worksheets/sheet1.xml" ContentType="{_TYPE_OOXML}.worksheet+xml"/></Types>'),
+    '_rels/.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="{_NS_REL}/'
+                    'officeDocument" Target="xl/workbook.xml"/></Relationships>'),
+    'xl/workbook.xml': (f'<workbook xmlns="{_NS_XLSX}" xmlns:r="{_NS_REL}"><sheets>'
+                        '<sheet name="Tarif" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+    'xl/_rels/workbook.xml.rels': (f'<Relationships xmlns="{_NS_PKG}"><Relationship Id="rId1" Type="'
+                                   f'{_NS_REL}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>'),
+    'xl/worksheets/sheet1.xml': f'<worksheet xmlns="{_NS_XLSX}"><sheetData/></worksheet>',
+}
+
+
+def _xlsx_minimal():
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for nom, xml in _XLSX_PARTIES.items():
+            archive.writestr(nom, '<?xml version="1.0" encoding="UTF-8"?>' + xml)
+    return tampon.getvalue()
+
+
+def _png_minimal():
+    """PNG 2x2 NOIR décodable par Pillow (une page NON blanche : la séparation
+    de lots la prendrait sinon pour une page séparatrice)."""
+    def bloc(type_, donnees):
+        return (struct.pack('>I', len(donnees)) + type_ + donnees
+                + struct.pack('>I', zlib.crc32(type_ + donnees) & 0xffffffff))
+    ligne = b'\x00' + b'\x00\x00\x00' * 2
+    return (b'\x89PNG\r\n\x1a\n'
+            + bloc(b'IHDR', struct.pack('>IIBBBBB', 2, 2, 8, 2, 0, 0, 0))
+            + bloc(b'IDAT', zlib.compress(ligne * 2)) + bloc(b'IEND', b''))
+
+
+_PNG_MINIMAL = _png_minimal()
+# CSV de métadonnées d'un import en masse : en-têtes + UNE ligne (``nom`` requis).
+_CSV_MINIMAL = b'nom,description\r\nFuzz,Import\r\n'
+_GED = r'^/api/django/ged/documents/'
+# (chemin, méthodes, {champ du corps: octets d'un fichier valide})
+_FICHIERS_VALIDES = (
+    (re.compile(r'^/api/django/calepinage/gabarits-dossiers/'),
+     {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
+    (re.compile(_GED + r'televerser/$'), {'POST'}, {'file': _PDF_MINIMAL}),
+    (re.compile(_GED + r'scan-lot/$'), {'POST'}, {'files': _PDF_MINIMAL}),
+    (re.compile(_GED + r'assembler-photos/$'), {'POST'},
+     {'photos': _PNG_MINIMAL}),
+    (re.compile(_GED + r'deposer-lot-scans-separe/$'), {'POST'},
+     {'files': _PNG_MINIMAL}),
+    (re.compile(_GED + r'import-masse/$'), {'POST'}, {'csv': _CSV_MINIMAL}),
+    # CI #997 (2e passe) — pièce jointe polymorphe de records : un part sans
+    # nom ni octets est « Aucun fichier fourni » (400) ; le serveur valide
+    # les octets magiques, inexprimable dans le schéma.
+    (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
+    # CI #997 (3) — dépôt d'un document du portail : le formulaire porte un
+    # fichier ``fichier`` (le serveur lit les octets magiques).
+    (re.compile(r'^/api/django/portail/documents-client-portail/'),
+     {'POST', 'PATCH'}, {'fichier': _PDF_MINIMAL}),
+    (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
+     {'file': _xlsx_minimal()}),
+    (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
+     {'file': b'PVObject_=pvModule\n'}),
+)
+
+
+def _meta_sans_revalidation(case):
+    """Métadonnées SANS déclencher la revalidation de ``case.meta`` : lire
+    ``case.meta`` après une substitution de FK revalide le corps (et, avec des
+    octets, le déclare invalide) avant que ``_rester_positif`` ait pu agir."""
+    meta = getattr(case, '_meta', None)
+    return meta if meta is not None else case.meta
+
+
+def _octets_valides(valeur, octets):
+    """``valeur`` portant ``octets``. Schemathesis range un binaire dans
+    ``Binary`` (sous-classe de str portant ``.data``) : on change ses OCTETS en
+    place et on rend le MÊME objet — la clé du corps n'est alors pas réécrite
+    (voir ``_rester_positif``)."""
+    if isinstance(getattr(valeur, 'data', None), bytes):
+        valeur.data = octets
+        return valeur
+    if isinstance(valeur, bytes):
+        return octets
+    if isinstance(valeur, str):
+        return octets.decode('latin-1')
+    return valeur
+
+
+def _fichiers_valides(case):
+    meta = _meta_sans_revalidation(case)
+    if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
+        return
+    corps = case.body
+    if not isinstance(corps, dict):
+        return
+    for chemin, methodes, champs in _FICHIERS_VALIDES:
+        if (case.operation.method.upper() not in methodes
+                or not chemin.match(case.operation.path)):
+            continue
+        for champ, octets in champs.items():
+            origine = corps.get(champ)
+            if isinstance(origine, list):
+                # Liste de fichiers (``scan-lot``…) : chaque élément en porte un.
+                for rang, element in enumerate(origine):
+                    nouveau = _octets_valides(element, octets)
+                    if nouveau is not element:
+                        origine[rang] = nouveau
+            elif origine is not None:
+                nouveau = _octets_valides(origine, octets)
+                if nouveau is not origine:
+                    corps[champ] = nouveau
+
+
+# ── 5b. Un fichier de formulaire porte TOUJOURS un nom de fichier ───────
+# CI #997 (3) — Schemathesis 4.28 (``prepare_multipart_v3``) ne joint le nom de
+# fichier d'un champ ``format: binary`` que si le schéma du corps est EN LIGNE.
+# Dès que ce schéma référence un composant (``$ref`` vers une énumération :
+# ``model`` de records/attachments, ``type_document`` du portail), le
+# regroupeur le range sous ``x-bundled`` et le corps devient ``{'$ref': …}`` :
+# plus de ``properties`` lues, le fichier part SANS nom — Django le lit alors
+# comme un champ texte (« Aucun fichier fourni » / « n'est pas un fichier »)
+# alors que la requête est conforme au schéma. Le nom manquait donc au HARNAIS,
+# pas au serveur : on rend au dépôt le nom (= celui du champ) que le transport
+# aurait posé pour un schéma en ligne, après avoir résolu ce ``$ref`` racine.
+def _schema_corps_resolu(schema):
+    reference = schema.get('$ref') if isinstance(schema, dict) else None
+    if isinstance(reference, str):
+        return (schema.get('x-bundled') or {}).get(
+            reference.rsplit('/', 1)[-1], schema)
+    return schema
+
+
+def _noms_de_fichiers(operation):
+    """Champs ``format: binary`` (ou listes de) du corps multipart déclaré."""
+    for corps in getattr(operation, 'body', None) or ():
+        if not str(getattr(corps, 'media_type', '')).lower().startswith(
+                'multipart/'):
+            continue
+        schema = _schema_corps_resolu(corps.definition.get('schema'))
+        proprietes = schema.get('properties') if isinstance(schema, dict) else None
+        noms = set()
+        for nom, propriete in (proprietes or {}).items():
+            cible = propriete.get('items') if (
+                isinstance(propriete, dict)
+                and isinstance(propriete.get('items'), dict)) else propriete
+            if isinstance(cible, dict) and cible.get('format') in (
+                    'binary', 'base64'):
+                noms.add(nom)
+        return noms
+    return set()
+
+
+def _avec_noms_de_fichier(preparer):
+    """``prepare_multipart`` de Schemathesis, dont les parts d'OCTETS d'un champ
+    binaire déclaré reçoivent leur nom de fichier (``(None, octets)`` →
+    ``(champ, octets)``). Les autres parts sont rendues telles quelles."""
+    if getattr(preparer, '_noms_de_fichier', False):
+        return preparer
+
+    def preparation(operation, form_data, selected_content_types=None):
+        fichiers, donnees = preparer(
+            operation, form_data, selected_content_types)
+        noms = _noms_de_fichiers(operation) if fichiers else set()
+        if not noms:
+            return fichiers, donnees
+        corriges = []
+        for nom, partie in fichiers:
+            if (nom in noms and isinstance(partie, tuple) and len(partie) >= 2
+                    and partie[0] is None and isinstance(partie[1], bytes)):
+                partie = (nom,) + partie[1:]
+            corriges.append((nom, partie))
+        return corriges, donnees
+
+    preparation._noms_de_fichier = True
+    return preparation
+
+
+def _installer_noms_de_fichier():
+    """Pose le correctif sur chaque adaptateur OpenAPI 3.x ; rend le nombre
+    d'adaptateurs corrigés (0 sans Schemathesis réel : tests du harnais)."""
+    try:
+        import importlib
+        formdata = importlib.import_module(
+            'schemathesis.specs.openapi.adapter.formdata')
+    except ImportError:
+        return 0
+    installes = 0
+    for version in ('v3_0', 'v3_1', 'v3_2'):
+        try:
+            adaptateur = importlib.import_module(
+                f'schemathesis.specs.openapi.adapter.{version}')
+        except ImportError:
+            continue
+        courant = getattr(adaptateur, 'prepare_multipart', None)
+        if courant is getattr(formdata, 'prepare_multipart_v3', None):
+            adaptateur.prepare_multipart = _avec_noms_de_fichier(courant)
+            installes += 1
+    return installes
+
+
+_ADAPTATEURS_CORRIGES = _installer_noms_de_fichier()
+
+
+# ── 5c. Une part structurée (tableau / objet) part en JSON, jamais en fichier ─
+# CI #997 (4) — même cause racine que 5b : ``_collect_encoded_fields`` (transport
+# requests de Schemathesis 4.28) ne pose « ``application/json`` par défaut » sur
+# une propriété tableau/objet que si le schéma du corps est EN LIGNE. Un corps
+# regroupé (``{'$ref': '#/x-bundled/…'}``) n'a plus de ``properties`` à lire : le
+# tableau ``champs`` de POST calepinage/gabarits-dossiers partait alors en une
+# part PAR ÉLÉMENT, chacune la ``repr`` Python de l'objet, sans type — et
+# ``requests`` pose le nom du champ comme nom de FICHIER à toute part nue : le
+# serveur recevait un fichier là où le formulaire de l'ERP envoie UN texte JSON
+# (``corps.append('champs', JSON.stringify(liste))``, ReglagesGabarits.jsx) et
+# répondait 400 « se donnent en liste ordonnée (reçu : InMemoryUploadedFile) ».
+# Ici, après avoir résolu le ``$ref`` racine puis celui de chaque propriété, tout
+# champ structuré que Schemathesis n'a pas vu est lui aussi sérialisé en JSON :
+# une seule part de texte, comme le client réel. Aucun nom de fichier n'est posé
+# (c'est 5b qui ne le pose QUE sur les champs ``format: binary``).
+def _resoudre_propriete(propriete, schema_racine):
+    reference = propriete.get('$ref') if isinstance(propriete, dict) else None
+    if isinstance(reference, str):
+        regroupe = (schema_racine.get('x-bundled') or {}) if isinstance(
+            schema_racine, dict) else {}
+        return regroupe.get(reference.rsplit('/', 1)[-1], propriete)
+    return propriete
+
+
+def _est_structure(propriete):
+    if not isinstance(propriete, dict):
+        return False
+    elements = propriete.get('items')
+    if isinstance(elements, dict) and elements.get('format') in (
+            'binary', 'base64'):
+        return False        # liste de fichiers : des fichiers, pas du JSON
+    declare = propriete.get('type')
+    if isinstance(declare, str):
+        declare = [declare]
+    if isinstance(declare, list):
+        return any(t in ('object', 'array') for t in declare)
+    return any(cle in propriete
+               for cle in ('properties', 'items', 'additionalProperties'))
+
+
+def _champs_structures(operation):
+    """Champs tableau / objet du corps multipart déclaré, ``$ref`` résolus."""
+    for corps in getattr(operation, 'body', None) or ():
+        if not str(getattr(corps, 'media_type', '')).lower().startswith(
+                'multipart/'):
+            continue
+        racine = corps.definition.get('schema')
+        schema = _schema_corps_resolu(racine)
+        proprietes = schema.get('properties') if isinstance(schema, dict) else None
+        # Le regroupement vit sur la racine (``x-bundled``) : les ``$ref`` de
+        # propriété se résolvent contre elle.
+        return {
+            nom for nom, propriete in (proprietes or {}).items()
+            if _est_structure(_resoudre_propriete(propriete, racine))}
+    return set()
+
+
+def _avec_parts_json(collecter):
+    """``_collect_encoded_fields`` de Schemathesis, complété des champs
+    structurés d'un corps regroupé (``nom -> application/json``)."""
+    if getattr(collecter, '_parts_json', False):
+        return collecter
+
+    def collecte(ctx):
+        trouves = collecter(ctx)
+        for nom in _champs_structures(ctx.case.operation):
+            trouves.setdefault(nom, 'application/json')
+        return trouves
+
+    collecte._parts_json = True
+    return collecte
+
+
+def _installer_parts_json():
+    """Pose le correctif sur le transport requests ; rend 1 si posé."""
+    try:
+        import importlib
+        transport = importlib.import_module('schemathesis.transport.requests')
+    except ImportError:
+        return 0
+    courant = getattr(transport, '_collect_encoded_fields', None)
+    if courant is None:
+        return 0
+    transport._collect_encoded_fields = _avec_parts_json(courant)
+    return 1
+
+
+_PARTS_JSON_CORRIGEES = _installer_parts_json()
+
+
+# ── 6. Un corps à fichier reste POSITIF après nos substitutions ─────────
+# Schemathesis revalide tout conteneur modifié par un crochet, et déclare
+# INVALIDE tout corps qui porte des octets (``_contains_bytes`` : ``Binary``
+# d'un champ ``format: binary``) : un cas positif dont une FK a été remplacée
+# par un id réel basculait donc NÉGATIF, et la réponse 201 devenait « API
+# accepted schema-violating request » sans aucune donnée invalide envoyée
+# (POST portail/documents-client-portail/). Le corps n'a reçu que des
+# substitutions voulues par ce fichier : on retire son drapeau « à revalider »
+# ET on réaligne son empreinte validée (Schemathesis détecte aussi une
+# modification en comparant les empreintes) ; les autres conteneurs — query,
+# chemin — restent revalidés.
+def _contient_binaire(valeur):
+    if isinstance(valeur, bytes) or isinstance(getattr(valeur, 'data', None),
+                                               bytes):
+        return True
+    if isinstance(valeur, dict):
+        return any(_contient_binaire(v) for v in valeur.values())
+    if isinstance(valeur, list):
+        return any(_contient_binaire(v) for v in valeur)
+    return False
+
+
+def _rester_positif(case, etait_positif):
+    meta = getattr(case, '_meta', None)
+    if not etait_positif or meta is None or not hasattr(meta, '_dirty'):
+        return
+    if not _contient_binaire(getattr(case, 'body', None)):
+        return
+    lieux = list(getattr(meta, 'components', None) or ()) + list(meta._dirty)
+    for lieu in lieux:
+        if getattr(lieu, 'value', lieu) != 'body':
+            continue
+        meta.clear_dirty(lieu)
+        empreinte = getattr(case, '_hash_container', None)
+        if empreinte is not None:
+            meta.update_validated_hash(lieu, empreinte(case.body))
+
+
+def _est_positif(case):
+    meta = case.meta
+    return meta is not None and meta.generation.mode == GenerationMode.POSITIVE
+
+
 @schemathesis.hook
 def before_call(context, case, kwargs):
+    etait_positif = _est_positif(case)
     _ids_chemin_reels(case)
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
+    _fichiers_valides(case)
+    _rester_positif(case, etait_positif)

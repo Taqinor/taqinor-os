@@ -145,3 +145,43 @@ class DupliquerCible(BaseApiCalepinage):
         self.assertIn('lead', reponse.data)
         self.assertIn('introuvable', str(reponse.data['lead']))
         self.assertEqual(Calepinage.objects.count(), avant)
+
+    def test_corps_multipart_refuse_415(self):
+        # fuzz CI #997 (2) : « True » en formulaire est une chaîne, pas le
+        # booléen publié — le corps est JSON seul, rien n'est copié.
+        avant = Calepinage.objects.count()
+        reponse = self.api.post(_url(self.source.pk, 'dupliquer/'),
+                                {'avec_variantes': 'True', 'titre': ''},
+                                format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.content)
+        self.assertEqual(Calepinage.objects.count(), avant)
+
+    def test_titre_trop_long_ou_nul_refuse_400(self):
+        # fuzz CI #997 (2) : un titre de 201 caractères cassait à l'INSERT
+        # (500) ; le schéma publie désormais la borne de la colonne.
+        avant = Calepinage.objects.count()
+        for titre in ('x' * 201, 'a\x00b'):
+            reponse = self._dupliquer(self.source, {'titre': titre})
+            self.assertEqual(reponse.status_code, 400, reponse.data)
+            self.assertIn('titre', reponse.data)
+        self.assertEqual(Calepinage.objects.count(), avant)
+        # ACAL187 : la source est le calepinage OUVERT du lead — la copie
+        # exige une cible (autre lead), sinon 409 MESSAGE_SOURCE_OUVERTE.
+        cible = Lead.objects.create(company=self.company, nom='Titre 200')
+        reponse = self._dupliquer(self.source, {'titre': 'x' * 200, 'lead': cible.pk})
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+
+    def test_corps_non_objet_refuse_400_sans_copie(self):
+        # CI #997 api-fuzz (3) : le schéma publie un OBJET — un tableau, un
+        # texte, un nombre ou ``null`` était lu « corps vide » et la copie
+        # créée (201).
+        avant = Calepinage.objects.count()
+        url = _url(self.source.pk, 'dupliquer/')
+        reponses = [self.api.post(url, corps, format='json')
+                    for corps in ([None, None], 'texte', 5)]
+        reponses.append(self.api.generic('POST', url, 'null',
+                                         content_type='application/json'))
+        for reponse in reponses:
+            self.assertEqual(reponse.status_code, 400, reponse.content)
+            self.assertIn('detail', reponse.data)
+        self.assertEqual(Calepinage.objects.count(), avant)

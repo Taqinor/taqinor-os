@@ -21,6 +21,10 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers as drf_serializers
 from drf_spectacular.utils import inline_serializer
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _co(user):
     if user.company_id:
@@ -51,6 +55,7 @@ def _maybe_pdf(request, pdf_title, sections, pdf_filename, period_label=''):
     try:
         profile = CompanyProfile.get(company=request.user.company)
     except Exception:
+        logger.warning("maybe pdf : échec ignoré, comportement dégradé", exc_info=True)
         profile = None
     pdf_bytes = render_report_pdf(
         title=pdf_title,

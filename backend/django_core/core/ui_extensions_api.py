@@ -148,7 +148,8 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
                 status=403)
         target_model = (request.data.get('target_model') or '').strip()
         target_id = request.data.get('target_id')
-        if not target_model or not target_id:
+        # ``0`` est une valeur (id inconnu -> ``ok: false``), jamais « absent ».
+        if not target_model or target_id is None or target_id == '':
             return Response(
                 {'detail': '« target_model » et « target_id » sont requis.'},
                 status=400)

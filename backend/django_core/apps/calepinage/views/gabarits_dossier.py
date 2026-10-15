@@ -27,6 +27,7 @@ from drf_spectacular.utils import (
 from rest_framework import serializers, status
 from rest_framework.response import Response
 
+from core.champs_stricts import BooleenStrict, ChaineStricte
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import GabaritDossierReglementaire
@@ -54,20 +55,45 @@ _FORME_GABARIT = inline_serializer('CalepinageGabaritDossier', {
 })
 
 
+#: CI #997 api-fuzz (3) — les éléments de ``pieces_attendues`` / ``champs`` : le
+#: modèle (``GabaritDossierReglementaire._erreur_pieces`` / ``_erreur_champs``)
+#: exige un code, un intitulé + une source (pièce) ou un libellé (champ) ; un
+#: ``DictField`` nu publiait un objet quelconque que le serveur refusait
+#: (« Le champ n°1 doit porter un code »). Schéma de REQUÊTE seulement : la
+#: validation reste celle du modèle (le code de chaque élément doit en plus
+#: être unique dans sa liste, ce qu'un schéma n'exprime pas).
+_ELEMENT_PIECE = inline_serializer('CalepinageGabaritPieceAttendue', {
+    'code': ChaineStricte(allow_blank=False),
+    'intitule': ChaineStricte(allow_blank=False),
+    'source_reference': ChaineStricte(allow_blank=False),
+    'obligatoire': BooleenStrict(required=False),
+})
+_ELEMENT_CHAMP = inline_serializer('CalepinageGabaritChampSaisi', {
+    'code': ChaineStricte(allow_blank=False),
+    'libelle': ChaineStricte(allow_blank=False),
+    'type': serializers.ChoiceField(
+        choices=GabaritDossierReglementaire.TYPES_CHAMP, required=False),
+    'cle_calepinage': serializers.ChoiceField(
+        choices=GabaritDossierReglementaire.CLES_PREREMPLISSAGE,
+        required=False),
+    'obligatoire': BooleenStrict(required=False),
+})
+
 _CORPS_GABARIT = inline_serializer('CalepinageGabaritDossierCorps', {
     'fichier': serializers.FileField(required=False),
     'pays': serializers.RegexField(r'^[A-Za-z]{2}$', max_length=2),
     'code': serializers.SlugField(max_length=60),
-    'genre': serializers.SlugField(required=False, max_length=40,
-                                   allow_blank=True),
-    'intitule': serializers.CharField(max_length=200),
-    'version': serializers.CharField(required=False, max_length=20,
-                                     allow_blank=True),
+    # CI #997 api-fuzz : le formulaire envoie ``genre`` vide (facultatif) et le
+    # serveur l'accepte — le schéma publie donc un motif qui admet le vide.
+    'genre': serializers.RegexField(r'^[-a-zA-Z0-9_]*$', required=False,
+                                    max_length=40, allow_blank=True),
+    'intitule': ChaineStricte(max_length=200),
+    'version': ChaineStricte(required=False, max_length=20, allow_blank=True),
     'actif': serializers.BooleanField(required=False),
     'pieces_attendues': serializers.ListField(
-        child=serializers.DictField(), required=False),
+        child=_ELEMENT_PIECE, required=False),
     'champs': serializers.ListField(
-        child=serializers.DictField(), required=False),
+        child=_ELEMENT_CHAMP, required=False),
 })
 
 

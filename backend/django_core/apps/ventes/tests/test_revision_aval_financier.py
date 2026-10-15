@@ -188,6 +188,9 @@ class AvalFinancierRevision(TestCase):
             rattacher_aval_financier_revision(self.v1, user=self.user))
 
     def test_commission_a_payer_recalculee_sur_la_v2(self, *_):
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(  # ACRM66 — réglage allumé
+            company=self.company, defaults={'apporteurs_actif': True})
         apporteur = Apporteur.objects.create(
             company=self.company, nom='Apporteur 560',
             taux_commission_pct=Decimal('5.00'))

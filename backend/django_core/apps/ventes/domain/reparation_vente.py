@@ -175,10 +175,6 @@ def photographier(company, lead_id, garde):
 
 # ── Contrôles (avant toute écriture) ─────────────────────────────────────────
 
-def _racine(devis):
-    return devis.version_parent_id or devis.pk
-
-
 def _factures_cibles(vente):
     """Les factures VIVANTES de la vente (toute la chaîne) ; une consolidée
     (devis hors chaîne) est refusée : elle porte d'autres ventes."""
@@ -197,8 +193,9 @@ def _factures_cibles(vente):
 def _controler_autre(autre, garde):
     """Refus nommés : variante du même groupe, BC non annulé."""
     from ..models import BonCommande
+    from ..selectors import racine_groupe
     from ..vente_facturation import chaine_vente
-    if _racine(autre) == _racine(garde):
+    if racine_groupe(autre).pk == racine_groupe(garde).pk:
         raise ReparationRefusee(
             f'{autre.reference} et {garde.reference} sont deux variantes du '
             'même groupe : choisissez la variante par l\'acceptation, pas '

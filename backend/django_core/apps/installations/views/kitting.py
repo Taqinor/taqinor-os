@@ -14,10 +14,11 @@ from django.utils import timezone
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from apps.ventes.utils.references import create_with_reference
@@ -167,7 +168,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
     @oa.extend_schema(responses=RevisionKitSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='revisions')
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='revisions')
     def revisions(self, request, pk=None):
         """XMFG18 — historique des révisions de nomenclature de ce kit
         (numéro, date, utilisateur, snapshot JSON). Lecture seule."""
@@ -176,7 +177,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         qs = kit.revisions.select_related('user').order_by('-numero')
         return Response(RevisionKitSerializer(qs, many=True).data)
 
-    @oa.extend_schema(parameters=[oa.qd('date')], responses=RevisionKitSerializer)
+    @oa.extend_schema(parameters=[oa.qd('date', required=True)], responses=RevisionKitSerializer)
     @action(detail=True, methods=['get'], url_path='composition-au')
     def composition_au(self, request, pk=None):
         """XMFG18 — « composition au JJ/MM/AAAA » : la révision en vigueur
@@ -206,7 +207,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         return Response(RevisionKitSerializer(revision).data)
 
-    @oa.extend_schema(request=oa.body('DupliquerKitRequete', facteur_echelle=oa.dec()), responses={201: KitSerializer})
+    @oa.extend_schema(request=oa.body('DupliquerKitRequete', facteur_echelle=oa.dec(null=True)), responses={201: KitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, pk=None):
         """XMFG18 — duplique ce kit (en-tête + composants), avec facteur
@@ -214,7 +215,7 @@ class KitViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         reçoit sa révision n°1."""
         from ..services import dupliquer_kit
         kit = self.get_object()
-        facteur = request.data.get('facteur_echelle')
+        facteur = oa.corps_objet(request).get('facteur_echelle')
         try:
             copie = dupliquer_kit(
                 kit, user=request.user, facteur_echelle=facteur)
@@ -531,8 +532,11 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 serializer.instance, user=self.request.user)
         activity.log_changes(old, serializer.instance, self.request.user)
 
-    @oa.extend_schema(request=oa.body('OrdresDepuisDevisRequete', devis=oa.i(True)), responses={200: OrdreAssemblageSerializer(many=True), 201: OrdreAssemblageSerializer(many=True)})
-    @action(detail=False, methods=['post'], url_path='depuis-devis')
+    @oa.extend_schema(
+        request=oa.body('OrdresDepuisDevisRequete', devis=oa.idf(True)),
+        responses={200: OrdreAssemblageSerializer(many=True), 201: OrdreAssemblageSerializer(many=True)},
+    )
+    @action(pagination_class=None, detail=False, methods=['post'], url_path='depuis-devis')
     def depuis_devis(self, request):
         """XMFG3 — assembler-à-la-commande : pour un devis donné, détecte les
         lignes dont le produit est le `produit_compose` d'un kit actif et crée
@@ -540,12 +544,12 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         quantités des lignes. Renvoie la liste des ordres (créés ou déjà
         existants)."""
         company = self.request.user.company
-        devis_id = request.data.get('devis')
-        if not devis_id:
-            raise ValidationError({'devis': 'Devis requis.'})
+        # CI #997 api-fuzz : corps et id lus STRICTEMENT (un tableau en `devis`
+        # levait un 500) ; devis absent ou d'une autre société = même 404.
+        devis_id = oa.id_entier(oa.corps_objet(request).get('devis'), 'devis')
         devis = get_devis_by_pk(devis_id)
         if devis is None or devis.company_id != getattr(company, 'id', None):
-            raise ValidationError({'devis': 'Devis inconnu pour cette société.'})
+            raise NotFound({'devis': 'Devis inconnu pour cette société.'})
 
         # ACHT23 (C-ACHT-021) — quantités VENDUES lues sur la nomenclature
         # gelée du devis (option retenue × N villas, options non activées
@@ -696,7 +700,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(self.get_serializer(ordre).data)
 
     @oa.extend_schema(responses=OrdreAssemblageActivitySerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='historique',
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='historique',
             permission_classes=[IsResponsableOrAdmin])
     def historique(self, request, pk=None):
         """XMFG4 — chatter complet de l'ordre."""
@@ -705,7 +709,10 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             OrdreAssemblageActivitySerializer(
                 ordre.activites.all(), many=True).data)
 
-    @oa.extend_schema(request=oa.body('NoterRequete', body=oa.s(True)), responses={201: OrdreAssemblageActivitySerializer})
+    @oa.extend_schema(
+        request=oa.body('NoterRequete', body=oa.s(True)),
+        responses={201: OrdreAssemblageActivitySerializer},
+    )
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -719,7 +726,16 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(OrdreAssemblageActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
-    @oa.extend_schema(request=oa.body('DeclarerRebutRequete', produit=oa.i(True), quantite=oa.dec(True), motif=oa.s(True), note=oa.s()), responses={201: oa.OBJ})
+    @oa.extend_schema(
+        request=oa.body(
+            'DeclarerRebutRequete',
+            produit=oa.i(True),
+            quantite=oa.dec(True),
+            motif=oa.s(True),
+            note=oa.s(),
+        ),
+        responses={201: oa.OBJ},
+    )
     @action(detail=True, methods=['post'], url_path='declarer-rebut')
     def declarer_rebut(self, request, pk=None):
         """XMFG11 — déclare un rebut de production (casse/défaut/erreur/autre)
@@ -771,7 +787,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response({'ordre_id': ordre.id, 'cout_composite': float(cout)})
 
     @oa.extend_schema(responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='rapport-soustraitants',
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='rapport-soustraitants',
             permission_classes=[IsResponsableOrAdmin])
     def rapport_soustraitants(self, request):
         """XMFG16 — reliquat des composants restant chez chaque sous-traitant
@@ -780,19 +796,20 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         company = self.request.user.company
         return Response(rapport_composants_chez_soustraitants(company))
 
-    @oa.extend_schema(parameters=[oa.qd('date_debut'), oa.qd('date_fin')], responses=oa.LIST)
-    @action(detail=False, methods=['get'], url_path='rapport-rebuts')
+    @oa.extend_schema(parameters=[oa.qdv('date_debut'), oa.qdv('date_fin')], responses=oa.LIST)
+    @action(pagination_class=None, detail=False, methods=['get'], url_path='rapport-rebuts')
     def rapport_rebuts(self, request):
         """XMFG11 — mini-rapport rebuts agrégé par produit/période."""
         from apps.stock.services import rapport_rebuts as _rapport_rebuts
         company = self.request.user.company
         params = request.query_params
+        # ERR-ENF11 : date illisible = 400 (un vide = borne non posée).
         return Response(_rapport_rebuts(
-            company, date_debut=params.get('date_debut'),
-            date_fin=params.get('date_fin')))
+            company, date_debut=date_ou_400(params.get('date_debut'), 'date_debut'),
+            date_fin=date_ou_400(params.get('date_fin'), 'date_fin')))
 
     @oa.extend_schema(responses=ControleQualiteOrdreSerializer(many=True))
-    @action(detail=True, methods=['get'], url_path='controle-qualite')
+    @action(pagination_class=None, detail=True, methods=['get'], url_path='controle-qualite')
     def controle_qualite(self, request, pk=None):
         """XMFG13 — checklist QC de l'ordre (instanciée à la volée depuis le
         modèle du kit ; liste vide si le kit n'a pas de modèle)."""
@@ -800,7 +817,11 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         controles = instancier_controle_qualite(ordre)
         return Response(ControleQualiteOrdreSerializer(controles, many=True).data)
 
-    @oa.extend_schema(parameters=[oa.OpenApiParameter('item_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('ControleQualiteItemRequete', resultat=oa.s(True), valeur_mesuree=oa.dec(null=True)), responses=ControleQualiteOrdreSerializer)
+    @oa.extend_schema(
+        parameters=[oa.OpenApiParameter('item_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)],
+        request=oa.body('ControleQualiteItemRequete', resultat=oa.s(True), valeur_mesuree=oa.dec(null=True)),
+        responses=ControleQualiteOrdreSerializer,
+    )
     @action(detail=True, methods=['post'],
             url_path='controle-qualite/(?P<item_modele_id>[^/.]+)')
     def enregistrer_controle_qualite_item(self, request, pk=None,
@@ -822,7 +843,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(ControleQualiteOrdreSerializer(controle).data)
 
     @oa.extend_schema(responses=EtapeOrdreSerializer(many=True))
-    @action(detail=True, methods=['get'])
+    @action(pagination_class=None, detail=True, methods=['get'])
     def etapes(self, request, pk=None):
         """XMFG14 — gamme d'exécution de l'ordre (instanciée à la volée
         depuis les étapes du kit ; liste vide si le kit n'a pas d'étape)."""
@@ -830,7 +851,11 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         etapes = instancier_etapes_ordre(ordre)
         return Response(EtapeOrdreSerializer(etapes, many=True).data)
 
-    @oa.extend_schema(parameters=[oa.OpenApiParameter('etape_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)], request=oa.body('CocherEtapeRequete', fait=oa.b(), duree_reelle_min=oa.i(null=True)), responses=EtapeOrdreSerializer)
+    @oa.extend_schema(
+        parameters=[oa.OpenApiParameter('etape_modele_id', oa.OpenApiTypes.INT, oa.OpenApiParameter.PATH)],
+        request=oa.body('CocherEtapeRequete', fait=oa.b(), duree_reelle_min=oa.i(null=True)),
+        responses=EtapeOrdreSerializer,
+    )
     @action(detail=True, methods=['post'],
             url_path='etapes/(?P<etape_modele_id>[^/.]+)/cocher')
     def cocher_etape(self, request, pk=None, etape_modele_id=None):
@@ -858,7 +883,18 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(EtapeOrdreSerializer(etape_ordre).data)
 
-    @oa.extend_schema(request=oa.body('TerminerOrdreAssemblageRequete', forcer=oa.b(), motif_forcage=oa.s(), quantite_produite=oa.dec(null=True), emplacement_source=oa.i(null=True), emplacement_destination=oa.i(null=True), series_composite=oa.lst(null=True), series_composants=oa.lst(null=True)))
+    @oa.extend_schema(
+        request=oa.body(
+            'TerminerOrdreAssemblageRequete',
+            forcer=oa.b(),
+            motif_forcage=oa.s(),
+            quantite_produite=oa.dec(null=True),
+            emplacement_source=oa.i(null=True),
+            emplacement_destination=oa.i(null=True),
+            series_composite=oa.lst(null=True),
+            series_composants=oa.lst(null=True),
+        ),
+    )
     @action(detail=True, methods=['post'])
     def terminer(self, request, pk=None):
         """FG328/XMFG1 — clôture l'ordre (→ terminé, horodate) et backflush le
@@ -1008,7 +1044,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(self.get_serializer(ordre).data)
 
     @oa.extend_schema(responses=SerieAssemblageSerializer(many=True))
-    @action(detail=True, methods=['get'])
+    @action(pagination_class=None, detail=True, methods=['get'])
     def series(self, request, pk=None):
         """XMFG7 — séries enregistrées sur cet ordre (composite + composants)."""
         ordre = self.get_object()

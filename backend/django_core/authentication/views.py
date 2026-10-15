@@ -18,13 +18,14 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .corps_requetes import (
     CalendrierHegirienRequete, LangueInterfaceRequete, MobileHomeRouteRequete,
-    REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
+    ID_COMPTE, REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
     TwoFactorDisableRequete, TwoFactorEnableRequete,
 )
 from .models import CustomUser, Company, UserSession
 from .serializers import (
     MeSerializer,
     RegisterSerializer,
+    UserModificationSerializer,
     UserSerializer,
     CompanySerializer,
     CustomTokenObtainPairSerializer,
@@ -325,7 +326,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         # donnent le même 401 ; avec le bon mot de passe,
         # ``_refus_apres_mot_de_passe`` répond 403 ``sso_required``. Un compte
         # VERROUILLÉ reçoit le même 401, bon mot de passe ou non (ASEC14-revue).
-        raw_uname0 = str(request.data.get('username') or '').strip()  # ERR fuzz : liste → 400, pas 500
+        raw_uname0 = str((request.data.get('username') if hasattr(request.data, 'get') else '') or '').strip()  # ERR fuzz : liste/nul → 400, pas 500
         locked_user = CustomUser.objects.filter(
             username__iexact=raw_uname0).first() if raw_uname0 else None
         # ASEC4-revue — le plancher plateforme verrouille le couple
@@ -993,6 +994,8 @@ class CalendrierHegirienView(APIView):
 
 
 # ── Logout securise ────────────────────────────────────────────
+# ENF11 — schéma OpenAPI (corps optionnel, réponse {detail}) : SCHEMA_LOGOUT,
+# posé sur la route dans urls.py (ce fichier-mur ne grossit pas, C20).
 class LogoutView(generics.GenericAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1084,7 +1087,13 @@ _ACTIONS_ECRITURE_COMPTES = frozenset({
 
 
 @extend_schema_view(create=extend_schema(
-    responses={201: UserSerializer, 400: REPONSE_400_COMPTE}))
+    responses={201: UserSerializer, 400: REPONSE_400_COMPTE}),
+    **{action_detail: extend_schema(parameters=ID_COMPTE) for action_detail in (
+        'retrieve', 'destroy')},
+    # CI #997 : le corps d'une modification ne promet pas ``password`` (ASEC3).
+    **{action_detail: extend_schema(
+        parameters=ID_COMPTE, request=UserModificationSerializer)
+       for action_detail in ('update', 'partial_update')})
 class UserViewSet(viewsets.ModelViewSet):
     """Gestion des utilisateurs — Administrateur et Responsable, scoped company."""
     serializer_class = UserSerializer
@@ -1223,7 +1232,7 @@ class UserViewSet(viewsets.ModelViewSet):
     @extend_schema(
         request={'multipart/form-data': inline_serializer(
             'AvatarUpload', {'file': drf_serializers.FileField()})},
-        responses=UserSerializer)
+        parameters=ID_COMPTE, responses=UserSerializer)
     @action(detail=True, methods=['post'], url_path='avatar',
             parser_classes=[MultiPartParser])
     def avatar(self, request, pk=None):
@@ -1254,7 +1263,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         request=inline_serializer('ReinitialiserMotDePasseRequete', {
-            'password': drf_serializers.CharField()}),
+            'password': drf_serializers.CharField()}), parameters=ID_COMPTE,
         responses=inline_serializer('ReinitialiserMotDePasseReponse', {
             'detail': drf_serializers.CharField()}))
     @action(detail=True, methods=['post'],
@@ -1365,7 +1374,7 @@ class UserViewSet(viewsets.ModelViewSet):
         target = self.get_object()
         if target == request.user:
             return Response(
-                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},  # noqa: E501
+                {'detail': 'Vous ne pouvez pas supprimer votre propre compte.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if target.is_protected:
@@ -1760,7 +1769,9 @@ class CompanyViewSet(viewsets.ModelViewSet):
             'inline; filename="kit-demo.pdf"')
         return response
 
-    @extend_schema(responses={(200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
+    @extend_schema(responses={
+        (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY,
+    })
     def demo_kit_export_xlsx(self, request, pk=None):
         """NTDMO24 — journal des 12 mois de démo en 4 onglets (Leads, Devis,
         Chantiers, Factures), pour vérification hors-ligne avant un

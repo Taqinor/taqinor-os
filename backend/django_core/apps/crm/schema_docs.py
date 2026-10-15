@@ -9,6 +9,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, inline_serializer
 from rest_framework import serializers
 
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).
 OBJ = OpenApiTypes.OBJECT
 
@@ -91,5 +93,116 @@ def param_date(nom, description=None):
 
 P_DEBUT = param_date('debut', description='Début (AAAA-MM-JJ).')
 P_FIN = param_date('fin', description='Fin (AAAA-MM-JJ).')
-P_ENTITE = param('entite', OpenApiTypes.INT,
-                 description="Filtre par entité (société juridique).")
+#: ``entite`` : contrat TOLÉRANT (NTADM2, ``core.entite_scoping``) — une
+#: valeur non numérique vaut « pas de filtre » (jamais un 400) : déclaré entier
+#: OU texte pour que le schéma dise ce que le serveur fait.
+P_ENTITE = OpenApiParameter(
+    'entite', {'anyOf': [{'type': 'integer', 'minimum': 1},
+                         {'type': 'string', 'maxLength': 0}]},
+    OpenApiParameter.QUERY, required=False,
+    description="Filtre par entité (société juridique) : entier, ou vide "
+                "(= sans filtre) ; une valeur non numérique répond 400 "
+                "(CI #997, core.entite_scoping.entite_id_demandee).")
+
+
+#: ENF11 — ``{activite_id}`` des actions ``epingler``/``desepingler`` du lead :
+#: PK entière d'une entrée du chatter (``LeadActivity``), que drf-spectacular
+#: ne peut pas typer depuis le modèle ``Lead``.
+P_ACTIVITE_ID = OpenApiParameter(
+    'activite_id', OpenApiTypes.INT, OpenApiParameter.PATH,
+    description="Identifiant de l'entrée du chatter du lead.")
+
+
+def _cible_unique(a, b):
+    """Exactement UN de ``a`` / ``b`` (entier) — l'autre absent ou nul."""
+    return {'oneOf': [
+        {'required': [a], 'properties': {a: {'type': 'integer'}}},
+        {'required': [b], 'properties': {b: {'type': 'integer'}}},
+    ]}
+
+
+#: ERR-ENF11-FUZZ-CRM — une salle de vente référence exactement un lead OU un
+#: client (``SalleVenteSerializer.validate``), à la création.
+SALLE_CIBLE_UNIQUE = {EXTENSION_CORPS_RESSERRE: _cible_unique('lead', 'client')}
+
+#: ERR-ENF11-FUZZ-CRM — un objectif mensuel (défaut) porte son mois, un
+#: trimestriel son trimestre (``ObjectifCommercialSerializer.validate``) ;
+#: création et remplacement (PUT), jamais le PATCH (repli sur la ligne).
+OBJECTIF_PERIODE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['period_type'],
+     'properties': {'period_type': {'enum': ['year']}}},
+    {'required': ['period_month'],
+     'properties': {'period_type': {'enum': ['month']},
+                    'period_month': {'type': 'integer'}}},
+    {'required': ['period_type', 'period_quarter'],
+     'properties': {'period_type': {'enum': ['quarter']},
+                    'period_quarter': {'type': 'integer'}}},
+]}}
+
+#: ERR-ENF11-FUZZ-CRM — conversion lead → client : le mode « lier » exige
+#: ``client_id`` (``clients_identite.convertir_lead_en_client``).
+CONVERSION_LIER_CLIENT = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'mode': {'enum': ['nouveau', 'aucun']}}},
+    {'required': ['client_id'], 'properties': {
+        'mode': {'enum': ['lier']}, 'client_id': {'type': 'integer'}}},
+]}}
+
+
+def _texte_avec(motif):
+    return {'type': 'string', 'pattern': motif}
+
+
+#: ERR-ENF11-FUZZ-CRM — « locataire » (``cadence_reponses.refus_proprietaire``) :
+#: ``proprietaire_inconnu: true`` OU les coordonnées du propriétaire — un nom
+#: non blanc et un numéro joignable (au moins un chiffre non nul ; le
+#: téléphone prime sur le WhatsApp quand il est renseigné). Textes sans NUL.
+_SANS_NUL = r'^[^\x00]*$'
+_NUMERO = r'^[^\x00]*[1-9][^\x00]*$'
+LOCATAIRE_SUITE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['proprietaire_inconnu'],
+     'properties': {'proprietaire_inconnu': {'enum': [True]}}},
+    {'required': ['proprietaire'], 'properties': {'proprietaire': {
+        'type': 'object', 'required': ['nom'],
+        'properties': {'nom': _texte_avec(r'^[^\x00]*\S[^\x00]*$'),
+                       'prenom': _texte_avec(_SANS_NUL)},
+        'anyOf': [
+            {'required': ['telephone'],
+             'properties': {'telephone': _texte_avec(_NUMERO),
+                            'whatsapp': _texte_avec(_SANS_NUL)}},
+            {'required': ['whatsapp'],
+             'properties': {'whatsapp': _texte_avec(_NUMERO),
+                            'telephone': {'type': 'string', 'maxLength': 0}}},
+        ]}}},
+]}}
+
+
+def corps_bulk(actions):
+    """CI #997 (2) — paramètres PROPRES À CHAQUE action de ``leads/bulk/``.
+
+    Le composant ne déclare que ``action`` + ``ids`` ; or ``fiche_bulk.
+    apply_bulk_action`` valide, AVANT tout traitement, le paramètre dont
+    l'action a besoin (``tag``, ``stage``, ``canal``, ``priorite``,
+    ``relance_date``, ``motif``, ``due_date`` + ``summary``). Le schéma disait
+    « ``add_tag`` sans ``tag`` » conforme et le serveur répondait 400. Une
+    branche par famille d'actions ; les actions sans paramètre sont groupées."""
+    from . import stages
+    non_blanc = {'type': 'string', 'pattern': r'\S'}
+    avec_parametre = {
+        ('add_tag', 'remove_tag'): {'tag': non_blanc},
+        ('set_stage',): {'stage': {'type': 'string', 'enum': list(stages.STAGES)}},
+        ('set_canal',): {'canal': non_blanc},
+        ('set_priorite',): {'priorite': {
+            'type': 'string', 'enum': ['basse', 'normale', 'haute']}},
+        ('set_relance',): {'relance_date': {'type': 'string', 'format': 'date'}},
+        ('set_perdu',): {'motif': non_blanc},
+        ('plan_activity',): {'due_date': {'type': 'string', 'format': 'date'},
+                             'summary': non_blanc},
+    }
+    sans_parametre = sorted(
+        set(actions) - {a for noms in avec_parametre for a in noms})
+    branches = [{'properties': {'action': {'enum': sans_parametre}}}]
+    for noms, proprietes in avec_parametre.items():
+        branches.append({
+            'required': sorted(proprietes),
+            'properties': {'action': {'enum': list(noms)}, **proprietes}})
+    return {EXTENSION_CORPS_RESSERRE: {'anyOf': branches}}

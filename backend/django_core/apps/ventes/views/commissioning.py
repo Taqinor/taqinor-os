@@ -144,8 +144,12 @@ class CommissioningTestViewSet(CompanyScopedModelViewSet):
         _refresh_recette_result(instance)
 
 
+#: ``?defaut=`` — drapeau « défaut détecté seulement » (valeurs publiées).
+_DEFAUT_VRAI = ['1', 'true', 'True']
+
+
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('recette'), qint('defaut')]))
+    parameters=[qint('recette'), qstr('defaut', enum=_DEFAUT_VRAI)]))
 class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG275 — CRUD courbes I-V ; écart & défaut dérivés serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -165,11 +169,18 @@ class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-de
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        recette_id = self.request.query_params.get('recette')
+        # CI #997 — ``?recette`` entier et ``?defaut`` drapeau énuméré : une
+        # autre valeur (``defaut=null``) répond 400, plus ignorée en silence.
+        from core.champs_stricts import entier_ou_400
+        recette_id = entier_ou_400(
+            self.request.query_params.get('recette'), 'recette')
         if recette_id:
             qs = qs.filter(recette_id=recette_id)
         defaut = self.request.query_params.get('defaut')
-        if defaut in ('1', 'true', 'True'):
+        if defaut is not None and defaut not in _DEFAUT_VRAI:
+            raise ValidationError(
+                {'defaut': ['Valeurs acceptées : 1, true, True.']})
+        if defaut is not None:
             qs = qs.filter(defaut_detecte=True)
         return qs
 

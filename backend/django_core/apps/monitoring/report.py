@@ -35,6 +35,10 @@ from .analytics import om_metrics, soiling_assessment
 from .models import ProductionReading, UnderperformanceFlag
 from .services import warranty_curve_overlay
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Périodes supportées (en jours) pour le rapport périodique.
 PERIODS = {'monthly': 30, 'quarterly': 91}
 
@@ -226,7 +230,7 @@ def email_om_report(installation, *, period='monthly', recipient=None,
     try:
         _notify_rapport_envoye(installation, period_label, ref, recipient)
     except Exception:  # pragma: no cover - défensif, best-effort
-        pass
+        logger.warning("email om report : échec ignoré, comportement dégradé", exc_info=True)
     return True
 
 

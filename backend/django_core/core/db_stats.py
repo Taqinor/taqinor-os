@@ -15,6 +15,10 @@ from __future__ import annotations
 
 from django.db import connection
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _TOP_QUERIES_SQL = """
     SELECT queryid, calls,
            round(total_exec_time::numeric, 2) AS total_ms,
@@ -77,6 +81,7 @@ def collect_db_stats() -> dict:
             result['top_queries'] = _rows(cursor)
             result['pg_stat_statements'] = True
         except Exception as exc:  # noqa: BLE001 — extension absente → dégradé
+            logger.warning("collect db stats : échec ignoré, comportement dégradé", exc_info=True)
             result['top_queries_error'] = (
                 "pg_stat_statements indisponible (shared_preload_libraries ?) : "
                 f"{exc}")
@@ -87,5 +92,6 @@ def collect_db_stats() -> dict:
                 cursor.execute(sql)
                 result[key] = _rows(cursor)
             except Exception as exc:  # noqa: BLE001 — dégrade section par section
+                logger.warning("collect db stats : échec ignoré, comportement dégradé", exc_info=True)
                 result[f'{key}_error'] = str(exc)
     return result

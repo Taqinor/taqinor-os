@@ -173,6 +173,27 @@ class TestReplanificationMasse(TestCase):
             f'{BASE}/interventions/replanifier-en-masse/', {}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_corps_et_drapeau_mal_types_400_nommes(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — `?simuler=null` était lu « non » et
+        # `technicien: "abc"` passait à l'ORM : corps validé, drapeau strict.
+        url = f'{BASE}/interventions/replanifier-en-masse/'
+        jour = self.jour.isoformat()
+        for corps, champ in (({'jour': jour, 'technicien': 'abc'}, 'technicien'),
+                             ({'jour': jour, 'simuler': 'yes'}, 'simuler'),
+                             ({'jour': jour, 'intervention_ids': [0]}, 'intervention_ids'),
+                             ({'jour': jour, 'motif': 0}, 'motif')):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn(champ, resp.json())
+        resp = self.api.post(f'{url}?simuler=null', {'jour': jour}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('simuler', resp.json())
+        resp = self.api.post(f'{url}?simuler=true', {
+            'jour': jour, 'technicien': self.absent.id}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.iv1.refresh_from_db()
+        self.assertEqual(self.iv1.technicien_id, self.absent.id)
+
     def test_role_limite_refuse(self):
         limited = make_user(self.company, role='normal')
         api = auth(limited)

@@ -67,6 +67,34 @@ class TestAud135RemiseEncaissement(TestCase):
             'lignes': [{'paiement': p.id} for p in paiements],
         }, format='json')
 
+    def test_note_strictement_en_chaine(self):
+        # CI #997 — ``note: 0`` était converti en « 0 » (201) : 400.
+        resp = self.api.post(URL, {
+            'technicien': self.user.id,
+            'date_collecte': date.today().isoformat(),
+            'montant_declare': '0', 'note': 0}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('note', resp.data)
+
+    def test_montant_lignes_et_filtre_strictement_typees(self):
+        # CI #997 (2) (cas NkiB41) — ``montant_declare: 0`` (nombre JSON,
+        # décimal publié en chaîne) était converti (201) ; une ligne non objet
+        # ou ``?technicien=AAA`` levaient une 500.
+        base = {'technicien': self.user.id,
+                'date_collecte': date.today().isoformat()}
+        for corps in ({**base, 'montant_declare': 0},
+                      {**base, 'montant_declare': '0', 'lignes': ['x']},
+                      {**base, 'montant_declare': '0',
+                       'lignes': [{'paiement': 'abc'}]}):
+            resp = self.api.post(URL, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        self.assertFalse(RemiseEncaissement.objects.exists())
+        for qs in ('AAA', 'null'):
+            resp = self.api.get(URL, {'technicien': qs})
+            self.assertEqual(resp.status_code, 400, resp.data)
+        resp = self.api.get(URL, {'technicien': self.user.id})
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     # ── (1) unicité par PAIEMENT, pas par remise ─────────────────────────
     def test_deuxieme_remise_sur_le_meme_paiement_est_refusee(self):
         paiement = self._paiement()

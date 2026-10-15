@@ -19,6 +19,8 @@ const REPLIS = {
   emettre: 'Émission impossible.',
   recu: 'Reçu indisponible pour le moment.',
   pdf: 'PDF de la facture indisponible pour le moment.',
+  envoyer: 'Envoi impossible.',
+  montant: 'Modification du montant impossible.',
 }
 
 /** `Quittance_<numero_recu>.pdf` lu de l'en-tête serveur, sinon repli sur le paiement. */
@@ -38,16 +40,19 @@ export function nomQuittance(headers, paiement) {
  *   annuler: Function, supprimer: Function, emettre: Function, recu: Function, pdf: Function,
  * }}
  */
-export function useActionsVente() {
+export function useActionsVente({ onSucces } = {}) {
   // Contexte redux OPTIONNEL : une ligne rendue hors <Provider> (test, aperçu)
   // fonctionne, sans rafraîchissement de liste.
   const redux = useContext(ReactReduxContext)
   const [occupe, setOccupe] = useState(null)
   const [erreur, setErreur] = useState(null)
 
+  // VNT76 — le panneau de vente (fiche lead) rafraîchit SA source (`onSucces`,
+  // le GET détail du lead) ; la liste des factures garde son store redux.
   const rafraichir = useCallback(() => {
-    redux?.store?.dispatch?.(fetchFactures())
-  }, [redux])
+    if (onSucces) onSucces()
+    else redux?.store?.dispatch?.(fetchFactures())
+  }, [redux, onSucces])
 
   const facturesChargees = useCallback(
     () => redux?.store?.getState?.()?.ventes?.factures ?? [],
@@ -121,7 +126,23 @@ export function useActionsVente() {
     }
   }
 
-  return { occupe, erreur, effacerErreur, facturesChargees, annuler, supprimer, emettre, recu, pdf }
+  /** VNT76 — message WhatsApp construit par le serveur (consigné au fil) ;
+   *  l'écran montre ensuite le lien wa.me, jamais d'envoi automatique. */
+  const whatsapp = (facture, params = { modele: 'facture', langue: 'fr' }) => executer(
+    'envoyer', facture, () => ventesApi.whatsappFacture(facture.id, params), { rafraichirListe: false })
+
+  /** VNT76 — envoi par e-mail (destinataire par défaut : le client, côté serveur). */
+  const envoyerEmail = (facture) => executer(
+    'envoyer', facture, () => ventesApi.envoyerEmailFacture(facture.id), { rafraichirListe: false })
+
+  /** VNT77 — le TTC d'un brouillon de tranche (tapé tel quel, jamais arrondi ici). */
+  const modifierMontant = (facture, montantTtc) => executer(
+    'montant', facture, () => ventesApi.montantTrancheFacture(facture.id, montantTtc))
+
+  return {
+    occupe, erreur, effacerErreur, facturesChargees,
+    annuler, supprimer, emettre, recu, pdf, whatsapp, envoyerEmail, modifierMontant,
+  }
 }
 
 export default useActionsVente

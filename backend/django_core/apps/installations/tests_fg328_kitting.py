@@ -76,6 +76,37 @@ class TestKit(TestCase):
         resp = self.api.post(f'{BASE}/kits/', {'nom': '  '}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_patch_sert_les_libelles_lies_nullables(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — un PATCH sur un kit sans produit
+        # composé OMETTAIT `produit_compose_nom` (SkipField DRF des
+        # sérialiseurs partiels) alors que le schéma le déclare : la clé est
+        # servie, à null, et publiée null-able.
+        kit = Kit.objects.create(company=self.company, nom='K')
+        resp = self.api.patch(f'{BASE}/kits/{kit.id}/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIn('produit_compose_nom', resp.data)
+        self.assertIsNone(resp.data['produit_compose_nom'])
+
+    def test_libelles_lecture_seule_par_defaut_nul_publies_nullables(self):
+        # Toute lecture seule `default=None` de l'app peut valoir null : le
+        # schéma doit le dire (allow_null), sinon la réponse viole son schéma.
+        from rest_framework import serializers as drf
+        from apps.installations import (
+            serializers as s1, serializers_commissioning as s2,
+            serializers_stage as s3)
+        fautifs = []
+        for module in (s1, s2, s3):
+            for nom, classe in vars(module).items():
+                champs = getattr(classe, '_declared_fields', None)
+                if (not isinstance(champs, dict)
+                        or getattr(classe, '__module__', '') != module.__name__):
+                    continue
+                for cle, champ in champs.items():
+                    if (isinstance(champ, drf.CharField) and champ.read_only
+                            and champ.default is None and not champ.allow_null):
+                        fautifs.append(f'{nom}.{cle}')
+        self.assertEqual(fautifs, [])
+
     def test_composant_other_company_produit_rejected(self):
         kit = Kit.objects.create(company=self.company, nom='K')
         other = make_company()

@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -34,4 +36,4 @@ class StatuspageConfig(AppConfig):
     def ready(self):
         # NTOBS15 — abonne les receveurs qui notifient les abonnés publics
         # confirmés à l'ouverture/résolution d'un incident système.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')

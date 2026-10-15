@@ -1,6 +1,7 @@
 """AFAC66 (C-AFAC-057) — la cinquième porte de facturation d'un devis est
 fermée : ``POST``/``PATCH /api/django/ventes/factures/`` portant le
-``bon_commande`` d'un devis est refusé (400 nommé), la seule porte restant
+``bon_commande`` d'un devis est refusé (409 nommé depuis CI #997 (2) :
+refus d'ÉTAT — l'origine du BC), la seule porte restant
 ``bons-commande/<id>/creer-facture/`` (copie fidèle du devis signé, ATOT2).
 
 Rejoue les sondes FUI-6 / L2-C-AFAC-057 (chemin écran 201 puis
@@ -63,7 +64,7 @@ class CinquiemePorteTests(TestCase):
         r = self.api.post(FACTURES, {
             'client': self.client_obj.id, 'bon_commande': self.bc_devis.id,
             'taux_tva': '20.00'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('créez la facture depuis le bon de commande',
                       str(r.data['bon_commande']))
         self.assertEqual(
@@ -77,7 +78,7 @@ class CinquiemePorteTests(TestCase):
             taux_tva=Decimal('20'))
         r = self.api.patch(f'{FACTURES}{brouillon.id}/', {
             'bon_commande': self.bc_devis.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         brouillon.refresh_from_db()
         self.assertIsNone(brouillon.bon_commande_id)
 
@@ -96,3 +97,20 @@ class CinquiemePorteTests(TestCase):
             'client': self.client_obj.id, 'bon_commande': self.bc_libre.id,
             'taux_tva': '20.00'}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
+
+    def test_bc_deja_facture_409(self):
+        """CI #997 api-fuzz (cas U8zXbo) : un BC déjà facturé (unicité de
+        ``bon_commande``) répondait 400 à un corps conforme — refus d'ÉTAT,
+        409 ``unique_conflict`` nommant le champ ; rien n'est créé."""
+        from apps.ventes.models import Facture
+        corps = {'client': self.client_obj.id,
+                 'bon_commande': self.bc_libre.id, 'taux_tva': '20.00'}
+        for url in (FACTURES, '/api/django/facturation/factures/'):
+            with self.subTest(url=url):
+                self.api.post(FACTURES, corps, format='json')
+                r = self.api.post(url, corps, format='json')
+                self.assertEqual(r.status_code, 409, r.data)
+                self.assertEqual(r.data['error']['code'], 'unique_conflict')
+                self.assertIn('bon_commande', r.data['error']['fields'])
+                self.assertEqual(Facture.objects.filter(
+                    bon_commande=self.bc_libre).count(), 1)

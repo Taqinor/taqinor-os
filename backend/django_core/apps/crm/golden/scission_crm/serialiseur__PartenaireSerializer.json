@@ -7,7 +7,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "nom",
    "read_only": false,
    "required": true
@@ -25,25 +25,25 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "telephone",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "DecimalField",
+   "classe": "DecimalBornee",
    "nom": "taux_commission",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "token_acces",
    "read_only": true,
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "actif",
    "read_only": false,
    "required": false
@@ -55,13 +55,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "numero_agrement",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "zone",
    "read_only": false,
    "required": false
@@ -97,7 +97,7 @@
    "required": false
   },
   {
-   "classe": "IntegerField",
+   "classe": "EntierStrict",
    "nom": "nb_deploiements_reussis",
    "read_only": true,
    "required": false

@@ -36,7 +36,8 @@ FIGEE = {
     # Actions standard du ModelViewSet (non décorées).
     'list': ANY, 'retrieve': ANY,
     'create': RESP, 'update': RESP, 'partial_update': RESP,
-    'destroy': ADMIN,
+    # ASEC50 / D-ASEC-4 — le palier admin ET le code ``ventes_supprimer``.
+    'destroy': ('IsAdminRole', 'DroitDeLaGrille_ventes_supprimer'),
     # Seule @action sans ``permission_classes`` déclaré.
     'variante_config': ANY,
     # Action inconnue / future non déclarée : fermée par défaut.

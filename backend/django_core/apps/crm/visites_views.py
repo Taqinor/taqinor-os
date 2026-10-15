@@ -381,7 +381,7 @@ class LeadVisitesActionsMixin:
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(rendu)
 
-    @extend_schema(request=sd.corps('CrmMessageVisiteOuvertRequest', cle=ChoixDocumente(choices=CLES_MESSAGE_VISITE + CLES_MESSAGE_DOSSIER), etape=serializers.CharField(required=False), langue=ChoixDocumente(choices=LANGUES_MESSAGE_VISITE, required=False)), responses=inline_serializer('CrmMessageVisiteOuvert', {
+    @extend_schema(request=sd.corps('CrmMessageVisiteOuvertRequest', cle=ChoixDocumente(choices=CLES_MESSAGE_VISITE + CLES_MESSAGE_DOSSIER), etape=serializers.RegexField(r'^[0-9]+$', required=False), langue=ChoixDocumente(choices=LANGUES_MESSAGE_VISITE, required=False)), responses=inline_serializer('CrmMessageVisiteOuvert', {
         'journalise': serializers.BooleanField(),
         'cle': serializers.CharField(),
         'langue': serializers.CharField(),
@@ -408,8 +408,13 @@ class LeadVisitesActionsMixin:
         lead = self.get_object()
         cle = (request.data.get('cle') or '').strip()
         # AGR526 — mêmes clés que la lecture `message-visite` pour CE lead.
+        # ERR-ENF11-FUZZ-CRM : une clé PUBLIÉE que CE lead n'ouvre pas (dossier
+        # FDA/82-21 hors profil) est un refus d'ÉTAT, 409 ; hors liste, 400.
         if not cle_message_visite_autorisee(lead, cle):
-            raise DRFValidationError({'erreurs': {'cle': (
+            from core.conflit_etat import ConflitEtat
+            refus = (ConflitEtat if cle in CLES_MESSAGE_VISITE + CLES_MESSAGE_DOSSIER
+                     else DRFValidationError)
+            raise refus({'erreurs': {'cle': (
                 f'« Message de visite » inconnu : « {cle} ». Clés connues : '
                 + ', '.join(cles_message_visite_du_lead(lead)) + '.')}})
         langue = (request.data.get('langue') or 'fr').strip()
@@ -425,8 +430,10 @@ class LeadVisitesActionsMixin:
                          .filter(pk=int(brut), lead=lead, company=lead.company,
                                  statut=RelanceEtape.Statut.A_FAIRE)
                          .first())
-            if etape is None:
-                raise DRFValidationError({'erreurs': {'etape': (
+            if etape is None:  # ERR-ENF11-FUZZ-CRM : id inconnu → 404
+                from rest_framework.exceptions import NotFound
+                refus = NotFound if brut.isdigit() else DRFValidationError
+                raise refus({'erreurs': {'etape': (
                     '« Touche » : aucune touche à faire de ce lead ne porte '
                     f'l’identifiant « {brut} ».')}})
         journaliser_message_visite_ouvert(

@@ -320,10 +320,20 @@ class TestAUD121FileDeRevueEtJeton(_ReleveImportBase):
         self.assertEqual(r.status_code, 400, r.data)
         self.assertEqual(Paiement.objects.filter(facture=fac).count(), 0)
 
+    def test_commit_corps_ou_jeton_mal_type_400(self):
+        # CI #997 — ``{"token": [null, null]}`` levait AttributeError dans le
+        # service (filet 500) ; un corps tableau aussi : 400 nommés.
+        r = self.api.post(
+            self.COMMIT_URL, {'token': [None, None], 'lignes': []},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(self.COMMIT_URL, [None, None], format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+
     def test_commit_jeton_inconnu_refuse(self):
         r = self.api.post(
             self.COMMIT_URL, {'token': 'jeton-fabrique'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_meme_fichier_importe_deux_fois_ne_double_pas(self):
         """Facture de 20 000 réglée PARTIELLEMENT par le relevé (5 000) :
@@ -337,7 +347,7 @@ class TestAUD121FileDeRevueEtJeton(_ReleveImportBase):
         _, r1 = self._commit(csv_bytes)
         self.assertEqual(r1.data['created'], 1)
         _, r2 = self._commit(csv_bytes)
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.status_code, 409, r2.data)
         self.assertEqual(Paiement.objects.filter(facture=fac).count(), 1)
 
     def test_jeton_a_usage_unique(self):
@@ -351,7 +361,7 @@ class TestAUD121FileDeRevueEtJeton(_ReleveImportBase):
         r1 = self.api.post(self.COMMIT_URL, {'token': token}, format='json')
         self.assertEqual(r1.status_code, 201, r1.data)
         r2 = self.api.post(self.COMMIT_URL, {'token': token}, format='json')
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r2.status_code, 409, r2.data)
         self.assertEqual(Paiement.objects.filter(facture=fac).count(), 1)
 
     def test_commit_n_ecrit_que_les_lignes_selectionnees(self):
@@ -389,5 +399,5 @@ class TestAUD121FileDeRevueEtJeton(_ReleveImportBase):
             company=other_co)
         r = auth(other_user).post(
             self.COMMIT_URL, {'token': dry.data['token']}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertEqual(Paiement.objects.filter(facture=fac).count(), 0)

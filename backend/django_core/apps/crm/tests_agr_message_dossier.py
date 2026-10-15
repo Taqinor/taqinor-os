@@ -127,7 +127,8 @@ class MessageVisiteDossier(_Base):
         resp = self.api.post(
             f'/api/django/crm/leads/{diesel.id}/message-visite/ouvert/',
             {'cle': 'dossier_fda', 'langue': 'fr'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-CRM : clé publiée, hors profil de CE lead → 409.
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('cle', resp.data['erreurs'])
 
     def test_les_cles_de_visite_restent_inchangees(self):

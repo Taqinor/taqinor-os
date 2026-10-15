@@ -13,6 +13,7 @@ jamais mis en cache). Module neutre : n'importe aucune vue.
 """
 
 SALLES_VENTE = 'salles_vente_actif'
+APPORTEURS = 'apporteurs_actif'
 
 
 def reglage_actif(company_id, champ):
@@ -30,3 +31,26 @@ def reglage_actif(company_id, champ):
 def salles_vente_actives(company_id):
     """ACRM65 — les salles de vente sont-elles servies pour cette société ?"""
     return reglage_actif(company_id, SALLES_VENTE)
+
+
+def apporteurs_actifs(company_id):
+    """ACRM66 — apporteurs et deals enregistrés servis (et commission
+    calculée au devis accepté) pour cette société ?"""
+    return reglage_actif(company_id, APPORTEURS)
+
+
+class ApporteursParquesMixin:
+    """ACRM66 — viewset parqué : réglage éteint ⇒ TOUTE route répond 404
+    (après l'authentification et les permissions, donc 401/403 inchangés).
+    Rien n'est supprimé ; allumé, le viewset est intact."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        # CI #997 api-fuzz : une méthode que la route ne porte pas (``action``
+        # nul — TRACE, PUT sur une liste…) reste un 405 : la porte parquée
+        # n'y répond pas 404, la réponse ne dépend pas du réglage.
+        if hasattr(self, 'action') and self.action is None:
+            return
+        if not apporteurs_actifs(getattr(request.user, 'company_id', None)):
+            from rest_framework.exceptions import NotFound
+            raise NotFound()

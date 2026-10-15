@@ -222,7 +222,7 @@ class LesCopiesPortentLeJeuDeChampsComplet(_BaseSites):
         from apps.ventes.models import Devis
         from apps.ventes.domain.revision import renouveler_devis
 
-        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.statut = Devis.Statut.EXPIRE
         self.devis.save(update_fields=['statut'])
 
         nouveau = renouveler_devis(self.devis, user=self.user)
@@ -238,7 +238,7 @@ class LesCopiesPortentLeJeuDeChampsComplet(_BaseSites):
 
         self.ligne.prix_manuel = False
         self.ligne.save(update_fields=['prix_manuel'])
-        self.devis.statut = Devis.Statut.ACCEPTE
+        self.devis.statut = Devis.Statut.EXPIRE
         self.devis.save(update_fields=['statut'])
 
         nouveau = renouveler_devis(self.devis, user=self.user)

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
 from ..models import LigneDevis
@@ -8,6 +9,7 @@ from authentication.permissions import (
     IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
+from . import openapi_docs as D
 import logging
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,10 @@ def _instantane(devis, user):
 # package __init__ ré-exporte toutes les vues publiques.
 
 
+@extend_schema_view(
+    create=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
+    update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_ECRITURE),
+    partial_update=extend_schema(extensions=D.CORPS_LIGNE_DEVIS_MODIF))
 class LigneDevisViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. LigneDevis N'A PAS de
@@ -139,16 +145,17 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         plus librement éditables : le BC/Facture/BoM chantier aval sont déjà
         générés depuis le contenu figé. `reviser` (clone en V+1) reste la
         voie de modification."""
-        from rest_framework.exceptions import ValidationError
+        from core.conflit_etat import ConflitEtat
         # QJR516 — le prédicat UNIQUE (domain/modifiabilite, geste LIGNES) ;
-        # 400 {'devis'} et son texte CONSERVÉS pour un devis clos ; un devis
-        # remplacé/archivé reçoit la raison du prédicat.
+        # corps {'devis'} et son texte CONSERVÉS pour un devis clos ; un devis
+        # remplacé/archivé reçoit la raison du prédicat. ENF11 : c'est l'ÉTAT
+        # du devis qui s'oppose (la requête est valide) — 409, plus 400.
         from ..domain.modifiabilite import LIGNES, verdict
         if devis is None:
             return
         v = verdict(devis, LIGNES)
         if not v['modifiable']:
-            raise ValidationError({'devis': (
+            raise ConflitEtat({'devis': (
                 'Devis figé — révisez-le (reviser) pour le modifier.'
                 if devis.is_active else v['raison_non_modifiable'])})
 
@@ -156,10 +163,12 @@ class LigneDevisViewSet(CompanyScopedModelViewSet):
         """QJR516 — une ligne ne CHANGE jamais de devis : ``PATCH {devis}``
         déplaçait une ligne d'un devis vers un autre (serializer
         ``__all__``), hors de toute garde du devis d'arrivée."""
-        from rest_framework.exceptions import ValidationError
+        from core.conflit_etat import ConflitEtat
         cible = serializer.validated_data.get('devis')
         if cible is not None and cible.pk != serializer.instance.devis_id:
-            raise ValidationError({
+            # ENF11 — un devis RÉEL de la société, mais la ligne appartient
+            # à un autre : les données s'opposent au déplacement (409).
+            raise ConflitEtat({
                 'devis': "Une ligne ne change pas de devis : supprimez-la et "
                          "ajoutez-la sur l'autre devis."})
 

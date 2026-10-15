@@ -151,6 +151,20 @@ class XFAC11FactureConsolideeTests(TestCase):
             r = self.api.post(url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.data))
 
+    def test_ids_en_double_400_et_devis_inconnus_404(self):
+        # ENF11 — ids publiés distincts et >= 1 : un doublon est une erreur
+        # d'entrée (il consolidait deux fois le même devis) ; des devis
+        # inconnus de la société sont introuvables (404), jamais un 400.
+        d1 = self._accepted_devis('0011', 1, 1)
+        url = '/api/django/ventes/factures/consolider/'
+        r = self.api.post(url, {'devis_ids': [d1.id, d1.id]}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(url, {'devis_ids': [0, 0]}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(url, {'devis_ids': [d1.id, 999999]}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        self.assertFalse(Facture.objects.filter(company=self.company).exists())
+
     def test_non_accepted_devis_rejected(self):
         d1 = self._accepted_devis('0009', 1, 1)
         d2 = Devis.objects.create(

@@ -29,6 +29,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 _SALT = 'reporting.rapport_partage'
 
 #: Durée de vie d'un lien de rapport (7 jours) — un lien qui traîne s'éteint.
@@ -79,6 +83,7 @@ def _tracer_acces(report, ip):
         AccesRapportPartage.objects.create(
             company=report.company, saved_report=report, ip=ip or None)
     except Exception:  # noqa: BLE001 — une trace en échec ne casse pas l'accès
+        logger.warning("tracer acces : échec ignoré, comportement dégradé", exc_info=True)
         import logging
         logging.getLogger(__name__).warning(
             'AUD803 : trace d\'accès non écrite (rapport %s)', report.pk,
@@ -131,6 +136,7 @@ def diffuser_whatsapp(report, base_url=''):
             resultat = send_whatsapp_campaign_message(
                 report.company, recipient=numero, body=corps)
         except Exception:  # noqa: BLE001 - un numéro KO n'arrête pas les autres
+            logger.warning("diffuser whatsapp : échec ignoré, comportement dégradé", exc_info=True)
             continue
         if (resultat or {}).get('provider') == 'bsp':
             envoyes += 1
