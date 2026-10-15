@@ -32,11 +32,12 @@ import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { toast } from '../../ui/confirm'
 import { frenchError } from '../../lib/frenchError'
 import {
-  Button, Input, Badge, Spinner, EmptyState, Card, CardContent,
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Button, Input, Badge, Spinner, EmptyState,   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  CarteContenu,
 } from '../../ui'
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 // Le modele a migre vers `achats` (ODX19) : `stock/models.py` n'en garde
 // qu'un re-export.
@@ -183,153 +184,145 @@ export default function PaiementsFournisseurLedgerPage() {
       />
 
       {/* ── Période + export RAS-TVA ────────────────────────────────────── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          <div className="flex flex-wrap items-end gap-1.5">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-foreground" htmlFor="ledger-date-debut">
-                Du
-              </label>
-              <Input id="ledger-date-debut" type="date" className="w-[160px]"
-                value={periode.date_debut}
-                onChange={(e) => setPeriode((p) => ({ ...p, date_debut: e.target.value }))} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-foreground" htmlFor="ledger-date-fin">
-                Au
-              </label>
-              <Input id="ledger-date-fin" type="date" className="w-[160px]"
-                value={periode.date_fin}
-                onChange={(e) => setPeriode((p) => ({ ...p, date_fin: e.target.value }))} />
-            </div>
-            <Button type="button" variant="outline" onClick={exporterRasTva}>
-              <Download className="size-4" aria-hidden="true" /> Exporter le relevé RAS-TVA
-            </Button>
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        <div className="flex flex-wrap items-end gap-1.5">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-foreground" htmlFor="ledger-date-debut">
+              Du
+            </label>
+            <Input id="ledger-date-debut" type="date" className="w-[160px]"
+              value={periode.date_debut}
+              onChange={(e) => setPeriode((p) => ({ ...p, date_debut: e.target.value }))} />
           </div>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground"
-            data-testid="ledger-totaux">
-            <span>Payé brut : <strong className="text-foreground">{fmtMad(totaux.brut)}</strong></span>
-            <span>RAS-TVA retenue : <strong className="text-foreground">{fmtMad(totaux.ras)}</strong></span>
-            <span>Net décaissé : <strong className="text-foreground">{fmtMad(totaux.net)}</strong></span>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-foreground" htmlFor="ledger-date-fin">
+              Au
+            </label>
+            <Input id="ledger-date-fin" type="date" className="w-[160px]"
+              value={periode.date_fin}
+              onChange={(e) => setPeriode((p) => ({ ...p, date_fin: e.target.value }))} />
           </div>
-        </CardContent>
-      </Card>
+          <Button type="button" variant="outline" onClick={exporterRasTva}>
+            <Download className="size-4" aria-hidden="true" /> Exporter le relevé RAS-TVA
+          </Button>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground"
+          data-testid="ledger-totaux">
+          <span>Payé brut : <strong className="text-foreground">{fmtMad(totaux.brut)}</strong></span>
+          <span>RAS-TVA retenue : <strong className="text-foreground">{fmtMad(totaux.ras)}</strong></span>
+          <span>Net décaissé : <strong className="text-foreground">{fmtMad(totaux.net)}</strong></span>
+        </div>
+      </CarteContenu>
 
       {/* ── Registre ─────────────────────────────────────────────────────── */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          {loadError ? (
-            <EmptyState title="Impossible de charger les paiements"
-              description="Une erreur est survenue lors du chargement." className="py-6" />
-          ) : visibles.length === 0 ? (
-            <EmptyState icon={Banknote} title="Aucun paiement sur la période"
-              description="Élargissez la période ou enregistrez un règlement ci-dessous."
-              className="py-6" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm" data-testid="table-paiements">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Date</th>
-                    <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Facture</th>
-                    <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Mode</th>
-                    <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Montant</th>
-                    <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">RAS-TVA</th>
-                    <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Net décaissé</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibles.map((p) => (
-                    <tr key={p.id} data-testid={`paiement-${p.id}`}
-                      className="border-b border-border last:border-0">
-                      <td className="px-2 py-1.5">{fmtDate(p.date_paiement || p.date_creation)}</td>
-                      <td className="px-2 py-1.5">{p.facture_reference || `#${p.facture}`}</td>
-                      <td className="px-2 py-1.5">{p.mode_display || MODE_LABELS[p.mode] || p.mode}</td>
-                      <td className="px-2 py-1.5">{fmtMad(p.montant)}</td>
-                      <td className="px-2 py-1.5">
-                        {nombre(p.montant_ras_tva) > 0 ? (
-                          <Badge tone="warning">
-                            {fmtMad(p.montant_ras_tva)} ({p.taux_ras} %)
-                          </Badge>
-                        ) : '—'}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        {fmtMad(p.montant_net_paye ?? (nombre(p.montant) - nombre(p.montant_ras_tva)))}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        {loadError ? (
+          <EmptyState title="Impossible de charger les paiements"
+            description="Une erreur est survenue lors du chargement." className="py-6" />
+        ) : visibles.length === 0 ? (
+          <EmptyState icon={Banknote} title="Aucun paiement sur la période"
+            description="Élargissez la période ou enregistrez un règlement ci-dessous."
+            className="py-6" />
+        ) : (
+          <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm" data-testid="table-paiements"
+            tete={(
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Date</th>
+                  <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Facture</th>
+                  <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Mode</th>
+                  <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Montant</th>
+                  <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">RAS-TVA</th>
+                  <th scope="col" className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Net décaissé</th>
+                </tr>
+              </thead>
+            )}>
+            {visibles.map((p) => (
+              <tr key={p.id} data-testid={`paiement-${p.id}`}
+                className="border-b border-border last:border-0">
+                <td className="px-2 py-1.5">{fmtDate(p.date_paiement || p.date_creation)}</td>
+                <td className="px-2 py-1.5">{p.facture_reference || `#${p.facture}`}</td>
+                <td className="px-2 py-1.5">{p.mode_display || MODE_LABELS[p.mode] || p.mode}</td>
+                <td className="px-2 py-1.5">{fmtMad(p.montant)}</td>
+                <td className="px-2 py-1.5">
+                  {nombre(p.montant_ras_tva) > 0 ? (
+                    <Badge tone="warning">
+                      {fmtMad(p.montant_ras_tva)} ({p.taux_ras} %)
+                    </Badge>
+                  ) : '—'}
+                </td>
+                <td className="px-2 py-1.5">
+                  {fmtMad(p.montant_net_paye ?? (nombre(p.montant) - nombre(p.montant_ras_tva)))}
+                </td>
+              </tr>
+            ))}
+          </TableauLignes>
+        )}
+      </CarteContenu>
 
       {/* ── Saisie (ressource autonome → flag d'escompte préservé) ───────── */}
       {canWrite && (
-        <Card>
-          <CardContent className="pt-4 sm:pt-5">
-            <h3 className="mb-1 text-sm font-semibold tracking-tight text-foreground">
-              Enregistrer un règlement
-            </h3>
-            <p className="mb-3 text-[11.5px] text-muted-foreground">
-              La retenue à la source est calculée par le serveur ; si le
-              règlement tombe dans la fenêtre d'escompte du fournisseur, le
-              pourcentage disponible s'affiche ici — il n'est jamais déduit
-              automatiquement.
-            </p>
+        <CarteContenu contenu="pt-4 sm:pt-5">
+          <h3 className="mb-1 text-sm font-semibold tracking-tight text-foreground">
+            Enregistrer un règlement
+          </h3>
+          <p className="mb-3 text-[11.5px] text-muted-foreground">
+            La retenue à la source est calculée par le serveur ; si le
+            règlement tombe dans la fenêtre d'escompte du fournisseur, le
+            pourcentage disponible s'affiche ici — il n'est jamais déduit
+            automatiquement.
+          </p>
 
-            {escompte !== null && (
-              <div className="mb-3 flex items-center gap-2 rounded-lg border border-success/30 bg-success/12 px-3 py-2"
-                data-testid="escompte-banner">
-                <PiggyBank className="size-4 shrink-0 text-success" aria-hidden="true" />
-                <span className="text-sm text-success">
-                  Escompte pour paiement anticipé disponible : {escompte} %.
-                </span>
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-end gap-1.5">
-              <div className="min-w-[220px] flex-[2_1_220px]">
-                <Select value={draft.facture}
-                  onValueChange={(v) => setDraft((d) => ({ ...d, facture: v }))}>
-                  <SelectTrigger aria-label="Facture fournisseur">
-                    <SelectValue placeholder="Facture à régler" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {factures.map((f) => (
-                      <SelectItem key={f.id} value={String(f.id)}>
-                        {f.reference} — {f.fournisseur_nom} ({fmtMad(f.solde_du)} dus)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Input className="w-[140px]" type="number" step="any"
-                aria-label="Montant du règlement" placeholder="Montant"
-                value={draft.montant}
-                onChange={(e) => setDraft((d) => ({ ...d, montant: e.target.value }))} />
-              <Input className="w-[160px]" type="date"
-                aria-label="Date du règlement"
-                value={draft.date_paiement}
-                onChange={(e) => setDraft((d) => ({ ...d, date_paiement: e.target.value }))} />
-              <div className="w-[160px]">
-                <Select value={draft.mode}
-                  onValueChange={(v) => setDraft((d) => ({ ...d, mode: v }))}>
-                  <SelectTrigger aria-label="Mode de règlement"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {MODES.map(([v, label]) => (
-                      <SelectItem key={v} value={v}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button type="button" onClick={enregistrer} disabled={busy}>
-                <Plus className="size-4" aria-hidden="true" /> Enregistrer le règlement
-              </Button>
+          {escompte !== null && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-success/30 bg-success/12 px-3 py-2"
+              data-testid="escompte-banner">
+              <PiggyBank className="size-4 shrink-0 text-success" aria-hidden="true" />
+              <span className="text-sm text-success">
+                Escompte pour paiement anticipé disponible : {escompte} %.
+              </span>
             </div>
-          </CardContent>
-        </Card>
+          )}
+
+          <div className="flex flex-wrap items-end gap-1.5">
+            <div className="min-w-[220px] flex-[2_1_220px]">
+              <Select value={draft.facture}
+                onValueChange={(v) => setDraft((d) => ({ ...d, facture: v }))}>
+                <SelectTrigger aria-label="Facture fournisseur">
+                  <SelectValue placeholder="Facture à régler" />
+                </SelectTrigger>
+                <SelectContent>
+                  {factures.map((f) => (
+                    <SelectItem key={f.id} value={String(f.id)}>
+                      {f.reference} — {f.fournisseur_nom} ({fmtMad(f.solde_du)} dus)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Input className="w-[140px]" type="number" step="any"
+              aria-label="Montant du règlement" placeholder="Montant"
+              value={draft.montant}
+              onChange={(e) => setDraft((d) => ({ ...d, montant: e.target.value }))} />
+            <Input className="w-[160px]" type="date"
+              aria-label="Date du règlement"
+              value={draft.date_paiement}
+              onChange={(e) => setDraft((d) => ({ ...d, date_paiement: e.target.value }))} />
+            <div className="w-[160px]">
+              <Select value={draft.mode}
+                onValueChange={(v) => setDraft((d) => ({ ...d, mode: v }))}>
+                <SelectTrigger aria-label="Mode de règlement"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {MODES.map(([v, label]) => (
+                    <SelectItem key={v} value={v}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="button" onClick={enregistrer} disabled={busy}>
+              <Plus className="size-4" aria-hidden="true" /> Enregistrer le règlement
+            </Button>
+          </div>
+        </CarteContenu>
       )}
     </div>
   )

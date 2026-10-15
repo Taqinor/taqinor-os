@@ -40,6 +40,7 @@ import { toastWithUndo } from '../../lib/toast'
 import { formatDate } from '../../lib/format'
 import { HEURE_DEBUT, HEURE_FIN, NON_ASSIGNE, SLOT_PX, blocGeometry, chevauchements, colKey, deuxChiffres, moveInterventionLocal, payloadDeplacement } from './PlanificationPage.helpers'
 import { todayLocalIso } from '../../lib/dateLocale'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 function todayISO() {
   return todayLocalIso()
@@ -626,8 +627,8 @@ function ChargeTab() {
               {(plan?.techniciens ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">Aucune affectation sur la période.</p>
               ) : (
-                <div className="table-scroll">
-                  <table className="data-table">
+                <TableauLignes enveloppe="table-scroll" className="data-table"
+                  tete={(
                     <thead>
                       <tr>
                         <th>Technicien</th>
@@ -637,23 +638,21 @@ function ChargeTab() {
                         <th>Statut</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {plan.techniciens.map((t) => (
-                        <tr key={t.technicien_id ?? 'na'}>
-                          <td data-label="Technicien">{t.nom}</td>
-                          <td data-label="Affecté">{t.affecte_count}</td>
-                          <td data-label="Capacité">{t.capacite_heures} h</td>
-                          <td data-label="Charge">{t.charge_pct}%</td>
-                          <td data-label="Statut">
-                            {t.sur_reservation
-                              ? <Badge tone="danger">Sur-réservé</Badge>
-                              : <Badge tone="success">OK</Badge>}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                  )}>
+                  {plan.techniciens.map((t) => (
+                    <tr key={t.technicien_id ?? 'na'}>
+                      <td data-label="Technicien">{t.nom}</td>
+                      <td data-label="Affecté">{t.affecte_count}</td>
+                      <td data-label="Capacité">{t.capacite_heures} h</td>
+                      <td data-label="Charge">{t.charge_pct}%</td>
+                      <td data-label="Statut">
+                        {t.sur_reservation
+                          ? <Badge tone="danger">Sur-réservé</Badge>
+                          : <Badge tone="success">OK</Badge>}
+                      </td>
+                    </tr>
+                  ))}
+                </TableauLignes>
               )}
             </CardContent>
           </Card>

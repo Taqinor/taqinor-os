@@ -10,7 +10,7 @@ import {
   DialogDescription, DialogFooter, Input, Textarea, Select, SelectTrigger,
   SelectValue, SelectContent, SelectItem,
 } from '../../ui'
-import { TableauStock, SelectFournisseur } from './ComposantsStock'
+import { TableauStock, SelectFournisseur, CelluleRetirerLigne } from './ComposantsStock'
 
 import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
@@ -20,6 +20,8 @@ import { useConfirmation } from '../../features/stock/useConfirmation'
 import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { frErrDetail } from '../../lib/frErr'
 import { AlerteErreurStock } from './BandeauxListeStock'
+import { AlerteErreur } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 const frErr = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrDetail(err, fallback)
 
@@ -105,8 +107,8 @@ export function ModeleDetail({ modele, fournisseurs, produits, onClose, onSaved 
               <Plus /> Ajouter une ligne
             </Button>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm">
+          <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full text-sm"
+            tete={(
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold" style={{ minWidth: 220 }}>Produit</th>
@@ -114,32 +116,25 @@ export function ModeleDetail({ modele, fournisseurs, produits, onClose, onSaved 
                   <th className="w-10 px-3 py-2" />
                 </tr>
               </thead>
-              <tbody>
-                {lignes.length === 0 && (
-                  <tr><td colSpan={3} className="px-3 py-3 text-sm text-muted-foreground">Aucune ligne.</td></tr>
-                )}
-                {lignes.map((l, idx) => (
-                  <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
-                    <td className="px-3 py-2">
-                      <BcfProduitPicker produits={produits} value={l.produit}
-                                        onChange={(v) => setLigne(idx, { produit: v })} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Input type="number" step="1" min="1" inputMode="numeric" className="h-9 w-24"
-                             value={l.quantite ?? ''}
-                             onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <IconButton label="Retirer la ligne" variant="ghost" size="icon" className="size-8"
-                                  onClick={() => removeLigne(idx)}>
-                        <Trash2 className="text-destructive" />
-                      </IconButton>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+            )}>
+            {lignes.length === 0 && (
+              <tr><td colSpan={3} className="px-3 py-3 text-sm text-muted-foreground">Aucune ligne.</td></tr>
+            )}
+            {lignes.map((l, idx) => (
+              <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
+                <td className="px-3 py-2">
+                  <BcfProduitPicker produits={produits} value={l.produit}
+                                    onChange={(v) => setLigne(idx, { produit: v })} />
+                </td>
+                <td className="px-3 py-2">
+                  <Input type="number" step="1" min="1" inputMode="numeric" className="h-9 w-24"
+                         value={l.quantite ?? ''}
+                         onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
+                </td>
+                <CelluleRetirerLigne onRetirer={() => removeLigne(idx)} />
+              </tr>
+            ))}
+          </TableauLignes>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -147,11 +142,7 @@ export function ModeleDetail({ modele, fournisseurs, produits, onClose, onSaved 
           <Textarea id="modele-note" rows={2} value={note ?? ''} onChange={(e) => setNote(e.target.value)} />
         </div>
 
-        {error && (
-          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        <AlerteErreur error={error} />
 
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>

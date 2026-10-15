@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import crmApi from '../../api/crmApi'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Button, Input, Label,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Input, Label,
 } from '../../ui'
 import { Combobox } from '../../ui/Combobox'
 import { searchCompanies, hitsToOptions } from '../../features/crm/companyLookup'
 import { usePasteClean, parsePastedPhone } from '../../hooks/usePasteClean'
 import { useDuplicateCheck } from '../../hooks/useDuplicateCheck'
 import PhoneHint from '../../components/PhoneHint'
+import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
 
 /* QG3 — « + Nouveau client » quick-create depuis le générateur de devis
    (chemin sans lead). Minimal : nom + téléphone/email — appelle
@@ -153,19 +154,8 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
                    onChange={(e) => setEmail(e.target.value)}
                    placeholder="jean.dupont@exemple.com" />
           </div>
-          {error && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={handleClose} disabled={busy}>
-              Annuler
-            </Button>
-            <Button type="submit" loading={busy}>
-              {busy ? 'Création…' : 'Créer et sélectionner'}
-            </Button>
-          </DialogFooter>
+          <PiedDialogueFormulaire error={error} busy={busy} onCancel={handleClose}
+                                  libelle="Créer et sélectionner" libelleEnCours="Création…" />
         </form>
       </DialogContent>
     </Dialog>

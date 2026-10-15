@@ -4,6 +4,7 @@ import PageHeader from '../../components/layout/PageHeader'
 import { Card, EmptyState, Spinner } from '../../ui'
 import { toastError } from '../../lib/toast'
 import { formatMAD } from '../../lib/format'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    NTADM25 — Vue consolidée « Groupe », LECTURE SEULE.
@@ -79,8 +80,8 @@ export default function GroupePage() {
         <Card className="mt-4 p-0">
           {/* Un tableau large doit défiler DANS son conteneur : la page ne
               défile jamais horizontalement. */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="groupe-table">
+          <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm" data-testid="groupe-table"
+            tete={(
               <thead>
                 <tr className="border-b">
                   <th className="p-3 text-left font-medium">Indicateur</th>
@@ -97,23 +98,21 @@ export default function GroupePage() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
-                {LIGNES.map((ligne) => (
-                  <tr key={ligne.cle} className="border-b">
-                    <td className="p-3">{ligne.label}</td>
-                    {colonnes.map((c) => (
-                      <td key={c.id} className="p-3 text-right tabular-nums">
-                        {valeurAffichee(c, ligne)}
-                      </td>
-                    ))}
-                    <td className="p-3 text-right font-semibold tabular-nums">
-                      {valeurAffichee(data.total, ligne)}
-                    </td>
-                  </tr>
+            )}>
+            {LIGNES.map((ligne) => (
+              <tr key={ligne.cle} className="border-b">
+                <td className="p-3">{ligne.label}</td>
+                {colonnes.map((c) => (
+                  <td key={c.id} className="p-3 text-right tabular-nums">
+                    {valeurAffichee(c, ligne)}
+                  </td>
                 ))}
-              </tbody>
-            </table>
-          </div>
+                <td className="p-3 text-right font-semibold tabular-nums">
+                  {valeurAffichee(data.total, ligne)}
+                </td>
+              </tr>
+            ))}
+          </TableauLignes>
           {data.effectif_note && (
             <p className="p-3 text-xs text-muted-foreground">
               {data.effectif_note}

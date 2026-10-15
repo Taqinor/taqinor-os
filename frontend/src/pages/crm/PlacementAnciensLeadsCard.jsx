@@ -7,6 +7,7 @@ import {
 } from '../../ui'
 import { useConfirmDialog, toast } from '../../ui/confirm'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    MRY33 — Cockpit (rôles responsable/admin) : « Anciens leads à placer dans
@@ -276,8 +277,8 @@ export default function PlacementAnciensLeadsCard() {
                 </Badge>
               )}
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+            <TableauLignes enveloppe="overflow-x-auto" className="w-full text-xs"
+              tete={(
                 <thead>
                   <tr className="text-left text-muted-foreground">
                     <th className="pb-1 pr-2 font-medium">Étape</th>
@@ -285,17 +286,15 @@ export default function PlacementAnciensLeadsCard() {
                     <th className="pb-1 text-right font-medium">Nombre</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {donnees.par_etape.map((e) => (
-                    <tr key={e.code} className="border-t border-border">
-                      <td className="py-1 pr-2">{e.libelle}</td>
-                      <td className="py-1 pr-2">{e.cadence}</td>
-                      <td className="py-1 text-right tabular-nums">{e.nombre}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {donnees.par_etape.map((e) => (
+                <tr key={e.code} className="border-t border-border">
+                  <td className="py-1 pr-2">{e.libelle}</td>
+                  <td className="py-1 pr-2">{e.cadence}</td>
+                  <td className="py-1 text-right tabular-nums">{e.nombre}</td>
+                </tr>
+              ))}
+            </TableauLignes>
             {donnees.apercu.length > 0 && (
               <ul className="space-y-1.5">
                 {donnees.apercu.map((l) => (

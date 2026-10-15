@@ -11,10 +11,11 @@ import crmApi from '../../../api/crmApi'
 import { searchCompanies } from '../../crm/companyLookup'
 import { TICKET_TYPES } from '../../sav/ticketStatuses'
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Button, Label, Textarea, Combobox,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Label, Textarea, Combobox,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
+import PiedDialogueFormulaire from '../../../ui/PiedDialogueFormulaire'
 
 export default function TicketQuickCreateModal({ open, onClose, onCreated }) {
   const [clientId, setClientId] = useState(null)
@@ -105,19 +106,8 @@ export default function TicketQuickCreateModal({ open, onClose, onCreated }) {
               placeholder="Décrivez le problème signalé…"
             />
           </div>
-          {error && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={handleClose} disabled={busy}>
-              Annuler
-            </Button>
-            <Button type="submit" loading={busy}>
-              {busy ? 'Création…' : 'Créer'}
-            </Button>
-          </DialogFooter>
+          <PiedDialogueFormulaire error={error} busy={busy} onCancel={handleClose}
+                                  libelle="Créer" libelleEnCours="Création…" />
         </form>
       </DialogContent>
     </Dialog>

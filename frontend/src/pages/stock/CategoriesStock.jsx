@@ -9,6 +9,7 @@ import {
   Button, IconButton, Input,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import BoutonSupprimerIcone from '../../ui/BoutonSupprimerIcone'
 import { EnteteStock } from './EnteteStock'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
@@ -16,6 +17,8 @@ import { EnteteStock } from './EnteteStock'
 import { useConfirmation } from '../../features/stock/useConfirmation'
 import { frErrChamps as frErr } from '../../lib/frErr'
 import { TYPES_EQUIPEMENT } from './typesEquipement'
+import { AlerteErreur, InfoSucces } from '../../ui/AlertesServeur'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 // L693/L694 — Écran de gestion des CATÉGORIES (renommer / ordre / type
 // d'équipement) et des MARQUES produit. Le free-text par société est préservé :
@@ -297,16 +300,8 @@ export default function CategoriesStock() {
         subtitle="Gérez les catégories du catalogue (nom, ordre d'affichage, type d'équipement) et les marques produit."
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-      {info && (
-        <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
-          {info}
-        </div>
-      )}
+      <AlerteErreur error={error} />
+      <InfoSucces info={info} />
 
       {/* ── Catégories ── */}
       <section className="flex flex-col gap-3">
@@ -351,8 +346,8 @@ export default function CategoriesStock() {
           </div>
         )}
 
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[40rem] text-sm">
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[40rem] text-sm"
+          tete={(
             <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold">Nom</th>
@@ -362,65 +357,60 @@ export default function CategoriesStock() {
                 <th className="w-28 px-3 py-2" />
               </tr>
             </thead>
-            <tbody>
-              {loading && (
-                <tr><td colSpan={5} className="px-3 py-4 text-muted-foreground">Chargement…</td></tr>
-              )}
-              {!loading && sortedCategories.length === 0 && (
-                <tr><td colSpan={5} className="px-3 py-4 text-muted-foreground">Aucune catégorie.</td></tr>
-              )}
-              {sortedCategories.map((c) => {
-                const d = draftFor(c)
-                return (
-                  <tr key={c.id} className="border-t border-border">
-                    <td className="px-3 py-2">
-                      <Input className="h-9" value={d.nom} disabled={!canWrite}
-                             onChange={(e) => setDraft(c.id, { nom: e.target.value })} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Input type="number" step="any" inputMode="numeric" className="h-9 w-20"
-                             value={d.ordre} disabled={!canWrite}
-                             onChange={(e) => setDraft(c.id, { ordre: e.target.value })} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <Select value={d.type_equipement || '__none'} disabled={!canWrite}
-                              onValueChange={(v) => setDraft(c.id, { type_equipement: v })}>
-                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {TYPES_EQUIPEMENT.map((t) => (
-                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-3 py-2 tabular-nums text-muted-foreground">
-                      {/* ERR-QAH-STOCK-CATEGORIES-COMPTE-ZERO — compteur SERVEUR d'abord. */}
-                      {c.nb_produits ?? nbProduitsParCategorie[c.id] ?? 0}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center gap-1">
-                        {canWrite && (
-                          <IconButton size="md" variant="outline" label="Enregistrer la catégorie"
-                                      disabled={!isDirty(c) || savingId === c.id}
-                                      onClick={() => saveCategorie(c)}>
-                            <Save className="size-4" aria-hidden="true" />
-                          </IconButton>
-                        )}
-                        {canDelete && (
-                          <IconButton size="md" variant="outline" label="Supprimer la catégorie"
-                                      className="text-destructive hover:text-destructive"
-                                      onClick={() => delCategorie(c)}>
-                            <Trash2 className="size-4" aria-hidden="true" />
-                          </IconButton>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {loading && (
+            <tr><td colSpan={5} className="px-3 py-4 text-muted-foreground">Chargement…</td></tr>
+          )}
+          {!loading && sortedCategories.length === 0 && (
+            <tr><td colSpan={5} className="px-3 py-4 text-muted-foreground">Aucune catégorie.</td></tr>
+          )}
+          {sortedCategories.map((c) => {
+            const d = draftFor(c)
+            return (
+              <tr key={c.id} className="border-t border-border">
+                <td className="px-3 py-2">
+                  <Input className="h-9" value={d.nom} disabled={!canWrite}
+                         onChange={(e) => setDraft(c.id, { nom: e.target.value })} />
+                </td>
+                <td className="px-3 py-2">
+                  <Input type="number" step="any" inputMode="numeric" className="h-9 w-20"
+                         value={d.ordre} disabled={!canWrite}
+                         onChange={(e) => setDraft(c.id, { ordre: e.target.value })} />
+                </td>
+                <td className="px-3 py-2">
+                  <Select value={d.type_equipement || '__none'} disabled={!canWrite}
+                          onValueChange={(v) => setDraft(c.id, { type_equipement: v })}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {TYPES_EQUIPEMENT.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </td>
+                <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                  {/* ERR-QAH-STOCK-CATEGORIES-COMPTE-ZERO — compteur SERVEUR d'abord. */}
+                  {c.nb_produits ?? nbProduitsParCategorie[c.id] ?? 0}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-1">
+                    {canWrite && (
+                      <IconButton size="md" variant="outline" label="Enregistrer la catégorie"
+                                  disabled={!isDirty(c) || savingId === c.id}
+                                  onClick={() => saveCategorie(c)}>
+                        <Save className="size-4" aria-hidden="true" />
+                      </IconButton>
+                    )}
+                    {canDelete && (
+                      <BoutonSupprimerIcone size="md" variant="outline" label="Supprimer la catégorie"
+                                            onClick={() => delCategorie(c)} />
+                    )}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </TableauLignes>
         {canWrite && (
           <div className="flex flex-wrap items-center gap-2">
             <Input className="h-9 w-56" placeholder="Nouvelle catégorie" value={newCat}

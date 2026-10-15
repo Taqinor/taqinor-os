@@ -78,6 +78,7 @@ import {
   Tabs, TabsList, TabsTrigger, TabsContent,
   Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
+import TableauDefilant from '../../ui/TableauDefilant'
 
 // L4 — l'aperçu PDF (canvas PDF.js) est chargé à la demande (gros module) : il
 // ne pèse sur le bundle que quand on ouvre réellement un aperçu après-vente.
@@ -115,20 +116,18 @@ function Section({ icon: Icon, title, action, children }) {
 // Petite table tokenisée réutilisée par les sous-listes (interventions, etc.).
 function MiniTable({ head, children }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full border-collapse text-sm">
-        <thead className="bg-muted/60">
-          <tr>
-            {head.map((h) => (
-              <th key={h} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
+    <TableauDefilant enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full border-collapse text-sm">
+      <thead className="bg-muted/60">
+        <tr>
+          {head.map((h) => (
+            <th key={h} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {h}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </TableauDefilant>
   )
 }
 

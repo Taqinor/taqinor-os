@@ -14,6 +14,7 @@ import { Table } from '../reporting/Table'
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import { AlerteErreur } from '../../ui/AlertesServeur'
+import PiedDialogueFormulaire from '../../ui/PiedDialogueFormulaire'
 import PiedDialogueFermer from '../stock/PiedDialogueFermer'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
@@ -480,11 +481,8 @@ function AddLigneDialog({ liste, produits, onClose, onSaved }) {
                    value={prixUnitaire} onChange={(e) => setPrixUnitaire(e.target.value)} placeholder="0" />
             <p className="text-xs text-muted-foreground">Le générateur le convertit au taux de chaque ligne.</p>
           </div>
-          <AlerteErreur error={error} />
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
-            <Button type="submit" loading={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
+          <PiedDialogueFormulaire error={error} busy={busy} onCancel={onClose}
+                                  libelle="Enregistrer" libelleEnCours="Enregistrement…" />
         </form>
       </DialogContent>
     </Dialog>
@@ -590,15 +588,8 @@ function AddRegleDialog({ liste, produits, onClose, onSaved }) {
                      value={quantiteMin} onChange={(e) => setQuantiteMin(e.target.value)} />
             </div>
           </div>
-          {error && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {error}
-            </div>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
-            <Button type="submit" loading={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
-          </DialogFooter>
+          <PiedDialogueFormulaire error={error} busy={busy} onCancel={onClose}
+                                  libelle="Enregistrer" libelleEnCours="Enregistrement…" />
         </form>
       </DialogContent>
     </Dialog>

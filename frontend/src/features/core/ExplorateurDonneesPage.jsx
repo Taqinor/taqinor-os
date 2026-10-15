@@ -6,6 +6,7 @@ import {
 } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import coreApi from '../../api/coreApi'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    PACT122 — écran « Explorateur de données » (`/donnees/explorateur`).
@@ -365,8 +366,8 @@ export default function ExplorateurDonneesPage() {
           {lignes.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucune ligne pour cette requête.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm"
+              tete={(
                 <thead>
                   <tr>
                     {colonnes.map((c) => (
@@ -376,19 +377,17 @@ export default function ExplorateurDonneesPage() {
                     ))}
                   </tr>
                 </thead>
-                <tbody>
-                  {lignes.map((row, i) => (
-                    <tr key={i}>
-                      {colonnes.map((c) => (
-                        <td key={c} className="border-b border-border px-2 py-1">
-                          {cellule(row?.[c])}
-                        </td>
-                      ))}
-                    </tr>
+              )}>
+              {lignes.map((row, i) => (
+                <tr key={i}>
+                  {colonnes.map((c) => (
+                    <td key={c} className="border-b border-border px-2 py-1">
+                      {cellule(row?.[c])}
+                    </td>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </tr>
+              ))}
+            </TableauLignes>
           )}
         </Card>
       )}

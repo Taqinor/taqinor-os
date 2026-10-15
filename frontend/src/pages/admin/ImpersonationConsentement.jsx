@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import adminopsApi from '../../api/adminopsApi'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /**
  * NTADM22 — écran de CONSENTEMENT du tenant (Administrateur).
@@ -68,11 +69,11 @@ export default function ImpersonationConsentement() {
       {demandes.length === 0 ? (
         <p data-testid="impersonation-aucune">Aucune demande.</p>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table
-            className="data-table"
-            data-testid="impersonation-consentement-table"
-          >
+        <TableauLignes enveloppeStyle={{ overflowX: 'auto' }}
+          className="data-table"
+          data-testid="impersonation-consentement-table"
+        
+          tete={(
             <thead>
               <tr>
                 <th>Utilisateur visé</th>
@@ -82,55 +83,53 @@ export default function ImpersonationConsentement() {
                 <th>Décision</th>
               </tr>
             </thead>
-            <tbody>
-              {demandes.map((d) => (
-                <tr key={d.id}>
-                  <td data-label="Utilisateur visé">{d.cible_nom}</td>
-                  <td data-label="Motif">{d.motif}</td>
-                  <td data-label="Demandée par">{d.support_nom}</td>
-                  <td data-label="Statut">
-                    {LIBELLES_STATUT[d.statut] || d.statut}
-                  </td>
-                  <td data-label="Décision">
-                    {d.statut === 'en_attente' ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => decider(d, 'autoriser')}
-                          aria-label={`Autoriser la demande pour ${d.cible_nom}`}
-                        >
-                          Autoriser
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => decider(d, 'refuser')}
-                          aria-label={`Refuser la demande pour ${d.cible_nom}`}
-                        >
-                          Refuser
-                        </button>
-                      </>
-                    ) : d.statut === 'active' ? (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await adminopsApi.terminerImpersonation(d.id)
-                            await charger()
-                          } catch {
-                            setErreur('Impossible de terminer la session.')
-                          }
-                        }}
-                        aria-label={`Terminer la session pour ${d.cible_nom}`}
-                      >
-                        Terminer
-                      </button>
-                    ) : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          )}>
+          {demandes.map((d) => (
+            <tr key={d.id}>
+              <td data-label="Utilisateur visé">{d.cible_nom}</td>
+              <td data-label="Motif">{d.motif}</td>
+              <td data-label="Demandée par">{d.support_nom}</td>
+              <td data-label="Statut">
+                {LIBELLES_STATUT[d.statut] || d.statut}
+              </td>
+              <td data-label="Décision">
+                {d.statut === 'en_attente' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => decider(d, 'autoriser')}
+                      aria-label={`Autoriser la demande pour ${d.cible_nom}`}
+                    >
+                      Autoriser
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => decider(d, 'refuser')}
+                      aria-label={`Refuser la demande pour ${d.cible_nom}`}
+                    >
+                      Refuser
+                    </button>
+                  </>
+                ) : d.statut === 'active' ? (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await adminopsApi.terminerImpersonation(d.id)
+                        await charger()
+                      } catch {
+                        setErreur('Impossible de terminer la session.')
+                      }
+                    }}
+                    aria-label={`Terminer la session pour ${d.cible_nom}`}
+                  >
+                    Terminer
+                  </button>
+                ) : '—'}
+              </td>
+            </tr>
+          ))}
+        </TableauLignes>
       )}
     </div>
   )

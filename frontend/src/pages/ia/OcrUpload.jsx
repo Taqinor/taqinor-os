@@ -11,8 +11,7 @@ import {
   Badge,
   Spinner,
   Card,
-  CardContent,
-  EmptyState,
+    EmptyState,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -20,6 +19,7 @@ import {
   Input,
   KeyValueTable,
   toast,
+  CarteContenu,
 } from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
 import { cn } from '../../lib/cn'
@@ -33,6 +33,7 @@ import {
   fetchOcrDocuments,
   deleteOcrDocument,
 } from '../../features/ia/store/iaSlice'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 // G26 — type/taille acceptés (inchangés vs. l'ancienne dropzone inline).
 const OCR_ACCEPT = 'image/jpeg,image/png,image/tiff,image/webp,application/pdf'
@@ -318,87 +319,79 @@ function AnalyseTab({ canSave }) {
               vérifier-puis-corriger avant enregistrement). */}
           {champsExtraits.length > 0 && (
             <div className="grid gap-4 lg:grid-cols-2">
-              <Card>
-                <CardContent className="p-0">
-                  <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
-                    Document source
-                  </p>
-                  <div className="flex max-h-96 items-start justify-center overflow-auto bg-muted/30 p-2">
-                    {previewUrl && currentFile?.type?.startsWith('image/') ? (
-                      <img
-                        src={previewUrl}
-                        alt="Aperçu du document source"
-                        data-testid="ocr-source-preview"
-                        className="max-w-full rounded"
-                      />
-                    ) : previewUrl ? (
-                      <iframe
-                        src={previewUrl}
-                        title="Aperçu du document source"
-                        data-testid="ocr-source-preview"
-                        className="h-96 w-full rounded border-0"
-                      />
-                    ) : (
-                      <p className="p-4 text-xs text-muted-foreground">Aperçu indisponible.</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <CarteContenu contenu="p-0">
+                <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                  Document source
+                </p>
+                <div className="flex max-h-96 items-start justify-center overflow-auto bg-muted/30 p-2">
+                  {previewUrl && currentFile?.type?.startsWith('image/') ? (
+                    <img
+                      src={previewUrl}
+                      alt="Aperçu du document source"
+                      data-testid="ocr-source-preview"
+                      className="max-w-full rounded"
+                    />
+                  ) : previewUrl ? (
+                    <iframe
+                      src={previewUrl}
+                      title="Aperçu du document source"
+                      data-testid="ocr-source-preview"
+                      className="h-96 w-full rounded border-0"
+                    />
+                  ) : (
+                    <p className="p-4 text-xs text-muted-foreground">Aperçu indisponible.</p>
+                  )}
+                </div>
+              </CarteContenu>
 
-              <Card>
-                <CardContent className="p-0">
-                  <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
-                    Données extraites — corrigez si besoin
-                  </p>
-                  {/* VX152 — primitif partagé KeyValueTable (variante éditable). */}
-                  <KeyValueTable
-                    aria-label="Champs extraits"
-                    items={champsExtraits}
-                    renderValue={(it) => (
-                      <Input
-                        value={donnees[it.key] ?? ''}
-                        onChange={(e) => handleFieldChange(it.key, e.target.value)}
-                        aria-label={it.label}
-                        data-testid={`ocr-field-${it.key}`}
-                      />
-                    )}
-                  />
-                </CardContent>
-              </Card>
+              <CarteContenu contenu="p-0">
+                <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                  Données extraites — corrigez si besoin
+                </p>
+                {/* VX152 — primitif partagé KeyValueTable (variante éditable). */}
+                <KeyValueTable
+                  aria-label="Champs extraits"
+                  items={champsExtraits}
+                  renderValue={(it) => (
+                    <Input
+                      value={donnees[it.key] ?? ''}
+                      onChange={(e) => handleFieldChange(it.key, e.target.value)}
+                      aria-label={it.label}
+                      data-testid={`ocr-field-${it.key}`}
+                    />
+                  )}
+                />
+              </CarteContenu>
             </div>
           )}
 
           {/* Lignes */}
           {lignes.length > 0 && (
-            <Card>
-              <CardContent className="p-0">
-                <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
-                  Lignes ({lignes.length})
-                </p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-2 text-left font-medium">Description</th>
-                        <th className="px-4 py-2 text-right font-medium">Qté</th>
-                        <th className="px-4 py-2 text-right font-medium">P.U.</th>
-                        <th className="px-4 py-2 text-right font-medium">Montant</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {lignes.map((l, i) => (
-                        <tr key={i} className="border-t border-border">
-                          <td className="px-4 py-2 text-foreground">{l.description ?? '—'}</td>
-                          <td className="px-4 py-2 text-right text-foreground">{l.quantite ?? '—'}</td>
-                          <td className="px-4 py-2 text-right text-foreground">{l.prix_unitaire ?? '—'}</td>
-                          <td className="px-4 py-2 text-right text-foreground">{l.montant ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
+            <CarteContenu contenu="p-0">
+              <p className="border-b border-border px-4 py-2.5 text-sm font-semibold text-foreground">
+                Lignes ({lignes.length})
+              </p>
+              <TableauLignes enveloppe="overflow-x-auto" className="w-full text-sm"
+                tete={(
+                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium">Description</th>
+                      <th className="px-4 py-2 text-right font-medium">Qté</th>
+                      <th className="px-4 py-2 text-right font-medium">P.U.</th>
+                      <th className="px-4 py-2 text-right font-medium">Montant</th>
+                    </tr>
+                  </thead>
+                )}>
+                {lignes.map((l, i) => (
+                  <tr key={i} className="border-t border-border">
+                    <td className="px-4 py-2 text-foreground">{l.description ?? '—'}</td>
+                    <td className="px-4 py-2 text-right text-foreground">{l.quantite ?? '—'}</td>
+                    <td className="px-4 py-2 text-right text-foreground">{l.prix_unitaire ?? '—'}</td>
+                    <td className="px-4 py-2 text-right text-foreground">{l.montant ?? '—'}</td>
+                  </tr>
+                ))}
+              </TableauLignes>
+            </CarteContenu>
           )}
 
           {/* Texte brut */}

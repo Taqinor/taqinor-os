@@ -10,19 +10,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ClipboardCheck, FileText, Archive, Plus, Trash2, ExternalLink, Pencil, X,
+  ClipboardCheck, FileText, Archive, Plus, ExternalLink, Pencil, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { fetchAllPages } from '../../utils/fetchAllPages'
 import { formatMAD } from '../../lib/format'
 import {
-  Card, CardContent, Button, IconButton, Badge, Spinner, EmptyState,
+  Button, IconButton, Badge, Spinner, EmptyState,
   Input, Label, Checkbox, FileUpload,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  CarteContenu,
 } from '../../ui'
+import BoutonSupprimerIcone from '../../ui/BoutonSupprimerIcone'
 import { SectionTitle } from './peComponents'
 import { useConfirmDialog } from '../../ui/confirm'
 import { frErrChamps } from '../../lib/frErr'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 const frErr = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrChamps(err, fallback)
 
@@ -94,76 +97,72 @@ function InventaireSessions() {
   }
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
-        <SectionTitle label="Sessions d'inventaire"
-          icon={<><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>} />
-        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-          Comptages physiques du stock. La validation d&apos;une session émet les
-          ajustements de stock pour chaque écart ; l&apos;annulation n&apos;est
-          possible que sur un brouillon. Donnée interne.
-        </p>
+    <CarteContenu contenu="pt-4 sm:pt-5">
+      <SectionTitle label="Sessions d'inventaire"
+        icon={<><path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></>} />
+      <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+        Comptages physiques du stock. La validation d&apos;une session émet les
+        ajustements de stock pour chaque écart ; l&apos;annulation n&apos;est
+        possible que sur un brouillon. Donnée interne.
+      </p>
 
-        {error && (
-          <div role="alert" className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
-        )}
-        {info && (
-          <div role="status" className="mb-2 rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">{info}</div>
-        )}
+      {error && (
+        <div role="alert" className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
+      )}
+      {info && (
+        <div role="status" className="mb-2 rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">{info}</div>
+      )}
 
-        {loading ? (
-          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
-        ) : sessions.length === 0 ? (
-          <EmptyState icon={ClipboardCheck} title="Aucune session d'inventaire"
-                      description="Les sessions de comptage physique apparaîtront ici." />
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[32rem] text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold">Référence</th>
-                  <th className="px-3 py-2 text-left font-semibold">Statut</th>
-                  <th className="px-3 py-2 text-left font-semibold">Lignes</th>
-                  <th className="px-3 py-2 text-left font-semibold">Créée le</th>
-                  <th className="px-3 py-2 text-right font-semibold">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((s) => {
-                  const meta = INV_STATUT[s.statut] ?? INV_STATUT.brouillon
-                  const isBrouillon = s.statut === 'brouillon'
-                  return (
-                    <tr key={s.id} className="border-t border-border">
-                      <td className="px-3 py-2 font-mono text-xs">{s.reference}</td>
-                      <td className="px-3 py-2"><Badge tone={meta.tone}>{meta.label}</Badge></td>
-                      <td className="px-3 py-2 tabular-nums">{(s.lignes ?? []).length}</td>
-                      <td className="px-3 py-2">{fmtDateFR(s.date_creation)}</td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end gap-1">
-                          {isBrouillon && (
-                            <>
-                              <Button type="button" size="sm" variant="success"
-                                      loading={busyId === s.id} onClick={() => valider(s)}>
-                                Valider
-                              </Button>
-                              <Button type="button" size="sm" variant="outline"
-                                      loading={busyId === s.id} onClick={() => annuler(s)}>
-                                Annuler
-                              </Button>
-                            </>
-                          )}
-                          {!isBrouillon && <span className="text-xs text-muted-foreground">—</span>}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+      {loading ? (
+        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+      ) : sessions.length === 0 ? (
+        <EmptyState icon={ClipboardCheck} title="Aucune session d'inventaire"
+                    description="Les sessions de comptage physique apparaîtront ici." />
+      ) : (
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[32rem] text-sm"
+          tete={(
+            <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold">Référence</th>
+                <th className="px-3 py-2 text-left font-semibold">Statut</th>
+                <th className="px-3 py-2 text-left font-semibold">Lignes</th>
+                <th className="px-3 py-2 text-left font-semibold">Créée le</th>
+                <th className="px-3 py-2 text-right font-semibold">Actions</th>
+              </tr>
+            </thead>
+          )}>
+          {sessions.map((s) => {
+            const meta = INV_STATUT[s.statut] ?? INV_STATUT.brouillon
+            const isBrouillon = s.statut === 'brouillon'
+            return (
+              <tr key={s.id} className="border-t border-border">
+                <td className="px-3 py-2 font-mono text-xs">{s.reference}</td>
+                <td className="px-3 py-2"><Badge tone={meta.tone}>{meta.label}</Badge></td>
+                <td className="px-3 py-2 tabular-nums">{(s.lignes ?? []).length}</td>
+                <td className="px-3 py-2">{fmtDateFR(s.date_creation)}</td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center justify-end gap-1">
+                    {isBrouillon && (
+                      <>
+                        <Button type="button" size="sm" variant="success"
+                                loading={busyId === s.id} onClick={() => valider(s)}>
+                          Valider
+                        </Button>
+                        <Button type="button" size="sm" variant="outline"
+                                loading={busyId === s.id} onClick={() => annuler(s)}>
+                          Annuler
+                        </Button>
+                      </>
+                    )}
+                    {!isBrouillon && <span className="text-xs text-muted-foreground">—</span>}
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </TableauLignes>
+      )}
+    </CarteContenu>
   )
 }
 
@@ -235,139 +234,133 @@ function KitExplosion() {
   const lignes = result?.lignes ?? []
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
-        <SectionTitle label="Explosion de kit (nomenclature)"
-          icon={<><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></>} />
-        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-          Décompose un kit en ses lignes composant (prix de vente / TVA / marque
-          lus sur chaque produit). Le prix d&apos;achat n&apos;est jamais exposé.
-        </p>
+    <CarteContenu contenu="pt-4 sm:pt-5">
+      <SectionTitle label="Explosion de kit (nomenclature)"
+        icon={<><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></>} />
+      <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+        Décompose un kit en ses lignes composant (prix de vente / TVA / marque
+        lus sur chaque produit). Le prix d&apos;achat n&apos;est jamais exposé.
+      </p>
 
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-48 flex-1">
-            <Select value={kitId || '__none'} onValueChange={(v) => setKitId(v === '__none' ? '' : v)}>
-              {/* Ce Select n'a ni <Label> visible ni aria-label : son nom
-                  accessible était VIDE (Radix ne peuple `SelectValue` qu'après
-                  une première ouverture). Même patron que les Selects
-                  « Produit » / « Type de fiche » plus bas. */}
-              <SelectTrigger aria-label="Kit"><SelectValue placeholder="— Choisir un kit —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Choisir un kit —</SelectItem>
-                {kits.map((k) => (
-                  <SelectItem key={k.id} value={String(k.id)}>
-                    {k.nom}{k.sku ? ` (${k.sku})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-28">
-            <Input type="number" min="1" step="any" inputMode="decimal"
-                   placeholder="Quantité" value={quantite}
-                   onChange={(e) => setQuantite(e.target.value)} />
-          </div>
-          <Button type="button" loading={busy} onClick={exploser}>Exploser</Button>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-48 flex-1">
+          <Select value={kitId || '__none'} onValueChange={(v) => setKitId(v === '__none' ? '' : v)}>
+            {/* Ce Select n'a ni <Label> visible ni aria-label : son nom
+                accessible était VIDE (Radix ne peuple `SelectValue` qu'après
+                une première ouverture). Même patron que les Selects
+                « Produit » / « Type de fiche » plus bas. */}
+            <SelectTrigger aria-label="Kit"><SelectValue placeholder="— Choisir un kit —" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">— Choisir un kit —</SelectItem>
+              {kits.map((k) => (
+                <SelectItem key={k.id} value={String(k.id)}>
+                  {k.nom}{k.sku ? ` (${k.sku})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-
-        {/* WIR268/XMFG18 — duplication (facteur d'échelle) + historique des
-            révisions de nomenclature (jamais aucun prix). */}
-        <div className="mt-2 flex flex-wrap items-end gap-2">
-          <div className="w-48">
-            <Label htmlFor="kit-facteur">Facteur d&apos;échelle (dupliquer, optionnel)</Label>
-            <Input id="kit-facteur" type="number" min="0" step="any" inputMode="decimal"
-                   placeholder="ex. 1.67" value={facteurEchelle}
-                   onChange={(e) => setFacteurEchelle(e.target.value)} />
-          </div>
-          <Button type="button" variant="outline" disabled={!kitId} loading={dupliquant} onClick={dupliquer}>
-            Dupliquer
-          </Button>
-          <Button type="button" variant="outline" disabled={!kitId} loading={revisionsBusy} onClick={voirRevisions}>
-            Historique des révisions
-          </Button>
+        <div className="w-28">
+          <Input type="number" min="1" step="any" inputMode="decimal"
+                 placeholder="Quantité" value={quantite}
+                 onChange={(e) => setQuantite(e.target.value)} />
         </div>
+        <Button type="button" loading={busy} onClick={exploser}>Exploser</Button>
+      </div>
 
-        {dupliqueInfo && (
-          <div role="status" className="mt-2 rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">{dupliqueInfo}</div>
-        )}
+      {/* WIR268/XMFG18 — duplication (facteur d'échelle) + historique des
+          révisions de nomenclature (jamais aucun prix). */}
+      <div className="mt-2 flex flex-wrap items-end gap-2">
+        <div className="w-48">
+          <Label htmlFor="kit-facteur">Facteur d&apos;échelle (dupliquer, optionnel)</Label>
+          <Input id="kit-facteur" type="number" min="0" step="any" inputMode="decimal"
+                 placeholder="ex. 1.67" value={facteurEchelle}
+                 onChange={(e) => setFacteurEchelle(e.target.value)} />
+        </div>
+        <Button type="button" variant="outline" disabled={!kitId} loading={dupliquant} onClick={dupliquer}>
+          Dupliquer
+        </Button>
+        <Button type="button" variant="outline" disabled={!kitId} loading={revisionsBusy} onClick={voirRevisions}>
+          Historique des révisions
+        </Button>
+      </div>
 
-        {revisions !== null && (
-          revisions.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">Ce kit n&apos;a aucune révision enregistrée.</p>
-          ) : (
-            <div className="mt-2 overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[26rem] text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Révision</th>
-                    <th className="px-3 py-2 text-left font-semibold">Date</th>
-                    <th className="px-3 py-2 text-left font-semibold">Utilisateur</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {revisions.map((rv) => (
-                    <tr key={rv.id ?? rv.numero} className="border-t border-border">
-                      <td className="px-3 py-2 tabular-nums">{rv.numero}</td>
-                      <td className="px-3 py-2">{fmtDateFR(rv.date_creation)}</td>
-                      <td className="px-3 py-2">{rv.user_nom ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
+      {dupliqueInfo && (
+        <div role="status" className="mt-2 rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">{dupliqueInfo}</div>
+      )}
 
-        {error && (
-          <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
-        )}
+      {revisions !== null && (
+        revisions.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">Ce kit n&apos;a aucune révision enregistrée.</p>
+        ) : (
+          <TableauLignes enveloppe="mt-2 overflow-x-auto rounded-lg border border-border" className="w-full min-w-[26rem] text-sm"
+            tete={(
+              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Révision</th>
+                  <th className="px-3 py-2 text-left font-semibold">Date</th>
+                  <th className="px-3 py-2 text-left font-semibold">Utilisateur</th>
+                </tr>
+              </thead>
+            )}>
+            {revisions.map((rv) => (
+              <tr key={rv.id ?? rv.numero} className="border-t border-border">
+                <td className="px-3 py-2 tabular-nums">{rv.numero}</td>
+                <td className="px-3 py-2">{fmtDateFR(rv.date_creation)}</td>
+                <td className="px-3 py-2">{rv.user_nom ?? '—'}</td>
+              </tr>
+            ))}
+          </TableauLignes>
+        )
+      )}
 
-        {dispo && (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 p-2 text-sm">
-            <Badge tone={dispo.kits_assemblables > 0 ? 'success' : 'warning'}>
-              {dispo.kits_assemblables} kit{dispo.kits_assemblables > 1 ? 's' : ''} assemblable{dispo.kits_assemblables > 1 ? 's' : ''}
-            </Badge>
-            {(dispo.goulots ?? []).length > 0 && (
-              <span className="text-muted-foreground">
-                Goulot{dispo.goulots.length > 1 ? 's' : ''} :{' '}
-                {dispo.goulots.map((g) => g.designation).join(', ')}
-              </span>
-            )}
-          </div>
-        )}
+      {error && (
+        <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
+      )}
 
-        {result && (
-          lignes.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">Ce kit n&apos;a aucun composant.</p>
-          ) : (
-            <div className="mt-3 overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[30rem] text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Composant</th>
-                    <th className="px-3 py-2 text-left font-semibold">SKU</th>
-                    <th className="px-3 py-2 text-right font-semibold">Quantité</th>
-                    <th className="px-3 py-2 text-right font-semibold">Prix vente U.</th>
-                    <th className="px-3 py-2 text-right font-semibold">Dispo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lignes.map((l) => (
-                    <tr key={l.produit_id} className="border-t border-border">
-                      <td className="px-3 py-2">{l.designation}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{l.sku || '—'}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{l.quantite}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{formatMAD(l.prix_vente_unitaire, { withSymbol: false })} DH</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{l.disponible}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
-      </CardContent>
-    </Card>
+      {dispo && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/40 p-2 text-sm">
+          <Badge tone={dispo.kits_assemblables > 0 ? 'success' : 'warning'}>
+            {dispo.kits_assemblables} kit{dispo.kits_assemblables > 1 ? 's' : ''} assemblable{dispo.kits_assemblables > 1 ? 's' : ''}
+          </Badge>
+          {(dispo.goulots ?? []).length > 0 && (
+            <span className="text-muted-foreground">
+              Goulot{dispo.goulots.length > 1 ? 's' : ''} :{' '}
+              {dispo.goulots.map((g) => g.designation).join(', ')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {result && (
+        lignes.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">Ce kit n&apos;a aucun composant.</p>
+        ) : (
+          <TableauLignes enveloppe="mt-3 overflow-x-auto rounded-lg border border-border" className="w-full min-w-[30rem] text-sm"
+            tete={(
+              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Composant</th>
+                  <th className="px-3 py-2 text-left font-semibold">SKU</th>
+                  <th className="px-3 py-2 text-right font-semibold">Quantité</th>
+                  <th className="px-3 py-2 text-right font-semibold">Prix vente U.</th>
+                  <th className="px-3 py-2 text-right font-semibold">Dispo</th>
+                </tr>
+              </thead>
+            )}>
+            {lignes.map((l) => (
+              <tr key={l.produit_id} className="border-t border-border">
+                <td className="px-3 py-2">{l.designation}</td>
+                <td className="px-3 py-2 font-mono text-xs">{l.sku || '—'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{l.quantite}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{formatMAD(l.prix_vente_unitaire, { withSymbol: false })} DH</td>
+                <td className="px-3 py-2 text-right tabular-nums">{l.disponible}</td>
+              </tr>
+            ))}
+          </TableauLignes>
+        )
+      )}
+    </CarteContenu>
   )
 }
 
@@ -533,167 +526,160 @@ function FichesTechniques() {
   const champsForm = champsNumeriquesPour(typeFiche)
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
-        <SectionTitle label="Fiches techniques"
-          icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></>} />
-        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-          Paramètres électriques/dimensionnels (module, onduleur ou batterie)
-          et PDF constructeur, rattachés à un produit. Un produit a au plus
-          une fiche.
-        </p>
+    <CarteContenu contenu="pt-4 sm:pt-5">
+      <SectionTitle label="Fiches techniques"
+        icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></>} />
+      <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+        Paramètres électriques/dimensionnels (module, onduleur ou batterie)
+        et PDF constructeur, rattachés à un produit. Un produit a au plus
+        une fiche.
+      </p>
 
-        {error && (
-          <div role="alert" className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
-        )}
+      {error && (
+        <div role="alert" className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
+      )}
 
-        {loading ? (
-          <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
-        ) : fiches.length === 0 ? (
-          <EmptyState icon={FileText} title="Aucune fiche technique"
-                      description="Ajoutez-en une pour un produit ci-dessous." />
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 text-left font-semibold">Produit</th>
-                  <th className="px-3 py-2 text-left font-semibold">Type</th>
-                  <th className="px-3 py-2 text-left font-semibold">PDF</th>
-                  <th className="w-20 px-3 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {fiches.map((f) => (
-                  <tr key={f.id} className="border-t border-border">
-                    <td className="px-3 py-2">{f.produit_nom}</td>
-                    <td className="px-3 py-2">
-                      <Badge tone="outline">{TYPE_FICHE_LABELS[f.type_fiche] || '—'}</Badge>
-                    </td>
-                    <td className="px-3 py-2">
-                      {f.pdf ? (
-                        <a href={f.pdf} target="_blank" rel="noopener noreferrer"
-                           className="inline-flex items-center gap-1 text-primary hover:underline">
-                          Voir <ExternalLink className="size-3.5" aria-hidden="true" />
-                        </a>
-                      ) : '—'}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex items-center justify-end gap-1">
-                        <IconButton size="md" variant="ghost" label="Modifier la fiche"
-                                    onClick={() => commencerEdition(f)}>
-                          <Pencil className="size-4" aria-hidden="true" />
-                        </IconButton>
-                        <IconButton size="md" variant="ghost" label="Supprimer la fiche"
-                                    className="text-destructive hover:text-destructive"
-                                    onClick={() => supprimer(f)}>
-                          <Trash2 className="size-4" aria-hidden="true" />
-                        </IconButton>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {loading ? (
+        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+      ) : fiches.length === 0 ? (
+        <EmptyState icon={FileText} title="Aucune fiche technique"
+                    description="Ajoutez-en une pour un produit ci-dessous." />
+      ) : (
+        <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[36rem] text-sm"
+          tete={(
+            <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold">Produit</th>
+                <th className="px-3 py-2 text-left font-semibold">Type</th>
+                <th className="px-3 py-2 text-left font-semibold">PDF</th>
+                <th className="w-20 px-3 py-2" />
+              </tr>
+            </thead>
+          )}>
+          {fiches.map((f) => (
+            <tr key={f.id} className="border-t border-border">
+              <td className="px-3 py-2">{f.produit_nom}</td>
+              <td className="px-3 py-2">
+                <Badge tone="outline">{TYPE_FICHE_LABELS[f.type_fiche] || '—'}</Badge>
+              </td>
+              <td className="px-3 py-2">
+                {f.pdf ? (
+                  <a href={f.pdf} target="_blank" rel="noopener noreferrer"
+                     className="inline-flex items-center gap-1 text-primary hover:underline">
+                    Voir <ExternalLink className="size-3.5" aria-hidden="true" />
+                  </a>
+                ) : '—'}
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex items-center justify-end gap-1">
+                  <IconButton size="md" variant="ghost" label="Modifier la fiche"
+                              onClick={() => commencerEdition(f)}>
+                    <Pencil className="size-4" aria-hidden="true" />
+                  </IconButton>
+                  <BoutonSupprimerIcone size="md" variant="ghost" label="Supprimer la fiche"
+                                        onClick={() => supprimer(f)} />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </TableauLignes>
+      )}
 
-        {/* Ajout / édition d'une fiche */}
-        <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold">
-              {editingId ? 'Modifier la fiche' : 'Nouvelle fiche'}
-            </span>
-            {editingId && (
-              <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
-                <X className="size-4" aria-hidden="true" /> Annuler
-              </Button>
-            )}
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="min-w-48">
-              <Select value={produitId || '__none'} onValueChange={(v) => setProduitId(v === '__none' ? '' : v)}>
-                <SelectTrigger aria-label="Produit"><SelectValue placeholder="— Produit —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">— Produit —</SelectItem>
-                  {dispo.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.nom}{p.sku ? ` (${p.sku})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-48">
-              <Select value={typeFiche || '__none'} onValueChange={(v) => setTypeFiche(v === '__none' ? '' : v)}>
-                <SelectTrigger aria-label="Type de fiche"><SelectValue placeholder="— Type de fiche —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">— Type de fiche —</SelectItem>
-                  {TYPE_FICHE_OPTIONS.map(([v, label]) => (
-                    <SelectItem key={v} value={v}>{label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid gap-2 sm:grid-cols-3">
-            {champsForm.map(([k, label]) => (
-              <Input key={k} type="number" step="any" inputMode="decimal"
-                     placeholder={label} value={vals[k] ?? ''}
-                     onChange={(e) => setVal(k, e.target.value)} />
-            ))}
-          </div>
-
-          {typeFiche === 'module' && (
-            <div className="grid gap-2 sm:grid-cols-3 sm:items-center">
-              <Input placeholder="Technologie de cellule" value={vals.techno_cellule ?? ''}
-                     onChange={(e) => setVal('techno_cellule', e.target.value)} />
-              <div className="flex items-center gap-2">
-                <Checkbox id="fiche-bifacial" checked={Boolean(vals.bifacial)}
-                          onCheckedChange={(v) => setVal('bifacial', Boolean(v))}
-                          aria-label="Bifacial" />
-                <Label htmlFor="fiche-bifacial" className="font-normal">Bifacial</Label>
-              </div>
-            </div>
-          )}
-
-          {typeFiche === 'onduleur' && (
-            <div className="min-w-48">
-              <Select value={vals.ond_phases || '__none'}
-                      onValueChange={(v) => setVal('ond_phases', v === '__none' ? '' : v)}>
-                <SelectTrigger aria-label="Phases"><SelectValue placeholder="— Phases —" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none">— Phases —</SelectItem>
-                  <SelectItem value="1">Monophasé</SelectItem>
-                  <SelectItem value="3">Triphasé</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
-          <div className="flex flex-col gap-1.5">
-            <FileUpload accept="application/pdf" onFiles={(files) => setPdfFile(files[0] || null)}
-                        hint="Fiche PDF constructeur (optionnel)" />
-            {pdfFile && (
-              <p className="text-xs text-muted-foreground">Fichier sélectionné : {pdfFile.name}</p>
-            )}
-            {!pdfFile && pdfActuelUrl && (
-              <a href={pdfActuelUrl} target="_blank" rel="noopener noreferrer"
-                 className="inline-flex w-fit items-center gap-1 text-xs text-primary hover:underline">
-                Voir le PDF actuel <ExternalLink className="size-3.5" aria-hidden="true" />
-              </a>
-            )}
-          </div>
-
-          <div>
-            <Button type="button" loading={busy} onClick={enregistrer}>
-              <Plus /> {editingId ? 'Enregistrer les modifications' : 'Ajouter la fiche'}
+      {/* Ajout / édition d'une fiche */}
+      <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold">
+            {editingId ? 'Modifier la fiche' : 'Nouvelle fiche'}
+          </span>
+          {editingId && (
+            <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
+              <X className="size-4" aria-hidden="true" /> Annuler
             </Button>
+          )}
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="min-w-48">
+            <Select value={produitId || '__none'} onValueChange={(v) => setProduitId(v === '__none' ? '' : v)}>
+              <SelectTrigger aria-label="Produit"><SelectValue placeholder="— Produit —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Produit —</SelectItem>
+                {dispo.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.nom}{p.sku ? ` (${p.sku})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="min-w-48">
+            <Select value={typeFiche || '__none'} onValueChange={(v) => setTypeFiche(v === '__none' ? '' : v)}>
+              <SelectTrigger aria-label="Type de fiche"><SelectValue placeholder="— Type de fiche —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Type de fiche —</SelectItem>
+                {TYPE_FICHE_OPTIONS.map(([v, label]) => (
+                  <SelectItem key={v} value={v}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-      </CardContent>
-    </Card>
+
+        <div className="grid gap-2 sm:grid-cols-3">
+          {champsForm.map(([k, label]) => (
+            <Input key={k} type="number" step="any" inputMode="decimal"
+                   placeholder={label} value={vals[k] ?? ''}
+                   onChange={(e) => setVal(k, e.target.value)} />
+          ))}
+        </div>
+
+        {typeFiche === 'module' && (
+          <div className="grid gap-2 sm:grid-cols-3 sm:items-center">
+            <Input placeholder="Technologie de cellule" value={vals.techno_cellule ?? ''}
+                   onChange={(e) => setVal('techno_cellule', e.target.value)} />
+            <div className="flex items-center gap-2">
+              <Checkbox id="fiche-bifacial" checked={Boolean(vals.bifacial)}
+                        onCheckedChange={(v) => setVal('bifacial', Boolean(v))}
+                        aria-label="Bifacial" />
+              <Label htmlFor="fiche-bifacial" className="font-normal">Bifacial</Label>
+            </div>
+          </div>
+        )}
+
+        {typeFiche === 'onduleur' && (
+          <div className="min-w-48">
+            <Select value={vals.ond_phases || '__none'}
+                    onValueChange={(v) => setVal('ond_phases', v === '__none' ? '' : v)}>
+              <SelectTrigger aria-label="Phases"><SelectValue placeholder="— Phases —" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none">— Phases —</SelectItem>
+                <SelectItem value="1">Monophasé</SelectItem>
+                <SelectItem value="3">Triphasé</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <FileUpload accept="application/pdf" onFiles={(files) => setPdfFile(files[0] || null)}
+                      hint="Fiche PDF constructeur (optionnel)" />
+          {pdfFile && (
+            <p className="text-xs text-muted-foreground">Fichier sélectionné : {pdfFile.name}</p>
+          )}
+          {!pdfFile && pdfActuelUrl && (
+            <a href={pdfActuelUrl} target="_blank" rel="noopener noreferrer"
+               className="inline-flex w-fit items-center gap-1 text-xs text-primary hover:underline">
+              Voir le PDF actuel <ExternalLink className="size-3.5" aria-hidden="true" />
+            </a>
+          )}
+        </div>
+
+        <div>
+          <Button type="button" loading={busy} onClick={enregistrer}>
+            <Plus /> {editingId ? 'Enregistrer les modifications' : 'Ajouter la fiche'}
+          </Button>
+        </div>
+      </div>
+    </CarteContenu>
   )
 }
 
@@ -749,101 +735,97 @@ function RemplacementComposant() {
   ]
 
   return (
-    <Card>
-      <CardContent className="pt-4 sm:pt-5">
-        <SectionTitle label="Remplacement de composant (nomenclatures)"
-          icon={<><path d="M16 3h5v5" /><path d="M8 3H3v5" /><path d="M21 3l-7 7" /><path d="M3 3l7 7" /><path d="M16 21h5v-5" /><path d="M8 21H3v-5" /><path d="M21 21l-7-7" /><path d="M3 21l7-7" /></>} />
-        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-          Remplace un produit par un autre dans toutes les nomenclatures
-          (kits stock et kits de pré-assemblage). Prévisualisez d&apos;abord les
-          kits impactés, puis confirmez : l&apos;application est atomique et
-          chaque kit modifié garde une révision de sa composition.
-        </p>
+    <CarteContenu contenu="pt-4 sm:pt-5">
+      <SectionTitle label="Remplacement de composant (nomenclatures)"
+        icon={<><path d="M16 3h5v5" /><path d="M8 3H3v5" /><path d="M21 3l-7 7" /><path d="M3 3l7 7" /><path d="M16 21h5v-5" /><path d="M8 21H3v-5" /><path d="M21 21l-7-7" /><path d="M3 21l7-7" /></>} />
+      <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+        Remplace un produit par un autre dans toutes les nomenclatures
+        (kits stock et kits de pré-assemblage). Prévisualisez d&apos;abord les
+        kits impactés, puis confirmez : l&apos;application est atomique et
+        chaque kit modifié garde une révision de sa composition.
+      </p>
 
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-48 flex-1">
-            <Select value={ancien || '__none'} onValueChange={(v) => { setAncien(v === '__none' ? '' : v); setPreview(null) }}>
-              <SelectTrigger><SelectValue placeholder="— Produit remplacé —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Produit remplacé —</SelectItem>
-                {produits.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="min-w-48 flex-1">
-            <Select value={nouveau || '__none'} onValueChange={(v) => { setNouveau(v === '__none' ? '' : v); setPreview(null) }}>
-              <SelectTrigger><SelectValue placeholder="— Produit de remplacement —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Produit de remplacement —</SelectItem>
-                {produits.filter((p) => String(p.id) !== ancien).map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="w-32">
-            <Input type="number" step="any" inputMode="decimal" min="0"
-                   placeholder="Ratio qté (opt.)" value={ratio}
-                   onChange={(e) => { setRatio(e.target.value); setPreview(null) }} />
-          </div>
-          <Button type="button" loading={busy} variant="outline" onClick={previsualiser}>
-            Prévisualiser
-          </Button>
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-48 flex-1">
+          <Select value={ancien || '__none'} onValueChange={(v) => { setAncien(v === '__none' ? '' : v); setPreview(null) }}>
+            <SelectTrigger><SelectValue placeholder="— Produit remplacé —" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">— Produit remplacé —</SelectItem>
+              {produits.map((p) => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+        <div className="min-w-48 flex-1">
+          <Select value={nouveau || '__none'} onValueChange={(v) => { setNouveau(v === '__none' ? '' : v); setPreview(null) }}>
+            <SelectTrigger><SelectValue placeholder="— Produit de remplacement —" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none">— Produit de remplacement —</SelectItem>
+              {produits.filter((p) => String(p.id) !== ancien).map((p) => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="w-32">
+          <Input type="number" step="any" inputMode="decimal" min="0"
+                 placeholder="Ratio qté (opt.)" value={ratio}
+                 onChange={(e) => { setRatio(e.target.value); setPreview(null) }} />
+        </div>
+        <Button type="button" loading={busy} variant="outline" onClick={previsualiser}>
+          Prévisualiser
+        </Button>
+      </div>
 
-        {error && (
-          <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
-        )}
+      {error && (
+        <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
+      )}
 
-        {preview && (
-          lignes(preview).length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              Aucune nomenclature n&apos;utilise ce produit.
-            </p>
-          ) : (
-            <div className="mt-3">
-              <div className="overflow-x-auto rounded-lg border border-border">
-                <table className="w-full min-w-[28rem] text-sm">
-                  <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-semibold">Kit impacté</th>
-                      <th className="px-3 py-2 text-left font-semibold">Module</th>
-                      <th className="px-3 py-2 text-right font-semibold">Qté avant</th>
-                      <th className="px-3 py-2 text-right font-semibold">Qté après</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lignes(preview).map((k) => (
-                      <tr key={`${k.module}-${k.kit_id}`} className="border-t border-border">
-                        <td className="px-3 py-2">{k.kit_nom}</td>
-                        <td className="px-3 py-2 text-xs">{k.module}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{k.quantite_avant}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{k.quantite_apres}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <Button type="button" loading={busy} onClick={confirmer}>
-                  Confirmer le remplacement ({preview.nb_total} kit{preview.nb_total > 1 ? 's' : ''})
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setPreview(null)}>Annuler</Button>
-              </div>
+      {preview && (
+        lignes(preview).length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Aucune nomenclature n&apos;utilise ce produit.
+          </p>
+        ) : (
+          <div className="mt-3">
+            <TableauLignes enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full min-w-[28rem] text-sm"
+              tete={(
+                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Kit impacté</th>
+                    <th className="px-3 py-2 text-left font-semibold">Module</th>
+                    <th className="px-3 py-2 text-right font-semibold">Qté avant</th>
+                    <th className="px-3 py-2 text-right font-semibold">Qté après</th>
+                  </tr>
+                </thead>
+              )}>
+              {lignes(preview).map((k) => (
+                <tr key={`${k.module}-${k.kit_id}`} className="border-t border-border">
+                  <td className="px-3 py-2">{k.kit_nom}</td>
+                  <td className="px-3 py-2 text-xs">{k.module}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{k.quantite_avant}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{k.quantite_apres}</td>
+                </tr>
+              ))}
+            </TableauLignes>
+            <div className="mt-2 flex items-center gap-2">
+              <Button type="button" loading={busy} onClick={confirmer}>
+                Confirmer le remplacement ({preview.nb_total} kit{preview.nb_total > 1 ? 's' : ''})
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setPreview(null)}>Annuler</Button>
             </div>
-          )
-        )}
-
-        {done && (
-          <div className="mt-3 rounded-lg border border-border bg-muted/40 p-2 text-sm">
-            Remplacement appliqué à {done.nb_total} nomenclature{done.nb_total > 1 ? 's' : ''}
-            {' '}(« {done.produit_ancien} » → « {done.produit_nouveau} »).
           </div>
-        )}
-      </CardContent>
-    </Card>
+        )
+      )}
+
+      {done && (
+        <div className="mt-3 rounded-lg border border-border bg-muted/40 p-2 text-sm">
+          Remplacement appliqué à {done.nb_total} nomenclature{done.nb_total > 1 ? 's' : ''}
+          {' '}(« {done.produit_ancien} » → « {done.produit_nouveau} »).
+        </div>
+      )}
+    </CarteContenu>
   )
 }
 
@@ -857,21 +839,19 @@ export default function DonneesSection() {
       <FichesTechniques />
 
       {/* Export / sauvegarde : surface existante (page dédiée). */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          <SectionTitle label="Export & sauvegarde"
-            icon={<><path d="M21 8v13H3V8" /><path d="M1 3h22v5H1z" /><path d="M10 12h4" /></>} />
-          <p className="mb-3 text-[11.5px] text-muted-foreground">
-            Exportez vos données par objet ou générez une sauvegarde ZIP
-            complète (prix d&apos;achat et marges jamais inclus).
-          </p>
-          <Button type="button" variant="outline" onClick={() => navigate('/parametres/export')}>
-            <Archive className="size-4" aria-hidden="true" />
-            Ouvrir l&apos;export / sauvegarde
-            <ExternalLink className="size-3.5" aria-hidden="true" />
-          </Button>
-        </CardContent>
-      </Card>
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        <SectionTitle label="Export & sauvegarde"
+          icon={<><path d="M21 8v13H3V8" /><path d="M1 3h22v5H1z" /><path d="M10 12h4" /></>} />
+        <p className="mb-3 text-[11.5px] text-muted-foreground">
+          Exportez vos données par objet ou générez une sauvegarde ZIP
+          complète (prix d&apos;achat et marges jamais inclus).
+        </p>
+        <Button type="button" variant="outline" onClick={() => navigate('/parametres/export')}>
+          <Archive className="size-4" aria-hidden="true" />
+          Ouvrir l&apos;export / sauvegarde
+          <ExternalLink className="size-3.5" aria-hidden="true" />
+        </Button>
+      </CarteContenu>
     </div>
   )
 }

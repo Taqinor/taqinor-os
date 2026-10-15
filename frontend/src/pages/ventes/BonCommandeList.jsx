@@ -38,6 +38,7 @@ import { frenchError } from '../../lib/frenchError'
 // APX17 — confirmation maison (VX19/L152), jamais une popup du système.
 import { useConfirmDialog } from '../../ui/confirm'
 import { todayLocalIso } from '../../lib/dateLocale.js'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 const STATUT_DISPLAY = {
   en_attente: 'En attente',
@@ -264,8 +265,8 @@ export default function BonCommandeList() {
         />
       ) : (
         <Card className="mt-4 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="data-table">
+          <TableauLignes enveloppe="overflow-x-auto" className="data-table"
+            tete={(
               <thead>
                 <tr>
                   <th>Référence</th>
@@ -279,120 +280,118 @@ export default function BonCommandeList() {
                   <th>Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {filtered.map(bc => {
-                  const busy = actionId === bc.id
-                  return (
-                    <tr key={bc.id}>
-                      <td><strong>{bc.reference}</strong></td>
-                      <td>{bc.client_nom ?? '—'}</td>
-                      {/* APX13 — l'AMONT du document devient cliquable :
-                          `?devis=<id>` est le paramètre que DevisList lit
-                          déjà (QX12) pour surligner + scroller. */}
-                      <td>
-                        {bc.devis_reference && bc.devis
-                          ? (
-                            <Link to={`/ventes/devis?devis=${encodeURIComponent(bc.devis)}`}
-                                  className="text-primary hover:underline">
-                              {bc.devis_reference}
-                            </Link>
-                          )
-                          : (bc.devis_reference ?? <span className="text-muted-foreground">—</span>)}
-                      </td>
-                      <td className="ta-right tabular-nums">
-                        {bc.total_ttc != null
-                          ? formatMAD(bc.total_ttc)
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td>
-                        {bc.date_livraison_prevue
-                          ? new Date(bc.date_livraison_prevue).toLocaleDateString('fr-FR')
-                          : '—'}
-                      </td>
-                      <td>
-                        <StatusPill status={bc.statut} label={STATUT_DISPLAY[bc.statut] ?? STATUT_DISPLAY.en_attente} />
-                        {/* APX13 — la chaîne devis→BC→facture, visible à
-                            CETTE étape aussi (le stepper VX141 n'existait
-                            que sur la liste des devis). */}
-                        <DocumentStageTrack
-                          className="mt-1"
-                          stages={DOC_STATUT_TRACK}
-                          {...bonCommandeTrack(bc)}
-                        />
-                      </td>
-                      <td>
-                        {/* XSAL12 — état dérivé de livraison partielle (lecture seule). */}
-                        {bc.est_partiellement_livre
-                          ? <Badge tone="warning">Partiel</Badge>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td>
-                        {bc.has_facture
-                          ? <Badge tone="success">Oui</Badge>
-                          : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {(bc.statut === 'en_attente' || bc.statut === 'confirme') && (
-                            <Button size="sm" variant="outline" onClick={() => openEdit(bc)}>
-                              Éditer
-                            </Button>
-                          )}
-                          {bc.statut === 'en_attente' && (
-                            <Button size="sm" loading={busy} onClick={() => doAction(confirmerBC, bc.id)}>
-                              Confirmer
-                            </Button>
-                          )}
-                          {/* AUD119 (FG51) — « Livrer » ouvre desormais un
-                              dialogue de PREUVE DE LIVRAISON. Le backend lisait
-                              signataire/note/piece jointe depuis le debut ;
-                              aucun ecran ne les envoyait, donc l'avertissement
-                              « vous facturez sans BL signe » etait permanent et
-                              sans valeur. */}
-                          {bc.statut === 'confirme' && (
-                            <Button size="sm" variant="success" loading={busy}
-                                    onClick={() => setLivrerBC(bc)}>
-                              Livrer
-                            </Button>
-                          )}
-                          {/* XSAL12 — livraison partielle : réservée aux BC avec devis, pas déjà livrés. */}
-                          {bc.statut === 'confirme' && bc.devis_reference && (
-                            <Button size="sm" variant="outline" loading={busy}
-                                    onClick={() => setLivraisonBC(bc)}>
-                              Livrer partiellement
-                            </Button>
-                          )}
-                          {(bc.statut === 'confirme' || bc.statut === 'livre') && !bc.has_facture && (
-                            <Button size="sm" variant="outline" loading={busy}
-                                    onClick={() => handleCreerFacture(bc)}>
-                              <FilePlus2 /> Facture
-                            </Button>
-                          )}
-                          {/* ZSAL8 — PDF imprimable du BC (layout legacy, jamais le moteur devis premium). */}
-                          <Button size="sm" variant="outline" loading={busy}
-                                  onClick={() => handleTelechargerPdfBC(bc)}>
-                            PDF
-                          </Button>
-                          {/* AUD118 — un BC deja facture ne s'annule pas :
-                              le serveur refuse en 400 (la facture reste
-                              vivante et orpheline sinon). On masque le bouton
-                              plutot que de proposer un geste refuse ; la voie
-                              correcte est d'annuler la FACTURE d'abord. */}
-                          {bc.statut !== 'livre' && bc.statut !== 'annule'
-                            && !bc.facture_active && (
-                            <Button size="sm" variant="outline" loading={busy}
-                                    onClick={() => doAction(annulerBC, bc.id, `Annuler le BC ${bc.reference} ?`)}>
-                              Annuler
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+            )}>
+            {filtered.map(bc => {
+              const busy = actionId === bc.id
+              return (
+                <tr key={bc.id}>
+                  <td><strong>{bc.reference}</strong></td>
+                  <td>{bc.client_nom ?? '—'}</td>
+                  {/* APX13 — l'AMONT du document devient cliquable :
+                      `?devis=<id>` est le paramètre que DevisList lit
+                      déjà (QX12) pour surligner + scroller. */}
+                  <td>
+                    {bc.devis_reference && bc.devis
+                      ? (
+                        <Link to={`/ventes/devis?devis=${encodeURIComponent(bc.devis)}`}
+                              className="text-primary hover:underline">
+                          {bc.devis_reference}
+                        </Link>
+                      )
+                      : (bc.devis_reference ?? <span className="text-muted-foreground">—</span>)}
+                  </td>
+                  <td className="ta-right tabular-nums">
+                    {bc.total_ttc != null
+                      ? formatMAD(bc.total_ttc)
+                      : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td>
+                    {bc.date_livraison_prevue
+                      ? new Date(bc.date_livraison_prevue).toLocaleDateString('fr-FR')
+                      : '—'}
+                  </td>
+                  <td>
+                    <StatusPill status={bc.statut} label={STATUT_DISPLAY[bc.statut] ?? STATUT_DISPLAY.en_attente} />
+                    {/* APX13 — la chaîne devis→BC→facture, visible à
+                        CETTE étape aussi (le stepper VX141 n'existait
+                        que sur la liste des devis). */}
+                    <DocumentStageTrack
+                      className="mt-1"
+                      stages={DOC_STATUT_TRACK}
+                      {...bonCommandeTrack(bc)}
+                    />
+                  </td>
+                  <td>
+                    {/* XSAL12 — état dérivé de livraison partielle (lecture seule). */}
+                    {bc.est_partiellement_livre
+                      ? <Badge tone="warning">Partiel</Badge>
+                      : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td>
+                    {bc.has_facture
+                      ? <Badge tone="success">Oui</Badge>
+                      : <span className="text-muted-foreground">—</span>}
+                  </td>
+                  <td>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(bc.statut === 'en_attente' || bc.statut === 'confirme') && (
+                        <Button size="sm" variant="outline" onClick={() => openEdit(bc)}>
+                          Éditer
+                        </Button>
+                      )}
+                      {bc.statut === 'en_attente' && (
+                        <Button size="sm" loading={busy} onClick={() => doAction(confirmerBC, bc.id)}>
+                          Confirmer
+                        </Button>
+                      )}
+                      {/* AUD119 (FG51) — « Livrer » ouvre desormais un
+                          dialogue de PREUVE DE LIVRAISON. Le backend lisait
+                          signataire/note/piece jointe depuis le debut ;
+                          aucun ecran ne les envoyait, donc l'avertissement
+                          « vous facturez sans BL signe » etait permanent et
+                          sans valeur. */}
+                      {bc.statut === 'confirme' && (
+                        <Button size="sm" variant="success" loading={busy}
+                                onClick={() => setLivrerBC(bc)}>
+                          Livrer
+                        </Button>
+                      )}
+                      {/* XSAL12 — livraison partielle : réservée aux BC avec devis, pas déjà livrés. */}
+                      {bc.statut === 'confirme' && bc.devis_reference && (
+                        <Button size="sm" variant="outline" loading={busy}
+                                onClick={() => setLivraisonBC(bc)}>
+                          Livrer partiellement
+                        </Button>
+                      )}
+                      {(bc.statut === 'confirme' || bc.statut === 'livre') && !bc.has_facture && (
+                        <Button size="sm" variant="outline" loading={busy}
+                                onClick={() => handleCreerFacture(bc)}>
+                          <FilePlus2 /> Facture
+                        </Button>
+                      )}
+                      {/* ZSAL8 — PDF imprimable du BC (layout legacy, jamais le moteur devis premium). */}
+                      <Button size="sm" variant="outline" loading={busy}
+                              onClick={() => handleTelechargerPdfBC(bc)}>
+                        PDF
+                      </Button>
+                      {/* AUD118 — un BC deja facture ne s'annule pas :
+                          le serveur refuse en 400 (la facture reste
+                          vivante et orpheline sinon). On masque le bouton
+                          plutot que de proposer un geste refuse ; la voie
+                          correcte est d'annuler la FACTURE d'abord. */}
+                      {bc.statut !== 'livre' && bc.statut !== 'annule'
+                        && !bc.facture_active && (
+                        <Button size="sm" variant="outline" loading={busy}
+                                onClick={() => doAction(annulerBC, bc.id, `Annuler le BC ${bc.reference} ?`)}>
+                          Annuler
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </TableauLignes>
         </Card>
       )}
     </div>
@@ -641,8 +640,8 @@ function LivraisonPartielleDialog({ bc, onClose, onSaved }) {
           {reliquats.length === 0 ? (
             <p className="text-sm text-muted-foreground">Aucun reliquat à livrer sur ce BC.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="data-table">
+            <TableauLignes enveloppe="overflow-x-auto" className="data-table"
+              tete={(
                 <thead>
                   <tr>
                     <th>Ligne</th>
@@ -650,25 +649,23 @@ function LivraisonPartielleDialog({ bc, onClose, onSaved }) {
                     <th className="ta-right">Quantité livrée</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {reliquats.map(r => (
-                    <tr key={r.ligne_devis_id}>
-                      <td>{r.designation}</td>
-                      <td className="ta-right tabular-nums">{r.reliquat}</td>
-                      <td className="ta-right">
-                        <Input
-                          type="number" min="0" max={r.reliquat} step="any"
-                          className="w-28 text-right"
-                          aria-label={`Quantité livrée — ${r.designation}`}
-                          value={quantites[r.ligne_devis_id] ?? ''}
-                          onChange={e => setQuantite(r.ligne_devis_id, e.target.value)}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {reliquats.map(r => (
+                <tr key={r.ligne_devis_id}>
+                  <td>{r.designation}</td>
+                  <td className="ta-right tabular-nums">{r.reliquat}</td>
+                  <td className="ta-right">
+                    <Input
+                      type="number" min="0" max={r.reliquat} step="any"
+                      className="w-28 text-right"
+                      aria-label={`Quantité livrée — ${r.designation}`}
+                      value={quantites[r.ligne_devis_id] ?? ''}
+                      onChange={e => setQuantite(r.ligne_devis_id, e.target.value)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </TableauLignes>
           )}
 
           <FormField label="Date de livraison" htmlFor="lp-date" fullWidth>

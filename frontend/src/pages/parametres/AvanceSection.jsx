@@ -7,9 +7,10 @@ import {
 } from 'lucide-react'
 import { formatMAD } from '../../lib/format'
 import {
-  Card, CardContent, Input, Button, IconButton, Badge,
+  Input, Button, IconButton, Badge,
   Checkbox, Switch, EmptyState,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  CarteContenu,
 } from '../../ui'
 import reportingApi from '../../api/reportingApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
@@ -213,52 +214,50 @@ export default function AvanceSection({
   return (
     <>
       {/* ROI — hypothèses (tarif ONEE, productible) */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          <SectionTitle label="Hypothèses ROI" icon={<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>}/>
-          <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-            Constantes utilisées pour les estimations d'économies/rentabilité.
-            Les valeurs par défaut reprennent l'historique du simulateur — rien
-            ne change tant que vous ne les modifiez pas.
-          </p>
-          <div className="pe-grid-2">
-            <Field label="Tarif ONEE moyen (MAD/kWh)" htmlFor="pe-onee">
-              <Input id="pe-onee" type="number" step="any"
-                     name="onee_tarif_kwh" value={form.onee_tarif_kwh} onChange={set} />
-            </Field>
-            <Field label="Productible (kWh/kWc/an)" htmlFor="pe-productible">
-              <Input id="pe-productible" type="number" step="any"
-                     name="productible_kwh_kwc" value={form.productible_kwh_kwc} onChange={set} />
-            </Field>
-            {/* L787 — impact recalculé en direct sous tarif ONEE / productible. */}
-            <div className="sm:col-span-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-[12px] text-primary">
-              ≈ <strong>{fmtMad(ecoParKwc)} MAD/an</strong> économisés pour
-              {' '}<strong>1 kWc</strong> installé (production
-              {' '}{fmtMad(Math.round((Number(form.productible_kwh_kwc) || 0) * (Number(form.rendement_global) || 0)))} kWh ×
-              {' '}{Number(form.onee_tarif_kwh) || 0} MAD/kWh).
-            </div>
-            <Field label="Seuil d'approbation de remise (%)" htmlFor="pe-discount-thr">
-              <Input id="pe-discount-thr" type="number" step="any"
-                     name="discount_approval_threshold" placeholder="vide = désactivé"
-                     value={form.discount_approval_threshold} onChange={set} />
-            </Field>
-            <SeuilsEtReglagesCiFields form={form} set={set} erreur={profileError}
-                                      seuilsSources={profile?.seuils_sources} />
-            <EcartRecettePompageField form={form} set={set} erreur={profileError} />
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        <SectionTitle label="Hypothèses ROI" icon={<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>}/>
+        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+          Constantes utilisées pour les estimations d'économies/rentabilité.
+          Les valeurs par défaut reprennent l'historique du simulateur — rien
+          ne change tant que vous ne les modifiez pas.
+        </p>
+        <div className="pe-grid-2">
+          <Field label="Tarif ONEE moyen (MAD/kWh)" htmlFor="pe-onee">
+            <Input id="pe-onee" type="number" step="any"
+                   name="onee_tarif_kwh" value={form.onee_tarif_kwh} onChange={set} />
+          </Field>
+          <Field label="Productible (kWh/kWc/an)" htmlFor="pe-productible">
+            <Input id="pe-productible" type="number" step="any"
+                   name="productible_kwh_kwc" value={form.productible_kwh_kwc} onChange={set} />
+          </Field>
+          {/* L787 — impact recalculé en direct sous tarif ONEE / productible. */}
+          <div className="sm:col-span-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-[12px] text-primary">
+            ≈ <strong>{fmtMad(ecoParKwc)} MAD/an</strong> économisés pour
+            {' '}<strong>1 kWc</strong> installé (production
+            {' '}{fmtMad(Math.round((Number(form.productible_kwh_kwc) || 0) * (Number(form.rendement_global) || 0)))} kWh ×
+            {' '}{Number(form.onee_tarif_kwh) || 0} MAD/kWh).
           </div>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Seuils loi 82-21 proposés à la création d'un chantier (régime
-            suggéré, modifiable) : sous le 1er seuil = Déclaration, entre les
-            deux = Accord de raccordement, au-dessus du 2nd = Autorisation.
-            Ils viennent des textes ; une surcharge ne se saisit que par choix
-            délibéré de la société.
-          </p>
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Au-delà de ce seuil de remise, un devis exige l'approbation d'un
-            administrateur avant l'envoi. Vide = désactivé (défaut).
-          </p>
-        </CardContent>
-      </Card>
+          <Field label="Seuil d'approbation de remise (%)" htmlFor="pe-discount-thr">
+            <Input id="pe-discount-thr" type="number" step="any"
+                   name="discount_approval_threshold" placeholder="vide = désactivé"
+                   value={form.discount_approval_threshold} onChange={set} />
+          </Field>
+          <SeuilsEtReglagesCiFields form={form} set={set} erreur={profileError}
+                                    seuilsSources={profile?.seuils_sources} />
+          <EcartRecettePompageField form={form} set={set} erreur={profileError} />
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Seuils loi 82-21 proposés à la création d'un chantier (régime
+          suggéré, modifiable) : sous le 1er seuil = Déclaration, entre les
+          deux = Accord de raccordement, au-dessus du 2nd = Autorisation.
+          Ils viennent des textes ; une surcharge ne se saisit que par choix
+          délibéré de la société.
+        </p>
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Au-delà de ce seuil de remise, un devis exige l'approbation d'un
+          administrateur avant l'envoi. Vide = désactivé (défaut).
+        </p>
+      </CarteContenu>
 
       {/* FG22 — Politique de sécurité (mot de passe & verrouillage), par
           société. Tous les défauts sont inertes : rien ne change tant que
@@ -349,38 +348,36 @@ export default function AvanceSection({
       </CarteSection>
 
       {/* Chantiers — Types d'intervention */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          <SectionTitle label="Chantiers — Types d'intervention" icon={<><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6l-6 6 2 2 6-6a4 4 0 0 0 5.6-5.6l-2.5 2.5-2-2 2.5-2.5z"/></>}/>
-          <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-            Types d'intervention proposés sur les chantiers. Les types système
-            sont protégés ; un type déjà utilisé ne peut pas être supprimé.
-          </p>
-          {typesItv.map(t => (
-            <div key={t.id} className="mb-1.5 flex items-center gap-1.5">
-              {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
-              <Input key={t.libelle} className="flex-1" defaultValue={t.libelle}
-                     onBlur={e => renameType(t, e.target.value)} />
-              {t.protege
-                ? <Badge tone="info">système</Badge>
-                : (
-                  <IconButton size="md" variant="outline" label="Supprimer le type"
-                              className="text-destructive hover:text-destructive disabled:text-muted-foreground"
-                              disabled={t.en_usage > 0}
-                              onClick={() => delType(t)}>
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </IconButton>
-                )}
-            </div>
-          ))}
-          <div className="flex gap-1.5">
-            <Input className="flex-1" placeholder="Nouveau type" value={newType}
-                   onChange={e => setNewType(e.target.value)}
-                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addType() } }} />
-            <Button type="button" onClick={addType}><Plus className="size-4" aria-hidden="true" /></Button>
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        <SectionTitle label="Chantiers — Types d'intervention" icon={<><path d="M14.7 6.3a4 4 0 0 0-5.6 5.6l-6 6 2 2 6-6a4 4 0 0 0 5.6-5.6l-2.5 2.5-2-2 2.5-2.5z"/></>}/>
+        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+          Types d'intervention proposés sur les chantiers. Les types système
+          sont protégés ; un type déjà utilisé ne peut pas être supprimé.
+        </p>
+        {typesItv.map(t => (
+          <div key={t.id} className="mb-1.5 flex items-center gap-1.5">
+            {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+            <Input key={t.libelle} className="flex-1" defaultValue={t.libelle}
+                   onBlur={e => renameType(t, e.target.value)} />
+            {t.protege
+              ? <Badge tone="info">système</Badge>
+              : (
+                <IconButton size="md" variant="outline" label="Supprimer le type"
+                            className="text-destructive hover:text-destructive disabled:text-muted-foreground"
+                            disabled={t.en_usage > 0}
+                            onClick={() => delType(t)}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </IconButton>
+              )}
           </div>
-        </CardContent>
-      </Card>
+        ))}
+        <div className="flex gap-1.5">
+          <Input className="flex-1" placeholder="Nouveau type" value={newType}
+                 onChange={e => setNewType(e.target.value)}
+                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addType() } }} />
+          <Button type="button" onClick={addType}><Plus className="size-4" aria-hidden="true" /></Button>
+        </div>
+      </CarteContenu>
 
       {/* WIR112 — Chantiers — Équipes terrain canoniques (DC40), à côté des types. */}
       <EquipeTerrainSection assignables={assignables} />
@@ -389,258 +386,252 @@ export default function AvanceSection({
       <FicheInterventionModelesSection />
 
       {/* Chantiers — Checklist d'exécution */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          <SectionTitle label="Chantiers — Checklist d'exécution" icon={<><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></>}/>
-          <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-            Étapes proposées sur la checklist des chantiers. Désactivez une
-            étape pour la retirer des nouveaux chantiers sans toucher aux
-            chantiers existants ; les étapes système sont protégées.
-          </p>
-          {checklistEtapes.map((et, idx) => (
-            <div key={et.id} className="mb-1.5 flex flex-wrap items-center gap-1.5">
-              {/* L784 — réordonner l'étape (haut/bas). */}
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        <SectionTitle label="Chantiers — Checklist d'exécution" icon={<><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></>}/>
+        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+          Étapes proposées sur la checklist des chantiers. Désactivez une
+          étape pour la retirer des nouveaux chantiers sans toucher aux
+          chantiers existants ; les étapes système sont protégées.
+        </p>
+        {checklistEtapes.map((et, idx) => (
+          <div key={et.id} className="mb-1.5 flex flex-wrap items-center gap-1.5">
+            {/* L784 — réordonner l'étape (haut/bas). */}
+            <div className="flex flex-col">
+              <IconButton size="sm" variant="ghost" label="Monter l'étape"
+                          disabled={idx === 0} onClick={() => moveEtape(et, -1)}>
+                <ChevronUp className="size-3.5" aria-hidden="true" />
+              </IconButton>
+              <IconButton size="sm" variant="ghost" label="Descendre l'étape"
+                          disabled={idx === checklistEtapes.length - 1}
+                          onClick={() => moveEtape(et, 1)}>
+                <ChevronDown className="size-3.5" aria-hidden="true" />
+              </IconButton>
+            </div>
+            {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
+            <Input key={et.libelle} className={['min-w-[120px] flex-[1_1_120px]', et.actif ? '' : 'opacity-50'].join(' ')} defaultValue={et.libelle}
+                   onBlur={e => renameEtape(et, e.target.value)} />
+            {/* L785 — capture_serie en toggle éditable (au lieu d'un simple badge). */}
+            <Button type="button" size="sm"
+                    variant={et.capture_serie ? 'default' : 'outline'}
+                    title="Saisie de n° de série sur cette étape"
+                    onClick={() => toggleEtapeCapture(et)}>
+              Série
+            </Button>
+            <BoutonActifInactif actif={et.actif}
+                                onClick={() => toggleEtapeActif(et)} />
+            {et.protege
+              ? <Badge tone="info">système</Badge>
+              : (
+                <IconButton size="md" variant="outline" label="Supprimer l'étape"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => delEtape(et)}>
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </IconButton>
+              )}
+          </div>
+        ))}
+        <div className="flex gap-1.5">
+          <Input className="flex-1" placeholder="Nouvelle étape" value={newEtape}
+                 onChange={e => setNewEtape(e.target.value)}
+                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtape() } }} />
+          <Button type="button" onClick={addEtape}><Plus className="size-4" aria-hidden="true" /></Button>
+        </div>
+      </CarteContenu>
+
+      {/* L765 — Journal des modifications (audit N55, lecture seule) */}
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        <SectionTitle label="Journal des modifications" icon={<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>}/>
+        <p className="mb-3 text-[11.5px] text-muted-foreground">
+          Derniers changements de paramètres : qui a modifié quoi et quand.
+          Lecture seule.
+        </p>
+        {/* VX233 — feed extrait, filtre dynamique (≥ 6 sections réelles). */}
+        <SettingsAuditFeed />
+      </CarteContenu>
+
+      {/* Champs personnalisés */}
+      <CarteContenu contenu="pt-4 sm:pt-5">
+        <SectionTitle label="Champs personnalisés" icon={<><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></>}/>
+        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+          Ajoutez vos propres champs aux fiches (leads, clients, produits).
+          Ils apparaissent dans le formulaire ; rien n'est perdu si vous en
+          retirez un.
+        </p>
+        <div className="mb-2 flex items-center gap-1.5">
+          <div className="w-[140px]">
+            <Select value={cfModule}
+                    onValueChange={v => { setCfModule(v); loadCfDefs(v); closeCfDist() }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {/* WIR67 — tous les modules enregistrés (plus seulement
+                    lead/client/produit). */}
+                {CUSTOMFIELD_MODULES.map(m => (
+                  <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {/* L817 — compte des champs définis pour le module courant. */}
+          <span className="text-[11px] text-muted-foreground">
+            {cfDefs.length} champ{cfDefs.length > 1 ? 's' : ''}
+          </span>
+        </div>
+        {/* L817 — état vide explicite quand le module n'a aucun champ. */}
+        {cfDefs.length === 0 ? (
+          <div className="mb-2">
+            <EmptyState
+              title="Aucun champ pour ce module"
+              description="Ajoutez un champ ci-dessous pour l'afficher sur les fiches." />
+          </div>
+        ) : cfDefs.map((d, idx) => (
+          cfEditId === d.id ? (
+            // L809 — éditeur inline (libellé/type/options/obligatoire/visible).
+            <div key={d.id} className="mb-2 rounded-md border border-border p-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Input className="min-w-[140px] flex-[1_1_140px]"
+                       placeholder="Libellé du champ" value={cfEdit?.libelle ?? ''}
+                       onChange={e => setCfEdit(c => ({ ...c, libelle: e.target.value }))} />
+                <SelectTypeChamp value={cfEdit?.type}
+                                 onValueChange={v => setCfEdit(c => ({ ...c, type: v }))} />
+                {cfEdit?.type === 'choice' && (
+                  <Input className="min-w-[160px] flex-[1_1_160px]"
+                         placeholder="Options (a, b, c)" value={cfEdit?.options ?? ''}
+                         onChange={e => setCfEdit(c => ({ ...c, options: e.target.value }))} />
+                )}
+                <IconButton size="md" variant="outline" label="Enregistrer"
+                            onClick={() => saveCfEdit(d)}>
+                  <Check className="size-4" aria-hidden="true" />
+                </IconButton>
+                <IconButton size="md" variant="outline" label="Annuler"
+                            onClick={cancelCfEdit}>
+                  <X className="size-4" aria-hidden="true" />
+                </IconButton>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-[11.5px] text-muted-foreground">
+                {/* Code non modifiable : protégé serveur dès qu'une donnée existe (L814). */}
+                <span>Code : <code>{d.code}</code></span>
+                <label className="flex items-center gap-1.5">
+                  <Checkbox checked={!!cfEdit?.obligatoire}
+                            onCheckedChange={v => setCfEdit(c => ({ ...c, obligatoire: !!v }))} />
+                  Obligatoire
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <Checkbox checked={!!cfEdit?.visible_liste}
+                            onCheckedChange={v => setCfEdit(c => ({ ...c, visible_liste: !!v }))} />
+                  Visible en liste
+                </label>
+              </div>
+            </div>
+          ) : (
+            <div key={d.id}
+                 className={`mb-1.5 flex items-center gap-1.5 ${d.actif ? '' : 'opacity-50'}`}>
+              {/* L813 — réordonner (haut/bas). */}
               <div className="flex flex-col">
-                <IconButton size="sm" variant="ghost" label="Monter l'étape"
-                            disabled={idx === 0} onClick={() => moveEtape(et, -1)}>
+                <IconButton size="sm" variant="ghost" label="Monter"
+                            disabled={idx === 0} onClick={() => moveCf(d, -1)}>
                   <ChevronUp className="size-3.5" aria-hidden="true" />
                 </IconButton>
-                <IconButton size="sm" variant="ghost" label="Descendre l'étape"
-                            disabled={idx === checklistEtapes.length - 1}
-                            onClick={() => moveEtape(et, 1)}>
+                <IconButton size="sm" variant="ghost" label="Descendre"
+                            disabled={idx === cfDefs.length - 1} onClick={() => moveCf(d, 1)}>
                   <ChevronDown className="size-3.5" aria-hidden="true" />
                 </IconButton>
               </div>
-              {/* ERR102 — re-monte le champ si le serveur normalise le libellé. */}
-              <Input key={et.libelle} className={['min-w-[120px] flex-[1_1_120px]', et.actif ? '' : 'opacity-50'].join(' ')} defaultValue={et.libelle}
-                     onBlur={e => renameEtape(et, e.target.value)} />
-              {/* L785 — capture_serie en toggle éditable (au lieu d'un simple badge). */}
-              <Button type="button" size="sm"
-                      variant={et.capture_serie ? 'default' : 'outline'}
-                      title="Saisie de n° de série sur cette étape"
-                      onClick={() => toggleEtapeCapture(et)}>
-                Série
-              </Button>
-              <BoutonActifInactif actif={et.actif}
-                                  onClick={() => toggleEtapeActif(et)} />
-              {et.protege
-                ? <Badge tone="info">système</Badge>
-                : (
-                  <IconButton size="md" variant="outline" label="Supprimer l'étape"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => delEtape(et)}>
-                    <Trash2 className="size-4" aria-hidden="true" />
-                  </IconButton>
-                )}
-            </div>
-          ))}
-          <div className="flex gap-1.5">
-            <Input className="flex-1" placeholder="Nouvelle étape" value={newEtape}
-                   onChange={e => setNewEtape(e.target.value)}
-                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEtape() } }} />
-            <Button type="button" onClick={addEtape}><Plus className="size-4" aria-hidden="true" /></Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* L765 — Journal des modifications (audit N55, lecture seule) */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          <SectionTitle label="Journal des modifications" icon={<><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></>}/>
-          <p className="mb-3 text-[11.5px] text-muted-foreground">
-            Derniers changements de paramètres : qui a modifié quoi et quand.
-            Lecture seule.
-          </p>
-          {/* VX233 — feed extrait, filtre dynamique (≥ 6 sections réelles). */}
-          <SettingsAuditFeed />
-        </CardContent>
-      </Card>
-
-      {/* Champs personnalisés */}
-      <Card>
-        <CardContent className="pt-4 sm:pt-5">
-          <SectionTitle label="Champs personnalisés" icon={<><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></>}/>
-          <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-            Ajoutez vos propres champs aux fiches (leads, clients, produits).
-            Ils apparaissent dans le formulaire ; rien n'est perdu si vous en
-            retirez un.
-          </p>
-          <div className="mb-2 flex items-center gap-1.5">
-            <div className="w-[140px]">
-              <Select value={cfModule}
-                      onValueChange={v => { setCfModule(v); loadCfDefs(v); closeCfDist() }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {/* WIR67 — tous les modules enregistrés (plus seulement
-                      lead/client/produit). */}
-                  {CUSTOMFIELD_MODULES.map(m => (
-                    <SelectItem key={m.key} value={m.key}>{m.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {/* L817 — compte des champs définis pour le module courant. */}
-            <span className="text-[11px] text-muted-foreground">
-              {cfDefs.length} champ{cfDefs.length > 1 ? 's' : ''}
-            </span>
-          </div>
-          {/* L817 — état vide explicite quand le module n'a aucun champ. */}
-          {cfDefs.length === 0 ? (
-            <div className="mb-2">
-              <EmptyState
-                title="Aucun champ pour ce module"
-                description="Ajoutez un champ ci-dessous pour l'afficher sur les fiches." />
-            </div>
-          ) : cfDefs.map((d, idx) => (
-            cfEditId === d.id ? (
-              // L809 — éditeur inline (libellé/type/options/obligatoire/visible).
-              <div key={d.id} className="mb-2 rounded-md border border-border p-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Input className="min-w-[140px] flex-[1_1_140px]"
-                         placeholder="Libellé du champ" value={cfEdit?.libelle ?? ''}
-                         onChange={e => setCfEdit(c => ({ ...c, libelle: e.target.value }))} />
-                  <SelectTypeChamp value={cfEdit?.type}
-                                   onValueChange={v => setCfEdit(c => ({ ...c, type: v }))} />
-                  {cfEdit?.type === 'choice' && (
-                    <Input className="min-w-[160px] flex-[1_1_160px]"
-                           placeholder="Options (a, b, c)" value={cfEdit?.options ?? ''}
-                           onChange={e => setCfEdit(c => ({ ...c, options: e.target.value }))} />
-                  )}
-                  <IconButton size="md" variant="outline" label="Enregistrer"
-                              onClick={() => saveCfEdit(d)}>
-                    <Check className="size-4" aria-hidden="true" />
-                  </IconButton>
-                  <IconButton size="md" variant="outline" label="Annuler"
-                              onClick={cancelCfEdit}>
-                    <X className="size-4" aria-hidden="true" />
-                  </IconButton>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-3 text-[11.5px] text-muted-foreground">
-                  {/* Code non modifiable : protégé serveur dès qu'une donnée existe (L814). */}
-                  <span>Code : <code>{d.code}</code></span>
-                  <label className="flex items-center gap-1.5">
-                    <Checkbox checked={!!cfEdit?.obligatoire}
-                              onCheckedChange={v => setCfEdit(c => ({ ...c, obligatoire: !!v }))} />
-                    Obligatoire
-                  </label>
-                  <label className="flex items-center gap-1.5">
-                    <Checkbox checked={!!cfEdit?.visible_liste}
-                              onCheckedChange={v => setCfEdit(c => ({ ...c, visible_liste: !!v }))} />
-                    Visible en liste
-                  </label>
-                </div>
-              </div>
-            ) : (
-              <div key={d.id}
-                   className={`mb-1.5 flex items-center gap-1.5 ${d.actif ? '' : 'opacity-50'}`}>
-                {/* L813 — réordonner (haut/bas). */}
-                <div className="flex flex-col">
-                  <IconButton size="sm" variant="ghost" label="Monter"
-                              disabled={idx === 0} onClick={() => moveCf(d, -1)}>
-                    <ChevronUp className="size-3.5" aria-hidden="true" />
-                  </IconButton>
-                  <IconButton size="sm" variant="ghost" label="Descendre"
-                              disabled={idx === cfDefs.length - 1} onClick={() => moveCf(d, 1)}>
-                    <ChevronDown className="size-3.5" aria-hidden="true" />
-                  </IconButton>
-                </div>
-                <span className="flex-1 text-sm text-foreground">
-                  {d.libelle}{d.obligatoire ? ' *' : ''}
-                </span>
-                {d.visible_liste && <Badge tone="outline">Liste</Badge>}
-                <span className="text-[11px] text-muted-foreground">{d.type}</span>
-                {/* L810 — toggle actif/inactif (soft-disable, custom_data conservé). */}
-                <Switch checked={!!d.actif} onCheckedChange={() => toggleCfActif(d)}
-                        aria-label={d.actif ? 'Désactiver le champ' : 'Réactiver le champ'} />
-                {/* WIR101 — répartition (group-by) pour les champs listables. */}
-                {d.visible_liste && (
-                  <IconButton size="md" variant="outline" label="Voir la répartition"
-                              onClick={() => openCfDist(d)}>
-                    <BarChart3 className="size-4" aria-hidden="true" />
-                  </IconButton>
-                )}
-                <IconButton size="md" variant="outline" label="Modifier le champ"
-                            onClick={() => openCfEdit(d)}>
-                  <Pencil className="size-4" aria-hidden="true" />
+              <span className="flex-1 text-sm text-foreground">
+                {d.libelle}{d.obligatoire ? ' *' : ''}
+              </span>
+              {d.visible_liste && <Badge tone="outline">Liste</Badge>}
+              <span className="text-[11px] text-muted-foreground">{d.type}</span>
+              {/* L810 — toggle actif/inactif (soft-disable, custom_data conservé). */}
+              <Switch checked={!!d.actif} onCheckedChange={() => toggleCfActif(d)}
+                      aria-label={d.actif ? 'Désactiver le champ' : 'Réactiver le champ'} />
+              {/* WIR101 — répartition (group-by) pour les champs listables. */}
+              {d.visible_liste && (
+                <IconButton size="md" variant="outline" label="Voir la répartition"
+                            onClick={() => openCfDist(d)}>
+                  <BarChart3 className="size-4" aria-hidden="true" />
                 </IconButton>
-                <BoutonSupprimerLigne size="md" label="Supprimer le champ"
-                                      onClick={() => delCf(d)} />
-              </div>
-            )
-          ))}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Input className="min-w-[140px] flex-[1_1_140px]" placeholder="Libellé du champ"
-                   value={newCf.libelle} onChange={e => setNewCf(c => ({ ...c, libelle: e.target.value }))} />
-            <SelectTypeChamp value={newCf.type}
-                             onValueChange={v => setNewCf(c => ({ ...c, type: v }))} />
-            {newCf.type === 'choice' && (
-              <Input className="min-w-[160px] flex-[1_1_160px]" placeholder="Options (a, b, c)"
-                     value={newCf.options} onChange={e => setNewCf(c => ({ ...c, options: e.target.value }))} />
-            )}
-            {/* L811 — obligatoire à la création ; L812 — visible en liste. */}
-            <label className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-              <Checkbox checked={!!newCf.obligatoire}
-                        onCheckedChange={v => setNewCf(c => ({ ...c, obligatoire: !!v }))} />
-              Obligatoire
-            </label>
-            <label className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
-              <Checkbox checked={!!newCf.visible_liste}
-                        onCheckedChange={v => setNewCf(c => ({ ...c, visible_liste: !!v }))} />
-              Visible en liste
-            </label>
-            <Button type="button" onClick={addCf}><Plus className="size-4" aria-hidden="true" /></Button>
-          </div>
-
-          {/* WIR101 — panneau de répartition d'un champ listable (group-by FG94). */}
-          {cfDist && (
-            <div className="mt-4 rounded-md border border-border p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-foreground">
-                  Répartition — {cfDist.libelle}
-                </span>
-                <div className="flex items-center gap-1.5">
-                  <Button type="button" variant="outline" size="sm"
-                          disabled={cfDistBusy || !cfDist.rows || cfDist.rows.length === 0}
-                          onClick={exportCfDist}>
-                    <Download className="size-3.5" aria-hidden="true" /> Excel
-                  </Button>
-                  <IconButton size="md" variant="ghost" label="Fermer" onClick={closeCfDist}>
-                    <X className="size-4" aria-hidden="true" />
-                  </IconButton>
-                </div>
-              </div>
-              {cfDist.error ? (
-                <p className="text-sm text-muted-foreground">Répartition indisponible.</p>
-              ) : cfDist.rows === null ? (
-                <p className="text-sm text-muted-foreground">Chargement…</p>
-              ) : cfDist.rows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune valeur pour ce champ.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-[11.5px] uppercase text-muted-foreground">
-                      <th className="py-1">Valeur</th>
-                      <th className="py-1 text-right">Nombre</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cfDist.rows.map((r) => (
-                      <tr key={r.valeur} className="border-t border-border/60">
-                        <td className="py-1.5">{r.valeur}</td>
-                        <td className="py-1.5 text-right tabular-nums">{r.count}</td>
-                      </tr>
-                    ))}
-                    <tr className="border-t border-border font-medium">
-                      <td className="py-1.5">Total</td>
-                      <td className="py-1.5 text-right tabular-nums">{cfDist.total}</td>
-                    </tr>
-                  </tbody>
-                </table>
               )}
+              <IconButton size="md" variant="outline" label="Modifier le champ"
+                          onClick={() => openCfEdit(d)}>
+                <Pencil className="size-4" aria-hidden="true" />
+              </IconButton>
+              <BoutonSupprimerLigne size="md" label="Supprimer le champ"
+                                    onClick={() => delCf(d)} />
             </div>
+          )
+        ))}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Input className="min-w-[140px] flex-[1_1_140px]" placeholder="Libellé du champ"
+                 value={newCf.libelle} onChange={e => setNewCf(c => ({ ...c, libelle: e.target.value }))} />
+          <SelectTypeChamp value={newCf.type}
+                           onValueChange={v => setNewCf(c => ({ ...c, type: v }))} />
+          {newCf.type === 'choice' && (
+            <Input className="min-w-[160px] flex-[1_1_160px]" placeholder="Options (a, b, c)"
+                   value={newCf.options} onChange={e => setNewCf(c => ({ ...c, options: e.target.value }))} />
           )}
-        </CardContent>
-      </Card>
+          {/* L811 — obligatoire à la création ; L812 — visible en liste. */}
+          <label className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+            <Checkbox checked={!!newCf.obligatoire}
+                      onCheckedChange={v => setNewCf(c => ({ ...c, obligatoire: !!v }))} />
+            Obligatoire
+          </label>
+          <label className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+            <Checkbox checked={!!newCf.visible_liste}
+                      onCheckedChange={v => setNewCf(c => ({ ...c, visible_liste: !!v }))} />
+            Visible en liste
+          </label>
+          <Button type="button" onClick={addCf}><Plus className="size-4" aria-hidden="true" /></Button>
+        </div>
+
+        {/* WIR101 — panneau de répartition d'un champ listable (group-by FG94). */}
+        {cfDist && (
+          <div className="mt-4 rounded-md border border-border p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-sm font-medium text-foreground">
+                Répartition — {cfDist.libelle}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <Button type="button" variant="outline" size="sm"
+                        disabled={cfDistBusy || !cfDist.rows || cfDist.rows.length === 0}
+                        onClick={exportCfDist}>
+                  <Download className="size-3.5" aria-hidden="true" /> Excel
+                </Button>
+                <IconButton size="md" variant="ghost" label="Fermer" onClick={closeCfDist}>
+                  <X className="size-4" aria-hidden="true" />
+                </IconButton>
+              </div>
+            </div>
+            {cfDist.error ? (
+              <p className="text-sm text-muted-foreground">Répartition indisponible.</p>
+            ) : cfDist.rows === null ? (
+              <p className="text-sm text-muted-foreground">Chargement…</p>
+            ) : cfDist.rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune valeur pour ce champ.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-[11.5px] uppercase text-muted-foreground">
+                    <th className="py-1">Valeur</th>
+                    <th className="py-1 text-right">Nombre</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cfDist.rows.map((r) => (
+                    <tr key={r.valeur} className="border-t border-border/60">
+                      <td className="py-1.5">{r.valeur}</td>
+                      <td className="py-1.5 text-right tabular-nums">{r.count}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t border-border font-medium">
+                    <td className="py-1.5">Total</td>
+                    <td className="py-1.5 text-right tabular-nums">{cfDist.total}</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </CarteContenu>
     </>
   )
 }

@@ -16,6 +16,7 @@ import { BarArrondie, ChartEmpty } from '../ui/charts'
 import { PageHeader } from '../ui/PageHeader'
 import { formatDateTime, formatNumber } from '../lib/format'
 import { downloadBlobInGesture, stampedFilename } from '../utils/downloadBlob'
+import { TableauLignes } from '../ui/TableauDefilant'
 
 /* Journal d'activité (Feature G) — réservé au Directeur par défaut
    (permission « journal_activite_voir », octroyable dans Paramètres → Rôles).
@@ -145,24 +146,22 @@ function AsOfDialog({ contentType, objectId, label, open, onOpenChange }) {
               description="Aucun historique structuré n'est disponible pour cet objet à cette date."
               className="py-6" />
           ) : (
-            <div className="max-w-full overflow-x-auto rounded-lg border border-border">
-              <table className="w-full border-collapse text-sm">
+            <TableauLignes enveloppe="max-w-full overflow-x-auto rounded-lg border border-border" className="w-full border-collapse text-sm"
+              tete={(
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Champ</th>
                     <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Valeur à cette date</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {fields.map(([field, value]) => (
-                    <tr key={field} className="border-b border-border/60 last:border-b-0">
-                      <td className="px-3 py-2 font-medium text-foreground">{field}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{value === null || value === '' ? '—' : String(value)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {fields.map(([field, value]) => (
+                <tr key={field} className="border-b border-border/60 last:border-b-0">
+                  <td className="px-3 py-2 font-medium text-foreground">{field}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{value === null || value === '' ? '—' : String(value)}</td>
+                </tr>
+              ))}
+            </TableauLignes>
           )}
         </div>
         <DialogFooter>
@@ -526,8 +525,8 @@ export default function Journal() {
 
           {/* Table */}
           <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] border-collapse text-sm">
+            <TableauLignes enveloppe="overflow-x-auto" className="w-full min-w-[640px] border-collapse text-sm"
+              tete={(
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Date / heure</th>
@@ -538,53 +537,51 @@ export default function Journal() {
                     <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Historique</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {loading && !entries ? (
-                    Array.from({ length: 6 }).map((u, i) => (
-                      <tr key={i} className="border-b border-border/60">
-                        <td className="px-4 py-2.5" colSpan={6}><Skeleton className="h-4 w-full" /></td>
-                      </tr>
-                    ))
-                  ) : !entries || entries.length === 0 ? (
-                    <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune entrée pour ces filtres.</td></tr>
-                  ) : (
-                    entries.map((e) => {
-                      // VX236 — MODEL_ROUTES est désormais `(objectId) => path` :
-                      // le lien pointe sur CET enregistrement précis quand un
-                      // deep-link existe, jamais seulement la liste nue.
-                      const routeFn = MODEL_ROUTES[e.model]
-                      const route = routeFn && e.object_id ? routeFn(e.object_id) : null
-                      // YHARD3 — content_type "app_label.model" (`module` sert
-                      // en fait l'app_label côté serializer, cf. auditApi).
-                      const contentType = e.module && e.model ? `${e.module}.${e.model}` : null
-                      return (
-                        <tr key={e.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
-                          <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
-                            {e.timestamp_local ? formatDateTime(e.timestamp_local) : '—'}
-                          </td>
-                          <td className="px-4 py-2.5 text-foreground">{e.utilisateur}</td>
-                          <td className="px-4 py-2.5"><Badge tone="info">{e.action_label}</Badge></td>
-                          <td className="px-4 py-2.5">
-                            {e.object_repr
-                              ? (route
-                                  ? <Link to={route} className="text-primary hover:underline">{e.object_repr}</Link>
-                                  : <span className="text-foreground">{e.object_repr}</span>)
-                              : <span className="text-muted-foreground">—</span>}
-                          </td>
-                          <td className="px-4 py-2.5 text-muted-foreground">{e.detail || '—'}</td>
-                          <td className="px-4 py-2.5">
-                            {contentType && e.object_id ? (
-                              <AsOfTrigger contentType={contentType} objectId={e.object_id}
-                                label={e.object_repr || `${e.model} #${e.object_id}`} />
-                            ) : <span className="text-muted-foreground">—</span>}
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+              )}>
+              {loading && !entries ? (
+                Array.from({ length: 6 }).map((u, i) => (
+                  <tr key={i} className="border-b border-border/60">
+                    <td className="px-4 py-2.5" colSpan={6}><Skeleton className="h-4 w-full" /></td>
+                  </tr>
+                ))
+              ) : !entries || entries.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune entrée pour ces filtres.</td></tr>
+              ) : (
+                entries.map((e) => {
+                  // VX236 — MODEL_ROUTES est désormais `(objectId) => path` :
+                  // le lien pointe sur CET enregistrement précis quand un
+                  // deep-link existe, jamais seulement la liste nue.
+                  const routeFn = MODEL_ROUTES[e.model]
+                  const route = routeFn && e.object_id ? routeFn(e.object_id) : null
+                  // YHARD3 — content_type "app_label.model" (`module` sert
+                  // en fait l'app_label côté serializer, cf. auditApi).
+                  const contentType = e.module && e.model ? `${e.module}.${e.model}` : null
+                  return (
+                    <tr key={e.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
+                      <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
+                        {e.timestamp_local ? formatDateTime(e.timestamp_local) : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-foreground">{e.utilisateur}</td>
+                      <td className="px-4 py-2.5"><Badge tone="info">{e.action_label}</Badge></td>
+                      <td className="px-4 py-2.5">
+                        {e.object_repr
+                          ? (route
+                              ? <Link to={route} className="text-primary hover:underline">{e.object_repr}</Link>
+                              : <span className="text-foreground">{e.object_repr}</span>)
+                          : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{e.detail || '—'}</td>
+                      <td className="px-4 py-2.5">
+                        {contentType && e.object_id ? (
+                          <AsOfTrigger contentType={contentType} objectId={e.object_id}
+                            label={e.object_repr || `${e.model} #${e.object_id}`} />
+                        ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </TableauLignes>
             {count > pageSize && (
               <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-3 text-sm">
                 <span className="text-muted-foreground">
@@ -631,8 +628,8 @@ export default function Journal() {
                   description="Aucun évènement de sécurité pour ces filtres."
                 />
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[520px] border-collapse text-sm">
+                <TableauLignes enveloppe="overflow-x-auto" className="w-full min-w-[520px] border-collapse text-sm"
+                  tete={(
                     <thead>
                       <tr className="border-b border-border bg-muted/40">
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Date / heure</th>
@@ -641,20 +638,18 @@ export default function Journal() {
                         <th className="px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground">Détail</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {secEvents.map((ev) => (
-                        <tr key={ev.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
-                          <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
-                            {ev.timestamp_local ? formatDateTime(ev.timestamp_local) : '—'}
-                          </td>
-                          <td className="px-4 py-2.5 text-foreground">{ev.utilisateur}</td>
-                          <td className="px-4 py-2.5"><Badge tone="info">{ev.action_label}</Badge></td>
-                          <td className="px-4 py-2.5 text-muted-foreground">{ev.detail || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                  )}>
+                  {secEvents.map((ev) => (
+                    <tr key={ev.id} className="border-b border-border/60 last:border-b-0 hover:bg-accent/40">
+                      <td className="px-4 py-2.5 whitespace-nowrap text-muted-foreground">
+                        {ev.timestamp_local ? formatDateTime(ev.timestamp_local) : '—'}
+                      </td>
+                      <td className="px-4 py-2.5 text-foreground">{ev.utilisateur}</td>
+                      <td className="px-4 py-2.5"><Badge tone="info">{ev.action_label}</Badge></td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{ev.detail || '—'}</td>
+                    </tr>
+                  ))}
+                </TableauLignes>
               )}
             </CardContent>
           </Card>

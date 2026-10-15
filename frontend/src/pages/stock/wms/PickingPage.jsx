@@ -3,6 +3,7 @@ import { Button, Input } from '../../../ui'
 import { EnteteStock, BandeauxStock } from '../EnteteStock'
 import pickingApi from '../../../features/stock/api/pickingApi'
 import { messageServeur } from '../../../features/stock/api/erreurs'
+import TableauDefilant from '../../../ui/TableauDefilant'
 
 /* ASTK217 — Picking : créer une vague, la lancer, configurer sa libération,
    prélever ligne par ligne, tâche-retour ; onglets Comptages tournants
@@ -85,24 +86,22 @@ function CarteVague({ vague, geste, occupe }) {
           </Button>
         )}
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[32rem]">
-          <thead><tr>
-            {['Produit', 'Casier', 'Prélevé', ''].map((h) => (
-              <th key={h} className="px-2 py-1.5 text-left text-xs font-semibold text-[var(--muted-foreground)]">{h}</th>
-            ))}
-          </tr></thead>
-          <tbody>
-            {vague.lignes.map((l) => (
-              <LigneVague
-                key={l.id} vague={vague} ligne={l} occupe={occupe}
-                onPrelever={(vId, lId, q) => geste(
-                  () => pickingApi.prelever(vId, lId, q), 'Prélèvement impossible.')}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <TableauDefilant enveloppe="overflow-x-auto" className="w-full min-w-[32rem]">
+        <thead><tr>
+          {['Produit', 'Casier', 'Prélevé', ''].map((h) => (
+            <th key={h} className="px-2 py-1.5 text-left text-xs font-semibold text-[var(--muted-foreground)]">{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {vague.lignes.map((l) => (
+            <LigneVague
+              key={l.id} vague={vague} ligne={l} occupe={occupe}
+              onPrelever={(vId, lId, q) => geste(
+                () => pickingApi.prelever(vId, lId, q), 'Prélèvement impossible.')}
+            />
+          ))}
+        </tbody>
+      </TableauDefilant>
       {vague.statut === 'brouillon' && (
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-xs">

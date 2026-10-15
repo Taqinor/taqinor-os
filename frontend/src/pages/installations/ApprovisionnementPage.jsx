@@ -10,6 +10,7 @@ import installationsApi from '../../api/installationsApi'
 import { useT } from '../../i18n'
 import { useFilteredList } from '../../features/installations/chargementListe'
 import ListShell from '../../features/installations/ListeEtat'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    WIR110 — Approvisionnement avancé (consultation, `/chantiers/approvisionnement`).
@@ -27,8 +28,8 @@ import ListShell from '../../features/installations/ListeEtat'
 // déclaratives { key, label, render? }.
 function SimpleTable({ columns, rows, rowKey = (r) => r.id }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="w-full text-sm">
+    <TableauLignes enveloppe="overflow-x-auto rounded-xl border border-border" className="w-full text-sm"
+      tete={(
         <thead>
           <tr className="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
             {columns.map((c) => (
@@ -36,19 +37,17 @@ function SimpleTable({ columns, rows, rowKey = (r) => r.id }) {
             ))}
           </tr>
         </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={rowKey(r)} className="border-b border-border/60 last:border-0">
-              {columns.map((c) => (
-                <td key={c.key} className="px-3 py-2 align-top">
-                  {c.render ? c.render(r) : (r[c.key] ?? '—')}
-                </td>
-              ))}
-            </tr>
+      )}>
+      {rows.map((r) => (
+        <tr key={rowKey(r)} className="border-b border-border/60 last:border-0">
+          {columns.map((c) => (
+            <td key={c.key} className="px-3 py-2 align-top">
+              {c.render ? c.render(r) : (r[c.key] ?? '—')}
+            </td>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </tr>
+      ))}
+    </TableauLignes>
   )
 }
 

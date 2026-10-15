@@ -6,8 +6,10 @@ import PageHeader from '../../components/layout/PageHeader'
 import {
   Badge, Button, Card, CardContent, EmptyState, Input, Label, Segmented,
   Skeleton,
+  CarteContenu,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
+import { TableauLignes } from '../../ui/TableauDefilant'
 
 /* ============================================================================
    WIR104 — Écran unique du cluster réglementaire / mise en service de ventes.
@@ -602,84 +604,82 @@ export default function DossiersReglementairesPage() {
       />
 
       {/* ── WIR224/FG273 — Échéances à venir (alertes d'expiration) ──────── */}
-      <Card className="mb-4">
-        <CardContent>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h2 className="m-0 text-base font-semibold text-foreground">
-              Échéances à venir
-            </h2>
-            <div role="group" aria-label="Filtrer par statut d’alerte"
-                 className="flex flex-wrap items-center gap-1.5">
-              {STATUTS_ALERTE.map((s) => (
-                <Button
-                  key={s.value}
-                  type="button" size="sm"
-                  variant={filtreAlerte === s.value ? 'default' : 'outline'}
-                  aria-pressed={filtreAlerte === s.value}
-                  onClick={() => changerFiltreAlerte(s.value)}
-                >
-                  {s.label}
-                  <Badge tone={s.tone} className="ml-1.5">
-                    {resume?.[s.value] ?? 0}
-                  </Badge>
-                </Button>
-              ))}
-              {filtreAlerte && (
-                <Button type="button" size="sm" variant="ghost"
-                        onClick={() => changerFiltreAlerte(filtreAlerte)}>
-                  Tout afficher
-                </Button>
-              )}
-            </div>
+      <CarteContenu classe="mb-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="m-0 text-base font-semibold text-foreground">
+            Échéances à venir
+          </h2>
+          <div role="group" aria-label="Filtrer par statut d’alerte"
+               className="flex flex-wrap items-center gap-1.5">
+            {STATUTS_ALERTE.map((s) => (
+              <Button
+                key={s.value}
+                type="button" size="sm"
+                variant={filtreAlerte === s.value ? 'default' : 'outline'}
+                aria-pressed={filtreAlerte === s.value}
+                onClick={() => changerFiltreAlerte(s.value)}
+              >
+                {s.label}
+                <Badge tone={s.tone} className="ml-1.5">
+                  {resume?.[s.value] ?? 0}
+                </Badge>
+              </Button>
+            ))}
+            {filtreAlerte && (
+              <Button type="button" size="sm" variant="ghost"
+                      onClick={() => changerFiltreAlerte(filtreAlerte)}>
+                Tout afficher
+              </Button>
+            )}
           </div>
+        </div>
 
-          {calLoading && <Skeleton className="h-20" />}
-          {!calLoading && calError && (
-            <EmptyState
-              title="Calendrier indisponible"
-              description="Les échéances réglementaires n’ont pas pu être chargées."
-            />
-          )}
-          {!calLoading && !calError && echeances.length === 0 && (
-            <EmptyState
-              title="Aucune échéance"
-              description={filtreAlerte
-                ? `Aucune échéance « ${LIBELLE_ALERTE[filtreAlerte]} » pour votre société.`
-                : 'Aucune échéance réglementaire suivie pour votre société.'}
-            />
-          )}
-          {!calLoading && !calError && echeances.length > 0 && (
-            <ul className="m-0 flex list-none flex-col gap-1.5 p-0"
-                aria-label="Échéances réglementaires">
-              {echeances.map((e) => (
-                <li
-                  key={`${e.type}-${e.dossier_id}-${e.date_echeance}-${e.libelle}`}
-                  data-statut={e.statut_alerte}
-                  className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-sm ${
-                    e.statut_alerte === 'expire'
-                      ? 'border-destructive/40 bg-destructive/10'
-                      : 'border-border'
-                  }`}
-                >
-                  <Badge tone={TON_ALERTE[e.statut_alerte] ?? 'neutral'}>
-                    {LIBELLE_ALERTE[e.statut_alerte] ?? e.statut_alerte}
-                  </Badge>
-                  <span className="font-medium text-foreground">{e.libelle}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {e.date_echeance}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {renduJours(e.jours_restants)}
-                  </span>
-                  {e.relance_due && (
-                    <Badge tone="warning">Relance due</Badge>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+        {calLoading && <Skeleton className="h-20" />}
+        {!calLoading && calError && (
+          <EmptyState
+            title="Calendrier indisponible"
+            description="Les échéances réglementaires n’ont pas pu être chargées."
+          />
+        )}
+        {!calLoading && !calError && echeances.length === 0 && (
+          <EmptyState
+            title="Aucune échéance"
+            description={filtreAlerte
+              ? `Aucune échéance « ${LIBELLE_ALERTE[filtreAlerte]} » pour votre société.`
+              : 'Aucune échéance réglementaire suivie pour votre société.'}
+          />
+        )}
+        {!calLoading && !calError && echeances.length > 0 && (
+          <ul className="m-0 flex list-none flex-col gap-1.5 p-0"
+              aria-label="Échéances réglementaires">
+            {echeances.map((e) => (
+              <li
+                key={`${e.type}-${e.dossier_id}-${e.date_echeance}-${e.libelle}`}
+                data-statut={e.statut_alerte}
+                className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-sm ${
+                  e.statut_alerte === 'expire'
+                    ? 'border-destructive/40 bg-destructive/10'
+                    : 'border-border'
+                }`}
+              >
+                <Badge tone={TON_ALERTE[e.statut_alerte] ?? 'neutral'}>
+                  {LIBELLE_ALERTE[e.statut_alerte] ?? e.statut_alerte}
+                </Badge>
+                <span className="font-medium text-foreground">{e.libelle}</span>
+                <span className="tabular-nums text-muted-foreground">
+                  {e.date_echeance}
+                </span>
+                <span className="text-muted-foreground">
+                  {renduJours(e.jours_restants)}
+                </span>
+                {e.relance_due && (
+                  <Badge tone="warning">Relance due</Badge>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CarteContenu>
 
       {vue === 'tableau' && (
         <>
@@ -701,51 +701,47 @@ export default function DossiersReglementairesPage() {
             </p>
           )}
 
-          <Card className="mt-4">
-            <CardContent className="p-0">
-              {loading && <Skeleton className="m-4 h-24" />}
-              {!loading && error && (
-                <EmptyState
-                  title="Chargement impossible"
-                  description={`La ressource « ${courante?.label} » n'a pas pu être chargée.`}
-                />
-              )}
-              {!loading && !error && rows.length === 0 && (
-                <EmptyState
-                  title="Aucun élément"
-                  description={`Aucun enregistrement « ${courante?.label} » (${courante?.tag}) pour votre société.`}
-                />
-              )}
-              {!loading && !error && rows.length > 0 && (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse text-sm"
-                    aria-label={`Liste ${courante?.label}`}>
-                    <thead>
-                      <tr className="border-b border-border">
-                        {colonnes.map((c) => (
-                          <th key={c} scope="col"
-                            className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                            {c.replace(/_/g, ' ')}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((row, i) => (
-                        <tr key={row.id ?? i} className="border-b border-border/60 last:border-b-0">
-                          {colonnes.map((c) => (
-                            <td key={c} className="px-3 py-2 text-foreground">
-                              {rendu(row[c])}
-                            </td>
-                          ))}
-                        </tr>
+          <CarteContenu classe="mt-4" contenu="p-0">
+            {loading && <Skeleton className="m-4 h-24" />}
+            {!loading && error && (
+              <EmptyState
+                title="Chargement impossible"
+                description={`La ressource « ${courante?.label} » n'a pas pu être chargée.`}
+              />
+            )}
+            {!loading && !error && rows.length === 0 && (
+              <EmptyState
+                title="Aucun élément"
+                description={`Aucun enregistrement « ${courante?.label} » (${courante?.tag}) pour votre société.`}
+              />
+            )}
+            {!loading && !error && rows.length > 0 && (
+              <TableauLignes enveloppe="overflow-x-auto" className="w-full border-collapse text-sm"
+                aria-label={`Liste ${courante?.label}`}
+                tete={(
+                  <thead>
+                    <tr className="border-b border-border">
+                      {colonnes.map((c) => (
+                        <th key={c} scope="col"
+                          className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {c.replace(/_/g, ' ')}
+                        </th>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    </tr>
+                  </thead>
+                )}>
+                {rows.map((row, i) => (
+                  <tr key={row.id ?? i} className="border-b border-border/60 last:border-b-0">
+                    {colonnes.map((c) => (
+                      <td key={c} className="px-3 py-2 text-foreground">
+                        {rendu(row[c])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </TableauLignes>
+            )}
+          </CarteContenu>
         </>
       )}
 
