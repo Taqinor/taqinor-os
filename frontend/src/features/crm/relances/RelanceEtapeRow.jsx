@@ -121,7 +121,7 @@ function messageRefus(err) {
     return 'Votre rôle ne permet pas de traiter les relances (responsable ou administrateur requis).'
   }
   const detail = err?.response?.data?.detail
-  if (statut === 400 && typeof detail === 'string' && detail) return detail
+  if ((statut === 400 || statut === 409) && typeof detail === 'string' && detail) return detail
   if (statut >= 500) return 'Le serveur n’a pas pu enregistrer la réponse — réessayez dans un instant.'
   if (!statut) return 'Pas de connexion au serveur — vérifiez le réseau et réessayez.'
   return 'La réponse n’a pas pu être enregistrée — réessayez.'
