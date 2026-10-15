@@ -15,6 +15,7 @@ from .models import (
 from .serializers import _fallback_taux_tva
 from core.champs_stricts import (
     BooleenStrict, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+    DecimalSouple, EntierStrict,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
@@ -319,6 +320,17 @@ class RetenueSubieSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
                             'paiement']
+
+
+class PaiementVentilerRequestSerializer(serializers.Serializer):
+    """CI #1001 (fuzz) — ENTRÉE de `ventiler` : `facture` entier et `montant`
+    décimal > 0 requis, validés ICI (400 sous le champ fautif) au lieu d'un
+    `Decimal(None)` → 500."""
+
+    facture = EntierStrict()
+    montant = DecimalSouple(
+        max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+        error_messages={'min_value': 'Le montant ventilé doit être positif.'})
 
 
 class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
