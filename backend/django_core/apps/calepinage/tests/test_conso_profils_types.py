@@ -15,6 +15,7 @@ from __future__ import annotations
 import unittest
 
 from django.core.exceptions import ValidationError
+from rest_framework.parsers import JSONParser
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.calepinage.services.profils_types import (
@@ -220,6 +221,36 @@ class FormeDuPutTest(unittest.TestCase):
         # de FORME conforme : la validation de forme les laisse passer.
         valider_forme_profils([self._ligne(courbe={'annuel': [0.0] * 24}),
                                self._ligne(cle='MAISON-1')])
+
+
+class PorteDuPutTest(unittest.TestCase):
+    """CI #1001 — la porte ``PUT parametres/profils-types/`` juge la FORME avec
+    ``valider_forme_profils`` AVANT toute société ou base, et ne prend que du
+    JSON (``profils`` est une liste d'objets imbriqués)."""
+
+    @staticmethod
+    def _put(corps):
+        from rest_framework.request import Request
+        from rest_framework.test import APIRequestFactory
+
+        from apps.calepinage.views.consommation import ProfilsTypesView
+
+        requete = Request(APIRequestFactory().put(
+            '/x/', corps, format='json'), parsers=[JSONParser()])
+        return ProfilsTypesView().put(requete)
+
+    def test_la_forme_fautive_est_un_400_qui_nomme_la_ligne(self):
+        reponse = self._put({'profils': [{'libelle': 'sans clé'}]})
+        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(list(reponse.data), ['profils[0].cle'])
+        reponse = self._put({'profils': 'pas une liste'})
+        self.assertEqual((reponse.status_code, list(reponse.data)),
+                         (400, ['profils']))
+
+    def test_le_corps_ne_se_donne_qu_en_json(self):
+        from apps.calepinage.views.consommation import ProfilsTypesView
+
+        self.assertEqual(ProfilsTypesView.parser_classes, [JSONParser])
 
 
 class SchemaDuPutTest(unittest.TestCase):

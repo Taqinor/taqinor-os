@@ -30,7 +30,7 @@ from ..serializers_conso import (
 )
 from ..services.profils_types import (
     ProfilEnConflit, ProfilInvalide, enregistrer_profils, profil_depuis_import,
-    profils_de_societe,
+    profils_de_societe, valider_forme_profils,
 )
 from .calepinages import CalepinageViewSet
 
@@ -41,6 +41,9 @@ class ProfilsTypesView(APIView):
     """Les profils types de consommation de la société de l'appelant."""
 
     permission_classes = [ScopedPermission]
+    # Corps JSON SEUL : ``profils`` est une liste d'objets imbriqués, que ni un
+    # formulaire multipart (parts texte) ni urlencoded ne portent.
+    parser_classes = [JSONParser]
     read_permission = CAL_VOIR
     write_permission = CAL_GERER
 
@@ -70,6 +73,9 @@ class ProfilsTypesView(APIView):
                      [str(refus)]}, status=status.HTTP_400_BAD_REQUEST)
             return Response({'profils': profils_de_societe(company)})
         try:
+            # La FORME d'abord, toute seule (400 nommant ``profils[<rang>].<champ>``) :
+            # le prédicat que le schéma du ``PUT`` publie.
+            valider_forme_profils(corps.get('profils'))
             profils = enregistrer_profils(
                 company, corps.get('profils'), utilisateur=request.user)
         except ProfilInvalide as refus:
