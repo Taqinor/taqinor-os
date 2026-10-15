@@ -25,7 +25,6 @@ API rejected schema-compliant request|GET /api/django/installations/intervention
 API rejected schema-compliant request|GET /api/django/installations/interventions/planning-camionnettes/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|GET /api/django/stock/produits/tracabilite/
-API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-tickets/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/sessions-comptage/{id}/
@@ -48,8 +47,6 @@ API rejected schema-compliant request|POST /api/django/calepinage/calepinages/{i
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/calculer/
 API rejected schema-compliant request|POST /api/django/calepinage/moteur/pose/
 API rejected schema-compliant request|POST /api/django/calepinage/parametres/suggestion-pente/
-API rejected schema-compliant request|POST /api/django/crm/leads/
-API rejected schema-compliant request|POST /api/django/crm/relance-etapes/{id}/fait/
 API rejected schema-compliant request|POST /api/django/facturation/factures/consolider/
 API rejected schema-compliant request|POST /api/django/facturation/factures/encaissement-groupe/
 API rejected schema-compliant request|POST /api/django/facturation/factures/{id}/relancer/
@@ -158,7 +155,6 @@ API rejected schema-compliant request|POST /api/django/ventes/factures/{id}/reto
 API rejected schema-compliant request|POST /api/django/ventes/paiements/factures/{facture_id}/paiement-avec-retenue/
 API rejected schema-compliant request|POST /api/django/ventes/plans-commission/
 API rejected schema-compliant request|POST /api/django/ventes/promesses-paiement/
-API rejected schema-compliant request|PUT /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/programme-tickets/{id}/
 API rejected schema-compliant request|PUT /api/django/installations/recettes-commissioning/{id}/
