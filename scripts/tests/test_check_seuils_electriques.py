@@ -25,7 +25,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_seuils_electriques as g  # noqa: E402
+import check_seuils_electriques as g  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def write(path: Path, text: str) -> Path:

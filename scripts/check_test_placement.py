@@ -28,9 +28,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_forme_code as cfc  # noqa: E402
-from check_taches_cablage import charger_ids_v2  # noqa: E402
-from forme_code.socle import Contexte, Echec, alias, lire_blobs  # noqa: E402
+import check_forme_code as cfc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from check_taches_cablage import charger_ids_v2  # noqa: E402 — après sys.path/setup() (D-ENF22)
+from forme_code.socle import Contexte, Echec, alias, lire_blobs  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 TYPE_DE_CLE = "par_symbole"  # sans objet : aucune baseline, la garde juge le diff seul
 NOM_TEST = re.compile(r"^(?:tests?_.+|.+_test)\.py$|^tests\.py$|\.(?:test|spec)\.[cm]?[jt]sx?$", re.I)

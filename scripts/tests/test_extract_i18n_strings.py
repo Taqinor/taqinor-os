@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import extract_i18n_strings as eis  # noqa: E402
+import extract_i18n_strings as eis  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 class HasFrenchHintTests(unittest.TestCase):

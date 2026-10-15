@@ -18,7 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_plan_taches_mixtes as mixtes  # noqa: E402
+import check_plan_taches_mixtes as mixtes  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def ecrire(chemin: Path, texte: str) -> Path:

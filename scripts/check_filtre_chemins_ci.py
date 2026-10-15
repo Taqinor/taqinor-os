@@ -25,7 +25,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE / "tests"))
-import test_ci_changes_filter as filtre  # noqa: E402
+import test_ci_changes_filter as filtre  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 _LITTERAL = re.compile(r"""(['"`])((?:\\.|(?!\1)[^\\\n])*)\1""")
 _APPEL_CHEMIN = re.compile(r"\b(?:join|resolve)\(([^()]*(?:\([^()]*\)[^()]*)*)\)")

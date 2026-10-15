@@ -81,8 +81,8 @@ TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (ja
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import check_taches_cablage as ctc  # noqa: E402
-import plan_lanes  # noqa: E402
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import plan_lanes  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 DOSSIER = "docs/audits/acceptation"
 VERDICTS = ("PASS", "FAIL")

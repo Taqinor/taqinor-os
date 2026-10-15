@@ -22,8 +22,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_api_contract as contract  # noqa: E402
-import check_ecrans_atteignables as cea  # noqa: E402
+import check_api_contract as contract  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_ecrans_atteignables as cea  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def write(path: Path, text: str) -> Path:

@@ -99,7 +99,7 @@ def check_health(base_url, headers):
         elapsed_ms, code = _get(base_url + HEALTH_PATH, headers, timeout=10)
         if code != 200:
             return 'unknown'
-    except Exception:  # noqa: BLE001 — best-effort, la sonde s'arrete si doute
+    except Exception:  # noqa: BLE001 — best-effort, la sonde s'arrete si doute (D-ENF22-BLE001)
         return 'unknown'
     # /core/health/ (SystemStatusViewSet) exige une auth ; sans jeton valide
     # on ne peut pas lire le corps -> on retombe sur les probes /live//ready/
@@ -108,7 +108,7 @@ def check_health(base_url, headers):
         elapsed_ms, code = _get(base_url + '/api/django/core/health/ready/',
                                 headers={}, timeout=10)
         return 'ok' if code == 200 else 'degraded'
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — sonde réseau : l'échec est compté/rapporté (D-ENF22-BLE001)
         return 'unknown'
 
 
@@ -121,7 +121,7 @@ def run_probe(base_url, path, headers, duration_s, concurrency):
         try:
             elapsed_ms, _code = _get(url, headers)
             return elapsed_ms
-        except Exception:  # noqa: BLE001 — erreur reseau comptee, pas fatale
+        except Exception:  # noqa: BLE001 — erreur reseau comptee, pas fatale (D-ENF22-BLE001)
             return None
 
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -163,7 +163,7 @@ def run_pdf_concurrency_probe(base_url, token, headers, max_concurrency=8):
             for fut in as_completed(futures):
                 try:
                     fut.result()
-                except Exception:  # noqa: BLE001
+                except Exception:  # noqa: BLE001 — sonde réseau : l'échec est compté/rapporté (D-ENF22-BLE001)
                     return {'max_concurrency_reached': n - 1,
                             'stopped_reason': 'erreur reseau'}
     return {'max_concurrency_reached': max_concurrency, 'stopped_reason': 'plafond sonde atteint'}

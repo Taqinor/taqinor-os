@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_liste_page1 as guard  # noqa: E402
+import check_liste_page1 as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 PAGE1 = """
 import api from '../../api/axios'

@@ -7,8 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import _cliquet  # noqa: E402
-import check_saisies_electriques_branchees as guard  # noqa: E402
+import _cliquet  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import check_saisies_electriques_branchees as guard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ELECTRIQUE = "CHAMPS_ENTREE = (\n    'alpha',\n    'beta',\n)\n"
 PARAMETRES = (

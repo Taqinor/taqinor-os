@@ -29,8 +29,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_taches_cablage as ctc  # noqa: E402
-import plan_lanes  # noqa: E402
+import check_taches_cablage as ctc  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import plan_lanes  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 DECISIONS = "docs/audits/decisions.yml"
 GLOB_PLANS = "PLAN_AUDIT_*.md"

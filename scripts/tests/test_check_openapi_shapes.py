@@ -20,7 +20,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_openapi_shapes as cos  # noqa: E402
+import check_openapi_shapes as cos  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def ecrire(base: Path, chemin: str, texte: str) -> Path:

@@ -25,7 +25,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DJANGO_ROOT = os.path.join(REPO_ROOT, "backend", "django_core")
 
 sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
-import ci_shard  # noqa: E402
+import ci_shard  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def find_shadowed_apps(django_root: str = DJANGO_ROOT) -> list[str]:

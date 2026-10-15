@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_services_appeles as csa  # noqa: E402
+import check_services_appeles as csa  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 MOTEUR = "backend/django_core/apps/ventes/quote_engine"
 

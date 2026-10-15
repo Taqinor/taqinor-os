@@ -10,7 +10,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import verifier_sortie_unittest as v  # noqa: E402
+import verifier_sortie_unittest as v  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 SORTIE_SAINE = """test_a (tests.test_x.T.test_a) ... ok
 ----------------------------------------------------------------------

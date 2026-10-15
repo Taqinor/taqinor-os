@@ -62,7 +62,7 @@ FRONT_SRC = ROOT / "frontend" / "src"
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from check_api_contract import scan_js  # noqa: E402
+from check_api_contract import scan_js  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 # `// source-choix: rh.DossierEmploye.motif_sortie`
 # `// source-choix: installations.Installation.type_installation +__none__`

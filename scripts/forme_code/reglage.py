@@ -15,7 +15,7 @@ from pathlib import Path, PurePosixPath
 from .socle import DJANGO, Constat, lire_blobs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import check_settings_declares as csd  # noqa: E402
+import check_settings_declares as csd  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def _lues(fichier) -> set:

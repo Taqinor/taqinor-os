@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import check_contrats_calepinage_deux_moities as ccm  # noqa: E402
+import check_contrats_calepinage_deux_moities as ccm  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 def write(path: Path, text: str) -> Path:

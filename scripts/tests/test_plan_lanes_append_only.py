@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import plan_lanes as pl  # noqa: E402
+import plan_lanes as pl  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 
 #: Les quatre suffixes posés par CALX2, et le chemin RÉEL du dépôt que chacun

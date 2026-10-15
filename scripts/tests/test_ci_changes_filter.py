@@ -196,7 +196,7 @@ class CiChangesFilterTest(unittest.TestCase):
 # `changes` n'est pas `success` (checkout transitoire, timeout 5 min), tandis qu'un
 # saut par filtre de chemins reste vert. Emulation minimale de la semantique des `if`.
 # ---------------------------------------------------------------------------
-import yaml  # noqa: E402
+import yaml  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 REQUIS_ALIMENTES_PAR_CHANGES = ("backend-lint", "backend-tests", "frontend-lint", "e2e",
                                 "web-build-test")

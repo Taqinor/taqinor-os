@@ -66,7 +66,7 @@ PARKED_PY = Path("backend") / "django_core" / "core" / "parked.py"
 
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
-import plan_lanes as PL  # noqa: E402  (grammaire des tâches + mini-YAML)
+import plan_lanes as PL  # noqa: E402 — grammaire des tâches + mini-YAML (D-ENF22)
 
 #: Fichiers plan scannés par la règle (b) — tout fichier plan du dépôt.
 PLAN_GLOBS = (

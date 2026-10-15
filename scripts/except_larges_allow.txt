@@ -8,8 +8,6 @@ backend/django_core/apps/calepinage/services/chaine_pertes.py::_part_saisonniere
 backend/django_core/apps/calepinage/services/electrique.py::_depuis_fournisseur
 backend/django_core/apps/calepinage/services/electrique.py::_nom_auteur
 backend/django_core/apps/calepinage/services/electrique.py::parametres_societe
-backend/django_core/apps/crm/fiche_bulk.py::apply_bulk_action
-backend/django_core/apps/crm/views.py::LeadViewSet._a_un_changement
 backend/django_core/apps/ged/services.py::_administrateurs_societe
 backend/django_core/apps/ged/services.py::_certificat_societe_pour_scellement
 backend/django_core/apps/ged/services.py::_decoder_barcode
@@ -29,9 +27,7 @@ backend/django_core/apps/ged/services.py::chunk_text
 backend/django_core/apps/ged/services.py::classer_document
 backend/django_core/apps/ged/services.py::classer_ia
 backend/django_core/apps/ged/services.py::classer_signature_completee
-backend/django_core/apps/ged/services.py::creer_lot_envoi_signature
 backend/django_core/apps/ged/services.py::enregistrer_echec_signature_publique
-backend/django_core/apps/ged/services.py::envoyer_code_otp_signataire
 backend/django_core/apps/ged/services.py::executer_demande_disposition
 backend/django_core/apps/ged/services.py::importer_en_masse
 backend/django_core/apps/ged/services.py::index_document_chunks
@@ -67,11 +63,6 @@ backend/django_core/apps/installations/services.py::default_installer_for
 backend/django_core/apps/installations/services.py::methode_reservation_stock
 backend/django_core/apps/installations/services.py::verifier_gate_acompte_planification
 backend/django_core/apps/installations/services.py::verifier_securite_avant_demarrage
-backend/django_core/apps/sav/models.py::ContratMaintenance.prochaine_visite
-backend/django_core/apps/sav/selectors.py::_jour_ouvre
-backend/django_core/apps/sav/selectors.py::_revenu_contrat_maintenance
-backend/django_core/apps/sav/selectors.py::pareto_pannes._fournisseur_for
-backend/django_core/apps/sav/services.py::_delai_intervention_societe
 backend/django_core/apps/sav/services.py::_notifier_demande_contrat_maintenance
 backend/django_core/apps/sav/services.py::creer_equipement_import
 backend/django_core/apps/sav/services.py::suggerer_triage_ticket
@@ -79,14 +70,5 @@ backend/django_core/apps/sav/views.py::EquipementViewSet.etiquettes
 backend/django_core/apps/sav/views.py::TicketViewSet.creer_devis
 backend/django_core/apps/sav/views.py::WarrantyClaimViewSet._resolve_fournisseur
 backend/django_core/apps/sav/views.py::_qr_data_uri
-backend/django_core/core/models.py::MaintenanceMode.is_active
-backend/django_core/core/models.py::MaintenanceMode.set_active
 backend/django_core/core/models.py::MatriceApprobation.couvre
-backend/django_core/core/views.py::BulkEditViewSet.get_permissions
-backend/django_core/core/views.py::metrics_view
-backend/django_core/apps/ventes/etude_horaire.py::_reglages_tarifaires
-backend/django_core/apps/ventes/public_views.py::_octets_pdf_signe
-backend/django_core/apps/ventes/public_views.py::proposal_pdf
-backend/django_core/apps/ventes/public_views.py::proposal_taille_detail
-backend/django_core/apps/ventes/public_views.py::public_bcf_document
 backend/django_core/apps/ventes/public_views.py::public_document

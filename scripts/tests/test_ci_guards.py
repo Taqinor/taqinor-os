@@ -30,8 +30,8 @@ from contextlib import redirect_stdout
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
 
-import ci_guards  # noqa: E402
-import ci_fast_gate_steps  # noqa: E402
+import ci_guards  # noqa: E402 — après sys.path/setup() (D-ENF22)
+import ci_fast_gate_steps  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 _SCRIPT_RE = re.compile(r"python\s+(?:-\S+\s+)*scripts/([\w_]+\.py)")
 _UNITTEST_RE = re.compile(r"python\s+-m\s+unittest\s+scripts\.tests\.([\w_]+)")

@@ -30,7 +30,7 @@ from pathlib import Path
 TYPE_DE_CLE = "par_symbole"  # AMET100 — cle de contenu `fichier::symbole` (jamais un numero de ligne)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _cliquet  # noqa: E402
+import _cliquet  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = Path("backend") / "django_core" / "apps" / "calepinage"
