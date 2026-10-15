@@ -22,8 +22,9 @@ import { ModuleDashboard } from '../../ui/module'
 import { AreaSansAxe, ChartEmpty } from '../../ui/charts'
 import MonitoringNav from './MonitoringNav'
 import { buildProductionChartData } from './ProductionPage.helpers'
+import { todayLocalIso } from '../../lib/dateLocale'
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () => todayLocalIso()
 
 export default function ProductionPage() {
   const { confirmDelete } = useConfirmDialog()

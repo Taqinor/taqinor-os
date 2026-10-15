@@ -10,13 +10,14 @@ import { formatDate, formatPercent } from '../../lib/format'
 import MonitoringNav from './MonitoringNav'
 import SystemPicker from './SystemPicker'
 import useSupervisedSystems from './useSupervisedSystems'
+import { todayLocalIso } from '../../lib/dateLocale'
 
 /* WR7 — Journal de nettoyages + évaluation de salissure (FG283).
    Liste et enregistre les nettoyages (bornes pour l'estimation d'encrassement)
    d'un système, et affiche l'évaluation de salissure (chute de PR + reco de
    nettoyage) depuis /monitoring/configs/{id}/soiling/. */
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () => todayLocalIso()
 
 export default function CleaningsPage() {
   const { confirmDelete } = useConfirmDialog()

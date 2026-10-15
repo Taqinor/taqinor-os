@@ -63,6 +63,7 @@ import { formatDate } from '../../lib/format'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import useWakeLock from '../../hooks/useWakeLock'
+import { todayLocalIso } from '../../lib/dateLocale'
 
 // VX105 — clés de persistance de session (survit à un backgrounding suivi d'un
 // rechargement — appel entrant en chantier) : fiche ouverte + onglet visité.
@@ -141,9 +142,7 @@ export function statutsProposables(statut) {
 }
 
 function todayISO() {
-  const d = new Date()
-  const tz = d.getTimezoneOffset() * 60000
-  return new Date(d - tz).toISOString().slice(0, 10)
+  return todayLocalIso()
 }
 
 // VX42 — Lien tel: nettoyé (chiffres et + initial), même convention que

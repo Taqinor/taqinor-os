@@ -205,6 +205,7 @@ import {
   FENETRE_REFERENCE_MS,
 } from '../../features/ventes/quote/ecranDefauts.js'
 import { AlerteErreur } from '../../ui/AlertesServeur'
+import { todayLocalIso } from '../../lib/dateLocale'
 
 // QX43 — 4 marchés réels : industriel et commercial sont désormais distincts.
 const MODE_OPTIONS = [
@@ -1090,7 +1091,7 @@ export default function DevisGenerator({
       ? categorieCommerciale : null,
     reponses: modeInstallation === 'commercial' ? commercialAnswers : null,
     // CIQ222 — le tarif déclaré part au moteur (`corps.tarif`), jamais une grille.
-    tarif: tarifDeclareDepuisSaisie(tarifSaisie, { aujourdhui: new Date().toISOString().slice(0, 10) }),
+    tarif: tarifDeclareDepuisSaisie(tarifSaisie, { aujourdhui: todayLocalIso() }),
   }
   const corpsCi = marcheCi ? corpsCiDepuisProfil(profilCi, ctxProfilCi) : null
   const apercuCi = useEtudeCiPreview(corpsCi)
@@ -1461,7 +1462,7 @@ export default function DevisGenerator({
     if (!b || b.nature !== 'agronomique_plein' || !Array.isArray(b.m3_jour_mois)) return []
     return b.m3_jour_mois.map((v, i) => (v > 0 ? i + 1 : null)).filter(Boolean)
   }, [apercuPompage?.donnees])
-  const aujourdhuiIso = new Date().toISOString().slice(0, 10)
+  const aujourdhuiIso = todayLocalIso()
   const ecoAvecCalendrier = (ecoPompage.mois == null && moisCalendrier.length)
     ? {
         ...ecoPompage,

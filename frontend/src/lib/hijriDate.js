@@ -15,6 +15,8 @@
    PLUS d'elle (règle NTI18N12).
    ========================================================================== */
 
+import { todayLocalIso } from './dateLocale.js'
+
 // Locale FR + calendrier hégirien : rend les noms de mois en transcription
 // française usuelle (« ramadan », « chaabane »…) plutôt qu'en écriture
 // arabe — cohérent avec l'exemple de l'énoncé (« 12 Ramadan 1447 »).
@@ -63,7 +65,7 @@ export function formatWithHijri(value) {
   if (!d) return null
   const hijri = formatHijriDate(d)
   if (!hijri) return null
-  const iso = d.toISOString().slice(0, 10)
+  const iso = todayLocalIso(d)
   return `${hijri} (${iso})`
 }
 
@@ -116,7 +118,7 @@ function hijriParts(date) {
 }
 
 function isoUTC(date) {
-  return date.toISOString().slice(0, 10)
+  return todayLocalIso(date)
 }
 
 /**

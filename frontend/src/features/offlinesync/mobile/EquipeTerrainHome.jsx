@@ -21,9 +21,10 @@ import {
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import OnboardingTerrain from '../OnboardingTerrain'
+import { todayLocalIso } from '../../../lib/dateLocale'
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10)
+  return todayLocalIso()
 }
 
 export default function EquipeTerrainHome() {

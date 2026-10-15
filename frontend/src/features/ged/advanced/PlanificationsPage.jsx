@@ -12,6 +12,7 @@ import {
 } from './shared.js'
 import { ChampDocument } from './ChampsGed.jsx'
 import DialogueFormulaire from './DialogueFormulaire.jsx'
+import { todayLocalIso } from '../../../lib/dateLocale'
 
 /* ============================================================================
    PACT137 — Planifications de document (XGED15).
@@ -30,7 +31,7 @@ const StatutPlanification = statusPill({
 
 function statutDe(r) {
   if (r.faite) return 'faite'
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayLocalIso()
   return r.echeance && r.echeance < today ? 'en_retard' : 'a_venir'
 }
 
