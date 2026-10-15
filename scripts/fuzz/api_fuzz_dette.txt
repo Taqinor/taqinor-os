@@ -31,7 +31,6 @@ API rejected schema-compliant request|PATCH /api/django/crm/leads/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-devis/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/programme-tickets/{id}/
 API rejected schema-compliant request|PATCH /api/django/installations/sessions-comptage/{id}/
-API rejected schema-compliant request|PATCH /api/django/parametres/cadence-relance/{id}/
 API rejected schema-compliant request|PATCH /api/django/parametres/email-templates/{id}/
 API rejected schema-compliant request|PATCH /api/django/ventes/devis-lignes/{id}/
 API rejected schema-compliant request|PATCH /api/django/visites/visites/{id}/calage/
@@ -114,11 +113,9 @@ API rejected schema-compliant request|POST /api/django/monitoring/cleanings/
 API rejected schema-compliant request|POST /api/django/monitoring/configs/
 API rejected schema-compliant request|POST /api/django/monitoring/readings/
 API rejected schema-compliant request|POST /api/django/monitoring/warranties/
-API rejected schema-compliant request|POST /api/django/parametres/cadence-relance/
 API rejected schema-compliant request|POST /api/django/parametres/conditions-paiement/
 API rejected schema-compliant request|POST /api/django/parametres/fetes-mobiles/enregistrer/
 API rejected schema-compliant request|POST /api/django/parametres/onboarding-localisation/
-API rejected schema-compliant request|POST /api/django/parametres/realisations/
 API rejected schema-compliant request|POST /api/django/parametres/taux-tva/
 API rejected schema-compliant request|POST /api/django/parametres/upload-logo/
 API rejected schema-compliant request|POST /api/django/parametres/upload-signature/
@@ -241,10 +238,8 @@ API rejected schema-compliant request|PATCH /api/django/parametres/tarification/
 # PR #991, 2e tirage (13/10/2026) — 1 constat PRÉ-EXISTANT (GET parametres/audit/?date_fin= vide toléré), porté par ERR-ENF11-FUZZ-PARAMETRES (suite).
 API accepted schema-violating request|GET /api/django/parametres/audit/
 # PR #991, 3e tirage (13/10/2026) — 18 constats PRÉ-EXISTANTS (coercition DRF ged, ids FK du fuzz, nullables parametres/portail ; routes non modifiées par la PR), portés par ERR-ENF11-FUZZ-GED / -PARAMETRES / -PORTAIL.
-API rejected schema-compliant request|PATCH /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PATCH /api/django/portail/demandes-ticket-portail/{id}/
 API rejected schema-compliant request|POST /api/django/portail/demandes-ticket-portail/
-API rejected schema-compliant request|PUT /api/django/parametres/document-templates/update/
 API rejected schema-compliant request|PUT /api/django/portail/demandes-ticket-portail/{id}/
 # Groupe de merge #991 (13/10/2026) — 1 constat PRÉ-EXISTANT (PATCH portail/documents-client-portail, route non modifiée), porté par ERR-ENF11-FUZZ-PORTAIL (suite).
 API rejected schema-compliant request|PATCH /api/django/portail/documents-client-portail/{id}/
