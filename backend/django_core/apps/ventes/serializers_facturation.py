@@ -14,7 +14,7 @@ from .models import (
 )
 from .serializers import _fallback_taux_tva
 from core.champs_stricts import (
-    ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
+    BooleenStrict, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
@@ -775,7 +775,8 @@ class RelancerFactureSerializer(serializers.Serializer):
         max_length=2000)
     prochaine_relance = serializers.DateField(
         required=False, allow_null=True)
-    envoyer_email = serializers.BooleanField(default=False)
+    # CI #997 (5) : booléen STRICT — `0` était lu False et accepté (schéma : boolean).
+    envoyer_email = BooleenStrict(default=False)
 
     def validate_niveau(self, value):
         if value is None:
