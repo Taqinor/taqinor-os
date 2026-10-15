@@ -197,6 +197,9 @@ PDF = {(200, 'application/pdf'): OpenApiTypes.BINARY}
 HTML = {(200, 'text/html'): OpenApiTypes.STR}
 OBJ = OpenApiTypes.OBJECT
 NO_CONTENT = {204: None}
+#: Lecture sur fenêtre ``debut``/``fin`` : 409 si la fin précède le début
+#: (``fenetre_semaine`` — règle d'ensemble, pas un 400).
+OBJ_FENETRE = {200: OBJ, 409: OBJ}
 
 
 LIST = type(inline_serializer('ObjetLibre', fields={}))(many=True)
@@ -329,6 +332,45 @@ class SuggererCreneauRequete(serializers.Serializer):
     type_intervention = ChaineStricte(required=False, allow_blank=True, default='')
     duree_jours = EntierStrict(required=False, min_value=1, max_value=365, default=1)
     date_cible = serializers.DateField(required=False, allow_null=True)
+
+
+class AjouterReserveRequete(serializers.Serializer):
+    """F16 — {description, [client_op_id], [assignee], [photo], [memo],
+    [creer_suivi], [creer_ticket]} : la déclaration OpenAPI ET la validation
+    (corps vide ou mal typé → 400, ``description`` exigée)."""
+    client_op_id = ChaineStricte(required=False, allow_blank=True, max_length=64)
+    description = ChaineStricte()
+    assignee = _id_strict(required=False, allow_null=True)
+    photo = _id_strict(required=False, allow_null=True)
+    memo = _id_strict(required=False, allow_null=True)
+    creer_suivi = BooleenStrict(required=False)
+    creer_ticket = BooleenStrict(required=False)
+
+
+#: Réponse de ``tool-return`` (GET et POST) : la LISTE des lignes de retour,
+#: ou — quand un outil est déjà sorti sur une autre intervention — l'objet
+#: ``{tool_returns, conflits}``. Deux formes, ``oneOf`` (le schéma annonçait
+#: un objet seul alors que la liste est la forme ordinaire).
+_LIGNES_RETOUR = {'type': 'array',
+                  'items': {'$ref': '#/components/schemas/ToolReturn'}}
+RETOUR_OUTILLAGE = {200: {'oneOf': [_LIGNES_RETOUR, {
+    'type': 'object',
+    'properties': {
+        'tool_returns': _LIGNES_RETOUR,
+        'conflits': {'type': 'array', 'items': {
+            'type': 'object',
+            'properties': {'outil': {'type': 'integer'},
+                           'intervention': {'type': 'integer', 'nullable': True}},
+            'required': ['outil', 'intervention']}}},
+    'required': ['tool_returns', 'conflits']}]}}
+
+
+class CocherToolReturnRequete(serializers.Serializer):
+    """F17 — {ligne, [rendu], [emplacement]} : la déclaration OpenAPI ET la
+    validation (``ligne`` mal typée faisait un 500 ORM)."""
+    ligne = _id_strict()
+    rendu = BooleenStrict(required=False, default=True)
+    emplacement = _id_strict(required=False, allow_null=True)
 
 
 def _texte_facultatif():
