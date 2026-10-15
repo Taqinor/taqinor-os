@@ -39,7 +39,6 @@
 07295b4bda60|apps/web/src/pages/ar/index.astro,apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/en/nos-solutions.astro,apps/web/src/pages/index.astro,apps/web/src/pages/nos-solutions.astro
 0746f2198898|apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/production-mesuree.astro
 086980b0d865|apps/web/src/pages/ar/professionnel.astro,apps/web/src/pages/professionnel.astro
-08c61a036712|frontend/src/pages/crm/DormantAccountsWidget.jsx,frontend/src/pages/crm/dashboard/PortfolioWidget.jsx
 08c72c01ea54|apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/estimatorBrainV8.ts
 08d34f8f1e20|apps/web/src/pages/ar/ensoleillement-maroc.astro,apps/web/src/pages/ar/impact-taqinor.astro,apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/ar/parrainage.astro,apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/en/ensoleillement-maroc.astro,apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/en/parrainage.astro,apps/web/src/pages/en/production-mesuree.astro,apps/web/src/pages/ensoleillement-maroc.astro,apps/web/src/pages/impact-taqinor.astro,apps/web/src/pages/methodologie-estimation.astro,apps/web/src/pages/parrainage.astro,apps/web/src/pages/production-mesuree.astro
 08d405da6a0b|apps/web/src/pages/en/impact-taqinor.astro,apps/web/src/pages/en/production-mesuree.astro
@@ -346,7 +345,6 @@
 6787c431c503|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 6791b8200c7a|frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx
 67bce3e9855b|apps/web/src/pages/api/roof-estimate.ts,apps/web/src/pages/api/roof-production.ts,apps/web/src/pages/api/roof-yield.ts
-67d0df3800d8|frontend/src/pages/installations/InterventionRapportPublicPage.jsx,frontend/src/pages/installations/InterventionSuiviPublicPage.jsx
 683fa558740e|apps/web/src/pages/api/capture-lead.ts,apps/web/src/pages/api/preview-lead.ts,apps/web/src/pages/api/simulate.ts
 685a1cd943e2|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
 69a59ea11c8a|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
@@ -542,7 +540,6 @@ ac6d8ac2b808|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool
 acd66a698e97|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 ae367388659f|frontend/src/pages/parametres/GammesMarquesPage.jsx,frontend/src/pages/reporting/ClasseurPage.jsx,frontend/src/pages/ventes/BonCommandeList.jsx,frontend/src/pages/ventes/factureList/DialoguesFacture.jsx
 ae7a6df08467|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-aedee5e8c1bd|frontend/src/features/pwa/BarcodeScanner.jsx,frontend/src/features/pwa/CameraCapture.jsx
 aefe6d3fbe2b|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 af5c29500513|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
 af8da5d3b297|apps/web/src/pages/ar/guides/index.astro,apps/web/src/pages/en/guides/index.astro
@@ -638,7 +635,6 @@ cc0f46ee0714|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis
 cc62e631cdad|apps/web/src/pages/ar/methodologie-estimation.astro,apps/web/src/pages/en/methodologie-estimation.astro,apps/web/src/pages/methodologie-estimation.astro
 cc7afc998ff1|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 ccb66ee7f6d5|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro
-ccbc261cf221|frontend/src/features/pwa/CameraCapture.jsx,frontend/src/features/pwa/useBarcodeScanner.js
 cd13add8115a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 cda7088240d5|frontend/src/features/uxviews/quickcreate/TicketQuickCreateModal.jsx,frontend/src/pages/sav/TicketsPage.jsx
 cdf88de02c98|apps/web/src/pages/ar/installation-solaire-[city].astro,apps/web/src/pages/en/installation-solaire-[city].astro,apps/web/src/pages/installation-solaire-[city].astro

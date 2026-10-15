@@ -8,11 +8,11 @@
  * un jeton inconnu/expiré donne un message FRANÇAIS (jamais du JSON brut), et
  * le payload est celui du serveur — aucune donnée interne, aucun coût.
  */
-import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import installationsApi from '../../api/installationsApi'
 // VX75 — tout horodatage passe par lib/format.js (jamais un toLocaleString nu).
 import { formatDateTime } from '../../lib/format'
+import { usePagePublique } from './usePagePublique'
 
 // `formatDateTime` renvoie « — » sur une valeur vide/illisible : ici on veut
 // masquer la ligne, donc on distingue explicitement l'absence.
@@ -24,20 +24,7 @@ const fmtHeure = (iso) => {
 
 export default function InterventionSuiviPublicPage() {
   const { token } = useParams()
-  const [etat, setEtat] = useState('loading') // loading|ok|invalide
-  const [data, setData] = useState(null)
-
-  useEffect(() => {
-    let vivant = true
-    installationsApi.getInterventionPublique(token)
-      .then((res) => {
-        if (!vivant) return
-        setData(res.data || {})
-        setEtat('ok')
-      })
-      .catch(() => { if (vivant) setEtat('invalide') })
-    return () => { vivant = false }
-  }, [token])
+  const { etat, data } = usePagePublique(installationsApi.getInterventionPublique, token)
 
   if (etat === 'loading') {
     return (

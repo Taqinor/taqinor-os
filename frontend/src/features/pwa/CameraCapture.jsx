@@ -25,10 +25,12 @@
 // VRAI `<input type=file accept=image/* capture=environment>` (appareil photo
 // natif du mobile ou galerie) qui alimente le MÊME `onCapture(file, geo)`.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Camera, CameraOff, RefreshCw, Check, X, ImagePlus } from 'lucide-react'
+import { Camera, RefreshCw, Check, X, ImagePlus } from 'lucide-react'
 import { Button } from '../../ui'
 import { hapticTap } from '../../lib/haptics'
 import useWakeLock from '../../hooks/useWakeLock'
+import { attacherFlux } from './flux'
+import { RepliNonSupporte } from './RepliNonSupporte'
 
 function cameraCaptureSupported() {
   return (
@@ -139,12 +141,7 @@ export default function CameraCapture({
       })
       if (stoppedRef.current) { stream.getTracks().forEach((t) => t.stop()); return }
       streamRef.current = stream
-      const video = videoRef.current
-      if (video) {
-        video.srcObject = stream
-        video.setAttribute('playsinline', 'true')
-        await video.play().catch(() => { /* autoplay bloqué : ignore */ })
-      }
+      await attacherFlux(videoRef.current, stream)
       setActive(true)
     } catch (err) {
       setError(err && err.name === 'NotAllowedError' ? 'refuse' : 'indisponible')
@@ -243,18 +240,14 @@ export default function CameraCapture({
 
   if (!supported) {
     return (
-      <div
-        role="alert"
-        className={`flex flex-col items-center gap-2 rounded-xl border border-border bg-muted/40 p-4 text-center text-sm text-muted-foreground ${className}`}
-      >
-        <CameraOff className="size-6" aria-hidden="true" />
+      <RepliNonSupporte className={className}>
         <span>
           La prise de photo en direct n’est pas prise en charge sur cet appareil /
           ce navigateur. Utilisez le choix de fichier.
         </span>
         <FileFallback onFiles={fromFiles} multiple={multiple} />
         {onClose && <Button size="sm" variant="ghost" onClick={onClose}>Fermer</Button>}
-      </div>
+      </RepliNonSupporte>
     )
   }
 
