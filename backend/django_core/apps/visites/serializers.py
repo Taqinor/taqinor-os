@@ -11,10 +11,13 @@ dédiées (``terminer``/``valider``/``renvoyer``), jamais par un PATCH de champ.
 """
 from rest_framework import serializers
 
+from core.champs_stricts import IdInconnu404Mixin
+from core.serializers import CompanyScopedRelationsMixin
+
 from .models import VisiteTerrain
 
 
-class VisiteTerrainSerializer(serializers.ModelSerializer):
+class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """Entête d'une visite : lead, commercial, date prévue, notes."""
 
     class Meta:

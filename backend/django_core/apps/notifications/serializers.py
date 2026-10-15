@@ -134,6 +134,19 @@ class NotificationRoutingRuleSerializer(ChampsStrictsBornesMixin,
         return data
 
 
+#: ENF11 (nocturne 15/10, phase stateful) — la forme que ``DecimalLitteral``
+#: accepte (``-?[0-9]+(.[0-9]+)?``) bornée par le champ (4 chiffres dont 2
+#: décimales) : le motif générique publiait aussi « .0 » / « 8. », refusés
+#: en 400 (« conforme refusée »). Même patron que monitoring.
+MOTIF_HEURES_PAR_JOUR = r'^-?0*[0-9]{1,2}(\.[0-9]{1,2})?$'
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_HEURES_PAR_JOUR})
+class _HeuresParJourLitteral(DecimalLitteral):
+    """``DecimalLitteral`` dont le motif publié est celui qu'il accepte."""
+
+
 # ERR-ENF11-FUZZ-NOTIFICATIONS — ``list`` sert UN objet (singleton société) :
 # sans ``many=False`` drf-spectacular publiait un tableau pour le GET.
 @extend_schema_serializer(many=False)
@@ -145,7 +158,7 @@ class WorkingHoursConfigSerializer(ChampsStrictsSansDecimalMixin, serializers.Mo
     id = serializers.IntegerField(read_only=True, allow_null=True)
     updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
     working_days = EntierStrict(min_value=0, max_value=32767, required=False)
-    hours_per_day = DecimalLitteral(
+    hours_per_day = _HeuresParJourLitteral(
         max_digits=4, decimal_places=2, required=False)
 
     class Meta:

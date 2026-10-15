@@ -48,7 +48,7 @@ class LeadFigeTests(VisiteTerrainBase):
         etranger = self.api.post('/api/django/visites/visites/',
                                  {'lead': self.lead_etranger.id},
                                  format='json')
-        self.assertEqual(etranger.status_code, 400, etranger.data)
+        self.assertEqual(etranger.status_code, 404, etranger.data)  # ENF11 : lead hors société = inconnu
         self.assertIn('lead', etranger.data)
         self.assertEqual(
             self.api.post('/api/django/visites/visites/',
