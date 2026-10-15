@@ -28,7 +28,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 ENGINE_DIR = HERE.parent.parent / "backend" / "django_core" / "apps" / "ventes" / "quote_engine"
 sys.path.insert(0, str(ENGINE_DIR))
 
-import generate_devis_premium as g  # noqa: E402  (design system, lecture seule)
+import generate_devis_premium as g  # noqa: E402 — design system, lecture seule (D-ENF22)
 
 CENT = Decimal("0.01")
 

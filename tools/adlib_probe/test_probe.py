@@ -10,7 +10,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import probe as sonde  # noqa: E402
+import probe as sonde  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 TOKEN = "EAAFAKETOKEN1234567890abcdef"
 TRAP_URL = "https://www.facebook.com/ads/archive/render_ad/?id=1&access_token=" + TOKEN
