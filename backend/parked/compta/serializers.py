@@ -2662,7 +2662,7 @@ class DocumentClientPortailSerializer(AttachmentSerializerMixin,
         try:
             from apps.ged.selectors import latest_version
             version = latest_version(obj.document_ged)
-        except Exception:  # noqa: BLE001 - une GED indisponible = pas de lien
+        except Exception:  # noqa: BLE001 - une GED indisponible = pas de lien (D-ENF22-BLE001)
             return None
         if version is None:
             return None
