@@ -82,7 +82,6 @@
 17e79d78f32a|apps/web/src/lib/applianceConsumption.ts,apps/web/src/scripts/roofPro11/prefill.ts
 18473cd3c776|apps/web/src/pages/ar/marocains-du-monde.astro,apps/web/src/pages/en/marocains-du-monde.astro,apps/web/src/pages/marocains-du-monde.astro
 197f0d7940be|frontend/src/pages/crm/controleSuiviTexte.js,frontend/src/pages/crm/controleSuiviTexte.test.js
-19c87cd3e272|frontend/src/pages/crm/ClientForm.jsx,frontend/src/pages/stock/ProduitForm.jsx
 19daad2eed8c|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 1a1d90dc8fda|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 1a99ab96df4b|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
@@ -210,7 +209,6 @@
 4f9cbb8dedc2|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 4facc643c816|frontend/src/pages/reporting/BalanceAgeePage.jsx,frontend/src/pages/ventes/PaiementsPage.jsx
 4ff5e0a2e38f|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro,apps/web/src/pages/à-propos.astro
-50c4fa82f048|frontend/src/features/crm/workspace/LeadWorkspace.jsx,frontend/src/pages/crm/ClientForm.jsx,frontend/src/pages/stock/ProduitForm.jsx
 50ca8cec6d78|apps/web/src/pages/ar/blog/prix-installation-solaire-maroc-2026.astro,apps/web/src/pages/ar/blog/rentabilite-solaire-par-ville-maroc.astro,apps/web/src/pages/blog/[...slug].astro,apps/web/src/pages/en/blog/prix-installation-solaire-maroc-2026.astro,apps/web/src/pages/en/blog/rentabilite-solaire-par-ville-maroc.astro
 50d99b6c6897|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 51286b3bd80f|apps/web/src/pages/preview/toiture-3d-pro-11.astro,apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
@@ -572,7 +570,6 @@ da843faa173c|apps/web/src/scripts/roofPro11/matrix.test.ts,apps/web/src/scripts/
 dabaf86224ab|frontend/src/features/crm/workspace/DevisTab.test.jsx,frontend/src/pages/ventes/DevisOffresTailles.test.jsx
 db02e06834f2|apps/web/src/lib/shadingEngine.test.ts,apps/web/src/scripts/roofPro11/shadingUi.test.ts
 dbbb09062cc1|apps/web/src/pages/ar/équipement.astro,apps/web/src/pages/en/équipement.astro,apps/web/src/pages/équipement.astro
-dbcac46bdc22|frontend/src/features/crm/workspace/LeadWorkspace.jsx,frontend/src/pages/crm/ClientForm.jsx,frontend/src/pages/stock/ProduitForm.jsx
 dbf2094ca765|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 dd2c745e120a|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 dd6237d55182|apps/web/src/lib/offresTailles.ts,apps/web/src/lib/tailleDetail.ts

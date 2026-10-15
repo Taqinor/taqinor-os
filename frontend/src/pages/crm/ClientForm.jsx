@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux'
 import { createClient, updateClient } from '../../features/crm/store/crmSlice'
 import {
   Form, FormSection, FormField, FormErrorSummary,
-  Input, Textarea, Segmented, Button, Switch,
+  Input, Textarea, Segmented, Button,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { useFormSafety } from '../../ui/useFormSafety'
@@ -25,6 +25,8 @@ import {
   searchCompanies, hitsToOptions, verifierIceUrl, verifierOmpicUrl,
 } from '../../features/crm/companyLookup'
 import { useT } from '../../i18n'
+import { useCreerUnAutre } from '../../hooks/useCreerUnAutre'
+import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
 
 // Avertissements NON bloquants sur les identifiants marocains. Renvoie une
 // chaîne d'aide (ou null) — n'empêche JAMAIS l'enregistrement, sert juste à
@@ -102,20 +104,6 @@ function conflitIdentite(data) {
 // créés d'affilée ; sans ce toggle chaque création coûte un cycle
 // fermer/rouvrir (~10-30 s).
 const CREER_UN_AUTRE_KEY = 'taqinor.clientForm.creerUnAutre'
-function lireCreerUnAutre() {
-  try {
-    return window.localStorage.getItem(CREER_UN_AUTRE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-function ecrireCreerUnAutre(v) {
-  try {
-    window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
-  } catch {
-    // localStorage indisponible (navigation privée, quota) : no-op silencieux.
-  }
-}
 
 export default function ClientForm({ client = null, onClose }) {
   const dispatch = useDispatch()
@@ -129,7 +117,7 @@ export default function ClientForm({ client = null, onClose }) {
 
   // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
   // édition), persisté (localStorage), défaut OFF.
-  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const [creerUnAutre, changerCreerUnAutre] = useCreerUnAutre(CREER_UN_AUTRE_KEY, !isEdit)
   const nomRef = useRef(null)
 
   const initial = useMemo(() => ({
@@ -732,14 +720,8 @@ export default function ClientForm({ client = null, onClose }) {
         <div className="modal-footer">
           {/* VX92 — « Créer un autre » : seulement à la création. */}
           {!isEdit && (
-            <label className="mr-auto flex items-center gap-2 text-sm text-muted-foreground">
-              <Switch
-                checked={creerUnAutre}
-                onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
-                aria-label="Créer un autre"
-              />
-              Créer un autre
-            </label>
+            <SwitchCreerUnAutre checked={creerUnAutre} onChange={changerCreerUnAutre}
+                                className="mr-auto flex items-center gap-2 text-sm text-muted-foreground" />
           )}
           <Button type="button" variant="outline" onClick={guardedClose}>
             Annuler

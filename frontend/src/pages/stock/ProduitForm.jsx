@@ -58,6 +58,8 @@ import {
 import { TYPES_EQUIPEMENT } from './typesEquipement'
 import { AlerteErreurStock } from './BandeauxListeStock'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import { useCreerUnAutre } from '../../hooks/useCreerUnAutre'
+import SwitchCreerUnAutre from '../../ui/SwitchCreerUnAutre'
 
 /* CALX355 — saisie d'une courbe de fiche point par point : une ligne par
    point, ajout/suppression ligne par ligne, et CHAQUE erreur affichée sous
@@ -135,21 +137,6 @@ const TYPE_LABEL_PAR_VALEUR = Object.fromEntries(
 // créés d'affilée ; sans ce toggle chaque création coûte un cycle
 // fermer/rouvrir (~10-30 s).
 const CREER_UN_AUTRE_KEY = 'taqinor.produitForm.creerUnAutre'
-function lireCreerUnAutre() {
-  try {
-    return window.localStorage.getItem(CREER_UN_AUTRE_KEY) === '1'
-  } catch {
-    return false
-  }
-}
-function ecrireCreerUnAutre(v) {
-  try {
-    window.localStorage.setItem(CREER_UN_AUTRE_KEY, v ? '1' : '0')
-  } catch {
-    // localStorage indisponible (navigation privée, quota) : confort non mémorisé.
-    console.warn('Préférence « créer un autre » non mémorisée : stockage indisponible.')
-  }
-}
 
 // VX93 — défaut intelligent : dernier taux de TVA saisi (création seulement),
 // mémorisé par localStorage. Repli sur '20' (cas le plus courant) si absent.
@@ -454,7 +441,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
 
   // VX92 — « Créer un autre » : uniquement pertinent à la création (jamais en
   // édition), persisté (localStorage), défaut OFF.
-  const [creerUnAutre, setCreerUnAutre] = useState(() => !isEdit && lireCreerUnAutre())
+  const [creerUnAutre, changerCreerUnAutre] = useCreerUnAutre(CREER_UN_AUTRE_KEY, !isEdit, { avertir: true })
   const nomRef = useRef(null)
 
   // VX249(b) — tva : 1 des 4 champs VX93 exactement (avec owner/ville sur
@@ -2327,14 +2314,8 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               {dirty && <span className="text-xs text-warning">Modifications non enregistrées</span>}
               {/* VX92 — « Créer un autre » : seulement à la création. */}
               {!isEdit && (
-                <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Switch
-                    checked={creerUnAutre}
-                    onCheckedChange={(v) => { setCreerUnAutre(v); ecrireCreerUnAutre(v) }}
-                    aria-label="Créer un autre"
-                  />
-                  Créer un autre
-                </label>
+                <SwitchCreerUnAutre checked={creerUnAutre} onChange={changerCreerUnAutre}
+                                    className="flex items-center gap-2 text-sm text-muted-foreground" />
               )}
             </div>
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
