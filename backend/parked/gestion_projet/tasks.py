@@ -37,7 +37,7 @@ def generer_taches_recurrentes_task():
     for company in _companies():
         try:
             total += len(generer_taches_recurrentes(company))
-        except Exception:  # noqa: BLE001 — société suivante
+        except Exception:  # noqa: BLE001 — société suivante (D-ENF22-BLE001)
             logger.warning(
                 'gestion_projet.generer_taches_recurrentes: échec société %s',
                 company.id, exc_info=True)
@@ -56,7 +56,7 @@ def alertes_retards_projets_task():
         try:
             envoyees += alertes_retards_projets(company).get(
                 'nb_alertes_envoyees', 0)
-        except Exception:  # noqa: BLE001 — société suivante
+        except Exception:  # noqa: BLE001 — société suivante (D-ENF22-BLE001)
             logger.warning(
                 'gestion_projet.alertes_retards_projets: échec société %s',
                 company.id, exc_info=True)
@@ -79,7 +79,7 @@ def rappels_timesheets_task():
         try:
             notifies += rappeler_temps_manquants(
                 company, debut, aujourd_hui).get('nb_notifies', 0)
-        except Exception:  # noqa: BLE001 — société suivante
+        except Exception:  # noqa: BLE001 — société suivante (D-ENF22-BLE001)
             logger.warning(
                 'gestion_projet.rappels_timesheets: échec société %s',
                 company.id, exc_info=True)

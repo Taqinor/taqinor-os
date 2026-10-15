@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from django.apps import AppConfig
 
 
@@ -19,4 +21,4 @@ class GestionProjetConfig(AppConfig):
         # M6/XPRJ9 — abonne gestion_projet aux événements métier (core.events) :
         # synchronise l'Indisponibilite planning à la validation/annulation
         # d'une rh.DemandeConge, sans couplage direct vers rh.
-        from . import receivers  # noqa: F401
+        import_module(f'{self.name}.receivers')
