@@ -2591,7 +2591,7 @@ class LivraisonLigneSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, Sam
         return attrs
 
 
-class LivraisonSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class LivraisonSerializer(IdInconnu404Mixin, ChampsStrictsEntiersMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG329 - livraison planifiee depot -> site. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via les actions
     `expedier`/`livrer`/`annuler`. Lignes imbriquees en lecture."""

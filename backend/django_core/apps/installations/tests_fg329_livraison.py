@@ -90,6 +90,14 @@ class TestLivraison(TestCase):
         self.assertTrue(liv.reference.startswith('LIV-'))
         self.assertEqual(liv.statut, Livraison.Statut.PLANIFIEE)
 
+    def test_champs_texte_et_montant_stricts(self):
+        # Le schéma déclare des chaînes : un nombre JSON est refusé (400).
+        for champ in ('note', 'numero_suivi', 'cout_transport'):
+            resp = self.api.post(f'{BASE}/livraisons/', {
+                'installation': self.inst.id, 'depot': self.depot.id,
+                champ: 0}, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.content))
+
     def test_installation_other_company_rejected(self):
         other = make_company()
         inst_other = make_installation(other, ref='OTH')
