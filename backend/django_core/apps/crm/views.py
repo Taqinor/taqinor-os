@@ -911,7 +911,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         return Response(LeadSerializer(lead, context={'request': request}).data)
 
     @extend_schema(request=sd.corps('CrmResumeAssocieRequest', accord_client=serializers.ChoiceField(choices=[True]),
-                                    devis_id=serializers.IntegerField(required=False),
+                                    devis_id=serializers.IntegerField(),
                                     langue=serializers.CharField(required=False)),
                    responses=inline_serializer('CrmResumeAssocie', {
                        'wa_url': serializers.CharField(),
@@ -929,7 +929,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         Refus 403 sans ``client_pii_voir`` (le numéro est une PII) ; 400
         nommant ``accord_client`` (accord non coché),
         ``contact_secondaire_telephone`` (vide ou invalide) ou ``devis_id``
-        (devis absent, d'un autre lead, ou jamais envoyé). Effet : UNE ligne
+        (absent) ; ``devis_id`` d'un autre lead : 404, jamais envoyé : 409
+        (ERR-ENF11-FUZZ-CRM). Effet : UNE ligne
         d'historique ; aucun statut, aucune date d'envoi, aucune cadence
         touchés (CAD144, règle #4 : le lien est la proposition existante)."""
         from apps.parametres.models_messages import MessageTemplate
@@ -971,11 +972,15 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         brut = str(request.data.get('devis_id') or '').strip()
         devis = (devis_for_lead(lead, [int(brut)]) if brut.isdigit() else [])
         if not devis or devis[0].statut == 'brouillon':
+            # ERR-ENF11-FUZZ-CRM — ``devis_id`` absent / non numérique : 400 ;
+            # devis inconnu de CE lead : 404 ; jamais envoyé (brouillon) : 409.
             return Response(
                 {'devis_id': [
                     "Ce devis n'a jamais été envoyé au client : rien à "
                     'partager.']},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=(status.HTTP_400_BAD_REQUEST if not brut.isdigit()
+                        else status.HTTP_409_CONFLICT if devis
+                        else status.HTTP_404_NOT_FOUND))
         devis = devis[0]
         langue = (request.data.get('langue') or lead.langue_preferee
                   or 'fr').strip()

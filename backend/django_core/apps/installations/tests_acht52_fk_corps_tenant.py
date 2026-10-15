@@ -93,8 +93,8 @@ class FkCorpsTenantTests(TestCase):
         KitComposant.objects.create(
             kit=self.kit_a, produit=produit_a, quantite=1)
 
-    def _refus(self, r, champ):
-        self.assertEqual(r.status_code, 400, r.data)
+    def _refus(self, r, champ, statut=400):
+        self.assertEqual(r.status_code, statut, r.data)
         self.assertIn(champ, r.data)
         self.assertNotIn('SECRET', str(r.data))
 
@@ -132,10 +132,10 @@ class FkCorpsTenantTests(TestCase):
         base = {'kit': self.kit_a.id, 'quantite': 1}
         r = self.api.post(f'{BASE}/ordres-assemblage/', {
             **base, 'chantier': self.chantier_b.id}, format='json')
-        self._refus(r, 'chantier')
+        self._refus(r, 'chantier', 404)
         r = self.api.post(f'{BASE}/ordres-assemblage/', {
             **base, 'ordre_sous_traitance': self.ordre_b.id}, format='json')
-        self._refus(r, 'ordre_sous_traitance')
+        self._refus(r, 'ordre_sous_traitance', 404)
         r = self.api.post(f'{BASE}/ordres-assemblage/', {
             **base, 'chantier': self.chantier_a.id}, format='json')
         self.assertEqual(r.status_code, 201, r.data)

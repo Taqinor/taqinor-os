@@ -4,7 +4,7 @@ Un VRAI DXF fabriqué par ``ezdxf`` (comme ``test_calx39_import_plan``) passe
 par la porte ``importer-plan/`` avec un ``calage`` : la réponse porte
 ``contour_lnglat``, reprojeté par ``zones.projeteur_local`` (l'inverse de
 ``deprojeteur_local``) et les distances sont conservées à 1 cm. Sans épingle :
-400 nommant ``pin``. Sans base de données.
+409 nommant ``pin``. Sans base de données.
 
 Run ::
 
@@ -81,23 +81,66 @@ class ContourLnglatTest(SimpleTestCase):
         self.assertEqual(reponse.status_code, 200)
         self.assertIsNone(reponse.data['contour_lnglat'])
 
-    def test_sans_epingle_400_pin(self):
+    def test_sans_epingle_409_pin(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE (w4) : un calage de forme CONFORME que le
+        # calepinage ne permet pas est un refus d'ÉTAT (409), pas de forme.
         reponse = _appeler(calque=CALQUE, calage=_calage())
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(list(reponse.data), ['pin'])
 
-    def test_calage_a_egal_b_refuse(self):
+    def test_epingle_illisible_ou_hors_bornes_409_jamais_500(self):
+        for pin in ({'lat': 'x', 'lng': 1}, {'lat': 95, 'lng': 0},
+                    {'lat': 0, 'lng': -181}, {'lat': 1e999, 'lng': 0}):
+            calepinage = CalepinageEpingle()
+            calepinage.roof_layout = {'pin': pin}
+            reponse = _appeler(vue=FausseVue(calepinage), calque=CALQUE,
+                               calage=_calage())
+            self.assertEqual(reponse.status_code, 409, pin)
+            self.assertEqual(list(reponse.data), ['pin'])
+
+    def test_calage_a_egal_b_409_les_formes_fautives_400(self):
         reponse = _appeler(vue=FausseVue(CalepinageEpingle()),
                            calque=CALQUE,
                            calage=_calage(pointB=[0, 0]))
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(list(reponse.data), ['calage'])
+        fautifs = (
+            _calage(pointA=['0', 0]), _calage(pointA=[0]),
+            _calage(pointB=[True, 1]), _calage(distanceM=0),
+            _calage(distanceM=-3), _calage(distanceM=1e-9),
+            _calage(distanceM=2e7), _calage(distanceM='60'),
+            _calage(rotationDeg='90'), _calage(rotationDeg=2e4),
+            _calage(pointA=[1e8, 0]), '{}', '[]', 'null', '',
+            'pas du json', json.dumps({'pointA': [0, 0]}))
+        for calage in fautifs:
+            reponse = _appeler(vue=FausseVue(CalepinageEpingle()),
+                               calque=CALQUE, calage=calage)
+            self.assertEqual(reponse.status_code, 400, calage)
+            self.assertEqual(list(reponse.data), ['calage'], calage)
 
-    def test_calage_sans_calque_refuse(self):
+    def test_calage_forme_fautive_400_meme_sans_calque(self):
+        # La forme se juge avant le contenu : un calage mal formé n'est jamais
+        # « ignoré faute de calque » (et un calage vide n'est pas « absent »).
+        for calage in (_calage(distanceM=0), ''):
+            reponse = _appeler(vue=FausseVue(CalepinageEpingle()),
+                               calage=calage)
+            self.assertEqual(reponse.status_code, 400, calage)
+            self.assertEqual(list(reponse.data), ['calage'], calage)
+
+    def test_calage_sans_calque_refuse_409(self):
         reponse = _appeler(vue=FausseVue(CalepinageEpingle()),
                            calage=_calage())
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)
         self.assertEqual(list(reponse.data), ['calque'])
+
+    def test_echelle_hors_des_nombres_representables_409_jamais_500(self):
+        # A et B quasi confondus, distance démesurée : l'échelle déborde.
+        reponse = _appeler(
+            vue=FausseVue(CalepinageEpingle()), calque=CALQUE,
+            calage=_calage(pointA=[0, 0], pointB=[1e-300, 0],
+                           distanceM=1e7))
+        self.assertEqual(reponse.status_code, 409)
+        self.assertEqual(list(reponse.data), ['calage'])
 
 
 class DeprojeteurTest(SimpleTestCase):

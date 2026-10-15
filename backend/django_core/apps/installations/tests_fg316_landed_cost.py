@@ -85,13 +85,13 @@ class TestFraisEtLignes(TestCase):
         r = self.api.post(f'{BASE}/frais-import/', {
             'dossier': d_o.id, 'categorie': 'douane', 'montant': '1',
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_ligne_requires_product_or_designation(self):
         r = self.api.post(f'{BASE}/landed-cost-lignes/', {
             'dossier': self.dossier.id, 'quantite': '1', 'valeur_fob': '1',
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
 
 class TestLandedCostComputation(TestCase):

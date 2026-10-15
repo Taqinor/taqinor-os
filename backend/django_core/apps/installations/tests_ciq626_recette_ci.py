@@ -100,6 +100,15 @@ class RecetteCITest(TestCase):
             {'instruments_par_essai': {'iv': outil.id}}, format='json')
         self.assertEqual(r.status_code, 404)
 
+    def test_instruments_par_essai_objet_d_entiers_seulement(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — schéma et serveur disent la même
+        # chose : un objet {essai: identifiant}, rien d'autre (400 sinon).
+        url = f'{BASE}/recettes-commissioning/{self.record.id}/'
+        for mauvais in ('iv', ['iv'], 3, {'iv': 'abc'}, {'iv': '5'}, {'iv': 1.5}):
+            r = self.api.patch(url, {'instruments_par_essai': mauvais},
+                               format='json')
+            self.assertEqual(r.status_code, 400, (mauvais, r.data))
+
     def test_essais_ci_sans_objet_par_defaut_et_non_ok_est_faux(self):
         self.assertEqual(self.record.limitation_injection_etat, 'sans_objet')
         self.assertEqual(self.record.decouplage_etat, 'sans_objet')

@@ -28,7 +28,9 @@ test('LB15 : confirme via le callback stable onMarkPerdu(lead, motif) — jamais
 
 test('LB15 : chargement PARESSEUX des motifs (à la 1re ouverture seulement)', () => {
   assert.match(SRC, /if \(!open \|\| motifs !== null\) return/)
-  assert.match(SRC, /crmApi\.getMotifsPerte\(\)/)
+  // ENF15 : lecture paginée complète (fetchAllPages) — toujours la même API, toujours paresseuse.
+  assert.match(SRC, /crmApi\.getMotifsPerte\(/)
+  assert.match(SRC, /fetchAllPages\(/)
   assert.match(SRC, /\.filter\(\(m\) => !m\.archived\)/)
 })
 

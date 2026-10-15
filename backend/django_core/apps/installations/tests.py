@@ -622,7 +622,7 @@ class TestChecklistTemplates(TestCase):
         bad = api_b.post(
             '/api/django/installations/checklist-etapes/',
             {'template': mine.id, 'cle': 'x', 'libelle': 'X'}, format='json')
-        self.assertEqual(bad.status_code, 400, bad.data)
+        self.assertEqual(bad.status_code, 404, bad.data)
 
     def test_default_template_is_protected_from_delete(self):
         r = self.api.get('/api/django/installations/checklist-templates/')
@@ -752,7 +752,7 @@ class TestInterventionF3(TestCase):
         b = make_company(slug='interv-b', nom='Interv B')
         cam_b = EmplacementStock.objects.create(company=b, nom='Camion B')
         r = self._create_interv(camionnette=cam_b.id)
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_statut_filter(self):
         from unittest import mock

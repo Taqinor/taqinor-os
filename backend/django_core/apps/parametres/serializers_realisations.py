@@ -11,6 +11,7 @@ from rest_framework import serializers
 
 from core.champs_stricts import ChampsStrictsMixin
 
+from .champs_url import UrlHttp
 from .models_realisations import Realisation
 
 
@@ -22,6 +23,20 @@ class RealisationSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
 
     date_creation = serializers.DateTimeField(
         source='created_at', read_only=True)
+    # ENF11 (api-fuzz « rejected schema-compliant request ») — URL http(s) dont
+    # le schéma et le serveur partagent le même prédicat (``champs_url``).
+    url_page = UrlHttp(
+        max_length=300,
+        help_text=Realisation._meta.get_field('url_page').help_text,
+        error_messages={'blank': (
+            'Le lien de la page de la réalisation est requis : sans lui, '
+            'le message ne peut apporter aucune preuve.')})
+    lien_suivi = UrlHttp(
+        max_length=300, required=False, allow_blank=True,
+        help_text=Realisation._meta.get_field('lien_suivi').help_text)
+    lien_video = UrlHttp(
+        max_length=300, required=False, allow_blank=True,
+        help_text=Realisation._meta.get_field('lien_video').help_text)
 
     class Meta:
         model = Realisation
@@ -48,12 +63,4 @@ class RealisationSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError('La ville est requise.')
-        return value
-
-    def validate_url_page(self, value):
-        value = (value or '').strip()
-        if not value:
-            raise serializers.ValidationError(
-                'Le lien de la page de la réalisation est requis : sans lui, '
-                'le message ne peut apporter aucune preuve.')
         return value

@@ -58,6 +58,8 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte, non_blanc
+
 from ..permissions import PeutLireOuEcrireCalepinage
 from ..services.meteo_fichier import (
     MeteoFichierRefuse, OCTETS_MAX, lire_serie_meteo,
@@ -255,7 +257,7 @@ _FICHIER_RETENU_OU_NULL = {
     methods=['POST'],
     request=inline_serializer('CalepinageMeteoFichierCorps', {
         CHAMP_FICHIER: serializers.FileField(),
-        CHAMP_FOURNISSEUR: serializers.CharField()}),
+        CHAMP_FOURNISSEUR: ChaineStricte()}),
     responses={201: _forme()})
 @extend_schema(methods=['DELETE'], responses={204: None})
 @action(detail=True, methods=['get', 'post', 'delete'],
@@ -303,7 +305,11 @@ def meteo_fichier(self, request, pk=None):
     if isinstance(taille, int) and taille > OCTETS_MAX:
         return _refus(CHAMP_FICHIER, TROP_LOURD)
 
-    fournisseur = str(request.data.get(CHAMP_FOURNISSEUR) or '').strip()
+    # CI #997 (w4) — UN prédicat avec le schéma publié (``ChaineStricte`` :
+    # « non blanc, sans caractère nul »).
+    brut = request.data.get(CHAMP_FOURNISSEUR)
+    fournisseur = brut.strip() if isinstance(brut, str) and non_blanc(
+        brut) else ''
     if not fournisseur:
         return _refus(CHAMP_FOURNISSEUR, SANS_FOURNISSEUR)
 

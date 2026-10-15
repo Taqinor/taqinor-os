@@ -26,6 +26,64 @@ class ProfileValidationBase(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
 
 
+class TestContratFuzzEnf11(ProfileValidationBase):
+    """ENF11 (api-fuzz) — le contrat publié du profil est tenu : types stricts,
+    bornes publiées, ``null`` = vide, règles métier en 409 (jamais mêlées à un
+    défaut de forme)."""
+
+    URL = '/api/django/parametres/update/'
+
+    def test_types_stricts_texte_booleen_decimal(self):
+        for corps in ({'nom': 0}, {'referral_enabled': 1},
+                      {'tva_standard': '+5'}, {'tva_standard': True}):
+            resp = self.api.patch(self.URL, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        for valeur in (20, '20', 19.5):
+            resp = self.api.patch(
+                self.URL, {'tva_standard': valeur}, format='json')
+            self.assertEqual(resp.status_code, 200, (valeur, resp.data))
+
+    def test_bornes_des_taux_et_seuils_sont_celles_du_champ(self):
+        for champ, mauvais in (('tva_standard', 100.01),
+                               ('tva_panneaux', -0.5),
+                               ('remise_max_pct', 100.01),
+                               ('discount_approval_threshold', -1),
+                               ('seuil_regime_anre_kwc', -1)):
+            resp = self.api.patch(self.URL, {champ: mauvais}, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.data))
+            self.assertIn(champ, resp.data)
+        resp = self.api.patch(
+            self.URL, {'tva_standard': 100, 'tva_panneaux': 0}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_step_up_actions_null_vaut_liste_vide(self):
+        resp = self.api.patch(
+            self.URL, {'step_up_actions': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['step_up_actions'], [])
+
+    def test_lien_avis_google_meme_predicat_que_le_schema(self):
+        long_hote = 'https://' + ('a' * 63) + '.' + ('b' * 63) + '.ma/avis'
+        resp = self.api.patch(
+            self.URL, {'lien_avis_google': long_hote}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for faute in (' https://g.page/r/x', 'ftp://g.page/x', 'g.page/x', 5):
+            resp = self.api.patch(
+                self.URL, {'lien_avis_google': faute}, format='json')
+            self.assertEqual(resp.status_code, 400, (faute, resp.data))
+        resp = self.api.patch(
+            self.URL, {'lien_avis_google': ''}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_regle_metier_melee_a_un_defaut_de_forme_reste_400(self):
+        # ICE de 14 chiffres = règle métier (409) ; le taux de TVA hors borne =
+        # défaut de forme (400) : ensemble, 400 (rien n'est écrit).
+        resp = self.api.patch(self.URL, {
+            'ice': '00123456700008', 'tva_standard': 150}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('tva_standard', resp.data)
+
+
 class TestTvaGuard(ProfileValidationBase):
     def test_empty_tva_rejected_not_resnapped(self):
         # Champ vide → erreur de validation (au lieu d'un re-snap silencieux).
@@ -65,8 +123,10 @@ class TestCommissionRequiresValue(ProfileValidationBase):
             '/api/django/parametres/update/',
             {'commission_mode': 'pct_devis', 'commission_valeur': None},
             format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('commission_valeur', resp.data)
+        # ENF11 — règle métier inter-champs sur un corps conforme au schéma :
+        # 409, le champ fautif nommé dans le message.
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('commission_valeur', resp.data['detail'])
 
     def test_active_mode_with_value_ok(self):
         resp = self.api.patch(
@@ -177,15 +237,16 @@ class TestJsonShapeValidation(ProfileValidationBase):
         resp = self.api.patch(
             '/api/django/parametres/update/',
             {'doc_prefixes': ['DEV', 'FAC']}, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('doc_prefixes', resp.data)
+        # ENF11 — champ JSON libre au schéma : sa forme est une règle (409).
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('doc_prefixes', resp.data['detail'])
 
     def test_doc_prefixes_unknown_key_rejected(self):
         resp = self.api.patch(
             '/api/django/parametres/update/',
             {'doc_prefixes': {'inconnu': 'X'}}, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('doc_prefixes', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('doc_prefixes', resp.data['detail'])
 
     def test_doc_prefixes_valid_saved(self):
         resp = self.api.patch(
@@ -199,16 +260,16 @@ class TestJsonShapeValidation(ProfileValidationBase):
             '/api/django/parametres/update/',
             {'doc_numbering': {'devis': {'padding': 99, 'reset': 'monthly'}}},
             format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('doc_numbering', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('doc_numbering', resp.data['detail'])
 
     def test_doc_numbering_bad_reset_rejected(self):
         resp = self.api.patch(
             '/api/django/parametres/update/',
             {'doc_numbering': {'devis': {'padding': 4, 'reset': 'hourly'}}},
             format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('doc_numbering', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('doc_numbering', resp.data['detail'])
 
     def test_doc_numbering_valid_saved(self):
         resp = self.api.patch(
@@ -221,15 +282,18 @@ class TestJsonShapeValidation(ProfileValidationBase):
         resp = self.api.patch(
             '/api/django/parametres/update/',
             {'payment_terms': [30, 60, 10]}, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('payment_terms', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('payment_terms', resp.data['detail'])
 
     def test_payment_terms_over_100_rejected(self):
         resp = self.api.patch(
             '/api/django/parametres/update/',
             {'payment_terms': {'reseau': {'acompte': 60, 'materiel': 60,
                                           'solde': 10}}}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('payment_terms', resp.data['detail'])
+        # L'écran Devis lit l'erreur de l'échéancier PAR CHAMP à la racine du
+        # corps (``profileError.payment_terms``) : le 409 la garde.
         self.assertIn('payment_terms', resp.data)
 
     def test_payment_terms_non_numeric_rejected(self):
@@ -237,8 +301,8 @@ class TestJsonShapeValidation(ProfileValidationBase):
             '/api/django/parametres/update/',
             {'payment_terms': {'reseau': {'acompte': 'beaucoup'}}},
             format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('payment_terms', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('payment_terms', resp.data['detail'])
 
     def test_payment_terms_valid_saved(self):
         resp = self.api.patch(
@@ -271,9 +335,11 @@ class TestEcartRecettePompage(ProfileValidationBase):
             with self.subTest(valeur=valeur):
                 resp = self.api.patch(self.URL, {self.CHAMP: valeur},
                                       format='json')
-                self.assertEqual(resp.status_code, 400)
-                self.assertIn(self.CHAMP, resp.data)
-                self.assertIn('écart de recette', str(resp.data[self.CHAMP]))
+                # ENF11 — « 0 exclu » n'est pas exprimable sur un décimal-chaîne
+                # du schéma : règle métier, 409.
+                self.assertEqual(resp.status_code, 409)
+                self.assertIn(self.CHAMP, resp.data['detail'])
+                self.assertIn('écart de recette', resp.data['detail'])
 
     def test_null_accepte(self):
         self.api.patch(self.URL, {self.CHAMP: 10}, format='json')
@@ -443,9 +509,9 @@ class TestReglagesCI(ProfileValidationBase):
                 with self.subTest(champ=champ, valeur=valeur):
                     resp = self.api.patch(self.URL, {champ: valeur},
                                           format='json')
-                    self.assertEqual(resp.status_code, 400)
+                    self.assertEqual(resp.status_code, 409)
                     self.assertIn('doit être compris entre',
-                                  str(resp.data[champ]))
+                                  resp.data['detail'])
 
     def test_delais_nuls_ou_negatifs_refuses_en_francais(self):
         for champ in ('delai_intervention_suivi_heures',
@@ -460,14 +526,13 @@ class TestReglagesCI(ProfileValidationBase):
     def test_garantie_autorisee_sans_validation_refusee(self):
         resp = self.api.patch(
             self.URL, {'garantie_production_autorisee': True}, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('assureur ou juriste',
-                      str(resp.data['garantie_production_validation']))
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('assureur ou juriste', resp.data['detail'])
         resp = self.api.patch(
             self.URL, {'garantie_production_autorisee': True,
                        'garantie_production_validation': '   '},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_garantie_patch_partiel_utilise_texte_enregistre(self):
         self.api.patch(self.URL, {

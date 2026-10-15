@@ -84,7 +84,7 @@
     }
   },
   "notes": {
-    "statuts": "409 = confirmation requise (rien n'est écrit) ; 400 `erreurs.motif` = confirmation sans motif ; 400 `erreurs.devis` = devis étranger au lead ou pas envoyé ; 400 `erreurs.cadence` = cadence au moins aussi prioritaire déjà active (CADX, inchangé) ; 200 = liste des touches.",
+    "statuts": "409 = confirmation requise (rien n'est écrit) ; 409 `erreurs.motif` = confirmation sans motif ; 404 `erreurs.devis` = devis étranger au lead ou pas envoyé ; 409 `erreurs.cadence` = cadence au moins aussi prioritaire déjà active (CADX) ; 409 = lead « ne plus contacter » ; 400 = cadence inconnue ; 200 = liste des touches.",
     "note_historique": "Cadence reveil arrêtée (2 touche(s)) : Le client a rappelé — il reprend son projet (remplacée par la cadence « Prise de contact »).",
     "cumul": "« Après devis » sur un lead en prise de contact SANS devis envoyé : UN 409 porte `remplacement` ET `sans_devis`, `detail` enchaîne les deux phrases ; la confirmation renvoie `confirmer_remplacement` + `motif` + `sans_devis_confirme` ensemble.",
     "moteur": "Les démarrages AUTOMATIQUES (envoi du devis, placement, filets) ne passent pas par cette vue : le remplacement y reste silencieux, motif « remplacée par la cadence « <clé> » », et le devis y est toujours transmis."

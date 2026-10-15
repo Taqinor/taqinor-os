@@ -90,7 +90,7 @@ class TestColis(TestCase):
         resp = self.api.post(f'{BASE}/colis/', {
             'installation': inst_other.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_ligne_and_produit_scope(self):
         colis = Colis.objects.create(
@@ -105,7 +105,7 @@ class TestColis(TestCase):
         resp2 = self.api.post(f'{BASE}/colis-lignes/', {
             'colis': colis.id, 'produit': p_other.id, 'quantite': 1,
         }, format='json')
-        self.assertEqual(resp2.status_code, 400, resp2.content)
+        self.assertEqual(resp2.status_code, 404, resp2.content)
 
     def test_cycle_controler_expedier(self):
         colis = Colis.objects.create(

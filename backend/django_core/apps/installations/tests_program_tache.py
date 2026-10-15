@@ -248,7 +248,7 @@ class TestFG292Tenant(TestCase):
             'libelle': 'Intrus',
             'assigne': user_b.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_cross_company_projet_rejected(self):
         """FG292 — impossible de créer une tâche sur le programme d'une autre
@@ -259,7 +259,7 @@ class TestFG292Tenant(TestCase):
             'projet': projet_b.id,
             'libelle': 'Intrus',
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 class TestFiltresEntiersFuzzR12(TestCase):

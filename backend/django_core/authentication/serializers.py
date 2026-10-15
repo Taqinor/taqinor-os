@@ -3,6 +3,7 @@ from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
+from core.unicite import UniciteEn409Mixin
 from .models import CustomUser, Company, UserSession
 
 
@@ -229,7 +230,10 @@ class RegisterSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         return user
 
 
-class UserSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
+                     serializers.ModelSerializer):
+    # ERR-ENF11-FUZZ-USERS — un nom d'utilisateur déjà pris est un 409
+    # ``unique_conflict`` (corps conforme, donnée en conflit), plus un 400.
     password = ChaineStricte(write_only=True, required=False)
     company_nom = serializers.CharField(
         source='company.nom', read_only=True,

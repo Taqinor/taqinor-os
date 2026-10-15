@@ -69,3 +69,16 @@ enabled = false
 [[operations]]
 include-name = 'POST /api/django/calepinage/calepinages/{id}/layout/'
 checks.missing_required_header.expected-statuses = [400, 401, 403, 406, 415, 422, 428]
+
+# ── 4. Route RETIRÉE : le 410 est la réponse VOULUE (ASAV27) ────────────────
+# `POST /api/django/sav/portail/tickets/` est déclarée `deprecated` (contrat
+# public conservé, snapshot PACT6) mais répond TOUJOURS 410 « Formulaire
+# retiré » — sans lire le corps ni le jeton, sans créer de ticket. Pour
+# `positive_data_acceptance`, un 410 n'est pas dans les statuts attendus
+# (`POSITIVE_DATA_ACCEPTANCE_EXPECTED_STATUSES` de Schemathesis 4.28) : le
+# fuzz prenait cette retraite pour un corps conforme « refusé ». On AJOUTE
+# 410 aux statuts attendus de CE check pour CETTE seule opération (un seul
+# filtre `include-name`) ; le check reste actif partout ailleurs.
+[[operations]]
+include-name = 'POST /api/django/sav/portail/tickets/'
+checks.positive_data_acceptance.expected-statuses = ["2xx", 401, 403, 404, 409, 410, 429, "5xx"]

@@ -73,12 +73,14 @@ fragment, aucun filtre de texte sur le SVG rendu.
 """
 from __future__ import annotations
 
+from core.champs_stricts import non_blanc
+
 from .garde_montants import MOTS_D_ARGENT, premier_mot_d_argent
 
 __all__ = [
     'CLE_EDITION', 'RUBRIQUES', 'LONGUEUR_TEXTE_MAX', 'MOTS_D_ARGENT',
     'GABARIT_FR', 'GABARIT_SOCIETE', 'GABARIT_NEUTRE',
-    'SldRefuse', 'branches_onduleur_de_la_conception',
+    'SldRefuse', 'SldEnConflit', 'branches_onduleur_de_la_conception',
     'cartouche_du_calepinage', 'edition_sld', 'enregistrer_edition_sld',
     'gabarit_de_schema', 'rendu_du_schema', 'schema_du_calepinage',
 ]
@@ -134,6 +136,13 @@ class SldRefuse(ValueError):
     def __init__(self, message, *, champ=''):
         super().__init__(message)
         self.champ = champ
+
+
+class SldEnConflit(SldRefuse):
+    """Refus qui dépend de la planche DESSINÉE (bloc absent, position hors
+    planche) ou d'une garde de contenu (mot d'argent) : le schéma publié de
+    l'édition ne peut pas le dire, la réponse est un 409 — la FORME fautive
+    (type, vide, trop long, négatif) reste un 400."""
 
 
 # ──────────────────────────────── CALX237 — le GABARIT de planche, par pays
@@ -225,13 +234,17 @@ def _edition_vide():
 
 
 def _point_lisible(brut):
-    """``{x, y}`` numériques, ou ``None`` si la valeur n'en est pas un."""
+    """``{x, y}`` numériques (nombres JSON réels et finis : ni texte ni
+    booléen, comme le schéma publié le dit), ou ``None`` sinon."""
+    import math
+
     if not isinstance(brut, dict) or set(brut) != {'x', 'y'}:
         return None
-    try:
-        return {'x': float(brut['x']), 'y': float(brut['y'])}
-    except (TypeError, ValueError):
-        return None
+    for valeur in (brut['x'], brut['y']):
+        if (isinstance(valeur, bool) or not isinstance(valeur, (int, float))
+                or not math.isfinite(valeur)):
+            return None
+    return {'x': float(brut['x']), 'y': float(brut['y'])}
 
 
 def edition_sld(calepinage):
@@ -270,20 +283,22 @@ def _texte_valide(valeur, *, champ):
             "Le texte de « %s » doit être une chaîne de caractères : "
             "un schéma ne porte que des désignations et des repères."
             % champ.rsplit('.', 1)[-1], champ=champ)
-    texte = ' '.join(valeur.split())
-    if not texte:
+    # Le prédicat PUBLIÉ du texte : non blanc, sans caractère nul (jsonb le
+    # refuserait), au plus LONGUEUR_TEXTE_MAX signes tels que saisis.
+    if '\x00' in valeur or not non_blanc(valeur):
         raise SldRefuse(
             "Le texte de « %s » est vide : retirez la clef de l'édition "
             "plutôt que d'effacer la désignation que le calcul a produite."
             % champ.rsplit('.', 1)[-1], champ=champ)
-    if len(texte) > LONGUEUR_TEXTE_MAX:
+    if len(valeur) > LONGUEUR_TEXTE_MAX:
         raise SldRefuse(
             "Le texte de « %s » dépasse %d caractères : la boîte du schéma "
             "n'en montre que les premiers, le reste ne serait jamais lu."
             % (champ.rsplit('.', 1)[-1], LONGUEUR_TEXTE_MAX), champ=champ)
+    texte = ' '.join(valeur.split())
     mot = premier_mot_d_argent(texte)
     if mot is not None:
-        raise SldRefuse(
+        raise SldEnConflit(
             "Le texte de « %s » contient le mot « %s » : le schéma "
             "unifilaire est une pièce technique, aucun montant n'y a sa "
             "place." % (champ.rsplit('.', 1)[-1], mot), champ=champ)
@@ -292,11 +307,11 @@ def _texte_valide(valeur, *, champ):
 
 def _clef_dessinee(clef, clefs, *, champ):
     if not isinstance(clef, str) or not clef:
-        raise SldRefuse(
+        raise SldEnConflit(
             "Une clef d'édition doit être le nom d'un bloc dessiné : "
             "« %s » n'en est pas un." % (clef,), champ=champ)
     if clef not in clefs:
-        raise SldRefuse(
+        raise SldEnConflit(
             "Le bloc « %s » n'est pas dessiné sur ce schéma : l'édition ne "
             "peut renommer ou déplacer qu'un organe retenu par la "
             "conception. Retirez-le de l'édition, ou désignez l'organe "
@@ -320,8 +335,8 @@ def _valider_edition(corps, dessin):
     ``dessin`` est ce que ``rendu_du_schema`` a produit : ses ``blocs`` sont
     les organes réellement retenus, ses bornes sont celles de la planche.
     """
-    if corps is None:
-        corps = {}
+    # Un ``null`` JSON n'est pas un objet : le schéma publié le dit (corps
+    # « objet »), le serveur le refuse comme tout autre type (jamais lu « {} »).
     if not isinstance(corps, dict):
         raise SldRefuse(
             "Le corps attendu est un objet { libelles, reperes, positions }.",
@@ -363,7 +378,7 @@ def _valider_edition(corps, dessin):
 
 def _clef_effacable(clef, champ):
     if not isinstance(clef, str) or not clef:
-        raise SldRefuse(
+        raise SldEnConflit(
             "Une clef d'édition doit être le nom d'un bloc : « %s » n'en est "
             "pas un." % (clef,), champ=champ)
     return clef
@@ -413,7 +428,10 @@ def _position_valide(brut, dessin, *, champ):
               ('y', hauteur - GEOMETRIE.bloc_h))
     for axe, maximum in bornes:
         if point[axe] < 0.0 or point[axe] > maximum:
-            raise SldRefuse(
+            # Négatif = FORME (le schéma publie ``minimum: 0``) : 400 ; au-delà
+            # de la planche = état de la planche dessinée : 409.
+            classe = SldRefuse if point[axe] < 0.0 else SldEnConflit
+            raise classe(
                 "La position de « %s » sort de la planche : %s doit rester "
                 "entre 0 et %s points (planche %s × %s, boîte d'organe "
                 "comprise)." % (clef, axe, _nombre_planche(maximum),

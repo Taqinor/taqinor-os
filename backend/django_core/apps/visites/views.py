@@ -33,7 +33,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import HasPermissionOrLegacy
-from core.champs_stricts import entier_ou_400
+from core.champs_stricts import ChaineStricte, entier_ou_400
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -56,6 +57,10 @@ MIMES_PHOTO = ('image/png', 'image/jpeg', 'image/webp')
 #: ALEA24 — code rendu pour une action d'écriture non déclarée dans
 #: ``PERMISSIONS_ECRITURE`` : il n'existe dans aucun rôle, donc refusé.
 CODE_ACTION_NON_DECLAREE = 'visites_action_non_declaree'
+
+#: ERR-ENF11-FUZZ-VISITES — amplitude GPS de la prise de vue (colonnes
+#: ``numeric(9,6)`` : au-delà, l'écriture levait une erreur SQL).
+LIMITE_LAT, LIMITE_LNG = 90, 180
 
 
 def _erreur(champ, message, code=status.HTTP_400_BAD_REQUEST):
@@ -156,9 +161,25 @@ def _codes_tous_gabarits(extraire):
     return list(vus)
 
 
+#: ERR-ENF11-FUZZ-VISITES — un PATCH publie le composant « Patched… » (aucun
+#: champ requis) : ``{}`` était donc conforme au schéma alors que le serveur
+#: exige la catégorie et ses valeurs / la clé du calage. L'extension dit les
+#: champs obligatoires de CES deux opérations (le corps est remplacé en bloc).
+_CORPS_OBLIGATOIRE_MESURES = {
+    EXTENSION_CORPS_RESSERRE: {'required': ['categorie', 'valeurs']}}
+_CORPS_OBLIGATOIRE_CALAGE = {
+    EXTENSION_CORPS_RESSERRE: {'required': ['texture_calage']}}
+
+#: Vocabulaires FERMÉS (union des gabarits) publiés au schéma ; un code de
+#: l'union mais étranger au gabarit de LA visite est un refus d'ÉTAT (409).
+_SLOTS_TOUS_GABARITS = _codes_tous_gabarits(
+    lambda categorie: [slot['code'] for slot in categorie['slots']])
+_CATEGORIES_TOUS_GABARITS = _codes_tous_gabarits(
+    lambda categorie: [categorie['categorie']])
+
+
 class MesuresSerializer(serializers.Serializer):
-    categorie = serializers.ChoiceField(choices=_codes_tous_gabarits(
-        lambda categorie: [categorie['categorie']]))
+    categorie = serializers.ChoiceField(choices=_CATEGORIES_TOUS_GABARITS)
     valeurs = serializers.DictField()
 
 
@@ -178,11 +199,12 @@ class CalageSerializer(serializers.Serializer):
 
 class PhotoVisiteSerializer(serializers.Serializer):
     fichier = serializers.FileField()
-    slot_code = serializers.ChoiceField(choices=_codes_tous_gabarits(
-        lambda categorie: [slot['code'] for slot in categorie['slots']]))
-    commentaire = serializers.CharField(required=False, allow_blank=True)
-    gps_lat = serializers.FloatField(required=False)
-    gps_lng = serializers.FloatField(required=False)
+    slot_code = serializers.ChoiceField(choices=_SLOTS_TOUS_GABARITS)
+    commentaire = ChaineStricte(required=False, allow_blank=True)
+    gps_lat = serializers.FloatField(
+        required=False, min_value=-LIMITE_LAT, max_value=LIMITE_LAT)
+    gps_lng = serializers.FloatField(
+        required=False, min_value=-LIMITE_LNG, max_value=LIMITE_LNG)
 
 
 class NotesVisiteSerializer(serializers.Serializer):
@@ -413,10 +435,23 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         codes = checklist.codes_slots(visite.gabarit,
                                       **selectors.contexte_checklist(visite))
         if slot_code not in codes:
+            # Un slot du vocabulaire publié mais étranger au gabarit de CETTE
+            # visite est un ÉTAT (409) ; hors vocabulaire : 400.
             return _erreur(
                 'slot_code',
                 f'Emplacement photo inconnu « {slot_code} ». La checklist ne '
-                'connaît que : ' + ', '.join(sorted(codes)) + '.')
+                'connaît que : ' + ', '.join(sorted(codes)) + '.',
+                status.HTTP_409_CONFLICT if slot_code in _SLOTS_TOUS_GABARITS
+                else status.HTTP_400_BAD_REQUEST)
+        gps_lat, message = _coordonnee(request.data.get('gps_lat'), LIMITE_LAT)
+        if message:
+            return _erreur('gps_lat', message)
+        gps_lng, message = _coordonnee(request.data.get('gps_lng'), LIMITE_LNG)
+        if message:
+            return _erreur('gps_lng', message)
+        commentaire = (request.data.get('commentaire') or '').strip()
+        if '\x00' in commentaire:
+            return _erreur('commentaire', 'Le caractère nul est interdit.')
         fichier = request.FILES.get('fichier')
         if fichier is None:
             return _erreur('fichier', 'Aucun fichier reçu.')
@@ -441,17 +476,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             company=request.user.company, content_type=content_type,
             object_id=visite.lead_id, uploaded_by=request.user, **meta)
 
-        gps_lat, message = _coordonnee(request.data.get('gps_lat'))
-        if message:
-            return _erreur('gps_lat', message)
-        gps_lng, message = _coordonnee(request.data.get('gps_lng'))
-        if message:
-            return _erreur('gps_lng', message)
-
         nouvelle = VisiteMedia.objects.create(
             company=request.user.company, visite=visite, attachment=attachment,
-            slot_code=slot_code,
-            commentaire=(request.data.get('commentaire') or '').strip(),
+            slot_code=slot_code, commentaire=commentaire,
             gps_lat=gps_lat, gps_lng=gps_lng)
         # ALEA12 — la nouvelle photo REMPLACE une photo « à refaire » du même
         # slot : le terrain reprend la photo, il n'a pas à supprimer l'autre
@@ -485,7 +512,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
 
     # ── Mesures par catégorie ────────────────────────────────────────────────
 
-    @extend_schema(request=MesuresSerializer, responses=_VISITE_CONTEXTE)
+    @extend_schema(request=MesuresSerializer, responses=_VISITE_CONTEXTE,
+                   extensions=_CORPS_OBLIGATOIRE_MESURES)
     @action(detail=True, methods=['patch'], url_path='mesures')
     def mesures(self, request, pk=None):
         """Enregistre les mesures d'UNE catégorie, champ par champ."""
@@ -498,8 +526,14 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         visite, erreurs = services.enregistrer_mesures(
             visite, categorie, request.data.get('valeurs'))
         if erreurs:
-            return Response({'erreurs': erreurs},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # Une catégorie de l'union des gabarits mais étrangère à celui de
+            # CETTE visite est un ÉTAT : 409 ; le reste (champ, valeur) : 400.
+            etat = str(erreurs.get('categorie', '')).startswith(
+                services.CATEGORIE_MESURES_INCONNUE) and (
+                categorie in _CATEGORIES_TOUS_GABARITS)
+            return Response({'erreurs': erreurs}, status=(
+                status.HTTP_409_CONFLICT if etat
+                else status.HTTP_400_BAD_REQUEST))
         return self._agregat(visite)
 
     # -- VTA6 : PROGRESSION TERRAIN (deux boutons au pouce) -------------------
@@ -718,7 +752,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             return _erreur('photo_toit', message, status.HTTP_404_NOT_FOUND)
         return HttpResponse(data, content_type='image/png')
 
-    @extend_schema(request=CalageSerializer, responses=_VISITE_CONTEXTE)
+    @extend_schema(request=CalageSerializer, responses=_VISITE_CONTEXTE,
+                   extensions=_CORPS_OBLIGATOIRE_CALAGE)
     @action(detail=True, methods=['patch'], url_path='calage')
     def calage(self, request, pk=None):
         """VT11 — enregistre les 4 coins du drapage sur le contour du toit.
@@ -747,20 +782,27 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         try:
             normalise = valider_quatre_coins(calage)
         except CalageInvalide as refus_calage:
-            return _erreur('texture_calage', str(refus_calage))
+            # Géométrie (coins confondus, alignés, croisés) : règle entre les
+            # quatre coins que le schéma ne dit pas -> 409.
+            return _erreur('texture_calage', str(refus_calage),
+                           status.HTTP_409_CONFLICT)
         visite.texture_calage = normalise
         visite.save(update_fields=['texture_calage'])
         return self._agregat(visite)
 
 
-def _coordonnee(brute):
-    """(Decimal|None, message|None) — une coordonnée GPS optionnelle."""
+def _coordonnee(brute, limite):
+    """(Decimal|None, message|None) — une coordonnée GPS optionnelle, dans
+    ±``limite`` (le schéma publie ces bornes) et arrondie à la colonne."""
     if brute in (None, ''):
         return None, None
     try:
-        return Decimal(str(brute)), None
+        valeur = Decimal(str(brute))
     except (InvalidOperation, ValueError, TypeError):
         return None, 'Coordonnée GPS invalide.'
+    if not valeur.is_finite() or abs(valeur) > limite:
+        return None, 'Coordonnée GPS hors amplitude.'
+    return valeur.quantize(Decimal('0.000001')), None
 
 
 #: VTA10 — alias du service (source unique, partagée avec le rejeu hors-ligne).

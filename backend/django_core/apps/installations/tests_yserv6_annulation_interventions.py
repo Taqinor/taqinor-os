@@ -124,7 +124,7 @@ class AnnulationSoldeInterventionsTests(TestCase):
             'installation': self.inst.id,
             'type_intervention': Intervention.Type.CONTROLE,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
 
 class ReactivationTests(TestCase):

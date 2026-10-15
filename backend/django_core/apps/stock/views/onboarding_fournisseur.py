@@ -18,6 +18,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..openapi_helpers import BINARY, INT, OBJET, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
@@ -29,8 +30,8 @@ from ..utils.params import UniciteEn409Mixin
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 
-class DocumentFournisseurSerializer(CompanyScopedRelationsMixin,
-                                    serializers.ModelSerializer):
+class DocumentFournisseurSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
+                                    ChampsTexteBooleenStricts, serializers.ModelSerializer):
     type_document_display = serializers.CharField(
         source='get_type_document_display', read_only=True, default=None)
     est_valide = serializers.SerializerMethodField()

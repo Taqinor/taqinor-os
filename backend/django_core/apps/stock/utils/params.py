@@ -72,6 +72,33 @@ def corps_objet(request):
     return donnees
 
 
+#: Quantité comptée écrite en TEXTE (inventaire) : chiffres seuls, au plus
+#: ``QUANTITE_MAX`` (1 000 000) — la MÊME forme est publiée et lue.
+MOTIF_QUANTITE_COMPTEE = r'[0-9]{1,6}|1000000'
+
+
+def quantite_comptee_entiere(valeur):
+    """ASTK209 — ``valeur`` en ``int`` si c'est un entier ≥ 0 (``7``, ``"7"``,
+    ``7.0``), sinon ``None`` (``7.5``, ``"7.5"``, ``-3``, ``True``, texte, absent).
+    CI #997 fuzz (4) : une CHAÎNE est faite de chiffres seuls (``MOTIF_QUANTITE_COMPTEE``
+    — ``" 7 "`` et ``"1e2"`` ne sont plus lus) et le niveau compté tient dans la
+    capacité d'un compteur (``QUANTITE_MAX``, le ``maximum`` publié) : au-delà il
+    débordait la colonne entière (500)."""
+    from decimal import Decimal, InvalidOperation
+    from core.champs_stricts import QUANTITE_MAX
+    if valeur is None or isinstance(valeur, bool):
+        return None
+    if isinstance(valeur, str) and not re.fullmatch(MOTIF_QUANTITE_COMPTEE, valeur):
+        return None
+    try:
+        nombre = Decimal(str(valeur))
+    except (InvalidOperation, ValueError):
+        return None
+    if not nombre.is_finite() or nombre != nombre.to_integral_value() or not 0 <= nombre <= QUANTITE_MAX:
+        return None
+    return int(nombre)
+
+
 #: Borne d'une clé primaire entière PostgreSQL.
 ID_MAX = 2147483647
 #: Plancher d'une colonne entière PostgreSQL (``integer``).

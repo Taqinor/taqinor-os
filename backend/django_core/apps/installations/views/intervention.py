@@ -7,6 +7,7 @@ from authentication.permissions import (
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from core.champs_stricts import date_ou_400, nombre_ou_400
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
 
@@ -384,8 +385,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         installation = serializer.validated_data.get('installation')
         # YSERV6 — un chantier annulé refuse toute nouvelle intervention.
         if installation is not None and installation.annule:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError(
+            raise ConflitEtat(
                 {'installation': 'Ce chantier est annulé — impossible de '
                                  'créer une nouvelle intervention.'})
         # YSERV1 — Gate « acompte encaissé » avant planification : une
@@ -397,7 +397,6 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if (installation is not None
                 and type_intervention == Intervention.Type.POSE
                 and date_prevue):
-            from rest_framework.exceptions import ValidationError
             from ..services import verifier_gate_acompte_planification
             raison = verifier_gate_acompte_planification(installation)
             if raison:
@@ -405,7 +404,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     self.request.data.get('motif_override_acompte')
                     or '').strip()
                 if not motif_override:
-                    raise ValidationError({'date_prevue': [raison]})
+                    raise ConflitEtat({'date_prevue': [raison]})
                 activity.log_note(
                     installation, self.request.user,
                     'Intervention de pose planifiée sans acompte — motif : '
@@ -459,7 +458,6 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # AUD317 — la transition demandée à la création passe par le service
         # unique : mêmes gardes et MÊME cascade que le PATCH.
         if statut_demande is not None and statut_demande != interv.statut:
-            from rest_framework.exceptions import ValidationError
             from ..services import (
                 TransitionRefusee, changer_statut_intervention,
             )
@@ -467,7 +465,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 changer_statut_intervention(
                     interv, statut_demande, self.request.user)
             except TransitionRefusee as exc:
-                raise ValidationError({'statut': exc.raisons})
+                raise ConflitEtat({'statut': exc.raisons})
 
     def perform_update(self, serializer):
         """ADAPTATEUR (AUD317) — le statut passe par le service unique.
@@ -2429,24 +2427,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``heures_par_jour`` (défaut 8). Aucun ``?format=`` —
         sortie JSON simple (export via ``?export=`` non requis ici)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
         params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         heures = nombre_ou_400(
             params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
         data = selectors.plan_de_charge_equipes(
@@ -2465,24 +2449,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Pure détection, scopée société, aucun nouveau modèle.
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche). Sortie JSON simple (aucun ``?format=``)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
-        params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         data = selectors.conflits_affectation(
             request.user.company, debut, fin)
         return Response(data)
@@ -2501,24 +2470,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``heures_par_jour`` (défaut 8). Sortie JSON simple
         (aucun ``?format=``)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
         params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         heures = nombre_ou_400(
             params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
         data = selectors.nivellement_charge(
@@ -2616,24 +2571,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
         lundi→dimanche), ``capacite_jour`` (défaut 1). Sortie JSON simple
         (aucun ``?format=``)."""
-        from datetime import date, timedelta
         from .. import selectors
 
-        def _parse(value, nom='date'):  # ERR-ENF11 : date illisible = 400
-            return date_ou_400(value, nom)
-
-        params = request.query_params
-        debut = _parse(params.get('debut'), 'debut')
-        fin = _parse(params.get('fin'), 'fin')
-        if debut is None:
-            today = date.today()
-            debut = today - timedelta(days=today.weekday())  # lundi
-        if fin is None:
-            fin = debut + timedelta(days=6)  # dimanche
-        if fin < debut:
-            return Response(
-                {'detail': 'La fin de fenêtre précède le début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+        debut, fin = oa.fenetre_semaine(request)
         # ERR-ENF11 : entier >= 1 strict (illisible → 400, absent/vide → 1).
         cap = oa.id_requete(request, 'capacite_jour') or 1
         data = selectors.planning_camionnettes(

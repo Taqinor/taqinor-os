@@ -141,7 +141,8 @@ class PieceRecueTests(_Base):
     def test_une_touche_deja_traitee_est_refusee(self):
         self._piece(type_piece='facture')
         resp = self._piece(type_piece='facture')
-        self.assertEqual(resp.status_code, 400)
+        # ERR-ENF11-FUZZ-CRM — état de la touche : 409, même corps nommé.
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('etape', resp.data['erreurs'])
 
     def test_sur_l_etape_preparer_le_devis_elle_reste_ouverte(self):

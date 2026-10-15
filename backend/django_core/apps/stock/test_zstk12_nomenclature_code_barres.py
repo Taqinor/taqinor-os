@@ -83,6 +83,35 @@ class TestSansNomenclatureRepliHistorique(Zstk12Base):
         self.assertIsNone(result)
 
 
+class TestRegleApiStricte(Zstk12Base):
+    """CI #997 fuzz (4) : une règle se crée en JSON, texte et booléen STRICTS."""
+
+    def _nomenclature(self):
+        return NomenclatureCodeBarres.objects.create(company=self.company, nom='Interne')
+
+    def test_creation_json_valide(self):
+        nomenclature = self._nomenclature()
+        reponse = self.api.post('/api/django/stock/regles-code-barres/', {
+            'nomenclature': nomenclature.id, 'motif': '21', 'est_regex': False,
+            'encode': 'produit'}, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.content)
+
+    def test_booleen_et_texte_non_convertis(self):
+        nomenclature = self._nomenclature()
+        for corps in ({'est_regex': 0}, {'est_regex': 'true'}, {'motif': 21}):
+            reponse = self.api.post('/api/django/stock/regles-code-barres/', {
+                'nomenclature': nomenclature.id, 'motif': '21', 'encode': 'produit', **corps},
+                format='json')
+            self.assertEqual(reponse.status_code, 400, (corps, reponse.content))
+
+    def test_corps_formulaire_refuse(self):
+        nomenclature = self._nomenclature()
+        reponse = self.api.post('/api/django/stock/regles-code-barres/', {
+            'nomenclature': nomenclature.id, 'motif': '21', 'encode': 'produit',
+            'est_regex': 'true'}, format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.content)
+
+
 class TestReglePrefixeEmplacement(Zstk12Base):
     def setUp(self):
         super().setUp()

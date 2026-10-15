@@ -84,7 +84,7 @@ class TestRetourLivraisonLigneCrossTenant(TestCase):
             'retour': self.retour_b.id, 'produit': self.produit_a.id,
             'designation': 'Intrus', 'quantite_retournee': 0,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
         self.assertIn('retour', resp.data)
         self.assertFalse(
             RetourLivraisonLigne.objects.filter(retour=self.retour_b).exists())
@@ -110,8 +110,8 @@ def make_ordre(company, statut=OrdreDemontage.Statut.PLANIFIE):
 
 
 class TestOrdreDemontageLigneCrossTenant(TestCase):
-    """ERR116 — POST d'une ligne sur l'ordre d'une autre société, ou sur un
-    ordre qui n'est plus planifié → 400."""
+    """ERR116 — POST d'une ligne sur l'ordre d'une autre société → 404 (id
+    absent), sur un ordre qui n'est plus planifié → 409."""
 
     def setUp(self):
         self.co_a = make_company()
@@ -128,7 +128,7 @@ class TestOrdreDemontageLigneCrossTenant(TestCase):
     def test_create_sur_ordre_autre_societe_refuse(self):
         ordre_b = make_ordre(self.co_b)
         resp = self._post(ordre_b)
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
         self.assertIn('ordre', resp.data)
         self.assertFalse(
             OrdreDemontageLigne.objects.filter(ordre=ordre_b).exists())
@@ -136,7 +136,7 @@ class TestOrdreDemontageLigneCrossTenant(TestCase):
     def test_create_sur_ordre_termine_refuse(self):
         ordre = make_ordre(self.co_a, statut=OrdreDemontage.Statut.TERMINE)
         resp = self._post(ordre)
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('ordre', resp.data)
         self.assertFalse(
             OrdreDemontageLigne.objects.filter(ordre=ordre).exists())

@@ -185,6 +185,33 @@ class Ntdst5ApiTests(Ntdst5Base):
         }, format='json')
         self.assertEqual(res.status_code, 400)
 
+    def test_fin_avant_debut_est_un_conflit_409(self):
+        res = auth(self.admin).post(self.URL, {
+            'fournisseur': self.fournisseur.id,
+            'periode_debut': FIN.isoformat(),
+            'periode_fin': DEBUT.isoformat(),
+            'seuil_ca_achat': '1000', 'taux_pct': '3',
+        }, format='json')
+        self.assertEqual(res.status_code, 409, res.content)
+
+    def test_decimaux_en_nombre_json_et_vide_non_renseigne(self):
+        res = auth(self.admin).post(self.URL, {
+            'fournisseur': self.fournisseur.id,
+            'periode_debut': DEBUT.isoformat(),
+            'periode_fin': FIN.isoformat(),
+            'seuil_ca_achat': 1000, 'taux_pct': 3, 'montant_fixe': '',
+        }, format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_note_numerique_refusee(self):
+        res = auth(self.admin).post(self.URL, {
+            'fournisseur': self.fournisseur.id,
+            'periode_debut': DEBUT.isoformat(),
+            'periode_fin': FIN.isoformat(),
+            'taux_pct': '3', 'note': 5,
+        }, format='json')
+        self.assertEqual(res.status_code, 400, res.content)
+
     def test_un_patch_ne_peut_pas_effacer_lavoir_genere(self):
         self._commande(quantite=100, quantite_recue=100)
         accord = self._accord()

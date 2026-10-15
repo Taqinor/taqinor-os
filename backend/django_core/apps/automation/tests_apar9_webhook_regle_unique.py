@@ -94,3 +94,20 @@ class WebhookRegleUniqueTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(
             IncomingWebhookTrigger.objects.get(rule=self.c).hmac_secret, 'k')
+
+    def test_creation_corps_strict_400_rien_cree(self):
+        # ERR-ENF11-FUZZ-AUTOMATION — le corps publié est un entier >= 1 et une
+        # chaîne <= 128 signes : ``0``, ``"5"``, un booléen, un secret nombre
+        # ou trop long sont refusés (400) avant toute lecture de la règle.
+        avant = IncomingWebhookTrigger.objects.count()
+        for corps in (
+                {'rule': 0}, {'rule': str(self.c.pk)}, {'rule': True},
+                {'rule': self.c.pk, 'hmac_secret': 0},
+                {'rule': self.c.pk, 'hmac_secret': 'x' * 129}):
+            resp = self._api().post(BASE, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        self.assertEqual(IncomingWebhookTrigger.objects.count(), avant)
+
+    def test_creation_regle_inconnue_404(self):
+        resp = self._api().post(BASE, {'rule': 2147483647}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)

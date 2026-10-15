@@ -51,8 +51,13 @@ from rest_framework.response import Response
 
 from ..analyse_plan import TAILLE_MAX_OCTETS
 from ..permissions import PeutGererCalepinage
+from ..serializers import CalageSerializer
 from ..services.import_plan import (
+    CalageEnConflit,
     CalageIllisible,
+    CalqueInconnu,
+    CalqueInexploitable,
+    EntiteInconnue,
     PlanIllisible,
     analyser_plan,
     contour_du_calque,
@@ -153,6 +158,21 @@ def _refus(champ, message):
     return Response({champ: message}, status=status.HTTP_400_BAD_REQUEST)
 
 
+def _refus_plan(refus):
+    """Le refus d'un plan, au statut de sa NATURE : un calque ou une entité
+    qui n'existent pas dans CE fichier sont introuvables (404), un calque sans
+    contour fermé exploitable est un refus de contenu que le schéma ne peut pas
+    dire (409), le reste (fichier illisible) est un 400."""
+    if isinstance(refus, (CalqueInconnu, EntiteInconnue)):
+        code = status.HTTP_404_NOT_FOUND
+    elif isinstance(refus, CalqueInexploitable):
+        code = status.HTTP_409_CONFLICT
+    else:
+        code = status.HTTP_400_BAD_REQUEST
+    return Response({getattr(refus, 'champ', '') or CHAMP_FICHIER: str(refus)},
+                    status=code)
+
+
 def _format_refuse(contenu):
     """Le libellé du format non vectoriel reconnu, ou ``None``."""
     for signature, quoi in FORMATS_REFUSES:
@@ -164,9 +184,10 @@ def _format_refuse(contenu):
 @extend_schema(
     request=inline_serializer('CalepinageImporterPlanCorps', {
         CHAMP_FICHIER: serializers.FileField(),
-        CHAMP_CALQUE: serializers.CharField(required=False),
-        CHAMP_ENTITE: serializers.IntegerField(required=False),
-        CHAMP_CALAGE: serializers.JSONField(required=False)}),
+        CHAMP_CALQUE: serializers.CharField(required=False,
+                                            allow_blank=True),
+        CHAMP_ENTITE: serializers.IntegerField(required=False, min_value=1),
+        CHAMP_CALAGE: CalageSerializer(required=False)}),
     responses={200: _forme()})
 @action(detail=True, methods=['post'], url_path='importer-plan',
         url_name='importer-plan',
@@ -179,9 +200,13 @@ def importer_plan(self, request, pk=None):
     (facultatif). Sans ``calque``, la réponse liste ce que le plan contient ;
     avec, elle ajoute le contour de ce calque et ses cotes hors-tout.
 
-    Refus (400) en NOMMANT le champ fautif : ``fichier`` (absent, vide, trop
-    lourd, non vectoriel, illisible — motif français de ``PlanIllisible``) ou
-    ``calque`` (inexistant : le message liste les calques disponibles).
+    Refus en NOMMANT le champ fautif : 400 pour ``fichier`` (absent, vide, trop
+    lourd, non vectoriel, illisible — motif français de ``PlanIllisible``),
+    ``entite`` (pas un rang ≥ 1) et ``calage`` (forme, nombre, bornes du
+    ``CalageSerializer``) ; 404 pour un ``calque`` ou une ``entite``
+    inexistants dans CE fichier (le message liste les calques disponibles) ;
+    409 pour ce que la forme ne peut pas dire — calque sans contour fermé,
+    calage sans calque, points A = B, calepinage sans épingle.
     """
     # L'OBJET D'ABORD : un calepinage d'une autre société rend 404 quel que
     # soit le corps envoyé.
@@ -207,42 +232,58 @@ def importer_plan(self, request, pk=None):
     try:
         analyse = analyser_plan(contenu, nom_fichier=nom_fichier)
     except PlanIllisible as refus:
-        return _refus(getattr(refus, 'champ', '') or CHAMP_FICHIER,
-                      str(refus))
+        return _refus_plan(refus)
 
     calque_demande = str(request.data.get(CHAMP_CALQUE) or '').strip()
+    # La FORME des champs se juge toute seule, avant le contenu du plan : un
+    # rang ou un calage mal formés sont un 400 (le schéma les publie), même
+    # quand aucun calque n'est choisi — jamais ignorés en silence.
     entite_brute = request.data.get(CHAMP_ENTITE)
     entite = None
-    if entite_brute not in (None, ''):
+    if entite_brute is not None:
         try:
             entite = int(str(entite_brute).strip())
         except ValueError:
+            entite = 0
+        if entite < 1:
             return _refus(CHAMP_ENTITE,
                           "« entite » est le rang (1, 2, …) de l'entité "
                           "choisie dans le calque.")
+    calage = None
+    calage_brut = request.data.get(CHAMP_CALAGE)
+    if calage_brut is not None:
+        try:
+            calage = lire_calage(calage_brut)
+        except CalageEnConflit as refus:
+            return Response({refus.champ: str(refus)},
+                            status=status.HTTP_409_CONFLICT)
+        except CalageIllisible as refus:
+            return _refus(refus.champ, str(refus))
+
     contour, cotes = None, None
     if calque_demande:
         try:
             contour = contour_du_calque(analyse, calque_demande,
                                         entite=entite)
         except PlanIllisible as refus:
-            return _refus(getattr(refus, 'champ', '') or CHAMP_CALQUE,
-                          str(refus))
+            return _refus_plan(refus)
         cotes = cotes_hors_tout(contour)
 
     # ACAL69 — le calage (corps OPTIONNEL) pose le contour sur l'épingle.
     # Calcul pur : rien n'est écrit. L'épingle : celle du document, sinon
     # celle du diagnostic (même lecture que horizon).
     contour_geo = None
-    calage_brut = request.data.get(CHAMP_CALAGE)
-    if calage_brut not in (None, '', {}):
+    if calage is not None:
         if not contour:
-            return _refus(CHAMP_CALQUE,
-                          "Choisissez un calque avant de caler le plan.")
+            return Response(
+                {CHAMP_CALQUE: "Choisissez un calque avant de caler le plan."},
+                status=status.HTTP_409_CONFLICT)
         try:
-            calage = lire_calage(calage_brut)
             contour_geo = contour_lnglat(
                 contour, calage, _epingle(calepinage))
+        except CalageEnConflit as refus:
+            return Response({refus.champ: str(refus)},
+                            status=status.HTTP_409_CONFLICT)
         except CalageIllisible as refus:
             return _refus(refus.champ, str(refus))
 

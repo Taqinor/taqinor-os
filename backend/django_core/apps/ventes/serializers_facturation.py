@@ -791,19 +791,19 @@ class RelancerFactureSerializer(serializers.Serializer):
     envoyer_email = BooleenStrict(default=False)
 
     def validate(self, attrs):
-        # CI #997 fuzz — un ``niveau`` bien formé qui ne désigne aucun niveau
-        # de la société : c'est la ressource qui manque (404, comme un id
-        # inconnu — ``IdInconnu404Mixin``), jugé une fois le corps valide.
+        # CI #997 fuzz — un ``niveau`` bien formé (un ORDRE, pas un id) qui
+        # n'existe pas dans la cadence réglée par la société : refus d'ÉTAT
+        # (409, corps {niveau} inchangé), jugé une fois le corps valide.
         value = attrs.get('niveau')
         if value is None:
             return attrs
-        from rest_framework.exceptions import NotFound
+        from core.conflit_etat import ConflitEtat
         from .models import FollowupLevel
         company = self.context.get('company')
         niveau = FollowupLevel.objects.filter(
             company=company, ordre=value).first()
         if niveau is None:
-            raise NotFound({'niveau': [
+            raise ConflitEtat({'niveau': [
                 'Niveau de relance inconnu pour cette société.']})
         self.context['followup_level'] = niveau
         return attrs

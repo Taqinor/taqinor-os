@@ -54,14 +54,19 @@ et des quantités ; ``Produit.prix_achat`` n'entre ici par aucun chemin.
 from __future__ import annotations
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte
+
 from ..permissions import PeutLireOuEcrireCalepinage, PeutVoirCalepinage
-from ..serializers import REPONSE_REFUS_ETAT, forme_du_contrat
+from ..serializers import (
+    REPONSE_REFUS_ETAT, NombreFiniStrict, forme_du_contrat,
+)
+from ..services.sld import LONGUEUR_TEXTE_MAX
 
 __all__ = ['SchemaUnifilaireMixin']
 
@@ -78,16 +83,39 @@ _FORME_SLD = forme_du_contrat('CalepinageSchemaUnifilaire',
                               'calepinage_sld.json')
 
 
+# ERR-ENF11-FUZZ-CALEPINAGE (w4) — le corps de l'ÉDITION, tel que
+# ``services/sld.py`` le juge (UN prédicat, publié ET appliqué). Chaque rubrique
+# est un objet {clef du bloc : valeur} (ou ``null`` : rien à changer). Une
+# valeur ``null`` EFFACE la clef ; un texte est non blanc, sans caractère nul,
+# d'au plus LONGUEUR_TEXTE_MAX signes ; une position est {x, y} ≥ 0. Ce que la
+# forme ne peut pas dire — la clef désigne-t-elle un bloc DESSINÉ ? la position
+# tient-elle dans la planche ? le texte porte-t-il un mot d'argent ? — est un 409
+# (``SldEnConflit``). (Commentaire et non docstring : une docstring fuiterait
+# dans la description OpenAPI.)
+class PointPlancheSerializer(drf_serializers.Serializer):
+    x = NombreFiniStrict(min_value=0)
+    y = NombreFiniStrict(min_value=0)
+
+
+class EditionSldCorpsSerializer(drf_serializers.Serializer):
+    libelles = drf_serializers.DictField(
+        child=ChaineStricte(allow_null=True, max_length=LONGUEUR_TEXTE_MAX),
+        required=False, allow_null=True)
+    reperes = drf_serializers.DictField(
+        child=ChaineStricte(allow_null=True, max_length=LONGUEUR_TEXTE_MAX),
+        required=False, allow_null=True)
+    positions = drf_serializers.DictField(
+        child=PointPlancheSerializer(allow_null=True),
+        required=False, allow_null=True)
+
+
 class SchemaUnifilaireMixin:
     """L'``@action`` « schéma unifilaire » du viewset pivot."""
 
     @extend_schema(methods=['GET'], responses=_FORME_SLD)
     @extend_schema(
         methods=['POST'], responses=_FORME_SLD,
-        request=inline_serializer('CalepinageSchemaEditionCorps', {
-            'libelles': drf_serializers.JSONField(required=False),
-            'reperes': drf_serializers.JSONField(required=False),
-            'positions': drf_serializers.JSONField(required=False)}))
+        request=EditionSldCorpsSerializer)
     @action(detail=True, methods=['get', 'post'],
             url_path='schema-unifilaire',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -105,17 +133,26 @@ class SchemaUnifilaireMixin:
         """
         from ..services.electrique import TemperaturesInvalides
         from ..services.sld import (
-            SldRefuse, enregistrer_edition_sld, schema_du_calepinage,
+            SldEnConflit, SldRefuse, enregistrer_edition_sld,
+            schema_du_calepinage,
         )
 
         calepinage = self.get_object()  # borné société par get_queryset
+        ecriture = request.method.lower() == 'post'
         try:
-            if request.method.lower() == 'post':
+            if ecriture:
                 enregistrer_edition_sld(calepinage, request.data)
             return Response(schema_du_calepinage(calepinage))
         except TemperaturesInvalides as refus:
+            # Écriture : la saisie de températures du CALEPINAGE n'est pas
+            # celle du corps -> refus d'état (409, comme le DXF) ; lecture
+            # inchangée.
             return Response({refus.champ or 'temperatures': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT if ecriture
+                                    else status.HTTP_400_BAD_REQUEST))
+        except SldEnConflit as refus:
+            return Response({refus.champ or 'edition': str(refus)},
+                            status=status.HTTP_409_CONFLICT)
         except SldRefuse as refus:
             return Response({refus.champ or 'edition': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)

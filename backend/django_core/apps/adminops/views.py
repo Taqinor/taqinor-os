@@ -98,18 +98,10 @@ def tracker_usage_view(request):
     return Response({'ok': True}, status=201)
 
 
-class _TexteStrict(drf_serializers.CharField):
-    """ENF11 — refuse un nombre/booléen là où le schéma déclare une chaîne
-    (``CharField`` DRF coerce ``0`` en ``"0"`` et l'accepte en silence)."""
-
-    def to_internal_value(self, data):
-        if not isinstance(data, str):
-            self.fail('invalid')
-        return super().to_internal_value(data)
-
-
 class ExporterConfigSerializer(drf_serializers.Serializer):
-    nom = _TexteStrict(max_length=150, required=False)
+    # ERR-ENF11-FUZZ-ADMINOPS — texte STRICT publié sans caractère nul (le
+    # ``pattern`` générique ``\S`` laissait passer ``\u0000`` puis le refusait).
+    nom = ChaineStricte(max_length=150, required=False)
 
 
 class ContenuConfigSerializer(drf_serializers.Serializer):

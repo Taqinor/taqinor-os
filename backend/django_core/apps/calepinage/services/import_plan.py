@@ -39,6 +39,23 @@ class PlanIllisible(ValueError):
         self.champ = champ
 
 
+class CalqueInconnu(PlanIllisible):
+    """Le calque demandé n'existe pas dans CE fichier : 404 nommant ``calque``
+    (l'existence d'un calque est un fait du fichier déposé, que le schéma ne
+    peut pas porter)."""
+
+
+class EntiteInconnue(PlanIllisible):
+    """Le rang d'entité demandé dépasse ceux du calque : 404 nommant
+    ``entite``."""
+
+
+class CalqueInexploitable(PlanIllisible):
+    """Le calque existe mais ne porte aucun contour fermé exploitable (tracé
+    non fermé, moins de 3 sommets) : refus qui dépend du CONTENU du fichier,
+    409 nommant ``calque``."""
+
+
 def analyser_plan(contenu, *, nom_fichier=''):
     """Analyse un plan déposé, par l'analyseur du module — jamais un second.
 
@@ -86,7 +103,7 @@ def contour_du_calque(analyse, nom_calque, *, entite=None):
     if calque is None:
         disponibles = ', '.join(sorted(nom for nom in par_nom if nom)) \
             or 'aucun'
-        raise PlanIllisible(
+        raise CalqueInconnu(
             f"Le calque « {nom_calque} » n'existe pas dans ce plan "
             f'(calques disponibles : {disponibles}).', champ='calque')
 
@@ -98,14 +115,14 @@ def contour_du_calque(analyse, nom_calque, *, entite=None):
     else:
         fermees = calque.get('entites_fermees') or [True] * len(points)
     if not points:
-        raise PlanIllisible(
+        raise CalqueInexploitable(
             f"Le calque « {nom_calque} » ne porte aucun tracé exploitable "
             "comme contour.", champ='calque')
 
     if entite is not None:
         if (isinstance(entite, bool) or not isinstance(entite, int)
                 or not 1 <= entite <= len(points)):
-            raise PlanIllisible(
+            raise EntiteInconnue(
                 f"L'entité {entite!r} n'existe pas dans le calque "
                 f"« {nom_calque} » (entités disponibles : 1 à "
                 f"{len(points)}).", champ='entite')
@@ -124,13 +141,13 @@ def contour_du_calque(analyse, nom_calque, *, entite=None):
         segments = sum(max(1, len(pts) - 1) for pts in points) \
             if rang is None else max(1, len(points[rang]) - 1)
         mot = 'segment isolé' if segments == 1 else 'segments isolés'
-        raise PlanIllisible(
+        raise CalqueInexploitable(
             f"Le calque « {nom_calque} » ne porte aucun contour fermé : "
             f"tracé non fermé : {segments} {mot}. Fermez le tracé dans le "
             "dessin, ou choisissez un autre calque.", champ='calque')
     sommets = points[rang]
     if len(sommets) < 3:
-        raise PlanIllisible(
+        raise CalqueInexploitable(
             f"Le calque « {nom_calque} » : l'entité choisie n'a que "
             f"{len(sommets)} sommet(s) ; un contour demande au moins 3 "
             "sommets.", champ='calque')
@@ -157,36 +174,64 @@ def cotes_hors_tout(contour):
 
 
 class CalageIllisible(ValueError):
-    """ACAL69 — calage refusé, le CHAMP fautif nommé (calage ou pin)."""
+    """ACAL69 — calage refusé, le CHAMP fautif nommé (calage ou pin).
+
+    Une FORME fautive (JSON illisible, point, nombre hors bornes) est un 400 :
+    le schéma publié (``serializers.CalageSerializer``) la dit."""
 
     def __init__(self, message, *, champ='calage'):
         super().__init__(message)
         self.champ = champ
 
 
-def _nombre_fini(valeur, libelle):
-    import math
+class CalageEnConflit(CalageIllisible):
+    """Calage de forme CONFORME mais inexploitable avec CE plan / CE calepinage
+    (points confondus, aucun calque choisi, pas d'épingle, échelle hors des
+    nombres représentables) : le schéma ne peut pas le dire, 409."""
 
-    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
-        raise CalageIllisible(f"Calage illisible : « {libelle} » doit être "
-                              "un nombre.")
-    if not math.isfinite(float(valeur)):
-        raise CalageIllisible(f"Calage illisible : « {libelle} » doit être "
-                              "un nombre fini.")
-    return float(valeur)
+
+#: Bornes de SAISIE du calage — ni une mesure ni une norme : elles écartent les
+#: débordements flottants de l'échelle (distance / |AB|) et sont les MÊMES au
+#: schéma publié (``serializers.CalageSerializer``) et à la lecture ci-dessous
+#: (un seul prédicat). Coordonnées d'un point du plan, dans l'unité du fichier.
+COORDONNEE_CALAGE_MAX = 1e7
+
+#: Distance réelle saisie entre A et B, en mètres : au plus dix mille
+#: kilomètres, strictement positive (plancher d'un micromètre).
+DISTANCE_CALAGE_MIN_M = 1e-6
+DISTANCE_CALAGE_MAX_M = 1e7
+
+#: Rotation saisie, en degrés : dix mille degrés au plus, dans les deux sens.
+ROTATION_CALAGE_MAX_DEG = 1e4
+
+
+def _premier_refus(erreurs, chemin='calage'):
+    """Le premier refus d'un sérialiseur, en français, avec son chemin."""
+    if isinstance(erreurs, dict):
+        for cle, sous in erreurs.items():
+            return _premier_refus(sous, f'{chemin}.{cle}')
+    if isinstance(erreurs, (list, tuple)) and erreurs:
+        return _premier_refus(erreurs[0], chemin)
+    return f'Calage illisible : « {chemin} » : {erreurs}'
 
 
 def lire_calage(brut):
     """Valide le corps ``calage`` (dict, ou JSON en texte : multipart).
 
+    UN seul prédicat de forme : ``serializers.CalageSerializer`` — celui que
+    le schéma OpenAPI publie.
+
     Returns:
         ``(point_a, point_b, distance_m, rotation_deg)``.
 
     Raises:
-        CalageIllisible: forme, nombre, distance <= 0 ou A = B (échelle
-            indéterminée) — jamais une échelle devinée.
+        CalageIllisible: forme, nombre ou borne (400).
+        CalageEnConflit: A = B, échelle indéterminée (409) — jamais une échelle
+            devinée.
     """
     import json
+
+    from ..serializers import CalageSerializer
 
     if isinstance(brut, str):
         try:
@@ -195,31 +240,36 @@ def lire_calage(brut):
             raise CalageIllisible(
                 "Calage illisible : le champ « calage » n'est pas un JSON "
                 "valide.") from exc
-    if not isinstance(brut, dict):
-        raise CalageIllisible(
-            "Calage illisible : {pointA, pointB, distanceM, rotationDeg} "
-            "est attendu.")
-    points = []
-    for cle in ('pointA', 'pointB'):
-        point = brut.get(cle)
-        if not isinstance(point, (list, tuple)) or len(point) < 2:
-            raise CalageIllisible(f"Calage illisible : « {cle} » doit être "
-                                  "un point [x, y].")
-        points.append((_nombre_fini(point[0], cle),
-                       _nombre_fini(point[1], cle)))
-    distance = _nombre_fini(brut.get('distanceM'), 'distanceM')
-    if distance <= 0:
-        raise CalageIllisible("Calage refusé : la distance réelle entre les "
-                              "deux points doit être positive.")
-    rotation = brut.get('rotationDeg')
-    rotation = 0.0 if rotation is None else _nombre_fini(rotation,
-                                                         'rotationDeg')
-    ab = ((points[1][0] - points[0][0]) ** 2
-          + (points[1][1] - points[0][1]) ** 2) ** 0.5
+    champs = CalageSerializer(data=brut)
+    if not champs.is_valid():
+        raise CalageIllisible(_premier_refus(champs.errors))
+    valides = champs.validated_data
+    point_a = (valides['pointA'][0], valides['pointA'][1])
+    point_b = (valides['pointB'][0], valides['pointB'][1])
+    rotation = valides.get('rotationDeg')
+    rotation = 0.0 if rotation is None else rotation
+    ab = ((point_b[0] - point_a[0]) ** 2
+          + (point_b[1] - point_a[1]) ** 2) ** 0.5
     if ab == 0:
-        raise CalageIllisible("Calage refusé : les deux points sont "
+        raise CalageEnConflit("Calage refusé : les deux points sont "
                               "confondus, l'échelle serait indéterminée.")
-    return points[0], points[1], distance, rotation
+    return point_a, point_b, valides['distanceM'], rotation
+
+
+def _epingle_exploitable(pin):
+    """``(lat, lng)`` flottants d'une épingle dans les bornes GPS, ou ``None``."""
+    import math
+
+    if not isinstance(pin, dict):
+        return None
+    try:
+        lat, lng = float(pin.get('lat')), float(pin.get('lng'))
+    except (TypeError, ValueError):
+        return None
+    if not (math.isfinite(lat) and math.isfinite(lng)
+            and -90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
+        return None
+    return lat, lng
 
 
 def contour_lnglat(contour, calage, pin):
@@ -238,19 +288,20 @@ def contour_lnglat(contour, calage, pin):
         pin: ``{'lat', 'lng'}``.
 
     Raises:
-        CalageIllisible: ``pin`` (sans épingle exploitable) ou contour vide.
+        CalageEnConflit: ``pin`` (sans épingle exploitable), contour vide, ou
+            échelle dont le résultat sort des nombres représentables.
     """
     import math
 
     from .zones import deprojeteur_local
 
-    if (not isinstance(pin, dict) or pin.get('lat') is None
-            or pin.get('lng') is None):
-        raise CalageIllisible(
+    position = _epingle_exploitable(pin)
+    if position is None:
+        raise CalageEnConflit(
             "Ce calepinage n'a pas d'épingle : posez-la sur la carte avant "
             "de caler le plan.", champ='pin')
     if not contour:
-        raise CalageIllisible("Aucun contour à caler : choisissez un calque.",
+        raise CalageEnConflit("Aucun contour à caler : choisissez un calque.",
                               champ='calque')
     (ax, ay), (bx, by), distance_m, rotation = calage
     echelle = distance_m / math.hypot(bx - ax, by - ay)
@@ -263,9 +314,13 @@ def contour_lnglat(contour, calage, pin):
     xs = [p[0] for p in locaux]
     ys = [p[1] for p in locaux]
     cx, cy = (min(xs) + max(xs)) / 2.0, (min(ys) + max(ys)) / 2.0
-    deprojeter = deprojeteur_local((float(pin['lng']), float(pin['lat'])))
+    deprojeter = deprojeteur_local((position[1], position[0]))
     sortie = []
     for x, y in locaux:
         lng, lat = deprojeter((x - cx, y - cy))
         sortie.append([round(lng, 9), round(lat, 9)])
+    if not all(math.isfinite(valeur) for point in sortie for valeur in point):
+        raise CalageEnConflit(
+            "Calage inexploitable : l'échelle (distance réelle / distance A-B) "
+            "sort des nombres représentables pour ce plan — éloignez A et B.")
     return sortie

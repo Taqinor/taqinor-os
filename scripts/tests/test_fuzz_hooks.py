@@ -335,6 +335,35 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
         self.assertEqual(corps['client_id'], 1)
 
+    def test_scan_carte_et_photo_de_visite_recoivent_un_png(self):
+        # ERR-ENF11-FUZZ-CRM / -VISITES — deux dépôts de PHOTO dont le serveur
+        # lit les octets : un cas positif en reçoit un PNG décodable.
+        scan = self._corps('POST', '/api/django/crm/leads/scan-carte/',
+                           {'file': b''})
+        self.assertTrue(scan['file'].startswith(b'\x89PNG'))
+        photo = self._corps('POST', '/api/django/visites/visites/{id}/photos/',
+                            {'fichier': b'', 'slot_code': 'general_facade'})
+        self.assertTrue(photo['fichier'].startswith(b'\x89PNG'))
+        self.assertEqual(photo['slot_code'], 'general_facade')
+        piece = self._corps(
+            'POST', '/api/django/crm/relance-etapes/{id}/piece-recue/',
+            {'fichier': b'', 'type_piece': 'facture'})
+        self.assertTrue(piece['fichier'].startswith(b'%PDF-'))
+        negatif = self._corps('POST', '/api/django/crm/leads/scan-carte/',
+                              {'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
+    def test_demande_d_approbation_recoit_un_pdf(self):
+        # ERR-ENF11-FUZZ-AUTOMATION — le part ``file`` d'une demande reçoit un
+        # PDF ; le type de demande et le payload restent intacts, un cas
+        # NÉGATIF garde son fichier vide.
+        chemin = '/api/django/automation/approval-requests/'
+        corps = self._corps('POST', chemin, {'file': b'', 'request_type': 3})
+        self.assertTrue(corps['file'].startswith(b'%PDF-'))
+        self.assertEqual(corps['request_type'], 3)
+        negatif = self._corps('POST', chemin, {'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def _operation_multipart(self, schema):
         corps = types.SimpleNamespace(
             media_type='multipart/form-data', definition={'schema': schema})
@@ -516,6 +545,35 @@ class FichiersPdfTests(unittest.TestCase):
                               corps={'fournisseur': 1, 'file': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['file'], b'')
 
+    def test_releve_chantier_recoit_un_pdf_lu_par_le_stockage(self):
+        # ERR-ENF11-FUZZ-INSTALLATIONS — ajouter-releve : ``store_attachment``
+        # lit les octets magiques ; le champ ``phase`` du formulaire reste intact.
+        chemin = '/api/django/installations/chantiers/{id}/ajouter-releve/'
+        corps = self._corps(chemin=chemin, corps={'file': b'', 'phase': 'drone'})
+        self.assertTrue(corps['file'].startswith(b'%PDF-'))
+        self.assertEqual(corps['phase'], 'drone')
+        negatif = self._corps(chemin=chemin, corps={'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
+    def test_photo_produit_recoit_un_png(self):
+        # CI #997 fuzz (4) - le serveur valide les octets magiques de la photo.
+        chemin = '/api/django/stock/produits/{id}/photo/'
+        corps = self._corps('POST', chemin, {'file': b''})
+        self.assertTrue(corps['file'].startswith(b'\x89PNG'))
+        self.assertEqual(self._corps('POST', chemin, {'file': b''}, mode='NEGATIVE')['file'], b'')
+        self.assertEqual(self._corps('DELETE', chemin, {'file': b''})['file'], b'')
+
+    def test_logo_et_signature_recoivent_une_image_lisible(self):
+        # ENF11 (parametres) — le serveur lit les octets magiques de l'image
+        # (PNG/JPEG/WebP) : un positif porte un PNG, un négatif reste intact.
+        for chemin in ('/api/django/parametres/upload-logo/',
+                       '/api/django/parametres/upload-signature/'):
+            corps = self._corps(chemin=chemin, corps={'file': b''})
+            self.assertTrue(corps['file'].startswith(b'\x89PNG\r\n\x1a\n'), chemin)
+        negatif = self._corps(chemin='/api/django/parametres/upload-logo/',
+                              corps={'file': b''}, mode='NEGATIVE')
+        self.assertEqual(negatif['file'], b'')
+
     def test_negatif_autre_chemin_et_fichier_absent_intacts(self):
         self.assertEqual(self._corps(mode='NEGATIVE')['fichier'], b'')
         self.assertEqual(
@@ -583,6 +641,49 @@ class FichiersPdfTests(unittest.TestCase):
         # 2 lignes de (filtre 0 + 2 pixels RGB) toutes à zéro = pixels noirs.
         self.assertEqual(zlib.decompress(blocs[b'IDAT']), bytes(14))
 
+    def test_depots_de_fichier_d_un_calepinage_recoivent_le_format_lu(self):
+        # CI #997 (w4) : rendu de toiture, photo de site, fond de plan, carte
+        # d'ombrage (PNG 8 px : image-document exige 8 px de côté au moins),
+        # plan importé (DXF) et série météo (CSV) ; champs de formulaire
+        # intacts, négatifs / GET / autres sous-ressources intacts.
+        base = '/api/django/calepinage/calepinages/{id}/'
+        attendus = (('roof-image/', 'image', b'\x89PNG'),
+                    ('photos/', 'photo', b'\x89PNG'),
+                    ('fond-plan/', 'fichier', b'\x89PNG'),
+                    ('image-document/', 'fichier', b'\x89PNG'),
+                    ('importer-plan/', 'fichier', b'0\nSECTION\n'),
+                    ('meteo-fichier/', 'fichier', b'horodatage;gi_w_m2\r\n'))
+        for suffixe, champ, debut in attendus:
+            corps = self._corps(chemin=base + suffixe,
+                                corps={champ: b'', 'genre': 'sol'})
+            self.assertTrue(corps[champ].startswith(debut), suffixe)
+            self.assertEqual(corps['genre'], 'sol', suffixe)
+            negatif = self._corps(chemin=base + suffixe, mode='NEGATIVE',
+                                  corps={champ: b''})
+            self.assertEqual(negatif[champ], b'', suffixe)
+            lecture = self._corps(chemin=base + suffixe, methode='GET',
+                                  corps={champ: b''})
+            self.assertEqual(lecture[champ], b'', suffixe)
+        self.assertEqual(
+            self._corps(chemin=base + 'photos/{photo_id}/calage/',
+                        corps={'photo': b''})['photo'], b'')
+
+    def test_png_de_capture_a_huit_pixels_et_dxf_de_plan_bien_forme(self):
+        import struct
+        png = self.hooks._PNG_CAPTURE
+        entete = png[16:24]
+        self.assertEqual(struct.unpack('>II', entete), (8, 8))
+        lignes = self.hooks._DXF_PLAN.decode('ascii').split('\n')
+        self.assertEqual(lignes[-1], '')
+        lignes = lignes[:-1]
+        # Un DXF est une suite de paires (code de groupe, valeur) ; le
+        # contour fermé du calque « 0 » porte quatre sommets.
+        self.assertEqual(len(lignes) % 2, 0)
+        self.assertTrue(all(code.strip().lstrip('-').isdigit()
+                            for code in lignes[0::2]))
+        self.assertEqual(lignes.count('VERTEX'), 4)
+        self.assertEqual(lignes[-2:], ['0', 'EOF'])
+
     def test_depot_ged_negatif_et_autres_operations_intacts(self):
         ged = '/api/django/ged/documents/'
         self.assertEqual(
@@ -626,6 +727,33 @@ class IdsFkParCheminTests(unittest.TestCase):
         self.assertEqual(cas.body['lot'], 40)
         autre = self._appel('/api/django/ventes/x/', {'lot': 0})
         self.assertIn(autre.body['lot'], (900, 901))
+
+    def test_regles_portail_client_lead_chantier_du_bon_modele(self):
+        # ERR-ENF11-FUZZ-PORTAIL — le client, le lead et le chantier d'une
+        # demande / d'un dépôt du portail viennent de LEUR modèle (le nom
+        # ``chantier_id`` vise l'union de plusieurs modèles dans la table par
+        # nom : un id réel d'un autre modèle donnait « Chantier inconnu(e) »).
+        import importlib.util
+        import re
+        spec = importlib.util.spec_from_file_location(
+            'prepare_fuzz_env_portail',
+            ROOT / 'scripts' / 'fuzz' / 'prepare_fuzz_env.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        portail = {}
+        for motif, champs, modele, _filtre, _maxi in module.REGLES_PAR_CHEMIN:
+            if re.match(motif, '/api/django/portail/demandes-ticket-portail/'):
+                for champ in champs:
+                    portail[champ] = modele
+        self.assertEqual(portail, {
+            'client': 'crm.Client', 'client_id': 'crm.Client',
+            'lead': 'crm.Lead', 'lead_id': 'crm.Lead',
+            'chantier': 'installations.Installation',
+            'chantier_id': 'installations.Installation'})
+        self.assertFalse(any(
+            re.match(motif, '/api/django/ventes/devis/')
+            and 'chantier_id' in champs
+            for motif, champs, *_ in module.REGLES_PAR_CHEMIN))
 
     def test_query_remplacee_entier_et_texte(self):
         cas = self._appel('/api/django/stock/x/', None,
@@ -1024,6 +1152,28 @@ class ConfigSchemathesisTests(unittest.TestCase):
         # Les défauts de Schemathesis 4.28 gardés, 428 ajouté.
         self.assertEqual(sorted(attendus),
                          [400, 401, 403, 406, 415, 422, 428])
+
+    def test_410_admis_pour_la_seule_route_retiree_du_portail_sav(self):
+        # ERR-ENF11-FUZZ-SAV — ASAV27 : la route retirée répond 410 voulu.
+        import tomllib
+
+        with open(ROOT / 'schemathesis.toml', 'rb') as fh:
+            config = tomllib.load(fh)
+        visees = [op for op in config['operations']
+                  if 'positive_data_acceptance' in op.get('checks', {})]
+        self.assertEqual(len(visees), 1)
+        op = visees[0]
+        self.assertEqual(
+            {k for k in op if k.startswith(('include-', 'exclude-'))},
+            {'include-name'})
+        self.assertEqual(op['include-name'],
+                         'POST /api/django/sav/portail/tickets/')
+        self.assertNotIn('enabled', op)
+        attendus = op['checks']['positive_data_acceptance']['expected-statuses']
+        # Les défauts de Schemathesis 4.28 gardés, 410 ajouté.
+        self.assertEqual(sorted(str(s) for s in attendus),
+                         ['2xx', '401', '403', '404', '409', '410', '429',
+                          '5xx'])
 
 
 if __name__ == '__main__':

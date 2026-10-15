@@ -8,7 +8,8 @@ inchangés). Aucune route dans ``urls.py`` : le routeur les découvre sur le
 viewset.
 """
 import logging
-from decimal import Decimal, InvalidOperation
+import re
+from decimal import Decimal
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
@@ -34,6 +35,8 @@ logger = logging.getLogger('apps.ventes.views.facture')
 # (1e12, NaN, Infinity, remise 1000), l'INSERT levait DataError « numeric
 # field overflow » → 500 (marcheur aléatoire, nocturne 37792898726).
 _MAX_MONTANT_LIGNE = 10 ** 8
+_RE_MONTANT_ND = re.compile(D.MOTIF_MONTANT_NOTE_DEBIT)
+_RE_TAUX_ND = re.compile(D.MOTIF_TAUX_NOTE_DEBIT)
 
 
 def _montants_ligne_corrective(i, ligne):
@@ -79,21 +82,21 @@ def _montant_note_debit(donnees, facture):
     if brut in (None, ''):
         return (None, None), ('Saisissez les lignes ou le montant de la '
                               'note de débit.')
-    try:
-        montant = Decimal(str(brut))
-        taux_brut = donnees.get('taux_tva')
-        taux = (Decimal(str(taux_brut)) if taux_brut not in (None, '')
-                else Decimal(str(facture.taux_tva)))
-    except (InvalidOperation, TypeError, ValueError):
-        return (None, None), 'Montant ou taux de TVA invalide.'
-    if (not montant.is_finite() or not taux.is_finite() or montant <= 0
-            or montant >= _MAX_MONTANT_LIGNE or not 0 <= taux <= 100
-            or montant.as_tuple().exponent < -2
-            or taux.as_tuple().exponent < -2):
+    taux_brut = donnees.get('taux_tva')
+    # CI #1000 — même prédicat que le schéma publié (motifs en ``fullmatch`` sur
+    # la chaîne BRUTE) : ``Decimal`` acceptait « 1e1 », « 1_000 », des blancs de
+    # bord, des chiffres non ASCII que le schéma refuse. Le motif porte aussi
+    # les bornes (positif, < 10^8, taux 0..100, deux décimales au plus).
+    if (not isinstance(brut, str) or not _RE_MONTANT_ND.fullmatch(brut)
+            or not (taux_brut is None or (
+                isinstance(taux_brut, str)
+                and _RE_TAUX_ND.fullmatch(taux_brut)))):
         return (None, None), ('Le montant doit être positif (sous '
                               '100 000 000) et le taux de TVA compris entre '
                               '0 et 100 %, deux décimales au plus.')
-    return (montant, taux), None
+    taux = (Decimal(taux_brut) if taux_brut
+            else Decimal(str(facture.taux_tva)))
+    return (Decimal(brut), taux), None
 
 
 class FactureRectificatifsActionsMixin:
@@ -236,6 +239,9 @@ class FactureRectificatifsActionsMixin:
         pendant de l'avoir. Total (copie des lignes de la facture) ou
         personnalisé (`lignes` fourni) ; augmente ``Facture.montant_du``."""
         facture = self.get_object()
+        # CI #1000 — corps validé (types, listes) AVANT toute lecture, comme
+        # l'avoir : ``taux_tva: null`` / ``motif: 5`` (500) passaient à la main.
+        valider_corps_lignes(request, D.CreerNoteDebitRequest)
         if facture.statut not in ('emise', 'payee', 'en_retard'):
             # ENF11 — refus d'ÉTAT (brouillon, annulée) : 409.
             return Response(

@@ -77,6 +77,21 @@ class MeteoFichierFournisseurTest(BaseApiCalepinage):
         self.assertTrue(entete['piece_jointe'])
         self.assertEqual(len(entete['sha256']), 64)
 
+    def test_fournisseur_blanc_ou_nul_refuse_comme_le_schema_l_exclut(self):
+        """CI #997 (w4) — le schéma publie « non blanc, sans caractère nul » :
+        un fournisseur d'espaces / de caractères de contrôle blancs / nul est
+        « non saisi » (400 nommant ``fournisseur``), rien n'est déposé."""
+        for fournisseur in ('   ', '\u001c', '\x00'):
+            fichier = SimpleUploadedFile(
+                'site.csv', _csv(_instants(48)).encode('utf-8'),
+                content_type='text/csv')
+            reponse = self.api.post(
+                self.url, {'fichier': fichier, 'fournisseur': fournisseur},
+                format='multipart')
+            self.assertEqual(reponse.status_code, 400, repr(fournisseur))
+            self.assertIn('fournisseur', reponse.data)
+        self.assertFalse(fichier_meteo_depose(self.calepinage))
+
     def test_get_sert_le_fichier_retenu(self):
         vide = self.api.get(self.url)
         self.assertEqual(vide.status_code, 200)

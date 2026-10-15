@@ -152,13 +152,13 @@ class TestAud131GardeEtatRelanceManuelle(_Base):
         facture.refresh_from_db()
         self.assertIsNone(facture.prochaine_relance)
 
-    def test_niveau_inconnu_est_refuse_en_404(self):
+    def test_niveau_inconnu_est_refuse_en_409(self):
         """Le niveau était enregistré même quand `lvl` restait None.
-        CI #997 fuzz — bien formé mais inconnu de la société : 404 (la
-        ressource manque), plus 400 ; ``note: 0`` reste un 400 (strict)."""
+        CI #997 fuzz — bien formé mais absent de la cadence de la société :
+        refus d'état 409, plus 400 ; ``note: 0`` reste un 400 (strict)."""
         facture = self._facture()
         resp = self._post(facture, {'niveau': 99})
-        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('niveau', resp.data)
         resp = self._post(facture, {'note': 0})
         self.assertEqual(resp.status_code, 400, resp.data)

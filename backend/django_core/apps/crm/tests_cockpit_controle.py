@@ -1350,13 +1350,16 @@ class RefusTests(_Base):
         # toute erreur levée : `erreurs` est la clé du contrat.
         self.assertEqual(resp.data['erreurs'], {'jours': cs.MESSAGE_JOURS})
 
-    def test_owner_inconnu_400(self):
-        for brut in ('999999', 'abc'):
-            with self.subTest(owner=brut):
-                resp = self.api.get(URL, {'owner': brut})
-                self.assertEqual(resp.status_code, 400, resp.data)
-                self.assertEqual(resp.data['erreurs'],
-                                 {'owner': cs.MESSAGE_OWNER})
+    def test_owner_inconnu_404_et_non_numerique_400(self):
+        # ERR-ENF11-FUZZ-CRM — un identifiant ENTIER (conforme au schéma) qui
+        # n'est pas un responsable de la portée : 404, même corps nommé ; un
+        # texte non numérique reste un 400.
+        resp = self.api.get(URL, {'owner': '999999'})
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertEqual(resp.data['erreurs'], {'owner': cs.MESSAGE_OWNER})
+        resp = self.api.get(URL, {'owner': 'abc'})
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.data['erreurs'], {'owner': cs.MESSAGE_OWNER})
 
     def test_owner_et_jours_valides(self):
         resp = self.api.get(URL, {'jours': '7', 'owner': self.acteur.pk})

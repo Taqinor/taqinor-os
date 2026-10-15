@@ -82,6 +82,28 @@ class TestEmployeeAdmin(TestCase):
         self.assertEqual(self.employee.poste, 'Commerciale')
         self.assertEqual(resp.data['poste'], 'Commerciale')
 
+    def test_creation_nom_deja_pris_409_et_rien_cree(self):
+        # ERR-ENF11-FUZZ-USERS — corps conforme au schéma, nom en conflit :
+        # 409 ``unique_conflict`` (plus un 400), aucun compte créé.
+        avant = User.objects.filter(company=self.company).count()
+        resp = self.api.post(
+            '/api/django/users/', {'username': 'emp_one'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(resp.json()['error']['code'], 'unique_conflict')
+        self.assertEqual(list(resp.json()['error']['fields']), ['username'])
+        self.assertEqual(
+            User.objects.filter(company=self.company).count(), avant)
+
+    def test_liste_refuse_page_size_non_entier_et_repete(self):
+        # La liste est paginée (``core.pagination``) : ``page_size`` non entier
+        # ou répété est refusé, comme le schéma le déclare (un seul entier).
+        for requete in ('?page_size=null', '?page_size=AAA',
+                        '?page_size=null&page_size=null'):
+            resp = self.api.get('/api/django/users/' + requete)
+            self.assertEqual(resp.status_code, 400, (requete, resp.content))
+        self.assertEqual(
+            self.api.get('/api/django/users/?page_size=1').status_code, 200)
+
     def test_admin_can_set_new_password(self):
         # ASEC3 — le mot de passe passe désormais par l'action dédiée (le PATCH
         # générique le refuse : tests_asec3_reinit_mdp).

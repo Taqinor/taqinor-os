@@ -286,12 +286,12 @@ class TestConflitsEndpoint(TestCase):
         self.assertEqual(r.data['totaux']['nb_conflits'], 1)
         self.assertEqual(r.data['conflits'][0]['ressource_id'], self.tech.id)
 
-    def test_endpoint_fenetre_inversee_400(self):
-        """FG300 — fenêtre inversée côté endpoint → 400."""
+    def test_endpoint_fenetre_inversee_409(self):
+        """FG300 — fenêtre inversée côté endpoint → 409."""
         r = self.api.get(
             f'{BASE}/interventions/conflits-affectation/',
             {'debut': SEMAINE_FIN.isoformat(), 'fin': LUNDI.isoformat()})
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_endpoint_scope_societe(self):
         """FG300 — l'endpoint ne montre que les conflits de la société de

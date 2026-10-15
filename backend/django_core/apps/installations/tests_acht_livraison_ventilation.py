@@ -87,14 +87,14 @@ class LivraisonVentilationTests(TestCase):
         ligne = liv.lignes.get()
         r = self.api.patch(f'{BASE}/livraison-lignes/{ligne.id}/',
                            {'quantite': 1}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(FIGEE, str(r.data))
         r = self.api.post(f'{BASE}/livraison-lignes/', {
             'livraison': liv.id, 'produit': self.a.id, 'quantite': 2},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         r = self.api.delete(f'{BASE}/livraison-lignes/{ligne.id}/')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.quantite, 4)
 

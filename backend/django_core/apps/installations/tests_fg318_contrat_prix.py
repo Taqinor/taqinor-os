@@ -131,7 +131,7 @@ class TestLignesEtLookup(TestCase):
         r = self.api.post(f'{BASE}/contrats-prix-lignes/', {
             'contrat': c.id, 'produit': p_o.id, 'prix_convenu': '1',
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_lookup_returns_active_contract_price(self):
         c = self._contrat(version=1, statut='actif')

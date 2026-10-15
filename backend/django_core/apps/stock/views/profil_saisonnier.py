@@ -13,7 +13,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from core.serializers import CompanyScopedRelationsMixin
+from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
+from ..erreurs_achats import ConflitEtat, EtatIncompatible
 from ..openapi_helpers import BOOL, ID_OU_VIDE, P
 from ..utils.params import booleen_requete_ou_400, id_requete_ou_400
 from core.viewsets import CompanyScopedModelViewSet
@@ -21,7 +22,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from ..models import ProfilSaisonnier
 
 
-class ProfilSaisonnierSerializer(CompanyScopedRelationsMixin,
+class ProfilSaisonnierSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                  serializers.ModelSerializer):
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, allow_null=True)
@@ -36,6 +37,9 @@ class ProfilSaisonnierSerializer(CompanyScopedRelationsMixin,
             'quantite_cible', 'actif', 'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+        # CI #997 fuzz (4) : mois 1-12 PUBLIÉS (le service les refusait déjà).
+        extra_kwargs = {'mois_debut': {'min_value': 1, 'max_value': 12},
+                        'mois_fin': {'min_value': 1, 'max_value': 12}}
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('produit', ID_OU_VIDE), P('categorie', ID_OU_VIDE), P('actif', BOOL)]))
@@ -85,6 +89,8 @@ class ProfilSaisonnierViewSet(CompanyScopedModelViewSet):
                 quantite_cible=data.get('quantite_cible'),
                 nom=data.get('nom'), user=request.user,
             )
+        except EtatIncompatible as exc:  # chevauchement d'un profil actif : l'état s'oppose (409)
+            raise ConflitEtat(str(exc))
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
         return Response(

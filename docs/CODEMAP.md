@@ -576,7 +576,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (1283)**
+**Done (1284)**
 
 - `ERR115` — [installations]
 - `ERR116` — [installations]
@@ -1182,6 +1182,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF14` — Exceptions permanentes signées
 - `ENF16` — Dette on_delete (573) à zéro
 - `ENF17` — (already present)
+- `ENF20` — import-linter : `ignore_imports` (52) à zéro
 - `ENF24` — Seuil de couverture
 - `ENF25` — Paramètres de requête : refus des non déclarés (D1) + garde frontend ⊆ schéma
 - `ENF26` — ENF17 + ENF18, tranche des apps tenues (claims 10/10)
@@ -1862,7 +1863,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (130)**
+**Open — to build (129)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1951,7 +1952,6 @@ Things this map could not fully verify from source — do not over-trust:
 - `ENF15` — Dettes moyennes à zéro
 - `ENF18` — Dettes services_appeles (201), taches_cablage (187), get_or_create (197) à zéro
 - `ENF19` — Duplicats (1 181) à zéro
-- `ENF20` — import-linter : `ignore_imports` (52) à zéro
 - `ENF21` — flake8 E501 bloquant
 - `ENF22` — [D-ENF22-BLE001 = (a), Reda 11/10/2026 : exception signée pour les except larges qui…
 - `ENF23` — Tests sautés (178) à zéro

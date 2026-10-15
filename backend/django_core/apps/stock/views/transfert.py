@@ -3,10 +3,13 @@ from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework import serializers
+from core.champs_stricts import ChaineStricte
+from ..erreurs_achats import EtatIncompatible
 from ..openapi_helpers import P, STR, corps
-from ..utils.params import corps_objet
+from ..utils.params import ID_MAX, corps_objet, types_corps_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import TransfertStock
 from ..serializers import TransfertStockSerializer
@@ -18,6 +21,34 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
+
+_ID = {'min_value': 1, 'max_value': ID_MAX}
+MSG_SOURCE_EGALE_DESTINATION = 'La source et la destination doivent être différentes.'
+
+
+def _corps_transfert(request):
+    """CI #997 fuzz (4) — corps d'un transfert lu comme le schéma le publie :
+    produit / source / destination (identifiants entiers) et quantité (entier)
+    REQUIS, note texte facultative (``null`` permis). La même source et
+    destination est un état refusé (409) : deux identifiants conformes dont
+    l'égalité s'oppose, ce que le schéma ne sait pas dire."""
+    donnees = corps_objet(request)
+    types_corps_ou_400(donnees, textes=('note',), entiers=('quantite',),
+                       ids=('produit', 'source', 'destination'), nuls=('note',))
+    manquants = {c: ['Ce champ est obligatoire.']
+                 for c in ('produit', 'source', 'destination', 'quantite') if donnees.get(c) is None}
+    if manquants:
+        raise ValidationError(manquants)
+    if '\x00' in (donnees.get('note') or ''):
+        raise ValidationError({'note': ['Le caractère nul n’est pas autorisé.']})
+    return donnees
+
+
+def _meme_emplacement(donnees):
+    """409 si la source égale la destination, ``None`` sinon."""
+    if donnees['source'] != donnees['destination']:
+        return None
+    return Response({'detail': MSG_SOURCE_EGALE_DESTINATION}, status=status.HTTP_409_CONFLICT)
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))
@@ -57,7 +88,10 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
 
     def create(self, request, *args, **kwargs):
         from ..services import transfer_stock
-        donnees = corps_objet(request)
+        donnees = _corps_transfert(request)
+        refus = _meme_emplacement(donnees)
+        if refus is not None:
+            return refus
         try:
             transfert = transfer_stock(
                 company=request.user.company, user=request.user,
@@ -66,6 +100,8 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
                 destination_id=donnees.get('destination'),
                 quantite=donnees.get('quantite'),
                 note=donnees.get('note') or '')
+        except EtatIncompatible as exc:  # stock insuffisant, seuil d'approbation : l'état s'oppose (409)
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -74,10 +110,10 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
 
     # ── NTRET7 — cycle en deux temps (OPT-IN, le direct reste inchangé) ────
 
-    @extend_schema(request=corps('TransfertDemanderCorps', produit=serializers.IntegerField(),
-                                 source=serializers.IntegerField(), destination=serializers.IntegerField(),
-                                 quantite=serializers.IntegerField(), note=serializers.CharField(required=False,
-                                                                                                 allow_blank=True)),
+    @extend_schema(request=corps('TransfertDemanderCorps', produit=serializers.IntegerField(**_ID),
+                                 source=serializers.IntegerField(**_ID), destination=serializers.IntegerField(**_ID),
+                                 quantite=serializers.IntegerField(**_ID),
+                                 note=ChaineStricte(required=False, allow_blank=True, allow_null=True)),
                    responses={201: TransfertStockSerializer})
     @action(detail=False, methods=['post'], url_path='demander')
     def demander(self, request):
@@ -87,7 +123,10 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
         inchangé — ce cycle est une porte d'entrée SÉPARÉE."""
         from ..services_transfert_deux_temps import creer_demande_transfert
 
-        donnees = corps_objet(request)
+        donnees = _corps_transfert(request)
+        refus = _meme_emplacement(donnees)
+        if refus is not None:
+            return refus
         try:
             transfert = creer_demande_transfert(
                 company=request.user.company, user=request.user,

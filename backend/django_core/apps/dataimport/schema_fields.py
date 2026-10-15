@@ -22,3 +22,26 @@ def champ_choix(valeurs, **kwargs):
         pass
 
     return ChampChoix(choices=valeurs, **kwargs)
+
+
+class BooleenFormulaire(serializers.BooleanField):
+    """Drapeau d'un corps ``multipart`` (toujours reçu en TEXTE) : seules les
+    valeurs ``true`` / ``false`` (casse libre) sont des booléens. DRF lit aussi
+    ``1``, ``on``, ``yes``… — un entier ou un objet JSON sérialisé en formulaire
+    (``{}``) n'est PAS un booléen au schéma et était pris pour « faux » en
+    silence (api-fuzz, ``ecraser`` / ``rollback_on_error``).
+
+    Une valeur blanche (``ecraser=``) est lue comme une valeur — donc refusée —
+    et non comme une absence (le comportement « formulaire HTML » de DRF est
+    désactivé ; la désérialisation se fait sur un dict simple, voir
+    ``views._options_import``)."""
+
+    def get_value(self, dictionary):
+        return dictionary.get(self.field_name, serializers.empty)
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool):
+            return data
+        if isinstance(data, str) and data.lower() in ('true', 'false'):
+            return data.lower() == 'true'
+        self.fail('invalid', input=data)

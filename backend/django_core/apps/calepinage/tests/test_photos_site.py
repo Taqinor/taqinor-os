@@ -272,6 +272,25 @@ class EndpointTest(BasePhoto):
         self.assertIn('prise_le', reponse.data)
         self.assertEqual(PhotoSite.objects.count(), 0)
 
+    def test_post_date_future_en_conflit_409_les_autres_formes_en_400(self):
+        """ERR-ENF11-FUZZ-CALEPINAGE (w4) — la FORME de ``prise_le`` (date
+        ``AAAA-MM-JJ``) et le genre (énumération) sont publiés et refusés en
+        400 ; une date FUTURE dépend du jour du serveur, le schéma ne peut pas
+        la dire : 409. Rien n'est rangé dans aucun des cas."""
+        cas = (({'prise_le': DEMAIN.isoformat()}, 409, 'prise_le'),
+               ({'prise_le': 'hier matin'}, 400, 'prise_le'),
+               ({'prise_le': '2026-1-5'}, 400, 'prise_le'),
+               ({'prise_le': HIER.isoformat(), 'genre': 'satellite'}, 400,
+                'genre'),
+               ({'prise_le': HIER.isoformat(), 'genre': ''}, 400, 'genre'))
+        for corps, statut, champ in cas:
+            reponse = self.api.post(self.url, {'photo': _fichier(), **corps},
+                                    format='multipart')
+            self.assertEqual(reponse.status_code, statut, (corps,
+                                                           reponse.data))
+            self.assertIn(champ, reponse.data)
+        self.assertEqual(PhotoSite.objects.count(), 0)
+
     def test_post_non_image_refuse(self):
         reponse = self.api.post(
             self.url,

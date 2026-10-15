@@ -94,16 +94,18 @@ class ApiReglagesPompageTest(TestCase):
         self.assertEqual(resp.data['charges_pompage_solaire'], [])
         self.assertEqual(resp.data['regle_fda_pompage'], {})
 
-    def test_reglage_sans_source_400_nommant_le_champ(self):
+    def test_reglage_sans_source_409_nommant_le_champ(self):
+        # ENF11 — règle métier sur un corps conforme au schéma : 409, le champ
+        # fautif est nommé dans le message.
         resp = self.api.patch(URL_MAJ, {'charges_pompage_solaire': [
             {'libelle': 'Visite annuelle', 'montant_mad_an': 400,
              'source': ''}]}, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('charges_pompage_solaire', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('charges_pompage_solaire', resp.data['detail'])
         resp = self.api.patch(URL_MAJ, {'regle_fda_pompage': {
             'taux_pct': 30}}, format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('regle_fda_pompage', resp.data)
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('regle_fda_pompage', resp.data['detail'])
 
     def test_null_vaut_vide_pas_400(self):
         # api-fuzz #956 : un JSON null (schéma : valeur libre) = « vide ».

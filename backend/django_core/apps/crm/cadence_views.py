@@ -13,7 +13,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
@@ -27,6 +27,8 @@ from .cadence_selectors import STATUTS_SUIVI
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, corps_objet, entier_param
 from .cadence_reponses import TYPES_PIECE_RECUE
+from core.champs_stricts import ChaineStricte
+from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
@@ -316,7 +318,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(payload)
 
     @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True),
-                               sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER,
+                               sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER_ID,
                                sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='suivi',
             permission_classes=[IsAnyRole])
@@ -365,17 +367,18 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                     status=status.HTTP_400_BAD_REQUEST)
             bornes[nom] = valeur
         date_debut, date_fin = bornes['date_debut'], bornes['date_fin']
+        # ERR-ENF11-FUZZ-CRM — deux dates conformes au schéma dont l'ÉCART est
+        # refusé : une règle entre deux paramètres, que le schéma ne sait pas
+        # dire → 409 (jamais un 400 sur une requête conforme).
         if date_fin < date_debut:
-            return Response(
-                {'date_fin': 'La borne de fin précède la borne de début.'},
-                status=status.HTTP_400_BAD_REQUEST)
+            raise ConflitEtat(
+                {'date_fin': 'La borne de fin précède la borne de début.'})
         if (date_fin - date_debut).days > SUIVI_JOURS_MAX:
             # Au-delà, ce n'est plus une période de travail mais un export :
             # un refus net vaut mieux qu'un écran qui met dix secondes.
-            return Response(
+            raise ConflitEtat(
                 {'date_fin': f'Période trop longue ({SUIVI_JOURS_MAX} jours '
-                             'au plus).'},
-                status=status.HTTP_400_BAD_REQUEST)
+                             'au plus).'})
         statut = (request.query_params.get('statut') or '').strip()
         if statut and statut not in STATUTS_SUIVI:
             return Response(
@@ -493,7 +496,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(
             chaine_commerciale(request.user, request.user.company))
 
-    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, enum=[7, 14, 30]), sd.P_OWNER,
+    @extend_schema(parameters=[sd.param('jours', OpenApiTypes.INT, enum=[7, 14, 30]), sd.P_OWNER_ID,
                                sd.param('segment', enum=[*SEGMENTS_ADMIS])],
                    responses=inline_serializer('CrmControleSuivi', {
                        'periode_jours': serializers.IntegerField(),
@@ -520,8 +523,9 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         transparence CKP3) ; seule la portée de visibilité (``scope_queryset``
         via le lead) borne ce qui est lu. Refus 400 ``{"erreurs": {champ:
         message}}`` qui NOMME le champ : ``jours`` hors 7/14/30, ``owner``
-        inconnu ou hors portée — levés (``DRFValidationError``) pour que la
-        forme versionnée reste celle de la réponse."""
+        non numérique — levés (``DRFValidationError``) pour que la forme
+        versionnée reste celle de la réponse. ``owner`` ENTIER mais inconnu
+        ou hors portée : 404, même corps (ERR-ENF11-FUZZ-CRM)."""
         from .controle_suivi import (
             controle_suivi, parametre_segment, parametres_controle,
         )
@@ -537,6 +541,13 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         if erreur_segment:
             erreurs = {**erreurs, 'segment': erreur_segment}
         if erreurs:
+            if (list(erreurs) == ['owner']
+                    and (request.query_params.get('owner') or '').strip().isdigit()):
+                # ERR-ENF11-FUZZ-CRM — un identifiant ENTIER (conforme au
+                # schéma) qui n'est pas un responsable de la portée : id
+                # inconnu = 404, même corps que le refus nommé (jamais un
+                # oracle d'existence). Un texte non numérique reste un 400.
+                raise NotFound({'erreurs': erreurs})
             raise DRFValidationError({'erreurs': erreurs})
         return Response(controle_suivi(
             request.user.company, request.user, jours=jours, owner=owner,
@@ -1180,10 +1191,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
 
     @extend_schema(request={'application/json': sd.corps('CrmPieceRecueRequest',
                                                          type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)),
-                                                         note=serializers.CharField(required=False)),
+                                                         note=ChaineStricte(required=False, allow_blank=True)),
                             'multipart/form-data': sd.corps('CrmPieceRecueMultipartRequest',
                                                             type_piece=ChoixDocumente(choices=tuple(TYPES_PIECE_RECUE)),
-                                                            note=serializers.CharField(required=False),
+                                                            note=ChaineStricte(required=False, allow_blank=True),
                                                             fichier=serializers.FileField(required=False))},
                    responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='piece-recue',
@@ -1201,7 +1212,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
 
         Réponse : la touche (forme `relance_etape_v2`) + ``prochaine_touche``
         (l'étape « préparer le devis »), comme le « Fait ». Refus 400
-        ``{"erreurs": {champ: message}}`` nommant le champ. Jamais déclenché
+        ``{"erreurs": {champ: message}}`` nommant le champ (409 pour une touche
+        déjà traitée : un ÉTAT, ERR-ENF11-FUZZ-CRM). Jamais déclenché
         par un message ENTRANT : c'est un geste humain. Écriture → garde
         ``IsResponsableOrAdmin`` par défaut de ``get_permissions``."""
         etape = self.get_object()
@@ -1210,8 +1222,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         refus = refus_piece_recue(etape, type_piece)
         if refus:
             champ, message = refus
-            return Response({'erreurs': {champ: message}},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ERR-ENF11-FUZZ-CRM — « touche déjà traitée » = ÉTAT : 409.
+            return Response({'erreurs': {champ: message}}, status=(
+                status.HTTP_409_CONFLICT if champ == 'etape'
+                else status.HTTP_400_BAD_REQUEST))
         attachment = None
         fichier = request.FILES.get('fichier')
         if fichier:
@@ -1511,8 +1525,10 @@ class LeadCadenceActionsMixin:
         `reveil`, `generique` — 400 sur toute autre valeur. IDEMPOTENT PAR
         CADENCE : un second appel renvoie le plan existant sans rien dupliquer
         (voir ``services.initialiser_plan_relance``). Un lead « ne plus
-        contacter » est refusé (400) : c'est une demande explicite de la
-        personne, pas un réglage à contourner.
+        contacter » est refusé (409 : un ÉTAT de la fiche, ERR-ENF11-FUZZ-CRM) :
+        c'est une demande explicite de la personne, pas un réglage à
+        contourner. Un ``devis`` qui n'est pas un devis envoyé de ce lead : 404 ;
+        le motif d'arrêt manquant ou une autre cadence déjà active : 409.
 
         CAD51 — relancer une cadence PLUS prioritaire que celle en cours
         l'ARRÊTE : jamais en silence. Sans ``confirmer_remplacement: true``,
@@ -1545,7 +1561,7 @@ class LeadCadenceActionsMixin:
         if lead.ne_plus_contacter:
             return Response(
                 {'detail': 'Lead marqué « ne plus contacter ».'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         from .cadence_plan import (
             MESSAGE_RELANCE_PLUSIEURS_DEVIS,
             MESSAGE_RELANCE_SANS_DEVIS,
@@ -1584,7 +1600,7 @@ class LeadCadenceActionsMixin:
                          'erreurs': {'devis': [
                              "Ce devis n'est pas un devis envoyé de ce lead, "
                              'en attente de réponse.']}},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_404_NOT_FOUND)
             elif len(envoyes) == 1:
                 devis = envoyes[0]
             elif len(envoyes) > 1:
@@ -1614,7 +1630,7 @@ class LeadCadenceActionsMixin:
                  'erreurs': {'motif': [
                      "Le motif d'arrêt est obligatoire : " + message]},
                  'remplacement': apercu},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         try:
             etapes = initialiser_plan_relance(
                 lead, request.user, cadence=cadence, devis=devis,
@@ -1632,7 +1648,7 @@ class LeadCadenceActionsMixin:
             # parallèle : le refus NOMME le champ et dit le geste à faire
             # (« Arrêter la cadence » d'abord).
             return Response({'erreurs': {'cadence': [str(exc)]}},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(
             RelanceEtapeSerializer(
                 etapes, many=True, context={'request': request}).data,

@@ -132,7 +132,7 @@ class TestLignesPersonnalisables(TestCase):
         resp = self.api.patch(
             f'{BASE}/ordre-assemblage-lignes/{ligne.id}/',
             {'quantite': 99}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         ligne.refresh_from_db()
         self.assertEqual(ligne.quantite, 2)
 

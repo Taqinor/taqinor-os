@@ -6,6 +6,7 @@ from apps.records.champs_stricts import (
     ChampsStrictsBornesMixin, ChampsStrictsLitterauxMixin, DecimalLitteral,
 )
 
+from core.conflit_etat import ConflitEtat
 from core.unicite import UniciteEn409Mixin
 
 from .models import (
@@ -16,16 +17,18 @@ from .models import (
 from .providers import available_providers
 
 
-class MonitoringConfigSerializer(ChampsStrictsBornesMixin,
+class MonitoringConfigSerializer(UniciteEn409Mixin, ChampsStrictsBornesMixin,
                                  serializers.ModelSerializer):
     provider_label = serializers.SerializerMethodField()
     is_auto = serializers.BooleanField(read_only=True)
     # has_credentials expose seulement la PRÉSENCE d'identifiants (jamais leur
     # contenu côté client) ; `credentials` est write-only.
     has_credentials = serializers.SerializerMethodField()
-    # ASAV71 — colonne chiffrée (sous-classe de TextField) : champ JSON
-    # déclaré explicitement, write-only, jamais relu par l'API.
-    credentials = serializers.JSONField(write_only=True, required=False)
+    # ASAV71 — colonne chiffrée (sous-classe de TextField) : champ déclaré
+    # explicitement, write-only, jamais relu par l'API. ERR-ENF11-FUZZ-MONITORING
+    # — un OBJET (le connecteur lit un dict) : ``null`` ou une liste, publiés
+    # valides par un JSON libre, étaient refusés (« Ce champ ne peut être nul »).
+    credentials = serializers.DictField(write_only=True, required=False)
 
     class Meta:
         model = MonitoringConfig
@@ -53,10 +56,24 @@ class MonitoringConfigSerializer(ChampsStrictsBornesMixin,
         return value
 
 
+#: ERR-ENF11-FUZZ-MONITORING — énergie relevée : décimal >= 0, 10 chiffres
+#: entiers et 2 décimales au plus (``validate_energy_kwh``, colonne
+#: ``numeric(12,2)``) ; le motif générique publiait aussi le signe ``-``.
+MOTIF_ENERGIE_KWH = r'^[0-9]{1,10}(?:\.[0-9]{1,2})?$'
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_ENERGIE_KWH})
+class _EnergieKwh(DecimalLitteral):
+    """Énergie relevée (kWh) : chaîne décimale positive ou nulle (un nombre
+    JSON est refusé, comme le schéma le dit)."""
+
+
 class ProductionReadingSerializer(ChampsStrictsBornesMixin,
                                   serializers.ModelSerializer):
     source_display = serializers.CharField(
         source='get_source_display', read_only=True)
+    energy_kwh = _EnergieKwh(max_digits=12, decimal_places=2)
 
     class Meta:
         model = ProductionReading
@@ -67,6 +84,9 @@ class ProductionReadingSerializer(ChampsStrictsBornesMixin,
         # `company`, `created_by`, `source`='manual' et `external_id` posés
         # côté serveur pour la saisie manuelle — jamais lus du corps.
         read_only_fields = ['source', 'external_id', 'date_creation']
+        # Un relevé couvre au moins un jour (``validate_period_days``) : la
+        # borne est PUBLIÉE (le schéma annonçait 0).
+        extra_kwargs = {'period_days': {'min_value': 1}}
 
     def validate_installation(self, value):
         request = self.context.get('request')
@@ -97,17 +117,19 @@ class ProductionReadingSerializer(ChampsStrictsBornesMixin,
             'period_days', getattr(instance, 'period_days', None))
         installation = attrs.get(
             'installation', getattr(instance, 'installation', None))
+        # ERR-ENF11-FUZZ-MONITORING — deux refus qui dépendent de l'HORLOGE et
+        # des relevés DÉJÀ saisis (le schéma ne peut les dire) : 409.
         if jour is not None and jour > timezone.localdate():
-            raise serializers.ValidationError(
-                {'date': 'La date du relevé ne peut pas être dans le futur.'})
+            raise ConflitEtat(
+                {'date': ['La date du relevé ne peut pas être dans le futur.']})
         if jour is not None and periode is not None and installation:
             doublons = ProductionReading.objects.filter(
                 installation=installation, date=jour, period_days=periode)
             if instance is not None:
                 doublons = doublons.exclude(pk=instance.pk)
             if doublons.exists():
-                raise serializers.ValidationError(
-                    {'date': 'Relevé déjà saisi pour cette période.'})
+                raise ConflitEtat(
+                    {'date': ['Relevé déjà saisi pour cette période.']})
         return attrs
 
 
@@ -127,7 +149,8 @@ class CleaningEventSerializer(ChampsStrictsBornesMixin,
         return value
 
 
-class ProductionWarrantySerializer(ChampsStrictsLitterauxMixin,
+class ProductionWarrantySerializer(UniciteEn409Mixin,
+                                   ChampsStrictsLitterauxMixin,
                                    serializers.ModelSerializer):
     class Meta:
         model = ProductionWarranty

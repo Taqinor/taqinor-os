@@ -18,7 +18,8 @@ from django.core.exceptions import ValidationError
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.calepinage.services.profils_types import (
-    MENTION_REPLI, SOURCE_REPLI, courbe_journaliere, _profil_de_repli,
+    MENTION_REPLI, SOURCE_REPLI, ProfilEnConflit, ProfilInvalide,
+    courbe_journaliere, valider_forme_profils, _profil_de_repli,
     _profils_de_repli,
 )
 
@@ -150,6 +151,111 @@ class CourbeJournaliereTest(unittest.TestCase):
         _, diagnostic = courbe_journaliere(self.profil)
         self.assertEqual(diagnostic['provenance'], 'Comptage.')
         self.assertEqual(diagnostic['source'], 'societe')
+
+
+class FormeDuPutTest(unittest.TestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE (w4) — la FORME du corps de
+    ``PUT parametres/profils-types/`` est jugée avant la base, au chemin
+    ``profils[<rang>].<champ>`` que l'écran sait pointer ; la même que le
+    schéma publié (``serializers_conso``)."""
+
+    @staticmethod
+    def _ligne(**surcharges):
+        ligne = {'cle': 'maison-1', 'courbe': {'annuel': JOURNEE},
+                 'provenance': 'Relevé de 12 factures, 2025.'}
+        ligne.update(surcharges)
+        return ligne
+
+    def _refus(self, ligne, champ):
+        with self.assertRaises(ProfilInvalide) as capture:
+            valider_forme_profils([self._ligne(), ligne])
+        self.assertNotIsInstance(capture.exception, ProfilEnConflit)
+        self.assertEqual(capture.exception.champ, f'profils[1].{champ}')
+
+    def test_la_forme_conforme_passe_et_la_liste_vide_aussi(self):
+        valider_forme_profils([])
+        valider_forme_profils([
+            self._ligne(),
+            self._ligne(cle='Atelier_2', libelle='', famille='industriel',
+                        actif=False,
+                        courbe={'ete': {'ouvre': JOURNEE, 'weekend': JOURNEE},
+                                'hiver': JOURNEE}),
+            self._ligne(cle='a' * 60, libelle='x' * 160,
+                        courbe={'annuel': [0] * 24})])
+
+    def test_un_corps_qui_n_est_pas_une_liste_d_objets_est_refuse(self):
+        for brut in (None, {}, 'x', 5, [None], ['x'], [[]]):
+            with self.assertRaises(ProfilInvalide):
+                valider_forme_profils(brut)
+
+    def test_cle_libelle_famille_actif_provenance_fautifs(self):
+        for cle in (None, '', ' a', 'a b', 'a/b', 'é', 5, 'a' * 61, ['a']):
+            self._refus(self._ligne(cle=cle), 'cle')
+        for libelle in (None, 5, 'x' * 161, 'a\x00b'):
+            self._refus(self._ligne(libelle=libelle), 'libelle')
+        for famille in (None, '', 'Residentiel', 'autre ', 0, ['autre'], {}):
+            self._refus(self._ligne(famille=famille), 'famille')
+        for actif in (None, 0, 1, 'true'):
+            self._refus(self._ligne(actif=actif), 'actif')
+        for provenance in (None, '', '   ', '\u001c', 'a\x00', 5):
+            self._refus(self._ligne(provenance=provenance), 'provenance')
+
+    def test_courbe_fautive(self):
+        bonne = JOURNEE
+        for courbe in (None, [], {}, 'x', {'annuel': bonne[:23]},
+                       {'annuel': bonne + [1.0]}, {'annuel': 'x'},
+                       {'annuel': [-1.0] + bonne[1:]},
+                       {'annuel': ['1'] * 24}, {'annuel': [True] * 24},
+                       {'annuel': [float('nan')] * 24},
+                       {'annuel': [float('inf')] * 24},
+                       {'mars': bonne}, {'annuel': {}},
+                       {'annuel': {'lundi': bonne}},
+                       {'annuel': {'ouvre': bonne[:3]}},
+                       {'annuel': bonne, 'inconnue': bonne}):
+            self._refus(self._ligne(courbe=courbe), 'courbe')
+
+    def test_un_etat_est_un_conflit_pas_une_faute_de_forme(self):
+        self.assertTrue(issubclass(ProfilEnConflit, ProfilInvalide))
+        # Une journée entièrement nulle et une clé en double (minuscules) sont
+        # de FORME conforme : la validation de forme les laisse passer.
+        valider_forme_profils([self._ligne(courbe={'annuel': [0.0] * 24}),
+                               self._ligne(cle='MAISON-1')])
+
+
+class SchemaDuPutTest(unittest.TestCase):
+    """Le schéma publié du ``PUT`` porte les bornes du MODÈLE."""
+
+    def test_la_courbe_publiee_suit_le_modele(self):
+        from apps.calepinage.serializers_conso import COURBE_PROFIL_SCHEMA
+
+        modele = ProfilTypeConsommation
+        self.assertEqual(sorted(COURBE_PROFIL_SCHEMA['properties']),
+                         sorted(modele.SAISONS))
+        self.assertIs(COURBE_PROFIL_SCHEMA['additionalProperties'], False)
+        plat, segmente = COURBE_PROFIL_SCHEMA['properties']['annuel']['oneOf']
+        self.assertEqual((plat['minItems'], plat['maxItems']),
+                         (modele.HEURES, modele.HEURES))
+        self.assertEqual(plat['items'], {'type': 'number', 'minimum': 0})
+        self.assertEqual(sorted(segmente['properties']),
+                         sorted(modele.JOURS_TYPES))
+
+    def test_les_champs_du_sous_ensemble_ecrit_sont_ceux_du_service(self):
+        from apps.calepinage.serializers_conso import (
+            ProfilTypeEcritureSerializer,
+        )
+
+        champs = ProfilTypeEcritureSerializer().fields
+        self.assertEqual(
+            champs['cle'].max_length,
+            ProfilTypeConsommation._meta.get_field('cle').max_length)
+        self.assertEqual(
+            champs['libelle'].max_length,
+            ProfilTypeConsommation._meta.get_field('libelle').max_length)
+        self.assertEqual(sorted(dict(champs['famille'].choices)),
+                         sorted(c.value for c in
+                                ProfilTypeConsommation.Famille))
+        self.assertTrue(champs['courbe'].required)
+        self.assertTrue(champs['provenance'].required)
 
 
 if __name__ == '__main__':  # pragma: no cover

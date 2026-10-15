@@ -97,7 +97,7 @@ class TestDemandeCreation(TestCase):
         r = self.api.post(f'{BASE}/demandes-achat/', {
             'objet': 'Test', 'fournisseur_suggere': f_o.id,
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_blank_objet_rejected(self):
         r = self.api.post(f'{BASE}/demandes-achat/', {'objet': '   '})
@@ -178,7 +178,7 @@ class TestLignes(TestCase):
         r = self.api.post(f'{BASE}/demandes-achat-lignes/', {
             'demande': self.da.id, 'quantite': '1', 'prix_estime': '1',
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
 
     def test_foreign_produit_rejected(self):
         autre = make_company()
@@ -187,7 +187,7 @@ class TestLignes(TestCase):
             'demande': self.da.id, 'produit': p_o.id,
             'quantite': '1', 'prix_estime': '1',
         })
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 class TestScopeAndRole(TestCase):

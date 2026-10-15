@@ -116,7 +116,7 @@ class TestPickListGeneration(TestCase):
         resp = self.api.post(f'{BASE}/pick-lists/', {
             'installation': inst_other.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_coche_ligne(self):
         pick = PickList.objects.create(

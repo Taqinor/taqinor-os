@@ -15,11 +15,13 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from core.champs_stricts import DecimalStricte
+from core.champs_stricts import ChaineStricte, DecimalStricte, MOTIF_NON_BLANC_SANS_NUL
 from core.entite_scoping import EntiteScopeMixin
-from ..openapi_helpers import BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, corps
+from ..openapi_helpers import (
+    BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, QuantiteComptee, corps,
+)
 from ..utils.params import (
-    MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400,
+    ID_MAX, MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400,
     id_corps, id_requete_ou_400, ids_requete_ou_400,
 )
 from core.viewsets import CompanyScopedModelViewSet
@@ -128,6 +130,12 @@ def _params_bulk(donnees):
 #: Valeur d'une édition de prix en masse : décimal-chaîne (l'écran envoie le
 #: texte saisi), le MÊME champ publie le schéma et valide le corps.
 VALEUR_BULK = DecimalStricte(max_digits=12, decimal_places=2, required=False)
+
+#: Ligne d'un comptage d'inventaire : produit NOMMÉ (id 1..ID_MAX) et quantité
+#: comptée (``QuantiteComptee``), les deux requis.
+LIGNE_INVENTAIRE = corps('ProduitInventaireLigneCorps',
+                         produit=serializers.IntegerField(min_value=1, max_value=ID_MAX),
+                         quantite_comptee=QuantiteComptee())
 
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
@@ -585,9 +593,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(result)
 
     @extend_schema(request=corps('ProduitInventaireCorps', motif=serializers.CharField(required=False,
-                                                                                       allow_blank=True),
-                                 lignes=serializers.ListField(child=serializers.DictField(),
-                                                              min_length=1)), responses=OBJET)
+                                                                                       allow_blank=True,
+                                                                                       allow_null=True),
+                                 lignes=serializers.ListField(child=LIGNE_INVENTAIRE, min_length=1)),
+                   responses=OBJET)
     @action(detail=False, methods=['post'], url_path='inventaire',
             permission_classes=[IsAdminRole])
     def inventaire(self, request):
@@ -606,8 +615,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         motif = donnees.get('motif')
         if motif is not None and not isinstance(motif, str):
             raise serializers.ValidationError({'motif': ['Texte attendu.']})
-        if any(isinstance(lg, dict) and lg.get('produit') is not None
-               and id_corps(lg['produit']) is None for lg in lignes):
+        # CI #997 fuzz (4) — chaque ligne est un objet qui NOMME son produit (clé
+        # requise du schéma publié) ; la quantité est contrôlée par le service.
+        if any(not isinstance(lg, dict) or id_corps(lg.get('produit')) is None for lg in lignes):
             raise serializers.ValidationError({'lignes': ['Produit : identifiant entier attendu.']})
         result = apply_inventory_count(
             company=request.user.company, user=request.user,
@@ -1312,7 +1322,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 status=status.HTTP_404_NOT_FOUND)
         return Response(result)
 
-    @extend_schema(responses={
+    @extend_schema(parameters=[P('lot', STR, False, 'Numéro de lot', pattern=MOTIF_NON_BLANC_SANS_NUL),
+                               P('serie', STR, False, 'Numéro de série', pattern=MOTIF_NON_BLANC_SANS_NUL)],
+                   responses={
         200: inline_serializer('StockTracabiliteChaine', {
             'lot': serializers.CharField(),
             'serie': serializers.CharField(),
@@ -1320,9 +1332,6 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'amont': serializers.ListField(child=serializers.DictField()),
             'stock': serializers.DictField(),
             'aval': serializers.ListField(child=serializers.DictField()),
-        }),
-        400: inline_serializer('StockTracabiliteParamManquant', {
-            'detail': serializers.CharField(),
         }),
         404: inline_serializer('StockTracabiliteInconnue', {
             'detail': serializers.CharField(),
@@ -1344,8 +1353,12 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         lot = (request.query_params.get('lot') or '').strip()
         serie = (request.query_params.get('serie') or '').strip()
         if not lot and not serie:
-            return Response({'detail': 'Paramètre lot ou serie requis.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # Ni lot ni série : le schéma ne sait pas dire « l'un OU l'autre »
+            # (deux paramètres facultatifs) ; aucun numéro = aucune chaîne à
+            # remonter -> 404, comme un numéro inconnu (plus un 400 sur une
+            # requête conforme).
+            return Response({'detail': 'Aucune traçabilité sans numéro de lot ou de série.'},
+                            status=status.HTTP_404_NOT_FOUND)
         chaine = tracabilite_produit(
             request.user.company, lot=lot or None, serie=serie or None)
         if chaine is None:
@@ -1767,7 +1780,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             for e in rapport
         ])
 
-    @extend_schema(request=corps('ProduitDupliquerCorps', nom=serializers.CharField()),
+    @extend_schema(request=corps('ProduitDupliquerCorps',
+                                 nom=ChaineStricte(max_length=Produit._meta.get_field('nom').max_length)),
                    responses={201: ProduitSerializer})
     @action(detail=True, methods=['post'], url_path='dupliquer')
     def dupliquer(self, request, *args, **kwargs):
@@ -1787,9 +1801,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         nom = (request.data.get('nom') if isinstance(request.data, dict)
                else None) or ''
         nom = nom.strip() if isinstance(nom, str) else ''
-        if not nom:
+        # CI #997 fuzz (4) — le nom suit la forme PUBLIÉE : texte non blanc, sans
+        # caractère nul, au plus la longueur de la colonne (sinon full_clean/base).
+        if not nom or '\x00' in nom or len(nom) > Produit._meta.get_field('nom').max_length:
             return Response(
-                {'detail': 'Le nom du nouveau produit est requis.'},
+                {'detail': 'Le nom du nouveau produit est requis (255 caractères au plus, sans caractère nul).'},
                 status=status.HTTP_400_BAD_REQUEST)
 
         # ASTK87 — copie GÉNÉRIQUE de tous les champs concrets (méta-données

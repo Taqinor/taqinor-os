@@ -98,6 +98,17 @@ class FondPlanApiTest(BaseApiCalepinage):
         self.assertEqual(sans_jeton.status_code, 400)
         self.assertIn('base_empreinte', sans_jeton.data)
 
+    def test_jeton_blanc_ou_nul_est_manquant_400(self):
+        """CI #997 (w4) — le schéma publie « non blanc, sans caractère nul » :
+        le serveur refuse EXACTEMENT ce que le schéma exclut (jamais un jeton
+        d'espaces comparé à l'empreinte, ni une pièce déposée pour rien)."""
+        for jeton in ('   ', '\u001c', '\x00'):
+            reponse = self._televerser(_png(), base=jeton)
+            self.assertEqual(reponse.status_code, 400, repr(jeton))
+            self.assertIn('base_empreinte', reponse.data)
+        self.assertFalse(Attachment.objects.filter(
+            object_id=self.calepinage.pk).exists())
+
     def test_base_perimee_409_sans_piece(self):
         reponse = self._televerser(_png(), base='0' * 64)
         self.assertEqual(reponse.status_code, 409, reponse.data)

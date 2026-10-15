@@ -14,7 +14,8 @@ from drf_spectacular.utils import (
 from rest_framework import serializers
 from rest_framework.parsers import JSONParser
 
-from core.champs_stricts import BooleenStrict, ChampsStrictsSansDecimalMixin
+from core.champs_stricts import (
+    ArbreConditionsField, BooleenStrict, ChampsStrictsSansDecimalMixin)
 from core.serializers import CompanyScopedRelationsMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -173,21 +174,15 @@ class UiActionBoutonViewSet(CompanyScopedModelViewSet):
 
 class UiOngletCustomSerializer(ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     actif = BooleenStrict(required=False)  # ERR-ENF11-FUZZ-CORE (`0` refusé)
+    # CI #1000 : arbre core.rules (ou null) publié au schéma — `{}` / `true`,
+    # « conformes » au JSON libre d'avant, répondaient 400.
+    condition = ArbreConditionsField(required=False, allow_null=True)
 
     class Meta:
         model = UiOngletCustom
         fields = ['id', 'cible', 'titre', 'type_contenu', 'ref', 'condition',
                   'ordre', 'role_tier', 'actif', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
-
-    def validate_condition(self, value):
-        if value in (None, ''):
-            return value
-        from core.rules import validate_condition_group
-        errors = validate_condition_group(value)
-        if errors:
-            raise serializers.ValidationError('; '.join(errors))
-        return value
 
 
 @extend_schema_view(list=extend_schema(

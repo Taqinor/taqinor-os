@@ -65,12 +65,12 @@ class ReservesChantierTests(TestCase):
         self.assertTrue(any('Nettoyage' in a
                             for a in statut['avertissements']))
 
-    def test_conforme_avec_reserves_sans_reserve_400_fr(self):
+    def test_conforme_avec_reserves_sans_reserve_409_fr(self):
         rec = ensure_commissioning_record(self.inst)
         url = f'{BASE}/recettes-commissioning/{rec.id}/'
         r = self.api.patch(url, dict(TOUS_VRAIS, resultat='reserves'),
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('réserve de recette', str(r.data['resultat']))
         self._ajouter(origine='recette')
         r = self.api.patch(url, dict(TOUS_VRAIS, resultat='reserves'),

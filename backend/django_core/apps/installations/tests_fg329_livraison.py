@@ -96,7 +96,7 @@ class TestLivraison(TestCase):
         resp = self.api.post(f'{BASE}/livraisons/', {
             'installation': inst_other.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_ligne_and_scope(self):
         liv = Livraison.objects.create(

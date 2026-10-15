@@ -82,7 +82,7 @@ class TestRegleReappro(TestCase):
             'produit': self.produit.id, 'emplacement_cible': self.cible.id,
             'seuil_min': 10, 'seuil_max': 5,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_emplacement_other_company_rejected(self):
         other = make_company()
@@ -91,7 +91,7 @@ class TestRegleReappro(TestCase):
             'produit': self.produit.id, 'emplacement_cible': cible_other.id,
             'seuil_min': 1, 'seuil_max': 5,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)
 
     def test_propositions_only_below_min(self):
         # produit à 2 en stock, min 5, max 20 → propose 18

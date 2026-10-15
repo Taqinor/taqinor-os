@@ -851,6 +851,16 @@ SPECTACULAR_SETTINGS = {
         # signale « multiple names for the same choice set ». Nommage seulement.
         'RoleAutoCompositionEnum': 'apps.ventes.models.ROLES_AUTO_COMPOSITION',
         'CodeRemiseDocumentEnum': 'apps.calepinage.views.remise_document.CODES_REMISE',
+        # CI #997 (w4) — le dépôt d'une photo de site énumère ses genres
+        # (drone / oblique / sol) ; `genre` de image-document (ombrage) et
+        # `classe` des nœuds d'hypothèse adsengine GARDENT leurs noms
+        # historiques (« GenreEnum », « ClasseEnum ») : les deux jeux neufs
+        # (genre des photos, classe tarifaire de consommation/proposer) les
+        # auraient fait renommer. Nommage de schéma uniquement — aucun choix
+        # ne change.
+        'GenrePhotoSiteEnum': 'apps.calepinage.models.PhotoSite.Genre',
+        'GenreEnum': 'apps.calepinage.services.images_document.GENRES_IMAGE',
+        'ClasseEnum': 'apps.adsengine.models.AssumptionNode.Classe',
         # fr / en / ar — partagé par core.ContentTranslation et
         # parametres.TranslationOverride (jeu identique).
         'LocaleEnum': 'core.models.ContentTranslation.Locale',

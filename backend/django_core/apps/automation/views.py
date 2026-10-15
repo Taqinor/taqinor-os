@@ -22,16 +22,16 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import (
     IsAdminOrResponsableTier, IsAdminRole, IsAnyRole,
 )
-from core.champs_stricts import entier_ou_400
+from core.champs_stricts import ChaineStricte, EntierStrict, entier_ou_400
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from . import engine, services
-from .actions import ACTIONS_INDISPONIBLES
+from .actions import ACTIONS_INDISPONIBLES, set_field_champs_autorises
 from .models import (
     ActionType, ApprovalDelegation, ApprovalRequest, ApprovalRequestType,
     AutomationApproval, AutomationRule, AutomationRuleVersion, AutomationRun,
     IncomingWebhookTrigger, TriggerType, creer_version_automation_rule,
-    restaurer_version_automation_rule,
+    record_state_change_targets, restaurer_version_automation_rule,
 )
 from .selectors import DECLENCHEURS_PARQUES
 from .serializers import (
@@ -93,8 +93,11 @@ class SoumettreDemandeSerializer(drf_serializers.Serializer):
 
 
 class WebhookCreerSerializer(drf_serializers.Serializer):
-    rule = drf_serializers.IntegerField()
-    hmac_secret = drf_serializers.CharField(required=False, allow_blank=True)
+    # ERR-ENF11-FUZZ-AUTOMATION — entier JSON réel >= 1 (``0`` n'est le numéro
+    # d'aucune règle) et secret en chaîne STRICTE (``0`` était lu « 0 »).
+    rule = EntierStrict(min_value=1, max_value=2147483647)
+    hmac_secret = ChaineStricte(
+        required=False, allow_blank=True, max_length=128)
 
 
 #: ENF11 (api-fuzz « rejected schema-compliant request ») — une règle ne se crée
@@ -115,11 +118,48 @@ _CORPS_REGLE = extend_schema(
     extensions={EXTENSION_CORPS_RESSERRE: REGLE_CORPS_RESSERRE})
 
 
+def _regles_conditionnelles_creation():
+    """Règles de ``AutomationRuleSerializer.validate`` qui dépendent d'UN champ
+    du corps (le schéma de composant, partagé, ne peut pas les porter) :
+
+    * un déclencheur ``record_state_change`` exige un ``trigger_config`` dont le
+      couple ``(model, field)`` figure au registre plateforme ;
+    * une action ``set_field`` exige un ``action_config.field`` assignable.
+
+    Publié sur la CRÉATION seulement : à la modification, le sérialiseur lit
+    aussi l'état de la règle existante (un corps partiel reste valide)."""
+    declencheur = {'required': ['trigger_type'], 'properties': {
+        'trigger_type': {'enum': [TriggerType.RECORD_STATE_CHANGE.value]}}}
+    couples = [
+        {'required': ['trigger_config'], 'properties': {'trigger_config': {
+            'type': 'object', 'required': ['model', 'field'],
+            'properties': {'model': {'enum': [modele]},
+                           'field': {'enum': [champ]}}}}}
+        for modele, champs in sorted(record_state_change_targets().items())
+        for champ in sorted(champs)]
+    action = {'required': ['action_type'], 'properties': {
+        'action_type': {'enum': [ActionType.SET_FIELD.value]}}}
+    champ_assignable = {
+        'required': ['action_config'], 'properties': {'action_config': {
+            'type': 'object', 'required': ['field'],
+            'properties': {'field': {
+                'enum': sorted(set_field_champs_autorises())}}}}}
+    return [{'anyOf': [{'not': declencheur}] + couples},
+            {'anyOf': [{'not': action}, champ_assignable]}]
+
+
+REGLE_CORPS_CREATION = dict(
+    REGLE_CORPS_RESSERRE, allOf=_regles_conditionnelles_creation())
+_CORPS_REGLE_CREATION = extend_schema(
+    extensions={EXTENSION_CORPS_RESSERRE: REGLE_CORPS_CREATION})
+
+
 @extend_schema_view(
     list=extend_schema(parameters=[
         OpenApiParameter('trigger_type', OpenApiTypes.STR, required=False),
         _ENABLED]),
-    create=_CORPS_REGLE, update=_CORPS_REGLE, partial_update=_CORPS_REGLE)
+    create=_CORPS_REGLE_CREATION, update=_CORPS_REGLE,
+    partial_update=_CORPS_REGLE)
 class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
     """Règles d'automatisation (N72). Lecture tout rôle ; écriture admin.
     Tout est opt-in : sans règle activée, aucun comportement ne change."""
