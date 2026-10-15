@@ -27,6 +27,8 @@ plutôt que de faire disparaître la photo en silence.
 """
 from __future__ import annotations
 
+import logging
+
 
 def _chantier(company, payload):
     """Chantier BORNÉ SOCIÉTÉ, ou ``OfflineOpError``.
@@ -130,7 +132,8 @@ def connect():
     try:
         from apps.offlinesync.models import OfflineOperation
         from apps.offlinesync.registry import register
-    except Exception:  # noqa: BLE001 — module absent de cette édition
+    except Exception:  # noqa: BLE001 — module absent de cette édition (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("offline_ops.connect : erreur ignorée (mode dégradé)", exc_info=True)
         return
     module = OfflineOperation.Module.INSTALLATIONS
     register('btp.reserve.creer', module, h_reserve_creer)
