@@ -18,25 +18,11 @@ import {
 } from '../../ui'
 import { SectionTitle, SelectTypeChamp } from './peComponents'
 import { BoutonSupprimerLigne } from './EtatsSection'
+import { slugifyCode, erreurServeurLisible } from '../../lib/champsPerso'
 
 const TYPE_LABELS = {
   text: 'Texte', number: 'Nombre', date: 'Date',
   choice: 'Choix', boolean: 'Oui/Non',
-}
-
-// Slug du code (clé JSON) — même règle que la carte Avancé (sans accents).
-const slugifyCode = (s) => s.trim().toLowerCase()
-  .normalize('NFD').replace(/[̀-ͯ]/g, '')
-  .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 50)
-
-// Message d'erreur serveur lisible (detail, ou première erreur de champ FR).
-const cfErr = (e, fallback) => {
-  const d = e?.response?.data
-  if (!d) return fallback
-  if (typeof d === 'string') return d
-  if (d.detail) return d.detail
-  const first = Object.values(d)[0]
-  return Array.isArray(first) ? first[0] : (first || fallback)
 }
 
 const blankDraft = () => ({
@@ -76,7 +62,7 @@ export default function ClientsSection() {
       })
       setDraft(blankDraft())
       load()
-    } catch (e) { toast.error(cfErr(e, 'Ajout impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Ajout impossible.')) }
     finally { setBusy(false) }
   }
 
@@ -84,13 +70,13 @@ export default function ClientsSection() {
     try {
       await customFieldsApi.saveDef(d.id, { actif: !d.actif })
       load()
-    } catch (e) { toast.error(cfErr(e, 'Modification impossible.')) }
+    } catch (e) { toast.error(erreurServeurLisible(e, 'Modification impossible.')) }
   }
 
   const delCf = async (d) => {
     if (!(await confirmerSuppression({ title: `Supprimer le champ « ${d.libelle} » ?` }))) return
     try { await customFieldsApi.deleteDef(d.id); load() }
-    catch (e) { toast.error(cfErr(e, 'Suppression impossible.')) }
+    catch (e) { toast.error(erreurServeurLisible(e, 'Suppression impossible.')) }
   }
 
   return (

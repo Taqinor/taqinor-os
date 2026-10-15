@@ -389,7 +389,6 @@
 95e441361bc0|apps/web/src/pages/guides/batterie-lithium-ou-gel.astro,apps/web/src/pages/guides/electricite-pendant-les-coupures.astro,apps/web/src/pages/guides/entretien-et-duree-de-vie-des-panneaux.astro,apps/web/src/pages/guides/faut-il-des-batteries.astro,apps/web/src/pages/guides/mon-toit-peut-il-supporter-des-panneaux.astro,apps/web/src/pages/guides/monocristallin-ou-polycristallin.astro,apps/web/src/pages/guides/on-grid-off-grid-ou-hybride.astro,apps/web/src/pages/guides/onduleur-hybride-ou-reseau.astro,apps/web/src/pages/guides/orientation-inclinaison-ombrage.astro,apps/web/src/pages/guides/quelle-taille-de-batterie.astro
 966ca7edb4d3|apps/web/src/scripts/roof-tool-3d.ts,apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roof-tool.ts
 96b3dfe00ebe|apps/web/src/pages/ar/à-propos.astro,apps/web/src/pages/en/à-propos.astro,apps/web/src/pages/à-propos.astro
-97040753f694|frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx,frontend/src/pages/parametres/ClientsSection.jsx,frontend/src/pages/parametres/ParametresEntreprise.jsx
 972229add9bb|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 972b22f8781b|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 97369a71e431|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro
@@ -606,7 +605,6 @@ eaa158d40112|apps/web/src/pages/ar/nos-solutions.astro,apps/web/src/pages/en/nos
 eaba3145c0b6|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 eb3a13ac6b6a|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 eb496b7f4ded|frontend/src/pages/stock/MouvementsPage.jsx,frontend/src/pages/ventes/BonCommandeList.jsx
-eb5836907416|frontend/src/features/parametres/ObjetsPersonnalisesPage.jsx,frontend/src/pages/parametres/ClientsSection.jsx,frontend/src/pages/parametres/ParametresEntreprise.jsx
 ebe08b5d9b7d|frontend/src/pages/crm/leads/ConvertirClientDialog.jsx,frontend/src/pages/crm/leads/PlanActiviteDialog.jsx
 ecc123a6bc47|frontend/src/pages/installations/ChantierGateTimeline.jsx,frontend/src/pages/installations/InstallationDetail.jsx
 ed06f83bb9d7|apps/web/src/pages/preview/toiture-3d-pro.astro,apps/web/src/pages/preview/toiture-3d.astro,apps/web/src/pages/preview/toiture.astro
