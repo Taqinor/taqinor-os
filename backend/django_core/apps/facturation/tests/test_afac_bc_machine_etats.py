@@ -129,7 +129,7 @@ class BcMachineEtatsTests(TestCase):
         devis = self._devis_panneaux()
         bc = self._bc(devis, statut='en_attente')
         r = self._partiel(bc, self.ligne, '4')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('confirmé', r.data['detail'])
         self.assertEqual(self._stock(self.panneau), 30)
 
@@ -137,9 +137,9 @@ class BcMachineEtatsTests(TestCase):
         devis = self._devis_panneaux()
         bc = self._bc(devis, statut='annule')
         r = self._partiel(bc, self.ligne, '10')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         r = self.api.post(self._url(bc, 'marquer-livre'))
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         bc.refresh_from_db()
         self.assertEqual(bc.statut, 'annule')
         self.assertEqual(self._stock(self.panneau), 30)
@@ -165,7 +165,7 @@ class BcMachineEtatsTests(TestCase):
         self.assertNotIn(lignes['Batterie 5 kWh'].id, ids)
         self.assertNotIn(lignes['Onduleur hybride'].id, ids)
         r = self._partiel(bc, lignes['Batterie 5 kWh'], '1')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)  # ENF11 : ligne inconnue sur ce BC
         self.assertEqual(self._stock(produits['Batterie 5 kWh']), 30)
         r = self.api.post(self._url(bc, 'livrer-partiel'), {'lignes': [
             {'ligne_devis': lignes['Onduleur réseau'].id, 'quantite': '1'},

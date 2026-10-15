@@ -15,7 +15,7 @@ from . import openapi_docs as D
 from ..models import RelanceLog
 from ..serializers import EmailLogSerializer
 from ..serializers_facturation import (
-    FactureActivitySerializer, FactureSerializer, RelanceLogSerializer,
+    FactureActivitySerializer, FactureListeSerializer, FactureSerializer, RelanceLogSerializer,
     RelancerFactureSerializer,
 )
 
@@ -122,7 +122,9 @@ class FactureRecouvrementActionsMixin:
         facture = self.get_object()
         return Response(apercu_relance(facture))
 
-    @extend_schema(request=D.ExclureRelanceRequest, responses=FactureSerializer)
+    # ENF11 (nocturne 15/10) — hors du détail, les blocs de vente (VNT91) ne
+    # sont pas servis : la réponse est celle de la LISTE (schéma sans eux).
+    @extend_schema(request=D.ExclureRelanceRequest, responses=FactureListeSerializer)
     @action(detail=True, methods=['post'], url_path='exclure-relance',
             permission_classes=[IsResponsableOrAdmin])
     def exclure_relance(self, request, pk=None):
@@ -134,7 +136,7 @@ class FactureRecouvrementActionsMixin:
             raise ValidationError({'exclu': ['Booléen attendu.']})
         facture.exclu_relances = exclu
         facture.save(update_fields=['exclu_relances'])
-        return Response(FactureSerializer(facture).data)
+        return Response(FactureListeSerializer(facture).data)
 
     @extend_schema(responses=RelanceLogSerializer(many=True))
     @action(pagination_class=None, detail=True, methods=['get'], url_path='relances',

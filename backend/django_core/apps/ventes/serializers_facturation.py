@@ -3,6 +3,7 @@ notes de débit, relances, remises, mandats) — déplacés tels quels de
 `serializers.py` par SPL148 (move only, sans ré-export)."""
 from decimal import Decimal
 
+from django.core.validators import RegexValidator
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -15,7 +16,7 @@ from .models import (
 from .serializers import _fallback_taux_tva
 from core.champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsMixin,
-    ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict,
+    ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict, IdInconnu404Mixin, MOTIF_NON_BLANC_SANS_NUL,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
@@ -189,6 +190,9 @@ class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
     class Meta:
         model = LigneFacture
         fields = '__all__'
+        # ENF11 (nocturne 15/10) — DRF refuse le caractère nul dans tout texte :
+        # le motif PUBLIÉ le dit (non blanc, sans nul), même prédicat appliqué.
+        extra_kwargs = {'designation': {'validators': [RegexValidator(MOTIF_NON_BLANC_SANS_NUL)]}}
 
     def create(self, validated_data):
         # Réforme TVA : taux par ligne, copié du produit, repli sur le taux
@@ -841,7 +845,7 @@ class FollowupLevelSerializer(ChampsStrictsMixin,
                   'taux_interet_annuel', 'frais_fixes', 'canal']
 
 
-class ParametrageRelanceClientSerializer(SameCompanyFKSerializerMixin,
+class ParametrageRelanceClientSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                          serializers.ModelSerializer):
     """ZFAC8 — réglage par client du responsable/mode de relance.
 

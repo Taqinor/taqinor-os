@@ -168,6 +168,8 @@ class TestCrud(TestCase):
         resultats = defauts.data.get('results', defauts.data)
         self.assertEqual(len(resultats), 1)
         self.assertIsNone(resultats[0]['owner'])
+        # ENF11 (nocturne 15/10) — hors du motif publié (vide ou id) : 400.
+        self.assertEqual(self.api.get(f'{BASE}/', {'owner': 'abc'}).status_code, 400)
 
     def test_filtre_actif(self):
         PlanCommission.objects.create(

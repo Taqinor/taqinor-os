@@ -10,6 +10,7 @@ Endpoints :
 Le technicien déclare sa collecte du jour (des Paiement déjà encaissés,
 espèces/chèque) ; le responsable la clôture avec un bordereau PDF. L'écart
 (déclaré vs somme des lignes) est calculé et exposé, jamais masqué."""
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_view, extend_schema
 from ..openapi_params import entier_requete, qint
 from django.db import transaction
@@ -21,6 +22,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet  # ARC5
 from ..models import Paiement, RemiseEncaissement, LigneRemiseEncaissement
 from ..serializers_facturation import RemiseEncaissementSerializer
@@ -190,7 +192,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
         toute écriture de ligne, y compris hors API)."""
         remise = self.get_object()
         if remise.statut != RemiseEncaissement.Statut.OUVERTE:
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 f'Remise {remise.get_statut_display().lower()} : ses lignes '
                 f'et sa déclaration sont verrouillées.')})
         serializer.save()
@@ -201,7 +203,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
         en banque, et le DELETE en cascade contournait le verrou de ligne du
         modèle."""
         if instance.statut != RemiseEncaissement.Statut.OUVERTE:
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 f'Remise {instance.get_statut_display().lower()} : un '
                 f'bordereau clôturé ne se supprime pas.')})
         instance.delete()
@@ -213,7 +215,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
         si l'écart ≠ 0 — sans jamais bloquer la clôture."""
         remise = self.get_object()
         if remise.statut != RemiseEncaissement.Statut.OUVERTE:
-            raise ValidationError(
+            raise ConflitEtat(
                 {'detail': 'Seule une remise ouverte peut être clôturée.'})
         remise.statut = RemiseEncaissement.Statut.CLOTUREE
         remise.cloture_par = request.user
@@ -231,6 +233,7 @@ class RemiseEncaissementViewSet(CompanyScopedModelViewSet):
             'ecart_non_nul': remise.ecart != 0,
         })
 
+    @extend_schema(responses={(200, 'application/pdf'): OpenApiTypes.BINARY})  # ENF11 : le PDF publié
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):
         remise = self.get_object()

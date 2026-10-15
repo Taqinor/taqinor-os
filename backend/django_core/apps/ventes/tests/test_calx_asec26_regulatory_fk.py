@@ -60,13 +60,13 @@ class RegulatoryFkSocieteTests(TestCase):
             company=self.co_a, devis=self.devis_a,
             regime_8221='declaration_bt', created_by=self.user_a, **extra)
 
-    def test_creation_chantier_etranger_400(self):
+    def test_creation_chantier_etranger_404(self):
         avant = RegulatoryDossier.objects.count()
         r = self.api.post(URL, {
             'devis': self.devis_a.id, 'regime_8221': 'declaration_bt',
             'chantier': self.chantier_b.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('chantier', r.data)
         self.assertNotIn(b'CH-ASEC26-B-SECRET', r.content)
         self.assertEqual(RegulatoryDossier.objects.count(), avant)
@@ -77,7 +77,7 @@ class RegulatoryFkSocieteTests(TestCase):
             'devis': self.devis_a.id, 'regime_8221': 'declaration_bt',
             'chantier': self.chantier_b.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('chantier', r.data)
         self.assertEqual(Regularisation8221.objects.count(), avant)
 
@@ -92,28 +92,28 @@ class RegulatoryFkSocieteTests(TestCase):
                            {'etude_reglages_imposes': None}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
 
-    def test_patch_chantier_etranger_400(self):
+    def test_patch_chantier_etranger_404(self):
         dossier = self._dossier(chantier=self.chantier_a)
         r = self.api.patch(f'{URL}{dossier.id}/',
                            {'chantier': self.chantier_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('chantier', r.data)
         self.assertNotIn(b'CH-ASEC26-B-SECRET', r.content)
         dossier.refresh_from_db()
         self.assertEqual(dossier.chantier_id, self.chantier_a.id)
 
-    def test_id_inexistant_400(self):
+    def test_id_inexistant_404(self):
         r = self.api.post(URL, {
             'devis': self.devis_a.id, 'regime_8221': 'declaration_bt',
             'chantier': 999999999,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('chantier', r.data)
 
         dossier = self._dossier()
         r = self.api.patch(f'{URL}{dossier.id}/',
                            {'chantier': 999999999}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('chantier', r.data)
         dossier.refresh_from_db()
         self.assertIsNone(dossier.chantier_id)
@@ -145,7 +145,7 @@ class RegulatoryFkSocieteTests(TestCase):
         absent = self.api.post(URL, {'devis': 999999999,
                                      'regime_8221': 'declaration_bt'},
                                format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertEqual(r.data['devis'][0].code, 'does_not_exist')
         self.assertEqual(
             str(r.data['devis'][0]).replace(str(devis_b.id), '<ID>'),
