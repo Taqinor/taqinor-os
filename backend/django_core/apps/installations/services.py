@@ -10,8 +10,6 @@ import logging
 import re
 from decimal import Decimal
 
-from django.db import transaction
-
 from apps.ventes.utils.references import create_with_reference
 from core.verrous import sous_verrou
 from .models import (
@@ -999,26 +997,8 @@ def _seed_schema_unifilaire_document(installation, devis):
     pointeur = (
         f'Brouillon SLD du devis {reference} (dossier technique, PV40) : '
         f'/api/django/ventes/devis/{devis.pk}/schema-unifilaire/?format=pdf')
-    # ENF18 : ``(installation, type_doc)`` n'a pas de contrainte en base (un
-    # chantier porte N révisions d'autres types) — le verrou de la ligne
-    # chantier sérialise deux (re)générations concurrentes du même schéma.
-    with transaction.atomic():
-        type(installation).objects.select_for_update().filter(
-            pk=installation.pk).first()
-        doc = DocumentProjet.objects.filter(
-            installation=installation,
-            type_doc=DocumentProjet.TypeDoc.SCHEMA_UNIFILAIRE,
-        ).order_by('id').first()
-        if doc is None:
-            return DocumentProjet.objects.create(
-                installation=installation,
-                type_doc=DocumentProjet.TypeDoc.SCHEMA_UNIFILAIRE,
-                company=installation.company, titre=titre, notes=pointeur)
-        if doc.titre != titre or doc.notes != pointeur:
-            doc.titre = titre
-            doc.notes = pointeur
-            doc.save(update_fields=['titre', 'notes'])
-        return doc
+    from .services_seed_documents import poser_document_schema_unifilaire
+    return poser_document_schema_unifilaire(installation, titre, pointeur)
 
 
 def _notifier_chantier_assigne(inst, technicien):
