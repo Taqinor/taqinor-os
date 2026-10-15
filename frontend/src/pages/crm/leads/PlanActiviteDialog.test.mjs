@@ -18,7 +18,9 @@ const WORKSPACE_SRC = readFileSync(
   join(HERE, '..', '..', '..', 'features', 'crm', 'workspace', 'LeadWorkspace.jsx'), 'utf8')
 
 test('charge les plans ACTIFS via crmApi.getPlansActivite', () => {
-  assert.match(SRC, /crmApi\.getPlansActivite\(\)/)
+  // ENF15 : lecture de TOUTES les pages (fetchAllPages), plus un GET nu page 1.
+  assert.match(SRC, /fetchAllPages\(/)
+  assert.match(SRC, /crmApi\.getPlansActivite\(\{ page, page_size: pageSize \}\)/)
   assert.match(SRC, /actifs = \(all \?\? \[\]\)\.filter\(\(p\) => p\.actif !== false\)/)
 })
 
