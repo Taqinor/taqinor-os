@@ -85,7 +85,7 @@ class RetourLivraisonTests(TestCase):
         self.assertIn('quantite_retournee', r.data)
         # Un troisième retour n'a plus rien à reprendre.
         r3 = self._retour()
-        self.assertEqual(r3.status_code, 400, r3.data)
+        self.assertEqual(r3.status_code, 409, r3.data)  # CI #1004 : refus d'état
         self.assertIn('Rien à retourner', str(r3.data))
         r = self.api.post(
             f'{BASE}/retours-livraison/{r1.data["id"]}/valider/')

@@ -151,7 +151,13 @@ class TestGenererRetourLivraison(TestCase):
         self.liv.statut = Livraison.Statut.PLANIFIEE
         self.liv.save(update_fields=['statut'])
         r = self.api.post(f'{BASE}/livraisons/{self.liv.id}/generer-retour/')
-        self.assertEqual(r.status_code, 400)
+        # CI #1004 (api-fuzz) — refus d'ÉTAT (livraison non livrée) : 409.
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('livrée', str(r.data['detail']))
+        r = self.api.post(f'{BASE}/livraisons/{self.liv.id}/generer-retour/',
+                          {'motif': 5}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('motif', r.data)
 
     def test_endpoint_generer_puis_valider(self):
         r = self.api.post(f'{BASE}/livraisons/{self.liv.id}/generer-retour/')
