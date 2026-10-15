@@ -492,6 +492,10 @@ _FICHIERS_VALIDES = (
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
      {'file': b'PVObject_=pvModule\n'}),
+    # CI #997 (4) - photo d'un produit : le serveur valide les octets magiques
+    # (PDF, PNG, JPEG, WebP) ; un part sans octets valides est « Format non supporté ».
+    (re.compile(r'^/api/django/stock/produits/\{[^}]+\}/photo/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
 )
 
 

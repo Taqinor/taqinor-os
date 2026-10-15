@@ -399,8 +399,13 @@ def _semer_emplacement_stock(company, user):
     existant = _premier('stock.EmplacementStock', company)
     if existant is not None:
         return existant
-    return _modele('stock.EmplacementStock').objects.create(
+    principal = _modele('stock.EmplacementStock').objects.create(
         company=company, nom='Dépôt fuzz', is_principal=True)
+    # CI #997 fuzz (4) - un transfert relie DEUX emplacements : avec un seul, la
+    # source égalait toujours la destination.
+    _modele('stock.EmplacementStock').objects.create(
+        company=company, nom='Camionnette fuzz', is_principal=False)
+    return principal
 
 
 def _semer_kit(company, user):
@@ -547,6 +552,47 @@ def _semer_facture_fournisseur(company, user):
         montant_ht=1000, montant_tva=200, montant_ttc=1200, created_by=user))
 
 
+def _semer_dossier_onboarding(company, user):
+    """CI #997 fuzz (4) — ``documents-fournisseur`` vise un dossier d'onboarding
+    (1-1 avec un fournisseur) : sans ligne, ``{dossier: 1}`` répondait 400."""
+    existant = _premier('stock.DossierOnboardingFournisseur', company)
+    if existant is not None:
+        return existant
+    fournisseur = _premier('stock.Fournisseur', company)
+    if fournisseur is None:
+        raise ValueError('aucun fournisseur dans la société de fuzz')
+    return _modele('stock.DossierOnboardingFournisseur').objects.create(
+        company=company, fournisseur=fournisseur)
+
+
+def _semer_quai(company, user):
+    """CI #997 fuzz (4) - ``rendez-vous-transporteur`` réserve un quai."""
+    existant = _premier('stock.Quai', company)
+    if existant is not None:
+        return existant
+    return _modele('stock.Quai').objects.create(
+        company=company, nom='Quai fuzz',
+        emplacement=_semer_emplacement_stock(company, user))
+
+
+def _semer_transporteur(company, user):
+    """CI #997 fuzz (4) - le transporteur (facultatif) d'un rendez-vous de quai."""
+    existant = _premier('installations.Transporteur', company)
+    if existant is not None:
+        return existant
+    return _modele('installations.Transporteur').objects.create(
+        company=company, nom='Transporteur fuzz')
+
+
+def _semer_nomenclature_code_barres(company, user):
+    """CI #997 fuzz (4) — ``regles-code-barres`` vise une nomenclature."""
+    existant = _premier('stock.NomenclatureCodeBarres', company)
+    if existant is not None:
+        return existant
+    return _modele('stock.NomenclatureCodeBarres').objects.create(
+        company=company, nom='Nomenclature fuzz')
+
+
 def _semer_logistique(company, user):
     """Livraison (chantier), vague de picking, palette OUVERTE, expédition."""
     from apps.stock.services import creer_unite_logistique
@@ -596,6 +642,10 @@ SEMEURS = (
     ('ged (coffre, dossier, étiquette)', _semer_ged),
     ('achats.RetourFournisseur', _semer_retour_fournisseur),
     ('installations.BinLocation', _semer_casier),
+    ('stock.DossierOnboardingFournisseur', _semer_dossier_onboarding),
+    ('stock.NomenclatureCodeBarres', _semer_nomenclature_code_barres),
+    ('stock.Quai', _semer_quai),
+    ('installations.Transporteur', _semer_transporteur),
     ('achats.BonCommandeFournisseur (envoyé)', _semer_bcf_envoye),
     ('achats.ReceptionFournisseur', _semer_reception),
     ('achats.FactureFournisseur', _semer_facture_fournisseur),
@@ -668,6 +718,27 @@ REGLES_PAR_CHEMIN = (
      'installations.Livraison', None, None),
     (r'^/api/django/stock/unites-logistiques/', ('parent', 'parent_id'),
      'stock.UniteLogistique', _palettes_ouvertes, None),
+    # CI #997 fuzz (4) - produits et emplacements d'un transfert ; produits d'un
+    # remplacement de composant en masse (le nom du champ seul est ambigu).
+    (r'^/api/django/stock/transferts/', ('produit',), 'stock.Produit', None, None),
+    (r'^/api/django/stock/transferts/', ('source', 'destination'),
+     'stock.EmplacementStock', None, None),
+    (r'^/api/django/stock/kits/remplacer-composant/', ('produit_ancien', 'produit_nouveau'),
+     'stock.Produit', None, None),
+    # CI #997 fuzz (4) - cible d'un profil saisonnier : un produit OU une catégorie du stock.
+    (r'^/api/django/stock/profils-saisonniers/', ('categorie',), 'stock.Categorie', None, None),
+    (r'^/api/django/stock/quais/', ('emplacement',), 'stock.EmplacementStock', None, None),
+    # CI #997 fuzz (4) - besoins d'une vague : produit, chantiers (réservations)
+    # et BCF sources sont des ids de corps imbriqués (``besoins[].produit_id``).
+    (r'^/api/django/stock/vagues-picking/$', ('produit_id',), 'stock.Produit', None, None),
+    (r'^/api/django/stock/vagues-picking/$', ('installation_id', 'installations'),
+     'installations.Installation', None, None),
+    # CI #997 fuzz (4) ``dossier`` / ``nomenclature`` : plusieurs modèles
+    # portent un champ de ce nom ; ici ce sont ceux du stock.
+    (r'^/api/django/stock/documents-fournisseur/', ('dossier', 'dossier_id'),
+     'stock.DossierOnboardingFournisseur', None, None),
+    (r'^/api/django/stock/regles-code-barres/', ('nomenclature', 'nomenclature_id'),
+     'stock.NomenclatureCodeBarres', None, None),
 )
 
 
