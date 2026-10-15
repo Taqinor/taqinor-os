@@ -41,7 +41,7 @@ def surveiller_drift_mensuel_task():
         for modele, fournisseur in providers.items():
             try:
                 distribution = fournisseur(company)
-            except Exception:  # noqa: BLE001 — un scorer en échec n'arrête pas
+            except Exception:  # noqa: BLE001 — un scorer en échec n'arrête pas (D-ENF22-BLE001)
                 logger.warning(
                     'ai_governance.drift: distribution indisponible '
                     '(société %s, modèle %s)', company.id, modele,
@@ -51,7 +51,7 @@ def surveiller_drift_mensuel_task():
                 snapshot = enregistrer_snapshot(
                     company=company, modele=modele,
                     distribution=distribution, date=premier_du_mois)
-            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
                 logger.warning(
                     'ai_governance.drift: snapshot non enregistré '
                     '(société %s, modèle %s)', company.id, modele,

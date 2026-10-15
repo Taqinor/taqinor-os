@@ -21,6 +21,8 @@ surchargé obtient exactement le texte ci-dessous, au caractère près.
 """
 from __future__ import annotations
 
+
+import logging
 import json
 import re
 from datetime import date, timedelta
@@ -910,17 +912,20 @@ def _octets_du_document(document):
     try:
         from apps.ged import selectors as ged_selectors
         from apps.records.storage import fetch_attachment
-    except Exception:  # noqa: BLE001 - app absente/mal chargée : no-op.
+    except Exception:  # noqa: BLE001 - app absente/mal chargée : no-op. (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services._octets_du_document : erreur ignorée (mode dégradé)", exc_info=True)
         return None, ''
     try:
         version = ged_selectors.latest_version(document)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services._octets_du_document : erreur ignorée (mode dégradé)", exc_info=True)
         return None, ''
     if version is None or not getattr(version, 'file_key', ''):
         return None, ''
     try:
         data, _erreur = fetch_attachment(version.file_key)
-    except Exception:  # noqa: BLE001 - stockage indisponible : no-op propre.
+    except Exception:  # noqa: BLE001 - stockage indisponible : no-op propre. (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("services._octets_du_document : erreur ignorée (mode dégradé)", exc_info=True)
         return None, ''
     return data, (getattr(version, 'mime', '') or '')
 
@@ -974,7 +979,7 @@ def traiter_document_ai_job(job):
         job.resultat_json = resultat
         job.statut = DocumentAiJob.STATUT_TRAITE
         job.message = ''
-    except Exception as exc:  # noqa: BLE001 - un échec ne casse jamais la GED.
+    except Exception as exc:  # noqa: BLE001 — un échec ne casse jamais la GED (D-ENF22-BLE001)
         job.statut = DocumentAiJob.STATUT_ERREUR
         job.message = str(exc)[:500]
         job.resultat_json = resultat

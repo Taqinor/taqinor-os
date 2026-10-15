@@ -23,6 +23,8 @@ INVARIANTS communs :
 """
 from __future__ import annotations
 
+
+import logging
 from datetime import date, datetime
 
 from django.utils import timezone
@@ -114,7 +116,8 @@ def faits_fiche(cible) -> dict:
             continue
         try:
             valeur = getattr(cible, champ)
-        except Exception:  # noqa: BLE001 — une propriété en erreur n'est pas un fait
+        except Exception:  # noqa: BLE001 — une propriété en erreur n'est pas un fait (D-ENF22-BLE001)
+            logging.getLogger(__name__).warning("copilote.faits_fiche : erreur ignorée (mode dégradé)", exc_info=True)
             continue
         if callable(valeur):
             continue
@@ -362,7 +365,8 @@ def action_key_pour(label, action, user=None):
 
         disponibles = for_user(user) if user is not None else all_actions()
         return cle if any(a.key == cle for a in disponibles) else None
-    except Exception:  # noqa: BLE001 — un catalogue indisponible = pas de bouton
+    except Exception:  # noqa: BLE001 — un catalogue indisponible = pas de bouton (D-ENF22-BLE001)
+        logging.getLogger(__name__).warning("copilote.action_key_pour : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
 
