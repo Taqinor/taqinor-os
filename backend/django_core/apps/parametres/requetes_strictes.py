@@ -12,7 +12,7 @@ from django.db import models as django_models
 from rest_framework import serializers
 
 from core.champs_stricts import (
-    BooleenStrict, ChaineStricte, DecimalStricte, EntierStrict,
+    BooleenStrict, ChaineStricte, DecimalSouple, DecimalStricte, EntierStrict,
     TypageStrictMixin,
 )
 
@@ -33,6 +33,23 @@ class TypageStrictParametres(TypageStrictMixin):
         **TypageStrictMixin.serializer_field_mapping,
         django_models.TextField: ChaineStricte,
         django_models.DecimalField: DecimalStricte,
+    }
+
+
+# ENF11 (api-fuzz « accepted schema-violating request ») — variante des écrans de
+# RÉGLAGES société (profil, tarification, modèles de documents) : textes
+# (``CharField`` ET ``TextField``) et booléens STRICTS, décimaux acceptés en
+# CHAÎNE ou en NOMBRE JSON (l'écran en envoie des deux, la lecture sert des
+# chaînes) et publiés ainsi (``DecimalSouple``) ; les entiers gardent la
+# lecture souple de DRF (l'écran peut taper « 30 »). Un ``0`` pour un texte ou
+# un booléen, une chaîne hors motif pour un décimal répondaient 200.
+class TypageStrictReglages:
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        django_models.CharField: ChaineStricte,
+        django_models.TextField: ChaineStricte,
+        django_models.BooleanField: BooleenStrict,
+        django_models.DecimalField: DecimalSouple,
     }
 
 
