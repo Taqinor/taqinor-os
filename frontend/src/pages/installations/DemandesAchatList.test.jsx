@@ -41,6 +41,7 @@ vi.mock('../../api/stockApi', () => ({
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import DemandesAchatList from './DemandesAchatList.jsx'
+import { erreurLigne } from './demandeAchatLigne'
 
 function makeWrapper({ role = 'responsable', initialEntries = ['/chantiers/demandes-achat'] } = {}) {
   const store = configureStore({
@@ -207,5 +208,67 @@ describe('DemandesAchatList (FG310)', () => {
     )
     // Le chantier ciblé est pré-sélectionné dans le formulaire.
     expect(screen.getByText('Villa Anfa')).toBeInTheDocument()
+  })
+})
+
+// ACHT63 — chantier identifié par sa référence (les chantiers n'ont pas de `nom`).
+const DA_ACHT63 = {
+  id: 7, reference: 'DA-202609-0007', objet: 'Fixations', statut: 'brouillon', priorite: 'normale',
+  montant_estime: '0', chantier: 3, date_besoin: null, lignes: [], note: '',
+}
+async function ouvrirEtRemplir(prix) {
+  render(<DemandesAchatList />, { wrapper: makeWrapper() })
+  await screen.findAllByText('DA-202609-0007')
+  fireEvent.click(screen.getByRole('button', { name: /Nouvelle demande/i }))
+  fireEvent.change(await screen.findByLabelText('Objet'), { target: { value: 'Câbles' } })
+  fireEvent.change(screen.getByLabelText('Désignation'), { target: { value: 'Câble 6mm' } })
+  fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '2' } })
+  fireEvent.change(screen.getByLabelText('Prix estimé'), { target: { value: prix } })
+}
+
+describe('DemandesAchatList — ACHT63 (référence chantier, validation, reprise)', () => {
+  beforeEach(() => {
+    installationsApi.getInstallations.mockResolvedValue({ data: [{ id: 3, reference: 'CHT-202609-0001' }] })
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [DA_ACHT63] })
+  })
+
+  it('affiche la référence du chantier dans la colonne', async () => {
+    render(<DemandesAchatList />, { wrapper: makeWrapper() })
+    expect((await screen.findAllByText('CHT-202609-0001')).length).toBeGreaterThan(0)
+  })
+
+  it('un prix à 3 décimales est refusé localement : aucune demande créée, puis une seule après correction', async () => {
+    installationsApi.createDemandeAchat.mockResolvedValue({ data: { id: 42 } })
+    installationsApi.createDemandeAchatLigne.mockResolvedValue({ data: {} })
+    await ouvrirEtRemplir('12.345')
+    fireEvent.click(screen.getByRole('button', { name: /brouillon/i }))
+    expect(await screen.findByText(/2 décimales au plus/)).toBeInTheDocument()
+    expect(installationsApi.createDemandeAchat).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Prix estimé'), { target: { value: '12.35' } })
+    fireEvent.click(screen.getByRole('button', { name: /brouillon/i }))
+    await waitFor(() => expect(installationsApi.createDemandeAchatLigne).toHaveBeenCalledTimes(1))
+    expect(installationsApi.createDemandeAchat).toHaveBeenCalledTimes(1)
+  })
+
+  it('refus serveur de la 1re ligne : le nouvel essai réutilise la demande créée (aucun doublon)', async () => {
+    installationsApi.createDemandeAchat.mockResolvedValue({ data: { id: 42 } })
+    installationsApi.createDemandeAchatLigne
+      .mockRejectedValueOnce({ response: { status: 400, data: { prix_estime: ['Refusé.'] } } })
+      .mockResolvedValue({ data: {} })
+    await ouvrirEtRemplir('12.30')
+    fireEvent.click(screen.getByRole('button', { name: /brouillon/i }))
+    await waitFor(() => expect(installationsApi.createDemandeAchatLigne).toHaveBeenCalledTimes(1))
+    await screen.findByText(/Refusé/)
+    fireEvent.click(screen.getByRole('button', { name: /brouillon/i }))
+    await waitFor(() => expect(installationsApi.createDemandeAchatLigne).toHaveBeenCalledTimes(2))
+    expect(installationsApi.createDemandeAchat).toHaveBeenCalledTimes(1)
+    expect(installationsApi.createDemandeAchatLigne.mock.calls[1][0].demande).toBe(42)
+  })
+
+  it('erreurLigne : quantités et prix', () => {
+    expect(erreurLigne({ quantite: '2', prix_estime: '12.5' }, 0)).toBe('')
+    expect(erreurLigne({ quantite: '1.234', prix_estime: '' }, 1)).toMatch(/Ligne 2/)
+    expect(erreurLigne({ quantite: '-1', prix_estime: '' }, 0)).toMatch(/invalide/)
   })
 })

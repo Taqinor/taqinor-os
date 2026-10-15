@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import { lireToutesLesPages } from '../../utils/fetchAllPages'
+import { erreurLigne } from './demandeAchatLigne'
 import CatalogueAchatPicker from '../../components/CatalogueAchatPicker'
 import { formatMAD, formatDate } from '../../lib/format'
 import { toastSuccess, toastError } from '../../lib/toast'
@@ -50,6 +51,9 @@ const newLigne = () => ({
   _key: `l${++_keySeq}`, produit: null, designation: '', quantite: '', prix_estime: '',
 })
 
+// ACHT63 — libellé d'un chantier : sa RÉFÉRENCE (les chantiers n'ont pas de clé `nom`).
+const libelleChantier = (c) => c?.reference || c?.nom || '—'
+
 const emptyForm = () => ({
   objet: '', chantier: '', priorite: 'normale', date_besoin: '', note: '',
   lignes: [newLigne()],
@@ -74,6 +78,9 @@ export default function DemandesAchatList() {
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  // ACHT63 — reprise d'une création interrompue : id de la demande déjà créée et
+  // nombre de lignes déjà postées (seules les lignes manquantes sont renvoyées).
+  const reprise = useRef({ id: null, faites: 0 })
 
   const [detail, setDetail] = useState(null) // demande sélectionnée
   const [acting, setActing] = useState(false)
@@ -146,6 +153,7 @@ export default function DemandesAchatList() {
   }, [searchParams, setSearchParams])
 
   const openCreate = () => {
+    reprise.current = { id: null, faites: 0 }
     setForm(emptyForm())
     setFormError('')
     setCreating(true)
@@ -229,17 +237,29 @@ export default function DemandesAchatList() {
     const lignes = form.lignes.filter(
       (l) => l.produit || (l.designation || '').trim(),
     )
+    // ACHT63 — validation locale AVANT tout envoi : aucune demande créée si une ligne est invalide.
+    for (const [rang, l] of lignes.entries()) {
+      const msg = erreurLigne(l, rang)
+      if (msg) {
+        setFormError(msg)
+        return
+      }
+    }
     setSaving(true)
     try {
-      const res = await installationsApi.createDemandeAchat({
-        objet: form.objet.trim(),
-        chantier: form.chantier || null,
-        priorite: form.priorite,
-        date_besoin: form.date_besoin || null,
-        note: form.note || null,
-      })
-      const id = res.data.id
-      for (const l of lignes) {
+      let id = reprise.current.id
+      if (id == null) {
+        const res = await installationsApi.createDemandeAchat({
+          objet: form.objet.trim(),
+          chantier: form.chantier || null,
+          priorite: form.priorite,
+          date_besoin: form.date_besoin || null,
+          note: form.note || null,
+        })
+        id = res.data.id
+        reprise.current = { id, faites: 0 }
+      }
+      for (const l of lignes.slice(reprise.current.faites)) {
         await installationsApi.createDemandeAchatLigne({
           demande: id,
           produit: l.produit || null,
@@ -247,10 +267,12 @@ export default function DemandesAchatList() {
           quantite: l.quantite || 0,
           prix_estime: l.prix_estime || 0,
         })
+        reprise.current.faites += 1
       }
       if (thenSoumettre) {
         await installationsApi.soumettreDemandeAchat(id)
       }
+      reprise.current = { id: null, faites: 0 }
       toastSuccess(thenSoumettre ? 'Demande créée et soumise.' : 'Demande enregistrée.')
       setCreating(false)
       await load()
@@ -290,7 +312,7 @@ export default function DemandesAchatList() {
     { id: 'objet', header: 'Objet', accessor: (d) => d.objet, minWidth: 220, searchable: true },
     {
       id: 'chantier', header: 'Chantier',
-      accessor: (d) => chantiers.find((c) => c.id === d.chantier)?.nom || '—',
+      accessor: (d) => libelleChantier(chantiers.find((c) => c.id === d.chantier)),
       minWidth: 160,
     },
     {
@@ -544,7 +566,7 @@ export default function DemandesAchatList() {
                 <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                   <div>Priorité : <span className="text-foreground">{PRIORITE_LABEL[detail.priorite] || detail.priorite}</span></div>
                   <div>Besoin le : <span className="text-foreground">{detail.date_besoin ? formatDate(detail.date_besoin) : '—'}</span></div>
-                  <div>Chantier : <span className="text-foreground">{chantiers.find((c) => c.id === detail.chantier)?.nom || '—'}</span></div>
+                  <div>Chantier : <span className="text-foreground">{libelleChantier(chantiers.find((c) => c.id === detail.chantier))}</span></div>
                   <div>Montant estimé : <span className="text-foreground">{detail.montant_estime == null ? '—' : formatMAD(detail.montant_estime)}</span></div>
                 </div>
 
