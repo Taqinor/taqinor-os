@@ -19,6 +19,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
 from ..domain.facturation_ops import StockInsuffisantError
 import logging
@@ -179,7 +180,9 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
-            return [IsAdminRole()]
+            # ASEC50 / D-ASEC-4 — supprimer un BC exige ``ventes_supprimer``
+            # en plus du palier administrateur (comme le devis).
+            return [IsAdminRole(), DroitDeLaGrille('ventes_supprimer')()]
         return [IsAdminRole()]
 
     def get_serializer(self, *args, **kwargs):
