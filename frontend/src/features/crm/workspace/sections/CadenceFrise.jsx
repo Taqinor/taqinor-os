@@ -168,7 +168,7 @@ export default function CadenceFrise({
         - (b.due_at ? new Date(b.due_at).getTime() : Infinity))[0] ?? null
     onEtapes(ouvertes.filter((e) => e.overdue || (prochaine && e.id === prochaine.id))
       .map((e) => ({ ...e, enAvance: Boolean(e.due_date) && e.due_date > aujourdhuiLu })))
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `onEtapes` est une fonction du parent recréée à chaque rendu ; la lecture ne dépend que des touches lues.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `onEtapes` est une fonction du parent recréée à chaque rendu ; la lecture ne dépend que des touches lues. (D-ENF22)
   }, [etapes, leadLu, leadId])
 
   useEffect(() => {

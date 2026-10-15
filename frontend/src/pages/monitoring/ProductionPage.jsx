@@ -233,7 +233,7 @@ export default function ProductionPage() {
   // liste via `reloadReadings(selectedId)` après suppression — une fermeture
   // figée sur l'installation du premier rendu (`[]`) rechargerait le mauvais
   // système, ou aucun (`reloadReadings` sort tôt si `id` est vide).
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- removeReading recréé par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- removeReading recréé par rendu (D-ENF22)
   ], [selectedId])
 
   // WIR122 — historique mensuel : la DataTable expose déjà un export CSV

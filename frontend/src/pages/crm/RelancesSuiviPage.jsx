@@ -530,7 +530,7 @@ export default function RelancesSuiviPage() {
   }
 
   useEffect(() => charger(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` recrée une fermeture à chaque rendu (owner/today/onglet la referment déjà) ; l'ajouter provoquerait un rechargement à chaque frappe sans rien changer aux dépendances réelles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` recrée une fermeture à chaque rendu (owner/today/onglet la referment déjà) ; l'ajouter provoquerait un rechargement à chaque frappe sans rien changer aux dépendances réelles. (D-ENF22)
     [onglet, owner, today])
 
   // CKP4 / SUIVI-REFUS — voir `traiterGesteTouche` (`features/crm/relances/

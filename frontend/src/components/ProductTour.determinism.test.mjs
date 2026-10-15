@@ -4,8 +4,8 @@
 // (ProductTour.jsx) — un aller-retour microtask INUTILE, hors du flush
 // react-dom synchrone que `act()`/`fireEvent`/`render` couvrent déjà pour un
 // effet « normal » (voir Avatar.jsx/FollowToggle.jsx/WelcomeMoment.jsx… —
-// TOUS utilisent un simple `// eslint-disable-next-line
-// react-hooks/set-state-in-effect`, jamais un queueMicrotask). Empilé sur la
+// TOUS utilisent une simple directive ESLint de ligne suivante sur
+// react-hooks/set-state-in-effect, jamais un queueMicrotask). Empilé sur la
 // promesse déjà async de `fetchTours()`, cet aller-retour supplémentaire
 // pouvait faire dépasser le budget par défaut de `findByText`/`waitFor` sous
 // charge CI — ProductTour.jsx n'est pas exécutable sous `node --test` (JSX,
@@ -51,7 +51,7 @@ test('ProductTour : setActiveKey/setStep/setOpen posés SYNCHRONEMENT dans l\'ef
 test('ProductTour : le lint react-hooks/set-state-in-effect reste explicitement couvert (même convention que le reste du dépôt)', () => {
   const occurrences = (PT.match(/react-hooks\/set-state-in-effect/g) || []).length
   // ENF22 (11/10/2026) : la règle ne signale que le PREMIER setState de l'effet ; un seul
-  // eslint-disable couvre donc le bloc (les deux suivants étaient des directives inutilisées).
+  // directive couvre donc le bloc (les deux suivantes étaient inutilisées).
   assert.ok(occurrences >= 1,
-    'le bloc des setState synchrones (activeKey/step/open) doit porter un eslint-disable explicite, comme Avatar.jsx/FollowToggle.jsx')
+    'le bloc des setState synchrones (activeKey/step/open) doit porter une directive ESLint explicite, comme Avatar.jsx/FollowToggle.jsx')
 })

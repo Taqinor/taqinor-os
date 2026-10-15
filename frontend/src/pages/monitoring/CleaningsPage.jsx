@@ -113,7 +113,7 @@ export default function CleaningsPage() {
         </IconButton>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- remove recréé par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- remove recréé par rendu (D-ENF22)
   ], [])
 
   return (

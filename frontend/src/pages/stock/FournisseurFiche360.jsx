@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
@@ -654,7 +654,7 @@ function OngletContacts({ fournisseurId, canWrite }) {
   }
 
   // `reload` est recréé à chaque rendu ; ne rejouer qu'au changement de fournisseur.
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload recréé par rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload recréé par rendu (D-ENF22)
   useEffect(() => { reload() }, [fournisseurId])
 
   const supprimer = async (c) => {
@@ -817,13 +817,12 @@ function OngletDocuments({ fournisseurId, canWrite, resume, onConformiteChange }
   const [actionError, setActionError] = useState(null)
   const isAdmin = useIsAdmin()
 
-  const reload = () => {
+  const reload = useCallback(() => {
     stockApi.getDocumentsConformiteFournisseur(fournisseurId)
       .then((r) => setItems(r.data?.results ?? r.data ?? []))
       .catch((e) => setError(frErr(e, 'Documents indisponibles.')))
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reload() }, [fournisseurId])
+  }, [fournisseurId])
+  useEffect(() => { reload() }, [reload])
 
   const apresEcriture = () => { reload(); onConformiteChange?.() }
   const supprimer = async (d) => {
@@ -1018,13 +1017,12 @@ function OngletIncidents({ fournisseurId, canWrite, onConformiteChange }) {
   const [actionError, setActionError] = useState(null)
   const [resolvingId, setResolvingId] = useState(null)
 
-  const reload = () => {
+  const reload = useCallback(() => {
     stockApi.getIncidentsQualiteFournisseurDe(fournisseurId)
       .then((r) => setItems(r.data?.results ?? r.data ?? []))
       .catch((e) => setError(frErr(e, 'Incidents indisponibles.')))
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reload() }, [fournisseurId])
+  }, [fournisseurId])
+  useEffect(() => { reload() }, [reload])
 
   const apresEcriture = () => { reload(); onConformiteChange?.() }
   const resoudre = async (inc) => {
@@ -1108,13 +1106,12 @@ function OngletAcces({ fournisseurId }) {
   const [confirmation, setConfirmation] = useState(null) // { kind: 'acces' } | { kind: 'jeton', jeton }
   const [copie, setCopie] = useState(null)
 
-  const reload = () => {
+  const reload = useCallback(() => {
     stockApi.getPortailTokensFournisseur(fournisseurId)
       .then((r) => setJetons(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
       .catch((e) => setError(frErr(e, 'Liens du portail indisponibles.')))
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { reload() }, [fournisseurId])
+  }, [fournisseurId])
+  useEffect(() => { reload() }, [reload])
 
   const agir = async (cle, appel, succes) => {
     setBusy(cle); setActionError(null); setInfo(null)

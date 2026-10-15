@@ -318,7 +318,7 @@ export default function Journal() {
   useEffect(() => {
     if (!allowed || tab !== 'securite') return undefined
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-tab-activate
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-tab-activate (D-ENF22)
     setSecLoading(true)
     setSecError(null)
     auditApi.getSecurityEvents(securityParams)
@@ -358,7 +358,7 @@ export default function Journal() {
   useEffect(() => {
     if (!allowed || tab !== 'analytiques') return undefined
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-tab-activate
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-tab-activate (D-ENF22)
     setAnalyticsLoading(true)
     setAnalyticsError(null)
     reportingApi.auditAnalytics()

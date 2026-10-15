@@ -111,7 +111,7 @@ export default function GlobalSearch() {
   useEffect(() => {
     // Rouvre le panneau à l'ARRIVÉE d'une réponse asynchrone (résultats/échec) :
     // réaction à un état externe, pas un état dérivable en rendu.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- rouvre le panneau à l'arrivée d'une réponse asynchrone (état externe) (D-ENF22)
     if (term.length >= 2 && !loading) setOpen(true)
   }, [groups, failed, loading, term])
 

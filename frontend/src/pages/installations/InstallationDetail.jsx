@@ -748,7 +748,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   useEffect(() => {
     if (!previewDoc) return undefined
     let cancelled = false
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début du chargement de l'aperçu (opération réseau de l'effet) (D-ENF22)
     setPreviewLoading(true)
     setPreviewServerError(false)
     setPreviewErrorDetail('')

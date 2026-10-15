@@ -26,7 +26,7 @@ import { Pencil, Paperclip, Megaphone, Pin, PinOff } from 'lucide-react'
 // (déplacé hors de LeadForm.jsx) : ChatterTimeline est désormais la seule
 // source de rendu du chatter.
 // source-choix: crm.LeadActivity.outcome
-// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (dev HMR only)
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (dev HMR only) (D-ENF22)
 export const OUTCOME_LABELS = {
   '': null, joint: 'Joint', non_joint: 'Non joint', rappel: 'À rappeler',
   refuse: 'Refus', interesse: 'Intéressé',
@@ -47,7 +47,7 @@ const AUTO_LOG_KINDS = new Set(['creation', 'modification'])
 // jamais un heuristique inventé ici, une lecture directe du format réel.
 const MARKETING_TOUCH_RE = /^(Campagne|Séquence) « (.+?) » /
 
-// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (testable au node)
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (testable au node) (D-ENF22)
 export function parseMarketingTouch(body) {
   const m = body ? MARKETING_TOUCH_RE.exec(body) : null
   if (!m) return null
@@ -68,7 +68,7 @@ function timeAgo(iso) {
 // (features/crm/workspace/sections/ArbreHistorique.jsx) groupe par jour avec
 // EXACTEMENT les mêmes libellés que le chatter — une seule source, jamais
 // deux calendriers qui divergent d'un rendu à l'autre.
-// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (testable)
+// eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (testable) (D-ENF22)
 export function dayLabel(iso) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return 'Date inconnue'

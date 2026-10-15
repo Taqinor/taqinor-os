@@ -59,7 +59,7 @@ const DROP_ANIMATION_REDUCED = { duration: 1, easing: 'linear' }
 // XSAL15 — exportée pour être réutilisée telle quelle par la vue « Prévision »
 // (regroupement par mois plutôt que par étape, MÊME calcul de pondération —
 // jamais une seconde table de probabilités déclarée ailleurs).
-// eslint-disable-next-line react-refresh/only-export-components -- STAGE_PROBABILITY co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- STAGE_PROBABILITY co-localisé (D-ENF22)
 export const STAGE_PROBABILITY = {
   [NEW_STAGE]: 0.1,
   [CONTACTED_STAGE]: 0.25,
@@ -327,7 +327,7 @@ export default function KanbanView({
     const onSettle = () => navigator.vibrate?.(5)
     el.addEventListener('scrollend', onSettle, { passive: true })
     return () => el.removeEventListener('scrollend', onSettle)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- boardRef est un ref stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- boardRef est un ref stable (D-ENF22)
   }, [pointerCoarse])
   const columns = useMemo(() => groupLeadsByStage(leads, tri), [leads, tri])
   const [activeLead, setActiveLead] = useState(null)

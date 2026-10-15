@@ -256,7 +256,7 @@ export default function LeadWorkspace({
     // deps (lu à l'exécution) : seul le premier
     // rendu de CE lead doit décider, jamais un ré-arbitrage à chaque PATCH.
     if (!state.server?.chatter_recent?.length) refreshHistorique()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- décision prise une fois par lead, pas à chaque state.server
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- décision prise une fois par lead, pas à chaque state.server (D-ENF22)
   }, [mode, leadId, refreshHistorique])
 
   // ERR-QAH-CRM-HISTORIQUE-VIDE-RELANCE — un autosave RÉUSSI (« Relance le »,
@@ -559,7 +559,7 @@ export default function LeadWorkspace({
     // LeadDevisPanel.jsx setPreviewLoading) : ce n'est pas un dérivé de
     // props/state, c'est le vrai début d'une opération réseau déclenchée PAR
     // cet effet.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début réel d'une opération réseau déclenchée par l'effet (D-ENF22)
     setLeadLoading(true)
     loadFresh(leadId).finally(() => { if (!cancelled) setLeadLoading(false) })
     return () => { cancelled = true }
@@ -629,7 +629,7 @@ export default function LeadWorkspace({
     if (mode !== 'edit' || state.leadId == null) return
     const nom = `${getField(state, 'nom') || ''} ${getField(state, 'prenom') || ''}`.trim()
     pushRecentEntity({ type: 'lead', id: state.leadId, label: nom ? `Lead — ${nom}` : 'Lead' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au VRAI changement de lead (state.leadId après LOAD_LEAD), jamais à chaque frappe du nom
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ne réagit qu'au VRAI changement de lead (state.leadId après LOAD_LEAD), jamais à chaque frappe du nom (D-ENF22)
   }, [mode, state.leadId])
 
   // ── LW23 : registre de raccourcis propre (d/n/1-4) ────────────────────────

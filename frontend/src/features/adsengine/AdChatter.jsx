@@ -31,7 +31,7 @@ export default function AdChatter({ entityType, entityId }) {
       .finally(() => setLoading(false))
   }, [entityType, entityId])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement d'entité
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement d'entité (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const postNote = async (e) => {

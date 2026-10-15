@@ -81,7 +81,7 @@ export function useRegistreOverrides(ctx) {
   // QJR572 — relu à CHAQUE ouverture d'un devis, jamais à chaque rendu.
   useEffect(() => {
     if (editDevis?.id) chargerOverrides(editDevis.id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registre relu à chaque ouverture d'un devis (QJR572), jamais à chaque rendu (D-ENF22)
   }, [editDevis?.id])
 
   const poserOverride = async () => {

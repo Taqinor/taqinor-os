@@ -70,7 +70,7 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
 
   useEffect(() => {
     let alive = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début du chargement des documents (opération réseau de l'effet) (D-ENF22)
     setLoading(true)
     setError(false)
     api.get(`/crm/clients/${client.id}/documents/`)
@@ -82,7 +82,7 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
 
   useEffect(() => {
     let alive = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- remise à zéro avant rechargement de la consolidation (D-ENF22)
     setConsolidation(null)
     api.get(`/crm/clients/${client.id}/consolidation/`)
       .then((res) => { if (alive) setConsolidation(res.data) })

@@ -298,7 +298,7 @@ export default function RelancesDuJourWidget({ onChange } = {}) {
   useEffect(() => {
     queueMicrotask(() => setLoading(true))
     return charger()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` referme `scope`, déjà en dépendance ; l'ajouter provoquerait la même relecture à chaque rendu sans rien changer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `charger` referme `scope`, déjà en dépendance ; l'ajouter provoquerait la même relecture à chaque rendu sans rien changer. (D-ENF22)
   }, [scope])
 
   const retirer = (id) => setEtapes((prev) => prev.filter((e) => e.id !== id))

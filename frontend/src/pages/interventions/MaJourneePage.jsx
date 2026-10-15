@@ -115,7 +115,7 @@ const HORODATAGE_STATUT = [
  *    une intervention déjà « Terminée ») — reculer reste une action manuelle ;
  *  - rien si le statut est déjà celui déduit.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export function statutDerive(avant, apres) {
   if (!avant || !apres) return null
   let cible = null
@@ -133,7 +133,7 @@ export function statutDerive(avant, apres) {
  * le statut courant. C'est un ordre de LISTE, pas une règle métier : la vraie
  * garde reste `transition_block_reason` côté serveur (VX105).
  */
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export function statutsProposables(statut) {
   const r = interventionStatusRank(statut)
   return INTERVENTION_STATUSES.filter(
@@ -540,7 +540,7 @@ const NEXT_ACTION = {
  * Tant que le compte de photos manquantes est INCONNU (champ non servi), on ne
  * suppose rien : la séquence historique s'applique.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé (D-ENF22)
 export function prochaineAction(interv) {
   if (!interv) return null
   if (interv.statut === 'sur_site' && interv.photos_obligatoires_manquantes === 0) {

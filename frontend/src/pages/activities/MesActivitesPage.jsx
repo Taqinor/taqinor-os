@@ -211,7 +211,7 @@ export default function MesActivitesPage() {
     if (isAdmin) loadTeam()
   }
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial : setState dans le callback async, jamais synchrone (D-ENF22)
   useEffect(() => { load(); loadMaFile(); if (isAdmin) loadTeam() }, [isAdmin])
 
   const markDone = async (a) => {

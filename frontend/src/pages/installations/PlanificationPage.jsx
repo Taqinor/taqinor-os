@@ -299,7 +299,7 @@ function CalendrierTab() {
   // le drapeau `alive`, sans cascade possible.
   useEffect(() => {
     let alive = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début du chargement du calendrier (drapeau alive, pas de cascade) (D-ENF22)
     setLoading(true)
     installationsApi.getCalendrierInterventions(debut, fin)
       .then((r) => { if (alive) { setData(r.data ?? []); setError(null) } })

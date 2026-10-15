@@ -204,7 +204,7 @@ export default function FleetPage() {
         </IconButton>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- goToCo2 recréé par rendu (navigate stable)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- goToCo2 recréé par rendu (navigate stable) (D-ENF22)
   ], [])
 
   const goToAnalytics = () => navigate('/production/analytique')

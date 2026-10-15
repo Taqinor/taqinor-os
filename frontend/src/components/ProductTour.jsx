@@ -81,7 +81,7 @@ export default function ProductTour() {
     // `findByText`/`waitFor` (ProductTour.test.jsx, échecs mouvants constatés
     // sur 2 PR). Aucun `queueMicrotask` ⇒ un seul aller-retour asynchrone réel
     // (la promesse réseau), déterministe sous test.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- dérive l'ouverture du tour depuis tour/pathname, jamais lu dans le MÊME rendu
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- dérive l'ouverture du tour depuis tour/pathname, jamais lu dans le MÊME rendu (D-ENF22)
     setActiveKey(eligible ? tour.tour_key : null)
     setStep(0)
     setOpen(eligible)

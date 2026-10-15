@@ -130,7 +130,7 @@ export default function VisiteursPage() {
     if (leadId) return
     chargerAppareils()
   },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargerAppareils referme déjà appareilFiltre ; l'ajouter provoquerait une recréation d'effet identique.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- chargerAppareils referme déjà appareilFiltre ; l'ajouter provoquerait une recréation d'effet identique. (D-ENF22)
     [appareilFiltre, leadId])
 
   useEffect(() => { chargerEquipe() }, [])

@@ -1,6 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (données + composants lazy), pas un module
-   de composants : le fast-refresh ne s'y applique pas. */
 import { createElement, lazy } from 'react'
 import { HeartPulse, FlaskConical, Package, BarChart3, Settings, Stethoscope, ServerCog, KeyRound } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'

@@ -127,7 +127,7 @@ export default function GedNavigator() {
       .catch(() => { setError('Impossible de charger la GED. Réessayez.'); setLoadingTree(false) })
   }
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     loadCabinets()
   }, [])
 
@@ -142,7 +142,7 @@ export default function GedNavigator() {
   }
   useEffect(() => {
     if (cabinetId == null) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     loadFolders(cabinetId)
   }, [cabinetId])
 
@@ -167,7 +167,7 @@ export default function GedNavigator() {
   useEffect(() => {
     if (!selected) return
     let alive = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-select loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-select loading state (D-ENF22)
     setLoadingDocs(true)
     toutesLesPages(gedApi.getDocuments, { folder: selected.id })
       .then((list) => { if (alive) setDocuments(list) })
@@ -895,7 +895,7 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
   useEffect(() => {
     if (!doc?.id) return
     let alive = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture (D-ENF22)
     setLoading(true)
     setVersion(null)
     setAllVersions([])
@@ -1703,7 +1703,7 @@ function CabinetDialog({ open, onOpenChange, onCreated }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue (D-ENF22)
     if (open) { setNom(''); setBusy(false) }
   }, [open])
 
@@ -1762,7 +1762,7 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
 
   useEffect(() => {
     if (!state) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue (D-ENF22)
     setBusy(false)
     setNom(mode === 'rename' ? (target?.nom ?? '') : '')
     setAlias(mode === 'rename' ? (target?.alias_email ?? '') : '')
@@ -1890,7 +1890,7 @@ function UploadDialog({ open, onOpenChange, folder, onUploaded }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue (D-ENF22)
     if (open) { setFile(null); setNom(''); setDescription(''); setBusy(false) }
   }, [open])
 

@@ -27,7 +27,7 @@ export default function Playbooks() {
       .finally(() => setLoading(false))
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage (D-ENF22)
   useEffect(() => { load() }, [load])
 
   const handleCreate = async (e) => {

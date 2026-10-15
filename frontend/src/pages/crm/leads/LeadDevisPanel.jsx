@@ -197,7 +197,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     if (startedRef.current) return
     if (mode === 'auto' || mode === 'onepage' || mode === 'premium') {
       startedRef.current = true
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- création automatique au montage, une seule fois (startedRef) (D-ENF22)
       doCreateAuto('0')
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

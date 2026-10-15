@@ -58,7 +58,7 @@ export function usePdfPreview(fetchBlob, { enabled = true } = {}) {
       // à faire en mémoire une fois l'aperçu fermé) ; la réouverture recharge.
       runIdRef.current += 1
       abortEnCours()
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- purge à la fermeture, aucune cascade
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- purge à la fermeture, aucune cascade (D-ENF22)
       setBlob(null)
       setLoading(false)
       setErrorKind(null)

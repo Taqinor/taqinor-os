@@ -60,7 +60,7 @@ export default function SettingsAuditFeed({ section = null, limit = 50, classNam
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- début du chargement du journal (opération réseau de l'effet) (D-ENF22)
     setLoading(true)
     const sec = locked ? section : filter
     const params = { limit, offset: 0 }

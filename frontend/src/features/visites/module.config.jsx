@@ -1,8 +1,4 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier de configuration de module (données + pages lazy), collecté par
-   `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants,
-   le fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes`). */
-import { lazy } from 'react'
+import { createElement, lazy } from 'react'
 import { ClipboardCheck, CalendarCheck, CalendarPlus, ListChecks, Microscope } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -35,8 +31,7 @@ const VisiteBureauEtudesPage = lazy(() => import('../../pages/visites/VisiteBure
 const PlanifierVisitePage = lazy(() => import('../../pages/visites/PlanifierVisitePage'))
 const CalageToitPage = lazy(() => import('../../pages/visites/CalageToitPage'))
 
-// eslint-disable-next-line no-unused-vars -- Comp est un composant polymorphe, rendu via <Comp> ci-dessous
-const navIcon = (Comp) => <Comp size={17} strokeWidth={1.75} aria-hidden="true" />
+const navIcon = (Comp) => createElement(Comp, { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' })
 
 // Palier : un commercial terrain relève du palier 'normal'.
 const ROLES = ['normal', 'responsable', 'admin']

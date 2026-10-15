@@ -55,9 +55,9 @@ function useFilteredList(fetcher, params) {
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` encode les filtres : seul son changement relance le chargement (D-ENF22)
   }, [key])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de filtre
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de filtre (D-ENF22)
   useEffect(() => load(), [load])
   return { rows, loading, error, reload: load }
 }

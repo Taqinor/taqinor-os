@@ -776,7 +776,7 @@ export default function FournisseursStock() {
   // canDelete/isAdmin stables au sein d'une session ; reload via closure stable.
   // `decidingId` (WIR219) DOIT rester en dépendance : sinon le bouton
   // Valider/Rejeter garderait un `disabled` figé sur sa valeur au premier rendu.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `canDelete`/`isAdmin` stables dans la session ; `decidingId` reste en dépendance (D-ENF22)
   ], [canDelete, decidingId])
 
   const rows = useMemo(

@@ -61,7 +61,7 @@ export default function TagsPage() {
   }
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     load()
   }, [])
 

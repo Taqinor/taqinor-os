@@ -17,7 +17,7 @@ export default function QuickFilterChips({ leads, filters, setFilters, myUsernam
 
   const dueTodayCount = useMemo(
     () => countWith({ relance: 'aujourdhui' }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- countWith ferme sur leads/filters/myUsername, déjà listés
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- countWith ferme sur leads/filters/myUsername, déjà listés (D-ENF22)
     [leads, filters, myUsername],
   )
   const retardCount = useMemo(

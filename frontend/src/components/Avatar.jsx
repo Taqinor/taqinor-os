@@ -39,7 +39,7 @@ export default function Avatar({ name, src, size = 28, title }) {
   // `src` change (nouvelle photo téléversée → aperçu immédiat).
   const [imgFailed, setImgFailed] = useState(false)
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser l'état d'échec quand src change (aperçu immédiat d'une nouvelle photo)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser l'état d'échec quand src change (aperçu immédiat d'une nouvelle photo) (D-ENF22)
     setImgFailed(false)
   }, [src])
 

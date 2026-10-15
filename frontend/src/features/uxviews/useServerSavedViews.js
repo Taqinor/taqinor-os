@@ -74,11 +74,11 @@ export function useServerSavedViews(ecran) {
       .finally(() => setLoading(false))
   }, [ecran])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de params
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / au changement de params (D-ENF22)
   useEffect(() => { refresh() }, [refresh])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture préférence locale au montage / changement d'écran
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture préférence locale au montage / changement d'écran (D-ENF22)
   useEffect(() => { setPrefId(readPref(ecran)) }, [ecran])
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture ordre local au montage / changement d'écran
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture ordre local au montage / changement d'écran (D-ENF22)
   useEffect(() => { setOrdrePerso(readOrder(ecran)) }, [ecran])
 
   // NTUX1 — migration best-effort des vues localStorage historiques de CET

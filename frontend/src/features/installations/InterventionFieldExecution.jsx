@@ -265,7 +265,7 @@ function ClientInfoPanel({ intervention }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state (D-ENF22)
     if (!installationId) { setLoading(false); return undefined }
     let alive = true
     setLoading(true)

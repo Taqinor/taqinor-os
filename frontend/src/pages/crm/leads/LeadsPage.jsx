@@ -349,7 +349,7 @@ export default function LeadsPage() {
     if (defaultViewApplied.current || !viewsLoaded) return
     defaultViewApplied.current = true
     if (initSource.url || initSource.session) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- réaction à l'ARRIVÉE des vues serveur (une seule fois, gardée par ref) : le défaut de connexion ne peut s'appliquer qu'après la réponse
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réaction à l'ARRIVÉE des vues serveur (une seule fois, gardée par ref) : le défaut de connexion ne peut s'appliquer qu'après la réponse (D-ENF22)
     if (savedViews.length > 0) applySavedView(savedViews[0])
   }, [viewsLoaded, savedViews, initSource, applySavedView])
   // LB26 — « Copier le lien » d'une vue enregistrée (blueprint D5) : sérialise
@@ -599,7 +599,7 @@ export default function LeadsPage() {
   // pour ne pas rouvrir le formulaire à chaque re-render.
   useEffect(() => {
     if (searchParams.get('new') !== '1') return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture one-shot pilotée par ?new=1 (D-ENF22)
     openNew()
     setSearchParams(prev => {
       const next = new URLSearchParams(prev)

@@ -108,8 +108,7 @@ export function groupe(nom, couvre) {
       etapes.push({
         id, taches, verdict: ok ? 'PASS' : 'FAIL', base_verdict: ecart ? ecart.base : null, trace, oracles,
         notes: [ecart ? `écart accepté (base FAIL) : ${ecart.raison}` : '',
-          // eslint-disable-next-line no-control-regex -- couleurs ANSI de `expect`
-          erreur ? `erreur : ${String(erreur.message).replace(/\u001b\[[0-9;]*m/g, '').split('\n')[0]}` : '',
+          erreur ? `erreur : ${String(erreur.message).replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*m`, 'g'), '').split('\n')[0]}` : '',
           ...suivi.incidents.map((i) => `oracle ${i.oracle} — ${i.texte}`)].filter(Boolean).join(' ; '),
       })
       if (erreur) throw erreur

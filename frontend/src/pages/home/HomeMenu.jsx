@@ -421,7 +421,7 @@ export default function HomeMenu() {
     if (tactile) return
     const index = ordre.findIndex((a) => a.key === derniereApp)
     if (index >= 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- focus initial de la tuile (effet de bord DOM) (D-ENF22)
       focusTuile(index)
       return
     }

@@ -64,7 +64,7 @@ export default function VuesConfigurationPage() {
 
   useEffect(() => {
     const active = { current: true }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage (D-ENF22)
     load(active)
     return () => { active.current = false }
   }, [])

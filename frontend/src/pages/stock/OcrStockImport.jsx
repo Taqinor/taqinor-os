@@ -172,7 +172,7 @@ export default function OcrStockImport() {
   // Restore step on mount: if scan is in-flight or failed while user navigated away
   useEffect(() => {
     if ((stockOcrLoading || stockOcrError) && stockOcrDocType) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restauration de l'étape depuis Redux au montage (D-ENF22)
       setDocType(stockOcrDocType)
       setStep(2)
     }
@@ -184,7 +184,7 @@ const cp = produitsRef.current
     const cf = fournisseursRef.current
     const cc = categoriesRef.current
     // Restore docType from Redux so purchase-doc rules survive navigation
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restauration du type de document depuis Redux (D-ENF22)
     if (stockOcrDocType) setDocType(stockOcrDocType)
     // OCR mouvement_suggere takes priority; doc_type was already used as hint
     setMouvementType(stockOcrResult.mouvement_suggere || 'entree')

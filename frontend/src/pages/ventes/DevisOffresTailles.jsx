@@ -365,14 +365,14 @@ export default function DevisOffresTailles({
       .finally(() => setLoading(false))
   }, [devisId, actif])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement de devis, même patron que DevisForm.jsx ApprobationPanel
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage / changement de devis, même patron que DevisForm.jsx ApprobationPanel (D-ENF22)
   useEffect(() => { charger() }, [charger])
 
   const avecServable = block?.offres_tailles?.avec_servable === true
   // Devis sans option batterie servable (ou passé de servable à non-servable
   // entre deux chargements) : jamais de bascule affichée sur « avec » vide.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- retombée sur 'sans' quand 'avec' devient indisponible
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- retombée sur 'sans' quand 'avec' devient indisponible (D-ENF22)
     if (!avecServable && variante === 'avec') setVariante('sans')
   }, [avecServable, variante])
 
