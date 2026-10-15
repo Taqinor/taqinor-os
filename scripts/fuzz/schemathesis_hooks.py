@@ -501,6 +501,11 @@ _FICHIERS_VALIDES = (
     # les octets (``store_attachment`` : image PNG/JPEG/WebP).
     (re.compile(r'^/api/django/visites/visites/\{[^/]+\}/photos/$'), {'POST'},
      {'fichier': _PNG_MINIMAL}),
+    # ERR-ENF11-FUZZ-AUTOMATION — pièce jointe d'une demande d'approbation : le
+    # part ``file`` nommé mais VIDE est refusé par le stockage (400) alors que
+    # le schéma n'exprime que ``format: binary``.
+    (re.compile(r'^/api/django/automation/approval-requests/$'), {'POST'},
+     {'file': _PDF_MINIMAL}),
     (re.compile(r'^/api/django/(stock|achats)/prix-fournisseurs/import-xlsx/$'), {'POST'},
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},

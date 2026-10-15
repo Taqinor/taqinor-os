@@ -651,6 +651,15 @@ def semer_objets_references(company, user):
 REGLES_PAR_CHEMIN = (
     (r'^/api/django/(stock|achats)/', ('lot', 'lot_id'), 'stock.LotEntrepot',
      None, None),
+    # ERR-ENF11-FUZZ-PORTAIL — le client, le lead et le chantier d'une demande
+    # SAV / d'un dépôt du portail sont lus dans la société de l'appelant
+    # (``chantier_id`` visait l'union des modèles qui portent ce nom : un id
+    # réel d'un AUTRE modèle donnait « Chantier inconnu(e) » au cas positif).
+    (r'^/api/django/portail/', ('client', 'client_id'), 'crm.Client',
+     None, None),
+    (r'^/api/django/portail/', ('lead', 'lead_id'), 'crm.Lead', None, None),
+    (r'^/api/django/portail/', ('chantier', 'chantier_id'),
+     'installations.Installation', None, None),
     (r'^/api/django/records/', ('activity_type', 'type_suivant'),
      'records.ActivityType', None, None),
     (r'^/api/django/records/', ('tag', 'tag_id'), 'records.Tag', None, None),
