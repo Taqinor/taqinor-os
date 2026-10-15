@@ -8,7 +8,7 @@
 // fusionnés DANS ce stepper, sous une progression « 3/7 » en tête, et le
 // bandeau « Prochaine action » passe sur `ui/NextActionBanner` (partagé avec
 // « Ma journée »).
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Circle, Lock, ClipboardCheck, PackageCheck } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import {
@@ -811,17 +811,21 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   // fiche IEC 62446-1 du PV raccordé.
   const agricole = installation?.type_installation === 'agricole'
 
-  const load = () => {
+  // Le type de chantier courant est lu À L'APPEL (jamais une dépendance : le
+  // chargement ne se relance qu'au changement de chantier).
+  const agricoleRef = useRef(agricole)
+  useEffect(() => { agricoleRef.current = agricole })
+  const load = useCallback(function load() {
     setLoading(true)
     installationsApi.getEtapesChantier(installationId)
       .then((r) => { setData(r.data); setError(null) })
       .catch(() => setError('Étapes indisponibles.'))
       .finally(() => setLoading(false))
-    ;(agricole ? installationsApi.getRecettePompage : installationsApi.getRecette)(installationId)
+    ;(agricoleRef.current ? installationsApi.getRecettePompage : installationsApi.getRecette)(installationId)
       .then((r) => setRecette(r.data)).catch(() => {})
     installationsApi.getPackRemise(installationId)
       .then((r) => setPack(r.data)).catch(() => {})
-  }
+  }, [installationId])
 
   // Charge trois ressources indépendantes (étapes/recette/pack) au montage +
   // après chaque avancement (la divergence du devis, elle, est servie par le
@@ -829,8 +833,7 @@ export default function ChantierGateTimeline({ installationId, installation, onA
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au changement de chantier (D-ENF22)
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [installationId])
+  }, [load])
 
   const stages = data?.etapes ?? []
   const courante = stages.find((s) => s.courante)

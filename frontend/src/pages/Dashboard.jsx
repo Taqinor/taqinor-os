@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState, useCallback } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback } from 'react'
 
 const ActivityFeedWidget = lazy(() => import('../components/ActivityFeedWidget'))
 const MesEquipesCard = lazy(() => import('../components/MesEquipesCard'))
@@ -486,19 +486,22 @@ export function Component() {
     // ALEA31 — la route suggérée est celle du SERVEUR (seule table).
     suggestedRoute: routeSuggereeServeur(user),
   })
+  const mobileHomeType = mobileHome?.type
+  const mobileHomeSuggested = mobileHome?.suggested
+  const navigateRef = useRef(navigate)
+  useEffect(() => { navigateRef.current = navigate })
   useEffect(() => {
-    if (mobileHome?.type !== 'decide') return
+    if (mobileHomeType !== 'decide') return
     // On mémorise côté serveur pour les prochaines connexions ET on navigue
     // immédiatement (sans attendre l'aller-retour réseau) — sinon le tout
     // premier login resterait sur ce Dashboard une frame de trop.
     // ALEA31 — jamais un refus muet : il s'affiche (le prochain atterrissage
     // retentera, la valeur restant « non décidée » côté serveur).
-    api.post('/auth/mobile-home-route/', { route: mobileHome.suggested }).catch((err) => {
+    api.post('/auth/mobile-home-route/', { route: mobileHomeSuggested }).catch((err) => {
       toast.error(`Accueil mobile non mémorisé : ${err?.response?.data?.detail || 'refus du serveur.'}`)
     })
-    if (mobileHome.suggested) navigate(mobileHome.suggested, { replace: true })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mobileHome?.type, mobileHome?.suggested])
+    if (mobileHomeSuggested) navigateRef.current(mobileHomeSuggested, { replace: true })
+  }, [mobileHomeType, mobileHomeSuggested])
 
   // VX41 — comparaison togglable « période précédente » sur le CA mensuel
   // (off par défaut : comportement écran inchangé tant qu'on ne l'active pas).

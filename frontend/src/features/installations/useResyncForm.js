@@ -15,7 +15,7 @@ export function useResyncForm(initial, setForm) {
     base.current = cle
     setForm((f) => Object.fromEntries(Object.keys(initial).map(
       (k) => [k, JSON.stringify(f[k]) === JSON.stringify(ancien[k]) ? initial[k] : f[k]])))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `cle` encode `initial` : seul son changement resynchronise (ACHT57)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `cle` encode `initial` : seul son changement resynchronise (ACHT57, D-ENF22)
   }, [cle])
 }
 
