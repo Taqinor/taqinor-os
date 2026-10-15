@@ -252,29 +252,22 @@ export default function Journal() {
   // Graphe + table : période + date + filtres + page. Le setState vit dans une
   // fonction async (jamais synchrone dans le corps de l'effet).
   //
-  // ERR69 — un changement de filtre appelle aussi `resetPage()` : `filterParams`
-  // ET `page` changent dans le MÊME rendu. Pour ne déclencher QU'UNE seule série
-  // de requêtes, on dérive une clé sérialisée stable de toutes les entrées de la
-  // requête et on l'utilise comme unique dépendance de l'effet — deux objets
-  // `range`/`filterParams` au contenu identique ne re-déclenchent plus rien.
-  const requestKey = useMemo(
-    () => JSON.stringify({ period, date, range, filterParams, page }),
-    [period, date, range, filterParams, page]
-  )
-
+  // ERR69 / D-ENF22 — un changement de filtre appelle aussi `resetPage()` :
+  // `filterParams` ET `page` changent dans le MÊME rendu, donc UNE seule série
+  // de requêtes. `range` et `filterParams` sont mémoïsés (identité stable tant
+  // que leur contenu ne change pas) : les dépendances complètes ci-dessous ne
+  // re-déclenchent rien d'inutile, et les noms de paramètres restent lisibles
+  // statiquement (check_frontend_query_params.py) — pas de relecture JSON.
   useEffect(() => {
     if (!allowed) return undefined
     let cancelled = false
-    // Les entrées sont relues depuis la clé sérialisée : l'effet ne dépend que
-    // de `requestKey` (et non des objets recréés à chaque rendu).
-    const req = JSON.parse(requestKey)
     const run = async () => {
       setLoading(true)
       setError(null)
       try {
         const [s, e] = await Promise.all([
-          auditApi.getStats({ period: req.period, date: req.date, ...req.filterParams }),
-          auditApi.getEntries({ ...req.range, ...req.filterParams, page: req.page }),
+          auditApi.getStats({ period, date, ...filterParams }),
+          auditApi.getEntries({ ...range, ...filterParams, page }),
         ])
         if (cancelled) return
         setStats(s.data)
@@ -291,7 +284,7 @@ export default function Journal() {
     }
     run()
     return () => { cancelled = true }
-  }, [allowed, requestKey])
+  }, [allowed, period, date, range, filterParams, page])
 
   // WIR18/WIR20 — onglets « Sécurité » et « Analytiques », en plus de
   // l'onglet « Activité » historique. Chargés PARESSEUSEMENT (seulement
