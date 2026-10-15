@@ -136,7 +136,7 @@ def record(action, *, instance=None, content_type=None, object_id=None,
             via_portail=bool(via_portail),
         )
         _chain_entry(entry, company)
-    except Exception:  # noqa: BLE001 — best-effort, ne jamais bloquer la requête
+    except Exception:  # noqa: BLE001 — best-effort, ne jamais bloquer la requête (D-ENF22-BLE001)
         logger.debug('audit record failed', exc_info=True)
 
 
@@ -227,5 +227,5 @@ def record_field_change(instance, field, old, new, *, user=_UNSET,
             log_field_change(
                 instance, field, old_txt, new_txt, user=act_user,
                 field_label=field_label, company=company)
-        except Exception:  # noqa: BLE001 — best-effort, ne jamais bloquer
+        except Exception:  # noqa: BLE001 — best-effort, ne jamais bloquer (D-ENF22-BLE001)
             logger.debug('audit chatter mirror failed', exc_info=True)
