@@ -3,7 +3,8 @@ from django.db.models import DecimalField, Q
 from rest_framework import serializers
 
 from core.champs_stricts import (
-    ChampsStrictsSansDecimalMixin, DecimalSouple, DecimalSoupleMixin,
+    ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalSouple,
+    DecimalSoupleMixin,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
@@ -272,15 +273,22 @@ class EcheancierTrancheSerializer(serializers.Serializer):
     ('acompte' / 'intermediaire' / 'solde') : seule une valeur d'unité y est
     lue comme une déclaration d'unité.
     """
-    libelle = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True)
-    type = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True)
-    unite = serializers.CharField(
-        required=False, allow_blank=True, allow_null=True)
+    # CI #997 (4) — textes STRICTS (forme publiée : chaîne sans nul, null) ;
+    # la forme entière est jugée par ``utils.echeancier.forme_tranche_ecriture``.
+    libelle = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True,
+        trim_whitespace=False)
+    type = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True,
+        trim_whitespace=False)
+    unite = ChaineStricte(
+        required=False, allow_blank=True, allow_null=True,
+        trim_whitespace=False)
     # JSONField (et non FloatField) : la valeur brute doit atteindre
     # ``normaliser_tranche``, seule source de la règle ET des messages FR.
-    pct_or_montant = serializers.JSONField(required=False)
+    # CI #997 (4) — null atteint aussi ``forme_tranche_ecriture`` (message
+    # « tranche vide » nommant la tranche, jamais un 500).
+    pct_or_montant = serializers.JSONField(required=False, allow_null=True)
     # AGR219 (contrat AGR200) — date prévue FACULTATIVE (ISO AAAA-MM-JJ,
     # null = non prévue). JSONField : la valeur brute atteint
     # ``normaliser_tranche``, seule source de la règle ET du message FR
@@ -298,23 +306,46 @@ class EcheancierTrancheSerializer(serializers.Serializer):
     payeur = serializers.JSONField(required=False, allow_null=True)
 
     def validate(self, attrs):
-        from .utils.echeancier import EcheancierInvalide, normaliser_tranche
+        from .utils.echeancier import (
+            EcheancierIncoherent, EcheancierInvalide, forme_tranche_ecriture,
+            normaliser_tranche)
+        index = self.context.get('index', 0)
         try:
-            normaliser_tranche(dict(attrs), self.context.get('index', 0))
+            forme_tranche_ecriture(self.initial_data, index)
+            normaliser_tranche(dict(attrs), index)
+        except EcheancierIncoherent:
+            pass  # CI #997 (4) — règle inter-clés : 409, jugée par le mixin
         except EcheancierInvalide as exc:
             raise serializers.ValidationError(str(exc))
         return attrs
 
 
 class EcheancierValidationMixin:
-    """QJR21 — refuse en 400 un échéancier dont une valeur est ambiguë.
+    """QJR21 — refuse un échéancier hors forme (400) ou incohérent (409).
 
     Monté sur les DEUX sérialiseurs Devis (lecture et écriture) : le champ
     ``echeancier`` est un JSONField accepté tel quel depuis le corps de la
     requête, une saisie en dirhams y passait donc sans aucun contrôle.
+
+    CI #997 (4) (api-fuzz ``PUT devis``, ``echeancier: [{}]``) — une tranche
+    hors de la forme PUBLIÉE (``utils.echeancier.schema_echeancier`` :
+    ``pct_or_montant`` obligatoire…) reste un 400 ; des tranches bien formées
+    dont l'ENSEMBLE viole une règle que le schéma ne sait pas dire (somme ≠
+    100 %, valeur > 100 selon l'unité déclarée — ``EcheancierIncoherent``)
+    répondent 409 ``ConflitEtat`` sous ``echeancier``, même message, et
+    seulement quand tout le reste du corps est valide (``validate``).
     """
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        incoherence = getattr(self, '_echeancier_incoherent', None)
+        if incoherence:
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'echeancier': [incoherence]})
+        return attrs
+
     def validate_echeancier(self, value):
+        self._echeancier_incoherent = None
         if value is None or value == '' or value == []:
             return value
         if not isinstance(value, list):
@@ -332,14 +363,20 @@ class EcheancierValidationMixin:
                 # Message PLAT sous la clé « echeancier » : l'écran affiche la
                 # phrase telle quelle, sans dépiler un non_field_errors imbriqué.
                 raise serializers.ValidationError(
-                    [str(m) for msgs in tranche.errors.values()
+                    [str(m) if cle == 'non_field_errors'
+                     else f"Tranche n°{index + 1} : « {cle} » : {m}"
+                     for cle, msgs in tranche.errors.items()
                      for m in (msgs if isinstance(msgs, (list, tuple))
                                else [msgs])])
         # AGNR12 — somme d'un échéancier tout en % = 100 %, aucune tranche
-        # vide (LA règle de ``utils.echeancier.valider_echeancier``).
-        from .utils.echeancier import EcheancierInvalide, valider_echeancier
+        # vide (LA règle de ``utils.echeancier.valider_echeancier``) ;
+        # CI #997 (4) — incohérence d'ensemble : 409 posé par ``validate``.
+        from .utils.echeancier import (
+            EcheancierIncoherent, EcheancierInvalide, valider_echeancier)
         try:
             valider_echeancier(value)
+        except EcheancierIncoherent as exc:
+            self._echeancier_incoherent = str(exc)
         except EcheancierInvalide as exc:
             raise serializers.ValidationError(str(exc))
         return value

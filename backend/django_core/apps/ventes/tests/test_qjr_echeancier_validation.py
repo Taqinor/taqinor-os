@@ -11,8 +11,10 @@ Ce module prouve les trois cas exigés :
      pourcentage, mot pour mot comme hier (rétro-compatibilité).
   2. MONTANT DÉCLARÉ — une tranche qui déclare ``montant`` vaut ce montant TTC
      et non un pourcentage ; son poids est DÉRIVÉ du total.
-  3. AMBIGU REFUSÉ — au-delà de 100 sans unité déclarée, l'API répond 400 avec
-     un message en français.
+  3. AMBIGU REFUSÉ — au-delà de 100 sans unité déclarée, l'API refuse avec
+     un message en français : 409 ``ConflitEtat`` depuis CI #997 (4) (règle
+     inter-clés que le schéma publié ne sait pas dire), une tranche HORS
+     FORME publiée (``pct_or_montant`` absent…) restant un 400.
 
 ATTENTION FIXTURES (R4-B3) : les montants de test restent SOUS 1000 MAD —
 ``Facture.pourcentage`` est un ``numeric(5, 2)`` et un test qui le ferait
@@ -35,9 +37,10 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.utils.echeancier import (
-    EcheancierInvalide, UNITE_MONTANT, UNITE_PCT, next_tranche,
-    normaliser_tranche, schedule_for_devis, tranches_normalisees,
-    unite_declaree, valider_echeancier,
+    EcheancierIncoherent, EcheancierInvalide, UNITE_MONTANT, UNITE_PCT,
+    next_tranche, normaliser_tranche, schedule_for_devis,
+    schema_echeancier, tranches_normalisees, unite_declaree,
+    valider_echeancier,
 )
 
 User = get_user_model()
@@ -130,6 +133,88 @@ class RegleUniteTranche(SimpleTestCase):
     def test_valider_echeancier_vide_ne_leve_pas(self):
         self.assertEqual(valider_echeancier(None), [])
         self.assertEqual(valider_echeancier([]), [])
+
+    def test_ci997_4_regles_inter_cles_incoherentes_forme_invalide(self):
+        """CI #997 (4) — somme ≠ 100 % et valeur > 100 selon l'unité
+        déclarée : ``EcheancierIncoherent`` (409 à l'API) ; un refus de FORME
+        de la même tranche (jalon inconnu) prime et reste un 400."""
+        for brut in ([{'pct_or_montant': 60}],
+                     [{'pct_or_montant': 150}],
+                     [{'unite': 'pct', 'pct_or_montant': 120}]):
+            with self.assertRaises(EcheancierIncoherent, msg=repr(brut)):
+                valider_echeancier(brut)
+        with self.assertRaises(EcheancierInvalide) as ctx:
+            normaliser_tranche({'pct_or_montant': 150, 'jalon': 'xx'})
+        self.assertNotIsInstance(ctx.exception, EcheancierIncoherent)
+
+    def test_ci997_4_schema_publie_exige_pct_or_montant(self):
+        """Cas kZprmM (``PUT devis``, ``echeancier: [{}]``) : la tranche
+        vide n'est plus conforme au schéma publié."""
+        liste = schema_echeancier()['anyOf'][0]
+        self.assertEqual(liste['items']['required'], ['pct_or_montant'])
+
+
+class MixinEcheancierCi997(SimpleTestCase):
+    """CI #997 (4) — ``EcheancierValidationMixin`` : 400 hors forme publiée,
+    409 ``ConflitEtat`` (même message, sous ``echeancier``) sur une règle
+    d'ensemble, seulement quand le reste du corps est valide."""
+
+    def _juger(self, echeancier):
+        from rest_framework import serializers
+        from apps.ventes.serializers import EcheancierValidationMixin
+        from core.conflit_etat import ConflitEtat
+
+        class _Base:
+            def validate(self, attrs):
+                return attrs
+
+        class _Ser(EcheancierValidationMixin, _Base):
+            pass
+
+        ser = _Ser()
+        try:
+            ser.validate_echeancier(echeancier)
+        except serializers.ValidationError as exc:
+            return 400, str(exc.detail)
+        try:
+            ser.validate({})
+        except ConflitEtat as exc:
+            return 409, str(exc.detail['echeancier'])
+        return 200, ''
+
+    def test_tranches_hors_forme_400(self):
+        for brut, attendu in (
+                ([{}], '« pct_or_montant » est obligatoire'),
+                ([{'pct_or_montant': None}], 'la tranche est vide'),
+                ([{'pct_or_montant': '1e2'}], 'pct_or_montant'),
+                ([{'pct_or_montant': 100, 'libelle': 0}], 'libelle'),
+                ([{'pct_or_montant': 100, 'libelle': 'a\x00'}], 'libelle'),
+                ([{'pct_or_montant': 100, 'date_prevue': ' 2026-01-01'}],
+                 'date_prevue'),
+                ([{'pct_or_montant': 100,
+                   'delai_reglement_jours': 10 ** 400}],
+                 'delai_reglement_jours')):
+            statut, message = self._juger(brut)
+            self.assertEqual(statut, 400, brut)
+            self.assertIn(attendu, message, brut)
+
+    def test_regles_d_ensemble_409_meme_message(self):
+        statut, message = self._juger([{'pct_or_montant': 0}])
+        self.assertEqual(statut, 409)
+        self.assertIn('Total des tranches : 0 % — il doit faire 100 %.',
+                      message)
+        statut, message = self._juger([{'pct_or_montant': 150}])
+        self.assertEqual((statut, 'ambigu' in message), (409, True))
+
+    def test_formes_valides_acceptees(self):
+        for brut in ([{'pct_or_montant': 100}], [{'pct_or_montant': '100'}],
+                     [{'unite': 'montant', 'pct_or_montant': 750},
+                      {'pct_or_montant': 100}],
+                     [{'pct_or_montant': 100, 'date_prevue': '2026-02-28',
+                       'jalon': 'commande', 'payeur': 'tiers',
+                       'delai_reglement_jours': 30,
+                       'semaines_indicatives': '2,5'}]):
+            self.assertEqual(self._juger(brut), (200, ''), brut)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -284,12 +369,13 @@ class ApiEcheancier(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.echeancier[0]['unite'], 'montant')
 
-    def test_valeur_ambigue_refusee_en_400_en_francais(self):
+    def test_valeur_ambigue_refusee_en_409_en_francais(self):
+        # CI #997 (4) — règle inter-clés (unité déclarée) : 409, même message.
         reponse = self._patch([
             {'libelle': 'Acompte', 'type': 'acompte', 'pct_or_montant': 750},
             {'libelle': 'Solde', 'type': 'solde', 'pct_or_montant': 100},
         ])
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('echeancier', reponse.data)
         message = str(reponse.data['echeancier'])
         self.assertIn('ambigu', message)
@@ -301,6 +387,19 @@ class ApiEcheancier(TestCase):
     def test_liste_attendue(self):
         reponse = self._patch({'acompte': 30})
         self.assertEqual(reponse.status_code, 400, reponse.data)
+
+    def test_ci997_4_tranche_vide_400_somme_409(self):
+        """Cas kZprmM : ``[{}]`` est hors forme publiée (400) ; une tranche
+        bien formée dont la somme ≠ 100 % est un 409 ; rien n'est écrit."""
+        reponse = self._patch([{}])
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('pct_or_montant', str(reponse.data['echeancier']))
+        reponse = self._patch([{'pct_or_montant': 60}])
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('Total des tranches : 60 % — il doit faire 100 %.',
+                      str(reponse.data['echeancier']))
+        self.devis.refresh_from_db()
+        self.assertIsNone(self.devis.echeancier)
 
     def test_echeancier_vide_reste_accepte(self):
         reponse = self._patch(None)

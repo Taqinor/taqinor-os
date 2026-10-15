@@ -257,13 +257,15 @@ describe('AGNR37 — échéancier hors total : aucune écriture', () => {
     expect(ventesApi.replaceLignesDevis).not.toHaveBeenCalled()
   })
 
-  it('refus 400 `echeancier` du serveur : affiché sous la carte', async () => {
+  // CI #997 (4) — la règle « Σ = 100 % » est un refus 409 `ConflitEtat` côté
+  // serveur (même message, même clé `echeancier`).
+  it('refus 409 `echeancier` du serveur : affiché sous la carte', async () => {
     ventesApi.replaceLignesDevis.mockRejectedValueOnce({
-      response: { status: 400, data: { echeancier: ['Les tranches doivent totaliser 100 %.'] } },
+      response: { status: 409, data: { echeancier: ['Total des tranches : 90 % — il doit faire 100 %.'] } },
     })
     await ouvrirEtSaisir(['30', '60', '10'])
     expect(await screen.findByTestId('echeancier-somme'))
-      .toHaveTextContent('Les tranches doivent totaliser 100 %.')
+      .toHaveTextContent('Total des tranches : 90 % — il doit faire 100 %.')
     expect(screen.getByTestId('erreur-enregistrement')).toHaveTextContent(/Échéancier de paiement/)
   })
 })
