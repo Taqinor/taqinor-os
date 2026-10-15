@@ -1587,7 +1587,7 @@ def _dispatch_hide_comment(client, action):
         fresh = client.get_comment(comment_id) or {}
         observed = bool(fresh.get('is_hidden'))
         verified = (observed == hidden)
-    except Exception:  # noqa: BLE001 — read-back en échec ⇒ non vérifié (jamais un faux vert)
+    except Exception:  # noqa: BLE001 — read-back en échec ⇒ non vérifié (jamais un faux vert) (D-ENF22-BLE001)
         logger.warning("services._dispatch_hide_comment : erreur ignorée (mode dégradé)", exc_info=True)
         observed = None
         verified = False

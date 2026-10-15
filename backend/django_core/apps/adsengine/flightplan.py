@@ -116,7 +116,7 @@ def _mde_sane(company, spec, *, mde_check=None):
         try:
             ok, reason = mde_check(company, spec)
             return bool(ok), reason
-        except Exception:  # noqa: BLE001 - chemin optionnel → dégrade
+        except Exception:  # noqa: BLE001 — chemin optionnel → dégrade (D-ENF22-BLE001)
             logger.debug('flightplan: mde_check injecté a échoué — dégrade')
     try:
         from . import mde as _mde
@@ -128,7 +128,7 @@ def _mde_sane(company, spec, *, mde_check=None):
                 reason = result[1] if len(result) > 1 else None
                 return bool(result[0]), reason
             return bool(result), None
-    except Exception:  # noqa: BLE001 - mde absent/incompatible → dégrade
+    except Exception:  # noqa: BLE001 — mde absent/incompatible → dégrade (D-ENF22-BLE001)
         logger.debug('flightplan: mde.py absent/incompatible — contrôle '
                      'structurel')
     # Dégradation : la sanité structurelle (bornes bras/semaines) fait foi.

@@ -235,7 +235,7 @@ class FlightRunner:
                 try:
                     client.update_status_paused(
                         object_id=mirror.meta_id, level=level)
-                except Exception as exc:  # noqa: BLE001 — best-effort par cible
+                except Exception as exc:  # noqa: BLE001 — best-effort par cible (D-ENF22-BLE001)
                     logger.warning(
                         'flightrunner: kill-switch pause échouée pour %s : %s',
                         mirror.meta_id, exc)
@@ -509,7 +509,7 @@ class FlightRunner:
             return []
         try:
             return fn() or []
-        except Exception:  # noqa: BLE001 — dédup best-effort
+        except Exception:  # noqa: BLE001 — dédup best-effort (D-ENF22-BLE001)
             logger.warning("flightrunner.FlightRunner._safe_get : erreur ignorée (mode dégradé)", exc_info=True)
             return []
 
@@ -667,7 +667,7 @@ class FlightRunner:
         try:
             brief_mod.build_brief(self.company)
             brief_generated = True
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning('flightrunner: build_brief a échoué société=%s',
                            self.company.pk, exc_info=True)
 

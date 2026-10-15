@@ -219,7 +219,7 @@ def _leads_signal(company, *, target_type, target_meta_id, now, window_days,
     if index is None:
         try:
             index = odoo_leads.leads_days_index(company)
-        except Exception as exc:  # noqa: BLE001 — jamais un moteur cassé par Odoo
+        except Exception as exc:  # noqa: BLE001 — jamais un moteur cassé par Odoo (D-ENF22-BLE001)
             logger.warning('adsengine PUB135: index leads indisponible: %s', exc)
             # ``configured`` INCONNU (la lecture n'a pas abouti) : on ne prétend
             # ni configuré ni non configuré — l'erreur elle-même est le motif.
@@ -1598,7 +1598,7 @@ def evaluate_company(company, *, cadences=None, now=None, client=None,
         try:
             findings = evaluator(company, policy, template, now=now,
                                  config=config) or []
-        except Exception as exc:  # noqa: BLE001 — best-effort par règle
+        except Exception as exc:  # noqa: BLE001 — best-effort par règle (D-ENF22-BLE001)
             logger.warning('adsengine rules_engine: règle %s inopérante: %s',
                            policy.template_key, exc, exc_info=True)
             _record_last_result(
@@ -1693,7 +1693,7 @@ def evaluate_all(cadences=None, *, now=None, client=None):
             rules += evaluate_company(company, cadences=cadences, now=now,
                                       client=client)
             companies += 1
-        except Exception:  # noqa: BLE001 — isolation par société
+        except Exception:  # noqa: BLE001 — isolation par société (D-ENF22-BLE001)
             logger.warning('adsengine rules_engine: échec société %s',
                            getattr(company, 'pk', company), exc_info=True)
             continue

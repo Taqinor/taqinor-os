@@ -253,7 +253,7 @@ def sync_crm_custom_audience(company, *, name, contacts, replace=True,
                 client, summary['audience_id'], schema, rows, replace=replace)
     except MetaError as exc:
         summary['error'] = str(exc)[:255]
-    except Exception as exc:  # noqa: BLE001 — jamais casser l'appelant
+    except Exception as exc:  # noqa: BLE001 — jamais casser l'appelant (D-ENF22-BLE001)
         logger.warning("audiences.sync_crm_custom_audience : erreur ignorée (mode dégradé)", exc_info=True)
         summary['error'] = str(exc)[:255]
     return summary
@@ -347,7 +347,7 @@ def create_lookalike_from_seed(company, *, name, origin_audience_id,
         summary['audience_id'] = str((created or {}).get('id') or '')
     except MetaError as exc:
         summary['error'] = str(exc)[:255]
-    except Exception as exc:  # noqa: BLE001 — jamais casser l'appelant
+    except Exception as exc:  # noqa: BLE001 — jamais casser l'appelant (D-ENF22-BLE001)
         logger.warning("audiences.create_lookalike_from_seed : erreur ignorée (mode dégradé)", exc_info=True)
         summary['error'] = str(exc)[:255]
     return summary

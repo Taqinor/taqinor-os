@@ -44,7 +44,7 @@ def record_heartbeat(company, *, now=None):
     ts = now or timezone.now()
     try:
         cache.set(_cache_key(company), ts.isoformat(), None)  # sans expiration
-    except Exception:  # noqa: BLE001 — best-effort, jamais casser l'évaluateur
+    except Exception:  # noqa: BLE001 — best-effort, jamais casser l'évaluateur (D-ENF22-BLE001)
         logger.warning('adsengine watchdog: heartbeat non posé', exc_info=True)
     return ts
 

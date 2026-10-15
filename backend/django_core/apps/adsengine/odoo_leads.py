@@ -326,7 +326,7 @@ def _resolve_attributions(company, since=None, client=None):
     odoo_error = None
     try:
         leads = odoo_all_leads(client=client, company=company)  # ASEC40
-    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
+    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500) (D-ENF22-BLE001)
         logger.warning("odoo_leads._resolve_attributions : erreur ignorée (mode dégradé)", exc_info=True)
         leads = []
         odoo_error = f"{type(exc).__name__}: {exc}"[:300]

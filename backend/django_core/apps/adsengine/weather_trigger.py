@@ -59,7 +59,7 @@ def canicule_backlog_suggestions(company, *, seuil_temp_c=None, today=None):
             forecast = weather.fetch_temperature_forecast(
                 lat, lng, target_date)
             canicule = weather.evaluate_canicule(forecast, seuil_temp_c=seuil)
-        except Exception:  # noqa: BLE001 — déclencheur best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — déclencheur best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 "weather_trigger.canicule_backlog_suggestions : erreur ignorée (mode dégradé)", exc_info=True)
             continue

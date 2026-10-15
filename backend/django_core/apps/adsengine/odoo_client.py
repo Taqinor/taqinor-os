@@ -73,7 +73,7 @@ def _setting(name):
     try:
         from django.conf import settings
         val = getattr(settings, name, None)
-    except Exception:  # noqa: BLE001 — utilisable hors contexte Django
+    except Exception:  # noqa: BLE001 — utilisable hors contexte Django (D-ENF22-BLE001)
         logger.warning("odoo_client._setting : erreur ignorée (mode dégradé)", exc_info=True)
         val = None
     return (val or os.environ.get(name, '') or '').strip()

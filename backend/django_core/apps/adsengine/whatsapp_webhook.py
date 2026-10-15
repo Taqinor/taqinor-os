@@ -121,7 +121,7 @@ def _phone_key(phone):
     try:
         from apps.crm.selectors import normalize_phone_key
         return normalize_phone_key(phone) or ''
-    except Exception:  # noqa: BLE001 — la clé n'empêche jamais l'enregistrement
+    except Exception:  # noqa: BLE001 — la clé n'empêche jamais l'enregistrement (D-ENF22-BLE001)
         logger.warning("whatsapp_webhook._phone_key : erreur ignorée (mode dégradé)", exc_info=True)
         return ''
 
@@ -134,7 +134,7 @@ def _lead_id_for_phone(company, phone):
     try:
         from apps.crm.selectors import find_lead_id_by_phone
         return find_lead_id_by_phone(company, phone)
-    except Exception:  # noqa: BLE001 — le rattachement n'est jamais bloquant
+    except Exception:  # noqa: BLE001 — le rattachement n'est jamais bloquant (D-ENF22-BLE001)
         logger.warning("whatsapp_webhook._lead_id_for_phone : erreur ignorée (mode dégradé)", exc_info=True)
         return None
 
@@ -160,7 +160,7 @@ def _ensure_lead_id_for_phone(company, phone, ad_id):
         lead = create_minimal_lead_from_ctwa(
             company=company, phone=phone, ad_id=ad_id)
         return lead.pk if lead is not None else None
-    except Exception:  # noqa: BLE001 — jamais bloquant pour le CtwaReferral
+    except Exception:  # noqa: BLE001 — jamais bloquant pour le CtwaReferral (D-ENF22-BLE001)
         logger.warning(
             'adsengine.whatsapp_webhook: auto-création lead CTWA échouée.',
             exc_info=True)
@@ -256,7 +256,7 @@ class WhatsAppCloudWebhookView(View):
                                     company, phone, ad_id),
                             })
                         stored += 1
-        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
             logger.warning(
                 'adsengine.whatsapp_webhook: traitement échoué.',
                 exc_info=True)

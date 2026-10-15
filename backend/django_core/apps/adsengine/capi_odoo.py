@@ -226,7 +226,7 @@ def _sans_jeton(valeur):
     texte = str(valeur)
     try:
         jeton = _token()
-    except Exception:  # noqa: BLE001 — journaliser prime sur la config
+    except Exception:  # noqa: BLE001 — journaliser prime sur la config (D-ENF22-BLE001)
         logger.warning("capi_odoo._sans_jeton : erreur ignorée (mode dégradé)", exc_info=True)
         return texte
     return texte.replace(jeton, '***') if jeton else texte
@@ -245,7 +245,7 @@ def _send_event(event, *, transport=None):
         logger.info('ADSDEEP27/28: CAPI event %s envoyé — status %s',
                     event['event_id'], status)
         return True
-    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
         # L'access_token voyage dans la query string de l'URL (imposé par
         # l'API Graph) : une exception de transport (HTTPError & co.) recopie
         # cette URL dans son message, ce qui déversait le jeton EN CLAIR dans
@@ -270,7 +270,7 @@ def emit_signed_deals(company, *, since=None, client=None, now=None,
     try:
         # ASEC40 — lecture Odoo bornée à la société propriétaire.
         deals = odoo_signed_deals(since=since, client=client, company=company)
-    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500)
+    except Exception as exc:  # noqa: BLE001 — dégradation propre (jamais un 500) (D-ENF22-BLE001)
         logger.warning('ADSDEEP27: lecture Odoo échouée : %s', exc)
         result['reason'] = 'odoo_error'
         return result
