@@ -1,10 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
+import { screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Provider } from 'react-redux'
-import { configureStore } from '@reduxjs/toolkit'
-import { MemoryRouter } from 'react-router-dom'
-import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 /* WIR247 — 8 exports atelier orphelins (gamme d'exécution, lignes de
    composant, quantité récupérée, nomenclature) ont enfin un appelant :
@@ -12,26 +8,11 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    createLigneAssemblage / updateLigneAssemblage / deleteLigneAssemblage /
    updateLigneDemontage / getKitStructure. */
 
-const api = vi.hoisted(() => ({
-  getOrdresAssemblage: vi.fn(),
-  getOrdresDemontage: vi.fn(),
-  getKitsAssemblage: vi.fn(),
-  getDisponibiliteAssemblage: vi.fn(),
-  getControleQualiteAssemblage: vi.fn(),
-  getHistoriqueAssemblage: vi.fn(),
-  getEtapesAssemblage: vi.fn(),
-  cocherEtapeAssemblage: vi.fn(),
-  getLignesAssemblage: vi.fn(),
-  createLigneAssemblage: vi.fn(),
-  updateLigneAssemblage: vi.fn(),
-  deleteLigneAssemblage: vi.fn(),
-  updateLigneDemontage: vi.fn(),
-  getKitStructure: vi.fn(),
-  bonAssemblageUrl: (id) => `/api/x/${id}/bon-pdf/`,
-}))
+const api = await vi.hoisted(async () => (await import('../../test/ateliersApi')).apiAteliers(['cocherEtapeAssemblage', 'createLigneAssemblage', 'updateLigneAssemblage', 'deleteLigneAssemblage', 'updateLigneDemontage']))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
 import AteliersPage from './AteliersPage'
+import { renderAvecAuth } from '../../test/renderAvecAuth'
 
 const ORDRE = {
   id: 1, reference: 'ASM-001', kit: 3, kit_nom: 'Kit onduleur', quantite: 2,
@@ -53,16 +34,7 @@ const DEMONTAGE = {
   }],
 }
 
-function renderPage(role = 'responsable') {
-  const store = configureStore({ reducer: { auth: (state = { role }) => state } })
-  return render(
-    <Provider store={store}>
-      <MemoryRouter>
-        <ThemeProvider><AteliersPage /></ThemeProvider>
-      </MemoryRouter>
-    </Provider>,
-  )
-}
+const renderPage = (role = 'responsable') => renderAvecAuth(<AteliersPage />, { role }, { theme: true })
 
 async function ouvrirOrdre(user, reference, container) {
   await waitFor(() => expect(container.querySelector('[data-dt-table]')).not.toBeNull())

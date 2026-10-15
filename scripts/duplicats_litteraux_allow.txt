@@ -191,14 +191,11 @@
 39b0f4a9e88e|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 3a70a28b4aa5|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 3ae81e2f030a|frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/stock/FacturesFournisseur.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx
-3b439bb8a20f|frontend/src/pages/installations/AteliersPage.wir247.test.jsx,frontend/src/pages/installations/AteliersPage.wir248.test.jsx
-3b5044c2c95a|frontend/src/pages/installations/AteliersPage.wir247.test.jsx,frontend/src/pages/installations/AteliersPage.wir248.test.jsx
 3c6bf9079504|frontend/src/features/calepinage/ModeTerrain.jsx,frontend/src/features/calepinage/Ombriere.jsx,frontend/src/features/calepinage/Vue2DPlan.jsx
 3c8debe48a85|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/lib/estimatorBrainV6.ts,apps/web/src/lib/estimatorBrainV7.ts,apps/web/src/lib/estimatorBrainV8.ts
 3ca0b16b564c|backend/django_core/apps/ventes/quote_engine/builder.py,backend/django_core/apps/ventes/quote_engine/residential/sample_data.py
 3ca7a5bf163f|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 3cdbe043a639|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
-3ce561af0c47|frontend/src/pages/installations/AteliersPage.test.jsx,frontend/src/pages/installations/PlanificationPage.test.jsx
 3da247afd48e|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 3daf03717f91|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 3e321f721b27|apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/estimatorBrainV4.ts
@@ -646,7 +643,6 @@ d0952be1f4a8|frontend/src/pages/monitoring/WarrantiesPage.jsx,frontend/src/pages
 d0efac4f257a|apps/web/src/pages/ar/regularization-article-33.astro,apps/web/src/pages/en/regularization-article-33.astro,apps/web/src/pages/regularization-article-33.astro
 d1059f3a0900|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 d16e46d70e5d|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
-d1dd0aa29210|frontend/src/pages/installations/PlanificationGrille.test.jsx,frontend/src/pages/installations/PlanificationPage.test.jsx
 d215f4d09123|frontend/src/pages/stock/CockpitEntrepot.jsx,frontend/src/pages/ventes/PaiementsPage.jsx
 d2f5356e92fc|apps/web/src/pages/api/proposition-engagement.ts,apps/web/src/pages/api/proposition-track.ts
 d3130e761779|apps/web/src/components/Header.astro,apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
@@ -721,7 +717,6 @@ e73a83b7fa07|apps/web/src/pages/ar/blog/prix-installation-solaire-maroc-2026.ast
 e791e3d64013|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
 e7b0a8293abd|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 e8472d90ab15|frontend/src/features/calepinage/__tests__/photo_site_calage.test.jsx,frontend/src/features/calepinage/__tests__/photo_site_televersement.test.jsx
-e8768898b8e1|frontend/src/pages/Journal.analytics.test.jsx,frontend/src/pages/Journal.asof.test.jsx,frontend/src/pages/Journal.meta.test.jsx
 e8fb61a8ae1e|apps/web/src/lib/estimatorPro.ts,apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 e980e02e9836|apps/web/src/lib/estimatorBrainV4.ts,apps/web/src/scripts/roofPro11/optimizer.ts
 e9af6cdb08ab|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
