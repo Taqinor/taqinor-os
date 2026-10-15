@@ -73,7 +73,7 @@ class RegulatoryDossierApiTest(TestCase):
             'devis': other_devis.id,
             'regime_8221': 'declaration_bt',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)  # ENF11 : id inconnu de la société
 
     def test_list_scoped_to_company(self):
         RegulatoryDossier.objects.create(

@@ -23,6 +23,8 @@ n'est JAMAIS réimplémentée ici : l'action ``resoudre`` appelle le sélecteur
 existant, l'unique source de vérité, celle que ``reporting/insights`` utilise
 déjà. Contrat partagé : ``apps/ventes/contract_samples/plan_commission.json``.
 """
+import re
+
 from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import qstr
 from drf_spectacular.utils import extend_schema
@@ -61,8 +63,16 @@ _BAREME_SELON_BASE = D.corps_resserre({'anyOf': [
 ]})
 
 
+#: Vide (plans par défaut) ou identifiant entier (9 chiffres au plus, comme MOTIF_IDS du stock).
+MOTIF_OWNER = r'^(|[1-9][0-9]{0,8})$'
+
+
 @extend_schema_view(list=extend_schema(
-    parameters=[qstr('owner', desc='id du commercial ; vide = plans par défaut.'), qstr('actif', desc='1/0.')]),
+    # ENF11 (nocturne 15/10) — `owner` : vide (plans par défaut) OU un id entier,
+    # le motif PUBLIÉ est celui que le filtre applique (400 sinon).
+    parameters=[OpenApiParameter('owner', {'type': 'string', 'pattern': MOTIF_OWNER},
+                                 description='id du commercial ; vide = plans par défaut.'),
+                qstr('actif', desc='1/0.')]),
     create=extend_schema(extensions=_BAREME_SELON_BASE),
     update=extend_schema(extensions=_BAREME_SELON_BASE))
 class PlanCommissionViewSet(CompanyScopedModelViewSet):
@@ -89,6 +99,8 @@ class PlanCommissionViewSet(CompanyScopedModelViewSet):
         # cible ce commercial. Paramètre absent = aucun filtre.
         if 'owner' in params:
             owner = params.get('owner')
+            if not re.fullmatch(MOTIF_OWNER, owner):
+                raise ValidationError({'owner': ['Vide ou identifiant entier attendu.']})
             qs = qs.filter(owner__isnull=True) if not owner \
                 else qs.filter(owner_id=owner)
         actif = params.get('actif')

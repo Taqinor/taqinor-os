@@ -207,7 +207,7 @@ class TestEndpointsQuais(Ntwms7Base):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data['quais']), 2)
 
-    def test_quai_d_une_autre_societe_refuse(self):
+    def test_quai_d_une_autre_societe_refuse_404(self):
         emplacement_autre = EmplacementStock.objects.create(
             company=self.autre, nom='Entrepôt autre NTWMS7')
         quai_autre = Quai.objects.create(
@@ -219,4 +219,4 @@ class TestEndpointsQuais(Ntwms7Base):
                 'date_heure_debut': h(LUNDI, 9).isoformat(),
                 'date_heure_fin': h(LUNDI, 11).isoformat(),
             }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # ENF11 : id inconnu de la société

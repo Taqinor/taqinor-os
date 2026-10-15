@@ -47,24 +47,24 @@ class ActiviteFkSocieteTests(TestCase):
         self.assertNotIn('asec6_user_b_secret', texte)
         self.assertNotIn('Type B secret', texte)
 
-    def test_creation_assigned_to_etranger_400(self):
+    def test_creation_assigned_to_etranger_404(self):
         avant = Activity.objects.count()
         resp = self.api.post(URL, {'summary': 'x', 'assigned_to': self.user_b.id,
                                    'activity_type': self.type_a.id},
                              format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)  # ENF11 : IdInconnu404Mixin
         self.assertIn('assigned_to', resp.data)
         self._sans_fuite(resp)
         self.assertEqual(Activity.objects.count(), avant)
 
-    def test_patch_activity_type_etranger_400(self):
+    def test_patch_activity_type_etranger_404(self):
         act = self._activite()
         for champ, valeur in (('activity_type', self.type_b.id),
                               ('assigned_to', self.user_b.id)):
             with self.subTest(champ=champ):
                 resp = self.api.patch(f'{URL}{act.id}/', {champ: valeur},
                                       format='json')
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 404, resp.data)  # ENF11
                 self.assertIn(champ, resp.data)
                 self._sans_fuite(resp)
         act.refresh_from_db()
@@ -97,7 +97,7 @@ class ActiviteFkSocieteTests(TestCase):
     def test_id_inexistant_400_pas_500(self):
         resp = self.api.post(URL, {'summary': 'x', 'assigned_to': 999999999},
                              format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)  # ENF11 : id inconnu
         act = self._activite()
         resp = self.api.post(f'{URL}{act.id}/done/',
                              {'next': {'activity_type': 999999999}},

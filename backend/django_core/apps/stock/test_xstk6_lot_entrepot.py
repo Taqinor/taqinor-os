@@ -238,14 +238,14 @@ class TestEndpoints(Xstk6Base):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertEqual(resp.data['quantite_restante'], 3)
 
-    def test_endpoint_sortir_perime_bloque_400(self):
+    def test_endpoint_sortir_perime_bloque_409(self):
         hier = timezone.now().date() - timedelta(days=1)
         self._confirm_reception_avec_lot(5, 'LOT-EP-3', hier)
         lot = LotEntrepot.objects.get(numero_lot='LOT-EP-3')
         resp = self.api.post(
             f'/api/django/stock/lots-entrepot/{lot.id}/sortir/',
             {'quantite': 2}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_endpoint_list_scoped_company(self):
         self._confirm_reception_avec_lot(5, 'LOT-EP-4')

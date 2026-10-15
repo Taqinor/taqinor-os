@@ -551,7 +551,8 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             'conformite-fournisseurs.xlsx', entetes, corps,
             sheet_title='Conformité fournisseurs')
 
-    @extend_schema(parameters=[P('within', INT, False, 'Horizon en jours (défaut 30)')], responses=LISTE)
+    @extend_schema(parameters=[P('within', INT, False, 'Horizon en jours (défaut 30)',
+                                 mini=0, maxi=36500)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='documents-expirants')
     def documents_expirants(self, request):
         """NTP2P20 — pièces d'onboarding (NTP2P7) expirant dans

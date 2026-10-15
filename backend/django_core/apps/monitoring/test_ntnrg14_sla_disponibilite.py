@@ -168,7 +168,7 @@ class TestAsav101SlaApi(TestCase):
         self.assertEqual(r.status_code, 400)
         self.assertIn('disponibilite_garantie_pct', r.data)
         r = self._creer(installation=self.inst_b.id)
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)  # ENF11 : système hors société = inconnu
         self.assertIn('installation', r.data)
 
     def test_ecart_affirme_le_contrat_partage(self):

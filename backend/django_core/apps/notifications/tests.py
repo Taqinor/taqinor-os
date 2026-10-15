@@ -879,6 +879,14 @@ class RoutingRuleTests(TestCase):
             {'event_type': EventType.FACTURE_OVERDUE},
             format='json')
         self.assertEqual(res.status_code, 400)
+        # ENF11 (nocturne 15/10) — en MODIFICATION la cible en place compte :
+        # PATCH ``{}`` d'une règle valide = 200 ; retirer sa seule cible = 409.
+        regle = NotificationRoutingRule.objects.create(
+            company=self.admin.company, event_type=EventType.FACTURE_OVERDUE,
+            target_user=self.admin)
+        url = f'/api/django/notifications/routing-rules/{regle.pk}/'
+        self.assertEqual(api.patch(url, {}, format='json').status_code, 200)
+        self.assertEqual(api.patch(url, {'target_user': None}, format='json').status_code, 409)
 
 
 # ENF8 — schéma OpenAPI exact de l'app notifications (décision D2 : JSON seul).
@@ -1074,6 +1082,23 @@ class Enf11NotificationsSchemaTests(SimpleTestCase):
     def _composant(self, noeud):
         nom = noeud['$ref'].rsplit('/', 1)[-1]
         return self.schema['components']['schemas'][nom]
+
+    def test_nocturne_1510_motifs_publies_egaux_aux_acceptes(self):
+        """ENF11 (nocturne 15/10) — heures/jour : la forme littérale que
+        DecimalLitteral accepte (« .0 » publié puis refusé avant) ; clés push
+        sans caractère nul (DRF le refuse)."""
+        import re
+
+        from apps.notifications.serializers import MOTIF_HEURES_PAR_JOUR
+        corps = self._operation('patch', 'working-hours/{id}/')['requestBody']
+        composant = self._composant(corps['content']['application/json']['schema'])
+        self.assertEqual(composant['properties']['hours_per_day']['pattern'], MOTIF_HEURES_PAR_JOUR)
+        for valeur in ('.0', '8.'):
+            self.assertIsNone(re.fullmatch(MOTIF_HEURES_PAR_JOUR, valeur))
+        corps = self._operation('post', 'push/subscribe/')['requestBody']
+        cles = self._composant(corps['content']['application/json']['schema'])['properties']['keys']
+        cles = self._composant(cles) if '$ref' in cles else cles
+        self.assertIn('u0000', cles['properties']['p256dh']['pattern'])
 
     def test_working_hours_liste_publie_un_objet(self):
         reponse = self._operation('get', 'working-hours/')['responses']['200']

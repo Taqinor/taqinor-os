@@ -30,9 +30,13 @@ def coerce_cell(value):
     - bool         -> booléen natif
     - date/datetime-> ISO 8601 (texte, locale-stable)
     - Decimal      -> float (Excel n'accepte pas Decimal)
-    - int/float/str-> tels quels
-    - autre        -> str(value)
+    - int/float    -> tels quels
+    - str / autre  -> texte SANS les caractères de contrôle qu'Excel refuse
+      (ENF11, nocturne 15/10 : un «  » saisi dans une fiche faisait lever
+      ``IllegalCharacterError`` à openpyxl — export en 500)
     """
+    from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+
     if value is None:
         return ''
     if isinstance(value, bool):
@@ -41,9 +45,9 @@ def coerce_cell(value):
         return value.isoformat()
     if isinstance(value, Decimal):
         return float(value)
-    if isinstance(value, (int, float, str)):
+    if isinstance(value, (int, float)):
         return value
-    return str(value)
+    return ILLEGAL_CHARACTERS_RE.sub('', value if isinstance(value, str) else str(value))
 
 
 def build_workbook(headers, rows, sheet_title='Export'):

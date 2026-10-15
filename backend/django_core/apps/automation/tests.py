@@ -1118,8 +1118,8 @@ class ApprovalDelegationTests(TestCase):
         ids = [r['id'] for r in rows(resp)]
         self.assertIn(req.pk, ids)
 
-    def test_delegation_fenetre_inversee_400_et_dates_en_utc(self):
-        """ENF11 — fin avant début : 400 ; dates rendues en UTC (``Z``)."""
+    def test_delegation_fenetre_inversee_409_et_dates_en_utc(self):
+        """ENF11 — fin avant début : 409 (règle croisée, nocturne 15/10) ; dates rendues en UTC (``Z``)."""
         api = auth(self.employe)
         now = timezone.now()
         resp = api.post('/api/django/automation/approval-delegations/', {
@@ -1127,7 +1127,7 @@ class ApprovalDelegationTests(TestCase):
             'date_debut': (now + timedelta(days=2)).isoformat(),
             'date_fin': (now + timedelta(days=1)).isoformat(),
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         resp = api.post('/api/django/automation/approval-delegations/', {
             'delegant': self.employe.pk, 'suppleant': self.suppleant.pk,
             'date_debut': (now - timedelta(days=1)).isoformat(),

@@ -9,6 +9,7 @@ from core.champs_stricts import (
     ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, ListesStrictesMixin)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import TypageStrictMixin
+from core.serializers import CompanyScopedRelationsMixin
 
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
@@ -747,7 +748,8 @@ class CategorieTicketSerializer(TypageStrictMixin, serializers.ModelSerializer):
 
 # ── ZMFG1 — Équipes de maintenance ────────────────────────────────────────────
 
-class EquipeMaintenanceSerializer(ListesStrictesMixin, ChampsStrictsSansDecimalMixin,
+class EquipeMaintenanceSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, ListesStrictesMixin,
+                                  ChampsStrictsSansDecimalMixin,
                                   serializers.ModelSerializer):
     responsable_nom = serializers.CharField(
         source='responsable.username', read_only=True, allow_null=True)
@@ -790,7 +792,7 @@ class EquipeMaintenanceSerializer(ListesStrictesMixin, ChampsStrictsSansDecimalM
 
 # ── ZMFG2 — Catégories d'équipement ───────────────────────────────────────────
 
-class CategorieEquipementSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class CategorieEquipementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                     serializers.ModelSerializer):
     # ENF17 — équipe responsable bornée à la société (le responsable l'est
     # déjà par ``validate_responsable``).

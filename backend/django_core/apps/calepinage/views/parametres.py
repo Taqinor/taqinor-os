@@ -33,9 +33,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.champs_stricts import MOTIF_SANS_NUL
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import PARSEURS_JSON
 from core.permissions import ScopedPermission
 
+from ..models import ParametresCalepinage
 from ..permissions import CAL_GERER, CAL_VOIR
 from ..selectors import (
     kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
@@ -287,8 +289,14 @@ class ParametresCalepinageView(APIView):
                                        'mention': effectif['mention']})
         return Response(reponse)
 
+    # ENF11 (nocturne 15/10) — une clé de PREMIER niveau hors des sections
+    # admises est refusée (« Section de réglages inconnue ») : le corps publié
+    # le dit (additionalProperties false sur la liste du modèle).
     @extend_schema(request=_forme_reglages('CalepinageParametresRequete',
                                            partielle=True),
+                   extensions={EXTENSION_CORPS_RESSERRE: {
+                       'properties': {s: {} for s in ParametresCalepinage.SECTIONS},
+                       'additionalProperties': False}},
                    responses={200: _forme_reglages(
                        'CalepinageParametresEcrite')})
     def put(self, request, *args, **kwargs):

@@ -165,7 +165,7 @@ class FolderPathTests(GedBase):
         resp = api.post('/api/django/ged/dossiers/', {
             'cabinet': self.cab_b.id, 'nom': 'X',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # ENF11 : cabinet hors société = inconnu
 
     def test_folder_rejects_parent_in_other_cabinet(self):
         # CI #997 : parent d'un autre cabinet = objet inexistant pour la requête (404).
@@ -1027,7 +1027,7 @@ class DocumentTagTaxonomyTests(GedBase):
         api = auth(self.admin_a)
         resp = api.post('/api/django/ged/tags/', {
             'nom': 'Sous', 'slug': 'sous', 'parent': tag_b.id}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # ENF11 : parent hors société = inconnu
 
     def test_cycle_rejected(self):
         a = DocumentTag.objects.create(company=self.co_a, nom='A', slug='a')

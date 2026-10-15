@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -7,6 +9,7 @@ from core.champs_stricts import (  # ENF11
     ChampsStrictsEntiersMixin,
     ChampsStrictsMixin,
     ChampsStrictsSansDecimalMixin,
+    DecimalBornee,
     IdInconnu404Mixin,
     ListesStrictesMixin,
     TexteLie,
@@ -1093,7 +1096,7 @@ class ProjetTicketSerializer(
         read_only_fields = ['date_creation']
 
 
-class ProjetSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class ProjetSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
     """FG291 — programme/projet multi-chantiers regroupant chantiers + devis +
     tickets d'un même client/site. `reference`, company et `created_by` sont
@@ -1261,6 +1264,7 @@ class BudgetProjetSerializer(
 
 
 class EquipeSerializer(
+    IdInconnu404Mixin,
     ListesStrictesMixin,
     ChampsStrictsSansDecimalMixin,
     SameCompanyFKSerializerMixin,
@@ -1757,6 +1761,9 @@ class FraisImportSerializer(
     same_company_fields = ('dossier',)
     categorie_display = serializers.CharField(
         source='get_categorie_display', read_only=True, default=None, allow_null=True)
+    # ENF11 (nocturne 15/10) — « jamais négatif » PUBLIÉ (motif sans signe) et
+    # appliqué par le même champ : « -1 » était conforme au schéma puis refusé.
+    montant = DecimalBornee(max_digits=12, decimal_places=2, min_value=Decimal('0'), required=False)
 
     class Meta:
         model = FraisImport
@@ -1765,12 +1772,6 @@ class FraisImportSerializer(
             'montant', 'date_frais', 'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
-
-    def validate_montant(self, value):
-        if value is not None and value < 0:
-            raise serializers.ValidationError(
-                'Le montant ne peut pas être négatif.')
-        return value
 
 
 class LandedCostLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
@@ -2127,7 +2128,7 @@ class ComptageLigneSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('produit',)
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
-    ecart = serializers.IntegerField(read_only=True)
+    ecart = serializers.IntegerField(read_only=True, allow_null=True)  # ENF11 : null tant que non comptée
 
     class Meta:
         model = ComptageLigne
@@ -2184,7 +2185,7 @@ class DemandeTransfertSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin
 
     class Meta:
         model = DemandeTransfert
-        extra_kwargs = {'quantite': {'min_value': 1}}
+        extra_kwargs = {'quantite': {'min_value': 1, 'required': True}}  # ENF11 : défaut modèle 0 servi hors schéma
         fields = [
             'id', 'reference', 'produit', 'produit_nom', 'source', 'source_nom',
             'destination', 'destination_nom', 'quantite', 'statut',

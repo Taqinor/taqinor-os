@@ -534,7 +534,10 @@ class ObjectifCommercialSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
         ]
         # ERR-ENF11-FUZZ-CRM — bornes publiées (``0`` était « conforme » puis
         # lu comme absent : « Requis pour un objectif mensuel »).
+        # ENF11 (nocturne 15/10) — année bornée (publiée et appliquée) : 17866
+        # était enregistrée puis faisait un 500 au calcul du réalisé (date).
         extra_kwargs = {
+            'period_year': {'min_value': 2000, 'max_value': 2100},
             'period_month': {'min_value': 1, 'max_value': 12},
             'period_quarter': {'min_value': 1, 'max_value': 4},
         }
@@ -668,7 +671,7 @@ class PlanActiviteSerializer(serializers.ModelSerializer):
         read_only_fields = ['company', 'date_creation']
 
 
-class EquipeCommercialeSerializer(_CompanyScopedRelationsMixin,
+class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
                                   serializers.ModelSerializer):
     # CRX13 — responsable ET membres (M2M) : le ``ManyRelatedField`` délègue à
     # son ``child_relation``, promu lui aussi.

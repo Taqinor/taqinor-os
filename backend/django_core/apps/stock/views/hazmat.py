@@ -6,6 +6,7 @@ from rest_framework import serializers
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
+from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..openapi_helpers import INT, P, STR
 from core.viewsets import CompanyScopedModelViewSet
@@ -16,7 +17,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-class CompatibiliteHazmatCasierSerializer(CompanyScopedRelationsMixin,
+class CompatibiliteHazmatCasierSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                           serializers.ModelSerializer):
     bin_code = serializers.CharField(source='bin.code', read_only=True,
                                      default='')

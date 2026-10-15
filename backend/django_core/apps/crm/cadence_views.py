@@ -322,7 +322,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
 
     @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True),
                                sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER_ID,
-                               sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
+                               sd.param('statut', enum=[*STATUTS_SUIVI])],
+                   responses={200: sd.OBJ, 409: OpenApiTypes.OBJECT})  # ENF11 : écart > 62 j = 409 déclaré
     @action(detail=False, methods=['get'], url_path='suivi',
             pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
@@ -1068,7 +1069,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             etape = annuler_touche_relance(etape, request.user)
         except AnnulationToucheRefusee as refus:
             return Response({'erreurs': {refus.champ: refus.message}},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(etape).data)
 
     @extend_schema(parameters=[sd.P_CLE, sd.P_LANGUE], responses=sd.OBJ)

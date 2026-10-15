@@ -22,7 +22,7 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
-from core.champs_stricts import entier_ou_400
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, entier_ou_400
 from apps.crm.exports import build_xlsx_response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -844,7 +844,9 @@ def sales_leaderboard(request):
 # ── FG94 — Reporting des champs personnalisés ─────────────────────────────────
 # ERR-ENF11-FUZZ-REPORTING — ``module``/``code`` vides = 400 : le schéma le dit
 # (au moins un caractère non blanc) au lieu de l'annoncer comme une chaîne libre.
-_TEXTE_NON_VIDE = {'type': 'string', 'minLength': 1, 'pattern': r'\S'}
+#: ENF11 (nocturne 15/10) — non blanc ET sans caractère nul (un nul atteignait
+#: PostgreSQL : ValueError → 500) ; ``cf_group_by`` applique ce même motif.
+_TEXTE_NON_VIDE = {'type': 'string', 'minLength': 1, 'pattern': MOTIF_NON_BLANC_SANS_NUL}
 
 _INSIGHTS_CF_GROUP_BY_REPONSE = inline_serializer('InsightsCfGroupByReponse', {
     'module': drf_serializers.JSONField(allow_null=True),
@@ -888,6 +890,10 @@ def cf_group_by(request):
     if not module or not code:
         return Response(
             {'detail': 'Paramètres requis : ?module=<module>&code=<code>'},
+            status=400)
+    if '\x00' in module or '\x00' in code:
+        return Response(
+            {'detail': 'Paramètres module/code : texte sans caractère nul attendu.'},
             status=400)
 
     # Vérifier que le champ est bien visible_liste pour ce module.

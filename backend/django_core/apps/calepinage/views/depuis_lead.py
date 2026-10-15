@@ -41,7 +41,7 @@ from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage
 from ..services.creation import (
-    CreationRefusee, corps_conflit, ouvrir_ou_creer_pour_lead,
+    CreationRefusee, RattachementIntrouvable, corps_conflit, ouvrir_ou_creer_pour_lead,
 )
 from .calepinages import CalepinageViewSet
 
@@ -107,8 +107,12 @@ def depuis_lead(self, request):
             lead_id, company, user=request.user,
             titre=str(corps.get('titre') or ''))
     except CreationRefusee as refus:
+        # ENF11 (nocturne 15/10) — lead bien formé qui ne désigne rien dans la
+        # société : ressource manquante (404, comme ``depuis-modele``).
         return Response({refus.champ or 'detail': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_404_NOT_FOUND
+                                if isinstance(refus, RattachementIntrouvable)
+                                else status.HTTP_400_BAD_REQUEST))
 
     if not cree:
         # ACAL295 — l'unicité est lue SANS restriction (D-ACAL-12), mais un

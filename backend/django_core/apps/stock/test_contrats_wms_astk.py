@@ -752,10 +752,10 @@ class ContratNegoceTests(WmsBase):
         rep = self.api.post(f'{url}declarer-consommation/',
                             {'quantite': 99999,
                              'date_declaration': '2026-10-11'}, format='json')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)
         motif = r'^Quantité supérieure au restant en dépôt \(\d+\)\.$'
         self.assertRegex(rep.json()['detail'], motif)
-        self.assertRegex(decl['exemple_erreur_400']['detail'], motif)
+        self.assertRegex(decl['exemple_erreur_409']['detail'], motif)
 
         rep = self.api.get(f'{self.BASE}consignations/')
         ligne = rep.json()['results'][0]
@@ -790,8 +790,8 @@ class ContratNegoceTests(WmsBase):
             'fournisseur': self.fournisseur.id,
             'periode_debut': '2026-01-01', 'periode_fin': '2026-12-31'},
             format='json')
-        self.assertEqual(rep.status_code, 400)
-        self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
+        self.assertEqual(rep.status_code, 409)
+        self.assertErreurContrat(rep, contrat['exemple_erreur_409'])
 
         rep = self.api.post(url, {
             'fournisseur': self.fournisseur.id,
@@ -815,8 +815,8 @@ class ContratNegoceTests(WmsBase):
         self.assertEqual(rep.status_code, 201, rep.content)
         self.assertMemesCles(rep.json(), avoir['exemple'], 'avoir')
         rep = self.api.post(f'{url}{accord["id"]}/generer-avoir/')
-        self.assertEqual(rep.status_code, 400)
-        self.assertEqual(rep.json(), avoir['exemple_erreur_400'])
+        self.assertEqual(rep.status_code, 409)
+        self.assertEqual(rep.json(), avoir['exemple_erreur_409'])
 
     def test_produit_atp(self):
         contrat = route('negoce_consignation_rfa', 'produit_atp')
@@ -1344,9 +1344,9 @@ class ContratWmsExpeditionTests(ContratListeMixin, WmsBase):
         rep = self.api.post(
             f'{self.BASE}/plans-chargement/{plan["id"]}/unites/', {
                 'unite_logistique': 99999999}, format='json')
-        self.assertEqual(rep.status_code, 400)
-        self.assertMemesCles(rep.json(), contrat['exemple_erreur_400'],
-                             'unites 400')
+        self.assertEqual(rep.status_code, 404)
+        self.assertMemesCles(rep.json(), contrat['exemple_erreur_404'],
+                             'unites 404')
         rep = self.api.get(
             f'{self.BASE}/plans-chargement/{plan["id"]}/verifier-capacite/')
         self.assertEqual(rep.status_code, 200, rep.content)

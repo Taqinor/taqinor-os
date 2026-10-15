@@ -128,7 +128,7 @@ class TestFG291ProjetCreation(TestCase):
         r = self.api.post(f'{BASE}/programmes/', {
             'nom': 'Intrus', 'client': client_b.id,
         }, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)  # ENF11 : id inconnu de la société
 
     def test_company_isolation(self):
         """FG291 — la société B ne voit pas les programmes de A."""

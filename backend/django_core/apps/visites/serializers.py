@@ -11,10 +11,13 @@ dédiées (``terminer``/``valider``/``renvoyer``), jamais par un PATCH de champ.
 """
 from rest_framework import serializers
 
+from core.champs_stricts import IdInconnu404Mixin
+from core.serializers import CompanyScopedRelationsMixin
+
 from .models import VisiteTerrain
 
 
-class VisiteTerrainSerializer(serializers.ModelSerializer):
+class VisiteTerrainSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, serializers.ModelSerializer):
     """Entête d'une visite : lead, commercial, date prévue, notes."""
 
     class Meta:
@@ -46,9 +49,12 @@ class VisiteTerrainSerializer(serializers.ModelSerializer):
         # photos sont des pièces jointes du lead d'origine et ses événements
         # ont déjà atteint ce lead ; la déplacer laisserait les deux derrière.
         if self.instance is not None and value.pk != self.instance.lead_id:
-            raise serializers.ValidationError(
+            # ENF11 (nocturne 15/10) — la visite EN PLACE s'oppose : 409 (même
+            # corps ``{lead: [message]}``), plus un 400 sur un corps conforme.
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'lead': [
                 "Le dossier d'une visite ne se change pas : créez une "
-                'nouvelle visite.')
+                'nouvelle visite.']})
         return value
 
     def validate_date_prevue(self, value):
@@ -63,7 +69,10 @@ class VisiteTerrainSerializer(serializers.ModelSerializer):
         message = services.erreur_modification_date_prevue(self.instance,
                                                            value)
         if message:
-            raise serializers.ValidationError(message)
+            # ENF11 (nocturne 15/10) — visite réalisée / jour déjà passé : l'état
+            # (et la date du jour) s'opposent à une date bien formée → 409.
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'date_prevue': [message]})
         return value
 
     def validate_commercial(self, value):

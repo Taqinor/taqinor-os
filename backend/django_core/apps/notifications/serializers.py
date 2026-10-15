@@ -119,10 +119,32 @@ class NotificationRoutingRuleSerializer(ChampsStrictsBornesMixin,
         return value
 
     def validate(self, data):
-        if not data.get('target_role') and not data.get('target_user'):
-            raise serializers.ValidationError(
-                'Une règle de routage doit cibler soit un rôle, soit un utilisateur.')
+        # ENF11 (nocturne 15/10) — en MODIFICATION, la cible EN PLACE compte (un
+        # PATCH ``{}`` d'une règle valide était refusé) ; une règle qui perdrait
+        # toute cible est un refus d'état (409).
+        instance = self.instance
+        role = data.get('target_role', getattr(instance, 'target_role', None))
+        cible = data.get('target_user', getattr(instance, 'target_user', None))
+        if not role and not cible:
+            message = 'Une règle de routage doit cibler soit un rôle, soit un utilisateur.'
+            if instance is not None:
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat(message)
+            raise serializers.ValidationError(message)
         return data
+
+
+#: ENF11 (nocturne 15/10, phase stateful) — la forme que ``DecimalLitteral``
+#: accepte (``-?[0-9]+(.[0-9]+)?``) bornée par le champ (4 chiffres dont 2
+#: décimales) : le motif générique publiait aussi « .0 » / « 8. », refusés
+#: en 400 (« conforme refusée »). Même patron que monitoring.
+MOTIF_HEURES_PAR_JOUR = r'^-?0*[0-9]{1,2}(\.[0-9]{1,2})?$'
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_HEURES_PAR_JOUR})
+class _HeuresParJourLitteral(DecimalLitteral):
+    """``DecimalLitteral`` dont le motif publié est celui qu'il accepte."""
 
 
 # ERR-ENF11-FUZZ-NOTIFICATIONS — ``list`` sert UN objet (singleton société) :
@@ -136,7 +158,7 @@ class WorkingHoursConfigSerializer(ChampsStrictsSansDecimalMixin, serializers.Mo
     id = serializers.IntegerField(read_only=True, allow_null=True)
     updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
     working_days = EntierStrict(min_value=0, max_value=32767, required=False)
-    hours_per_day = DecimalLitteral(
+    hours_per_day = _HeuresParJourLitteral(
         max_digits=4, decimal_places=2, required=False)
 
     class Meta:

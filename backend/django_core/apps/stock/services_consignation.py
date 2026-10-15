@@ -13,6 +13,8 @@ dépôt-vente.
 """
 import logging
 
+from .erreurs_achats import EtatIncompatible
+
 logger = logging.getLogger(__name__)
 
 MOTIF_SORTIE = 'consignation'
@@ -136,9 +138,9 @@ def declarer_consommation(*, depot, user, quantite, date_declaration,
         depot = (DepotConsignation.objects.select_for_update()
                  .get(pk=depot.pk))
         if depot.statut == DepotConsignation.Statut.CLOS:
-            raise ValueError('Ce dépôt de consignation est clos.')
+            raise EtatIncompatible('Ce dépôt de consignation est clos.')
         if quantite > depot.quantite_restante:
-            raise ValueError(
+            raise EtatIncompatible(
                 f'Quantité supérieure au restant en dépôt '
                 f'({depot.quantite_restante}).')
 

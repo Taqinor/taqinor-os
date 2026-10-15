@@ -225,6 +225,14 @@ class TestResolve(LabelsApiBase):
                 f'/api/django/stock/produits/resolve/?code={code}')
             self.assertIn(res.status_code, (400,), msg=f'code={code!r}')
 
+    def test_resolve_et_tracer_caractere_nul_400_jamais_500(self):
+        # ENF11 (nocturne 15/10) — le nul atteignait PostgreSQL (ValueError).
+        res = self.api.get('/api/django/stock/produits/resolve/', {'code': 'AB\x00C'})
+        self.assertEqual(res.status_code, 400, res.content)
+        for params in ({'serie': 'S\x00N'}, {'serie': 'SN', 'lot': 'L\x00'}):
+            res = self.api.get('/api/django/stock/produits/tracer/', params)
+            self.assertEqual(res.status_code, 400, (params, res.content))
+
     def test_resolve_bad_code_no_colon_is_404(self):
         # XSTK3 — un code sans ':' est tenté comme code-barres fabricant ;
         # sans correspondance, « produit introuvable » (404), jamais 400

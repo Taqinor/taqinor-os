@@ -73,13 +73,18 @@ class ConsignationFigeeTests(TestCase):
         r = auth_client(self.resp).patch(
             f'{URL}{self.depot.id}/', {'quantite_deposee': 50},
             format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        # ENF11 — valeur DIFFÉRENTE d'un champ figé : conflit d'état (409).
+        self.assertEqual(r.status_code, 409, r.content)
         for corps in ({'client': self.autre_client.id},
-                      {'date_depot': '2026-01-01'},
-                      {'emplacement_source': None}):
+                      {'date_depot': '2026-01-01'}):
             r = auth_client(self.resp).patch(
                 f'{URL}{self.depot.id}/', corps, format='json')
-            self.assertEqual(r.status_code, 400, (corps, r.content))
+            self.assertEqual(r.status_code, 409, (corps, r.content))
+        # La valeur EN PLACE renvoyée (PUT/PATCH aller-retour) reste acceptée.
+        r = auth_client(self.resp).patch(
+            f'{URL}{self.depot.id}/', {'quantite_deposee': 10, 'date_depot': JOUR},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.content)
         # Persistance relue : le dépôt reste accordé à son mouvement.
         self.depot.refresh_from_db()
         self.assertEqual(self.depot.quantite_deposee, 10)
@@ -99,7 +104,7 @@ class ConsignationFigeeTests(TestCase):
 
     def test_delete_refuse_tant_que_du_stock_est_en_depot(self):
         r = auth_client(self.admin).delete(f'{URL}{self.depot.id}/')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertTrue(
             DepotConsignation.objects.filter(pk=self.depot.pk).exists())
         self.assertEqual(self._mouvements().count(), 1)

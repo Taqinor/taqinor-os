@@ -410,8 +410,7 @@ class LeadIntakeActionsMixin:
         })
 
     # ── L-QUEST — Questionnaire envoyable au client ──────────────────────────
-    @extend_schema(request=sd.corps('CrmQuestionnaireLienRequest',
-                                    questions=serializers.DictField(child=serializers.BooleanField(), required=False)),
+    @extend_schema(request=sd.corps('CrmQuestionnaireLienRequest', questions=sd.QuestionsQuestionnaire(required=False)),
                    responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='questionnaire-lien',
             permission_classes=[IsResponsableOrAdmin])
@@ -436,8 +435,11 @@ class LeadIntakeActionsMixin:
             questions = quest.valider_questions(
                 request.data.get('questions'), lead)
         except quest.SectionInconnue as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 (nocturne 15/10) — section connue mais hors du segment du
+            # lead : la fiche s'oppose (409) ; hors whitelist / non booléen : 400.
+            return Response({'detail': str(exc)}, status=(
+                status.HTTP_409_CONFLICT if isinstance(exc, quest.SectionHorsSegment)
+                else status.HTTP_400_BAD_REQUEST))
 
         lien, change, cree = quest.mint_lien(
             lead, questions=questions, user=request.user)

@@ -152,6 +152,17 @@ class TestCascadeAnnulationBcf(Yproc7Base):
             f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/')
         self.assertEqual(resp.status_code, 409)
 
+    def test_motif_nul_ou_non_texte_400_jamais_500(self):
+        # ENF11 (nocturne 15/10) — un caractère nul faisait un ValueError SQL.
+        bc = self._bcf(statut=BonCommandeFournisseur.Statut.ENVOYE)
+        for motif in ('rupture\x00', 5, ['x']):
+            resp = self.api.post(
+                f'/api/django/stock/bons-commande-fournisseur/{bc.id}/annuler/',
+                {'motif_annulation': motif}, format='json')
+            self.assertEqual(resp.status_code, 400, (motif, resp.content))
+        bc.refresh_from_db()
+        self.assertEqual(bc.statut, BonCommandeFournisseur.Statut.ENVOYE)
+
     def test_annuler_deux_fois_idempotent_sur_receptions(self):
         bc = self._bcf(statut=BonCommandeFournisseur.Statut.ENVOYE)
         self._reception_brouillon(bc)

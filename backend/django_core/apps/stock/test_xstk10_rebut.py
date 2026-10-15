@@ -178,11 +178,15 @@ class TestEndpoints(Xstk10Base):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 10)
 
-    def test_endpoint_rebuter_stock_insuffisant_400(self):
-        resp = self.api.post(
-            f'/api/django/stock/produits/{self.produit.id}/rebuter/',
-            {'quantite': 999, 'motif': 'casse'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+    def test_endpoint_rebuter_stock_insuffisant_409(self):
+        url = f'/api/django/stock/produits/{self.produit.id}/rebuter/'
+        resp = self.api.post(url, {'quantite': 999, 'motif': 'casse'}, format='json')
+        self.assertEqual(resp.status_code, 409)  # ENF11 : état du stock
+        resp = self.api.post(url, {'quantite': 1, 'motif': 'casse', 'emplacement': 99999999},
+                             format='json')
+        self.assertEqual(resp.status_code, 404)  # casier inconnu de la société
+        resp = self.api.post(url, {'quantite': 1, 'motif': 'inconnu'}, format='json')
+        self.assertEqual(resp.status_code, 400)  # hors énumération publiée
 
     def test_endpoint_rapport_pertes_admin_only(self):
         rebuter_produit(

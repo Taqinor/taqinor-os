@@ -160,7 +160,7 @@ class FkInventaireRevaloTests(TestCase):
             motif='baisse', user=self.admin_a)
         url = f'/api/django/stock/revalorisations-stock/{revalo.pk}/'
         r = self.api.patch(url, {'nouveau_cout': '1'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('nouveau_cout', r.json())
         # Le motif d'un brouillon reste modifiable.
         r_motif = self.api.patch(url, {'motif': 'autre'}, format='json')

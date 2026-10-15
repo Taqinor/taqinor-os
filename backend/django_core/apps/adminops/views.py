@@ -148,7 +148,7 @@ class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             env = sandbox_service.prolonger_sandbox(env)
         except ValueError as exc:
-            return Response({'detail': str(exc)}, status=400)
+            return Response({'detail': str(exc)}, status=409)  # ENF11 : plafond de prolongations = état
         return Response(SandboxEnvironmentSerializer(env).data)
 
     def _audit_et_notifier(self, env, action_label):

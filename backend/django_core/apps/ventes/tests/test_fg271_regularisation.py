@@ -97,7 +97,7 @@ class Regularisation8221ApiTest(TestCase):
         resp = self.api.post(self.url, {
             'devis': other_devis.id, 'regime_8221': 'declaration_bt',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 404, resp.content)  # ENF11 : id inconnu de la société
 
     def test_filter_by_statut(self):
         Regularisation8221.objects.create(

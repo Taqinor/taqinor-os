@@ -78,6 +78,8 @@ class InventaireFigeTests(TestCase):
         session = self._session()
         r = self.api.post(f'{URL}{session.pk}/annuler/')
         self.assertEqual(r.status_code, 200, r.content)
+        # ENF11 (nocturne 15/10) — ré-annuler : refus d'ÉTAT (409), plus 400.
+        self.assertEqual(self.api.post(f'{URL}{session.pk}/annuler/').status_code, 409)
         r = self.api.patch(f'{URL}{session.pk}/', {'lignes': []},
                            format='json')
         self.assertEqual(r.status_code, 409, r.content)

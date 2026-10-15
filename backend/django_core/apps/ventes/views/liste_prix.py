@@ -15,7 +15,8 @@ société. `prix_achat` n'est JAMAIS lu ni exposé ici."""
 from decimal import Decimal, InvalidOperation
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
@@ -30,6 +31,24 @@ from ..serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+
+class RegleListePrixCorpsSerializer(RegleListePrixSerializer):
+    """ENF11 (nocturne 15/10) — corps PUBLIÉ de ``regles`` : la liste vient
+    de l'URL (jamais du corps), le reste est la règle elle-même. Sans lui,
+    le schéma publiait le corps d'une ``ListePrix`` (type_regle/valeur
+    absents → 400 sur un corps « conforme »)."""
+
+    class Meta(RegleListePrixSerializer.Meta):
+        read_only_fields = ['id', 'liste']
+
+
+#: Corps PUBLIÉ de ``lignes`` (upsert du prix d'un produit) — mêmes bornes
+#: que ``SaisiePrixListeSerializer`` (ADEV39).
+LIGNE_PRIX_CORPS = inline_serializer('ListePrixLigneSaisie', fields={
+    'produit': drf_serializers.IntegerField(min_value=1),
+    'prix_unitaire': drf_serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal('0')),
+})
 
 
 class ListePrixViewSet(CompanyScopedModelViewSet):
@@ -60,6 +79,7 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         # Company toujours forcée côté serveur — jamais acceptée du body.
         serializer.save(company=self.request.user.company)
 
+    @extend_schema(request=LIGNE_PRIX_CORPS, responses={200: LignePrixListeSerializer})
     @action(detail=True, methods=['post'])
     def lignes(self, request, pk=None):
         """Crée ou met à jour (upsert par produit) le prix d'un produit dans
@@ -102,6 +122,7 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         return Response(
             LignePrixListeSerializer(ligne).data, status=200)
 
+    @extend_schema(request=RegleListePrixCorpsSerializer, responses={201: RegleListePrixSerializer})
     @action(detail=True, methods=['post'])
     def regles(self, request, pk=None):
         """Ajoute une règle de prix/palier à cette liste (XSAL2)."""

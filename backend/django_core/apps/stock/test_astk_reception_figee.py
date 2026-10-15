@@ -118,6 +118,22 @@ class ReceptionFigeeTests(TestCase):
         rec.refresh_from_db()
         self.assertEqual(rec.date_reception, datetime.date(2026, 10, 5))
 
+    def test_reception_brouillon_lignes_en_patch_409_jamais_500(self):
+        # ENF11 (nocturne 15/10) — l'imbriqué en écriture faisait un 500.
+        rec = self._reception(confirmer=False)
+        r = self.api.patch(f'{BASE}receptions-fournisseur/{rec.pk}/', {
+            'lignes': [{'ligne_commande': rec.lignes.get().ligne_commande_id,
+                        'quantite': 1}]}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
+    def test_retour_brouillon_ligne_incomplete_400_jamais_500(self):
+        retour = RetourFournisseur.objects.create(
+            company=self.co, reference='RF-ENF11', fournisseur=self.f)
+        r = self.api.patch(f'{BASE}retours-fournisseur/{retour.pk}/', {
+            'lignes': [{'motif': 'casse'}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('lignes', r.json())
+
     def test_retour_valide_fige(self):
         self.produit.quantite_stock = 10
         self.produit.save(update_fields=['quantite_stock'])

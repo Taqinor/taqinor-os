@@ -440,7 +440,7 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
     from django.db import transaction
     from .models import MouvementStock, Produit
     from .models_wms import LignePicking
-    from .services import record_stock_movement
+    from .services import IntrouvableMetier, record_stock_movement
 
     if type_mouvement not in TYPES_MOUVEMENT_SCANNABLES:
         raise ValueError('Type de mouvement non scannable.')
@@ -453,7 +453,7 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
 
     produit = Produit.objects.filter(id=produit_id, company=company).first()
     if produit is None:
-        raise ValueError('Produit introuvable dans cette société.')
+        raise IntrouvableMetier('Produit introuvable dans cette société.')
 
     modele_bin = LignePicking._meta.get_field('bin').related_model
 
@@ -462,7 +462,7 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             return None
         casier = modele_bin.objects.filter(id=bin_id, company=company).first()
         if casier is None:
-            raise ValueError('Casier introuvable dans cette société.')
+            raise IntrouvableMetier('Casier introuvable dans cette société.')
         return casier
 
     bin_source = _casier(bin_source_id)

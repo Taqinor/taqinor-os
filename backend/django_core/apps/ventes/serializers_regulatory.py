@@ -38,7 +38,7 @@ class DossierChecklistItemSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class RegulatoryDossierSerializer(ChampsStrictsSansDecimalMixin,
+class RegulatoryDossierSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                   SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):
     """FG268 — dossier réglementaire de raccordement.
@@ -175,7 +175,7 @@ class SubventionDossierSerializer(ChampsStrictsMixin,
         ]
 
 
-class Regularisation8221Serializer(ChampsStrictsMixin,
+class Regularisation8221Serializer(IdInconnu404Mixin, ChampsStrictsMixin,
                                    SameCompanyFKSerializerMixin,
                                    serializers.ModelSerializer):
     """FG271 — régularisation Article 33 (installation existante).

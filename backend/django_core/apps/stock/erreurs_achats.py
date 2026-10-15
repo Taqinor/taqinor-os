@@ -32,6 +32,16 @@ class EtatIncompatible(ValueError):
     """L'état courant des données refuse l'opération (traduit en 409)."""
 
 
+def statut_refus_metier(exc):
+    """Statut HTTP d'un ``ValueError`` de service : ``IntrouvableMetier`` →
+    404, ``EtatIncompatible`` → 409, toute autre forme (entrée illisible) → 400."""
+    if isinstance(exc, IntrouvableMetier):
+        return status.HTTP_404_NOT_FOUND
+    if isinstance(exc, EtatIncompatible):
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
+
+
 class ConflitEtat(APIException):
     """409 — l'état courant des données s'oppose à l'écriture demandée."""
 

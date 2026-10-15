@@ -219,6 +219,14 @@ class TestPositionPingAndGeofence(TestCase):
             statut=Intervention.Statut.SUR_SITE)
         self.api = auth(self.technicien)
 
+    def test_ping_hors_plage_400_jamais_500(self):
+        # ENF11 (nocturne 15/10) — 17866° débordait decimal(9,6) (DataError 500).
+        url = f'{BASE}/positions-techniciens/ping/'
+        for corps in ({'lat': 17866, 'lng': 0}, {'lat': 0, 'lng': -181},
+                      {'lat': 0, 'lng': 0, 'accuracy_m': 10 ** 7}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_ping_inside_radius_no_alert(self):
         # Chantier à 33.573110/-7.589843 — un point à quelques mètres.
         resp = self.api.post(

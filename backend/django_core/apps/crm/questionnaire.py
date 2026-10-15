@@ -246,6 +246,12 @@ class SectionInconnue(ValueError):
     """Section hors whitelist (ou non demandée sur ce lien)."""
 
 
+class SectionHorsSegment(SectionInconnue):
+    """ENF11 (nocturne 15/10) — section CONNUE (publiée au schéma) mais que le
+    segment du lead ne pose pas (pompage à un résidentiel, toiture à un
+    agricole…) : c'est la fiche qui s'oppose — la vue répond 409."""
+
+
 def _vide(valeur) -> bool:
     """Une valeur « pas renseignée » : ``None`` ou une chaîne blanche.
 
@@ -506,11 +512,15 @@ def valider_questions(brut, lead=None) -> dict:
     permises = SECTIONS if lead is None else sections_du_lead(lead)
     out = {}
     for cle, valeur in brut.items():
+        if cle in SECTIONS and not isinstance(valeur, bool):
+            # ENF11 — le schéma publie ``{section: booléen}`` : « oui » ou 1
+            # étaient lus « vrai » en silence.
+            raise SectionInconnue(f'Section « {cle} » : true ou false attendu.')
         if cle not in permises:
             if lead is not None and est_agricole(lead) and cle in SECTIONS:
                 if not valeur:
                     continue  # « ne pas poser » une section refusée : rien
-                raise SectionInconnue(
+                raise SectionHorsSegment(
                     f'Section « {cle} » non posée à un lead agricole : le '
                     'questionnaire pompage ne pose ni factures, ni toiture, '
                     'ni équipements de la maison.')
@@ -519,11 +529,13 @@ def valider_questions(brut, lead=None) -> dict:
                     continue
                 # CIQ412 — un hôtel ne reçoit jamais « Passez-vous la journée
                 # à la maison ? » : refus qui NOMME la section.
-                raise SectionInconnue(
+                raise SectionHorsSegment(
                     f'Section « {cle} » non posée à un lead professionnel : '
                     'le questionnaire pro ne pose ni occupation, ni '
                     'équipements de la maison, ni toiture ou énergie '
                     'résidentielles.')
+            if cle in SECTIONS:  # connue, hors du segment de ce lead
+                raise SectionHorsSegment(f'Section inconnue : « {cle} ».')
             raise SectionInconnue(f'Section inconnue : « {cle} ».')
         out[cle] = bool(valeur)
     return out

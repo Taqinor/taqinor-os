@@ -205,7 +205,7 @@ class FkSocieteGedTests(TestCase):
         resp = self.api.post(BASE + 'routages-documentaires/', {
             'source': 'ventes_devis', 'cabinet_cible': self.cab_a.pk,
             'tags_defaut': [self.tag_b.pk]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 404, resp.data)  # ENF11 : tag hors société = inconnu
         self.assertIn('tags_defaut', resp.data)
         self.assertFalse(RoutageDocumentaire.objects.filter(
             source='ventes_devis').exists())

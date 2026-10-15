@@ -98,9 +98,11 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
     @oa.extend_schema(
         request=oa.body(
             'PingGpsRequete',
-            lat=oa.f(True),
-            lng=oa.f(True),
-            accuracy_m=oa.f(null=True),
+            # ENF11 (nocturne 15/10) — bornes PUBLIÉES = bornes appliquées : un
+            # degré hors plage débordait la colonne decimal(9,6) (500).
+            lat=oa.f(True, min_value=-90, max_value=90),
+            lng=oa.f(True, min_value=-180, max_value=180),
+            accuracy_m=oa.f(null=True, min_value=0, max_value=999999.99),
             intervention=oa.i(null=True),
         ),
         responses={201: oa.OBJ},
@@ -127,11 +129,15 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
             lat, lng = float(lat), float(lng)
         except (TypeError, ValueError):
             raise ValidationError({'lat': 'Coordonnées invalides.'})
+        if not (-90 <= lat <= 90 and -180 <= lng <= 180):  # NaN compris (comparaison fausse)
+            raise ValidationError({'lat': 'Coordonnées hors plage (lat ±90, lng ±180).'})
         accuracy_m = request.data.get('accuracy_m')
         try:
             accuracy_m = float(accuracy_m) if accuracy_m not in (None, '') else None
         except (TypeError, ValueError):
             accuracy_m = None
+        if accuracy_m is not None and not 0 <= accuracy_m <= 999999.99:
+            raise ValidationError({'accuracy_m': 'Précision hors plage (0 à 999999.99 m).'})
         intervention = None
         intervention_id = request.data.get('intervention')
         if intervention_id:

@@ -145,7 +145,7 @@ class DatePrevueTests(VisiteTerrainBase):
         for jour in (self.hier, demain):
             with self.subTest(jour=jour):
                 resp = self._patch_date(visite_id, jour)
-                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.status_code, 409, resp.data)  # ENF11
                 self.assertIn('date_prevue', resp.data)
                 self.assertIn('déjà réalisée', resp.data['date_prevue'][0])
         visite = VisiteTerrain.objects.get(pk=visite_id)
@@ -154,7 +154,7 @@ class DatePrevueTests(VisiteTerrainBase):
     def test_date_passee_refusee(self):
         visite_id = self.creer_visite()
         resp = self._patch_date(visite_id, self.hier)
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)  # ENF11
         self.assertIn('passé', resp.data['date_prevue'][0])
         self.assertIsNone(VisiteTerrain.objects.get(pk=visite_id).date_prevue)
 

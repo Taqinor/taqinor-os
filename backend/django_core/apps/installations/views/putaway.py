@@ -96,12 +96,17 @@ class PutAwayViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         bin_id = request.data.get('bin')
         bin_loc = None
         if bin_id:
+            # ENF11 (nocturne 15/10) — forme hors schéma 400, casier inconnu
+            # de la société 404 (ressource manquante, plus 400).
+            if isinstance(bin_id, bool) or not str(bin_id).isdigit():
+                return Response({'bin': 'Identifiant entier attendu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
             bin_loc = BinLocation.objects.filter(
                 company=company, id=bin_id).first()
             if bin_loc is None:
                 return Response(
                     {'bin': 'Casier inconnu pour cette société.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
         else:
             bin_loc = pa.bin_suggere
         pa.bin_effectif = bin_loc

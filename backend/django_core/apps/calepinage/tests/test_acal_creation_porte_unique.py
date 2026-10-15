@@ -158,6 +158,19 @@ class PorteUniqueTest(BaseApiCalepinage):
         self.assertEqual(
             Calepinage.objects.filter(lead_id=lead.pk).count(), 1)
 
+    def test_depuis_lead_inconnu_404_et_corps_patch_publie_ferme(self):
+        # ENF11 (nocturne 15/10) — lead bien formé inconnu de la société :
+        # 404 (comme depuis-modele) ; le PATCH publie ses seules clés admises.
+        reponse = self.api.post(f'{URL}depuis-lead/', {'lead': 999999999},
+                                format='json')
+        self.assertEqual(reponse.status_code, 404, reponse.data)
+        from apps.calepinage.serializers import CalepinageSerializer
+        cles = CalepinageSerializer.cles_patch()
+        self.assertIn('titre', cles)
+        self.assertIn('id', cles)
+        self.assertNotIn('nom', cles)
+        self.assertNotIn('layout_hash', cles)
+
     def test_responsable_valide_meme_societe(self):
         lead = self._lead('Villa responsable')
         reponse = self.api.post(URL, {'lead': lead.pk,

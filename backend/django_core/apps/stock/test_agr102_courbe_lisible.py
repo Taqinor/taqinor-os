@@ -111,7 +111,7 @@ class TestApiRefus(TestCase):
             courbe_pompe={'debits_m3h': [0, 6], 'hmt_m': [80, 70]})
         r = api_for(self.user).patch(
             f'{URL_PRODUITS}{p.pk}/', {'courbe_pompe': None}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : état (courbe en place)
         self.assertIn('courbe_pompe', r.data)
 
 

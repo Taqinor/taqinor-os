@@ -252,7 +252,7 @@ class LeadVisitesActionsMixin:
         })
 
     @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False),
-                                    date_prevue=serializers.CharField(), etape=serializers.CharField(required=False),
+                                    date_prevue=serializers.DateField(), etape=serializers.CharField(required=False),
                                     note_etape=serializers.CharField(required=False),
                                     notes=serializers.CharField(required=False),
                                     replanifier=serializers.BooleanField(required=False)),
@@ -290,8 +290,14 @@ class LeadVisitesActionsMixin:
         from .cadence_plan import _prochaine_touche_a_faire
 
         lead = self.get_object()
-        brut = (request.data.get('date_prevue') or '').strip()
-        date_prevue = parse_date(brut) if brut else None
+        # ENF11 (nocturne 15/10) — publiée ``format: date`` (« 0 » était un
+        # texte « conforme » refusé) ; un non-texte est refusé, jamais un 500.
+        brut = request.data.get('date_prevue') if hasattr(request.data, 'get') else None
+        brut = brut.strip() if isinstance(brut, str) else ('?' if brut is not None else '')
+        try:
+            date_prevue = parse_date(brut) if brut else None
+        except ValueError:  # bien formée mais impossible (2026-02-30)
+            date_prevue = None
         if brut and date_prevue is None:
             return Response(
                 {'date_prevue': ['Date illisible (format AAAA-MM-JJ '

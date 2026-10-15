@@ -87,19 +87,24 @@ class DossierImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
-    @oa.extend_schema(request=oa.body('AvancerDossierImportRequete', statut_douane=oa.s(True)))
+    # ENF11 (nocturne 15/10) — `statut_douane` OPTIONNEL publié en énumération
+    # (StatutDouaneEnum) : hors liste 400 ; un retour en arrière vient de
+    # l'ÉTAT du dossier : 409.
+    @oa.extend_schema(request=oa.body('AvancerDossierImportRequete', statut_douane=oa.serializers.ChoiceField(
+        choices=DossierImport.StatutDouane.choices, required=False)))
     @action(detail=True, methods=['post'])
     def avancer(self, request, pk=None):
         """FG315 — fait progresser le statut douanier d'un cran dans l'ordre
         canonique. Corps optionnel `statut_douane` pour sauter à un statut
         précis (doit être en aval). Refuse de revenir en arrière."""
         dossier = self.get_object()
-        cible = request.data.get('statut_douane')
+        donnees = request.data if hasattr(request.data, 'get') else {}
+        cible = donnees.get('statut_douane')
         try:
             idx = STATUT_ORDER.index(dossier.statut_douane)
         except ValueError:
             idx = 0
-        if cible:
+        if 'statut_douane' in donnees:
             if cible not in STATUT_ORDER:
                 return Response(
                     {'statut_douane': 'Statut douanier inconnu.'},
@@ -108,7 +113,7 @@ class DossierImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 return Response(
                     {'statut_douane': 'On ne revient pas en arrière dans le '
                                       'dédouanement.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)
             nouveau = cible
         else:
             nouveau = STATUT_ORDER[min(idx + 1, len(STATUT_ORDER) - 1)]
@@ -144,5 +149,5 @@ class DossierImportViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 {'detail': "Le dossier d'import doit être rattaché à un bon de "
                            "commande fournisseur pour reporter le coût débarqué "
                            "dans le coût d'achat."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : état du dossier
         return Response(resultat, status=status.HTTP_200_OK)

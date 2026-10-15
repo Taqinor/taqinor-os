@@ -110,11 +110,11 @@ class RappelTests(TestCase):
         self.assertEqual([ligne['numero_lot'] for ligne in plan],
                          ['LOT-SAIN'])
         self.assertEqual(plan[0]['quantite'], 5)
-        # Sortie du lot rappelé → 400 nommant le lot ; aucun stock ne bouge.
+        # Sortie du lot rappelé → 409 nommant le lot ; aucun stock ne bouge.
         rep = self.api.post(
             f'/api/django/stock/lots-entrepot/{self.lot_rappel.id}/sortir/',
             {'quantite': 1}, format='json')
-        self.assertEqual(rep.status_code, 400, rep.content)
+        self.assertEqual(rep.status_code, 409, rep.content)  # ENF11 : état (rappel)
         self.assertIn('LOT-RAPPEL', rep.json()['detail'])
         self.lot_rappel.refresh_from_db()
         self.produit.refresh_from_db()

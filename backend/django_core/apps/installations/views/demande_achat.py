@@ -262,6 +262,8 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         from .. import services
         return self._decider_etape(request, services.rejeter_etape_achat)
 
+    # ENF11 (nocturne 15/10) — les refus des actions de cycle ci-dessous (statut,
+    # étape, plan, lignes, transition) dépendent de l ÉTAT : 409, plus 400.
     def _decider_etape(self, request, operation):
         """Résout l'étape visée (corps ``etape``, sinon la prochaine en
         attente), SCOPÉE à la demande courante, puis applique la décision."""
@@ -280,13 +282,13 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
             if etape is None:
                 return Response(
                     {'detail': "Aucune étape d'approbation en attente."},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_409_CONFLICT)
         try:
             operation(etape, approbateur=request.user,
                       commentaire=request.data.get('commentaire') or '')
         except services.ApprobationAchatError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         da.refresh_from_db()
         if da.statut in (DemandeAchat.Statut.APPROUVEE,
                          DemandeAchat.Statut.REFUSEE):
@@ -309,12 +311,12 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         if da.statut != DemandeAchat.Statut.SOUMISE:
             return Response(
                 {'detail': "Seule une demande soumise peut être approuvée."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         if services.workflow_approbation_achat_actif(da):
             return Response(
                 {'detail': "Un plan d'approbation est en cours : validez les "
                            "étapes via « approuver-etape »."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
         try:
             services.appliquer_statut_document(
@@ -324,7 +326,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
                         'motif_refus': None})
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # DA-EVENT-VIEWSET (NTP2P38) — ce chemin direct (sans plan
         # d'approbation) contourne `services.approuver_etape_achat`, qui émet
         # déjà l'événement à la dernière étape : sans cet appel, une demande
@@ -343,7 +345,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         if da.statut != DemandeAchat.Statut.SOUMISE:
             return Response(
                 {'detail': "Seule une demande soumise peut être refusée."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
         motif = (request.data.get('motif_refus') or '').strip() or None
         try:
@@ -354,7 +356,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
                         'motif_refus': motif})
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # NTP2P2 — un refus direct annule les étapes encore en attente (pas
         # de plan d'approbation orphelin sur une demande refusée).
         da.etapes_approbation.filter(
@@ -379,14 +381,14 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
             return Response(
                 {'detail': "Seule une demande approuvée peut être marquée "
                            "commandée."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus.
         try:
             services.appliquer_statut_document(
                 da, DemandeAchat.Statut.COMMANDEE, user=request.user)
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(da).data)
 
     @oa.extend_schema(request=oa.body('GenererBcfRequete', fournisseur=oa.i()))
@@ -402,25 +404,25 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         if da.statut != DemandeAchat.Statut.APPROUVEE:
             return Response(
                 {'detail': "Seule une demande approuvée peut générer un BCF."},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         if da.bon_commande_id:
             return Response(
                 {'detail': 'Cette demande a déjà un BCF lié.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
         fournisseur_id = request.data.get('fournisseur') or (
             da.fournisseur_suggere_id)
         if not fournisseur_id:
             return Response(
                 {'detail': 'Aucun fournisseur (ni suggéré, ni fourni).'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         fournisseur_model = django_apps.get_model('stock', 'Fournisseur')
         fournisseur = fournisseur_model.objects.filter(
             id=fournisseur_id, company=request.user.company).first()
         if fournisseur is None:
             return Response(
                 {'fournisseur': 'Fournisseur inconnu pour cette société.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
 
         lignes_source = list(da.lignes.select_related('produit').all())
         # XPUR16 — les lignes sans produit catalogue sont reportées en
@@ -434,7 +436,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         if not lignes:
             return Response(
                 {'detail': 'Cette demande ne contient aucune ligne.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
 
         # ACHT11 — le chantier de la DA suit le BCF (réception réservée) ;
         # une quantité/un prix invalide (ValueError du service stock) → 400.
@@ -446,7 +448,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
                 chantier_origine=da.chantier)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         from .. import services
         # AUD819 — transition GARDÉE par la table TRANSITIONS + événement bus
         # (le lien BCF est posé dans la MÊME écriture atomique).
@@ -456,7 +458,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
                 champs={'bon_commande': bon})
         except TransitionRefusee as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # NTP2P4 — l'engagement devient RÉALISÉ (le BCF est passé).
         services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)

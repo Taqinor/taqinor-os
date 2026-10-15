@@ -176,7 +176,7 @@ class ReleveM3Tests(_Base):
             self.assertIsInstance(r.data[0][cle], type(val), cle)
         # Recul refusé avec le message du contrat.
         r = api.post(url, {'type': 'm3', 'valeur': '10'}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : le dernier relevé s'oppose
         self.assertIn('le compteur ne peut pas reculer', r.data['detail'])
         r = api.post(url, {'type': 'litres', 'valeur': '10'}, format='json')
         self.assertEqual(r.status_code, 400)

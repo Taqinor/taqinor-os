@@ -16,7 +16,7 @@ from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from core.champs_stricts import ChaineStricte, DecimalStricte, MOTIF_NON_BLANC_SANS_NUL
+from core.champs_stricts import ChaineStricte, DecimalStricte, MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL
 from core.entite_scoping import EntiteScopeMixin
 from ..openapi_helpers import (
     BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, QuantiteComptee, corps,
@@ -221,6 +221,10 @@ class RechercheProduitSansAccents(filters.SearchFilter):
     """
 
     def filter_queryset(self, request, queryset, view):
+        if '\x00' in request.query_params.get(self.search_param, ''):
+            # ENF11 — terme à caractère nul : le parent (rendu tolérant par
+            # ``core.parametres_requete``) ne désigne aucune ligne.
+            return super().filter_queryset(request, queryset, view)
         champs = self.get_search_fields(view, request)
         termes = self.get_search_terms(request)
         if not champs or not termes:
@@ -1105,7 +1109,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return Response({'detail': str(exc)}, status=code)
         return Response(result, status=status.HTTP_201_CREATED)
 
-    @extend_schema(parameters=[P('jours', INT, False, 'Fenêtre en jours (défaut 180)')], responses=LISTE)
+    @extend_schema(parameters=[P('jours', INT, False, 'Fenêtre en jours (défaut 180)',
+                                 mini=0, maxi=36500)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='rotation',
             permission_classes=[IsAdminRole])
     def rotation(self, request):
@@ -1127,7 +1132,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         produit = self.get_object()
         return Response(comparer_fournisseurs(request.user.company, produit))
 
-    @extend_schema(parameters=[P('jours', INT, False, 'Horizon en jours (défaut 90)')], responses=LISTE)
+    @extend_schema(parameters=[P('jours', INT, False, 'Horizon en jours (défaut 90)',
+                                 mini=0, maxi=36500)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='expirant-bientot',
             permission_classes=[IsAdminRole])
     def expirant_bientot(self, request):
@@ -1139,7 +1145,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             request.query_params.get('jours'), 'jours', 90, 0, 36500)
         return Response(produits_expirant_bientot(request.user.company, jours=jours))
 
-    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)')], responses=LISTE)
+    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)',
+                                 mini=0, maxi=120)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='previsions-reappro',
             permission_classes=[IsAdminRole])
     def previsions_reappro(self, request):
@@ -1151,7 +1158,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
-    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)'), P('date_debut', DATE_OU_VIDE),
+    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)',
+                                 mini=0, maxi=120), P('date_debut', DATE_OU_VIDE),
                                P('date_fin', DATE_OU_VIDE)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='analyse-achats',
             permission_classes=[IsResponsableOrAdmin])
@@ -1296,8 +1304,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'limite': UTILISE_DANS_LIMITE,
         })
 
-    @extend_schema(parameters=[P('serie', STR, True, 'Numéro de série (ou lot via le paramètre lot)', pattern=r'\S'),
-                               P('lot', STR, False, 'Numéro de lot')], responses=OBJET)
+    @extend_schema(parameters=[P('serie', STR, True, 'Numéro de série (ou lot via le paramètre lot)',
+                                 pattern=MOTIF_NON_BLANC_SANS_NUL),
+                               P('lot', STR, False, 'Numéro de lot', pattern=MOTIF_SANS_NUL)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='tracer',
             permission_classes=[IsAnyRole])
     def tracer(self, request):
@@ -1305,8 +1314,16 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         `?serie=<numero>` ou `?lot=<numero>`. Remonte réception fournisseur
         → emplacement entrepôt → équipement installé/client en un appel.
         Numéro inconnu / hors société → 404. INTERNE, lecture seule."""
+        from rest_framework.exceptions import ValidationError
+
         from ..selectors import trace_serie
 
+        # ENF11 (nocturne 15/10) — un caractère nul atteignait la requête SQL
+        # (ValueError 500) : les motifs PUBLIÉS sont appliqués (400 sinon).
+        for nom, motif in (('serie', MOTIF_NON_BLANC_SANS_NUL), ('lot', MOTIF_SANS_NUL)):
+            brut = request.query_params.get(nom)
+            if brut is not None and not re.fullmatch(motif, brut):
+                raise ValidationError({nom: ['Valeur invalide (texte sans caractère nul attendu).']})
         numero_serie = (request.query_params.get('serie') or '').strip()
         numero_lot = (request.query_params.get('lot') or '').strip()
         if not numero_serie and not numero_lot:
@@ -1376,7 +1393,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(chaine)
 
     @extend_schema(parameters=[P('code', STR, True, 'Code scanné (PRODUIT:<id> / SYSTEME:<id>)',
-                                 pattern=r'\S')], responses=OBJET)
+                                 pattern=MOTIF_NON_BLANC_SANS_NUL)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])
     def resolve(self, request):
@@ -1390,7 +1407,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from .. import labels
 
         code = (request.query_params.get('code') or '').strip()
-        if not code:
+        if not code or '\x00' in code:  # ENF11 : nul publié interdit (500 SQL avant)
             return Response(
                 {'detail': 'Code illisible.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -1696,9 +1713,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             {'detail': 'Type de code inconnu.'},
             status=status.HTTP_400_BAD_REQUEST)
 
-    @extend_schema(request=corps('ProduitRebutCorps', quantite=serializers.IntegerField(),
-                                 motif=serializers.CharField(), emplacement=serializers.IntegerField(required=False,
-                                                                                                     allow_null=True),
+    @extend_schema(request=corps('ProduitRebutCorps', quantite=serializers.IntegerField(min_value=1),
+                                 motif=serializers.ChoiceField(choices=MouvementStock.MotifRebut.choices),
+                                 emplacement=serializers.IntegerField(required=False, allow_null=True),
                                  reference_chantier=serializers.CharField(required=False, allow_blank=True,
                                                                           allow_null=True, max_length=100)),
                    responses={201: corps('ProduitRebutReponse', mouvement_id=serializers.IntegerField(),
@@ -1714,18 +1731,18 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         produit = self.get_object()
         # ENF11 : corps non objet, motif non texte, emplacement illisible ou
         # référence trop longue (> 100) = 400, jamais une 500.
+        # ENF11 (nocturne 15/10) — entier JSON >= 1 et motif de l'énumération
+        # PUBLIÉE (400 sinon) ; casier inconnu 404 ; refus du service = état (409).
         donnees = request.data if isinstance(request.data, dict) else {}
-        try:
-            quantite = int(donnees.get('quantite'))
-        except (TypeError, ValueError, OverflowError):
+        quantite = donnees.get('quantite')
+        if isinstance(quantite, bool) or not isinstance(quantite, int) or quantite < 1:
             return Response(
                 {'detail': 'Quantité invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
         motif = donnees.get('motif')
-        motif = motif.strip() if isinstance(motif, str) else ''
-        if not motif:
+        if motif not in MouvementStock.MotifRebut.values:
             return Response(
-                {'detail': 'Le motif est obligatoire.'},
+                {'detail': 'Le motif est obligatoire (valeur de la liste publiée).'},
                 status=status.HTTP_400_BAD_REQUEST)
         reference = donnees.get('reference_chantier')
         if reference is not None and (
@@ -1736,17 +1753,16 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
         emplacement = None
         emplacement_id = donnees.get('emplacement')
-        if emplacement_id:
-            try:
-                emplacement = EmplacementStock.objects.filter(
-                    company=request.user.company,
-                    id=int(emplacement_id)).first()
-            except (TypeError, ValueError, OverflowError):
-                emplacement = None
+        if emplacement_id is not None:
+            if isinstance(emplacement_id, bool) or not isinstance(emplacement_id, int):
+                return Response({'detail': 'Emplacement : identifiant entier attendu.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            emplacement = EmplacementStock.objects.filter(
+                company=request.user.company, id=id_corps(emplacement_id)).first()
             if emplacement is None:
                 return Response(
                     {'detail': 'Emplacement introuvable.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
 
         from ..services import rebuter_produit
         try:
@@ -1756,7 +1772,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 emplacement=emplacement, reference_chantier=reference)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
 
         return Response({
             'mouvement_id': result['mouvement'].id,

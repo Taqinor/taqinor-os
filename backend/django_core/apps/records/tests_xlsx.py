@@ -36,6 +36,13 @@ class CoerceCellTest(SimpleTestCase):
         self.assertEqual(coerce_cell('Bennani'), 'Bennani')
         self.assertEqual(coerce_cell(42), 42)
 
+    def test_caracteres_de_controle_retires_jamais_500(self):
+        # ENF11 (nocturne 15/10) — « @:3×À » portait un caractère de contrôle :
+        # openpyxl levait IllegalCharacterError (export en 500).
+        self.assertEqual(coerce_cell('A\x01B\x1fC'), 'ABC')
+        wb = build_workbook(['Nom'], [['Ben\x02nani']])
+        self.assertEqual(wb.active.cell(row=2, column=1).value, 'Bennani')
+
 
 class BuildWorkbookTest(SimpleTestCase):
     def test_header_bold_and_values(self):

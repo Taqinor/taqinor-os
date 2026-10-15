@@ -87,6 +87,21 @@ class ChoixDocumente(serializers.ChoiceField):
             'type': 'string', 'allOf': [{'enum': valeurs}]})
 
 
+def sans_nul(valeur):
+    """ENF11 (nocturne 15/10) — retire le caractère nul de toutes les chaînes
+    (clés comprises) d'une valeur JSON. PostgreSQL ne le stocke pas en
+    ``jsonb`` (« cannot be converted to text » : DataError → 500) et
+    le schéma publié (JSON libre) l'autorise : la valeur est normalisée, jamais
+    refusée ni plantée."""
+    if isinstance(valeur, str):
+        return valeur.replace('\x00', '')
+    if isinstance(valeur, list):
+        return [sans_nul(v) for v in valeur]
+    if isinstance(valeur, dict):
+        return {sans_nul(k): sans_nul(v) for k, v in valeur.items()}
+    return valeur
+
+
 class ObjetJSON(serializers.JSONField):
     """ERR-ENF11-FUZZ-CORE — ``JSONField`` limité à un OBJET JSON.
 
@@ -109,7 +124,7 @@ class ObjetJSON(serializers.JSONField):
     def to_internal_value(self, data):
         if not isinstance(data, dict):
             raise serializers.ValidationError('Un objet JSON est attendu.')
-        return super().to_internal_value(data)
+        return super().to_internal_value(sans_nul(data))
 
 
 #: Schéma publié d'un élément selon le type Python exigé (``ListeJSON``).
@@ -151,4 +166,4 @@ class ListeJSON(serializers.JSONField):
                 'Chaque élément de la liste doit être '
                 + ('un objet JSON.' if self.element is dict
                    else 'une chaîne.'))
-        return super().to_internal_value(data)
+        return super().to_internal_value(sans_nul(data))

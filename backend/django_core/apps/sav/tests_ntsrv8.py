@@ -151,7 +151,7 @@ class NTSRV8FileAttenteTest(TestCase):
         resp = self.api.post(
             f'/api/django/sav/tickets/{self.tickets[0].pk}/reaffecter-equipe/',
             {'equipe': etrangere.pk}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # ENF11 : équipe hors société = inconnue
         self.assertIn('equipe', resp.json())
         self.tickets[0].refresh_from_db()
         self.assertEqual(self.tickets[0].equipe, self.equipe)

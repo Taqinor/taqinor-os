@@ -60,7 +60,7 @@ class BoutonApprobationTests(TestCase):
             company=self.co, client=client, reference='DEV-APAR47',
             statut='envoye')
         res = self._declencher('ventes.devis', devis.pk)
-        self.assertEqual(res.status_code, 400, res.data)
+        self.assertEqual(res.status_code, 409, res.data)  # ENF11 : cible configurée = état
         self.assertIn('cible non autorisée', res.data['detail'])
         self.assertEqual(AutomationRun.objects.filter(
             rule=self.regle).count(), 0)

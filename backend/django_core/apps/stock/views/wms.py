@@ -498,7 +498,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             sceller_unite_logistique(unite=unite, user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)  # seul refus : unité vide (état)
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data)
 
@@ -1094,9 +1094,19 @@ class PlanChargementViewSet(CompanyScopedModelViewSet):
         de capacité — l'avertissement AVANT validation."""
         from ..services import ajouter_unite_plan_chargement
         plan = self.get_object()
+        # ENF11 (nocturne 15/10) — forme du corps (400) ≠ unité inconnue de la
+        # société (404) ≠ plan déjà chargé (409, état).
+        brut = corps_objet(request).get('unite_logistique')
+        if isinstance(brut, bool) or not isinstance(brut, int):
+            raise ValidationError({'unite_logistique': ['Entier attendu.']})
         unite = UniteLogistique.objects.filter(
-            id=request.data.get('unite_logistique'),
-            company=request.user.company).first()
+            id=id_corps(brut), company=request.user.company).first()
+        if unite is None:
+            return Response({'detail': 'Plan ou unité logistique introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if plan.statut == PlanChargement.Statut.CHARGE:
+            return Response({'detail': 'Ce plan est déjà chargé : il ne bouge plus.'},
+                            status=status.HTTP_409_CONFLICT)
         try:
             controle = ajouter_unite_plan_chargement(plan=plan, unite=unite)
         except ValueError as exc:
@@ -1258,6 +1268,12 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         bin?, note?}]}``."""
         from ..services import inspecter_retour_client
         retour = self.get_object()
+        if retour.statut not in (RetourClient.Statut.RECEPTIONNE,
+                                 RetourClient.Statut.INSPECTE):
+            # ENF11 (nocturne 15/10) — refus d'ÉTAT : 409, plus 400.
+            return Response(
+                {'detail': "Le retour doit être réceptionné avant d'être inspecté."},
+                status=status.HTTP_409_CONFLICT)
         try:
             inspecter_retour_client(
                 retour=retour, lignes=request.data.get('lignes'),
