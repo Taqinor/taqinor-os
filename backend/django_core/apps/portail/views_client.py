@@ -544,6 +544,8 @@ class MesDevisPortailViewSet(viewsets.ViewSet):
     """NTPRT10 — « Mes devis » : liste, détail, acceptation."""
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
 
     @extend_schema(responses=MesDevisPortailListeSerializer)
     def list(self, request):
@@ -709,6 +711,8 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
     paiement (GATED CMI)."""
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
 
     @extend_schema(responses=MesFacturesPortailListeSerializer)
     def list(self, request):
@@ -901,6 +905,8 @@ class MesLivraisonsPortailViewSet(viewsets.ViewSet):
     client est dérivé du compte portail CONNECTÉ, jamais d'un paramètre."""
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
     #: ``viewsets.ViewSet`` n'est pas une ``GenericAPIView`` : sans cet
     #: attribut, drf-spectacular ne peut PAS deviner le sérialiseur de la vue
     #: et journalise « unable to guess serializer » (garde YAPIC6). Ce n'est
@@ -1061,6 +1067,8 @@ class MesDemandesSavPortailViewSet(viewsets.ViewSet):
     demandes (liste, ``prendre_en_charge``) restent inchangés."""
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
     #: ``viewsets.ViewSet`` n'est pas une ``GenericAPIView`` : sans cet
     #: attribut, drf-spectacular ne peut PAS deviner le sérialiseur de la vue
     #: et lève « unable to guess serializer » (même garde YAPIC6 que
@@ -1259,6 +1267,8 @@ class MesChantiersPortailViewSet(viewsets.ViewSet):
     est INTROUVABLE (404), jamais « trouvé puis refusé »."""
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
     serializer_class = MesChantiersPortailLigneSerializer
 
     @extend_schema(responses=inline_serializer(
@@ -1523,6 +1533,8 @@ class MonEquipePortailViewSet(viewsets.ViewSet):
     """
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
     serializer_class = MonEquipePortailLigneSerializer
 
     @staticmethod
@@ -1661,6 +1673,8 @@ class MesDocumentsPortailViewSet(viewsets.ViewSet):
     """
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
     serializer_class = MesDocumentsPortailLigneSerializer
 
     @staticmethod
@@ -1832,6 +1846,8 @@ class MesContratsMaintenancePortailViewSet(viewsets.ViewSet):
     """
 
     permission_classes = [IsPortalClientUser]
+    # ENF15 — liste COMPLÈTE du client, jamais paginée (``Response({'results': …})``).
+    pagination_class = None
     serializer_class = MesContratsMaintenancePortailLigneSerializer
 
     @extend_schema(responses=inline_serializer(
