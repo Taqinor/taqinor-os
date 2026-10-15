@@ -9,14 +9,11 @@
 # Format : <titre du check Schemathesis>|<MÉTHODE> <gabarit de chemin>
 API accepted schema-violating request|GET /api/django/accessreview/campaigns/
 API accepted schema-violating request|GET /api/django/accessreview/sod-rules/
-API accepted schema-violating request|GET /api/django/adminops/config-packages/
-API accepted schema-violating request|GET /api/django/adminops/sandbox/
 API accepted schema-violating request|GET /api/django/audit/entries/
 API accepted schema-violating request|GET /api/django/companies/
 API accepted schema-violating request|GET /api/django/offlinesync/operations/
 API accepted schema-violating request|GET /api/django/statuspage/public/incidents/
 API accepted schema-violating request|GET /api/django/trash/corbeille/
-API accepted schema-violating request|POST /api/django/adminops/config-packages/exporter/
 API accepted schema-violating request|POST /api/django/offlinesync/operations/batch/
 API rejected schema-compliant request|GET /api/django/parametres/audit/
 API rejected schema-compliant request|GET /api/django/stock/produits/tracabilite/
@@ -109,7 +106,6 @@ API rejected schema-compliant request|PUT /api/django/parametres/email-templates
 API rejected schema-compliant request|PATCH /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/parametres/update/
 API rejected schema-compliant request|PUT /api/django/ventes/devis-lignes/{id}/
-Response violates schema|GET /api/django/adminops/settings/
 Response violates schema|GET /api/django/onboarding/progress/
 Undocumented Content-Type|GET /api/public/v1/calepinages/{id}/resultat/
 Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
