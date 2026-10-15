@@ -224,6 +224,15 @@ class TestEndpointsRetourClient(Ntwms23Base):
             self.assertEqual(reponse.status_code, 400, (corps, reponse.content))
         self.assertEqual(RetourClient.objects.count(), 0)
 
+    def test_inspecter_avant_reception_est_un_conflit_409(self):
+        # ENF11 (nocturne 15/10) — refus d'ÉTAT, plus 400.
+        retour = self._retour(etat='revendable', quantite=1)
+        reponse = self.api.post(
+            f'{self.URL}{retour.id}/inspecter/',
+            {'lignes': [{'ligne': retour.lignes.first().id,
+                         'etat_constate': 'a_reparer'}]}, format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.content)
+
     def test_inspecter_via_api(self):
         retour = self._retour(etat='revendable', quantite=1)
         receptionner_retour_client(retour=retour, user=self.admin)

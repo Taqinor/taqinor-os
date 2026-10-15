@@ -176,9 +176,9 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         d'un refus métier explicite. Même patron que l'action `annuler` de
         `installations/views/facture_soustraitant.py` (vérifie
         `facture.total_paye > 0` avant de permettre la suppression)."""
-        from rest_framework.exceptions import ValidationError
+        from ..erreurs_achats import ConflitEtat
         if instance.total_paye > 0:
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Cette facture fournisseur porte des paiements réels '
                     '(total payé : ' + str(instance.total_paye) + ' MAD) : '
@@ -192,7 +192,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         nb_acomptes = (instance.imputations_acompte.order_by()
                        .values('acompte').distinct().count())
         if nb_acomptes:
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Cette facture fournisseur porte '
                     f'{nb_acomptes} acompte(s) imputé(s) (total : '
@@ -205,7 +205,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         if imputations_avoir:
             refs = ', '.join(sorted({
                 i.avoir.reference for i in imputations_avoir}))
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Cette facture fournisseur porte un avoir imputé '
                     f'({refs} — total : {instance.total_avoirs_imputes} '

@@ -298,9 +298,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         garde-fou EN AMONT, Django lèverait une brute `ProtectedError` (500)
         au lieu d'un refus métier explicite. Même patron que l'action
         `annuler` de `installations/views/facture_soustraitant.py`."""
-        from rest_framework.exceptions import ValidationError
+        from ..erreurs_achats import ConflitEtat
         if instance.acomptes.filter(montant__gt=0).exists():
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Ce bon de commande fournisseur porte des acomptes '
                     'réellement versés : suppression refusée.'
@@ -312,7 +312,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         if (instance.statut != BonCommandeFournisseur.Statut.BROUILLON
                 or instance.lignes.filter(quantite_recue__gt=0).exists()
                 or instance.factures_fournisseur.exists()):
-            raise ValidationError({
+            raise ConflitEtat({
                 'detail': (
                     'Bon de commande reçu ou facturé : suppression refusée '
                     '(annulez-le).'

@@ -67,7 +67,7 @@ class SuppressionFactureFournisseurTests(TestCase):
         solde_avant = FactureFournisseur.objects.get(pk=f.pk).solde_du
         resp = self.api.delete(
             f'/api/django/stock/factures-fournisseur/{f.id}/')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('avoir', str(resp.data['detail']).lower())
         # Persistance : facture et avoir relus — identiques.
         self.assertTrue(FactureFournisseur.objects.filter(pk=f.pk).exists())
@@ -92,7 +92,7 @@ class SuppressionFactureFournisseurTests(TestCase):
         self.assertEqual(acompte.facture_imputee_id, g.id)
         resp = self.api.delete(
             f'/api/django/stock/factures-fournisseur/{g.id}/')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('acompte', str(resp.data['detail']).lower())
         self.assertTrue(FactureFournisseur.objects.filter(pk=g.pk).exists())
         acompte.refresh_from_db()
@@ -104,7 +104,7 @@ class SuppressionFactureFournisseurTests(TestCase):
         avoir = self._avoir_impute(f)
         resp = self.api.delete(
             f'/api/django/stock/avoirs-fournisseur/{avoir.id}/')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('imput', str(resp.data['detail']).lower())
         self.assertTrue(AvoirFournisseur.objects.filter(pk=avoir.pk).exists())
         avoir.refresh_from_db()

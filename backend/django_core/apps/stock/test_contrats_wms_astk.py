@@ -790,8 +790,8 @@ class ContratNegoceTests(WmsBase):
             'fournisseur': self.fournisseur.id,
             'periode_debut': '2026-01-01', 'periode_fin': '2026-12-31'},
             format='json')
-        self.assertEqual(rep.status_code, 400)
-        self.assertErreurContrat(rep, contrat['exemple_erreur_400'])
+        self.assertEqual(rep.status_code, 409)
+        self.assertErreurContrat(rep, contrat['exemple_erreur_409'])
 
         rep = self.api.post(url, {
             'fournisseur': self.fournisseur.id,
@@ -815,8 +815,8 @@ class ContratNegoceTests(WmsBase):
         self.assertEqual(rep.status_code, 201, rep.content)
         self.assertMemesCles(rep.json(), avoir['exemple'], 'avoir')
         rep = self.api.post(f'{url}{accord["id"]}/generer-avoir/')
-        self.assertEqual(rep.status_code, 400)
-        self.assertEqual(rep.json(), avoir['exemple_erreur_400'])
+        self.assertEqual(rep.status_code, 409)
+        self.assertEqual(rep.json(), avoir['exemple_erreur_409'])
 
     def test_produit_atp(self):
         contrat = route('negoce_consignation_rfa', 'produit_atp')

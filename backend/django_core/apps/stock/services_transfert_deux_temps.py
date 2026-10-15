@@ -16,6 +16,8 @@ accompagne l'expédition.
 """
 import logging
 
+from .erreurs_achats import EtatIncompatible, IntrouvableMetier
+
 logger = logging.getLogger(__name__)
 
 # Écart de réception : consigné comme AJUSTEMENT motivé sur la destination.
@@ -48,7 +50,7 @@ def creer_demande_transfert(*, company, user, produit_id, source_id,
 
     produit = Produit.objects.filter(id=produit_id, company=company).first()
     if produit is None:
-        raise ValueError('Produit introuvable dans cette société.')
+        raise IntrouvableMetier('Produit introuvable dans cette société.')
     emplacements = {
         e.id: e for e in EmplacementStock.objects.filter(
             company=company, archived=False)}
@@ -56,7 +58,7 @@ def creer_demande_transfert(*, company, user, produit_id, source_id,
         source = emplacements[int(source_id)]
         destination = emplacements[int(destination_id)]
     except (KeyError, TypeError, ValueError):
-        raise ValueError('Emplacement introuvable dans cette société.')
+        raise IntrouvableMetier('Emplacement introuvable dans cette société.')
 
     with transaction.atomic():
         def _creer(reference):
@@ -92,7 +94,7 @@ def expedier_transfert(transfert, user):
         transfert = TransfertStock.objects.select_for_update().get(
             pk=transfert.pk)
         if transfert.statut != TransfertStock.Statut.DEMANDE:
-            raise ValueError(
+            raise EtatIncompatible(
                 'Seul un transfert DEMANDÉ peut être expédié.')
 
         source = transfert.source
@@ -102,7 +104,7 @@ def expedier_transfert(transfert, user):
                 produit=transfert.produit, emplacement=source,
                 defaults={'company': transfert.company, 'quantite': 0})
             if ligne.quantite < transfert.quantite:
-                raise ValueError(
+                raise EtatIncompatible(
                     f'Quantité insuffisante à « {source.nom} » '
                     f'({ligne.quantite} disponible).')
             ligne.quantite -= transfert.quantite
@@ -117,7 +119,7 @@ def expedier_transfert(transfert, user):
                 (ligne['quantite'] for ligne in stock_breakdown(produit)
                  if ligne['is_principal']), 0)
             if principal < transfert.quantite:
-                raise ValueError(
+                raise EtatIncompatible(
                     f'Quantité insuffisante à « {source.nom} » '
                     f'({principal} disponible).')
         transfert.statut = TransfertStock.Statut.EXPEDIE
@@ -153,7 +155,7 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
         transfert = TransfertStock.objects.select_for_update().get(
             pk=transfert.pk)
         if transfert.statut != TransfertStock.Statut.EXPEDIE:
-            raise ValueError(
+            raise EtatIncompatible(
                 'Seul un transfert EXPÉDIÉ peut être réceptionné.')
 
         if quantite_recue is None:

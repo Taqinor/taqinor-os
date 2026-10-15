@@ -7,7 +7,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework import serializers
 from core.champs_stricts import ChaineStricte
-from ..erreurs_achats import EtatIncompatible
+from ..erreurs_achats import EtatIncompatible, statut_refus_metier
 from ..openapi_helpers import P, STR, corps
 from ..utils.params import ID_MAX, corps_objet, types_corps_ou_400
 from core.viewsets import CompanyScopedModelViewSet
@@ -137,7 +137,7 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
                 note=donnees.get('note') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(self.get_serializer(transfert).data,
                         status=status.HTTP_201_CREATED)
 
@@ -152,12 +152,12 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
             expedier_transfert(transfert, request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         transfert.refresh_from_db()
         return Response(self.get_serializer(transfert).data)
 
     @extend_schema(request=corps('TransfertReceptionnerCorps',
-                                 quantite_recue=serializers.IntegerField(required=False)),
+                                 quantite_recue=serializers.IntegerField(required=False, min_value=0)),
                    responses={200: TransfertStockSerializer})
     @action(detail=True, methods=['post'], url_path='receptionner')
     def receptionner(self, request, pk=None):
@@ -172,7 +172,7 @@ class TransfertStockViewSet(CompanyScopedModelViewSet):
                 quantite_recue=request.data.get('quantite_recue'))
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         transfert.refresh_from_db()
         return Response(self.get_serializer(transfert).data)
 

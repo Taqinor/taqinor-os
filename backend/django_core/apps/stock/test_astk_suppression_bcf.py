@@ -73,7 +73,7 @@ class SuppressionBcfTests(TestCase):
         avant = self.api.get(f'{URL}{bc.pk}/').data
 
         rep = self.api.delete(f'{URL}{bc.pk}/')
-        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertEqual(rep.status_code, 409, rep.data)
         self.assertIn(MSG, str(rep.data))
         self.assertTrue(BonCommandeFournisseur.objects.filter(
             pk=bc.pk).exists())
@@ -92,7 +92,7 @@ class SuppressionBcfTests(TestCase):
             date_facture=datetime.date(2026, 9, 1),
             montant_ttc=Decimal('1200'))
         rep = self.api.delete(f'{URL}{bc.pk}/')
-        self.assertEqual(rep.status_code, 400, rep.data)
+        self.assertEqual(rep.status_code, 409, rep.data)
         self.assertTrue(BonCommandeFournisseur.objects.filter(
             pk=bc.pk).exists())
 
@@ -101,7 +101,7 @@ class SuppressionBcfTests(TestCase):
                             (BonCommandeFournisseur.Statut.ANNULE, 'A')):
             bc, _ligne = self._bcf(statut, f'BCF-ASTK84-{ref}')
             rep = self.api.delete(f'{URL}{bc.pk}/')
-            self.assertEqual(rep.status_code, 400, (statut, rep.data))
+            self.assertEqual(rep.status_code, 409, (statut, rep.data))
             self.assertTrue(BonCommandeFournisseur.objects.filter(
                 pk=bc.pk).exists())
 

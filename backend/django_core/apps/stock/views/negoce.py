@@ -107,11 +107,14 @@ class DepotConsignationSerializer(CompanyScopedRelationsMixin,
     )
 
     def validate(self, attrs):
+        # ENF11 (nocturne 15/10) — un PUT qui renvoie les valeurs en place est
+        # conforme et accepté ; une valeur DIFFÉRENTE se heurte à l'état (le
+        # dépôt existe, son mouvement est posé) : 409, jamais un 400.
         if self.instance is not None:
             figes = [nom for nom in self.CHAMPS_FIGES
-                     if nom in getattr(self, 'initial_data', {})]
+                     if nom in attrs and attrs[nom] != getattr(self.instance, nom)]
             if figes:
-                raise serializers.ValidationError({
+                raise ConflitEtat({
                     nom: ('Champ figé après la création du dépôt '
                           '(il décrit la marchandise réellement sortie).')
                     for nom in figes})
@@ -173,8 +176,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         (ENTREE tracée) n'existe encore, donc la suppression est REFUSÉE tant
         que ``quantite_restante`` > 0."""
         if instance.quantite_restante > 0:
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError({'detail': (
+            raise ConflitEtat({'detail': (
                 f'{instance.quantite_restante} unité(s) sont encore en dépôt '
                 'chez le client : la suppression effacerait leur trace. '
                 'Déclarez leur consommation (ou leur restitution) avant.')})
@@ -385,10 +387,10 @@ class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
         fixe = attrs.get('montant_fixe',
                          getattr(self.instance, 'montant_fixe', None))
         if taux is None and fixe is None:
-            raise serializers.ValidationError(
+            raise ConflitEtat(
                 'Renseignez soit un taux (%), soit un montant fixe.')
         if taux is not None and fixe is not None:
-            raise serializers.ValidationError(
+            raise ConflitEtat(
                 'Taux et montant fixe sont exclusifs : choisissez-en un.')
         debut = attrs.get('periode_debut',
                           getattr(self.instance, 'periode_debut', None))
@@ -475,7 +477,7 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
             avoir = generer_avoir_rfa(accord, request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         return Response({
             'avoir_id': avoir.id, 'reference': avoir.reference,
             'montant_ttc': str(avoir.montant_ttc),

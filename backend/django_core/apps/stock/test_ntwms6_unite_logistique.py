@@ -177,6 +177,15 @@ class TestScellage(Ntwms6Base):
 
 
 class TestEndpointsUniteLogistique(Ntwms6Base):
+    def test_sceller_une_unite_vide_est_un_conflit_409(self):
+        # ENF11 (nocturne 15/10) — refus d'ÉTAT, plus 400.
+        resp = self.api.post('/api/django/stock/unites-logistiques/',
+                             {'type_unite': 'colis'}, format='json')
+        resp = self.api.post(
+            f'/api/django/stock/unites-logistiques/{resp.data["id"]}/sceller/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
     def test_cycle_complet_par_api(self):
         resp = self.api.post('/api/django/stock/unites-logistiques/',
                              {'type_unite': 'colis'}, format='json')

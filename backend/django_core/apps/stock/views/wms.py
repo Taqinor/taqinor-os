@@ -498,7 +498,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             sceller_unite_logistique(unite=unite, user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)  # seul refus : unité vide (état)
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data)
 
@@ -1258,6 +1258,12 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         bin?, note?}]}``."""
         from ..services import inspecter_retour_client
         retour = self.get_object()
+        if retour.statut not in (RetourClient.Statut.RECEPTIONNE,
+                                 RetourClient.Statut.INSPECTE):
+            # ENF11 (nocturne 15/10) — refus d'ÉTAT : 409, plus 400.
+            return Response(
+                {'detail': "Le retour doit être réceptionné avant d'être inspecté."},
+                status=status.HTTP_409_CONFLICT)
         try:
             inspecter_retour_client(
                 retour=retour, lignes=request.data.get('lignes'),

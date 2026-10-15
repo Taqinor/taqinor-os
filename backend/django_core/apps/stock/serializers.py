@@ -2792,7 +2792,7 @@ class RevalorisationStockSerializer(SameCompanyFKSerializerMixin,
                 and attrs[champ] != getattr(self.instance, champ)
             }
             if erreurs:
-                raise serializers.ValidationError(erreurs)
+                raise ConflitEtat(erreurs)  # ENF11 : état (créée), pas forme
         return attrs
 
 

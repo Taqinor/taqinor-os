@@ -222,12 +222,12 @@ class Ntret7ApiTests(Ntret7Base):
         self.assertEqual(recu.data['statut'], 'recu')
         self.assertEqual(recu.data['ecart_reception'], -1)
 
-    def test_receptionner_avant_expedition_renvoie_400(self):
+    def test_receptionner_avant_expedition_renvoie_409(self):
         transfert = self._demande(quantite=3)
         res = auth(self.admin).post(
             f'{self.URL}{transfert.id}/receptionner/',
             {'quantite_recue': 3}, format='json')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 409)
 
     def test_le_filtre_statut_est_applique(self):
         self._demande(quantite=2)
