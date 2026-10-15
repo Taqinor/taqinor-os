@@ -336,6 +336,11 @@ class DevisEtudesActionsMixin:
         if isinstance(corps, dict) and 'expected_updated_at' in corps:
             corps = {k: v for k, v in corps.items()
                      if k != 'expected_updated_at'}
+            if not corps:
+                # CI #1001 (merge group) — le seul jeton optimiste est un corps
+                # CONFORME (minProperties 1) : rien à fusionner, l'état courant
+                # est rendu (200), jamais un 400 sur un corps publié valide.
+                return Response({'etude_params': devis.etude_params or {}})
         if not isinstance(corps, dict) or not corps:
             return Response(
                 {'detail': 'Corps invalide : un objet {clé: valeur} non vide '

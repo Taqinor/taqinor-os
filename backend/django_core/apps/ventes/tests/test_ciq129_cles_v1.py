@@ -157,6 +157,16 @@ class EndpointEtudeParamsCiq129Tests(APITestCase):
         self.url = ('/api/django/ventes/devis/%s/etude-params/'
                     % self.devis.id)
 
+    def test_jeton_seul_est_un_patch_vide_200(self):
+        # CI #1001 (merge group) : `{"expected_updated_at": null}` est conforme au
+        # schéma publié (minProperties 1) — rien à fusionner : 200, état courant,
+        # jamais 400 ; `{}` reste un 400 (hors schéma).
+        resp = self.api.patch(self.url, {'expected_updated_at': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIn('etude_params', resp.data)
+        resp = self.api.patch(self.url, {}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
     def test_payback_part_diurne_cuisson_nocturne_refusees(self):
         for corps in ({'payback': 3.4}, {'part_diurne_pct': 70},
                       {'cuisson_nocturne': True}):
