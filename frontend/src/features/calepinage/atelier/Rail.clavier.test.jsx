@@ -23,18 +23,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
    `Rail.test.jsx` : ce fichier juge le CLAVIER, pas le contenu des panneaux.
    ========================================================================== */
 
-vi.mock('../../../api/calepinageApi', () => {
-  const reponse = () => Promise.resolve({ data: {} })
-  const doublure = () => new Proxy(function appel() { return reponse() }, {
-    // `then` DOIT rester absent : un proxy « thenable » serait attendu comme
-    // une promesse par `await` et bloquerait le test.
-    get: (_cible, prop) => (typeof prop === 'symbol' || prop === 'then'
-      ? undefined
-      : doublure()),
-    apply: () => reponse(),
-  })
-  return { default: doublure() }
-})
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/proxyPermissif')).moduleApiPermissif())
 vi.mock('../../../api/ventesApi', () => ({ default: { reviserDevis: vi.fn() } }))
 
 import Rail from './Rail'

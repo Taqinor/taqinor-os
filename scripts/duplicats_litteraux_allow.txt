@@ -95,7 +95,6 @@
 19daad2eed8c|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 1a1d90dc8fda|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
 1a99ab96df4b|apps/web/src/pages/ar/index.astro,apps/web/src/pages/en/index.astro,apps/web/src/pages/index.astro
-1ab746c03817|frontend/src/features/calepinage/atelier/PanneauSeries.test.jsx,frontend/src/features/calepinage/electrique/CheminementCables.test.jsx,frontend/src/features/calepinage/electrique/EquipementsElectriques.test.jsx,frontend/src/features/calepinage/electrique/Raccordement.test.jsx
 1b09f6cb82e1|apps/web/src/lib/estimatorBrainV2.ts,apps/web/src/lib/estimatorBrainV3.ts,apps/web/src/lib/freeLayout.ts,apps/web/src/lib/roofPro.ts,apps/web/src/lib/roofPro2.ts
 1b8c2c8da620|apps/web/src/scripts/roofPro11/cablageLot2.test.ts,apps/web/src/scripts/roofPro11/layoutEditor.test.ts
 1beebc4cc062|apps/web/src/scripts/roof-tool-pro.ts,apps/web/src/scripts/roofPro11/scene3d.ts
@@ -358,7 +357,6 @@
 6aab50ceb413|apps/web/src/scripts/roof-tool-pro11.ts,apps/web/src/scripts/roofPro11/optimizer.ts
 6b0b6cdadcc8|frontend/src/features/ia/module.config.test.jsx,frontend/src/features/parametres/module.config.test.jsx
 6b30f0fa7352|frontend/src/pages/stock/CategoriesStock.jsx,frontend/src/pages/stock/ReceptionsFournisseur.jsx
-6b5ee082d873|frontend/src/features/calepinage/atelier/Rail.clavier.test.jsx,frontend/src/features/calepinage/atelier/Rail.test.jsx,frontend/src/features/calepinage/atelier/Rail.usage.test.jsx
 6b97be586e89|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 6bdc3410fbe5|apps/web/src/pages/en/garanties.astro,apps/web/src/pages/garanties.astro
 6c4dae34640b|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
@@ -390,7 +388,6 @@
 746d4f236096|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 74c82bce57aa|frontend/src/features/crm/workspace/sections/TraceToitClient.test.jsx,frontend/src/features/ventes/ToitClientOverlay.test.jsx
 74ff5c176c5b|apps/web/src/pages/ar/pourquoi-taqinor.astro,apps/web/src/pages/en/pourquoi-taqinor.astro,apps/web/src/pages/pourquoi-taqinor.astro
-755c651baa86|frontend/src/features/calepinage/atelier/Rail.clavier.test.jsx,frontend/src/features/calepinage/atelier/Rail.test.jsx,frontend/src/features/calepinage/atelier/Rail.usage.test.jsx
 7594bbeba78a|apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/realisations/[slug].astro
 7631065ad3eb|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro
 76515de6a498|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/ar/realisations/index.astro,apps/web/src/pages/en/realisations/[slug].astro,apps/web/src/pages/en/realisations/index.astro,apps/web/src/pages/proposition/[...token].astro,apps/web/src/pages/realisations/[slug].astro,apps/web/src/pages/realisations/index.astro
@@ -571,7 +568,6 @@ b640adba99e2|apps/web/src/pages/ar/realisations/[slug].astro,apps/web/src/pages/
 b64237a46f85|apps/web/src/pages/ar/production-mesuree.astro,apps/web/src/pages/production-mesuree.astro
 b667737b77df|frontend/src/pages/admin/TenantsConsole.jsx,frontend/src/pages/crm/RelancesSuiviPage.jsx,frontend/src/pages/stock/BonsCommandeFournisseur.jsx,frontend/src/pages/stock/ModelesBcf.jsx,frontend/src/pages/ventes/FactureForm.jsx
 b6cab6094a86|apps/web/src/pages/ar/pompage-solaire.astro,apps/web/src/pages/en/pompage-solaire.astro,apps/web/src/pages/pompage-solaire.astro
-b71844384799|frontend/src/features/calepinage/atelier/Rail.clavier.test.jsx,frontend/src/features/calepinage/atelier/Rail.test.jsx,frontend/src/features/calepinage/atelier/Rail.usage.test.jsx
 b71958844be8|apps/web/src/pages/ar/blog/prix-installation-solaire-maroc-2026.astro,apps/web/src/pages/en/blog/prix-installation-solaire-maroc-2026.astro
 b74dee6f9698|apps/web/src/pages/ar/devis/mon-toit.astro,apps/web/src/pages/devis/mon-toit.astro,apps/web/src/pages/en/devis/mon-toit.astro
 b7d71faf0d66|apps/web/src/pages/ar/batteries-stockage.astro,apps/web/src/pages/batteries-stockage.astro,apps/web/src/pages/en/batteries-stockage.astro
