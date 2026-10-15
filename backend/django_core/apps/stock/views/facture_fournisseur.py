@@ -162,6 +162,14 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             _emettre_facture_creee, evaluer_rapprochement_3_voies,
         )
         ancien_bcf_id = serializer.instance.bon_commande_id
+        # ENF11 (nocturne 15/10) — en PATCH l'imbriqué `lignes` est partiel :
+        # une ligne sans `designation` (requise au schéma de la ligne) était
+        # acceptée. Les lignes REMPLACENT les existantes : chacune est revalidée
+        # COMPLÈTE par le sérialiseur de ligne publié (400 nommant le champ).
+        if 'lignes' in serializer.validated_data:
+            complet = serializer.fields['lignes'].child.__class__(
+                data=self.request.data.get('lignes'), many=True, context=serializer.context)
+            complet.is_valid(raise_exception=True)
         with transaction.atomic():
             facture = serializer.save()
             if (facture.bon_commande_id is not None

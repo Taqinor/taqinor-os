@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from rest_framework import serializers
 from ..openapi_helpers import INT, LISTE, P, STR, corps
+from ..utils.params import corps_objet
 from ..models import LotEntrepot
 from ..serializers import LotEntrepotSerializer
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -86,7 +87,7 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             for p in plan
         ])
 
-    @extend_schema(request=corps('LotSortirCorps', quantite=serializers.IntegerField(),
+    @extend_schema(request=corps('LotSortirCorps', quantite=serializers.IntegerField(min_value=1),
                                  forcer=serializers.BooleanField(required=False),
                                  motif=serializers.CharField(required=False, allow_blank=True)),
                    responses=LotEntrepotSerializer)
@@ -96,9 +97,11 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         société, défaut ON) sauf ``{"forcer": true, "motif": "..."}`` tracé.
         """
         lot = self.get_object()
-        try:
-            quantite = int(request.data.get('quantite'))
-        except (TypeError, ValueError):
+        # ENF11 (nocturne 15/10) — la quantité publiée (entier JSON >= 1) est
+        # la seule lue : la forme refusée est un 400, tout refus suivant
+        # (stock/lot insuffisant, quarantaine, péremption) vient de l'ÉTAT : 409.
+        quantite = corps_objet(request).get('quantite')
+        if isinstance(quantite, bool) or not isinstance(quantite, int) or quantite < 1:
             return Response(
                 {'detail': 'Quantité invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -135,5 +138,5 @@ class LotEntrepotViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
                     created_by=request.user)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(lot).data)

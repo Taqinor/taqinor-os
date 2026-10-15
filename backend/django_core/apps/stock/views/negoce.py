@@ -22,7 +22,7 @@ from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMi
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
 from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
-from ..erreurs_achats import ConflitEtat, EtatIncompatible
+from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
 from ..utils.params import (
     corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
@@ -215,8 +215,8 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(depot).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('DeclarerConsommationCorps', quantite=serializers.IntegerField(),
-                                 date_declaration=serializers.DateField(required=False, allow_null=True),
+    @extend_schema(request=corps('DeclarerConsommationCorps', quantite=serializers.IntegerField(min_value=1),
+                                 date_declaration=serializers.DateField(),
                                  note=serializers.CharField(required=False, allow_blank=True)),
                    responses={201: DeclarationFactureeSerializer})
     @action(detail=True, methods=['post'], url_path='declarer-consommation',
@@ -232,15 +232,24 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         from ..services_consignation import declarer_consommation
 
         depot = self.get_object()
+        # ENF11 (nocturne 15/10) — corps lu selon le schéma PUBLIÉ (entier >= 1,
+        # date requise) : forme refusée = 400 ; dépôt clos ou restant dépassé
+        # = refus d'ÉTAT (409).
+        donnees = corps_objet(request)
+        quantite = donnees.get('quantite')
+        if isinstance(quantite, bool) or not isinstance(quantite, int) or quantite < 1:
+            raise serializers.ValidationError({'quantite': ['Entier positif attendu.']})
+        date_declaration = date_ou_400(donnees.get('date_declaration'), 'date_declaration')
+        if date_declaration is None:
+            raise serializers.ValidationError({'date_declaration': ['Ce champ est obligatoire.']})
+        types_corps_ou_400(donnees, textes=('note',))
         try:
             declaration = declarer_consommation(
-                depot=depot, user=request.user,
-                quantite=request.data.get('quantite'),
-                date_declaration=request.data.get('date_declaration'),
-                note=request.data.get('note') or '')
+                depot=depot, user=request.user, quantite=quantite,
+                date_declaration=date_declaration,
+                note=donnees.get('note') or '')
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': str(exc)}, status=statut_refus_metier(exc))
         return Response(DeclarationFactureeSerializer(declaration).data,
                         status=status.HTTP_201_CREATED)
 

@@ -135,7 +135,7 @@
     },
     "consignation_declarer_consommation": {
       "endpoint": "POST /api/django/stock/consignations/<id>/declarer-consommation/",
-      "pourquoi": "NTDST3 — le client déclare ce qu'il a consommé (responsable/admin). Corps {quantite, date_declaration, note?}. 201 = la déclaration. Ne retouche JAMAIS le stock (la marchandise est partie à la mise en consignation). `statut` ∈ declaree / facturee ; `document_reference` vide tant que non facturée. 400 {detail} réels : « Quantité invalide. », « La quantité consommée doit être positive. », « La date de déclaration est obligatoire. », « Ce dépôt de consignation est clos. », « Quantité supérieure au restant en dépôt (<n>). ».",
+      "pourquoi": "NTDST3 — le client déclare ce qu'il a consommé (responsable/admin). Corps {quantite, date_declaration, note?}. 201 = la déclaration. Ne retouche JAMAIS le stock (la marchandise est partie à la mise en consignation). `statut` ∈ declaree / facturee ; `document_reference` vide tant que non facturée. ENF11 (nocturne 15/10) : corps hors schéma (quantite entier >= 1, date_declaration requise, note texte) → 400 nommant le champ ; refus d'ÉTAT → 409 {detail} : « Ce dépôt de consignation est clos. », « Quantité supérieure au restant en dépôt (<n>). » (`exemple_erreur_400` reste lu par les mocks du front, même corps que `exemple_erreur_409`).",
       "exemple": {
         "id": 8,
         "depot": 6,
@@ -154,6 +154,9 @@
         "note": ""
       },
       "exemple_erreur_400": {
+        "detail": "Quantité supérieure au restant en dépôt (16)."
+      },
+      "exemple_erreur_409": {
         "detail": "Quantité supérieure au restant en dépôt (16)."
       },
       "nouveau_astk198": "NOUVEAU — ASTK198 (clés facture_id, facture_reference ; non construites, exclues du test de forme)",

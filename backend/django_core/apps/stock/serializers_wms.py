@@ -65,7 +65,7 @@ class LignePickingSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class VaguePickingSerializer(CompanyScopedRelationsMixin,
+class VaguePickingSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                              serializers.ModelSerializer):
     """NTWMS4 — vague de prélèvement multi-source. La référence est posée
     côté serveur (`core.numbering`), jamais acceptée du client."""

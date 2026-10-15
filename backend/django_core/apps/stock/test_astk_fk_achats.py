@@ -251,6 +251,19 @@ class FkAchatsTests(TestCase):
                 format='json')
             self.assertEqual(r.status_code, 400, (facture, r.content))
 
+    def test_facture_patch_ligne_sans_designation_400(self):
+        """ENF11 (nocturne 15/10) — l'imbriqué partiel du PATCH acceptait une
+        ligne sans `designation` (requise au schéma de la ligne)."""
+        facture = FactureFournisseur.objects.create(
+            company=self.co_a, reference='FFA-ENF11', fournisseur=self.fa,
+            montant_ht=Decimal('0'), montant_tva=Decimal('0'), montant_ttc=Decimal('0'))
+        r = self.api.patch(f'/api/django/achats/factures-fournisseur/{facture.pk}/', {
+            'lignes': [{'produit': self.pa.pk, 'quantite': '1', 'prix_unitaire_ht': '0',
+                        'taux_tva': '0'}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('designation', str(r.json()))
+        self.assertFalse(facture.lignes.exists())
+
     def test_fuzz_retour_patch_avec_lignes(self):
         """ERR fuzz : PATCH d'un retour brouillon portant ``lignes`` (écriture
         imbriquée) remplace les lignes au lieu de lever AssertionError (500)."""

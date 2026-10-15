@@ -338,7 +338,7 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                         ChampsStrictsProduitMixin, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
-    categorie = CategorieSerializer(read_only=True)
+    categorie = CategorieSerializer(read_only=True, allow_null=True)  # ENF11 : produit sans catégorie
     categorie_id = serializers.PrimaryKeyRelatedField(
         queryset=Categorie.objects.none(),
         source='categorie',
@@ -507,14 +507,14 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         silence au dimensionnement.
         """
         if value in (None, {}):  # CI #997 fuzz (2) : 0/""/[]/false -> 400 (plus « vide »)
-            if self.instance is not None and self.instance.courbe_pompe:
-                raise serializers.ValidationError(
+            if self.instance is not None and self.instance.courbe_pompe:  # ENF11 : la courbe EN PLACE s'oppose (409)
+                raise ConflitEtat({'courbe_pompe': [
                     "Vider ce champ est interdit : il porte une courbe de "
                     "performance constructeur RÉELLE, saisie à la main et "
                     "non reconstructible depuis l'ERP. Remplacez-la par la "
                     "NOUVELLE courbe au lieu de la vider — si elle doit "
                     "réellement redevenir vide, c'est une décision "
-                    "fondateur, pas une simple mise à jour.")
+                    "fondateur, pas une simple mise à jour."]})
             return value
         if not isinstance(value, dict):
             raise serializers.ValidationError(

@@ -752,10 +752,10 @@ class ContratNegoceTests(WmsBase):
         rep = self.api.post(f'{url}declarer-consommation/',
                             {'quantite': 99999,
                              'date_declaration': '2026-10-11'}, format='json')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)
         motif = r'^Quantité supérieure au restant en dépôt \(\d+\)\.$'
         self.assertRegex(rep.json()['detail'], motif)
-        self.assertRegex(decl['exemple_erreur_400']['detail'], motif)
+        self.assertRegex(decl['exemple_erreur_409']['detail'], motif)
 
         rep = self.api.get(f'{self.BASE}consignations/')
         ligne = rep.json()['results'][0]
