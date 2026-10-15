@@ -109,10 +109,6 @@ Undocumented Content-Type|GET /api/public/v1/calepinages/{id}/resultat/
 Undocumented Content-Type|PATCH /api/public/v1/leads-write/{id}/
 Undocumented Content-Type|POST /api/public/v1/jobs/{id}/relancer/
 Undocumented Content-Type|POST /api/public/v1/leads-write/{id}/activites/
-Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/attestation/
-Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/bon-livraison/
-Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/dossier-remise/
-Undocumented HTTP status code|GET /api/django/documents/chantiers/{id}/pv-reception/
 Undocumented HTTP status code|POST /api/public/v1/oauth/token/
 API accepted schema-violating request|POST /api/django/entites/entites/importer/
 API accepted schema-violating request|POST /api/django/ventes/devis/composition/
