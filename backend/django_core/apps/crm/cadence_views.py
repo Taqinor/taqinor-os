@@ -230,6 +230,9 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                     'type_piece', 'mode', 'due_at', 'raison_attente')
     queryset = RelanceEtape.objects.select_related('lead', 'lead__owner').all()
     serializer_class = RelanceEtapeSerializer
+    # ENF15 — ``list`` est écrit à la main (``{count, results}`` de la file due
+    # complète) : jamais paginé par DRF.
+    pagination_class = None
 
     def get_permissions(self):
         # MRY10/MRY13 — `reporter` et `message` sont listées EXPLICITEMENT :
@@ -321,6 +324,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                                sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER_ID,
                                sd.param('statut', enum=[*STATUTS_SUIVI])], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='suivi',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def suivi(self, request):
         """MRY30 — « Suivi des relances » : TOUTES les touches d'une PÉRIODE,
@@ -443,6 +447,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                        'results': serializers.ListField(child=serializers.DictField()),
                    }))
     @action(detail=False, methods=['get'], url_path='cadences-echues',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def cadences_echues(self, request):
         """CAD99 — la liste « cadences échues à clore » (forme
@@ -1780,6 +1785,7 @@ class LeadCadenceActionsMixin:
     # ── FG31 — File de relance du jour ───────────────────────────────────────
     @extend_schema(parameters=[sd.P_SCOPE], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='relances',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
     def relances(self, request):
         """File de relance consolidée.

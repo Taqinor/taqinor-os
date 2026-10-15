@@ -1122,6 +1122,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
 
     @extend_schema(responses=sd.OBJ)
     @action(detail=True, methods=['get'], url_path='jalons-devis',
+            pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[HasPermissionOrLegacy('crm_voir')])
     def jalons_devis(self, request, pk=None):
         """CRX37 — jalons du cycle de vie des devis du lead (envoyé / ouvert /
