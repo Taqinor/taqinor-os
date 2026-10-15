@@ -12,7 +12,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes, parser_classes
-from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte
+from core.champs_stricts import ChaineStricte
 from core.parametres_requete import choix_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import PARSEURS_JSON, ChoixDocumente, corps_valide
@@ -313,11 +313,8 @@ _MAPPING_REQUETE = inline_serializer('ImportMappingRequete', {
 @extend_schema(
     # ENF11 (api-fuzz) : un mapping vide est refusé (400) — le corps publié exige
     # au moins une paire colonne→champ, de texte à texte.
-    # Une colonne ne porte pas de caractère nul (jsonb le refuse).
     extensions={EXTENSION_CORPS_RESSERRE: {
-        'type': 'object', 'properties': {'mapping': {
-            'minProperties': 1,
-            'propertyNames': {'pattern': MOTIF_SANS_NUL}}}}},
+        'type': 'object', 'properties': {'mapping': {'minProperties': 1}}}},
     request=_MAPPING_REQUETE,
     responses=inline_serializer('ImportMappingEnregistre', {
         'id': serializers.IntegerField(),
@@ -340,11 +337,11 @@ def save_mapping(request):
             {'detail': 'Mapping invalide (dict colonne→champ attendu).'},
             status=400)
     # Une colonne portant un caractère nul ne peut pas être stockée en JSON
-    # (jsonb le refuse → 500) et ne correspond à aucun en-tête de fichier.
+    # (jsonb le refuse → 500) et ne correspond à aucun en-tête de fichier. Le
+    # schéma OpenAPI 3.0 ne sait pas borner les CLÉS d'un objet (pas de
+    # ``propertyNames``) : refus inexprimable au schéma = 409.
     if any('\x00' in colonne for colonne in mapping):
-        return Response(
-            {'mapping': ['Nom de colonne invalide (caractère nul).']},
-            status=400)
+        raise ConflitEtat('Nom de colonne invalide (caractère nul).')
     # AANA9 — un champ hors ``FIELD_MAPS[target]`` (company_id, owner_id…)
     # est refusé en 400 lisible, jamais enregistré.
     try:
