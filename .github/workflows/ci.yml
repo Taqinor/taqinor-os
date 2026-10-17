@@ -1957,6 +1957,7 @@ jobs:
       # 2026-08-12 : compta/budgets, flotte/conformite, production/abonnements).
       # Le throttle garde son test dédié : core/tests/test_tenant_throttle.py.
       TENANT_RATE_LIMIT: '0'
+      LOGIN_RATE_LIMIT: '1000/minute'  # nocturne #726 — matrice e2e, une IP
     steps:
       - uses: actions/checkout@v4
       # WOW-CI RONDE 5 — `actions/setup-python` a disparu (Python 3.11 et toutes

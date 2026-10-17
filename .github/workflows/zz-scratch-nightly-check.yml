@@ -228,6 +228,7 @@ jobs:
       MINIO_BUCKET_PDF: erp-pdf
       MINIO_BUCKET_UPLOADS: erp-uploads
       TENANT_RATE_LIMIT: '0'
+      LOGIN_RATE_LIMIT: '1000/minute'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -293,7 +294,7 @@ jobs:
           from rest_framework.test import APIClient
           from django.contrib.auth import get_user_model
           u = get_user_model().objects.get(username='demo_admin')
-          c = APIClient(); c.force_authenticate(u)
+          c = APIClient(HTTP_HOST='127.0.0.1'); c.force_authenticate(u)
           prods = c.get('/api/django/stock/produits/?page_size=100').json()
           prods = prods.get('results', prods)
           p = next(x for x in prods if float(x.get('prix_vente') or 0) > 0)
