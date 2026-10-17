@@ -31,6 +31,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 
 from . import activity
+from .validations_releve import exiger_objet
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
@@ -2791,7 +2792,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         # ASAV2 — même décision que les deux portes de facture.
         from .services import decision_facturation
-        override = str(request.data.get('override') or '') in (
+        override = str(exiger_objet(request.data).get('override') or '') in (
             '1', 'true', 'True', 'on')
         decision = decision_facturation(ticket, request.user, override)
         if decision['refuse']:
@@ -3555,7 +3556,6 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def _ticket_de_la_societe(self, request):
         """Résout le ticket du corps, scopé société. Erreur FRANÇAISE qui
         NOMME le champ fautif (jamais un « non enregistré » générique)."""
-        from .validations_releve import exiger_objet
         exiger_objet(request.data)
         brut = request.data.get('ticket')
         if brut in (None, ''):

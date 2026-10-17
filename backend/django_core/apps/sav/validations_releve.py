@@ -1,7 +1,7 @@
 """Validation du corps d'un relevé de compteur (extraite de ``views.py``, C20).
 
 Corrections de fuzz nocturne : corps non objet, valeur hors bornes
-(DecimalField(12, 2) -> débordement SQL = 500), date non texte ou future.
+(DecimalField(12, 2) -> débordement SQL = 500), date non texte ou hors bornes.
 """
 from datetime import date
 from decimal import Decimal, InvalidOperation
@@ -14,9 +14,11 @@ from .models import ReleveCompteurEquipement
 
 
 def exiger_objet(donnees):
-    """Un corps JSON LISTE n'a pas de ``.get`` -> 500 : 400 à la place."""
+    """Un corps JSON LISTE n'a pas de ``.get`` -> 500 : 400 à la place.
+    Rend ``donnees`` (lecture en une expression dans les vues-murs)."""
     if not hasattr(donnees, 'get'):
         raise ParseError('Corps JSON objet attendu.')
+    return donnees
 
 
 def _refus(cle, message):
@@ -51,6 +53,8 @@ def lire_releve(corps):
         date_releve = date.fromisoformat(date_raw) if date_raw else timezone.localdate()
     except ValueError:
         return _refus('date', 'date invalide.')
-    if date_releve > timezone.localdate():
-        return _refus('date', 'La date du relevé ne peut pas être dans le futur.')
+    # Pas de refus « futur » (contrats et tests datent leurs relevés en
+    # 2027) : seule l'année hors de toute saisie plausible est refusée.
+    if date_releve.year > timezone.localdate().year + 10:
+        return _refus('date', 'date hors bornes (année trop lointaine).')
     return type_releve, valeur, date_releve

@@ -92,8 +92,9 @@ class ActionLayoutTest(BaseApiCalepinage):
         self.assertEqual(self.calepinage.statut, avant)
 
     def test_corps_vide_refuse_en_francais(self):
-        reponse = self.api.post(url_layout(self.calepinage.pk), {},
-                                format='json')
+        # ENF11 nocturne : l'If-Match manquant est jugé AVANT le corps (428) —
+        # le corps vide se juge donc avec le jeton, comme l'écran l'envoie.
+        reponse = self._poster(self.calepinage.pk, {})
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('roof_layout', reponse.data)
 

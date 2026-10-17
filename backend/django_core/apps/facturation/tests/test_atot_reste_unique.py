@@ -264,7 +264,10 @@ class EtatVenteVNT23Tests(TestCase):
         self.assertEqual(etat['emis_ttc'], '0.00')
         self.assertEqual(etat['reste_a_facturer_ttc'], '34000.00')
         self.assertEqual(etat['reste_a_payer_ttc'], '49000.00')
-        self.assertFalse(etat['peut']['facturer_acompte'])
+        # VNT62 / VNT82 (nocturne #726) : le brouillon d'acompte ne ferme pas
+        # « Facturer l'acompte » — le geste REPREND ce brouillon (AMET4).
+        self.assertTrue(etat['peut']['facturer_acompte'])
+        self.assertFalse(etat['peut']['facturer_solde'])
         self.assertEqual(etat['factures'][0]['id'], brouillon.pk)
         self.assertTrue(etat['factures'][0]['peut']['emettre'])
         self.assertTrue(etat['factures'][0]['peut']['supprimer'])
