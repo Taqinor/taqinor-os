@@ -624,10 +624,19 @@ def _gestes_vente(plan, actionnable, palier) -> tuple:
     libre = actionnable and brouillon is None
     premiere = tranches[0] if tranches else None
     emises = any(f.statut in STATUTS_EMIS for f, _r in plan['factures_parts'])
+    # VNT62 / VNT82 (nocturne #726) — le brouillon d'acompte AUTOMATIQUE de
+    # l'acceptation n'est pas un verrou : « Facturer l'acompte » le REPREND
+    # (même brouillon, AMET4, ``_facturer_acompte``). Un autre brouillon
+    # (tranche intermédiaire, solde) ferme toujours le geste.
+    acompte_en_brouillon = bool(
+        actionnable and brouillon is not None and premiere is not None
+        and brouillon['cle'] == premiere['cle']
+        and str(premiere['type']) == 'acompte')
     peut = {
-        'facturer_acompte': bool(libre and premiere
-                                 and premiere['statut'] == 'a_faire'
-                                 and premiere['montant_ttc'] > 0),
+        'facturer_acompte': bool(
+            (libre or acompte_en_brouillon) and premiere
+            and premiere['statut'] in ('a_faire', 'brouillon')
+            and premiere['montant_ttc'] > 0),
         'facturer_solde': bool(libre and emises and a_venir),
         'facturer_complete': bool(libre and not plan['factures_parts']),
         'prix_negocie': actionnable and palier,

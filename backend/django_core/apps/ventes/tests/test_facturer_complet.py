@@ -808,6 +808,29 @@ class AcompteAutomatiqueVNT62(_BaseVente):
                          Decimal('15000.00'))
         self.assertEqual(self._brouillons_acompte([devis.pk]).count(), 1)
 
+    def test_le_geste_facturer_l_acompte_reste_offert_sur_le_brouillon_auto(self):
+        # Nocturne #726 (VNT82) — « Facturer l'acompte » REPREND le brouillon
+        # automatique (test ci-dessus) : ``peut.facturer_acompte`` restait
+        # faux dès qu'un brouillon existait, le bouton du panneau de vente
+        # disparaissait et la fiche lead ne proposait plus que « Émettre ».
+        from apps.ventes.vente_facturation import etat_vente
+        devis = self._accepte('DEV-VNT62-50')
+        etat = etat_vente(devis, self.user)
+        self.assertEqual(etat['prochaine_action'], 'acompte')
+        self.assertTrue(etat['peut']['facturer_acompte'], etat['peut'])
+        self.assertFalse(etat['peut']['facturer_solde'])
+        # Un AUTRE brouillon (tranche matériel) ferme bien le geste.
+        self._facturer(devis, nature='acompte', montant_ttc=Decimal('14700'))
+        acompte = self._brouillons_acompte([devis.pk]).get()
+        acompte.statut = Facture.Statut.EMISE
+        acompte.save(update_fields=['statut'])
+        self._tranche(devis, '', 'materiel', '29400.00', '24932.00',
+                      '4468.00', statut='brouillon',
+                      type_facture='intermediaire')
+        etat = etat_vente(devis, self.user)
+        self.assertFalse(etat['peut']['facturer_acompte'])
+        self.assertFalse(etat['peut']['facturer_solde'])
+
     def test_jamais_un_deuxieme_brouillon(self):
         from apps.ventes.domain.facturation_vente import (
             acompte_a_l_acceptation)
