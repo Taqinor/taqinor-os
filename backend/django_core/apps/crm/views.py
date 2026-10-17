@@ -1365,7 +1365,12 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         }, status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
     @extend_schema(request={'application/json': sd.corps('CrmNoterRequest', body=serializers.CharField()),
-                            'multipart/form-data': sd.corps('CrmNoterMultipartRequest', body=serializers.CharField(),
+                            # ENF11 nocturne — `body` facultatif en multipart : une
+                            # pièce jointe seule EST une note (VX111, « 📎 Pièce
+                            # jointe ») ; sans texte NI fichier → 400 `body`.
+                            'multipart/form-data': sd.corps('CrmNoterMultipartRequest',
+                                                            body=serializers.CharField(required=False,
+                                                                                       allow_blank=True),
                                                             file=serializers.FileField(required=False))},
                    responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
@@ -1385,6 +1390,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         AttachmentsPanel) et est liée à cette note. Jamais un second magasin.
         """
         lead = self.get_object()
+        verifier_corps_texte(request, ('body',))
         body = (request.data.get('body') or '').strip()
         file = request.FILES.get('file')
         if not body and not file:

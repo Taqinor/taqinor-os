@@ -117,6 +117,23 @@ class NoterAttachmentTests(TestCase):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertIsNotNone(resp.data['attachment_url'])
 
+    def test_schema_declare_body_facultatif_en_multipart(self):
+        """ENF11 nocturne — déclaration = comportement : la note à pièce
+        jointe seule est un usage voulu, ``body`` n'est donc PAS requis dans
+        le schéma multipart (il reste requis en JSON)."""
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator().get_schema(request=None, public=True)
+        comp = schema['components']['schemas']
+        self.assertNotIn('body', comp['CrmNoterMultipartRequest'].get(
+            'required', []))
+        self.assertIn('body', comp['CrmNoterRequest'].get('required', []))
+
+    def test_note_body_non_texte_400_nomme_le_champ(self):
+        resp = self.api.post(
+            self._noter_url(), {'body': {}}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('body', resp.data)
+
     def test_attachment_visible_dans_attachmentspanel_du_lead(self):
         # Non-duplication : la pièce jointe créée via noter() apparaît dans
         # la MÊME liste que records.attachments?model=crm.lead&id=<id>
