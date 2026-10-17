@@ -150,3 +150,20 @@ class XSAV17ReleveCompteurTest(TestCase):
             f'/api/django/sav/equipements/{equip.id}/releves-compteur/',
             {'type': 'heures', 'valeur': '50', 'date': '2026-01-02'})
         self.assertEqual(resp.status_code, 409, resp.content)  # ENF11 : état du compteur
+
+    def test_api_releve_bornes_400_nomme_le_champ(self):
+        """ENF11 nocturne : valeur hors max_digits / date future = 400, jamais 500."""
+        equip = self._equip()
+        api = auth(self.admin)
+        url = f'/api/django/sav/equipements/{equip.id}/releves-compteur/'
+        for corps, champ in (
+                ({'type': 'kwh', 'valeur': '031223732205', 'date': '2026-01-01'}, 'valeur'),
+                ({'type': 'kwh', 'valeur': 'NaN'}, 'valeur'),
+                ({'type': 'kwh', 'valeur': '-1'}, 'valeur'),
+                ({'type': 'kwh', 'valeur': '10', 'date': '4044-03-03'}, 'date'),
+                ({'type': 'kwh', 'valeur': '10', 'date': 5}, 'date')):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+            self.assertIn(champ, resp.json())
+        resp = api.post(url, [{'type': 'kwh'}], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)

@@ -758,7 +758,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         request=_sch('SavReleveCompteurRequete', {
             'type': drf_serializers.RegexField(r'^(heures|kwh|m3)$'),
             'valeur': drf_serializers.DecimalField(
-                max_digits=14, decimal_places=2),
+                max_digits=12, decimal_places=2, min_value=0),
             'date': drf_serializers.DateField(required=False),
         }),
         responses={201: _sch('SavReleveCompteurReponse', {
@@ -783,7 +783,10 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         from datetime import date as _date
         from .services import ReleveDecroissantError, enregistrer_releve_compteur
 
-        type_releve = request.data.get('type')
+        corps = request.data
+        if not hasattr(corps, 'get'):
+            return Response({'detail': 'Corps JSON objet attendu.'}, status=400)
+        type_releve = corps.get('type')
         # AGR615 — le compteur d'eau d'une pompe (m³) est accepté.
         if type_releve not in (
                 ReleveCompteurEquipement.Type.HEURES,
@@ -791,16 +794,32 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
                 ReleveCompteurEquipement.Type.M3):
             return Response(
                 {'detail': 'type invalide (heures|kwh|m3).'}, status=400)
+        # Cause (fuzz nocturne) : une valeur à 12 chiffres entiers dépassait
+        # DecimalField(max_digits=12, decimal_places=2) -> débordement SQL = 500.
+        # Le compteur est cumulatif : fini, >= 0 et < 10**10 (10 entiers + 2 décimales).
         try:
-            valeur = Decimal(str(request.data.get('valeur')))
-        except (InvalidOperation, TypeError):
-            return Response({'detail': 'valeur invalide.'}, status=400)
+            valeur = Decimal(str(corps.get('valeur')))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response({'valeur': 'valeur invalide.'}, status=400)
+        if (not valeur.is_finite() or valeur < 0
+                or valeur >= Decimal(10) ** 10):
+            return Response(
+                {'valeur': 'valeur hors bornes (0 à 9999999999,99).'},
+                status=400)
+        valeur = valeur.quantize(Decimal('0.01'))
 
-        date_raw = (request.data.get('date') or '').strip()
+        date_raw = corps.get('date') or ''
+        if not isinstance(date_raw, str):
+            return Response({'date': 'date invalide.'}, status=400)
+        date_raw = date_raw.strip()
         try:
             date_releve = _date.fromisoformat(date_raw) if date_raw else timezone.localdate()
         except ValueError:
-            return Response({'detail': 'date invalide.'}, status=400)
+            return Response({'date': 'date invalide.'}, status=400)
+        if date_releve > timezone.localdate():
+            return Response(
+                {'date': 'La date du relevé ne peut pas être dans le futur.'},
+                status=400)
 
         try:
             releve, ticket = enregistrer_releve_compteur(
