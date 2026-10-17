@@ -20,7 +20,8 @@ from core.unicite import UniciteEn409Mixin
 
 from .serializers_blocs import (
     bloc_calepinage, bloc_dossier_8221_resume, bloc_regime_suggere)
-from .serializers_stage import refus_protege, valider_unicite_societe
+from .serializers_stage import (
+    CautionTotaleMixin, refus_protege, valider_unicite_societe)
 
 from .models import (
     Equipe,
@@ -2247,7 +2248,8 @@ class RegleReapproSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, S
         return attrs
 
 
-class MaterielConsigneSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class MaterielConsigneSerializer(CautionTotaleMixin, ChampsStrictsMixin,
+                                 SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE
     SERVEUR ; le statut et la trace de retour avancent via l'action `retourner`.
@@ -2282,22 +2284,6 @@ class MaterielConsigneSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixi
         if not value:
             raise serializers.ValidationError('La designation est requise.')
         return value
-
-    def validate(self, attrs):
-        # ENF11 nocturne - caution_totale (= unitaire x quantite) est servie
-        # en DecimalField(12, 2) : un produit >= 10**10 faisait lever
-        # InvalidOperation a la serialisation (500 sur POST puis sur toute la
-        # liste). On le refuse a l'ecriture, en nommant le champ.
-        quantite = attrs.get('quantite', getattr(self.instance, 'quantite', 0))
-        caution = attrs.get(
-            'caution_unitaire', getattr(self.instance, 'caution_unitaire', 0))
-        if (quantite or 0) * Decimal(caution or 0) >= Decimal(10) ** 10:
-            champ = ('caution_unitaire' if 'caution_unitaire' in attrs
-                     else 'quantite')
-            raise serializers.ValidationError(
-                {champ: ['Caution totale trop elevee '
-                         '(quantite x caution unitaire).']})
-        return attrs
 
 
 class KitComposantSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):

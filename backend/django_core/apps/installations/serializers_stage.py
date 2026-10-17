@@ -4,6 +4,8 @@
 drapeau bloquant, les exigences (`exige_*`) et le statut hérité mappé ; `cle`
 et `protege` sont posés/verrouillés côté serveur pour les étapes système.
 """
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from core.champs_stricts import ChampsStrictsMixin
@@ -68,3 +70,23 @@ class StageModeleSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
             raise refus_protege('cle', "La clé d'une étape système ne peut pas être modifiée.")
         return valider_unicite_societe(
             self, 'cle', value, "Cette clé d'étape existe déjà.")
+
+
+class CautionTotaleMixin:
+    """C20 — ``validate`` de ``MaterielConsigneSerializer`` (extrait de ``serializers.py``)."""
+
+    def validate(self, attrs):
+        # ENF11 nocturne - caution_totale (= unitaire x quantite) est servie
+        # en DecimalField(12, 2) : un produit >= 10**10 faisait lever
+        # InvalidOperation a la serialisation (500 sur POST puis sur toute la
+        # liste). On le refuse a l'ecriture, en nommant le champ.
+        quantite = attrs.get('quantite', getattr(self.instance, 'quantite', 0))
+        caution = attrs.get(
+            'caution_unitaire', getattr(self.instance, 'caution_unitaire', 0))
+        if (quantite or 0) * Decimal(caution or 0) >= Decimal(10) ** 10:
+            champ = ('caution_unitaire' if 'caution_unitaire' in attrs
+                     else 'quantite')
+            raise serializers.ValidationError(
+                {champ: ['Caution totale trop elevee '
+                         '(quantite x caution unitaire).']})
+        return attrs
