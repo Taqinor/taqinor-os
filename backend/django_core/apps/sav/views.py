@@ -14,7 +14,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    APIException, NotFound, ParseError, ValidationError,
+    APIException, NotFound, ValidationError,
 )
 from rest_framework.response import Response
 
@@ -36,7 +36,7 @@ from .models import (
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
-    ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
+    ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
     TicketActiviteAFaire, TicketFollower,
     WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
@@ -780,46 +780,13 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             qs = equipement.releves_compteur.all()
             return Response(ReleveCompteurEquipementSerializer(qs, many=True).data)
 
-        from datetime import date as _date
         from .services import ReleveDecroissantError, enregistrer_releve_compteur
+        from .validations_releve import lire_releve
 
-        corps = request.data
-        if not hasattr(corps, 'get'):
-            return Response({'detail': 'Corps JSON objet attendu.'}, status=400)
-        type_releve = corps.get('type')
-        # AGR615 — le compteur d'eau d'une pompe (m³) est accepté.
-        if type_releve not in (
-                ReleveCompteurEquipement.Type.HEURES,
-                ReleveCompteurEquipement.Type.KWH,
-                ReleveCompteurEquipement.Type.M3):
-            return Response(
-                {'detail': 'type invalide (heures|kwh|m3).'}, status=400)
-        # Cause (fuzz nocturne) : une valeur à 12 chiffres entiers dépassait
-        # DecimalField(max_digits=12, decimal_places=2) -> débordement SQL = 500.
-        # Le compteur est cumulatif : fini, >= 0 et < 10**10 (10 entiers + 2 décimales).
-        try:
-            valeur = Decimal(str(corps.get('valeur')))
-        except (InvalidOperation, TypeError, ValueError):
-            return Response({'valeur': 'valeur invalide.'}, status=400)
-        if (not valeur.is_finite() or valeur < 0
-                or valeur >= Decimal(10) ** 10):
-            return Response(
-                {'valeur': 'valeur hors bornes (0 à 9999999999,99).'},
-                status=400)
-        valeur = valeur.quantize(Decimal('0.01'))
-
-        date_raw = corps.get('date') or ''
-        if not isinstance(date_raw, str):
-            return Response({'date': 'date invalide.'}, status=400)
-        date_raw = date_raw.strip()
-        try:
-            date_releve = _date.fromisoformat(date_raw) if date_raw else timezone.localdate()
-        except ValueError:
-            return Response({'date': 'date invalide.'}, status=400)
-        if date_releve > timezone.localdate():
-            return Response(
-                {'date': 'La date du relevé ne peut pas être dans le futur.'},
-                status=400)
+        lu = lire_releve(request.data)
+        if isinstance(lu, Response):
+            return lu
+        type_releve, valeur, date_releve = lu
 
         try:
             releve, ticket = enregistrer_releve_compteur(
@@ -3588,9 +3555,8 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def _ticket_de_la_societe(self, request):
         """Résout le ticket du corps, scopé société. Erreur FRANÇAISE qui
         NOMME le champ fautif (jamais un « non enregistré » générique)."""
-        # Cause (fuzz nocturne) : un corps JSON LISTE n'a pas de .get -> 500.
-        if not hasattr(request.data, 'get'):
-            raise ParseError('Corps JSON objet attendu.')
+        from .validations_releve import exiger_objet
+        exiger_objet(request.data)
         brut = request.data.get('ticket')
         if brut in (None, ''):
             raise ValidationError({'ticket': 'Indiquez le ticket à rattacher.'})
