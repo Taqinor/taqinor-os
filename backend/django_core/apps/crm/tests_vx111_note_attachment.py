@@ -124,9 +124,18 @@ class NoterAttachmentTests(TestCase):
         from drf_spectacular.generators import SchemaGenerator
         schema = SchemaGenerator().get_schema(request=None, public=True)
         comp = schema['components']['schemas']
-        self.assertNotIn('body', comp['CrmNoterMultipartRequest'].get(
+        # COMPONENT_SPLIT_REQUEST suffixe les corps de requête (« …Request ») :
+        # on résout chaque composant par son préfixe, jamais par un nom figé.
+
+        def composant(prefixe, exclure=''):
+            cles = [c for c in comp if c.startswith(prefixe)
+                    and (not exclure or exclure not in c)]
+            self.assertTrue(cles, (prefixe, sorted(c for c in comp if 'Noter' in c)))
+            return comp[cles[0]]
+        self.assertNotIn('body', composant('CrmNoterMultipartRequest').get(
             'required', []))
-        self.assertIn('body', comp['CrmNoterRequest'].get('required', []))
+        self.assertIn('body', composant('CrmNoterRequest', 'Multipart').get(
+            'required', []))
 
     def test_note_body_non_texte_400_nomme_le_champ(self):
         resp = self.api.post(

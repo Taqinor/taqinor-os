@@ -263,7 +263,8 @@ class LesReglesMigreesViventCoteServeur(_Base):
         libelle_role} (lus ainsi par l'écran) — l'OpenAPI ne les déclare plus
         comme des chaînes."""
         from apps.ventes.views.openapi_docs import CompositionResponse
-        champ = CompositionResponse().fields['marques_manquantes']
+        # ``_ser`` rend une INSTANCE (inline_serializer), pas une classe.
+        champ = CompositionResponse.fields['marques_manquantes']
         self.assertEqual(
             set(champ.child.fields), {'role', 'marque', 'libelle_role'})
 

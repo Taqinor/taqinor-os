@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3529}
+counts: {paths: 4814, operations: 7566, components: 3530}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -8290,7 +8290,7 @@ query_params:
   get /api/django/tiers/tiers/: ordering page page_size search
   get /api/django/tiers/tiers/verifier-doublon/: email ice
   get /api/django/trash/corbeille/: depuis jusqua ordering page page_size restaures search type
-  get /api/django/trash/corbeille/export-xlsx/: depuis jusqua restaures type
+  get /api/django/trash/corbeille/export-xlsx/: depuis jusqua ordering restaures type
   get /api/django/users/: ordering page page_size search
   get /api/django/users/avatar-image/: key
   get /api/django/uxviews/favoris/: ordering page page_size search
@@ -9072,7 +9072,7 @@ query_params:
   get /api/v1/tiers/tiers/: ordering page page_size search
   get /api/v1/tiers/tiers/verifier-doublon/: email ice
   get /api/v1/trash/corbeille/: depuis jusqua ordering page page_size restaures search type
-  get /api/v1/trash/corbeille/export-xlsx/: depuis jusqua restaures type
+  get /api/v1/trash/corbeille/export-xlsx/: depuis jusqua ordering restaures type
   get /api/v1/users/: ordering page page_size search
   get /api/v1/users/avatar-image/: key
   get /api/v1/uxviews/favoris/: ordering page page_size search
@@ -10102,6 +10102,7 @@ components:
 - DevisLectureClient
 - DevisLotCreationRequestRequest
 - DevisLotsResponse
+- DevisMarqueManquante
 - DevisNoterRequestRequest
 - DevisOffreTailleAppliquerRequestRequest
 - DevisOffreTailleCleRequestCleEnum
