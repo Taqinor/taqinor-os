@@ -164,9 +164,11 @@ def ips_declarees_de_requete(request):
 def ip_origine_declaree(request):
     """QJEQUIPE4 (17/10/2026) — l'adresse d'ORIGINE que la requête DÉCLARE :
     ``CF-Connecting-IP`` (posé par notre Worker SSR apps/web d'après l'IP
-    réelle du visiteur, ou par Cloudflare), sinon le PREMIER saut de
-    ``X-Forwarded-For``, sinon :func:`ip_de_requete` (dernier saut de
-    confiance).
+    réelle du visiteur, ou par Cloudflare), sinon :func:`ip_de_requete`
+    (dernier saut de confiance). Le premier saut ``X-Forwarded-For`` n'est
+    PAS lu : c'est la valeur que l'appelant écrit lui-même (QJR416), et le
+    contrat du beacon public (« seul le dernier saut compte ») reste entier
+    pour tout accès DIRECT à l'ERP.
 
     STRICTEMENT réservée au JOURNAL DE CONSULTATION (``crm.VisiteExterne``,
     corps des notifications « devis ouvert ») et à la classification
@@ -186,10 +188,6 @@ def ip_origine_declaree(request):
         cloudflare = _texte_ip(meta.get('HTTP_CF_CONNECTING_IP'))
         if cloudflare:
             return cloudflare
-        premier = _texte_ip(
-            str(meta.get('HTTP_X_FORWARDED_FOR') or '').split(',')[0])
-        if premier:
-            return premier
         return ip_de_requete(request)
     except Exception:  # noqa: BLE001 — défensif, comme ip_de_requete (D-ENF22-BLE001)
         logger.warning("ip origine declaree : échec ignoré, comportement dégradé", exc_info=True)

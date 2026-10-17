@@ -4932,6 +4932,7 @@
   "est_appareil_equipe",
   "historique_appareil",
   "ip_de_requete",
+  "ip_visiteur_de_requete",
   "rattacher_visites_au_lead",
   "requete_marquee_equipe",
   "resume_historique_fr",

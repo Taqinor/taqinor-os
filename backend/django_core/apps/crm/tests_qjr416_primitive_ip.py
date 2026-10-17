@@ -285,10 +285,12 @@ class IpOrigineDeclareeTests(SimpleTestCase):
                                          cf='41.77.1.5')),
             '41.77.1.5')
 
-    def test_sans_cf_le_premier_saut_xff(self):
+    def test_sans_cf_jamais_le_premier_saut_xff(self):
+        """Accès DIRECT à l'ERP : le premier saut est écrit par l'appelant
+        (QJR416) — on retombe sur le dernier saut de confiance."""
         self.assertEqual(
             ip_origine_declaree(_requete(xff='41.77.1.5, 10.0.0.2')),
-            '41.77.1.5')
+            '10.0.0.2')
 
     def test_sans_en_tete_declaratif_le_dernier_saut_de_confiance(self):
         self.assertEqual(
