@@ -18,7 +18,7 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
     CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, RESOUDRE_GPS_REPERE, booleen_param,
-    corps_lu, corps_objet, liste_ids)
+    corps_lu, corps_objet, liste_ids, verifier_corps_texte)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1442,6 +1442,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         """
         from .models import LeadActivity
         lead = self.get_object()
+        # ENF11 nocturne — `rappel_heure: {}` (falsy) passait `or ''` et la
+        # requête était acceptée : tout champ texte non texte → 400 nommé.
+        verifier_corps_texte(
+            request, ('kind', 'body', 'outcome', 'rappel_le', 'rappel_heure'))
         kind = (request.data.get('kind') or '').strip()
         # MRY10 — le WhatsApp est le canal PRINCIPAL de Meryem : il devait
         # être journalisable comme un appel, pas noyé dans une note libre.
