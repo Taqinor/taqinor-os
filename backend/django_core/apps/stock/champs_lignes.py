@@ -8,7 +8,7 @@ from core.champs_stricts import DecimalBornee
 
 
 class TauxTvaLigne(DecimalBornee):
-    """ENF11 nocturne - ``lignes[].taux_tva`` : chaine au motif EXACT publie
+    r"""ENF11 nocturne - ``lignes[].taux_tva`` : chaine au motif EXACT publie
     (``\d{1,3}`` entiers ASCII, <= 2 decimales), 0..100. ``DecimalField``
     de DRF lit aussi `` 5 ``, ``1e1`` ou des chiffres non ASCII, que le schema
     declare invalides : on applique le motif avant la conversion."""
