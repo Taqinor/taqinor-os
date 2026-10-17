@@ -1130,6 +1130,11 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         sans supprimer/ré-uploader le fichier. Scopé société par get_object."""
         att = self.get_object()  # déjà borné à la société par get_queryset
         _exiger_objet(request)
+        # Le schéma déclare ``phase`` en chaîne (« » = effacer) : un ``null``
+        # explicite était accepté (200, phase vidée) contre la déclaration.
+        if 'phase' in request.data and request.data.get('phase') is None:
+            return Response({'phase': 'Phase invalide (texte attendu).'},
+                            status=status.HTTP_400_BAD_REQUEST)
         phase = (_texte_ou_400(request.data.get('phase'), 'phase')
                  or '').strip().lower()
         if phase not in ('', 'avant', 'pendant', 'apres'):

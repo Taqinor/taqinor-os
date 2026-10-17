@@ -1520,6 +1520,12 @@ class Enf11Records2eTourTests(TestCase):
             self.assertEqual(r.status_code, 400, (corps, r.content))
         r = self.api.patch(url, {'phase': 3}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
+        # ENF11 nocturne : ``null`` explicite contredit le schéma (chaîne).
+        r = self.api.patch(url, {'phase': None}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('phase', r.json())
+        r = self.api.patch(url, {'phase': ''}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
 
     def test_attachments_count_model_vide_400(self):
         # ERR-ENF11-FUZZ-RECORDS : ``?model=`` (présent mais vide) viole
