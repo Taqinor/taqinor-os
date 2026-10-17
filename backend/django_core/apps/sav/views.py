@@ -14,7 +14,7 @@ from drf_spectacular.utils import (
 from rest_framework import filters, serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
-    APIException, NotFound, ValidationError,
+    APIException, NotFound, ParseError, ValidationError,
 )
 from rest_framework.response import Response
 
@@ -3588,6 +3588,9 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def _ticket_de_la_societe(self, request):
         """Résout le ticket du corps, scopé société. Erreur FRANÇAISE qui
         NOMME le champ fautif (jamais un « non enregistré » générique)."""
+        # Cause (fuzz nocturne) : un corps JSON LISTE n'a pas de .get -> 500.
+        if not hasattr(request.data, 'get'):
+            raise ParseError('Corps JSON objet attendu.')
         brut = request.data.get('ticket')
         if brut in (None, ''):
             raise ValidationError({'ticket': 'Indiquez le ticket à rattacher.'})
