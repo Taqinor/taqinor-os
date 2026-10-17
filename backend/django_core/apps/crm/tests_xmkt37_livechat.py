@@ -161,6 +161,24 @@ class DegradedModeCaptureTests(TestCase):
             data=json.dumps({'message': message}),
             content_type='application/json')
 
+    def test_corps_json_scalaire_refuse_400_pas_500(self):
+        """ENF11 nocturne — un corps JSON ``false`` / ``[]`` n'est pas un
+        objet : 400 propre, jamais un 500 anonyme."""
+        for brut in ('false', '[]', '12'):
+            resp = self.client.post(
+                reverse('public-chat-post', kwargs={'token': self.token}),
+                data=brut, content_type='application/json')
+            self.assertEqual(resp.status_code, 400, brut)
+            self.assertEqual(
+                resp.data['detail'],
+                'Le corps de la requête doit être un objet JSON.')
+
+    def test_message_non_texte_400_nomme_le_champ(self):
+        resp = self._post({'x': 1})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('message', resp.data['detail'])
+        self.assertNotIn('x', resp.data['detail'].replace('texte', ''))
+
     def test_away_message_returned_without_llm(self):
         resp = self._post('Bonjour, je veux un devis solaire.')
         self.assertEqual(resp.status_code, 200)
