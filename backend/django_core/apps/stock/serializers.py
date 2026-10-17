@@ -1,5 +1,4 @@
 import math
-import re
 
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -11,9 +10,10 @@ from rest_framework import serializers
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, DecimalBornee, DecimalStricte,
-    IdInconnu404Mixin, TexteLie)
+    ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin,
+    TexteLie)
 from core.unicite import ConflitUnicite
+from .champs_lignes import ChampsLigneFactureFournisseur
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
@@ -1952,38 +1952,13 @@ CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
 )
 
 
-class TauxTvaLigne(DecimalBornee):
-    """ENF11 nocturne - ``lignes[].taux_tva`` : chaine au motif EXACT publie
-    (``\\d{1,3}`` entiers ASCII, <= 2 decimales), 0..100. ``DecimalField``
-    de DRF lit aussi `` 5 ``, ``1e1`` ou des chiffres non ASCII, que le schema
-    declare invalides : on applique le motif avant la conversion."""
-
-    _MOTIF = re.compile(r'(?:\d{1,3}(?:\.\d{0,2})?|\.\d{1,2})', re.ASCII)
-
-    def to_internal_value(self, data):
-        if not isinstance(data, str) or not self._MOTIF.fullmatch(data):
-            self.fail('invalid')
-        return super().to_internal_value(data)
-
-
-class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
+class LigneFactureFournisseurSerializer(ChampsLigneFactureFournisseur,
+                                        CompanyScopedRelationsMixin,
                                         serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     # produit est optionnel (ligne libre/service, XPUR16) — default=None
     # évite une AttributeError DRF quand produit est vide.
-    produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None, allow_null=True)
-    total_ht = serializers.DecimalField(
-        max_digits=14, decimal_places=2, read_only=True)
-    # XPUR17 — TVA par ligne (taux marocains). total_tva = 0 si taux_tva vide
-    # (ligne historique, suit le taux global agrégé de la facture).
-    total_tva = serializers.DecimalField(
-        max_digits=14, decimal_places=2, read_only=True)
-    taux_tva = TauxTvaLigne(
-        max_digits=5, decimal_places=2, min_value=Decimal('0'),
-        max_value=Decimal('100'), required=False, allow_null=True)
-
     class Meta:
         model = LigneFactureFournisseur
         fields = [
