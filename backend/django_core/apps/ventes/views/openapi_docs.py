@@ -1350,8 +1350,10 @@ EnvoyerRecuResponse = _ser('PaiementEnvoyerRecuResponse', {
 # entier STRICTS (``motif: [null]`` → 500, ``date_rejet: ""`` → aujourd'hui).
 RejeterPaiementRequest = _ser('PaiementRejeterRequest', {
     'motif': ChaineStricte(),
+    # ENF11 nocturne - contrainte SQL frais_rejet >= 0 : un frais negatif
+    # levait IntegrityError (500) -> borne basse 0 publiee ET validee.
     'frais': DecimalSouple(max_digits=10, decimal_places=2, required=False,
-                           allow_null=True),
+                           allow_null=True, min_value=Decimal('0')),
     'date_rejet': DateStricte(required=False, allow_null=True),
 })
 AnnulerSaisieRequest = _ser('PaiementAnnulerSaisieRequest', {
