@@ -885,6 +885,10 @@ def _appliquer_enchainement(activity, user):
       qui garantit l'idempotence — re-clôturer n'en crée jamais une 2ᵉ.
     """
     atype = activity.activity_type
+    # ENF11 (nocturne) : ``activity_type`` est NULLABLE — une activité sans type
+    # n'a aucun enchaînement (avant : AttributeError sur None = 500 au « Fait »).
+    if atype is None:
+        return None, None
     type_suivant = atype.type_suivant
     if not type_suivant or atype.mode_enchainement == ActivityType.ModeEnchainement.AUCUN:
         return None, None
@@ -1126,6 +1130,11 @@ class AttachmentViewSet(ParsersParActionMixin, viewsets.ModelViewSet):
         sans supprimer/ré-uploader le fichier. Scopé société par get_object."""
         att = self.get_object()  # déjà borné à la société par get_queryset
         _exiger_objet(request)
+        # Le schéma déclare ``phase`` en chaîne (« » = effacer) : un ``null``
+        # explicite était accepté (200, phase vidée) contre la déclaration.
+        if 'phase' in request.data and request.data.get('phase') is None:
+            return Response({'phase': 'Phase invalide (texte attendu).'},
+                            status=status.HTTP_400_BAD_REQUEST)
         phase = (_texte_ou_400(request.data.get('phase'), 'phase')
                  or '').strip().lower()
         if phase not in ('', 'avant', 'pendant', 'apres'):

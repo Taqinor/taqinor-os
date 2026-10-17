@@ -1,4 +1,6 @@
 """NTUX7 — endpoint `corbeille/` (écran `/parametres/corbeille`)."""
+from datetime import datetime, time, timezone as dt_tz
+
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
@@ -15,22 +17,63 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers
 from rest_framework.parsers import JSONParser
+from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
+
+dt_utc = dt_tz.utc
+
+_ORDRES = ('supprime_le', '-supprime_le', 'expire_le', '-expire_le',
+           'restaure_le', '-restaure_le', 'type_libelle', '-type_libelle',
+           'id', '-id')
 
 _FILTRES = [
     OpenApiParameter('type', OpenApiTypes.STR, required=False),
     OpenApiParameter('depuis', OpenApiTypes.DATETIME, required=False),
     OpenApiParameter('jusqua', OpenApiTypes.DATETIME, required=False),
-    OpenApiParameter('restaures', OpenApiTypes.STR, required=False),
+    OpenApiParameter('restaures', OpenApiTypes.STR, required=False,
+                     enum=['0', '1', 'true', 'false']),
+    OpenApiParameter('ordering', OpenApiTypes.STR, required=False,
+                     enum=list(_ORDRES)),
 ]
+
+# Années servies : au-delà, l'adaptateur SQL/Postgres refuse la valeur
+# (décalage horaire > ±15:59, années extrêmes) -> 500 au lieu d'un 400.
+_ANNEE_MIN, _ANNEE_MAX = 1970, 2100
 
 
 def _borne_temporelle(valeur, nom):
-    """Date ou date-heure ISO ; sinon 400 nommant le paramètre (jamais 500)."""
-    if parse_datetime(valeur) is not None or parse_date(valeur) is not None:
-        return valeur
-    raise ValidationError({nom: 'Date ou date-heure ISO attendue.'})
+    """Date ou date-heure ISO -> datetime aware UTC ; sinon 400 nommant le
+    paramètre (jamais 500, jamais la valeur renvoyée).
+
+    Cause du 500 nocturne : la chaîne brute (``...+20:24``, année 3422/4901)
+    était confiée au filtre ORM, puis au SQL, qui refuse un décalage > ±15:59."""
+    erreur = ValidationError({nom: 'Date ou date-heure ISO attendue.'})
+    try:
+        dt = parse_datetime(valeur)
+        if dt is None:
+            jour = parse_date(valeur)
+            if jour is None:
+                raise erreur
+            dt = datetime.combine(jour, time.min)
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, dt_utc)
+        dt = dt.astimezone(dt_utc)
+    except (ValueError, OverflowError):
+        raise erreur
+    if not _ANNEE_MIN <= dt.year <= _ANNEE_MAX:
+        raise ValidationError({nom: 'Date hors de la plage admise.'})
+    return dt
+
+
+def _booleen_strict(valeur, nom):
+    """``0|1|true|false`` (casse libre) ; sinon 400 nommant le paramètre."""
+    v = valeur.strip().lower()
+    if v in ('1', 'true'):
+        return True
+    if v in ('0', 'false'):
+        return False
+    raise ValidationError({nom: 'Booléen attendu (0, 1, true ou false).'})
 
 
 @extend_schema_view(list=extend_schema(parameters=_FILTRES))
@@ -90,9 +133,16 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         # côté multi-société.
         # NTUX24 — `export_xlsx` reflète EXACTEMENT le même filtre par défaut
         # que `list` (même bascule « Inclure les éléments restaurés »).
-        if (getattr(self, 'action', None) in ('list', 'export_xlsx')
-                and params.get('restaures') not in ('1', 'true', 'True')):
-            qs = qs.filter(restaure_le__isnull=True)
+        if getattr(self, 'action', None) in ('list', 'export_xlsx'):
+            brut_restaures = params.get('restaures')
+            if (brut_restaures is None
+                    or not _booleen_strict(brut_restaures, 'restaures')):
+                qs = qs.filter(restaure_le__isnull=True)
+            ordre = params.get('ordering')
+            if ordre is not None and ordre not in _ORDRES:
+                raise ValidationError({
+                    'ordering': 'Valeur attendue parmi : '
+                                + ', '.join(_ORDRES) + '.'})
         type_libelle = params.get('type')
         if type_libelle:
             qs = qs.filter(type_libelle__iexact=type_libelle)

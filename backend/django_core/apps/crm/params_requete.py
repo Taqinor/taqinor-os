@@ -153,6 +153,13 @@ def verifier_corps_texte(request, champs):
         raise ValidationError(erreurs)
 
 
+def texte_verifie(request, champ, *autres):
+    """``verifier_corps_texte`` sur ``champ`` + ``autres``, puis renvoie
+    ``champ`` nettoyé (``(valeur or '').strip()``)."""
+    verifier_corps_texte(request, (champ,) + autres)
+    return (request.data.get(champ) or '').strip()
+
+
 class CorpsTexteMixin:
     """Mixin de ViewSet : contrôle les champs texte de CHAQUE écriture, APRÈS
     authentification, permissions et débit (un anonyme reçoit son 401).

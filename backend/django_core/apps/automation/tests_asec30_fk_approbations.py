@@ -95,6 +95,21 @@ class AutomationFkTests(TestCase):
         self.demande.refresh_from_db()
         self.assertEqual(self.demande.request_type_id, self.type_a.pk)
 
+    def test_enf11_patch_rend_les_champs_nom_declares_requis(self):
+        """Fuzz nocturne : sur PATCH (serializer partiel) ``default=None``
+        faisait sauter ``decided_on_behalf_of_nom`` alors que le schema le
+        declare requis -> la cle est toujours servie (null si vide)."""
+        self.demande.status = ApprovalRequest.Status.PENDING
+        self.demande.save(update_fields=['status'])
+        r = self.api.patch(f'{BASE}/approval-requests/{self.demande.pk}/',
+                           {'payload': {'montant': 150}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        for cle in ('request_type_nom', 'demandeur_nom', 'decided_by_nom',
+                    'decided_on_behalf_of_nom'):
+            self.assertIn(cle, r.data)
+        self.assertIsNone(r.data['decided_on_behalf_of_nom'])
+        self.assertEqual(r.data['demandeur_nom'], self.collegue_a.username)
+
     def test_demande_decidee_figee(self):
         type_a2 = ApprovalRequestType.objects.create(
             company=self.a, nom='Autre A')

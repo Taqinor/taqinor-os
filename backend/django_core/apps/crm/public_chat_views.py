@@ -170,10 +170,20 @@ def post_chat_message(request, token):
             {'detail': 'Cette session est fermée.'},
             status=status.HTTP_410_GONE)
 
+    # ENF11 nocturne — un corps JSON scalaire/tableau (``false``, ``[]``)
+    # levait AttributeError sur ``.get`` : 500 anonyme. 400 propre.
+    if not hasattr(request.data, 'get'):
+        return Response(
+            {'detail': 'Le corps de la requête doit être un objet JSON.'},
+            status=status.HTTP_400_BAD_REQUEST)
     brut = request.data.get('message', '')
     # ERR-ENF11-FUZZ-CRM — un nombre/objet était converti en texte et un NUL
     # partait vers le transcript JSONB (refusé par Postgres) : 400 nommé.
-    if not isinstance(brut, str) or chr(0) in brut:
+    if not isinstance(brut, str):
+        return Response(
+            {'detail': 'Le champ « message » doit être du texte.'},
+            status=status.HTTP_400_BAD_REQUEST)
+    if chr(0) in brut:
         return Response(
             {'detail': 'Message invalide.'}, status=status.HTTP_400_BAD_REQUEST)
     texte = brut.strip()

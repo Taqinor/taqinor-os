@@ -90,7 +90,7 @@ test.describe('CIQ665 — site MT, de la visite à la recette', () => {
     // Avant le niveau MT, le supplément n'existe pas : catégorie inconnue.
     const avant = await request.patch(urlMesures,
       { data: { categorie: 'poste_mt', valeurs: { tgbt_jeu_de_barres: 'cuivre' } } })
-    expect(avant.status(), 'supplément MT absent tant que le niveau n’est pas MT').toBe(400)
+    expect(avant.status(), 'supplément MT absent tant que le niveau n’est pas MT').toBe(409)
     await lireJson(await request.patch(urlMesures,
       { data: { categorie: 'comptage', valeurs: mt.comptage } }), 'comptage MT')
 

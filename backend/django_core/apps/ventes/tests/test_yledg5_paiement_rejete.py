@@ -102,9 +102,14 @@ class TestPaiementRejete(TestCase):
         for corps in ({'motif': 'x', 'date_rejet': ''},
                       {'motif': 'x', 'date_rejet': '2026-1-5'},
                       {'motif': 5}, {'motif': 'x', 'frais': 'abc'},
+                      # ENF11 nocturne - frais negatif : contrainte SQL, 500.
+                      {'motif': 'x', 'frais': -5669828.532381296},
+                      {'motif': 'x', 'frais': '-1'},
                       [None, None]):
             r = self.api.post(url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.data))
+            if isinstance(corps, dict) and 'frais' in corps:
+                self.assertIn('frais', r.data, corps)
         self.paiement.refresh_from_db()
         self.assertEqual(self.paiement.statut, Paiement.Statut.ENCAISSE)
         r = self.api.post(url, {'motif': 'Chèque impayé', 'frais': 25,

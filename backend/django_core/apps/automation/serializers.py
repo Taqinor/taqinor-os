@@ -258,16 +258,20 @@ class ApprovalRequestSerializer(SameCompanyFKSerializerMixin,
     same_company_fields = ('request_type',)
     status_display = serializers.CharField(
         source='get_status_display', read_only=True)
+    # ENF11 nocturne - ``default=None`` faisait SAUTER ces champs sur un PATCH
+    # (DRF : un defaut est ignore quand le serializer est partiel) alors que
+    # le schema les declare requis. ``allow_null`` rend toujours la cle.
     request_type_nom = serializers.CharField(
-        source='request_type.nom', read_only=True, default=None)
+        source='request_type.nom', read_only=True, allow_null=True)
     demandeur_nom = serializers.CharField(
-        source='demandeur.username', read_only=True, default=None)
+        source='demandeur.username', read_only=True, allow_null=True)
     decided_by_nom = serializers.CharField(
-        source='decided_by.username', read_only=True, default=None)
+        source='decided_by.username', read_only=True, allow_null=True)
     # XKB3 — présent uniquement quand la décision a été prise par un
     # suppléant « au nom de » ce délégant (délégation active à l'instant T).
     decided_on_behalf_of_nom = serializers.CharField(
-        source='decided_on_behalf_of.username', read_only=True, default=None)
+        source='decided_on_behalf_of.username', read_only=True,
+        allow_null=True)
     # ZCTR7 — nombre de décisions favorables DISTINCTES déjà enregistrées,
     # et seuil requis (pour afficher « 1/2 approbations » côté frontend).
     approvals_count = serializers.SerializerMethodField()

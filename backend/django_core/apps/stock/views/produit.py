@@ -1146,7 +1146,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(produits_expirant_bientot(request.user.company, jours=jours))
 
     @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)',
-                                 mini=0, maxi=120)], responses=LISTE)
+                                 mini=1, maxi=120)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='previsions-reappro',
             permission_classes=[IsAdminRole])
     def previsions_reappro(self, request):
@@ -1155,7 +1155,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import previsions_reappro
         from ..utils.params import entier_ou_400
         nb_mois = entier_ou_400(
-            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
+            request.query_params.get('nb_mois'), 'nb_mois', 6, 1, 120)
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
     @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)',

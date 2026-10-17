@@ -558,6 +558,15 @@ class Enf11FuzzGedCorpsTests(TestCase):
             'libelle': 'x' * 201, 'echeance': '2030-01-01'})
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_planifier_assigne_a_mal_forme_400_nomme_le_champ(self):
+        """ENF11 nocturne — ``assigne_a: {}`` (falsy) était ignoré et la
+        planification créée (201, assigne_a null) : 400 nommant le champ."""
+        for brut in ({}, [], 'abc', True):
+            resp = self._post(f'documents/{self.doc.pk}/planifier/', {
+                'libelle': '0', 'echeance': '2000-01-01', 'assigne_a': brut})
+            self.assertEqual(resp.status_code, 400, (brut, resp.content))
+            self.assertIn('assigne_a', resp.data)
+
     def test_import_masse_nom_trop_long_est_une_erreur_de_ligne(self):
         # Un nom > 255 (ou un NUL) dans le CSV faisait lever DataError (500) ;
         # c'est désormais une erreur de LIGNE, le reste de l'import continue.

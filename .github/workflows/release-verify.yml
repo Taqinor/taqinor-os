@@ -296,6 +296,9 @@ jobs:
       # même société démo que la fumée par-merge). Sans cette env, `/auth/me/`
       # finit en 429 → redirection /login → faux « page blanche ».
       TENANT_RATE_LIMIT: '0'
+      # Nocturne #726 — 5 connexions/min par IP (/token/) : la matrice complète
+      # (comptes portail reconnectés, workers parallèles) répondait 429.
+      LOGIN_RATE_LIMIT: '1000/minute'
     steps:
       - uses: actions/checkout@v4
       # Python 3.11 + les navigateurs Playwright sont déjà dans l'image

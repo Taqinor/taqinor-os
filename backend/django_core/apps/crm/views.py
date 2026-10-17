@@ -18,7 +18,7 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
     CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, RESOUDRE_GPS_REPERE, booleen_param,
-    corps_lu, corps_objet, liste_ids)
+    corps_lu, corps_objet, liste_ids, texte_verifie)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1365,7 +1365,12 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         }, status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
     @extend_schema(request={'application/json': sd.corps('CrmNoterRequest', body=serializers.CharField()),
-                            'multipart/form-data': sd.corps('CrmNoterMultipartRequest', body=serializers.CharField(),
+                            # ENF11 nocturne — `body` facultatif en multipart : une
+                            # pièce jointe seule EST une note (VX111, « 📎 Pièce
+                            # jointe ») ; sans texte NI fichier → 400 `body`.
+                            'multipart/form-data': sd.corps('CrmNoterMultipartRequest',
+                                                            body=serializers.CharField(required=False,
+                                                                                       allow_blank=True),
                                                             file=serializers.FileField(required=False))},
                    responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
@@ -1385,7 +1390,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         AttachmentsPanel) et est liée à cette note. Jamais un second magasin.
         """
         lead = self.get_object()
-        body = (request.data.get('body') or '').strip()
+        body = texte_verifie(request, 'body')
         file = request.FILES.get('file')
         if not body and not file:
             return Response({'body': 'Note vide.'},
@@ -1442,7 +1447,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         """
         from .models import LeadActivity
         lead = self.get_object()
-        kind = (request.data.get('kind') or '').strip()
+        # ENF11 nocturne — `rappel_heure: {}` (falsy) passait `or ''` et la
+        # requête était acceptée : tout champ texte non texte → 400 nommé.
+        kind = texte_verifie(
+            request, 'kind', 'body', 'outcome', 'rappel_le', 'rappel_heure')
         # MRY10 — le WhatsApp est le canal PRINCIPAL de Meryem : il devait
         # être journalisable comme un appel, pas noyé dans une note libre.
         valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL,

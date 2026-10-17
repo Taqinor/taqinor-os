@@ -264,6 +264,30 @@ class FkAchatsTests(TestCase):
         self.assertIn('designation', str(r.json()))
         self.assertFalse(facture.lignes.exists())
 
+    def test_facture_patch_ligne_taux_tva_hors_motif_400(self):
+        """ENF11 (nocturne 17/10) - `lignes[].taux_tva` hors motif publie
+        (3+ decimales, 4+ entiers, blancs, exposant, > 100, negatif) = 400
+        nommant `taux_tva`, route achats comme stock (meme serializer)."""
+        facture = FactureFournisseur.objects.create(
+            company=self.co_a, reference='FFA-ENF11-TVA', fournisseur=self.fa,
+            montant_ht=Decimal('0'), montant_tva=Decimal('0'), montant_ttc=Decimal('0'))
+        for racine in ('achats', 'stock'):
+            for taux in ('12.345', '1234', ' 5', '1e1', '100.01', '-1', 20):
+                r = self.api.patch(
+                    f'/api/django/{racine}/factures-fournisseur/{facture.pk}/', {
+                        'lignes': [{'produit': self.pa.pk, 'designation': 'x',
+                                    'quantite': '1', 'prix_unitaire_ht': '0',
+                                    'taux_tva': taux}]}, format='json')
+                self.assertEqual(r.status_code, 400, (racine, taux, r.content))
+                self.assertIn('taux_tva', str(r.json()))
+        self.assertFalse(facture.lignes.exists())
+        r = self.api.patch(
+            f'/api/django/achats/factures-fournisseur/{facture.pk}/', {
+                'lignes': [{'produit': self.pa.pk, 'designation': 'x',
+                            'quantite': '1', 'prix_unitaire_ht': '0',
+                            'taux_tva': '20.00'}]}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
     def test_fuzz_retour_patch_avec_lignes(self):
         """ERR fuzz : PATCH d'un retour brouillon portant ``lignes`` (écriture
         imbriquée) remplace les lignes au lieu de lever AssertionError (500)."""

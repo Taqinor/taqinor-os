@@ -20,7 +20,8 @@ from core.unicite import UniciteEn409Mixin
 
 from .serializers_blocs import (
     bloc_calepinage, bloc_dossier_8221_resume, bloc_regime_suggere)
-from .serializers_stage import refus_protege, valider_unicite_societe
+from .serializers_stage import (
+    CautionTotaleMixin, refus_protege, valider_unicite_societe)
 
 from .models import (
     Equipe,
@@ -2247,7 +2248,8 @@ class RegleReapproSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, S
         return attrs
 
 
-class MaterielConsigneSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class MaterielConsigneSerializer(CautionTotaleMixin, ChampsStrictsMixin,
+                                 SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE
     SERVEUR ; le statut et la trace de retour avancent via l'action `retourner`.

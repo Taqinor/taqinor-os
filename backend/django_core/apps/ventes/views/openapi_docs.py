@@ -481,7 +481,13 @@ CompositionResponse = _ser('DevisCompositionResponse', {
     'nb_panneaux_avec': s.IntegerField(required=False, allow_null=True),
     'kwc_reel_avec': s.FloatField(required=False, allow_null=True),
     'avertissements': s.ListField(child=s.CharField(), required=False),
-    'marques_manquantes': s.ListField(child=s.CharField(), required=False),
+    # Objets {role, marque, libelle_role} (lus ainsi par l'écran :
+    # `m.marque`, `m.role`) — jamais des chaînes (fuzz nocturne ENF11).
+    'marques_manquantes': s.ListField(child=_ser('DevisMarqueManquante', {
+        'role': s.CharField(),
+        'marque': s.CharField(),
+        'libelle_role': s.CharField(),
+    }), required=False),
 })
 ErreurComposition = _ser('DevisErreurComposition', {
     'detail': s.CharField(),
@@ -1344,8 +1350,10 @@ EnvoyerRecuResponse = _ser('PaiementEnvoyerRecuResponse', {
 # entier STRICTS (``motif: [null]`` → 500, ``date_rejet: ""`` → aujourd'hui).
 RejeterPaiementRequest = _ser('PaiementRejeterRequest', {
     'motif': ChaineStricte(),
+    # ENF11 nocturne - contrainte SQL frais_rejet >= 0 : un frais negatif
+    # levait IntegrityError (500) -> borne basse 0 publiee ET validee.
     'frais': DecimalSouple(max_digits=10, decimal_places=2, required=False,
-                           allow_null=True),
+                           allow_null=True, min_value=Decimal('0')),
     'date_rejet': DateStricte(required=False, allow_null=True),
 })
 AnnulerSaisieRequest = _ser('PaiementAnnulerSaisieRequest', {

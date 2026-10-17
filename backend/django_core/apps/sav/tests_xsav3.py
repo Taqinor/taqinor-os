@@ -63,6 +63,15 @@ class XSAV3CreerDevisTest(TestCase):
             sous_garantie=Ticket.SousGarantie.NON,
             created_by=self.user)
 
+    def test_corps_liste_refuse_en_400(self):
+        # ENF11 nocturne (api-fuzz-pr #1005) : un corps JSON LISTE faisait
+        # lever request.data.get -> 500 ; refusé en 400 avant toute décision.
+        resp = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.pk}/creer-devis/',
+            [None, None], format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(Devis.objects.filter(company=self.company).count(), 0)
+
     def test_creer_devis_hors_garantie(self):
         resp = self.api.post(
             f'/api/django/sav/tickets/{self.ticket.pk}/creer-devis/',

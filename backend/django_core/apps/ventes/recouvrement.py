@@ -749,8 +749,13 @@ def client_releve_pdf(request, client_id):
         return Response({'detail': f'PDF indisponible : {exc}'},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    # ENF11 nocturne - le nom du client est du texte libre : un caractere de
+    # controle (\x03) dans l'en-tete faisait rejeter la reponse par gunicorn
+    # (400 text/html). Meme slug ASCII que tous les documents telecharges.
+    from .utils.filenames import _slug
+    segment = _slug(client.nom)
     resp['Content-Disposition'] = (
-        f'inline; filename="Releve_{client.nom}.pdf"')
+        'inline; filename="Releve%s.pdf"' % ('_' + segment if segment else ''))
     return resp
 
 

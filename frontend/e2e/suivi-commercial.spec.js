@@ -141,7 +141,7 @@ test.describe('CIQ521 — suivi d’un lead commercial, en direct', () => {
     const refus = await request.post(url, {
       data: { reponse: 'attente_accord', rappel_le: date, rappel_heure: '11:00' },
     })
-    expect(refus.status(), 'sans raison : refus').toBe(400)
+    expect(refus.status(), 'sans raison : refus').toBe(409)
     const erreurs = (await refus.json()).erreurs || {}
     expect(Object.keys(erreurs), 'le refus nomme le champ').toContain('raison_attente')
     expect(String((await leadDetail(request)).tags || '')).not.toContain(TAG_DIRECTION)

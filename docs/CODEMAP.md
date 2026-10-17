@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 822b1d93e23ee358e4ef83112fcaab6aa36a73624334a8f3ed413336bd4a22ad
+Structure fingerprint: 348d8b4cd0aaa3114d909f227074e943b5e637cbd084230fd97312705a7453d5
 Plan fingerprint: c906b1250447f67969432495cfe436d272971157d08bd90fea8f0ba5ab4e9e3c
 
 
@@ -322,6 +322,8 @@ Model counts are the real class count across `models*.py`/`models/`.
   safety stock, attrition risk, pricing paliers, clv) are gone. `statuspage` stays because
   `core` reads its models. `core` remains a base layer (import-linter).
 - **authentication** (SOLMVP30b) — `CustomUser.poste_ref` (rh) removed.
+
+- **ENF11 nocturne #726 (17/10/2026)** — validations extraites des fichiers-murs (C20) : `sav/validations_releve.py` (`lire_releve`, `exiger_objet`), `stock/champs_lignes.py` (`TauxTvaLigne`, `ChampsLigneFactureFournisseur`), `stock/validation_previsions.py` (`rupture_prevue`).
 
 ### crm / parametres / ventes — Groupe CAD (cadence de suivi client, 21/09/2026)
 
