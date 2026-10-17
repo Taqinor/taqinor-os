@@ -481,7 +481,13 @@ CompositionResponse = _ser('DevisCompositionResponse', {
     'nb_panneaux_avec': s.IntegerField(required=False, allow_null=True),
     'kwc_reel_avec': s.FloatField(required=False, allow_null=True),
     'avertissements': s.ListField(child=s.CharField(), required=False),
-    'marques_manquantes': s.ListField(child=s.CharField(), required=False),
+    # Objets {role, marque, libelle_role} (lus ainsi par l'écran :
+    # `m.marque`, `m.role`) — jamais des chaînes (fuzz nocturne ENF11).
+    'marques_manquantes': s.ListField(child=_ser('DevisMarqueManquante', {
+        'role': s.CharField(),
+        'marque': s.CharField(),
+        'libelle_role': s.CharField(),
+    }), required=False),
 })
 ErreurComposition = _ser('DevisErreurComposition', {
     'detail': s.CharField(),
