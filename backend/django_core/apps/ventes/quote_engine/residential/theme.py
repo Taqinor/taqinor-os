@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # identité société n'est fournie dans ``data["entreprise"]`` (CompanyProfile),
 # le pied de page reste strictement identique à aujourd'hui.
 _FOOT_DEFAULT_NOM = "TAQINOR"
-_FOOT_DEFAULT_EMAIL = "contact@taqinor.com"
+_FOOT_DEFAULT_EMAIL = "contact@taqinor.ma"
 _FOOT_DEFAULT_TEL = "+212 6 61 85 04 10"
 
 # Engine assets (fonts + logo), one level up at quote_engine/assets.
@@ -849,7 +849,7 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 # sorte qu'un devis sans profil enrichi reste rendu strictement à l'identique et
 # qu'aucune identité d'un autre tenant ne fuit dans le rendu résidentiel.
 _DEFAULT_BRAND = "TAQINOR"
-_DEFAULT_EMAIL = "contact@taqinor.com"
+_DEFAULT_EMAIL = "contact@taqinor.ma"
 _DEFAULT_PHONE = "+212 6 61 85 04 10"
 _DEFAULT_SITE = "taqinor.ma"
 
@@ -1010,7 +1010,7 @@ def bande_legale(d: dict, ident: dict) -> str:
         # QRES10 — contact lu depuis l'identité RÉSOLUE : la bande légale
         # affiche LE MÊME email/téléphone que le pied de page.
         return (LEGALE_TAQINOR_PREMIUM
-                + f' &middot; {ident.get("email") or "contact@taqinor.com"}'
+                + f' &middot; {ident.get("email") or "contact@taqinor.ma"}'
                 f' &middot; {ident.get("phone") or "+212 6 61 85 04 10"}'
                 ' &middot; taqinor.ma')
     for cle in ("email", "telephone"):

@@ -161,6 +161,41 @@ def ips_declarees_de_requete(request):
         return ()
 
 
+def ip_origine_declaree(request):
+    """QJEQUIPE4 (17/10/2026) — l'adresse d'ORIGINE que la requête DÉCLARE :
+    ``CF-Connecting-IP`` (posé par notre Worker SSR apps/web d'après l'IP
+    réelle du visiteur, ou par Cloudflare), sinon le PREMIER saut de
+    ``X-Forwarded-For``, sinon :func:`ip_de_requete` (dernier saut de
+    confiance).
+
+    STRICTEMENT réservée au JOURNAL DE CONSULTATION (``crm.VisiteExterne``,
+    corps des notifications « devis ouvert ») et à la classification
+    équipe/robot — JAMAIS une preuve, un seau de limitation ni une identité
+    (même posture que :func:`ips_declarees_de_requete` : se déclarer une
+    autre adresse ne permet que de s'auto-exclure d'un comptage).
+
+    POURQUOI (prod, 17/10/2026, lecture seule) : 191 des 249 ouvertures de
+    proposition des 30 derniers jours portaient une IP Cloudflare — la SORTIE
+    du Worker, dernier saut vu par Caddy — à la place de celle du visiteur ;
+    la notification disait « Ouverture depuis l'adresse IP 162.158.x.x » et
+    aucune règle fondée sur l'IP ne pouvait fonctionner. Ne lève jamais."""
+    if request is None:
+        return ''
+    try:
+        meta = getattr(request, 'META', None) or {}
+        cloudflare = _texte_ip(meta.get('HTTP_CF_CONNECTING_IP'))
+        if cloudflare:
+            return cloudflare
+        premier = _texte_ip(
+            str(meta.get('HTTP_X_FORWARDED_FOR') or '').split(',')[0])
+        if premier:
+            return premier
+        return ip_de_requete(request)
+    except Exception:  # noqa: BLE001 — défensif, comme ip_de_requete (D-ENF22-BLE001)
+        logger.warning("ip origine declaree : échec ignoré, comportement dégradé", exc_info=True)
+        return ''
+
+
 class IdentIpPartageeMixin:
     """QJR416 — ``get_ident`` assis sur :func:`ip_de_requete`.
 
