@@ -2084,11 +2084,14 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                 {'detail': 'libelle et echeance sont requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         assigne_a = None
-        raw_assigne = request.data.get('assigne_a')
-        if raw_assigne:
+        # ENF11 nocturne — `if raw_assigne:` ignorait `{}`/`[]` (falsy) : la
+        # requête passait en 201 avec assigne_a null. `_pk` tranche d'abord :
+        # absent/null → None, mal formé (objet, liste…) → 400 nommé.
+        pk_assigne = _pk(request.data.get('assigne_a'), 'assigne_a')
+        if pk_assigne is not None:
             from django.contrib.auth import get_user_model
             assigne_a = get_user_model().objects.filter(
-                company=request.user.company, pk=_pk(raw_assigne, 'assigne_a')).first()
+                company=request.user.company, pk=pk_assigne).first()
         try:
             planif = services.planifier_document(
                 document, libelle=libelle, echeance=echeance,
