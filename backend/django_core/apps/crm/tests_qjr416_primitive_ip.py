@@ -38,7 +38,7 @@ from apps.crm import public_views as crm_public
 from apps.crm import visites
 from apps.ventes.public import noyau as ventes_public
 from apps.ventes.tests.split_golden import fichiers_du_groupe
-from core.throttling import ip_de_requete
+from core.throttling import ip_de_requete, ip_origine_declaree
 
 
 #: Une chaîne réaliste : le visiteur a forgé « 9.9.9.9 » en tête, notre nginx a
@@ -270,3 +270,43 @@ class UneSeuleLectureDIpTests(SimpleTestCase):
                         str(cible).startswith('apps.'),
                         'core.throttling importe %s (contrat base-layer)'
                         % cible)
+
+
+class IpOrigineDeclareeTests(SimpleTestCase):
+    """QJEQUIPE4 (17/10/2026) — le JOURNAL de consultation lit l'origine
+    DÉCLARÉE (``CF-Connecting-IP`` posé par le Worker SSR, sinon premier saut
+    ``X-Forwarded-For``) ; la PREUVE (``ip_de_requete``) reste le dernier saut
+    de confiance. Mesuré en prod : 191 ouvertures sur 249 journalisaient la
+    sortie Cloudflare du Worker à la place du visiteur."""
+
+    def test_cf_connecting_ip_prime_sur_tout(self):
+        self.assertEqual(
+            ip_origine_declaree(_requete(xff='162.158.1.1, 10.0.0.2',
+                                         cf='41.77.1.5')),
+            '41.77.1.5')
+
+    def test_sans_cf_jamais_le_premier_saut_xff(self):
+        """Accès DIRECT à l'ERP : le premier saut est écrit par l'appelant
+        (QJR416) — on retombe sur le dernier saut de confiance."""
+        self.assertEqual(
+            ip_origine_declaree(_requete(xff='41.77.1.5, 10.0.0.2')),
+            '10.0.0.2')
+
+    def test_sans_en_tete_declaratif_le_dernier_saut_de_confiance(self):
+        self.assertEqual(
+            ip_origine_declaree(_requete(xff=None, remote='198.51.100.4')),
+            '198.51.100.4')
+
+    def test_une_requete_absente_ne_leve_pas(self):
+        self.assertEqual(ip_origine_declaree(None), '')
+
+    def test_le_journal_crm_delegue_a_l_origine_declaree(self):
+        requete = _requete(xff='162.158.1.1, 10.0.0.2', cf='41.77.1.5')
+        self.assertEqual(visites.ip_visiteur_de_requete(requete),
+                         ip_origine_declaree(requete))
+        self.assertEqual(visites.ip_visiteur_de_requete(requete), '41.77.1.5')
+
+    def test_la_preuve_ne_change_pas(self):
+        """Témoin — la primitive de PREUVE ignore toujours la valeur déclarée."""
+        requete = _requete(xff='%s, 203.0.113.9' % _FORGEE, cf='41.77.1.5')
+        self.assertEqual(ip_de_requete(requete), '203.0.113.9')

@@ -153,6 +153,21 @@ def ip_de_requete(request) -> str:
     return _texte(_ip_partagee(request), MAX_IP)
 
 
+def ip_visiteur_de_requete(request) -> str:
+    """QJEQUIPE4 — IP d'ORIGINE DÉCLARÉE du visiteur, pour le JOURNAL de
+    consultation et la classification équipe (jamais une preuve).
+
+    Délègue à :func:`core.throttling.ip_origine_declaree` : ``CF-Connecting-IP``
+    (posé par le Worker SSR du site), sinon premier saut ``X-Forwarded-For``,
+    sinon le dernier saut de confiance. Sur la chaîne page publique, le dernier
+    saut de confiance n'est que la SORTIE Cloudflare du Worker (mesuré en prod :
+    191 ouvertures sur 249) — c'est pourquoi le journal lit l'origine déclarée.
+    ``ip_de_requete`` (preuve, seaux) reste inchangée."""
+    from core.throttling import ip_origine_declaree
+
+    return _texte(ip_origine_declaree(request), MAX_IP)
+
+
 def user_agent_de_requete(request) -> str:
     """Navigateur annoncé, TRONQUÉ — lu côté serveur, jamais du corps."""
     if request is None:
@@ -286,9 +301,106 @@ def requete_marquee_equipe(company, request) -> bool:
         cookies = getattr(request, 'COOKIES', None) or {}
         if cookies.get(COOKIE_EQUIPE) == '1':
             return True
-        return est_appareil_equipe(company, appareil_de_requete(request))
+        if est_appareil_equipe(company, appareil_de_requete(request)):
+            return True
+        # QJEQUIPE4 — 4e signal : même IP ET même plateforme qu'un utilisateur
+        # de CETTE société connecté à l'ERP dans les 2 dernières heures.
+        return ip_equipe_recente(company, request)
     except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('T-TRACE: requete_marquee_equipe échoué : %s', exc)
+        return False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# QJEQUIPE4 (fondateur 17/10/2026) — règle « IP équipe » : le navigateur
+# intégré WhatsApp (iPhone surtout) n'a JAMAIS nos cookies
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Mesuré en prod le 17/10/2026 (lecture seule) : le registre d'appareils exclut
+# bien toute requête qui PORTE un appareil_id enregistré (0 visite d'un appareil
+# du registre après son enregistrement), mais 138 des 249 ouvertures de
+# proposition des 30 derniers jours n'avaient AUCUN appareil_id — le navigateur
+# intégré WhatsApp (UA iPhone « Mobile/15E148 » sans « Safari »), un second
+# navigateur du même téléphone, la navigation privée… Reda et Meryem
+# vérifient leurs devis en tapant le lien dans la conversation WhatsApp qu'ils
+# viennent d'envoyer : ce navigateur-là n'a ni cookie ni identifiant, et la
+# notification « devis ouvert par le client » partait à cinq personnes.
+#
+# Ce qu'un téléphone ne peut PAS changer d'une application à l'autre : son
+# adresse IP publique et sa plateforme. Un utilisateur connecté à l'ERP laisse
+# donc, à chaque appel API authentifié, la trace (société, plateforme, IP)
+# dans le cache pour EQUIPE_IP_TTL_S ; une ouverture publique qui présente le
+# même triplet est une ouverture ÉQUIPE : ni compteur, ni note, ni notification
+# — exactement comme le registre. Risque résiduel accepté par le fondateur
+# (17/10/2026) : un vrai client derrière le même NAT opérateur, sur la même
+# plateforme, au même moment, n'est pas notifié.
+
+#: Durée pendant laquelle un appel ERP authentifié « couvre » son IP.
+EQUIPE_IP_TTL_S = 2 * 3600
+
+_PLATEFORMES_UA = (
+    ('ios', ('iphone', 'ipad', 'ipod')),
+    ('android', ('android',)),
+    ('windows', ('windows',)),
+    ('mac', ('macintosh', 'mac os x')),
+    ('linux', ('linux', 'x11')),
+)
+
+
+def plateforme_de_user_agent(user_agent) -> str:
+    """Famille d'appareil lue du User-Agent : ``ios``/``android``/``windows``/
+    ``mac``/``linux``, ``''`` si inconnue. iOS est testé AVANT mac : tout UA
+    iPhone contient « like Mac OS X »."""
+    ua = (user_agent or '').lower()
+    for plateforme, marqueurs in _PLATEFORMES_UA:
+        if any(m in ua for m in marqueurs):
+            return plateforme
+    return ''
+
+
+def _cle_ip_equipe(company, request):
+    """Clé de cache du triplet (société, plateforme, IP d'origine déclarée) —
+    ``''`` dès qu'un élément manque (jamais de triplet partiel)."""
+    if company is None or getattr(company, 'pk', None) is None:
+        return ''
+    ip = ip_visiteur_de_requete(request)
+    plateforme = plateforme_de_user_agent(user_agent_de_requete(request))
+    if not ip or not plateforme:
+        return ''
+    return f'crm:equipe-ip:{company.pk}:{plateforme}:{ip}'
+
+
+def memoriser_ip_equipe(company, request, user=None) -> bool:
+    """Retient, pour :data:`EQUIPE_IP_TTL_S`, que CE triplet (société,
+    plateforme, IP) appartient à un utilisateur connecté de l'ERP. Appelée par
+    ``apps.crm.middleware.EquipeIpMiddleware`` sur chaque appel API
+    authentifié. Best-effort : ``False`` sur triplet incomplet ou cache en
+    panne (django-redis dégrade déjà en no-op)."""
+    try:
+        cle = _cle_ip_equipe(company, request)
+        if not cle:
+            return False
+        from django.core.cache import cache
+        cache.set(cle, getattr(user, 'pk', None) or 1, EQUIPE_IP_TTL_S)
+        return True
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+        logger.warning('QJEQUIPE4: memoriser_ip_equipe échoué : %s', exc)
+        return False
+
+
+def ip_equipe_recente(company, request) -> bool:
+    """Vrai si une requête PUBLIQUE présente le triplet (société, plateforme,
+    IP) d'un utilisateur ERP connecté il y a moins de :data:`EQUIPE_IP_TTL_S`.
+    Best-effort : ``False`` sur toute erreur (mieux vaut compter une lecture de
+    trop que casser un point public)."""
+    try:
+        cle = _cle_ip_equipe(company, request)
+        if not cle:
+            return False
+        from django.core.cache import cache
+        return cache.get(cle) is not None
+    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
+        logger.warning('QJEQUIPE4: ip_equipe_recente échoué : %s', exc)
         return False
 
 
@@ -407,7 +519,9 @@ def enregistrer_visite_externe(company, *, point, appareil_id='', lead=None,
             return None
         contexte = _texte(contexte, MAX_CONTEXTE)
         langue = _texte(langue, MAX_LANGUE)
-        ip = _texte(ip, MAX_IP) or ip_de_requete(request)
+        # QJEQUIPE4 — l'origine DÉCLARÉE (IP réelle du visiteur relayée par le
+        # Worker), jamais la sortie Cloudflare du SSR.
+        ip = _texte(ip, MAX_IP) or ip_visiteur_de_requete(request)
         user_agent = (_texte(user_agent, MAX_USER_AGENT)
                       or user_agent_de_requete(request))
         duree_s = _duree(duree_s)

@@ -454,7 +454,7 @@ class TestResidentialQRESRound(TestCase):
         """La bande légale lit l'identité résolue : même email que le pied de
         page (le PDF réel imprimait .ma en pied et .com dans la bande)."""
         html, _ = self._render("deux")   # profil TAQINOR avec contact@taqinor.ma
-        self.assertNotIn("contact@taqinor.com", html)
+        self.assertNotIn("contact@taqinor.ma", html)
         self.assertGreaterEqual(html.count("contact@taqinor.ma"), 2)
 
     def test_hypotheses_deduplicated_by_builder_shape(self):
@@ -842,12 +842,12 @@ class TestResidentialSingleOptionGate(TestCase):
 
 class TestResidentialFooterBranding(SimpleTestCase):
     """SCA27 — le pied de page résidentiel et les liens fiches ne gravent plus
-    « TAQINOR · contact@taqinor.com · +212 6 61 85 04 10 » ni taqinor.ma pour
+    « TAQINOR · contact@taqinor.ma · +212 6 61 85 04 10 » ni taqinor.ma pour
     tout tenant : ils sont pilotés par ``data["entreprise"]`` (CompanyProfile).
     Fonctions pures : aucune DB, aucun rendu PDF."""
 
     # La chaîne EXACTE gravée aujourd'hui (référence byte-à-byte fondateur).
-    FOUNDER_FOOTER = ('<b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com '
+    FOUNDER_FOOTER = ('<b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.ma '
                       '&nbsp;·&nbsp; +212 6 61 85 04 10')
 
     def test_footer_default_is_exact_founder_string(self):
@@ -861,7 +861,7 @@ class TestResidentialFooterBranding(SimpleTestCase):
         """Quand le profil porte les valeurs fondateur, la ligne est identique."""
         from apps.ventes.quote_engine.residential import theme
         data = {'ref': 'DEV-1', 'entreprise': {
-            'nom': 'TAQINOR', 'email': 'contact@taqinor.com',
+            'nom': 'TAQINOR', 'email': 'contact@taqinor.ma',
             'telephone': '+212 6 61 85 04 10'}}
         self.assertIn(self.FOUNDER_FOOTER, theme.page_footer(data))
 
@@ -876,7 +876,7 @@ class TestResidentialFooterBranding(SimpleTestCase):
         self.assertIn('hello@helios.ma', foot)
         self.assertIn('+212 5 22 00 00 00', foot)
         self.assertNotIn('TAQINOR', foot)
-        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('contact@taqinor.ma', foot)
 
     def test_footer_nom_only_omits_founder_contact_line(self):
         """AMOT18 (C-AMOT-016) — nom fourni sans contact : la société est
@@ -887,7 +887,7 @@ class TestResidentialFooterBranding(SimpleTestCase):
         foot = theme.page_footer(
             {'ref': 'DEV-3', 'entreprise': {'nom': 'Helios SARL'}})
         self.assertIn('<b>Helios SARL</b>', foot)
-        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('contact@taqinor.ma', foot)
         self.assertNotIn('+212 6 61 85 04 10', foot)
         self.assertNotIn('taqinor.ma', foot)
 
@@ -939,7 +939,7 @@ class TestResidentialFooterBrandingRendered(TestCase):
         # Pied de page : coordonnées du tenant, aucune trace fondateur.
         self.assertIn('Helios SARL', html)
         self.assertIn('hello@helios.ma', html)
-        self.assertNotIn('contact@taqinor.com', html)
+        self.assertNotIn('contact@taqinor.ma', html)
         self.assertNotIn('<b>TAQINOR</b>', html)
         # Liens fiches produits du fondateur omis (base non-taqinor.ma).
         self.assertNotIn('taqinor.ma/produits/', html)
@@ -953,7 +953,7 @@ class TestResidentialFooterBrandingRendered(TestCase):
         from apps.ventes.quote_engine.residential import renderer, render
         d = renderer._augment(_residential_sample_data())
         html = render.build_html(d)
-        self.assertIn('<b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com '
+        self.assertIn('<b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.ma '
                       '&nbsp;·&nbsp; +212 6 61 85 04 10', html)
         self.assertIn('taqinor.ma/produits/', html)
 
@@ -965,7 +965,7 @@ class TestResidentialFooterBrandingRendered(TestCase):
 class TestEtudeFooterBranding(TestCase):
     """SCA27 (page étude) — le pied de page de la page d'étude
     d'autoconsommation (premium full + include_etude, industriel) ne grave plus
-    ``contact@taqinor.com`` / ``www.taqinor.ma`` (le contact fondateur) pour un
+    ``contact@taqinor.ma`` / ``www.taqinor.ma`` (le contact fondateur) pour un
     tenant qui n'a qu'un téléphone (email et site vides) : la ligne est
     reconstruite dès qu'un contact quelconque est fourni. Le rendu fondateur
     (email + tél + site) reste byte-identique."""
@@ -1023,7 +1023,7 @@ class TestEtudeFooterBranding(TestCase):
         etude = self._etude_page_html({
             'nom': 'Helios SARL', 'email': '', 'site_web': '',
             'telephone': '+212 5 22 00 00 00'})
-        self.assertNotIn('contact@taqinor.com', etude)
+        self.assertNotIn('contact@taqinor.ma', etude)
         self.assertNotIn('www.taqinor.ma', etude)
         # Repli gracieux : à défaut d'email/site, SON téléphone est affiché.
         self.assertIn('+212 5 22 00 00 00', etude)
@@ -1032,9 +1032,9 @@ class TestEtudeFooterBranding(TestCase):
         """Profil fondateur (email + tél + site) → le pied de page d'étude
         reste EXACTEMENT la chaîne historique (byte-identique)."""
         etude = self._etude_page_html({
-            'nom': 'TAQINOR', 'email': 'contact@taqinor.com',
+            'nom': 'TAQINOR', 'email': 'contact@taqinor.ma',
             'telephone': '+212 6 61 85 04 10', 'site_web': 'www.taqinor.ma'})
-        self.assertIn('contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma', etude)
+        self.assertIn('contact@taqinor.ma &nbsp;·&nbsp; www.taqinor.ma', etude)
 
 
 class TestPageUnQrProposition(SimpleTestCase):

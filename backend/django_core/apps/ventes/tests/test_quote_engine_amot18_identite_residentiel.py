@@ -52,7 +52,7 @@ class IdentiteResidentielTests(SimpleTestCase):
 
     def test_sans_profil_repli_fondateur(self):
         ident = theme.company_identity({'entreprise': {}})
-        self.assertEqual(ident['email'], 'contact@taqinor.com')
+        self.assertEqual(ident['email'], 'contact@taqinor.ma')
         self.assertEqual(ident['site'], 'taqinor.ma')
 
     def test_identite_champs_vides_omis(self):

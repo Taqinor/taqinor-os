@@ -415,6 +415,10 @@ def _sha(texte):
 
 class RenduHtmlSolarTests(SimpleTestCase):
     """(d) — empreinte du HTML RENDU, identique avant/après (règle #4)."""
+    # CI #1006 — un rouge imprime les empreintes COMPLÈTES (jamais « Diff is
+    # 2405 characters long ») : c'est la seule façon de re-capturer le golden
+    # depuis le log quand aucune pile locale n'est disponible.
+    maxDiff = None
 
     def _rendus(self):
         from apps.ventes.quote_engine.commercial import categories

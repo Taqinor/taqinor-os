@@ -16,7 +16,7 @@ export const NAP = {
   phone: '+212661850410', // NAP_PHONE : JSON-LD, liens tel: — PERMANENT (GBP), jamais reformaté
   phoneDisplay: '0661850410', // format GBP exact (pages contact / mentions légales) — ne pas reformater
   phoneDisplayIntl: '+212 6 61 85 04 10', // affichage lisible en-tête + pied de page (W10) ; même numéro, lien tel: inchangé
-  email: 'contact@taqinor.com', // adresse GBP confirmée par le propriétaire (2026-06-13)
+  email: 'contact@taqinor.ma', // 17/10/2026 : taqinor.com n'existe pas (NXDOMAIN) — boîte M365 réelle ; aligner la fiche GBP à la main
   // Zone de service (pas d'adresse postale physique — mode service-area)
   serviceArea: ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Maroc'],
   // Liste de services — doit correspondre EXACTEMENT au Google Business Profile

@@ -17,7 +17,7 @@ Découpage (guidance SCA23) :
   * ``Day2TenantProposalPdfTest`` (``@tag('pdf')``) — le rendu RÉEL du PDF
     ``/proposal`` (WeasyPrint lourd, exclu du merge gate, joué au palier release
     + par l'orchestrateur). Assertions : zéro fuite de la LIGNE DE CONTACT
-    fondateur (``contact@taqinor.com`` / ``<b>TAQINOR</b>``) dans le pied de page
+    fondateur (``contact@taqinor.ma`` / ``<b>TAQINOR</b>``) dans le pied de page
     d'un tenant qui a rempli son profil (SCA26/27), zéro ``taqinor.ma`` du tout
     quand le tenant a AUSSI rempli son site (SCA27 complément : ligne site +
     liens fiches câblés sur son site), et zéro ``prix_achat``.
@@ -303,7 +303,7 @@ class Day2TenantProposalPdfTest(TestCase):
 
         # Ligne de contact fondateur ABSENTE (SCA26/27 — profil rempli) : le
         # pied de page « email · téléphone » est piloté par CompanyProfile.
-        self.assertNotIn('contact@taqinor.com', text)
+        self.assertNotIn('contact@taqinor.ma', text)
         # Coordonnées du tenant PRÉSENTES (preuve que le profil pilote le PDF).
         self.assertIn('hello@helios.ma', text)
         # Aucun prix d'achat revendeur ne fuit (jamais un centime — CLAUDE.md).
@@ -339,7 +339,7 @@ class Day2FooterNomOnlyFallbackTest(SimpleTestCase):
         # Nom du tenant présent…
         self.assertIn('<b>ACME Énergie</b>', foot)
         # …et AUCUNE coordonnée fondateur (AMOT18, omission par champ).
-        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('contact@taqinor.ma', foot)
         self.assertNotIn('+212 6 61 85 04 10', foot)
 
     def test_footer_full_identity_replaces_founder_contact(self):
@@ -349,7 +349,7 @@ class Day2FooterNomOnlyFallbackTest(SimpleTestCase):
             'nom': 'ACME Énergie', 'email': 'hello@acme.ma',
             'telephone': '+212 5 22 11 22 33'}})
         self.assertIn('hello@acme.ma', foot)
-        self.assertNotIn('contact@taqinor.com', foot)
+        self.assertNotIn('contact@taqinor.ma', foot)
         self.assertNotIn('TAQINOR', foot)
 
 

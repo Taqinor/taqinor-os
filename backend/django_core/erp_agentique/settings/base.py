@@ -422,6 +422,11 @@ MIDDLEWARE = [
     # résout le JWT DRF best-effort, superuser + endpoints /auth exemptés.
     # Porte la requête courante pour la capture du Journal d'activité (Feature G).
     'apps.audit.middleware.AuditActorMiddleware',
+    # QJEQUIPE4 — après la vue, retient (société, plateforme, IP) de chaque
+    # appel API authentifié pendant 2 h : une ouverture publique de proposition
+    # qui présente le même triplet est une lecture ÉQUIPE (navigateur intégré
+    # WhatsApp sans cookie), jamais une lecture client. Anonyme → no-op.
+    'apps.crm.middleware.EquipeIpMiddleware',
     # NTPLT1 — pose le GUC Postgres app.current_company par requête (fondation
     # RLS, défense en profondeur multi-tenant). NO-OP TOTAL sans le flag env
     # POSTGRES_RLS_ENABLED=1 (défaut OFF) : aucune requête SQL supplémentaire.
