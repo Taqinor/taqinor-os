@@ -152,6 +152,31 @@ class CorbeilleApiTests(CorbeilleBase):
         demain = (timezone.now() + timedelta(days=1)).isoformat()
         self.assertEqual(len(rows(api.get(self.BASE, {'depuis': demain}))), 0)
 
+    def test_parametres_de_requete_hors_schema_400(self):
+        """ENF11 nocturne : le décalage +20:24 (Postgres n'accepte que
+        ±15:59) et les années extrêmes faisaient un 500 ; ordering et
+        restaures hors énumération = 400 nommant le paramètre."""
+        archiver(self.lead)
+        api = auth(self.directeur)
+        for requete in (
+                {'depuis': '4901-01-04T02:19:12Z'},
+                {'jusqua': '3422-10-02T19:20:22.0+20:24'},
+                {'depuis': 'pas-une-date'},
+                {'ordering': 'zzz'},
+                {'ordering': 'donnees_snapshot'},
+                {'restaures': 'peut-etre'}):
+            resp = api.get(self.BASE, requete)
+            self.assertEqual(resp.status_code, 400, (requete, resp.content))
+            self.assertIn(next(iter(requete)), resp.json())
+        for requete in ({'ordering': '-supprime_le'}, {'restaures': 'false'},
+                        {'depuis': '2020-01-01'},
+                        {'jusqua': '2099-01-01T00:00:00+02:00'},
+                        {'page': '8130654409940161338'}):
+            resp = api.get(self.BASE, requete)
+            self.assertIn(resp.status_code, (200, 404), (requete, resp.content))
+        self.assertEqual(
+            api.get(self.BASE, {'page_size': '-7987'}).status_code, 200)
+
     def test_journal_en_lecture_seule(self):
         archiver(self.lead)
         element = ElementSupprime.objects.get()
