@@ -18,7 +18,7 @@ from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
     CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, RESOUDRE_GPS_REPERE, booleen_param,
-    corps_lu, corps_objet, liste_ids, verifier_corps_texte)
+    corps_lu, corps_objet, liste_ids, texte_verifie)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1390,8 +1390,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         AttachmentsPanel) et est liée à cette note. Jamais un second magasin.
         """
         lead = self.get_object()
-        verifier_corps_texte(request, ('body',))
-        body = (request.data.get('body') or '').strip()
+        body = texte_verifie(request, 'body')
         file = request.FILES.get('file')
         if not body and not file:
             return Response({'body': 'Note vide.'},
@@ -1450,9 +1449,8 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         lead = self.get_object()
         # ENF11 nocturne — `rappel_heure: {}` (falsy) passait `or ''` et la
         # requête était acceptée : tout champ texte non texte → 400 nommé.
-        verifier_corps_texte(
-            request, ('kind', 'body', 'outcome', 'rappel_le', 'rappel_heure'))
-        kind = (request.data.get('kind') or '').strip()
+        kind = texte_verifie(
+            request, 'kind', 'body', 'outcome', 'rappel_le', 'rappel_heure')
         # MRY10 — le WhatsApp est le canal PRINCIPAL de Meryem : il devait
         # être journalisable comme un appel, pas noyé dans une note libre.
         valid_kinds = {LeadActivity.Kind.APPEL, LeadActivity.Kind.EMAIL,
