@@ -4591,6 +4591,7 @@ def previsions_reappro(company, nb_mois=6):
     from .models import MouvementStock, Produit
     from core.stock_reorder import predict_reorder
 
+    nb_mois = max(int(nb_mois or 1), 1)  # ENF11 : 0 -> division par zero
     today = timezone.now().date()
     debut = today - datetime.timedelta(days=30 * nb_mois)
 
@@ -4631,10 +4632,19 @@ def previsions_reappro(company, nb_mois=6):
             company, p, disponible=disponible, en_commande=en_commande,
             cible=cible_prev)
         conso_jour = conso_moy / 30.0 if conso_moy else 0.0
-        reorder = predict_reorder(
-            current_stock=p.quantite_stock, today=today,
-            avg_daily_consumption=conso_jour,
-            safety_stock=p.seuil_alerte or 0)
+        try:
+            reorder = predict_reorder(
+                current_stock=p.quantite_stock, today=today,
+                avg_daily_consumption=conso_jour,
+                safety_stock=p.seuil_alerte or 0)
+            date_rupture = reorder.rupture_date
+            point_commande = reorder.reorder_point
+        except OverflowError:
+            # ENF11 nocturne - stock enorme / conso minuscule : la date de
+            # rupture depasse l'an 9999 (OverflowError -> 500). Pas de rupture
+            # previsible : date nulle, point de commande = stock de securite.
+            date_rupture = None
+            point_commande = float(p.seuil_alerte or 0)
         result.append({
             'produit_id': p.id,
             'nom': p.nom,
@@ -4646,8 +4656,8 @@ def previsions_reappro(company, nb_mois=6):
             'en_commande': en_commande,
             'cible': cible_prev,
             'quantite_suggeree': qte_suggeree,
-            'date_rupture': reorder.rupture_date,
-            'point_commande': reorder.reorder_point,
+            'date_rupture': date_rupture,
+            'point_commande': point_commande,
         })
     result.sort(key=lambda x: -x['consommation_mensuelle_moy'])
     return result
