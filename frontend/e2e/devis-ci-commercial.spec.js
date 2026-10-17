@@ -168,7 +168,9 @@ test('CIQ334 — PDF : 3 pages avec ou sans étude, taux = dernier aperçu, dima
 test('CIQ334 — lien public : synthese_ci = synthèse imprimée, eco_s_ann nul, lien ≥ validité', async ({ request }) => {
   expect(etat.devisId, 'le test de création doit précéder').toBeTruthy()
   const lien = await lireJson(await request.post(`${API}/ventes/devis/${etat.devisId}/share-link/`,
-    { data: {} }), 'lien de partage')
+    // ADEV11 — le jeton CLIENT d'un brouillon n'est plus servi (404) : ce POST
+    // est l'ENVOI au client (brouillon → envoyé), comme le bouton de l'ERP.
+    { data: { envoi: true } }), 'lien de partage')
   etat.token = lien.token
   expect(etat.token, 'jeton public de la proposition').toBeTruthy()
   const data = await lireJson(await request.get(`${API}/ventes/proposal/${etat.token}/`), 'proposition publique')

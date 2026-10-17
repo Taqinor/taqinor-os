@@ -221,7 +221,7 @@ test.describe('CIQ650 — site professionnel BT, de la visite à la réception',
     }
 
     const sansConvention = await passerEnCours()
-    expect(sansConvention.status(), 'travaux avant la convention').toBe(400)
+    expect(sansConvention.status(), 'travaux avant la convention').toBe(409)
     expect(await raisons(sansConvention)).toMatch(/convention de raccordement/)
 
     // La convention se saisit à l'écran du dossier réglementaire (étape « Convention »).

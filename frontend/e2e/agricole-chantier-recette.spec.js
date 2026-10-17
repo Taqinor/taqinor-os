@@ -267,7 +267,7 @@ test('AGR624 — portail client : recette visible, relevé m³ saisi ; la fiche 
       { data: { equipement: cible.id, type: 'm3', valeur: '160', date: aujourdhui } }), 'relevé 2')
     const recul = await portail.post(`${API}/portail/mes-chantiers/${etat.chantierId}/releves/`,
       { data: { equipement: cible.id, type: 'm3', valeur: '50', date: aujourdhui } })
-    expect(recul.status(), 'un compteur ne recule pas').toBe(400)
+    expect(recul.status(), 'un compteur ne recule pas').toBe(409)
 
     // La fiche équipement SAV (côté ERP) montre ce relevé et sa moyenne.
     const cote = liste(await json(await request.get(
