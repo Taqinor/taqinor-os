@@ -258,6 +258,16 @@ class LesReglesMigreesViventCoteServeur(_Base):
         self.assertFalse(
             [li for li in data['lignes'] if li['role'] == 'panneau'])
 
+    def test_enf11_marques_manquantes_declarees_comme_objets(self):
+        """Fuzz nocturne : la réponse sert des objets {role, marque,
+        libelle_role} (lus ainsi par l'écran) — l'OpenAPI ne les déclare plus
+        comme des chaînes."""
+        from apps.ventes.views.openapi_docs import CompositionResponse
+        # ``_ser`` rend une INSTANCE (inline_serializer), pas une classe.
+        champ = CompositionResponse.fields['marques_manquantes']
+        self.assertEqual(
+            set(champ.child.fields), {'role', 'marque', 'libelle_role'})
+
     def test_pvmrq_la_creation_REFUSE_plutot_que_de_livrer_sans_panneaux(self):
         """La garde ne vivait que dans l'écran : le chemin serveur livrait un
         devis sans panneaux, à un prix effondré. Il refuse désormais."""

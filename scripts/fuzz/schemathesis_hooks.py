@@ -253,7 +253,9 @@ def _entree(nom, table):
 
 
 def _id_connu(valeur, ids, connus, texte=False):
-    if texte and isinstance(valeur, str) and valeur.isdigit():
+    # Nocturne 38870650403 (Hook Error) : « ¹ » est isdigit() mais pas un int.
+    if (texte and isinstance(valeur, str) and valeur.isascii()
+            and valeur.isdigit()):
         choisi = _id_connu(int(valeur), ids, connus)
         return str(choisi)
     if isinstance(valeur, bool) or not isinstance(valeur, int):

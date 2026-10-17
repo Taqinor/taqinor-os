@@ -80,7 +80,16 @@ class OnepageDernierBlocTests(TestCase):
                 self.assertTrue(any(f in visibles for f in formes_ttc))
 
     def test_renvoi_declare(self):
+        # Nocturne 38870650403 (12→16/10) : avec la note ×60, le une-page FR
+        # tient désormais sans rien tronquer (ligne de conditions mesurée à
+        # 928 px pour une limite de 1 050 px) — la troncature déclarée n'était
+        # plus exercée. Le cas « au-delà » du module est donc rejoué avec une
+        # note ×200 : elle NE PEUT PAS tenir, le renvoi doit être déclaré.
+        Devis.objects.filter(pk=self.devis.pk).update(
+            note=('Note longue du commercial pour le client. ' * 200).strip())
+        self.devis.refresh_from_db()
         html, pages, _f, _t, renvoi = self._rendu('fr')
+        self.assertEqual(len(pages), 1)
         visibles = ' | '.join(b.text for b in self._boites_visibles(pages[0]))
         # La clause 2 est imprimée dans la zone visible, ou le texte long a
         # été remplacé par le renvoi déclaré.

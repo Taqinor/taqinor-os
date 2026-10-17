@@ -213,9 +213,9 @@ _PARAM_IF_MATCH = OpenApiParameter(
     OpenApiParameter.HEADER, required=True,
     description="Empreinte « document » lue avec la conception (GET "
                 "``layout``) ; l'ETag vide ``\"\"`` pour un document vide. "
-                "Exigé pour écrire : absent ou blanc, 428 et rien n'est écrit "
-                "(mais un calepinage archivé ou un corps invalide est refusé "
-                "avant) ; périmé, 409.")
+                "Exigé pour écrire : absent ou blanc, 428 et rien n'est écrit, "
+                "avant tout contrôle d'état (calepinage archivé) ; périmé, "
+                "409.")
 #: ``_corps_de_layout`` : un objet NON VIDE ; une enveloppe seule
 #: (``{"layout": …}`` / ``{"roof_layout": …}``) porte un objet non vide. Un
 #: ``{}`` ou ``{"layout": null}`` était « conforme » puis refusé en 400.
@@ -654,6 +654,16 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         version. Un corps vide est refusé en français ; un calepinage d'une
         autre société est introuvable (404, ``get_queryset``).
         """
+        if request.method.lower() == 'post':
+            # ENF11 nocturne — l'en-tête OBLIGATOIRE se refuse AVANT tout
+            # contrôle d'ÉTAT : un calepinage archivé sans If-Match répondait
+            # 409 (état) alors que la précondition manquait. Existence et
+            # portée société d'abord (404 d'un id étranger), puis le jeton
+            # (428), puis seulement le garde « archivé » de ``get_object``.
+            calepinage = super().get_object()
+            if _jeton_if_match(request) is None:
+                return Response({'detail': MESSAGE_JETON_MANQUANT},
+                                status=status.HTTP_428_PRECONDITION_REQUIRED)
         calepinage = self.get_object()  # borné société par get_queryset
         if request.method.lower() == 'get':
             return Response({

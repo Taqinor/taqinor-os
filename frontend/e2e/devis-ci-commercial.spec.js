@@ -25,7 +25,7 @@
 import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, KWH_COMMERCIAL, choisirMarche, declarerProfilCi, executerDansDjango,
-  lireJson, listeDe, nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner,
+  lireJson, nombrePagesPdf, uniq, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner,
 } from './helpers'
 
 const ANNEE = new Date().getFullYear()
@@ -56,10 +56,14 @@ function pctImprime(texte, pct) {
   return [...formes].some((f) => new RegExp(`(^|[^\\d,.])${f.replace('.', '\\.')}\\s*%`).test(texte))
 }
 
+// VNT54 — « une vente en vigueur par lead » : le premier lead de la démo porte
+// déjà une vente signée (seed ou autre spec), donc la signature du lien public
+// répondait 409 vente_active_existante. Chaque passe crée SON lead.
 async function premierLead(request) {
-  const liste = listeDe(await lireJson(await request.get(`${API}/crm/leads/`), 'leads'))
-  expect(liste.length, 'seed_demo doit fournir au moins un lead').toBeGreaterThan(0)
-  return liste.find((l) => l.type_installation === 'commercial') || liste[0]
+  return lireJson(await request.post(`${API}/crm/leads/`, {
+    data: { nom: uniq('CIQ commercial'), ville: 'Casablanca', type_installation: 'commercial',
+      telephone: `06${String(Date.now() % 100_000_000).padStart(8, '0')}` },
+  }), 'lead de la passe')
 }
 
 test.describe.configure({ mode: 'serial' })
@@ -168,7 +172,9 @@ test('CIQ334 — PDF : 3 pages avec ou sans étude, taux = dernier aperçu, dima
 test('CIQ334 — lien public : synthese_ci = synthèse imprimée, eco_s_ann nul, lien ≥ validité', async ({ request }) => {
   expect(etat.devisId, 'le test de création doit précéder').toBeTruthy()
   const lien = await lireJson(await request.post(`${API}/ventes/devis/${etat.devisId}/share-link/`,
-    { data: {} }), 'lien de partage')
+    // ADEV11 — le jeton CLIENT d'un brouillon n'est plus servi (404) : ce POST
+    // est l'ENVOI au client (brouillon → envoyé), comme le bouton de l'ERP.
+    { data: { envoi: true } }), 'lien de partage')
   etat.token = lien.token
   expect(etat.token, 'jeton public de la proposition').toBeTruthy()
   const data = await lireJson(await request.get(`${API}/ventes/proposal/${etat.token}/`), 'proposition publique')

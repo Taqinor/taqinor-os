@@ -31,12 +31,13 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 
 from . import activity
+from .validations_releve import exiger_objet
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
     WarrantyClaim, KbArticle, AlarmeOnduleur,
     CauseDefaillance, RemedeDefaillance, EquipementDowntime,
-    ReleveCompteurEquipement, ReponseType, CompatibilitePiece, PieceRetiree,
+    ReponseType, CompatibilitePiece, PieceRetiree,
     CategorieTicket, EquipeMaintenance, CategorieEquipement,
     TicketActiviteAFaire, TicketFollower,
     WorksheetMaintenanceModele, TicketWorksheet, Probleme, ProblemeIncident,
@@ -758,7 +759,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         request=_sch('SavReleveCompteurRequete', {
             'type': drf_serializers.RegexField(r'^(heures|kwh|m3)$'),
             'valeur': drf_serializers.DecimalField(
-                max_digits=14, decimal_places=2),
+                max_digits=12, decimal_places=2, min_value=0),
             'date': drf_serializers.DateField(required=False),
         }),
         responses={201: _sch('SavReleveCompteurReponse', {
@@ -780,27 +781,13 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             qs = equipement.releves_compteur.all()
             return Response(ReleveCompteurEquipementSerializer(qs, many=True).data)
 
-        from datetime import date as _date
         from .services import ReleveDecroissantError, enregistrer_releve_compteur
+        from .validations_releve import lire_releve
 
-        type_releve = request.data.get('type')
-        # AGR615 — le compteur d'eau d'une pompe (m³) est accepté.
-        if type_releve not in (
-                ReleveCompteurEquipement.Type.HEURES,
-                ReleveCompteurEquipement.Type.KWH,
-                ReleveCompteurEquipement.Type.M3):
-            return Response(
-                {'detail': 'type invalide (heures|kwh|m3).'}, status=400)
-        try:
-            valeur = Decimal(str(request.data.get('valeur')))
-        except (InvalidOperation, TypeError):
-            return Response({'detail': 'valeur invalide.'}, status=400)
-
-        date_raw = (request.data.get('date') or '').strip()
-        try:
-            date_releve = _date.fromisoformat(date_raw) if date_raw else timezone.localdate()
-        except ValueError:
-            return Response({'detail': 'date invalide.'}, status=400)
+        lu = lire_releve(request.data)
+        if isinstance(lu, Response):
+            return lu
+        type_releve, valeur, date_releve = lu
 
         try:
             releve, ticket = enregistrer_releve_compteur(
@@ -2805,7 +2792,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ticket = self.get_object()
         # ASAV2 — même décision que les deux portes de facture.
         from .services import decision_facturation
-        override = str(request.data.get('override') or '') in (
+        override = str(exiger_objet(request.data).get('override') or '') in (
             '1', 'true', 'True', 'on')
         decision = decision_facturation(ticket, request.user, override)
         if decision['refuse']:
@@ -3569,6 +3556,7 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
     def _ticket_de_la_societe(self, request):
         """Résout le ticket du corps, scopé société. Erreur FRANÇAISE qui
         NOMME le champ fautif (jamais un « non enregistré » générique)."""
+        exiger_objet(request.data)
         brut = request.data.get('ticket')
         if brut in (None, ''):
             raise ValidationError({'ticket': 'Indiquez le ticket à rattacher.'})

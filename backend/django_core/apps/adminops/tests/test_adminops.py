@@ -316,6 +316,16 @@ class EnfSchemaValidationTests(TestCase):
             '/api/django/adminops/adoption/?periode=abc')
         self.assertEqual(resp.status_code, 400)
 
+    def test_adoption_periode_hors_plage_400(self):
+        """ENF11 nocturne - periode gigantesque/nulle : 400 nommant periode."""
+        for valeur in ('1864951132', '0', '99999999999999999999'):
+            resp = self.client_api.get(
+                '/api/django/adminops/adoption/?periode=' + valeur)
+            self.assertEqual(resp.status_code, 400, valeur)
+            self.assertIn('periode', resp.json())
+        resp = self.client_api.get('/api/django/adminops/adoption/?periode=90')
+        self.assertEqual(resp.status_code, 200)
+
 
 class Enf17FkLectureSeuleTests(TestCase):
     """ENF17 — FK des sérialiseurs console en lecture seule : un id d'une

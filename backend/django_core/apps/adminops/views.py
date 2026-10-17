@@ -1,4 +1,5 @@
 import json
+import re
 import zipfile
 from io import BytesIO
 
@@ -52,7 +53,7 @@ def health_score_view(request):
 @extend_schema(
     parameters=[OpenApiParameter(
         'periode', OpenApiTypes.INT, required=False, default=30,
-        description='Fenêtre en jours (7/30/90).')],
+        description='Fenêtre en jours (7/30/90), entier 1..3650.')],
     responses=inline_serializer('AdoptionUsage', {
         'par_module': drf_serializers.JSONField(),
         'par_utilisateur': drf_serializers.JSONField(),
@@ -61,10 +62,15 @@ def health_score_view(request):
 @permission_classes([IsAdministrateur])
 def adoption_view(request):
     """NTADM17 — adoption par module/utilisateur sur `periode` (7/30/90j)."""
-    try:
-        jours = int(request.query_params.get('periode', 30))
-    except (TypeError, ValueError):
+    # ENF11 nocturne - `periode` borne (1..3650 j) : un entier gigantesque
+    # faisait deborder timedelta dans le selecteur (500).
+    brut = request.query_params.get('periode', '30')
+    if not re.fullmatch(r'[0-9]{1,6}', brut):
         return Response({'periode': ['Entier attendu.']}, status=400)
+    jours = int(brut)
+    if not 1 <= jours <= 3650:
+        return Response({'periode': ['Valeur hors plage (1 a 3650).']},
+                        status=400)
     return Response({
         'par_module': selectors.adoption_par_module(request.user.company, jours),
         'par_utilisateur': selectors.adoption_par_utilisateur(

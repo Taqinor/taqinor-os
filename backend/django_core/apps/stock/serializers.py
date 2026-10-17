@@ -10,8 +10,10 @@ from rest_framework import serializers
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin, TexteLie)
+    ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin,
+    TexteLie)
 from core.unicite import ConflitUnicite
+from .champs_lignes import ChampsLigneFactureFournisseur
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
@@ -1950,21 +1952,13 @@ CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
 )
 
 
-class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
+class LigneFactureFournisseurSerializer(ChampsLigneFactureFournisseur,
+                                        CompanyScopedRelationsMixin,
                                         serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
     # produit est optionnel (ligne libre/service, XPUR16) — default=None
     # évite une AttributeError DRF quand produit est vide.
-    produit_nom = serializers.CharField(
-        source='produit.nom', read_only=True, default=None, allow_null=True)
-    total_ht = serializers.DecimalField(
-        max_digits=14, decimal_places=2, read_only=True)
-    # XPUR17 — TVA par ligne (taux marocains). total_tva = 0 si taux_tva vide
-    # (ligne historique, suit le taux global agrégé de la facture).
-    total_tva = serializers.DecimalField(
-        max_digits=14, decimal_places=2, read_only=True)
-
     class Meta:
         model = LigneFactureFournisseur
         fields = [

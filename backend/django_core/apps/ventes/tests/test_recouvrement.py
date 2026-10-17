@@ -147,6 +147,22 @@ class TestRecouvrement(TestCase):
         self.assertEqual(resp.data['avoirs'][0]['reference'], 'AVO-REC-1')
         self.assertEqual(resp.data['avoirs'][0]['total_ttc'], '600.00')
 
+    def test_enf11_releve_pdf_nom_client_avec_caractere_de_controle(self):
+        """Fuzz nocturne : un client dont le nom porte \\x03 donnait un
+        Content-Disposition invalide (400 text/html chez gunicorn) -> le nom
+        de fichier est un slug ASCII sans caractere de controle."""
+        from unittest.mock import patch
+        self.client_obj.nom = 'Dupont\x03G "x"\r\nInjected: 1 \u00e9'
+        self.client_obj.save()
+        with patch('apps.ventes.utils.pdf.generate_releve_pdf',
+                   return_value=b'%PDF-1.4'):
+            resp = self.api.get(
+                f'/api/django/ventes/clients/{self.client_obj.id}/releve-pdf/')
+        self.assertEqual(resp.status_code, 200)
+        entete = resp['Content-Disposition']
+        self.assertRegex(entete, r'^inline; filename="Releve_[A-Za-z0-9_-]+\.pdf"$')
+        self.assertTrue(all(32 <= ord(c) < 127 for c in entete), entete)
+
     def test_relancer_logs_and_sets_next(self):
         nxt = (date.today() + timedelta(days=7)).isoformat()
         resp = self.api.post(

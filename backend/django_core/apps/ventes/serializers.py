@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalSouple,
+    DecimalStricte,
     DecimalSoupleMixin,
 )
 from core.mixins import SameCompanyFKSerializerMixin
@@ -106,6 +107,16 @@ def _messages_decimaux(fields, noms):
             champ.error_messages['max_decimal_places'] = MSG_DEUX_DECIMALES
 
 
+class _PrixLigneNonVide(DecimalStricte):
+    """ENF11 nocturne — le prix d'une ligne est ABSENT (``null``, section ou
+    note) ou un décimal-chaîne : ``""`` n'est PAS un « non renseigné »
+    (le motif publié de ``prix_unitaire`` l'exclut) → 400 nommant le champ,
+    plus de prix effacé en silence."""
+
+    def validate_empty_values(self, data):
+        return serializers.Field.validate_empty_values(self, data)
+
+
 class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """La ligne d'un devis, telle que l'écran la lit et l'écrit.
@@ -155,6 +166,9 @@ class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
             # retire la borne entière (garde du test ASEC22).
             if type(champ) is CompanyScopedPrimaryKeyRelatedField:
                 champ.__class__ = _ProduitSocieteOuCatalogueGlobalField
+        prix = fields.get('prix_unitaire')
+        if type(prix) is DecimalStricte:
+            prix.__class__ = _PrixLigneNonVide
         _messages_decimaux(fields, ('quantite', 'prix_unitaire', 'remise'))
         return fields
 

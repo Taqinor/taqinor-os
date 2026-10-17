@@ -222,3 +222,15 @@ class NTSRV16ProblemeTest(TestCase):
         payload = resp.json()
         lignes = payload['results'] if isinstance(payload, dict) else payload
         self.assertEqual(lignes[0]['id'], lourd['id'])
+
+    def test_lier_delier_corps_non_objet_400(self):
+        """ENF11 nocturne : un corps JSON liste = 400, jamais 500."""
+        probleme = self._creer_probleme()
+        for action in ('lier-ticket', 'delier-ticket'):
+            url = f"/api/django/sav/problemes/{probleme['id']}/{action}/"
+            resp = self.api.post(url, [{'': 9391}, {}], format='json')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn('Corps JSON objet attendu.', resp.content.decode())
+            resp = self.api.post(url, {'ticket': 'abc'}, format='json')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn('ticket', resp.json())

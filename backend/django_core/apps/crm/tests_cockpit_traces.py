@@ -197,6 +197,16 @@ class ReportHumainTests(_Base):
         self.assertEqual(cible.nb_reports, 1)
         self.assertEqual(cible.due_initial_at, _a(1))
 
+    def test_journal_d_appel_champ_texte_non_texte_400_nomme_le_champ(self):
+        """ENF11 nocturne — ``rappel_heure: {}`` (falsy) passait ``or ''`` et
+        la requête était acceptée (201) : 400 qui nomme le champ."""
+        url = f'/api/django/crm/leads/{self.lead.pk}/log-interaction/'
+        for champ in ('rappel_heure', 'rappel_le', 'body', 'outcome'):
+            resp = self.api.post(
+                url, {'kind': 'appel', champ: {}}, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.data))
+            self.assertIn(champ, resp.data)
+
     def test_la_date_de_relance_de_la_fiche_compte(self):
         cible = self._touche(_a(1))
         resp = self.api.patch(

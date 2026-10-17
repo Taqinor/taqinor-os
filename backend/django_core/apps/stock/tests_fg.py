@@ -710,6 +710,18 @@ class TestFG65Previsions(TestCase):
         self.assertIn('quantite_suggeree', item)
         self.assertGreater(item['total_sorties'], 0)
 
+    def test_previsions_stock_enorme_et_nb_mois_zero(self):
+        """ENF11 nocturne - rupture au-dela de l'an 9999 : pas de 500 ; 0 mois : 400."""
+        from apps.stock.models import Produit
+        Produit.objects.filter(id=self.produit.id).update(
+            quantite_stock=2 ** 31 - 1)
+        r = self.client.get(
+            '/api/django/stock/produits/previsions-reappro/')
+        self.assertEqual(r.status_code, 200, r.content)
+        r = self.client.get(
+            '/api/django/stock/produits/previsions-reappro/?nb_mois=0')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_previsions_cross_company_isolation(self):
         company2 = make_company('fg65-other')
         admin2 = make_admin(company2, 'admin_fg65_b')

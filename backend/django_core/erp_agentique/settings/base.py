@@ -713,7 +713,12 @@ REST_FRAMEWORK = {
     ),
     # Fix 1 : taux de throttle par scope (appliqués per-view)
     'DEFAULT_THROTTLE_RATES': {
-        'login': '5/minute',   # 5 tentatives/min par IP sur /token/
+        # 5 tentatives/min par IP sur /token/. Env LOGIN_RATE_LIMIT : la
+        # matrice e2e (une IP, plusieurs comptes portail, workers en
+        # parallèle) l'épuisait en 429 — relevé par les SEULS jobs e2e de la
+        # CI, jamais en prod (variable absente = 5/minute, byte-identique).
+        'login': (os.environ.get('LOGIN_RATE_LIMIT', '').strip()
+                  or '5/minute'),
         'register': '3/hour',  # 3 inscriptions/h par IP sur /register/
         # N89 — débit de l'API publique, par CLÉ d'API (pas par IP).
         'publicapi': '120/minute',

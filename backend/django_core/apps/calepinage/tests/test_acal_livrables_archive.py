@@ -133,9 +133,13 @@ class LivrablesArchiveTest(TestCase):
         avant = Calepinage.objects.get(pk=self.calepinage.pk)
         for methode, suffixe, corps in ECRITURES:
             with self.subTest(route=f'{methode.upper()} {suffixe}'):
+                # ENF11 nocturne — l'en-tête If-Match obligatoire de
+                # ``layout/`` est refusé AVANT l'état : on le fournit ici.
+                extra = ({'HTTP_IF_MATCH': '"x"'}
+                         if suffixe == 'layout/' else {})
                 with patch_materiel():
                     reponse = getattr(self.api, methode)(
-                        self._url(suffixe), corps, format='json')
+                        self._url(suffixe), corps, format='json', **extra)
                 self.assertEqual(reponse.status_code, 409,
                                  getattr(reponse, 'data', None))
                 self.assertEqual(reponse.data['detail'], MESSAGE_ARCHIVE)

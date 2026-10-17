@@ -14,6 +14,17 @@ import { test, expect } from '@playwright/test'
 const SHOT = { fullPage: true, animations: 'disabled', maxDiffPixelRatio: 0.02 }
 
 test('dashboard — capture de référence', { tag: '@visual' }, async ({ page }) => {
+  // Le tour produit « Votre tableau de bord » (ProductTour, NTDMO14) s'ouvre
+  // pour un utilisateur de moins de 30 jours et n'est pas marqué vu par le
+  // seed : la baseline du 11/10 le portait, celle du 16/10 non (nocturne
+  // 38870650403). On le marque VU côté serveur avant la capture : même
+  // écran chaque nuit, que la base démo soit fraîche ou restaurée du cache.
+  const tours = await (await page.request.get('/api/django/onboarding/tours/')).json()
+  const dashboard = (Array.isArray(tours) ? tours : []).find((t) => t.ecran_cible === '/dashboard')
+  if (dashboard && !dashboard.vu) {
+    const vu = await page.request.post(`/api/django/onboarding/tours/${dashboard.tour_key}/vu/`)
+    expect(vu.ok(), 'tour du tableau de bord marqué vu').toBeTruthy()
+  }
   await page.goto('/dashboard')
   await expect(page.getByRole('heading', { name: 'Tableau de bord' })).toBeVisible()
   await expect(page).toHaveScreenshot('dashboard.png', SHOT)

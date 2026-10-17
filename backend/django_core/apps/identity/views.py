@@ -199,6 +199,12 @@ class LoginBannerView(APIView):
                    responses=inline_serializer('LoginBannerAck', {
                        'acknowledged': serializers.BooleanField()}))
     def post(self, request):
+        # ENF11 nocturne — le schéma déclare le corps REQUIS (le client envoie
+        # toujours au moins ``{}``) : un POST sans aucun corps était accepté
+        # (200). Déclaration = comportement : 400 quand le corps est absent.
+        if not request.body:
+            raise DRFValidationError(
+                {'detail': 'Le corps de la requête (objet JSON) est requis.'})
         entree = LoginBannerAckSerializer(data=request.data)
         entree.is_valid(raise_exception=True)
         username = entree.validated_data.get('username') or ''

@@ -153,3 +153,30 @@ class TestChampsStrictsFuzzR12(TestCase):
             resp = self.api.get(f'{BASE}/materiels-consignes/', {'fournisseur': valeur})
             self.assertEqual(resp.status_code, 400, (valeur, resp.content))
             self.assertIn('fournisseur', resp.data)
+
+
+class TestMaterielConsigneEnf11Nocturne(TestCase):
+    """ENF11 nocturne - liste vide / fournisseur nul ; caution_totale bornee."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.api = auth(make_user(self.company))
+
+    def test_liste_vide_puis_ligne_sans_fournisseur(self):
+        r = self.api.get(f'{BASE}/materiels-consignes/')
+        self.assertEqual(r.status_code, 200, r.content)
+        MaterielConsigne.objects.create(
+            company=self.company, designation='Palette', quantite=3,
+            caution_unitaire='10.00', fournisseur=None)
+        r = self.api.get(f'{BASE}/materiels-consignes/')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_caution_totale_hors_bornes_refusee_400(self):
+        r = self.api.post(f'{BASE}/materiels-consignes/', {
+            'designation': 'Touret', 'quantite': 13542,
+            'caution_unitaire': '31223732.', 'fournisseur': None,
+        }, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('caution_unitaire', r.json())
+        self.assertEqual(
+            self.api.get(f'{BASE}/materiels-consignes/').status_code, 200)

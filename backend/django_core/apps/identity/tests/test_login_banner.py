@@ -73,6 +73,15 @@ class LoginBannerTests(TestCase):
                 '/api/django/identity/login-banner/', corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
 
+    def test_enf11_ack_sans_corps_400_avec_corps_vide_objet_200(self):
+        """ENF11 nocturne — corps requis par le schéma : aucun corps = 400 ;
+        ``{}`` (ce qu'envoie le client sans identifiant) reste accepté."""
+        url = '/api/django/identity/login-banner/'
+        resp = self.api.post(url)
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(url, {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_ack_noop_without_banner(self):
         self._profile('')
         before = AuditLog.objects.count()
