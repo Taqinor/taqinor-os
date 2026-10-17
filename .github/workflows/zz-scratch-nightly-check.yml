@@ -5,6 +5,12 @@ name: zz-scratch nightly check (TEMPORAIRE — supprimé avant merge)
 # passe visuelle. Dispatch manuel sur la branche de travail uniquement.
 on:
   workflow_dispatch:
+  push:
+    branches: ['claude/nightly-run-issue-52f2a9']
+
+concurrency:
+  group: zz-scratch-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci-image-check:
