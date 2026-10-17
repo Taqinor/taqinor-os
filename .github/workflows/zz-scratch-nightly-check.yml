@@ -123,8 +123,9 @@ jobs:
           echo "rc=$?" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Rendu instrumenté du fixture AMOT20 (fr)
         working-directory: backend/django_core
+        env:
+          DB_NAME: test_erp_db
         run: |
-          python manage.py migrate --noinput >/dev/null
           cat > /tmp/amot20_debug.py <<'PY'
           from apps.ventes.models import Devis
           from apps.ventes.quote_engine import generate_devis_premium as G
@@ -281,8 +282,39 @@ jobs:
             ci-site-mt-recette.spec.js ci-visite-chantier-reception.spec.js \
             agricole-chantier-recette.spec.js suivi-commercial.spec.js
           echo "specs rc=$?" | tee -a "$GITHUB_STEP_SUMMARY"
-          npx playwright test --grep @visual
+          npx playwright test --grep @visual --output test-results-visual
           echo "visual rc=$?" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Diagnostic VNT82 (etat_vente d'une vente montée comme le spec)
+        if: ${{ !cancelled() }}
+        working-directory: backend/django_core
+        run: |
+          cat > /tmp/vnt82_debug.py <<'PY'
+          import json
+          from rest_framework.test import APIClient
+          from django.contrib.auth import get_user_model
+          u = get_user_model().objects.get(username='demo_admin')
+          c = APIClient(); c.force_authenticate(u)
+          prods = c.get('/api/django/stock/produits/?page_size=100').json()
+          prods = prods.get('results', prods)
+          p = next(x for x in prods if float(x.get('prix_vente') or 0) > 0)
+          lead = c.post('/api/django/crm/leads/', {'nom': 'VNT82 dbg', 'ville': 'Casablanca', 'telephone': '0611223344', 'type_installation': 'residentiel', 'facture_hiver': '800'}, format='json').json()
+          print('LEAD', lead.get('id'), lead.get('type_installation'))
+          d = c.post('/api/django/ventes/devis/', {'lead': lead['id'], 'taux_tva': '20.00', 'mode_installation': 'residentiel'}, format='json').json()
+          print('DEVIS', d.get('id'), d.get('statut'))
+          r = c.post(f"/api/django/ventes/devis/{d['id']}/replace-lines/", {'lignes': [{'produit': p['id'], 'designation': p['nom'], 'quantite': '1.00', 'prix_unitaire': '50000.00', 'remise': '0.00', 'taux_tva': '20.00', 'type_ligne': 'produit', 'ordre': 0}]}, format='json')
+          print('LINES', r.status_code)
+          r = c.post(f"/api/django/ventes/devis/{d['id']}/accepter/", {'nom': 'Client VNT82 dbg'}, format='json')
+          print('ACCEPT', r.status_code, json.dumps(r.json(), default=str)[:400])
+          det = c.get(f"/api/django/ventes/devis/{d['id']}/").json()
+          print('STATUT', det.get('statut'), 'echeancier', det.get('echeancier'))
+          print('VENTE', json.dumps(det.get('vente'), default=str, indent=1)[:3000])
+          from apps.ventes.utils.echeancier import tranches_normalisees
+          from apps.ventes.models import Devis
+          print('TRANCHES', tranches_normalisees(Devis.objects.get(pk=d['id'])))
+          lw = c.get(f"/api/django/crm/leads/{lead['id']}/").json()
+          print('LEAD devis keys', [k for k in lw.keys() if 'devis' in k])
+          PY
+          python manage.py shell < /tmp/vnt82_debug.py
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

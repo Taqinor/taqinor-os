@@ -243,7 +243,7 @@ test.describe('CIQ650 — site professionnel BT, de la visite à la réception',
     })
 
     const sansHse = await passerEnCours()
-    expect(sansHse.status(), 'convention signée mais aucun document de sécurité').toBe(400)
+    expect(sansHse.status(), 'convention signée mais aucun document de sécurité').toBe(409)
     const motifs = await raisons(sansHse)
     expect(motifs).toMatch(/Documents de sécurité manquants/)
     expect(motifs, 'la convention n’est plus le motif').not.toMatch(/convention de raccordement/)
@@ -343,7 +343,7 @@ test.describe('CIQ650 — site professionnel BT, de la visite à la réception',
     expect(texte, 'la réserve ouverte figure au PV').toMatch(/E2E coffret AC/)
 
     const refus = await request.post(`${chantierUrl()}reception-definitive/`, { data: {} })
-    expect(refus.status(), 'définitive avec une réserve ouverte').toBe(400)
+    expect(refus.status(), 'définitive avec une réserve ouverte').toBe(409)
     const detailRefus = (await refus.json()).detail
     expect(detailRefus).toMatch(/réserve\(s\) non levée\(s\)/)
     expect(detailRefus).toContain(RESERVE)

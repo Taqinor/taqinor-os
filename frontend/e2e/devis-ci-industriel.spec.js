@@ -19,7 +19,7 @@
 // Base partagée, workers: 1 : nettoyage best-effort en afterAll.
 import { test, expect } from '@playwright/test'
 import {
-  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, listeDe,
+  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, uniq,
   nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner,
 } from './helpers'
 
@@ -51,10 +51,14 @@ function clesProfondes(v, out = []) {
   return out
 }
 
+// VNT54 — « une vente en vigueur par lead » : le premier lead de la démo porte
+// déjà une vente signée (seed ou autre spec), donc la signature du lien public
+// répondait 409 vente_active_existante. Chaque passe crée SON lead.
 async function premierLead(request) {
-  const liste = listeDe(await lireJson(await request.get(`${API}/crm/leads/`), 'leads'))
-  expect(liste.length, 'seed_demo doit fournir au moins un lead').toBeGreaterThan(0)
-  return liste.find((l) => l.type_installation === 'industriel') || liste[0]
+  return lireJson(await request.post(`${API}/crm/leads/`, {
+    data: { nom: uniq('CIQ industriel'), ville: 'Casablanca', type_installation: 'industriel',
+      telephone: `06${String(Date.now() % 100_000_000).padStart(8, '0')}` },
+  }), 'lead de la passe')
 }
 
 test.describe.configure({ mode: 'serial' })
@@ -173,7 +177,10 @@ test('CIQ346 — lien public : synthese_ci.argent = celui du PDF, aucune clé P9
   const van = synthese.argent.indicateurs?.van_mad
   expect(typeof van, 'synthese_ci.argent.indicateurs.van_mad (taux déclaré)').toBe('number')
   const chiffresPdf = etat.pdfTexte.replace(/[\s.,]/g, '')
-  expect(chiffresPdf, `VAN ${van} MAD imprimée`).toContain(String(Math.round(Math.abs(van))))
+  // Le PDF imprime la VAN au centime (« 171 087,84 MAD ») : la valeur servie
+  // est comparée telle quelle (2 décimales) ou arrondie, chiffres sans séparateurs.
+  const formes = [Math.abs(van).toFixed(2).replace('.', ''), String(Math.round(Math.abs(van)))]
+  expect(formes.some((f) => chiffresPdf.includes(f)), `VAN ${van} MAD imprimée`).toBeTruthy()
 })
 
 test('CIQ346 — page /proposition : ni « heures les plus chères » ni « CBAM », FR et AR (WEB_URL requis)', async ({ page }) => {
