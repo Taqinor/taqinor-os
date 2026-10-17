@@ -885,6 +885,10 @@ def _appliquer_enchainement(activity, user):
       qui garantit l'idempotence — re-clôturer n'en crée jamais une 2ᵉ.
     """
     atype = activity.activity_type
+    # ENF11 (nocturne) : ``activity_type`` est NULLABLE — une activité sans type
+    # n'a aucun enchaînement (avant : AttributeError sur None = 500 au « Fait »).
+    if atype is None:
+        return None, None
     type_suivant = atype.type_suivant
     if not type_suivant or atype.mode_enchainement == ActivityType.ModeEnchainement.AUCUN:
         return None, None

@@ -1543,3 +1543,18 @@ class Enf11Records2eTourTests(TestCase):
                       '9999-12-31T23:59:59-14:00', 'pas-une-date'):
             r = self.api.get(base, {'since': since})
             self.assertEqual(r.status_code, 200, (since, r.content))
+
+    def test_done_activite_sans_type_200(self):
+        """ENF11 nocturne : « Fait » sur une activité sans type = 200 (pas 500)."""
+        act = Activity.objects.create(
+            company=self.company, activity_type=None, summary='Sans type',
+            assigned_to=self.user, created_by=self.user,
+            content_type=ContentType.objects.get_for_model(Lead),
+            object_id=self.lead.id)
+        r = self.api.post(
+            f'/api/django/records/activities/{act.id}/done/', {},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        act.refresh_from_db()
+        self.assertTrue(act.done)
+        self.assertIsNone(r.data['chained'])
