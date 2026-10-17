@@ -1,4 +1,5 @@
 import math
+import re
 
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -10,7 +11,8 @@ from rest_framework import serializers
 from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin, TexteLie)
+    ChaineStricte, ChampsStrictsMixin, DecimalBornee, DecimalStricte,
+    IdInconnu404Mixin, TexteLie)
 from core.unicite import ConflitUnicite
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
@@ -1950,6 +1952,20 @@ CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
 )
 
 
+class TauxTvaLigne(DecimalBornee):
+    """ENF11 nocturne - ``lignes[].taux_tva`` : chaine au motif EXACT publie
+    (``\\d{1,3}`` entiers ASCII, <= 2 decimales), 0..100. ``DecimalField``
+    de DRF lit aussi `` 5 ``, ``1e1`` ou des chiffres non ASCII, que le schema
+    declare invalides : on applique le motif avant la conversion."""
+
+    _MOTIF = re.compile(r'(?:\d{1,3}(?:\.\d{0,2})?|\.\d{1,2})', re.ASCII)
+
+    def to_internal_value(self, data):
+        if not isinstance(data, str) or not self._MOTIF.fullmatch(data):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
 class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
                                         serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
@@ -1964,6 +1980,9 @@ class LigneFactureFournisseurSerializer(CompanyScopedRelationsMixin,
     # (ligne historique, suit le taux global agrégé de la facture).
     total_tva = serializers.DecimalField(
         max_digits=14, decimal_places=2, read_only=True)
+    taux_tva = TauxTvaLigne(
+        max_digits=5, decimal_places=2, min_value=Decimal('0'),
+        max_value=Decimal('100'), required=False, allow_null=True)
 
     class Meta:
         model = LigneFactureFournisseur
