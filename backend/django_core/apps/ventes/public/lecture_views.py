@@ -351,9 +351,9 @@ def _notify_first_open(link, request=None):
             ip, appareil = '', ''
             if request is not None:
                 from apps.crm.services import (
-                    appareil_de_requete, ip_de_requete,
+                    appareil_de_requete, ip_visiteur_de_requete,
                 )
-                ip, appareil = (ip_de_requete(request),
+                ip, appareil = (ip_visiteur_de_requete(request),
                                 appareil_de_requete(request))
             notify_devis_opened(devis_ref, lead, ip=ip, appareil_id=appareil)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
@@ -448,8 +448,8 @@ def _notify_open(link, request=None, *, is_first):
         ip, appareil = '', ''
         if request is not None:
             from apps.crm.services import (
-                appareil_de_requete, ip_de_requete)
-            ip, appareil = (ip_de_requete(request),
+                appareil_de_requete, ip_visiteur_de_requete)
+            ip, appareil = (ip_visiteur_de_requete(request),
                             appareil_de_requete(request))
         notify_devis_opened(
             link.devis.reference, lead, ip=ip, appareil_id=appareil,

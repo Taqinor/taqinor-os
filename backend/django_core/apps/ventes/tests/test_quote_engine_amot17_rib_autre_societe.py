@@ -1,7 +1,7 @@
 """AMOT17 (C-AMOT-016, volet legacy) — dès qu'une société a UN champ
 d'identité, la ligne « Virement bancaire » ET la ligne de contact du moteur
 legacy viennent de SON profil ou sont omises : jamais le RIB ni le contact de
-TAQINOR (``0002720029379418``, « Saham », ``contact@taqinor.com``,
+TAQINOR (``0002720029379418``, « Saham », ``contact@taqinor.ma``,
 ``+212 6 61 85 04 10``). Le profil TAQINOR complet rend sa ligne
 byte-identique ; ``residential/trust._ligne_rib`` et le legacy appellent la
 même règle (``quote_engine.identite``).
@@ -21,7 +21,7 @@ from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
 )
 
-INTERDITS = ('0002720029379418', 'Saham', 'contact@taqinor.com',
+INTERDITS = ('0002720029379418', 'Saham', 'contact@taqinor.ma',
              '61&#160;85&#160;04&#160;10', '+212 6 61 85 04 10')
 
 
@@ -83,7 +83,7 @@ class LignesIdentiteTests(SimpleTestCase):
 
     def test_profil_taqinor_complet_ligne_rib_identique(self):
         G._apply_entreprise({
-            'nom': 'TAQINOR SOLUTION', 'email': 'contact@taqinor.com',
+            'nom': 'TAQINOR SOLUTION', 'email': 'contact@taqinor.ma',
             'telephone': '+212 6 61 85 04 10', 'banque': 'Saham Bank',
             'rib': '022 780 0002720029379418 74'})
         self.assertEqual(

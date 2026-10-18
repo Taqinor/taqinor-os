@@ -399,13 +399,13 @@ SAVINGS_ESTIMATED = False
 # désormais SON identité — plus de fuite de l'ICE/RIB/RC de Taqinor.
 ENT_NOM_MARQUE = "TAQINOR"                       # nom affiché dans les footers
 # Ligne de coordonnées (email · téléphone · site) — littéral historique exact.
-ENT_CONTACT_LINE = ("contact@taqinor.com &nbsp;&#183;&nbsp; "
+ENT_CONTACT_LINE = ("contact@taqinor.ma &nbsp;&#183;&nbsp; "
                     "+212&#160;6&#160;61&#160;85&#160;04&#160;10 "
                     "&nbsp;&#183;&nbsp; www.taqinor.ma")
 # Pied de la page ETUDE (email · site, sans téléphone) — littéral historique
 # exact (SCA27 : reconstruit par _apply_entreprise dès qu’un email ou un site
 # de profil est fourni — plus de fuite du contact fondateur sur la page étude).
-ENT_ETUDE_CONTACT = "contact@taqinor.com &nbsp;·&nbsp; www.taqinor.ma"
+ENT_ETUDE_CONTACT = "contact@taqinor.ma &nbsp;·&nbsp; www.taqinor.ma"
 # Ligne légale du footer page 3 — APDF3 : repli « aucun profil » (identite).
 _ENT_DEFAULT_LEGAL_LINE = LEGALE_TAQINOR_LEGACY
 ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE

@@ -29,6 +29,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import RequestFactory, TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -305,3 +306,132 @@ class TestLienNotificationDevisOuvert(TestCase):
             recipient=owner, event_type='devis_opened').first()
         self.assertIsNotNone(notif)
         self.assertEqual(notif.link, f'/crm/visiteurs?lead={lead.pk}')
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# (e) QJEQUIPE4 (fondateur 17/10/2026) — règle « IP équipe » : le navigateur
+#     intégré WhatsApp n'a jamais nos cookies
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Chrome iOS sur le téléphone de Reda (l'ERP) — même téléphone que…
+UA_IPHONE_CHROME = ('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0_0 like Mac OS X) '
+                    'AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/155.0.8059.37 '
+                    'Mobile/15E148 Safari/604.1')
+#: …le navigateur intégré WhatsApp (UA sans « Safari » — nginx prod 14/10 18:09).
+UA_IPHONE_WHATSAPP = ('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) '
+                      'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148')
+UA_ANDROID = ('Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 '
+              '(KHTML, like Gecko) Chrome/155.0.0.0 Mobile Safari/537.36')
+IP_TELEPHONE = '105.136.170.195'
+IP_SORTIE_CLOUDFLARE = '162.158.123.173'
+
+
+@override_settings(CACHES={'default': {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    'LOCATION': 'qjequipe4-ip-equipe'}})
+class TestRegleIpEquipe(TestCase):
+    def setUp(self):
+        from apps.ventes.models import Devis, ShareLink
+
+        cache.clear()
+        self.company = make_company('qjeq4-ip')
+        self.utilisateur = make_utilisateur(self.company, 'qjeq4-reda')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Prospect QJEQ4')
+        client_obj = CrmClient.objects.create(
+            company=self.company, nom='QJEQ4', prenom='Test')
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-QJEQ4-1',
+            client=client_obj, lead=self.lead, statut='envoye',
+            taux_tva=Decimal('20'))
+        self.link = ShareLink.objects.create(
+            company=self.company, devis=self.devis)
+
+    def _ouverture(self, *, ip=IP_TELEPHONE, ua=UA_IPHONE_WHATSAPP):
+        """Une ouverture publique telle que le Worker SSR la relaie : l'IP
+        réelle en ``CF-Connecting-IP``, la sortie Cloudflare en dernier saut,
+        aucun cookie ni identifiant d'appareil."""
+        return RequestFactory().get(
+            f'/api/django/public/proposition/{self.link.token}/',
+            HTTP_CF_CONNECTING_IP=ip, HTTP_X_FORWARDED_FOR=IP_SORTIE_CLOUDFLARE,
+            HTTP_USER_AGENT=ua)
+
+    def _appel_erp(self, utilisateur=None, *, ip=IP_TELEPHONE,
+                   ua=UA_IPHONE_CHROME):
+        api = APIClient()
+        api.force_authenticate(utilisateur or self.utilisateur)
+        return api.get('/api/django/crm/appareils-equipe/',
+                       HTTP_X_FORWARDED_FOR=ip, HTTP_USER_AGENT=ua)
+
+    def _stampe(self, requete):
+        from apps.ventes.public.lecture_views import _stamp_view_si_public
+        return _stamp_view_si_public(self.link, False, requete)
+
+    def test_sans_appel_erp_le_client_est_compte_avec_son_ip_reelle(self):
+        """TÉMOIN + correctif du journal : un vrai client est compté, et
+        c'est SON adresse qui est journalisée, pas la sortie Cloudflare."""
+        self.assertTrue(self._stampe(self._ouverture()))
+        visite = VisiteExterne.objects.get()
+        self.assertEqual(visite.ip, IP_TELEPHONE)
+
+    def test_apres_un_appel_erp_la_meme_ip_meme_plateforme_est_equipe(self):
+        """LE CŒUR DU CORRECTIF — Reda ouvre l'ERP sur son iPhone (Chrome),
+        puis tape le lien client dans WhatsApp (navigateur intégré, aucun
+        cookie) : même IP, même plateforme → lecture ÉQUIPE, rien n'est
+        compté, tracé ni notifié."""
+        reponse = self._appel_erp()
+        self.assertIn(reponse.status_code, (200, 403))
+        self.assertTrue(visites.requete_marquee_equipe(
+            self.company, self._ouverture()))
+        self.assertFalse(self._stampe(self._ouverture()))
+        self.assertEqual(VisiteExterne.objects.count(), 0)
+        self.link.refresh_from_db()
+        self.assertIsNone(self.link.first_viewed_at)
+
+    def test_meme_ip_autre_plateforme_reste_client(self):
+        """Un client Android derrière le même NAT que l'iPhone de Reda est
+        compté : la plateforme fait partie du triplet."""
+        self._appel_erp()
+        self.assertTrue(self._stampe(self._ouverture(ua=UA_ANDROID)))
+        self.assertEqual(VisiteExterne.objects.count(), 1)
+
+    def test_meme_ip_autre_societe_reste_client(self):
+        """MULTI-TENANT — le triplet est scopé société : l'utilisateur d'une
+        AUTRE société de cet ERP, qui peut être NOTRE prospect, est compté."""
+        autre = make_company('qjeq4-ip-autre')
+        self._appel_erp(make_utilisateur(autre, 'qjeq4-autre'))
+        self.assertTrue(self._stampe(self._ouverture()))
+        self.assertEqual(VisiteExterne.objects.count(), 1)
+
+    def test_un_appel_anonyme_ne_memorise_rien(self):
+        """Un point public (AllowAny) ne pose jamais le triplet : un client
+        qui appelle l'API ne devient pas « équipe »."""
+        APIClient().get('/api/django/crm/appareils-equipe/',
+                        HTTP_X_FORWARDED_FOR=IP_TELEPHONE,
+                        HTTP_USER_AGENT=UA_IPHONE_CHROME)
+        self.assertFalse(visites.ip_equipe_recente(
+            self.company, self._ouverture()))
+        self.assertTrue(self._stampe(self._ouverture()))
+
+    def test_la_memoire_est_bornee_a_deux_heures(self):
+        self.assertEqual(visites.EQUIPE_IP_TTL_S, 2 * 3600)
+        self._appel_erp()
+        self.assertTrue(visites.ip_equipe_recente(
+            self.company, self._ouverture()))
+        cache.clear()  # expiration simulée
+        self.assertFalse(visites.ip_equipe_recente(
+            self.company, self._ouverture()))
+
+    def test_triplet_incomplet_jamais_memorise_ni_reconnu(self):
+        requete = RequestFactory().get('/api/django/crm/appareils-equipe/')
+        self.assertFalse(visites.memoriser_ip_equipe(self.company, requete))
+        self.assertFalse(visites.ip_equipe_recente(self.company, requete))
+        self.assertFalse(visites.memoriser_ip_equipe(None, self._ouverture()))
+
+    def test_plateforme_de_user_agent(self):
+        self.assertEqual(visites.plateforme_de_user_agent(UA_IPHONE_CHROME), 'ios')
+        self.assertEqual(visites.plateforme_de_user_agent(UA_IPHONE_WHATSAPP), 'ios')
+        self.assertEqual(visites.plateforme_de_user_agent(UA_ANDROID), 'android')
+        self.assertEqual(visites.plateforme_de_user_agent(UA_CHROME), 'windows')
+        self.assertEqual(visites.plateforme_de_user_agent(''), '')
+        self.assertEqual(visites.plateforme_de_user_agent(None), '')

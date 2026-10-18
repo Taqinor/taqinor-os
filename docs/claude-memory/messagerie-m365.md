@@ -23,3 +23,7 @@ Microsoft 365, tenant `AtlenciaX.onmicrosoft.com` (compte de facturation « Atle
   supprimé ; le centre d'administration refusait toute nouvelle carte et le domaine jusqu'à l'ajout de la
   carte **via le portail Azure** (Cost Management + Billing → profil de facturation → Moyens de paiement).
   Pour tout problème de paiement M365, passer directement par là.
+- **`taqinor.com` n'existe pas** (NXDOMAIN vérifié le 17/10/2026 chez Google DNS) : `contact@taqinor.com` était pourtant
+  publié par le site (`apps/web/src/lib/nap.ts` → pied de page, page contact, JSON-LD ; `llms.txt`) et dans les replis du
+  moteur PDF — remplacé partout par `contact@taqinor.ma` (PR du 17/10). Tout mail vers l'ancienne adresse rebondissait.
+  Reste à aligner à la main : la fiche Google Business Profile (elle portait le `.com`).

@@ -474,7 +474,7 @@ class TestBuilderTenantSiteRendered(TestCase):
         self.assertNotIn('taqinor.ma', html)
         # Le pied de page porte SES coordonnées (identité DC1 déjà câblée).
         self.assertIn('hello@helios.ma', html)
-        self.assertNotIn('contact@taqinor.com', html)
+        self.assertNotIn('contact@taqinor.ma', html)
 
 
 class TestLayoutV2NeBougePasLeDocument(TestCase):
