@@ -50,7 +50,11 @@ ROLE_VERS_COMPOSANT = {
     "variateur_pompage": "variateur",
 }
 
-MOTIF_NON_RENSEIGNEE = "garantie non renseignée"
+#: AGQ14 (D-AGQ-4) — l'omission est NOMMÉE et le document l'imprime
+#: « selon fiche fournisseur » : jamais une durée sans garantie écrite.
+MOTIF_NON_RENSEIGNEE = "garantie non renseignée : selon fiche fournisseur"
+#: Composants dont l'absence de durée s'imprime « selon fiche fournisseur ».
+SELON_FICHE = ("pompe", "variateur")
 MOTIF_POSE_NON_DECIDEE = (
     "garantie de pose du pompage non décidée par le fondateur (AGRM22) : omise")
 
@@ -129,6 +133,25 @@ def garanties_pompage_et_omissions(items):
     omissions.append({"bloc": "garanties.installation",
                       "motif": MOTIF_POSE_NON_DECIDEE})
     return garanties, omissions
+
+
+def garanties_de_la_ligne(it):
+    """AGQ14 — les durées STRUCTURÉES d'UNE ligne (une-page agricole) :
+    ``[(composant, mois)]`` ; pompe / variateur sans durée → ``mois`` None
+    (« selon fiche fournisseur ») ; panneaux : produit puis production
+    seulement quand le champ est saisi ; autre ligne → ``[]``. Le texte
+    libre ``garantie`` n'est JAMAIS lu."""
+    if not isinstance(it, dict):
+        return []
+    composant = _composant_de(it)
+    if composant in SELON_FICHE:
+        return [(composant, _mois(it.get("garantie_mois")))]
+    if composant == "panneaux":
+        return [(c, m) for c, m in (
+            ("panneaux", _mois(it.get("garantie_mois"))),
+            ("performance_panneaux",
+             _mois(it.get("garantie_production_mois")))) if m]
+    return []
 
 
 def garanties_pompage(items):

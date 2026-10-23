@@ -715,12 +715,20 @@ def _libelle_garantie(lg, g):
 
 def _garanties(synthese, lg):
     gar = [g for g in synthese.get("garanties") or [] if isinstance(g, dict)]
-    if not gar:
+    lignes = [_libelle_garantie(lg, g) for g in gar]
+    # AGQ14 (D-AGQ-4) — pompe / variateur sans durée structurée : l'omission
+    # est NOMMÉE, « selon fiche fournisseur » — jamais une durée inventée.
+    omis = {o.get("bloc") for o in synthese.get("omissions") or []
+            if isinstance(o, dict)}
+    for comp in ("pompe", "variateur"):
+        if f"garanties.{comp}" in omis:
+            lignes.append(_t(lg, f"agr_garantie_{comp}",
+                             duree=_t(lg, "agr_selon_fiche_fournisseur")))
+    if not lignes:
         return (f'<div class="ag-small"><b>{_t(lg, "agr_garanties")}</b> : '
                 f'{_t(lg, "agr_garanties_fiches")}</div>')
     return (f'<div class="ag-small"><b>{_t(lg, "agr_garanties")}</b></div>'
-            + "".join(f'<div class="ag-li">{_libelle_garantie(lg, g)}</div>'
-                      for g in gar))
+            + "".join(f'<div class="ag-li">{l}</div>' for l in lignes))
 
 
 def _formalites(synthese, lg):
