@@ -421,28 +421,38 @@
         "volume_m3_jour": {
           "origine": "lead",
           "detail": "client",
-          "date": "2026-09-12"
+          "date": "2026-09-12",
+          "valeur": 135
         },
         "niveau_statique_m": {
           "origine": "lead",
           "detail": "mesure_visite",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 32
         },
         "niveau_dynamique_m": {
           "origine": "lead",
           "detail": "mesure_visite",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 40
         },
         "debit_exploitation_m3h": {
           "origine": "saisie",
           "detail": "foreur",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 36
         },
         "energie_actuelle": {
           "origine": "saisie",
           "detail": null,
-          "date": "2026-09-12"
+          "date": "2026-09-12",
+          "valeur": "butane"
         }
+      },
+      "controle_forage": {
+        "debit_pompe_m3h": 30.5,
+        "debit_forage_m3h": 36,
+        "conforme": true
       },
       "a_confirmer_par_visite": [
         "profondeur_forage_m"

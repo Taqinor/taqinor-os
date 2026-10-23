@@ -229,6 +229,28 @@ LIBELLES = {
     'unite_cv': {'fr': 'CV', 'en': 'HP', 'ar': 'حصان'},
     'unite_kwc': {'fr': 'kWc', 'en': 'kWp', 'ar': 'كيلوواط ذروة'},
     'unite_m3h': {'fr': 'm³/h', 'en': 'm³/h', 'ar': 'م³/س'},
+    # AGQ28 — valeurs à côté de leur provenance, contrôle du forage.
+    'unite_m3j': {'fr': 'm³/j', 'en': 'm³/day', 'ar': 'م³/يوم'},
+    'unite_m': {'fr': 'm', 'en': 'm', 'ar': 'م'},
+    'agr_heures_equivalentes': {
+        'fr': 'sur {heures} h équivalentes plein soleil par jour (mois de '
+              'conception)',
+        'en': 'over {heures} equivalent full-sun hours per day (design '
+              'month)',
+        'ar': 'على مدى {heures} ساعات مكافئة من الشمس الكاملة يوميا (شهر التصميم)'},
+    'agr_estimation_fao56': {'fr': 'estimation FAO-56',
+                             'en': 'FAO-56 estimate',
+                             'ar': 'تقدير FAO-56'},
+    # ``{pompe}`` / ``{forage}`` : débits DÉJÀ formatés avec leur unité.
+    'agr_controle_forage_ok': {
+        'fr': 'Pompe {pompe} ≤ forage {forage}',
+        'en': 'Pump {pompe} ≤ borehole {forage}',
+        'ar': 'المضخة {pompe} ≤ الثقب {forage}'},
+    'agr_controle_forage_depasse': {
+        'fr': 'Pompe {pompe} &gt; forage {forage} : à vérifier à la visite',
+        'en': 'Pump {pompe} &gt; borehole {forage}: to be checked at the '
+              'site visit',
+        'ar': 'المضخة {pompe} &gt; الثقب {forage}: يتم التحقق خلال الزيارة'},
     'agr_panneaux_n': {'fr': '{n} panneaux', 'en': '{n} panels',
                        'ar': '{n} لوحا'},
     'agr_surface_irrigable': {'fr': 'Surface irrigable',

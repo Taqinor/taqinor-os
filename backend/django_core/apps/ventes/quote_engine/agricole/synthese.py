@@ -184,8 +184,38 @@ def _bloc_provenance(etude):
             continue
         prov = _provenance(p)
         if prov is not None:
+            # AGQ28 — la VALEUR à côté de sa provenance (lue, jamais
+            # recalculée) ; None quand l'étude ne la porte pas.
+            prov["valeur"] = _valeur_entree(etude, cle)
             sortie[cle] = prov
     return sortie
+
+
+def _valeur_entree(etude, cle):
+    """AGQ28 — la valeur d'une entrée de provenance telle que servie :
+    saisie du devis (``besoin``, ``source``), sinon valeur résolue du lead
+    (``entrees_pompage``) ; l'énergie actuelle est un mot (``butane``…)."""
+    if cle == "energie_actuelle":
+        return (_energie_actuelle(etude) or {}).get("valeur")
+    if cle == "hmt_m":
+        return _num(etude.get("hmt_m"))
+    if cle == "volume_m3_jour":
+        saisie = _dict(etude.get("besoin")).get("volume_m3_jour")
+    else:
+        saisie = _dict(etude.get("source")).get(cle)
+    return _num(_resolue(etude, saisie, cle))
+
+
+def _controle_forage(eau, etude):
+    """AGQ28 — « pompe X m³/h ≤ forage Y m³/h » : le débit retenu de la
+    pompe contre le débit d'exploitation du forage ; None sans l'un des
+    deux (aucun débit supposé)."""
+    pompe = eau.get("debit_hmt_m3h")
+    forage = _valeur_entree(etude, "debit_exploitation_m3h")
+    if pompe is None or forage is None:
+        return None
+    return {"debit_pompe_m3h": pompe, "debit_forage_m3h": forage,
+            "conforme": pompe <= forage}
 
 
 def _hmt_est_calculee(etude):
@@ -275,8 +305,12 @@ def _bloc_besoin_vs_livre(etude):
                  for b, q in zip(besoin, livre)],
         "mois_le_plus_serre": _num(
             _dict(etude.get("conception")).get("mois_critique")),
+        # AGQ28 (D-AGQ-7) — une surface irrigable n'est une estimation
+        # honnête que d'un besoin AGRONOMIQUE (FAO-56) ; besoin déclaré ⇒
+        # aucune surface (le client a donné la sienne).
         "hectares_irrigables": _num(
-            _dict(etude.get("ha_irrigables")).get("valeur")),
+            _dict(etude.get("ha_irrigables")).get("valeur"))
+        if nature == "agronomique_plein" else None,
         "base_besoin": nature,
     }, None
 
@@ -505,6 +539,9 @@ def synthese_agricole(data):
 
     synthese["eau"] = eau
     synthese["provenance"] = provenance
+    controle = _controle_forage(eau, etude)
+    if controle is not None:
+        synthese["controle_forage"] = controle
     synthese["a_confirmer_par_visite"] = _a_confirmer_par_visite(
         etude, provenance)
 

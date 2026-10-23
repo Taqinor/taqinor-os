@@ -220,7 +220,9 @@ def _hero(synthese, lg, declare=False):
                 f'</div></div>')
     a_hmt = (f' {_t(lg, "agr_hero_a_hmt", hmt=hmt)}'
              f'{ancre("pompe_hmt_m", hmt)}' if hmt is not None else "")
-    sur = (_t(lg, "sur_heures_pompage", heures=heures)
+    # AGQ28 — ces heures sont des heures ÉQUIVALENTES plein soleil (PVGIS,
+    # mois de conception), pas des heures de marche : l'étiquette le dit.
+    sur = (_t(lg, "agr_heures_equivalentes", heures=heures)
            if heures is not None else "")
     # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ (pompe sans courbe) :
     # la pastille le dit (« estimation · débit déclaré par vous »).
@@ -260,8 +262,11 @@ def _cartes(synthese, lg):
     ha = _n(((synthese.get("besoin_vs_livre") or {})
              .get("hectares_irrigables")))
     if ha is not None:
+        # AGQ28 (D-AGQ-7) — servie seulement d'un besoin agronomique :
+        # toujours étiquetée estimation FAO-56.
         cartes.append((_t(lg, "agr_surface_irrigable"),
-                       f'{ha} {_t(lg, "unite_ha")}', ""))
+                       f'≈ {ha} {_t(lg, "unite_ha")}',
+                       _t(lg, "agr_estimation_fao56")))
     if not cartes:
         return ""
     cellules = "".join(
@@ -346,6 +351,26 @@ def _entree(lg, cle):
     return str(cle).replace("_", " ")
 
 
+#: AGQ28 — unité imprimée à côté de la valeur d'une entrée de provenance.
+_UNITE_ENTREE = {"volume_m3_jour": "unite_m3j", "niveau_statique_m": "unite_m",
+                 "niveau_dynamique_m": "unite_m", "profondeur_forage_m": "unite_m",
+                 "hmt_m": "unite_m", "debit_exploitation_m3h": "unite_m3h"}
+
+
+def _valeur_provenance(lg, cle, valeur):
+    """AGQ28 — « 135 m³/j », « 36 m³/h », « butane (bouteilles) » ; None
+    quand la valeur manque (la provenance seule s'imprime)."""
+    if cle == "energie_actuelle":
+        cle_i18n = f"agr_energie_{valeur}"
+        return (_t(lg, cle_i18n) if cle_i18n in i18n_labels.LIBELLES
+                else None)
+    texte = _n(valeur)
+    if texte is None:
+        return None
+    unite = _UNITE_ENTREE.get(cle)
+    return f"{texte} {_t(lg, unite)}" if unite else texte
+
+
 def _provenance(synthese, lg, nom_societe):
     prov = synthese.get("provenance") or {}
     lignes = []
@@ -361,8 +386,19 @@ def _provenance(synthese, lg, nom_societe):
                 "declare", lg, date=p.get("date"))
         else:
             phrase = mentions.phrase_provenance("a_confirmer", lg)
+        valeur = _valeur_provenance(lg, cle, p.get("valeur"))
         lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b> : '
-                      f'{phrase}</div>')
+                      + (f'{valeur} — ' if valeur else "")
+                      + f'{phrase}</div>')
+    controle = synthese.get("controle_forage")
+    if isinstance(controle, dict):
+        cle = ("agr_controle_forage_ok" if controle.get("conforme")
+               else "agr_controle_forage_depasse")
+        u = _t(lg, "unite_m3h")
+        texte = _t(lg, cle,
+                   pompe=f'{_n(controle.get("debit_pompe_m3h"))} {u}',
+                   forage=f'{_n(controle.get("debit_forage_m3h"))} {u}')
+        lignes.append(f'<div class="ag-li">{texte}</div>')
     visite = [_entree(lg, c) for c in synthese.get("a_confirmer_par_visite")
               or []]
     bloc_visite = (

@@ -160,9 +160,15 @@ class Agr304DevisCompletTests(SimpleTestCase):
 
     def test_provenance_reprise_dans_la_forme_unique(self):
         s = synthese_agricole(_data_complete())
-        self.assertEqual(s['provenance'], PROVENANCE_MESUREE)
+        # AGQ28 — la forme unique + la VALEUR lue dans l'étude.
+        valeurs = {'volume_m3_jour': 135, 'niveau_statique_m': 32,
+                   'niveau_dynamique_m': 40, 'debit_exploitation_m3h': 36}
+        self.assertEqual(s['provenance'], {
+            cle: dict(prov, valeur=valeurs[cle])
+            for cle, prov in PROVENANCE_MESUREE.items()})
         for prov in s['provenance'].values():
-            self.assertEqual(set(prov), {'origine', 'detail', 'date'})
+            self.assertEqual(set(prov),
+                             {'origine', 'detail', 'date', 'valeur'})
 
     def test_point_d_eau_mesure_seule_la_profondeur_reste_a_confirmer(self):
         s = synthese_agricole(_data_complete())
@@ -350,6 +356,69 @@ class SyntheseAgricoleTests(SimpleTestCase):
         self.assertEqual(compteur[0]['total_ttc'], 1200.0)
         self.assertTrue(compteur[0]['prix_connu'])
         self.assertEqual(len(s['options_kit']), 12)
+
+    def test_hectares_omis_quand_le_besoin_est_declare(self):
+        """AGQ28 (D-AGQ-7) — besoin DÉCLARÉ : aucune surface irrigable
+        servie ni imprimée ; besoin agronomique : « ≈ 4,4 ha (estimation
+        FAO-56) »."""
+        from apps.ventes.quote_engine.agricole import pages, renderer
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete,
+        )
+        data = _data_complete()
+        data['etude']['ha_irrigables'] = {'valeur': 4.4}
+        self.assertIsNone(
+            synthese_agricole(data)['besoin_vs_livre']['hectares_irrigables'])
+        d = data_complete()
+        d['etude']['ha_irrigables'] = {'valeur': 4.4}
+        p1 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[1]
+        self.assertNotIn('4,4 ha', p1)
+        self.assertNotIn('Surface irrigable', p1)
+        d['etude']['besoin'] = {'mode': 'fao', 'region': 'souss-massa',
+                                'cultures': [{'crop': 'agrumes',
+                                              'surface_ha': 5,
+                                              'irrigation': 'goutte'}]}
+        d['etude']['besoin_mensuel'] = {'m3_jour_mois': [120] * 12,
+                                        'nature': 'agronomique_plein',
+                                        'source_et0': 'FAO-56'}
+        s = renderer._augment(d)['synthese']
+        self.assertEqual(s['besoin_vs_livre']['hectares_irrigables'], 4.4)
+        p1 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[1]
+        self.assertIn('≈ 4,4 ha', p1)
+        self.assertIn('estimation FAO-56', p1)
+
+    def test_valeurs_a_cote_de_leur_provenance_et_controle_forage(self):
+        """AGQ28 — chaque provenance porte sa valeur ; le débit de la pompe
+        est comparé au débit d'exploitation du forage."""
+        from apps.ventes.quote_engine.agricole import pages, renderer
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete,
+        )
+        s = synthese_agricole(_data_complete())
+        self.assertEqual(s['provenance']['volume_m3_jour']['valeur'], 135)
+        self.assertEqual(
+            s['provenance']['debit_exploitation_m3h']['valeur'], 36)
+        self.assertEqual(s['controle_forage'],
+                         {'debit_pompe_m3h': 30.5, 'debit_forage_m3h': 36,
+                          'conforme': True})
+        d = data_complete()
+        d['etude']['provenance_pompage']['entrees'][
+            'debit_exploitation_m3h'] = {'origine': 'saisie',
+                                         'detail': 'foreur',
+                                         'date': '2026-09-15'}
+        p1 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[1]
+        self.assertIn("Volume d'eau par jour</b> : 135 m³/j — déclaré par "
+                      "vous le 12/09/2026", p1)
+        self.assertIn("Débit d'exploitation du forage</b> : 36 m³/h —", p1)
+        self.assertIn('Pompe 30,5 m³/h ≤ forage 36 m³/h', p1)
+        self.assertIn('h équivalentes plein soleil', p1)
+        d['etude']['debit_hmt_m3h'] = 40
+        p1 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[1]
+        self.assertIn('Pompe 40 m³/h &gt; forage 36 m³/h', p1)
 
     def test_option_deja_ligne_du_devis_non_reproposee(self):
         data = _data_complete()
