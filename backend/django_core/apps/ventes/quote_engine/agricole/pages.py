@@ -282,10 +282,30 @@ def _composant(lg, cle):
             if f"agr_composant_{cle}" in i18n_labels.LIBELLES else cle)
 
 
+def _argent_nouveau_forage(eco, lg):
+    """AGQ17 — nouveau forage : le coût de l'eau solaire SEUL, avec sa
+    formule ; ni remplacement, ni économie, ni retour, ni phrase carburant
+    (le client n'a aucune énergie actuelle)."""
+    solaire = _n((eco.get("mad_par_m3") or {}).get("solaire"), 2)
+    if solaire is None:
+        return ""
+    horizon = _n((eco.get("economie") or {}).get("horizon_ans"), 0)
+    note = (f'<div class="ag-note">'
+            f'{_t(lg, "agr_formule_m3_solaire", horizon=horizon)}</div>'
+            if horizon is not None else "")
+    return (f'<div class="ag-sec">{_t(lg, "agr_votre_argent")}</div>'
+            f'<div class="ag-box ag-box-gold"><table class="ag-tbl">'
+            f'<tr><td>{_t(lg, "agr_cout_eau_solaire")}</td>'
+            f'<td class="r">{_t(lg, "agr_mad_par_m3", n=solaire)}</td></tr>'
+            f'</table>{note}</div>')
+
+
 def _argent(synthese, lg):
     eco = synthese.get("economies")
     if not isinstance(eco, dict):
         return ""
+    if eco.get("cas") == "nouveau_forage":
+        return _argent_nouveau_forage(eco, lg)
     lignes = []
     dep = eco.get("depense_actuelle") or {}
     energie = (synthese.get("energie_actuelle") or {}).get("valeur")

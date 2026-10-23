@@ -297,6 +297,18 @@ LIBELLES = {
     'agr_cout_m3': {'fr': 'Coût du m³ : avant / avec le solaire',
                     'en': 'Cost per m³: before / with solar',
                     'ar': 'تكلفة المتر المكعب: قبل / مع الطاقة الشمسية'},
+    'agr_cout_eau_solaire': {'fr': "Coût de l'eau solaire",
+                             'en': 'Cost of solar-pumped water',
+                             'ar': 'تكلفة الماء بالطاقة الشمسية'},
+    'agr_mad_par_m3': {'fr': '{n} MAD/m³', 'en': '{n} MAD/m³',
+                       'ar': '{n} درهم/م³'},
+    'agr_formule_m3_solaire': {
+        'fr': 'Calcul : (investissement + charges du solaire sur {horizon} '
+              "ans) ÷ (volume d'eau utile par an × {horizon}).",
+        'en': 'Calculation: (investment + solar running costs over {horizon} '
+              'years) ÷ (useful water volume per year × {horizon}).',
+        'ar': 'الحساب: (الاستثمار + تكاليف الطاقة الشمسية على {horizon} '
+              'سنوات) ÷ (حجم الماء النافع في السنة × {horizon}).'},
     'agr_remplacement': {'fr': 'Remplacement {composant}, année {annee} (compté)',
                          'en': 'Replacement of the {composant}, year {annee} '
                                '(included)',

@@ -719,12 +719,15 @@ def _mad_par_m3(dep, sortie_etude, mois, jours_semaine, investissement,
     else:
         utile = sum(utile_jour[m - 1] * jours[m] for m in mois)
         if utile > 0:
-            total = (investissement + remplacements_mad
+            total = (investissement + (remplacements_mad or 0.0)
                      + (charges or 0.0) * HORIZON_ANS)
             bloc['solaire'] = round(total / (utile * HORIZON_ANS), 2)
+            # AGQ17 — nouveau forage : aucun remplacement compté (None).
+            compte = ('investissement + charges' if remplacements_mad is None
+                      else 'investissement + remplacements + charges')
             formules.append(
-                f'solaire = (investissement + remplacements + charges sur '
-                f'{HORIZON_ANS} ans) ÷ (volume utile annuel × {HORIZON_ANS})')
+                f'solaire = ({compte} sur {HORIZON_ANS} ans) ÷ (volume utile '
+                f'annuel × {HORIZON_ANS})')
     bloc['formule'] = ' ; '.join(formules) or None
     return bloc, omissions
 
@@ -1170,9 +1173,16 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
                               'part_evitee_par_mois': None,
                               'motif': 'aucune dépense déclarée'}
         motifs.extend(motifs_charges)
+        # AGQ17 — aucun flux d'économie : aucun remplacement publié ni compté
+        # dans le coût du m³ (``None`` = non compté, formule dite telle).
+        bloc['remplacements'] = []
+        bloc['omissions'].append({
+            'cle': 'remplacements',
+            'motif': 'nouveau forage : aucun flux d\'économie, aucun '
+                     'remplacement compté'})
         bloc['mad_par_m3'], omis_m3 = _mad_par_m3(
             dep, sortie_etude, mois, jours_semaine, investissement,
-            remplacements_mad, charges)
+            None, charges)
         bloc['omissions'].extend(omis_m3)
         aide()
         interne['omissions'].append({

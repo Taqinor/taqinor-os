@@ -450,8 +450,10 @@ class CoutDuM3SensibiliteSeuilTests(SimpleTestCase):
         self.assertEqual(bloc['cas'], E.CAS_NOUVEAU_FORAGE)
         self.assertIsNone(bloc['mad_par_m3']['actuel'])
         utile = 40.0 * 365                         # min(40 livrés, 50 voulus)
+        # AGQ17 — aucun remplacement compté pour un forage neuf.
         self.assertEqual(bloc['mad_par_m3']['solaire'],
-                         round((50000 + 8000 + 6000) / (utile * 10), 2))
+                         round((50000 + 6000) / (utile * 10), 2))
+        self.assertEqual(bloc['remplacements'], [])
         self.assertEqual(bloc['economie']['flux'], [])
         self.assertEqual(bloc['sensibilite_carburant'], [])
         self.assertIsNone(bloc['seuil_rentabilite_carburant'])
@@ -749,3 +751,42 @@ class EconomiePompage(SimpleTestCase):
         self.assertEqual(bloc['statut'], 'calcule')
         self.assertTrue(bloc['publiable_client'])
         self.assertEqual(bloc['economie']['retour_ans'], 5)
+
+
+class NouveauForage(SimpleTestCase):
+    """AGQ17 — un forage neuf n'a aucune énergie remplacée : le seul repère
+    est le coût du m³ solaire, sans remplacement compté ni phrase carburant."""
+
+    def bloc(self):
+        saisies = {'energie_actuelle': _energie('aucune'),
+                   'consommation': {'jours_irrigation_par_semaine': 7},
+                   'mois_irrigation': _mois(range(1, 13))}
+        return E.economie_pompage(
+            saisies, sortie_etude=etude_declaree(volume=50.0,
+                                                 production=40.0),
+            lignes=lignes_reference(garantie_variateur=24),
+            reglages=CHARGES)
+
+    def test_aucun_remplacement_et_m3_solaire_seul(self):
+        from apps.ventes.quote_engine.agricole import pages
+        bloc = self.bloc()
+        self.assertEqual(bloc['cas'], 'nouveau_forage')
+        self.assertEqual(bloc['remplacements'], [])
+        self.assertIsNone(bloc['mad_par_m3']['actuel'])
+        utile = 40.0 * 365                         # min(40 livrés, 50 voulus)
+        attendu = round((50000 + 600 * 10) / (utile * 10), 2)
+        self.assertEqual(bloc['mad_par_m3']['solaire'], attendu)
+        self.assertNotIn('remplacements', bloc['mad_par_m3']['formule'])
+        self.assertTrue(bloc['publiable_client'])
+
+        synthese = {'economies': E.economie_pompage_publique(bloc),
+                    'energie_actuelle': {'valeur': 'aucune'}}
+        html = pages._argent(synthese, 'fr')
+        self.assertIn("Coût de l'eau solaire", html)
+        self.assertIn(f"{str(attendu).replace('.', ',')} MAD/m³", html)
+        self.assertIn('investissement + charges du solaire sur 10 ans', html)
+        for interdit in ('Remplacement', 'Économie nette', 'Retour',
+                         'Indexation du carburant',
+                         'remplace tout votre pompage actuel',
+                         'Consommation et prix payé', 'avant / avec'):
+            self.assertNotIn(interdit, html)
