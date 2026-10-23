@@ -85,6 +85,7 @@ jobs:
       DB_PASSWORD: ci_password
       DB_HOST: localhost
       DB_PORT: '5432'
+      PYTHONPATH: ${{ github.workspace }}   # STAGES.py (racine du dépôt) importable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
