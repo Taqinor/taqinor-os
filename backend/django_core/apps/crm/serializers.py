@@ -38,6 +38,7 @@ from .devis_auto import (
     source_conso, visite_avant_devis, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
+from apps.customfields.serializers import ChampsPersonnalisesField
 
 logger = logging.getLogger(__name__)
 
@@ -472,6 +473,9 @@ def incoherence_segment(type_lead, devis):
 class LeadSerializer(SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
+    # api-fuzz #1022 — ``custom_data`` publié comme OBJET nullable (un tableau
+    # « conforme » au JSON libre était refusé 400 « Format invalide. »).
+    custom_data = ChampsPersonnalisesField(required=False, allow_null=True)
     # CRX13 — ``deleted_by`` (auto-construit depuis ``__all__``) désignait
     # n'importe quel utilisateur, toutes sociétés confondues. CRX15 l'a depuis
     # verrouillé en LECTURE SEULE (cf. ``Meta.read_only_fields``) : la
