@@ -131,6 +131,37 @@ def _phases_alim(alimentation):
     return {"mono": 1, "tri": 3}.get(alimentation)
 
 
+def _decimales(texte):
+    """Nombre de décimales SIGNIFICATIVES d'une valeur saisie (« 3.00 » → 0,
+    « 5.50 » → 1) : la précision avec laquelle le CV a été écrit."""
+    texte = str(texte).strip().replace(",", ".")
+    if "." not in texte:
+        return 0
+    return len(texte.split(".", 1)[1].rstrip("0"))
+
+
+def kw_normalise_depuis_cv(cv):
+    """AGQ6 (C-AGQ-005) — ``(kW requis, normalisé)`` d'un moteur connu par
+    son seul CV.
+
+    kW = CV × ``cv_vers_kw`` ; la puissance assignée normalisée la plus
+    proche (``kw_moteur_normalises``, IEC 60034-1, table AGR110) est retenue
+    si elle reste dans la TOLÉRANCE D'ARRONDI du CV écrit — un demi-chiffre
+    de sa dernière décimale significative (« 3 » CV : ± 0,5 CV) : 3 CV =
+    2,21 kW ⇒ moteur 2,2 kW. Hors tolérance (un CV qui ne correspond à
+    aucune puissance normalisée), le kW calculé reste tel quel (jamais
+    arrondi vers le bas au-delà de la précision écrite)."""
+    cv_val = _flottant(cv)
+    if cv_val is None or cv_val <= 0:
+        return None, False
+    kw = cv_val * valeur("cv_vers_kw")
+    tolerance_kw = 0.5 * 10 ** (-_decimales(cv)) * valeur("cv_vers_kw")
+    proche = min(valeur("kw_moteur_normalises"), key=lambda p: abs(p - kw))
+    if abs(proche - kw) <= tolerance_kw + 1e-9:
+        return float(proche), True
+    return kw, False
+
+
 def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
                       phases=None, alimentation=None, courant_nominal_a=None):
     """AGR115 — le plus petit variateur pricé dont le kW ≥ kW PLAQUE.
@@ -158,14 +189,16 @@ def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
         kw = None
         cv_val = _flottant(cv)
         if cv_val is not None and cv_val > 0:
-            cles.add("cv_vers_kw")
-            kw = cv_val * valeur("cv_vers_kw")
+            cles.update({"cv_vers_kw", "kw_moteur_normalises"})
+            kw, normalise = kw_normalise_depuis_cv(cv)
             source_kw = "cv"
             alertes.append(_alerte(
                 "kw_plaque_a_relever", "plaque.kw",
                 "kW de plaque à relever : variateur choisi sur %s CV × 0,7355 "
-                "= %s kW, en attendant la plaque de la pompe."
-                % (_fr(cv_val), _fr(kw, 2))))
+                "= %s kW%s, en attendant la plaque de la pompe."
+                % (_fr(cv_val), _fr(cv_val * valeur("cv_vers_kw"), 2),
+                   (" (moteur normalisé %s kW, IEC 60034-1)" % _fr(kw, 2))
+                   if normalise else "")))
     tension = _flottant(tension_v)
     tension = int(tension) if tension else _tension_alim(alimentation)
     phases_voulues = phases or _phases_alim(alimentation)

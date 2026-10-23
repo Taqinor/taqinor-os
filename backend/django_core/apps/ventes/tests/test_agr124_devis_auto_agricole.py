@@ -202,6 +202,40 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(rep.data['field'], 'kit.installation')
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
+    def _pompe_3cv_mono(self):
+        return self._produit(
+            'Pompe immergée solaire 3 CV Monophasé', '5000',
+            role_pompage='pompe', type_pompe='immergee', alimentation='mono',
+            pompe_cv=Decimal('3'))
+
+    def test_pompe_3cv_mono_sans_variateur_compatible_409(self):
+        """AGQ6 (C-AGQ-005) — aucun variateur 220 V : 409 qui nomme la
+        puissance et l'alimentation (avant : devis créé SANS variateur)."""
+        self._pompe_3cv_mono()
+        lead = self._lead(raccordement='monophase',
+                          besoin_eau_m3j=Decimal('10'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.variateur')
+        self.assertEqual(
+            rep.data['detail'],
+            'Variateur : aucun modèle compatible au catalogue (2,2 kW mono)')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_pompe_3cv_mono_cv_seul_retient_le_variateur_2_2_kw(self):
+        pompe = self._pompe_3cv_mono()
+        si22 = self._produit(
+            'VARIATEUR VEICHI SI22 2.2KW 220V', '1580',
+            role_pompage='variateur_pompage', alimentation='mono',
+            pompe_kw=Decimal('2.2'), tension_v=220)
+        lead = self._lead(raccordement='monophase',
+                          besoin_eau_m3j=Decimal('10'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertTrue(devis.lignes.filter(produit=pompe).exists())
+        self.assertTrue(devis.lignes.filter(produit=si22).exists())
+
     def test_raccordement_inconnu_409_nommant_le_raccordement(self):
         """AGQ7 (C-AGQ-006) — raccordement inconnu : 409 qui nomme la saisie
         (champ ``raccordement``), jamais « aucune pompe compatible »."""

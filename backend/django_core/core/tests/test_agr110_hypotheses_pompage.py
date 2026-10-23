@@ -46,6 +46,18 @@ class ChaqueEntreeEstSourcee(unittest.TestCase):
                                1000 * 9.81 / 3600, places=3)
         self.assertAlmostEqual(H.valeur("cv_vers_kw"), 0.7355, places=6)
 
+    def test_kw_moteur_normalises_source_iec(self):
+        """AGQ6 — puissances assignées normalisées, source IEC 60034-1,
+        exportées en liste JSON."""
+        entree = H.hypothese("kw_moteur_normalises")
+        self.assertEqual(entree.statut, "source")
+        self.assertIn("IEC 60034-1", entree.source)
+        self.assertEqual(list(entree.valeur), sorted(entree.valeur))
+        self.assertIn(2.2, entree.valeur)
+        exporte = [e for e in H.export()["hypotheses"]
+                   if e["cle"] == "kw_moteur_normalises"][0]
+        self.assertIsInstance(exporte["valeur"], list)
+
     def test_tolerance_jamais_seuil_de_recette(self):
         tol = H.hypothese("tolerance_conception_pct")
         self.assertEqual(tol.usage, "controle_conception")

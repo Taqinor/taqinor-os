@@ -75,12 +75,21 @@ class ChoixVariateur(unittest.TestCase):
         self.assertEqual(res["kw_requis"], 4.0)
 
     def test_cv_seul_alerte_kw_plaque_a_relever_et_jamais_aucun(self):
+        # AGQ6 (réaligné) — 3 CV × 0,7355 = 2,21 kW, arrondi au moteur
+        # normalisé 2,2 kW (IEC 60034-1) : jamais « aucun variateur ».
         res = choisir_variateur(CATALOGUE, cv="3", alimentation="mono")
         codes = [a["code"] for a in res["alertes"]]
         self.assertIn("kw_plaque_a_relever", codes)
-        # 3 CV × 0,7355 = 2,21 kW > 2,2 kW : l'alerte nomme la limite.
-        self.assertIn("aucun_variateur", codes)
-        self.assertIn("220 V", res["motif"])
+        self.assertNotIn("aucun_variateur", codes)
+        self.assertIsNotNone(res["variateur"])
+
+    def test_cv_hors_puissance_normalisee_jamais_arrondi_vers_le_bas(self):
+        # 12,5 CV = 9,19 kW : aucune puissance normalisée dans la tolérance
+        # d'arrondi du CV écrit ⇒ 9,19 kW requis, variateur ≥ 9,19 kW.
+        res = choisir_variateur(CATALOGUE + [_var(8, 11, 380)], cv="12.5",
+                                alimentation="tri")
+        self.assertEqual(res["kw_requis"], 9.19)
+        self.assertEqual(res["variateur"]["id"], 8)
 
     def test_phases_publiees_incompatibles_exclues(self):
         fiche_tri = dict(FICHE_250_780, ond_phases=3)
@@ -100,6 +109,21 @@ class ChoixVariateur(unittest.TestCase):
         res = choisir_variateur(cat, kw_plaque=4, alimentation="tri")
         self.assertIsNone(res["variateur"])
         self.assertEqual(res["sans_prix"], [cat[0]["nom"]])
+
+
+class Variateur(unittest.TestCase):
+    """AGQ6 (C-AGQ-005) — pompe connue par son seul CV."""
+
+    def test_3cv_mono_cv_seul_retient_le_2_2_kw(self):
+        res = choisir_variateur(CATALOGUE, cv="3.00", alimentation="mono")
+        self.assertIsNotNone(res["variateur"])
+        self.assertEqual(res["variateur"]["id"], 1)  # SI22 2,2 kW 220 V
+        self.assertEqual(res["kw_requis"], 2.2)
+        self.assertEqual(res["source_kw"], "cv")
+        codes = [a["code"] for a in res["alertes"]]
+        self.assertIn("kw_plaque_a_relever", codes)
+        self.assertIn("kw_moteur_normalises",
+                      [h["cle"] for h in res["hypotheses"]])
 
 
 class EnergieKwc(unittest.TestCase):

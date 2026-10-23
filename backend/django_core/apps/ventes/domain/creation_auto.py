@@ -467,9 +467,16 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     # devis en NOMMANT l'article (jamais un devis sans structure ni pose).
     if manquants:
         premier = manquants[0]
-        raise AutoDevisError(
-            '%s : %s' % (premier['libelle'], premier['motif']),
-            field='kit.%s' % premier['cle'])
+        message = '%s : %s' % (premier['libelle'], premier['motif'])
+        if premier['cle'] == 'variateur' \
+                and premier['motif'] == 'aucun article au catalogue':
+            # AGQ6 (C-AGQ-005) — nommer la puissance et l'alimentation
+            # cherchées (jamais un devis sans variateur).
+            message = ('Variateur : aucun modèle compatible au catalogue '
+                       '(%s kW %s)' % (
+                           _fr_nombre((sortie.get('puissance_retenue')
+                                       or {}).get('kw')), alim))
+        raise AutoDevisError(message, field='kit.%s' % premier['cle'])
 
     client = resolve_client_for_lead(lead)
     etude = dict(corps)
