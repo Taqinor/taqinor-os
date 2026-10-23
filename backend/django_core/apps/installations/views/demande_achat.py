@@ -54,8 +54,10 @@ import logging
 def _erreur_ligne_csv():
     # Une instance NEUVE par usage : un champ enfant lié deux fois porte déjà
     # son `source` et drf-spectacular refuse alors le `child=` (génération KO).
-    return oa.body(
-        'ImportLignesErreur', ligne=oa.i(required=True), erreur=oa.s(required=True))
+    # `oa.body` mémorise l'INSTANCE par nom (composant stable) : on instancie
+    # sa classe à chaque usage.
+    return type(oa.body(
+        'ImportLignesErreur', ligne=oa.i(required=True), erreur=oa.s(required=True)))()
 
 
 logger = logging.getLogger(__name__)
