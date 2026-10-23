@@ -86,7 +86,9 @@ class SeedScaleOrphanProduitCollisionTests(TestCase):
 
         def fake_seed(label, count, **kw):
             for _ in range(2):
-                p = Produit(nom='genou', sku='', company=None, prix_vente=0)
+                # sku NULL comme les produits Faker du seeder (NULL distincts
+                # pour (company, sku) ; '' collisionnerait sur CETTE contrainte).
+                p = Produit(nom='genou', sku=None, company=None, prix_vente=0)
                 p.save()
                 pks.append(p.pk)
 
