@@ -139,8 +139,9 @@ MOTIF_PRODUCTION_ABSENTE = (
     "jamais une production par ville à côté de taux d'un autre modèle")
 MOTIF_BASELINE_ABSENTE = (
     "consommation de référence non résolue par le moteur C&I")
+#: AMOT80 — en mots du CLIENT (jamais « moteur C&I »).
 MOTIF_ETUDE_A_FAIRE = (
-    "étude du moteur C&I à faire : chiffres préliminaires")
+    "étude détaillée de votre site à finaliser : chiffres préliminaires")
 LIBELLE_VISITE = "Relevé du site à la visite technique"
 
 #: CIQ304 — ce qui manque quand le moteur n'a pas chiffré l'argent : ce que
@@ -648,6 +649,12 @@ def chiffres_cles(synthese):
                         None)
     pointe = next((h for h in s.get("hypotheses") or []
                    if isinstance(h, dict) and h.get("cle") == "pointe"), None)
+    # AMOT80 / ADEV81 — investissement non chiffré : son motif (omission
+    # ``investissement_mad`` du bloc servi), jamais un retour.
+    motif_investissement = next(
+        (o.get("motif") for o in argent.get("omissions") or []
+         if isinstance(o, dict) and o.get("cle") == "investissement_mad"),
+        None)
     return {
         "kwc": _num(systeme.get("kwc")),
         "production_kwh_an": _num(systeme.get("production_kwh_an")),
@@ -668,5 +675,6 @@ def chiffres_cles(synthese):
                         if isinstance(a, dict) and a.get("libelle")],
         "motif_argent": motif_argent,
         "argent_mt": motif_argent == MOTIF_ARGENT_MT,
+        "motif_investissement": motif_investissement,
         "note_pointe": _dict(_dict(pointe).get("textes")).get("fr"),
     }

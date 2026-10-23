@@ -601,9 +601,11 @@ LIBELLES = {
         'en': 'Roof type and permissible load, at the visit',
         'ar': 'نوع السقف والحمولة المسموح بها، أثناء الزيارة'},
     'ci_confirmer_etude_ci': {
-        'fr': "étude du moteur C&I à faire : chiffres préliminaires",
-        'en': 'C&I study still to be run: preliminary figures',
-        'ar': 'دراسة المحرك التجاري والصناعي لم تنجز بعد: أرقام أولية'},
+        'fr': 'étude détaillée de votre site à finaliser : chiffres '
+              'préliminaires',
+        'en': 'detailed study of your site to be finalised: preliminary '
+              'figures',
+        'ar': 'الدراسة المفصلة لموقعكم قيد الإنجاز: أرقام أولية'},
     'ci_confirmer_visite': {
         'fr': 'Relevé du site à la visite technique',
         'en': 'Site survey at the technical visit',
@@ -2266,6 +2268,61 @@ LIBELLES = {
     # dont le débit est déclaré (une-page et document agricole).
     'lg_debit_declare_par_vous': {'fr': 'débit déclaré par vous', 'en': 'flow rate declared by you',
                                   'ar': 'صبيب صرّحتم به'},
+    # AMOT80 (D-ACI-8=a) — investissement non chiffré, base de la tuile
+    # retour, coût moyen NON actualisé, argent servi sans motif client.
+    'ci_invest_non_chiffre': {'fr': 'Investissement non encore chiffré',
+                              'en': 'Investment not yet priced',
+                              'ar': 'الاستثمار لم يُسعَّر بعد'},
+    'ci_invest_non_chiffre_1': {
+        'fr': 'Investissement non encore chiffré (1 article sans prix)',
+        'en': 'Investment not yet priced (1 item without a price)',
+        'ar': 'الاستثمار لم يُسعَّر بعد (بند واحد بدون سعر)'},
+    'ci_invest_non_chiffre_n': {
+        'fr': 'Investissement non encore chiffré ({n} articles sans prix)',
+        'en': 'Investment not yet priced ({n} items without a price)',
+        'ar': 'الاستثمار لم يُسعَّر بعد ({n} بنود بدون سعر)'},
+    'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
+                              'en': 'Estimated payback ({base})',
+                              'ar': 'مدة الاسترداد المقدرة ({base})'},
+    'ci_non_chiffre_sans_motif': {
+        'fr': 'Économies et retour sur investissement non chiffrés à ce '
+              'stade.',
+        'en': 'Savings and payback not calculated at this stage.',
+        'ar': 'لم تُحتسب الوفورات ومدة الاسترداد في هذه المرحلة.'},
+    'ci_ind_motif_invest': {
+        'fr': "<b>{motif}</b> : le retour, le TRI et le cashflow ne sont "
+              "publiés que sur un investissement entièrement chiffré.",
+        'en': '<b>{motif}</b>: payback, IRR and cash flow are only published '
+              'on a fully priced investment.',
+        'ar': '<b>{motif}</b>: لا تُنشر مدة الاسترداد ومعدل العائد الداخلي '
+              'والتدفق النقدي إلا على استثمار مُسعَّر بالكامل.'},
+    'ci_ind_lcoe_non_actualise': {
+        'fr': 'Coût moyen non actualisé du kWh produit ({base})',
+        'en': 'Average undiscounted cost of the kWh produced ({base})',
+        'ar': 'متوسط التكلفة غير المحيَّنة للكيلوواط ساعة المنتج ({base})'},
+    # AMOT80 — sources d'hypothèses INTERNES du moteur → mots du client
+    # (table ``ci.couverture.SOURCES_CLIENT``).
+    'ci_src_economie': {
+        'fr': 'valorisation heure par heure au tarif de chaque poste',
+        'en': 'hour-by-hour valuation at the rate of each time band',
+        'ar': 'تقييم ساعة بساعة بسعر كل فترة'},
+    'ci_src_production': {
+        'fr': 'étude de production de votre site, heure par heure',
+        'en': 'hour-by-hour production study of your site',
+        'ar': 'دراسة إنتاج موقعكم ساعة بساعة'},
+    'ci_src_horizon': {'fr': "durée d'analyse : 25 ans",
+                       'en': 'analysis period: 25 years',
+                       'ar': 'مدة التحليل: 25 سنة'},
+    'ci_src_methode': {'fr': 'méthode de calcul du devis',
+                       'en': 'quote calculation method',
+                       'ar': 'طريقة حساب عرض السعر'},
+    'ci_src_onduleur': {
+        'fr': "remplacement à mi-vie (principe IEA PVPS), au montant réel de "
+              "la ligne onduleur du devis",
+        'en': 'mid-life replacement (IEA PVPS principle), at the actual '
+              'amount of the quote inverter line',
+        'ar': 'استبدال في منتصف العمر (مبدأ IEA PVPS)، بالمبلغ الفعلي لبند '
+              'العاكس في عرض السعر'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',
