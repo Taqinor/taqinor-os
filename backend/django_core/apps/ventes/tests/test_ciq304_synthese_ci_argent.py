@@ -136,3 +136,36 @@ class TestSyntheseCiArgent(SimpleTestCase):
     def test_aucun_prix_achat(self):
         s = self._industriel(_economie())
         self.assertNotIn("prix_achat", json.dumps(s, ensure_ascii=False))
+
+
+class TestArgentInvestissementNonChiffre(SimpleTestCase):
+    """ADEV81 — investissement nul ou incomplet : le payback servi est nul
+    (jamais « 0 an » ni « 1 an »), le motif voyage dans ``argent``, les
+    économies de l'année 1 restent servies."""
+
+    def _economie(self, investissement, lignes=None, controle=False):
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        return eco.assembler_economie_ci(
+            _apercu("mt"), investissement=investissement, lignes=lignes,
+            mode_installation="commercial", controle_lignes=controle)
+
+    def test_payback_nul_avec_le_motif(self):
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles
+        lignes = [{"designation": "Smart Meter", "ht": 1000.0,
+                   "ttc": 1200.0, "optionnelle": False, "onduleur": False,
+                   "panneau": False, "role_ci": None}]
+        cas = (self._economie({"ht": 0.0, "ttc": 0.0}),
+               self._economie({"ht": 1000.0, "ttc": 1200.0}, lignes, True))
+        for economie in cas:
+            for segment in ("commercial", "industriel"):
+                s = synthese_ci(_data(_etude_ci(), mode_installation=segment,
+                                      economie_ci=economie))
+                chiffres = chiffres_cles(s)
+                self.assertIsNone(chiffres["payback_ans"])
+                self.assertIsNotNone(chiffres["economie_annuelle_mad"])
+                motifs = {o.get("cle"): o.get("motif")
+                          for o in s["argent"]["omissions"]}
+                self.assertTrue(motifs.get("investissement_mad", "")
+                                .startswith("investissement non encore "
+                                            "chiffré"), motifs)
