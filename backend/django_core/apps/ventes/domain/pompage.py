@@ -798,6 +798,29 @@ def _parametres_kit(res, reglages, catalogue, produits):
         options_cochees=res.valeur('options_cochees'))
 
 
+def _site_du_calcul(res, reglages, sans_tmy):
+    """Site de l'étude : profils PVGIS, alertes, coordonnées figées,
+    températures TMY et heures de repli (lectures, repli étiqueté)."""
+    # Site : PVGIS + températures TMY (lectures, repli étiqueté).
+    localisation, _prov_loc = res.bloc('localisation')
+    localisation = localisation or {}
+    lat, lon = _num(localisation.get('lat')), _num(localisation.get('lon'))
+    ville = localisation.get('ville')
+    profils = profils_horaires_site(ville=ville, lat=lat, lon=lon)
+    alertes_pvgis = []
+    coordonnees = None
+    if profils is None:
+        alertes_pvgis.append(_alerte(
+            'pvgis_indisponible', 'production',
+            "Irradiation du site indisponible : production en REPLI PLAT "
+            "(débit × heures du réglage société), sans variation mensuelle."))
+    elif lat is not None and lon is not None:
+        coordonnees = {'lat': lat, 'lon': lon, 'fige_le': _aujourdhui()}
+    temperatures = temperatures_du_site(lat, lon, sans_tmy=sans_tmy)
+    heures_repli = _reglage(reglages, 'agricole_pump_hours')
+    return profils, alertes_pvgis, coordonnees, temperatures, heures_repli
+
+
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
                     facture=None, sans_tmy=False):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
@@ -834,23 +857,8 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     if taille_voulue not in TAILLES_VALIDES:
         taille_voulue = 'recommandee'
 
-    # Site : PVGIS + températures TMY (lectures, repli étiqueté).
-    localisation, _prov_loc = res.bloc('localisation')
-    localisation = localisation or {}
-    lat, lon = _num(localisation.get('lat')), _num(localisation.get('lon'))
-    ville = localisation.get('ville')
-    profils = profils_horaires_site(ville=ville, lat=lat, lon=lon)
-    alertes_pvgis = []
-    coordonnees = None
-    if profils is None:
-        alertes_pvgis.append(_alerte(
-            'pvgis_indisponible', 'production',
-            "Irradiation du site indisponible : production en REPLI PLAT "
-            "(débit × heures du réglage société), sans variation mensuelle."))
-    elif lat is not None and lon is not None:
-        coordonnees = {'lat': lat, 'lon': lon, 'fige_le': _aujourdhui()}
-    temperatures = temperatures_du_site(lat, lon, sans_tmy=sans_tmy)
-    heures_repli = _reglage(reglages, 'agricole_pump_hours')
+    (profils, alertes_pvgis, coordonnees, temperatures,
+     heures_repli) = _site_du_calcul(res, reglages, sans_tmy)
 
     # Besoin (D-AGR-3) puis débit de conception (passe 1, sans production).
     besoin, agro, alertes_besoin = _besoin(res, profils=profils,

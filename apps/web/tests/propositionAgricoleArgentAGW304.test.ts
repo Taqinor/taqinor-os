@@ -58,7 +58,11 @@ describe('AGW304 — syntheseAgricoleArgent : lecture défensive', () => {
     expect(e.declareLe).toBe('2026-09-12');
     expect(a.energieActuelle!.valeur).toBe('butane');
     expect(a.garanties).toHaveLength(2);
-    expect(a.optionsKit).toEqual([{ ligneId: 90311, designation: 'Afficheur du variateur', totalTtc: 950 }]);
+    // AGQ11 — les options du kit moteur sans prix sont servies aussi (« prix sur devis », AGQ35 les rend)
+    expect(a.optionsKit).toEqual([
+      { ligneId: 90311, designation: 'Afficheur du variateur', totalTtc: 950 },
+      { ligneId: null, designation: "Compteur d'eau", totalTtc: null },
+    ]);
     expect(a.nonInclus).toEqual(['forage', 'genie_civil']);
     expect(a.formalites[0].cle).toBe('declaration_8221');
     expect(a.formalites[0].textes.ar.length).toBeGreaterThan(10);

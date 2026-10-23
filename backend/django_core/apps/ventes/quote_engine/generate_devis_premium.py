@@ -4048,6 +4048,14 @@ def _bon_pour_accord_compact_html():
         f'{_L("bon_pour_accord")} &#8212; {_L("bpa_signature")}</div></div>')
 
 
+def _garantie_ligne_onepage(it):
+    """La garantie d'une ligne du une-page : texte libre, sauf en AGRICOLE où
+    seules les durées STRUCTURÉES sortent (AGQ14, D-AGQ-4), comme les 3 pages."""
+    if (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole":
+        return _garantie_agricole_ligne(it)
+    return (it.get("garantie") or "").strip()
+
+
 def page_onepage(items, tronquees=0):
     """Single A4 page: header + summary strip + client block + HT product table + footer.
 
@@ -4239,11 +4247,7 @@ def page_onepage(items, tronquees=0):
         qty_str = str(int(qty)) if qty == int(qty) else fnum(qty)
         marque_html = badge(marque) if marque else ""
         detail_html = _desc_lines_html(it, max_lines=max_desc, font_pt=desc_pt) if max_desc else ""
-        gar = (it.get("garantie") or "").strip()
-        if (globals().get("MODE_INSTALLATION") or "").strip().lower() \
-                == "agricole":
-            # AGQ14 (D-AGQ-4) — durées STRUCTURÉES seules, comme les 3 pages.
-            gar = _garantie_agricole_ligne(it)
+        gar = _garantie_ligne_onepage(it)
         if gar and show_gar:
             detail_html += (
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
