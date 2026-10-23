@@ -761,7 +761,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             # ENF11 — bornes 0..9999999999.99 PUBLIÉES au motif (sans signe) :
             # ``lire_releve`` refuse tout le reste (400 « hors bornes »).
             'valeur': DecimalBornee(
-                max_digits=12, decimal_places=2, min_value=0),
+                max_digits=12, decimal_places=2, min_value=Decimal('0')),
             'date': drf_serializers.DateField(required=False),
         }),
         responses={201: _sch('SavReleveCompteurReponse', {

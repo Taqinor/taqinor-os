@@ -49,8 +49,14 @@ from . import _openapi as oa
 import logging
 
 #: Une erreur de ligne de l'import CSV : ``{ligne, erreur}`` (jamais une chaîne).
-_ERREUR_LIGNE_CSV = oa.body(
-    'ImportLignesErreur', ligne=oa.i(required=True), erreur=oa.s(required=True))
+
+
+def _erreur_ligne_csv():
+    # Une instance NEUVE par usage : un champ enfant lié deux fois porte déjà
+    # son `source` et drf-spectacular refuse alors le `child=` (génération KO).
+    return oa.body(
+        'ImportLignesErreur', ligne=oa.i(required=True), erreur=oa.s(required=True))
+
 
 logger = logging.getLogger(__name__)
 
@@ -472,10 +478,10 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         responses={
             (200, 'application/json'): oa.body(
                 'ImportLignesResultat', importees=oa.i(required=True), lignes_creees=oa.ints(required=True),
-                erreurs=oa.lst(child=_ERREUR_LIGNE_CSV, required=True)),
+                erreurs=oa.lst(child=_erreur_ligne_csv(), required=True)),
             (201, 'application/json'): oa.body(
                 'ImportLignesResultat', importees=oa.i(required=True), lignes_creees=oa.ints(required=True),
-                erreurs=oa.lst(child=_ERREUR_LIGNE_CSV, required=True)),
+                erreurs=oa.lst(child=_erreur_ligne_csv(), required=True)),
         },
     )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='importer-lignes-csv')
