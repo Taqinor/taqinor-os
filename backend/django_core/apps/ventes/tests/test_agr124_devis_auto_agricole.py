@@ -173,6 +173,33 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertNotIn('catalogue', rep.data['detail'])
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
+    def test_besoin_incouvrable_sous_le_plafond_du_forage_409(self):
+        """AGQ40 (D-AGQ-9) — forage 25 m³/h × 90 % = 22,5 m³/h : 320 m³/j
+        deviennent incouvrables ⇒ 409 qui nomme le forage, aucun devis ;
+        l'étude porte le plafond et l'alerte."""
+        CompanyProfile.objects.filter(company=self.co).update(
+            agricole_part_debit_forage_pct=Decimal('90'))
+        self._pompe('15000')
+        lead = self._lead(besoin_eau_m3j=Decimal('320'),
+                          debit_forage_m3h=Decimal('25'))
+        sortie = pompage.etudier_pompage(self.co, {'alim': 'tri'}, lead=lead)
+        self.assertEqual(sortie['production']['plafond_forage_m3h'], 22.5)
+        self.assertEqual(sortie['controle_conception']['statut'],
+                         'couverture_insuffisante')
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'debit_forage_m3h')
+        self.assertIn('forage', rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_forage_large_plafond_rendu_sans_alerte(self):
+        self._pompe('15000')
+        lead = self._lead()
+        sortie = pompage.etudier_pompage(self.co, {'alim': 'tri'}, lead=lead)
+        self.assertNotIn('debit_limite_forage',
+                         [a['code'] for a in sortie['alertes']])
+        self.assertEqual(sortie['production']['plafond_forage_m3h'], 50)
+
     def test_lead_butane_saisies_economie_provenance_lead(self):
         self._pompe('15000')
         lead = self._lead(

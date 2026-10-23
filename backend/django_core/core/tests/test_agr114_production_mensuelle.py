@@ -105,6 +105,43 @@ class Rendement(unittest.TestCase):
                          [a["code"] for a in res["alertes"]])
 
 
+#: Courbe OSP 30/13 du seed (15 CV / 11 kW) : 36 m³/h à 70 m.
+OSP_30_13 = {"debits_m3h": [0, 12, 24, 30, 36, 39],
+             "hmt_m": [148, 138, 114, 98, 70, 55]}
+
+
+class Plafond(unittest.TestCase):
+    """AGQ40 (D-AGQ-9) — débit horaire plafonné au débit d'exploitation du
+    forage × part du réglage société."""
+
+    PARAMS = dict(kwc=30, profils_horaires=PROFILS, courbe_pompe=OSP_30_13,
+                  p_plaque_kw=11, hmt_m=70, rendement_mppt=None)
+
+    def test_debit_horaire_plafonne_au_forage(self):
+        libre = production_mensuelle(**self.PARAMS)
+        r = production_mensuelle(plafond_m3h=25 * 0.9, **self.PARAMS)
+        self.assertEqual(r["plafond_forage_m3h"], 22.5)
+        self.assertTrue(r["plafond_atteint"])
+        heures_de_jour = sum(1 for g in PROFILS[6] if g > 0)
+        for mois in range(12):
+            self.assertLess(r["m3_jour_mois"][mois],
+                            libre["m3_jour_mois"][mois])
+            self.assertLessEqual(r["m3_jour_mois"][mois],
+                                 22.5 * heures_de_jour + 1e-6)
+
+    def test_repli_plat_plafonne(self):
+        r = production_mensuelle(plafond_m3h=22.5, agricole_pump_hours=7,
+                                 **dict(self.PARAMS, profils_horaires=None))
+        self.assertEqual(r["m3_jour_mois"], [157.5] * 12)
+
+    def test_sans_debit_de_forage_inchange(self):
+        libre = production_mensuelle(**self.PARAMS)
+        r = production_mensuelle(plafond_m3h=None, **self.PARAMS)
+        self.assertEqual(r["m3_jour_mois"], libre["m3_jour_mois"])
+        self.assertIsNone(r["plafond_forage_m3h"])
+        self.assertFalse(r["plafond_atteint"])
+
+
 class CasDegrades(unittest.TestCase):
 
     def test_pompe_sans_courbe_production_null(self):

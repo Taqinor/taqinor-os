@@ -467,8 +467,11 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                        e_d_kwh_kwc_mois=None, temperatures=None,
                        salissure_pct=None, agricole_pump_hours=None,
                        mois_critique=None, coordonnees=None,
-                       reponse_pvgis=None):
+                       reponse_pvgis=None, plafond_m3h=None):
     """AGR115 — nombre de panneaux, chaînes et variateur retenu.
+
+    AGQ40 (D-AGQ-9) — ``plafond_m3h`` (débit d'exploitation du forage × part
+    du réglage) plafonne la production de chaque heure (AGR114).
 
     * ``besoin_m3_jour_mois`` : besoin RETENU (AGR116) ; ``hmt_m`` : HMT ;
     * ``pompe`` : dict produit (``courbe_pompe``, ``fiche``) ou ``None`` pour
@@ -538,7 +541,8 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
         rendement_mppt=(rendement_mppt / 100.0 if rendement_mppt else None),
         salissure_pct=salissure_pct, debit_declare_m3h=debit_declare_m3h,
         agricole_pump_hours=agricole_pump_hours, besoin_m3_jour_mois=besoin,
-        coordonnees=coordonnees, reponse_pvgis=reponse_pvgis)
+        coordonnees=coordonnees, reponse_pvgis=reponse_pvgis,
+        plafond_m3h=plafond_m3h)
     pmax = module.pmax_wc
 
     nb = int(math.ceil(kwc0 * 1000.0 / pmax)) if kwc0 else None

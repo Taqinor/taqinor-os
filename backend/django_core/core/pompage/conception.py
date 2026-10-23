@@ -404,7 +404,7 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
                     profils_horaires=None, e_d_kwh_kwc_mois=None,
                     temperatures=None, salissure_pct=None,
                     agricole_pump_hours=None, mois_critique=None,
-                    coordonnees=None, reponse_pvgis=None):
+                    coordonnees=None, reponse_pvgis=None, plafond_m3h=None):
     """AGR118 — pompe existante : aucune ligne pompe, variateur sur la plaque.
 
     * ``plaque`` : ``{kw, tension_v, phases, cv, courant_a}`` (saisie ou
@@ -516,7 +516,7 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
             salissure_pct=salissure_pct,
             agricole_pump_hours=agricole_pump_hours,
             mois_critique=mois_critique, coordonnees=coordonnees,
-            reponse_pvgis=reponse_pvgis)
+            reponse_pvgis=reponse_pvgis, plafond_m3h=plafond_m3h)
         production = champ["production"]
         alertes.extend(champ["alertes"])
     if production is None:

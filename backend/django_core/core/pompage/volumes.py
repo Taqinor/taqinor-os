@@ -424,8 +424,14 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
                          hmt_m=None, p_plaque_kw=None, rendement_mppt=None,
                          salissure_pct=None, debit_declare_m3h=None,
                          agricole_pump_hours=None, besoin_m3_jour_mois=None,
-                         coordonnees=None, reponse_pvgis=None):
+                         coordonnees=None, reponse_pvgis=None,
+                         plafond_m3h=None):
     """AGR114 — m³/jour de chaque mois, intégré HEURE PAR HEURE.
+
+    AGQ40 (D-AGQ-9) — ``plafond_m3h`` (débit d'exploitation du forage × part
+    du réglage société, plafond retenu de la conception) : le débit de CHAQUE
+    heure est plafonné à cette valeur ; ``plafond_forage_m3h`` le rend et
+    ``plafond_atteint`` dit si une heure a été écrêtée.
 
     Entrées (toutes fournies par l'appelant, le noyau ne lit rien) :
 
@@ -470,7 +476,20 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
         "motif": None,
         "coordonnees_figees": dict(coordonnees) if coordonnees else None,
         "reponse_pvgis": reponse_pvgis,
+        "plafond_forage_m3h": None,
+        "plafond_atteint": False,
     }
+    plafond = _flottant(plafond_m3h)
+    if plafond is not None and plafond > 0:
+        sortie["plafond_forage_m3h"] = round(plafond, 1)
+    else:
+        plafond = None
+
+    def plafonne(debit):
+        if plafond is not None and debit > plafond:
+            sortie["plafond_atteint"] = True
+            return plafond
+        return debit
 
     debit_nominal = None
     if courbe_ok and hmt is not None and hmt > 0:
@@ -498,7 +517,7 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
             sortie["motif"] = ("profil PVGIS indisponible et heures de "
                                "pompage (réglage société) non renseignées")
             return sortie
-        journalier = round(debit_nominal * heures, 1)
+        journalier = round(plafonne(debit_nominal) * heures, 1)
         sortie["m3_jour_mois"] = [journalier] * 12
         sortie["heures_equivalentes_mois"] = [round(heures, 1)] * 12
         sortie["etiquettes"].append(
@@ -542,7 +561,7 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
                 debit = _debit_vitesse_relative(courbe_pompe, hmt, n) or 0.0
             else:
                 debit = debit_nominal * min(1.0, rapport)
-            volume += debit
+            volume += plafonne(debit)
         journaliers.append(round(volume, 1))
         heures_eq.append(round(volume / debit_nominal, 1)
                          if debit_nominal > 0 else None)

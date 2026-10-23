@@ -141,6 +141,30 @@ class Plafonds(unittest.TestCase):
                        part_reglage_pct=80, niveau_eau_m=30)
         self.assertEqual(r["conception"]["plafonds"]["plafond_retenu_m3h"], 16)
 
+    def test_besoin_incouvrable_sous_le_plafond_du_forage(self):
+        """AGQ40 (D-AGQ-9) — production plafonnée à 25 × 90 % = 22,5 m³/h :
+        un besoin de 320 m³/j devient incouvrable, le contrôle le dit."""
+        from core.pompage.volumes import production_mensuelle
+        osp_30_13 = {"debits_m3h": [0, 12, 24, 30, 36, 39],
+                     "hmt_m": [148, 138, 114, 98, 70, 55]}
+        besoin = besoin_retenu(volume_declare_m3_jour=320)
+        passe1 = conception(besoin=besoin, profils_horaires=PROFILS,
+                            debit_exploitation_m3h=25, part_reglage_pct=90,
+                            niveau_eau_m=30)
+        plafond = passe1["conception"]["plafonds"]["plafond_retenu_m3h"]
+        self.assertEqual(plafond, 22.5)
+        prod = production_mensuelle(
+            kwc=30, profils_horaires=PROFILS, courbe_pompe=osp_30_13,
+            p_plaque_kw=11, hmt_m=70, plafond_m3h=plafond)
+        self.assertTrue(prod["plafond_atteint"])
+        r = conception(besoin=besoin, profils_horaires=PROFILS,
+                       debit_exploitation_m3h=25, part_reglage_pct=90,
+                       niveau_eau_m=30,
+                       production_m3_jour_mois=prod["m3_jour_mois"])
+        self.assertEqual(r["controle_conception"]["statut"],
+                         "couverture_insuffisante")
+        self.assertIn("plafond_forage", _codes(r))
+
     def test_volume_annuel_superieur_a_l_autorise(self):
         r = conception(besoin=besoin_retenu(volume_declare_m3_jour=100),
                        profils_horaires=PROFILS, debit_exploitation_m3h=50,

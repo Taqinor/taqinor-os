@@ -414,6 +414,22 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             'Débit de conception introuvable : saisissez le débit souhaité ou '
             "le besoin en eau (m³/jour).", field='pompe_debit_m3h')
 
+    # AGQ40 (D-AGQ-9) — refus SEULEMENT quand le besoin déclaré devient
+    # incouvrable sous le plafond du forage (jamais pour un simple écrêtage).
+    codes = {a.get('code') for a in sortie.get('alertes') or ()}
+    plafonds = (sortie.get('conception') or {}).get('plafonds') or {}
+    controle = sortie.get('controle_conception') or {}
+    if (controle.get('statut') == 'couverture_insuffisante'
+            and ('debit_limite_forage' in codes or plafonds.get('atteint'))):
+        raise AutoDevisError(
+            "Besoin déclaré incouvrable : débit limité par votre forage "
+            "(%s m³/h exploitables) — mois sous la tolérance : %s. Réduisez "
+            "le besoin ou relevez le débit du forage." % (
+                _fr_nombre(plafonds.get('plafond_retenu_m3h')),
+                ', '.join(str(m) for m in controle.get(
+                    'mois_sous_tolerance') or ()) or '?'),
+            field='debit_forage_m3h')
+
     lignes, omises = lignes_kit_auto(sortie)
     prix = {p.id: p.prix_vente for p in catalogue_de_la_societe(company)}
     lignes = [dict(ligne, prix_unitaire=Decimal(str(prix[ligne['produit_id']])))

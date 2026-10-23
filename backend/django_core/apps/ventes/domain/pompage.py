@@ -541,7 +541,15 @@ def _forme_production(production):
         'coordonnees_figees': (production.get('coordonnees_figees')
                                if production.get('source_irradiation')
                                == 'pvgis' else None),
+        # AGQ40 (D-AGQ-9) — plafond horaire appliqué (forage × part du
+        # réglage), ``None`` sans débit de forage.
+        'plafond_forage_m3h': production.get('plafond_forage_m3h'),
     }
+
+
+def _fr_m3h(valeur):
+    texte = ('%.1f' % float(valeur)).rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
 
 
 def _forme_champ(champ, motif_vide):
@@ -821,10 +829,14 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
         longueur_conduite_m=_num(res.valeur('hmt.conduite.longueur_m')),
         volume_bassin_m3=_num(res.valeur('source.volume_reservoir_m3')),
         options_cochees=res.valeur('options_cochees'))
+    # AGQ40 (D-AGQ-9) — la production de chaque heure est plafonnée au
+    # plafond RETENU de la passe 1 (forage × part du réglage, ou ABH).
+    plafond_m3h = passe1['conception']['plafonds']['plafond_retenu_m3h']
     commun = dict(profils_horaires=profils, temperatures=temperatures,
                   salissure_pct=_reglage(reglages,
                                          'agricole_salissure_supp_pct'),
-                  agricole_pump_hours=heures_repli, coordonnees=coordonnees)
+                  agricole_pump_hours=heures_repli, coordonnees=coordonnees,
+                  plafond_m3h=plafond_m3h)
     alertes_moteur, hypotheses_moteur = [], []
     if panneau is None:
         alertes_moteur.append(_alerte(
@@ -941,7 +953,15 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
                 puissance_actuelle=puissance, variateur_actuel=variateur))
         alertes_moteur.extend(alertes_facture)
 
-    production = _forme_production((champ_complet or {}).get('production'))
+    production_brute = (champ_complet or {}).get('production') or {}
+    production = _forme_production(production_brute or None)
+    if production and production_brute.get('plafond_atteint'):
+        alertes_moteur.append(_alerte(
+            'debit_limite_forage', 'source.debit_exploitation_m3h',
+            "Débit limité par votre forage : la pompe livrerait davantage, "
+            "la production de chaque heure est plafonnée à %s m³/h (débit "
+            "d'exploitation × part du réglage société)."
+            % _fr_m3h(production.get('plafond_forage_m3h'))))
     passe2 = _conception(
         res, besoin, reglages, profils=profils, hmt_m=hmt_m,
         production=production['m3_jour_mois'] if production else None,
@@ -1090,7 +1110,8 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
         salissure_pct=commun.get('salissure_pct'),
         debit_declare_m3h=declare,
         agricole_pump_hours=commun.get('agricole_pump_hours'),
-        besoin_m3_jour_mois=serie, coordonnees=commun.get('coordonnees'))
+        besoin_m3_jour_mois=serie, coordonnees=commun.get('coordonnees'),
+        plafond_m3h=commun.get('plafond_m3h'))
     chaines = _chaines_vides('aucun variateur facturé')
     if produit_variateur:
         nb_cable, chaines, alertes_chaines, _suivant = _chaines_pour(
