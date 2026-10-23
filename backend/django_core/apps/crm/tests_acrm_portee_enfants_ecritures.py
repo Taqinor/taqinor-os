@@ -74,14 +74,15 @@ class PorteeEnfantsEcrituresTests(TestCase):
             BookingLink.objects.filter(lead=self.l1).count(),
         )
 
-    def _refuse_comme_inexistant(self, methode, url, corps_pour):
+    def _refuse_comme_inexistant(self, methode, url, corps_pour, statut=400):
         """POST/PATCH ``corps_pour(L1)`` et ``corps_pour(inexistant)`` : même
         400 ``{lead: ["Lead introuvable."]}``, aucun effet sur L1."""
         avant = self._empreinte_l1()
         envoyer = getattr(self.api, methode)
         hors = envoyer(url, corps_pour(self.l1.pk), format='json')
         absent = envoyer(url, corps_pour(INEXISTANT), format='json')
-        self.assertEqual(hors.status_code, 400, hors.content)
+        self.assertEqual(hors.status_code, statut, hors.content)
+        self.assertEqual(absent.status_code, statut, absent.content)
         self.assertEqual(_sans_request_id(hors.data),
                          _sans_request_id(absent.data))
         self.assertEqual(hors.data['lead'], INTROUVABLE['lead'])
@@ -119,7 +120,8 @@ class PorteeEnfantsEcrituresTests(TestCase):
         self._refuse_comme_inexistant(
             'post', f'{BASE}points-contact/',
             lambda lead: {'lead': lead, 'canal': 'telephone',
-                          'date_contact': self.quand})
+                          'date_contact': self.quand},
+            statut=404)  # ENF11 : lead inconnu/hors portée = IdInconnu404Mixin
         resp = self.api.post(f'{BASE}points-contact/',
                              {'lead': self.mien.pk, 'canal': 'telephone',
                               'date_contact': self.quand}, format='json')

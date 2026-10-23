@@ -17,8 +17,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
-    CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, RESOUDRE_GPS_REPERE, booleen_param,
-    corps_lu, corps_objet, liste_ids, texte_verifie)
+    CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT,
+    NOTER_REPERE, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids, texte_verifie)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1364,15 +1364,14 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                           'motif_perte': lead.motif_perte or ''},
         }, status=status.HTTP_201_CREATED if cree else status.HTTP_200_OK)
 
-    @extend_schema(request={'application/json': sd.corps('CrmNoterRequest', body=serializers.CharField()),
+    @extend_schema(request={'application/json': CORPS_NOTER_JSON,
                             # ENF11 nocturne — `body` facultatif en multipart : une
-                            # pièce jointe seule EST une note (VX111, « 📎 Pièce
-                            # jointe ») ; sans texte NI fichier → 400 `body`.
-                            'multipart/form-data': sd.corps('CrmNoterMultipartRequest',
-                                                            body=serializers.CharField(required=False,
-                                                                                       allow_blank=True),
-                                                            file=serializers.FileField(required=False))},
-                   responses={201: LeadActivitySerializer})
+                            # pièce jointe seule EST une note (VX111, « Pièce
+                            # jointe ») ; sans texte NON BLANC ni fichier → 400
+                            # `body` (corps : `params_requete._corps_noter`).
+                            'multipart/form-data': CORPS_NOTER_MULTIPART},
+                   responses={201: LeadActivitySerializer},
+                   extensions=NOTER_REPERE)
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin],
             parser_classes=[MultiPartParser, FormParser, JSONParser])

@@ -136,6 +136,23 @@ class TestDevisAcceptation(TestCase):
         devis.refresh_from_db()
         self.assertNotEqual(devis.statut, 'accepte')
 
+    def test_date_publiee_aaaa_mm_jj_seulement(self):
+        # ENF11 — la date est publiée ``format: date`` ET refusée par le
+        # sérialiseur déclaré (400 nommant ``date``), jamais par un message
+        # libre de la vue ; une date conforme est acceptée.
+        from apps.ventes.views import openapi_docs as D
+        self.assertEqual(
+            type(D.AccepterRequest.fields['date']).__name__, 'DateStricte')
+        devis = self._devis(num=31)
+        for brut in ('2026-1-5', '20260610', 'Ý-oH', '2026-02-30'):
+            r = self.api.post(
+                f'/api/django/ventes/devis/{devis.id}/accepter/',
+                {'date': brut}, format='json')
+            self.assertEqual(r.status_code, 400, (brut, r.data))
+            self.assertIn('date', r.data)
+        devis.refresh_from_db()
+        self.assertNotEqual(devis.statut, 'accepte')
+
     def test_corps_mal_type_rejete_sans_accepter(self):
         # ENF11 — champ de mauvais type / corps non objet : 400, rien n'est accepté.
         devis = self._devis(num=30)

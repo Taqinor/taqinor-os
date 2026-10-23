@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { retirerCarte } from '../lib/leaflet/retirerCarte'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useTheme } from '../design/theme-context'
@@ -129,9 +130,9 @@ export default function MapView({
       // (« reading '_leaflet_pos' », marcheur aléatoire crm sur /carte). On
       // arrête le panoramique en cours et on CLÔT le zoom tant que les panneaux
       // existent ; le timer retombe alors sur `if (!_animatingZoom) return`.
-      map.stop()
-      if (map._animatingZoom) map._onZoomTransitionEnd()
-      map.remove()
+      // + timer de la molette (nocturne 40000624035) : tout vit dans
+      // `retirerCarte`, partagé avec CalageToitPage et PhotoSiteCalage.
+      retirerCarte(map)
       mapRef.current = null
       layerRef.current = null
       tileLayerRef.current = null

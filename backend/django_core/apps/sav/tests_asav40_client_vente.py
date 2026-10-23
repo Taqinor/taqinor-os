@@ -59,9 +59,17 @@ class ClientVenteTests(TestCase):
         self.assertEqual(alarme.statut, AlarmeOnduleur.Statut.ESCALADEE)
         self.assertEqual(alarme.ticket.client_id, self.client_obj.id)
 
-    def test_sans_client_400(self):
+    def test_equipement_sans_client_deductible_409(self):
+        """ENF11 : corps conforme (équipement fourni) mais client non
+        déductible de l'équipement = refus d'ÉTAT, 409."""
         r = self.api.post('/api/django/sav/tickets/', {
             'equipement': self.orphelin.pk, 'type': 'correctif',
             'description': 'Panne'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('client', str(r.data))
+
+    def test_ni_client_ni_equipement_400(self):
+        r = self.api.post('/api/django/sav/tickets/', {
+            'type': 'correctif', 'description': 'Panne'}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('client', r.data)

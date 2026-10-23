@@ -26,7 +26,7 @@ from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, PolymorphicProxySerializer, extend_schema,
+    OpenApiParameter, extend_schema,
     extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, serializers, status, viewsets
@@ -1058,23 +1058,22 @@ class SlaDisponibiliteViewSet(CompanyScopedModelViewSet):
             sla.installation, window_days=window))
 
 
-_PERIODE_CERTIFICAT = {
-    'periode_debut': serializers.DateField(),
-    'periode_fin': serializers.DateField(),
-}
 #: CI #997 fuzz (2) — un certificat vise UN système OU UN client, jamais les
-#: deux ni aucun (400 ``Choisissez soit un système, soit un client``) : deux
-#: formes, ``oneOf``, comme la création d'un calepinage (lead OU client).
-_CORPS_CERTIFICAT_CARBONE = PolymorphicProxySerializer(
-    component_name='CertificatCarboneEmission', resource_type_field_name=None,
-    serializers=[
-        inline_serializer('CertificatCarboneParSysteme', {
-            'installation_id': serializers.IntegerField(min_value=1),
-            **_PERIODE_CERTIFICAT}),
-        inline_serializer('CertificatCarboneParClient', {
-            'client_id': serializers.IntegerField(min_value=1),
-            **_PERIODE_CERTIFICAT}),
-    ])
+#: deux ni aucun (400 ``Choisissez soit un système, soit un client``). La
+#: période est OBLIGATOIRE dans tous les cas : ``required`` à la RACINE (une
+#: branche ``oneOf`` ne suffit pas à Schemathesis), et le ``oneOf`` ne porte que
+#: la règle « exactement un des deux ».
+_CORPS_CERTIFICAT_CARBONE = {'application/json': {
+    'type': 'object',
+    'required': ['periode_debut', 'periode_fin'],
+    'properties': {
+        'installation_id': {'type': 'integer', 'minimum': 1},
+        'client_id': {'type': 'integer', 'minimum': 1},
+        'periode_debut': {'type': 'string', 'format': 'date'},
+        'periode_fin': {'type': 'string', 'format': 'date'},
+    },
+    'oneOf': [{'required': ['installation_id']}, {'required': ['client_id']}],
+}}
 
 
 @extend_schema_view(create=extend_schema(

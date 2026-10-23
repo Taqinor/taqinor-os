@@ -634,6 +634,48 @@ class TestFuzzCrmTour2(TestCase):
         self.assertIn(
             'anyOf', regle('/api/django/crm/leads/{id}/convertir-client/'))
 
+    def test_nocturne_vocabulaires_et_note_non_blanche_publies(self):
+        """Nocturne 22/10 — ``cle``/``langue`` de ``relance-etapes/{id}/
+        message/`` publiés en enum (tirés du serveur) ; ``noter`` : ``body``
+        obligatoire NON BLANC en JSON, « texte non blanc OU fichier » à la
+        racine du corps ; la visite dans le passé déclare son 409."""
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.crm import urls as crm_urls
+        from apps.crm.cadence_reponses import CLES_MESSAGE_REPONSE
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+        params = {p['name']: p for p in chemins[
+            '/api/django/crm/relance-etapes/{id}/message/']['get']['parameters']}
+        self.assertCountEqual(params['cle']['schema']['enum'],
+                              CLES_MESSAGE_REPONSE)
+        self.assertCountEqual(params['langue']['schema']['enum'],
+                              Lead.LanguePreferee.values)
+        noter = chemins['/api/django/crm/leads/{id}/noter/']['post'][
+            'requestBody']['content']
+        corps = noter['application/json']['schema']
+        self.assertIn('anyOf', corps['allOf'][1])
+        self.assertEqual(
+            corps['allOf'][1]['anyOf'][0]['properties']['body']['pattern'],
+            MOTIF_NON_BLANC_SANS_NUL)
+        self.assertIn('409', chemins[
+            '/api/django/crm/leads/{id}/visites/planifier/']['post']['responses'])
+
+    def test_nocturne_note_blanche_400_et_visite_passee_409(self):
+        lead = Lead.objects.create(company=self.company, nom='Note blanche')
+        resp = self.api.post(f'/api/django/crm/leads/{lead.pk}/noter/',
+                             {'body': '\u001c'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(
+            f'/api/django/crm/leads/{lead.pk}/visites/planifier/',
+            {'date_prevue': '2000-01-01'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('date_prevue', resp.data)
+
 
 class TestFuzzCrmCi997(TestCase):
     """CI #997 (api-fuzz, 14/10/2026) — corps non objet, textes/booléens

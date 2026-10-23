@@ -329,13 +329,14 @@ class FkAchatsTests(TestCase):
 
     def test_avoir_retour_etranger(self):
         self._post_compare('/api/django/stock/avoirs-fournisseur/',
-                           self._avoir_payload(), 'retour', self.retour_b.pk)
+                           self._avoir_payload(), 'retour', self.retour_b.pk,
+                           statut=404)  # ENF11
         self.assertFalse(AvoirFournisseur.objects.exists())
 
     def test_avoir_facture_origine_etrangere(self):
         self._post_compare('/api/django/stock/avoirs-fournisseur/',
                            self._avoir_payload(), 'facture_origine',
-                           self.facture_b.pk)
+                           self.facture_b.pk, statut=404)  # ENF11
         self.assertFalse(AvoirFournisseur.objects.exists())
 
     def test_imputation_facture_etrangere(self):

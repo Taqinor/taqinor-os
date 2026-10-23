@@ -14,6 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.scoping import scope_queryset
@@ -259,7 +260,13 @@ class LeadVisitesActionsMixin:
                    responses={201: inline_serializer('CrmLeadVisitePlanifiee', {
                        'visite': serializers.DictField(),
                        'prochaine_touche': serializers.DictField(allow_null=True),
-                   })})
+                   }),
+                       # ENF11 : « pas dans le passé » dépend de l'horloge du
+                       # serveur, pas du corps → refus d'ÉTAT, 409.
+                       409: inline_serializer('CrmLeadVisitePassee', {
+                           'date_prevue': serializers.ListField(
+                               child=serializers.CharField()),
+                           'error': serializers.DictField()})})
     @action(detail=True, methods=['post'], url_path='visites/planifier',
             permission_classes=[HasPermissionOrLegacy('crm_modifier')])
     def planifier_visite(self, request, pk=None):
@@ -284,7 +291,7 @@ class LeadVisitesActionsMixin:
         from django.utils.dateparse import parse_date
 
         from apps.visites.selectors import ligne_visite_pour_lead
-        from apps.visites.services import planifier_visite
+        from apps.visites.services import erreur_date_passee, planifier_visite
 
         from .cadence_visite import clore_etape_apres_planification
         from .cadence_plan import _prochaine_touche_a_faire
@@ -340,6 +347,11 @@ class LeadVisitesActionsMixin:
         echeance_avant = (None if etape is None else
                           (etape.due_at, etape.due_date, etape.due_initial_at))
 
+        # ENF11 — date passée = refus d'ÉTAT (horloge serveur) : 409, même
+        # corps ``{date_prevue: [message]}`` que l'ancien 400.
+        passee = erreur_date_passee(date_prevue)
+        if passee:
+            raise ConflitEtat({'date_prevue': [passee]})
         visite, erreurs = planifier_visite(
             lead, request.user, date_prevue, commercial=commercial,
             notes=(request.data.get('notes') or ''), replanifier=replanifier)

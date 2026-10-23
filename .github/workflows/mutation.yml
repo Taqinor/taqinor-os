@@ -34,6 +34,14 @@ name: mutation (nightly)
 #     à recalibrer sur la première nuit verte, à monter par paliers de 5) ;
 #   * `--max-children 2` (au lieu de 4) : 4 workers Django en parallèle
 #     épuisaient la mémoire du runner (arrêt au démarrage des tests).
+# 23/10/2026 — DIAGNOSTIC : le job mourait CHAQUE nuit (« runner shutdown
+# signal » ~8 min après `mutmut run`, phase « Generating mutants »). mutmut 3
+# copie chaque module muté sous mutants/ et charge pytest+Django ; builder.py
+# (5 305 lignes) produisait l'essentiel des ~5 600 mutants → runner 2 coeurs /
+# 7 Go + Postgres épuisé. CORRECTIF : scope réduit à 6 modules de logique pure
+# (~1 480 lignes, setup.cfg `source_paths`) et `--max-children 1` ; clés
+# setup.cfg renommées en `source_paths` / `pytest_add_cli_args_test_selection`.
+# Runner plus gros = option payante, décision fondateur (non prise ici).
 #   * la borne `timeout 170m` (code 124) est une fin NORMALE d'une passe
 #     partielle : le score porte sur les mutants jugés avant la borne ; tout
 #     autre code de sortie de mutmut fait échouer l'étape.
@@ -77,6 +85,7 @@ jobs:
       DB_PASSWORD: ci_password
       DB_HOST: localhost
       DB_PORT: '5432'
+      PYTHONPATH: ${{ github.workspace }}   # STAGES.py (racine du dépôt) importable
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -110,6 +119,23 @@ jobs:
           psql -h localhost -U erp_user -d template1 -v ON_ERROR_STOP=1 -c
           "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS btree_gist;
           CREATE EXTENSION IF NOT EXISTS unaccent; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+      - name: Collecte pytest de la sélection (garde lisible avant mutmut)
+        # 23/10/2026 — mutmut 3 avale la sortie de pytest sous son spinner : un
+        # code 4 (usage) ne remonte qu'en `BadTestExecutionCommandsException`
+        # sans la cause. Cette collecte à blanc (secondes) échoue AVANT avec
+        # l'erreur pytest réelle, sur la même sélection que setup.cfg.
+        working-directory: backend/django_core
+        run: |
+          sel=$(python - <<'EOF'
+          import configparser
+          c = configparser.ConfigParser()
+          c.read('setup.cfg', encoding='utf-8')
+          print(' '.join(c['mutmut']['pytest_add_cli_args_test_selection'].split()))
+          EOF
+          )
+          echo "sélection : $sel"
+          python -m pytest --collect-only -q --rootdir=. -p no:randomly -p no:random-order $sel | tail -n 15
+          test "${PIPESTATUS[0]}" -eq 0
       - name: Run mutmut on high-risk modules
         working-directory: backend/django_core
         run: |
@@ -121,7 +147,7 @@ jobs:
           # que les étapes d'export/résumé suivantes tournent toujours ; son
           # code 124 est la seule sortie non nulle tolérée (ENF12, voir en-tête).
           set +e
-          timeout 170m mutmut run --max-children 2
+          timeout 170m mutmut run --max-children 1
           rc=$?
           set -e
           if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then

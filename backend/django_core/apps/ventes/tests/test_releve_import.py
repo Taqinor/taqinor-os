@@ -329,6 +329,10 @@ class TestAUD121FileDeRevueEtJeton(_ReleveImportBase):
         self.assertEqual(r.status_code, 400, r.data)
         r = self.api.post(self.COMMIT_URL, [None, None], format='json')
         self.assertEqual(r.status_code, 400, r.data)
+        # ENF11 — le jeton publié exclut le caractère nul (psycopg → 500).
+        r = self.api.post(self.COMMIT_URL, {'token': 'ab' + chr(0) + 'cd'},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
 
     def test_commit_jeton_inconnu_refuse(self):
         r = self.api.post(

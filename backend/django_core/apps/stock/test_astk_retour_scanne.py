@@ -2,7 +2,7 @@
 transaction qui contrôle d'abord le statut : un second clic ne pose aucun
 transfert fantôme.
 
-Sonde WMS-15 d'origine : 1er POST valider-scanne → 200, 2e → 400 (« seul un
+Sonde WMS-15 d'origine : 1er POST valider-scanne → 200, 2e → 409 (« seul un
 retour en brouillon… ») MAIS 2 mouvements TRANSFERT vers la zone de départs
 (1 attendu) : le déplacement était posé AVANT le contrôle d'état, hors
 transaction.
@@ -77,7 +77,7 @@ class RetourScanneTests(TestCase):
         premier = api.post(self.url, {'bins_source': {}}, format='json')
         self.assertEqual(premier.status_code, 200, premier.content)
         second = api.post(self.url, {'bins_source': {}}, format='json')
-        self.assertEqual(second.status_code, 400, second.content)
+        self.assertEqual(second.status_code, 409, second.content)
         self.assertIn('brouillon', second.data['detail'])
         # Persistance relue : UN seul transfert vers la zone de départs.
         self.assertEqual(self._transferts().count(), 1)

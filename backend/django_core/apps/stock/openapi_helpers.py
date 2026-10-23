@@ -14,6 +14,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_serializer
 from django.db import models
 from rest_framework import serializers
+from rest_framework.fields import SkipField, empty
 
 from core.champs_stricts import QUANTITE_MAX, DecimalSouple
 from .utils.params import MOTIF_QUANTITE_COMPTEE
@@ -48,6 +49,20 @@ def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, p
     return OpenApiParameter(
         name=name, type=typ, location=OpenApiParameter.QUERY,
         required=required, description=desc or name, enum=enum)
+
+
+class DecimalLie(serializers.DecimalField):
+    """Décimal d'un objet lié TOUJOURS servi (api-fuzz « Response violates
+    schema », PATCH kits) : DRF saute un champ ``source='lien.attr'`` à défaut
+    de valeur dès que le sérialiseur racine est ``partial``, alors que le
+    schéma de réponse déclare la clé obligatoire. Même patron que
+    ``core.champs_stricts.TexteLie`` : la clé est rendue (``default``/``None``)."""
+
+    def get_attribute(self, instance):
+        try:
+            return super().get_attribute(instance)
+        except SkipField:
+            return None if self.default is empty else self.default
 
 
 class NombreStrict(serializers.FloatField):

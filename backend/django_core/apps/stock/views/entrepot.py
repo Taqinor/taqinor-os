@@ -84,8 +84,8 @@ def entrepot_cockpit_view(request):
 
 
 @extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers', pattern=r'\S'),
-                           P('quantite', INT, False, 'Quantité supplémentaire'), P('produit', INT),
-                           P('emplacement', INT)], responses={
+                           P('quantite', INT, False, 'Quantité supplémentaire (>= 0 ; négative = 400)', mini=0),
+                           P('produit', INT), P('emplacement', INT)], responses={
     200: inline_serializer('StockSimulationCapacite', {
         'zone': serializers.CharField(),
         'produit': serializers.IntegerField(allow_null=True),

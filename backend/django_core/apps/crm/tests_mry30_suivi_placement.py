@@ -280,6 +280,13 @@ class SuiviActionTests(_Base):
         self.assertEqual(resp.status_code, 409)
         self.assertIn('date_fin', resp.data)
 
+    def test_le_409_respecte_le_schema_declare(self):
+        # api-fuzz : le schéma déclaré du 409 doit nommer les clés réelles.
+        resp = self._get(date_debut='2026-09-13', date_fin='2026-09-07')
+        self.assertEqual(resp.status_code, 409)
+        # Clés du `CrmSuiviConflit` déclaré (cadence_views.suivi).
+        self.assertEqual(set(resp.data), {'date_fin', 'error'})
+
     def test_un_responsable_negatif_est_refuse_sans_erreur_serveur(self):
         resp = self._get(owner='-5')
         self.assertEqual(resp.status_code, 400)

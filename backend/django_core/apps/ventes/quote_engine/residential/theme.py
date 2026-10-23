@@ -909,6 +909,44 @@ def css_langue(data) -> str:
     return css_arabe(libelles=True)
 
 
+def compact_css(level: int = 0) -> str:
+    """Nocturne 23/10/2026 — surcharge COMPACTE progressive du document, servie
+    UNIQUEMENT par le renderer quand il a mesuré un débordement de pagination
+    que ``compact_p3`` (ERR114) ne résorbe pas. Cas réel : l'arabe (libellés
+    en « Noto Sans Arabic », police système à l'interligne plus haut, titres et
+    badges repliés sur deux lignes) imprimait 5 pages au lieu de 3 — les pages
+    1 et 2 débordaient chacune d'une feuille.
+
+    Niveau 0 → chaîne vide (document inchangé au bit près). 1..3 resserrent
+    d'abord les métriques des libellés traduits (interligne, corps), puis le
+    rythme vertical des pages 1 et 2. AUCUN bloc retiré. Le bloc est inséré en
+    FIN de corps (après les styles propres à chaque page, qui gagneraient sinon
+    à égalité de spécificité)."""
+    niveaux = {
+        1: ".i18n-rtl{line-height:1.2;font-size:96%;}",
+        2: (".i18n-rtl{line-height:1.12;font-size:92%;}"
+            ".c1-bigcut{margin-top:5px;}.c1-bill{margin-top:8px;}"
+            ".c1-kpis{margin-top:7px;}.c1-impact{margin-top:6px;}"
+            ".c1-opts{margin-top:6px;}"
+            ".p2-band,.p2-totals{margin-top:1.2mm;}"
+            ".p2-deltas,.p2-fin{margin-top:1mm;}.p2-fin-wide{margin-top:2.5mm;}"
+            ".p2-finstats{margin-top:3mm;}.p2-fin-xl{margin-top:3.5mm;}"),
+        3: (".i18n-rtl{line-height:1.05;font-size:88%;}"
+            ".c1-sub{margin-top:4px;}.c1-bigcut{margin-top:3px;}"
+            ".c1-bill{margin-top:6px;}.c1-kpis{margin-top:5px;}"
+            ".c1-impact{margin-top:4px;}.c1-opts{margin-top:4px;}"
+            ".p2-band,.p2-totals{margin-top:0.8mm;}"
+            ".p2-deltas,.p2-fin{margin-top:0.6mm;}.p2-fin-wide{margin-top:1.5mm;}"
+            ".p2-finstats{margin-top:2mm;}.p2-fin-xl{margin-top:2mm;}"
+            ".p2-tva-note{margin-top:0.8mm;}"),
+    }
+    regles = niveaux.get(int(level or 0))
+    if not regles:
+        return ""
+    return ("<style>/* compaction niveau %d (débordement mesuré) */%s</style>"
+            % (int(level), regles))
+
+
 def company_identity(data: dict) -> dict:
     """Résout l'identité société AFFICHÉE (marque/contact/site) depuis
     ``data['entreprise']`` — QX7 (chips/marque) + SCA27 (tenant-safe).

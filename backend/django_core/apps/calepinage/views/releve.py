@@ -27,6 +27,9 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import DateStricte
+from core.conflit_etat import ConflitEtat
+
 from ..permissions import PeutGererCalepinage, PeutLireOuEcrireCalepinage
 from ..serializers import forme_reponse
 
@@ -44,7 +47,8 @@ class ReleveTerrainMixin:
     @extend_schema(
         methods=['POST'],
         request=inline_serializer('CalepinageReleveCorps', {
-            'releve_le': serializers.CharField(required=False),
+            # ENF11 — la date est OBLIGATOIRE et s'écrit AAAA-MM-JJ (publié).
+            'releve_le': DateStricte(),
             'notes': serializers.CharField(required=False, allow_blank=True),
             'chaines': serializers.JSONField(required=False)}),
         responses={201: _FORME_RELEVE})
@@ -70,6 +74,9 @@ class ReleveTerrainMixin:
                 request.data if isinstance(request.data, dict) else None,
                 user=request.user)
         except ReleveRefuse as refus:
+            if refus.champ == 'releve_le' and 'futur' in str(refus):
+                # ENF11 — règle d'HORLOGE, que le schéma ne peut pas dire.
+                raise ConflitEtat(str(refus))
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
 

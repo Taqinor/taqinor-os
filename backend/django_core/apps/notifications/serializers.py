@@ -3,7 +3,10 @@ from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
-from core.champs_stricts import ChampsStrictsSansDecimalMixin, EntierStrict
+from core.champs_stricts import (
+    ChampsStrictsSansDecimalMixin, EntierStrict, IdInconnu404Mixin,
+)
+from core.conflit_etat import ConflitEtat
 from apps.records.champs_stricts import (
     ChampsStrictsBornesMixin, DecimalLitteral, RegexStricte,
 )
@@ -84,11 +87,13 @@ class NotificationPreferenceSerializer(ChampsStrictsSansDecimalMixin, serializer
         return value
 
 
-class NotificationRoutingRuleSerializer(ChampsStrictsBornesMixin,
+class NotificationRoutingRuleSerializer(IdInconnu404Mixin,
+                                        ChampsStrictsBornesMixin,
                                         SameCompanyFKSerializerMixin,
                                         serializers.ModelSerializer):
     """FG4 — Serializer des règles de routage (admin seulement)."""
-    # ENF17 — l'utilisateur ciblé d'une AUTRE société = id absent (400).
+    # ENF17 — l'utilisateur ciblé d'une AUTRE société = id absent ; ENF11 —
+    # id absent (inconnu OU d'une autre société, même réponse) = 404.
     same_company_fields = ('target_user',)
     event_label = serializers.CharField(
         source='get_event_type_display', read_only=True)
@@ -235,12 +240,17 @@ class AnnonceSerializer(ChampsStrictsBornesMixin, serializers.ModelSerializer):
         return obj.lectures.count()
 
 
-class MessageAccueilSerializer(ChampsStrictsBornesMixin, serializers.ModelSerializer):
+class MessageAccueilSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                               ChampsStrictsBornesMixin,
+                               serializers.ModelSerializer):
     """MSGACC1 — message d'accueil (PAS une notification, cf. models.py).
 
     ``company``/``auteur`` posés côté serveur (perform_create) — jamais
     acceptés du corps. ``destinataire`` validé par champ : actif ET de la
     MÊME société que l'auteur (règle fondateur multi-tenant)."""
+    # ENF11 — destinataire inconnu OU d'une autre société : 404 (même réponse,
+    # aucun oracle) ; destinataire désactivé : 409 (état, pas une forme).
+    same_company_fields = ('destinataire',)
     # Motif publié au schéma : un corps fait de blancs est refusé (400) — le
     # schéma l'annonçait valide (``minLength: 1``).
     corps = RegexStricte(r'\S')
@@ -261,8 +271,7 @@ class MessageAccueilSerializer(ChampsStrictsBornesMixin, serializers.ModelSerial
 
     def validate_destinataire(self, value):
         if not value.is_active:
-            raise serializers.ValidationError(
-                "Ce destinataire n'est pas actif.")
+            raise ConflitEtat("Ce destinataire n'est pas actif.")
         request = self.context.get('request')
         company_id = getattr(getattr(request, 'user', None), 'company_id', None)
         if company_id is not None and value.company_id != company_id:

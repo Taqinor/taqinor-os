@@ -9712,9 +9712,6 @@ components:
 - CauseDefaillance
 - CauseDefaillanceRequest
 - CertificatCarbone
-- CertificatCarboneEmissionRequest
-- CertificatCarboneParClientRequest
-- CertificatCarboneParSystemeRequest
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -9910,6 +9907,7 @@ components:
 - CrmLeadMergeRequestRequest
 - CrmLeadMessageVisite
 - CrmLeadSupprime
+- CrmLeadVisitePassee
 - CrmLeadVisitePlanifiee
 - CrmLeadVisites
 - CrmLeadsExportRequestRequest
@@ -10065,13 +10063,13 @@ components:
 - DevisDupliquerVarianteGammeRequestRequest
 - DevisDupliquerVarianteGammeResponse
 - DevisDupliquerVarianteRequestRequest
-- DevisEcheancierPutRequest
 - DevisEconomie
 - DevisEconomieCi
 - DevisEconomiePompage
 - DevisEnvoyerEmailEchec
 - DevisEnvoyerEmailRequestRequest
 - DevisEnvoyerEmailResponse
+- DevisEnvoyerEmailSansDestinataire
 - DevisErreurComposition
 - DevisErreurDetail
 - DevisErreurEconomie
@@ -10114,7 +10112,6 @@ components:
 - DevisPrefillSiteResponse
 - DevisPreset
 - DevisPrixNegocieReponse
-- DevisPrixNegocieRequestRequest
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
 - DevisRevoquerLienPublicResponse
@@ -10539,6 +10536,7 @@ components:
 - ImpersonationSessionActive
 - ImportCommitRequeteRequest
 - ImportDryRunRequeteRequest
+- ImportLignesErreur
 - ImportLignesResultat
 - ImportMappingEnregistre
 - ImportMappingLigne
@@ -11647,6 +11645,7 @@ components:
 - PermissionsDisponibles
 - PertesCalepinage
 - PeseeLigneCorpsRequest
+- PhasesEnum
 - PhotoAnnotation
 - PhotoChecklistMeta
 - PhotoSiteCorpsRequest
@@ -12021,6 +12020,7 @@ components:
 - ReleveComptePortail
 - ReleveCompteurEquipement
 - ReleveCompteurEquipementTypeEnum
+- ReleveImportCommitRequestRequest
 - ReleveImportCommitResponse
 - ReleveImportDryRunRequestRequest
 - ReleveImportDryRunResponse

@@ -10,7 +10,7 @@ from rest_framework.validators import UniqueValidator
 
 from core.champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsBornesMixin, ChampsStrictsMixin,
-    DecimalSouple,
+    DecimalSouple, IdInconnu404Mixin,
 )
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ObjetJSON
@@ -1650,8 +1650,8 @@ class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
 
-class PointContactSerializer(ChampsStrictsBornesMixin, _LeadEnPorteeMixin,
-                             serializers.ModelSerializer):
+class PointContactSerializer(IdInconnu404Mixin, ChampsStrictsBornesMixin,
+                             _LeadEnPorteeMixin, serializers.ModelSerializer):
     """FG204 — point de contact du parcours multi-touch d'un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant

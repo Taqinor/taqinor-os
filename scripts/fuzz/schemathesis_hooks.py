@@ -511,6 +511,15 @@ _FICHIERS_VALIDES = (
     # les octets magiques, inexprimable dans le schéma.
     (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
      {'file': _PDF_MINIMAL}),
+    # Nocturne 23/10 (run 40000624035) — avatar : le serveur lit les octets
+    # magiques (PNG/JPEG/WebP, 2 Mo) → 413/415 hors schéma ; un vrai PNG au
+    # cas positif. Import CSV des lignes d'une demande d'achat : un fichier
+    # vide ou sans en-tête est un 409 (contenu), un non-UTF-8 un 400.
+    (re.compile(r'^/api/django/users/\{[^}]+\}/avatar/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
+    (re.compile(r'^/api/django/installations/demandes-achat/\{[^}]+\}/'
+                r'importer-lignes-csv/$'), {'POST'},
+     {'fichier': b'designation,quantite,prix_estime\r\nFuzz,1,10\r\n'}),
     # CI #997 (3) — dépôt d'un document du portail : le formulaire porte un
     # fichier ``fichier`` (le serveur lit les octets magiques).
     (re.compile(r'^/api/django/portail/documents-client-portail/'),

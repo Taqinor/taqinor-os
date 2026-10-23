@@ -12,6 +12,7 @@ Endpoints :
 Écriture réservée responsable/admin (une liste de prix révisée agit sur les
 devis de tous les vendeurs) ; lecture ouverte à tout rôle authentifié de la
 société. `prix_achat` n'est JAMAIS lu ni exposé ici."""
+import re
 from decimal import Decimal, InvalidOperation
 
 from drf_spectacular.types import OpenApiTypes
@@ -138,10 +139,18 @@ class ListePrixViewSet(CompanyScopedModelViewSet):
         return Response(serializer.data, status=201)
 
 
+#: Quantité du prix applicable : chiffres ASCII, point décimal facultatif.
+MOTIF_QUANTITE_PRIX = r'^[0-9]{1,9}(\.[0-9]{1,6})?$'
+
+
 @extend_schema(parameters=[
     OpenApiParameter('produit', OpenApiTypes.INT, required=True),
     OpenApiParameter('client', OpenApiTypes.INT, required=False),
-    OpenApiParameter('quantite', OpenApiTypes.STR, required=False),
+    # ENF11 — la règle appliquée par la vue, publiée telle quelle : décimal
+    # positif en chiffres ASCII (``MOTIF_QUANTITE_PRIX``).
+    OpenApiParameter('quantite', {'type': 'string',
+                                  'pattern': MOTIF_QUANTITE_PRIX},
+                     required=False),
     OpenApiParameter('panier', OpenApiTypes.STR, required=False),
 ], responses=D.PrixApplicableResponse)
 @api_view(['GET'])
@@ -183,10 +192,9 @@ def prix_applicable_view(request):
             raise NotFound('Client introuvable.')
 
     quantite = request.query_params.get('quantite') or '1'
-    try:
-        quantite = Decimal(str(quantite))
-    except InvalidOperation:
+    if not re.fullmatch(MOTIF_QUANTITE_PRIX, quantite):
         raise ValidationError('quantite invalide.')
+    quantite = Decimal(quantite)
 
     # NTCPQ17 — panier optionnel pour la CASCADE de remises volume :
     # ?panier=<produit_id>:<quantite>,<produit_id>:<quantite>… La ligne courante

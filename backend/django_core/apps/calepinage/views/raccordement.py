@@ -45,6 +45,7 @@ queryset du viewset, donc un calepinage d'une autre société est INTROUVABLE
 """
 from __future__ import annotations
 
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
@@ -116,6 +117,21 @@ def _bloc_du_calepinage(calepinage, saisie):
                              proposition_lead=proposition_du_lead(calepinage))
 
 
+class FlottantPositif(serializers.FloatField):
+    """ENF11 — nombre STRICTEMENT positif (``_nombre_saisi`` refuse ``<= 0``) :
+    publié ``minimum: 0`` + ``exclusiveMinimum`` (DRF ne sait dire que ``>=``)."""
+
+
+class _FlottantPositifSchema(OpenApiSerializerFieldExtension):
+    target_class = 'apps.calepinage.views.raccordement.FlottantPositif'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = dict(auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True))
+        schema.update(minimum=0, exclusiveMinimum=True)
+        return schema
+
+
 _FORME_RACCORDEMENT = forme_du_contrat(
     'CalepinageRaccordement', 'calepinage_raccordement.json')
 
@@ -124,14 +140,17 @@ _FORME_RACCORDEMENT = forme_du_contrat(
 @extend_schema(
     methods=['POST'],
     request=inline_serializer('CalepinageRaccordementCorps', {
-        'puissance_souscrite_kva': serializers.FloatField(required=False),
-        'phases': serializers.IntegerField(required=False),
-        'tension_nominale_v': serializers.FloatField(required=False),
-        'limite_elevation_pct': serializers.FloatField(required=False),
+        'puissance_souscrite_kva': FlottantPositif(required=False),
+        # ENF11 — règle de ``_phases_saisies`` publiée : 1 ou 3 (ou vide).
+        'phases': serializers.ChoiceField(choices=[1, 3], required=False,
+                                          allow_null=True),
+        'tension_nominale_v': FlottantPositif(required=False),
+        'limite_elevation_pct': FlottantPositif(required=False),
         'source_limite': serializers.CharField(required=False),
-        'cos_phi_impose': serializers.FloatField(required=False),
+        'cos_phi_impose': FlottantPositif(required=False),
         'source_cos_phi': serializers.CharField(required=False),
-        'plafond_injection_kw': serializers.FloatField(required=False),
+        'plafond_injection_kw': serializers.FloatField(
+            required=False, min_value=0),
         'plafond_injection_justification': serializers.CharField(
             required=False)}),
     responses=_FORME_RACCORDEMENT)

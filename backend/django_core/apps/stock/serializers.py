@@ -19,7 +19,7 @@ from core.product_roles import (
 )
 
 from .erreurs_achats import ConflitEtat, IdInconnu404LignesMixin
-from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin
+from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin, DecimalLie
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
     BonCommandeFournisseur, LigneBonCommandeFournisseur,
@@ -2354,17 +2354,19 @@ class KitComposantSerializer(CompanyScopedRelationsMixin,
     # refusée comme un id absent (« objet inexistant » de DRF).
     # CI #997 fuzz (3) — un composant est un produit OU un sous-kit (XOR) :
     # les champs lus de l'autre branche valent null, publiés null-ables.
-    produit_nom = serializers.CharField(
+    # PATCH kits (api-fuzz) : ``TexteLie``/``DecimalLie`` servent la clé même
+    # sous un sérialiseur racine ``partial`` (DRF la sautait, schéma violé).
+    produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
-    produit_sku = serializers.CharField(
+    produit_sku = TexteLie(
         source='produit.sku', read_only=True, default=None, allow_null=True)
     # DC36 — prix de vente catalogue affiché en LECTURE SEULE (jamais stocké sur
     # le kit) ; aucun prix d'achat ici (interne).
-    prix_vente = serializers.DecimalField(
+    prix_vente = DecimalLie(
         source='produit.prix_vente', max_digits=10, decimal_places=2,
         read_only=True, default=None, allow_null=True)
     # XMFG17 — nom du sous-kit (lecture seule, quand `composant_kit` est posé).
-    composant_kit_nom = serializers.CharField(
+    composant_kit_nom = TexteLie(
         source='composant_kit.nom', read_only=True, default=None, allow_null=True)
 
     class Meta:
@@ -2676,7 +2678,7 @@ class ImputationAvoirFournisseurSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['date_creation']
 
 
-class AvoirFournisseurSerializer(CompanyScopedRelationsMixin,
+class AvoirFournisseurSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                  ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

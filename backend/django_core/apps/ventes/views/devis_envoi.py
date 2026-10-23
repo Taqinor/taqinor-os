@@ -240,7 +240,10 @@ class DevisEnvoiActionsMixin:
              'sections': link.sections or {}},
             status=status.HTTP_200_OK)
 
-    @extend_schema(request=D.EnvoyerEmailRequest, responses={200: D.EnvoyerEmailResponse, 502: D.EnvoyerEmailEchec})
+    @extend_schema(request=D.EnvoyerEmailRequest,
+                   responses={200: D.EnvoyerEmailResponse,
+                              409: D.EnvoyerEmailSansDestinataire,
+                              502: D.EnvoyerEmailEchec})
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])
     def envoyer_email(self, request, pk=None):
@@ -374,7 +377,9 @@ class DevisEnvoiActionsMixin:
             log.save()
             return Response(
                 {'detail': log.erreur, 'log_id': log.id, 'statut': 'echec'},
-                status=status.HTTP_400_BAD_REQUEST)
+                # ENF11 — corps conforme au schéma (tous champs facultatifs) :
+                # c'est la FICHE (ni client ni adresse) qui s'y oppose = 409.
+                status=status.HTTP_409_CONFLICT)
 
         ok, err = _send(dest, sujet, corps, attachment, attachment_name)
         log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
