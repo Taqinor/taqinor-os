@@ -131,3 +131,19 @@ export function entreesPompageDuLead(lead) {
   if (provenances.length === 0) return null
   return { ecran, eco, saisie, provenances }
 }
+
+/**
+ * AGQ39 (D-AGQ-10) — mode de pompe et plaque du lead → `pompageSaisie` :
+ * rend l'updater `(s) => s'` ; une saisie du vendeur (`libre` faux) n'est
+ * jamais écrasée ; `poses` reçoit les chemins posés depuis le lead.
+ */
+export function appliquerSaisiePompageLead(saisie, libre, poses, poserSaisie) {
+  const entrees = Object.entries(saisie || {})
+  if (!entrees.length) return (s) => s
+  return (s) => entrees.reduce((suite, [chemin, valeur]) => {
+    const courant = chemin.split('.').reduce((n, k) => (n == null ? n : n[k]), suite)
+    if (!libre(`saisie.${chemin}`, courant)) return suite
+    poses[`saisie.${chemin}`] = valeur
+    return poserSaisie(suite, chemin, valeur)
+  }, s)
+}

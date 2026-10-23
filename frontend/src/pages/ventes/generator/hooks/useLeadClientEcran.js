@@ -10,6 +10,8 @@ import ventesApi from '../../../../api/ventesApi'
 // AGQ22 — libellé du champ du lead nommé par un 409 (carte unique).
 import fieldLabels from '../../../../features/crm/workspace/fieldLabels'
 import { useEffect, useRef, useState } from 'react'
+// AGQ25 — journal du devis automatique, rendu unique partagé avec la fiche lead.
+export { default as AlertesDevisAuto } from '../../../crm/leads/AlertesDevisAuto'
 
 export function useLeadClientEcran(ctx) {
   const {

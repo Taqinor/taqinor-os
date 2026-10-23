@@ -294,3 +294,8 @@ export const libelleProvenance = creerLibelleProvenance(LIBELLES_ORIGINE, LIBELL
 export const alertesAffichables = (reponse) => alertesDuServeur(
   reponse, 'Alerte du moteur de pompage',
 )
+
+/** AGQ26 (C-AGQ-025) — le site du lead pour l'aperçu : ville de calcul + GPS, jamais inventés. */
+export function siteDuLead(villeCalcul, lead) {
+  return { ville: villeCalcul || '', lat: lead?.gps_lat ?? '', lon: lead?.gps_lng ?? '' }
+}

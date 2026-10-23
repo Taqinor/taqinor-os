@@ -13,6 +13,8 @@ export {
   construireCorpsPompage, manquantsPompage, besoinExprime, hauteurConnue,
   alertesAffichables, libelleProvenance, nombreOuNull,
 } from './etudePompagePreviewPur'
+// AGQ16 — lignes du devis en cours → corps de la carte économie (fonction pure).
+export { lignesEconomieDepuisEcran } from './economiePompagePreviewPur'
 
 /** L'appel HTTP (exporté pour les tests composant qui le simulent). */
 export const postEtudePompagePreview = (body, config = {}) =>
