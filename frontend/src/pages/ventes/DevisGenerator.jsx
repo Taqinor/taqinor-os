@@ -43,6 +43,8 @@ import {
 import { entreesPompageDuLead } from '../../features/ventes/quote/entreesPompageLead'
 // AGQ25 — journal du devis automatique, rendu unique partagé avec la fiche lead.
 import AlertesDevisAuto from '../crm/leads/AlertesDevisAuto'
+// AGQ16 — lignes du devis en cours → corps de la carte économie (fonction pure).
+import { lignesEconomieDepuisEcran } from '../../features/ventes/economiePompagePreviewPur'
 import {
   ECO_POMPAGE_VIDE, ATTESTATION_VIDE,
 } from '../../features/ventes/quote/etudeMarcheBloc'
@@ -2049,6 +2051,8 @@ export default function DevisGenerator({
           farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
           pompageSaisie={pompageSaisie} majPompage={majPompage}
           apercuPompage={apercuPompage}
+          // AGQ16 — la carte économie chiffre le devis EN COURS (lignes comptées + remise globale).
+          lignesDevis={lignesEconomieDepuisEcran(lines, discountPct)}
         />
 
         {/* ── Paramètres techniques ── */}

@@ -281,6 +281,41 @@ describe('économie déclarée (AGR212)', () => {
   })
 })
 
+// AGQ16 (C-AGQ-015) — la carte économie chiffre le devis EN COURS : les
+// lignes de l'écran (TTC) partent dans le corps de l'aperçu, remise globale
+// comprise ; une ligne optionnelle, une section ou une ligne sans produit
+// n'y entrent pas (le corps ne transmet ni `optionnelle` ni `type_ligne`).
+// Test-du-test : remettre `lignesDevis` à `[]` au montage (DevisGenerator)
+// rend un corps `lignes: []` — c'est ce que ce helper remplace.
+describe('économie', () => {
+  it('test_corps_porte_les_lignes_du_devis', async () => {
+    const { lignesEconomieDepuisEcran, construireCorpsEconomiePompage } =
+      await import('../../../features/ventes/economiePompagePreviewPur')
+    const ligne = (produit, ttc, extra = {}) => ({
+      produit: String(produit), designation: `Article ${produit}`, quantite: '2',
+      prix_unit_ttc: String(ttc), taux_tva: '20', optionnelle: false,
+      typeLigne: 'produit', ...extra,
+    })
+    const lignesEcran = [
+      ligne(201, 1200), ligne(202, 600), ligne(203, 120), ligne(204, 240),
+      ligne(205, 360),
+      ligne(206, 480, { optionnelle: true }),
+      { produit: '', designation: 'Section pompage', typeLigne: 'section' },
+    ]
+    const lignes = lignesEconomieDepuisEcran(lignesEcran, '5')
+    expect(lignes).toHaveLength(5)
+    expect(lignes.map((l) => l.produit)).toEqual([201, 202, 203, 204, 205])
+    expect(lignes[0].quantite).toBe(2)
+    expect(lignes[0].prix_unitaire).toBeCloseTo(1000, 6)
+    expect(lignes.every((l) => l.remise === 5 && l.taux_tva === 20)).toBe(true)
+    const corps = construireCorpsEconomiePompage({
+      saisies: { energie_actuelle: { valeur: 'butane' } }, sortieEtude: { hmt: {} }, lignes,
+    })
+    expect(corps.lignes).toHaveLength(5)
+    expect(lignesEconomieDepuisEcran([], '0')).toEqual([])
+  })
+})
+
 // AGR218 (contrat AGR200) — l'attestation d'usage agricole : jamais cochée
 // d'office ; chaque geste remonte tel quel ; la valeur stockée se relit.
 describe('attestation d’usage agricole (AGR218)', () => {
