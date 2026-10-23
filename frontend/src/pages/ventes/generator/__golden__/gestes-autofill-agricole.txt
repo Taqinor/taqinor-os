@@ -98,6 +98,8 @@ Non renseigné
 Oui
 Non
 Niveau dynamique (m)
+Niveau statique de l'eau (m) — optionnel
+Rabattement en pompage (m) — optionnel
 Diamètre de tubage (mm)
 Profondeur de calage (m)
 Réservoir (m³)
@@ -137,8 +139,6 @@ Non renseigné
 Goutte-à-goutte
 Aspersion
 Gravitaire
-Niveau statique de l'eau (m) — optionnel
-Rabattement en pompage (m) — optionnel
 Énergie actuelle et dépense déclarée
 Énergie actuelle
 Non renseignée
@@ -347,6 +347,8 @@ gen-source-debit-autorise=
 gen-source-volume-autorise=
 gen-source-compteur=
 gen-source-niveau-dynamique=
+gen-farm-static=
+gen-farm-drawdown=
 gen-source-tubage=
 gen-source-calage=
 gen-source-reservoir=
@@ -356,11 +358,9 @@ gen-profondeur=
 gen-distance=
 hmt-detail=on [ ]
 gen-farm-surface=
-#27=
-#28=
 #29=
-gen-farm-static=
-gen-farm-drawdown=
+#30=
+#31=
 gen-farm-fuel=
 gen-eco-date=
 gen-eco-entretien=
