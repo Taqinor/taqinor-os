@@ -111,6 +111,13 @@ def _donnees(request):
     if hasattr(brut, 'dict'):
         brut = brut.dict()
     donnees = dict(brut) if isinstance(brut, dict) else {}
+    # CI #1021 api-fuzz (5) — en multipart, une liste JSON peut arriver en
+    # PARTIE À NOM DE FICHIER (``request.FILES``, jamais dans ``request.data``) :
+    # elle était ignorée en silence (201 avec une liste vide). Son texte est lu
+    # et validé comme toute liste (``_liste_saisie`` : 400 nommé sinon).
+    for cle in ('pieces_attendues', 'champs'):
+        if cle not in donnees and cle in getattr(request, 'FILES', {}):
+            donnees[cle] = request.FILES[cle].read().decode('utf-8', 'replace')
     donnees.pop('fichier', None)
     donnees.pop('company', None)
     return donnees

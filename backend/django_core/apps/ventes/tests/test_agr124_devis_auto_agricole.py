@@ -118,7 +118,9 @@ class DevisAutoAgricoleTests(TestCase):
     def test_meme_cle_un_seul_devis(self):
         """AGQ23 (C-AGQ-022) — deux POST identiques avec la même
         ``Idempotency-Key`` (2ᵉ clic après un délai dépassé) : UN seul devis,
-        la seconde réponse rejoue le 201 ; une autre clé en crée un autre."""
+        la seconde réponse rejoue le 201. Une autre clé, même corps, dans la
+        fenêtre ADEV80 (< 120 s, verrou par lead) : 200 avec le MÊME
+        brouillon — les deux garde-fous se cumulent, jamais un 2ᵉ devis."""
         self._pompe('15000')
         lead = self._lead()
         cle = {'HTTP_IDEMPOTENCY_KEY': 'agq23-panneau-1'}
@@ -132,8 +134,9 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(Devis.objects.filter(lead=lead).count(), 1)
         autre = self.api.post(AUTO_URL, {'lead': lead.id}, format='json',
                               HTTP_IDEMPOTENCY_KEY='agq23-panneau-2')
-        self.assertEqual(autre.status_code, 201, autre.data)
-        self.assertEqual(Devis.objects.filter(lead=lead).count(), 2)
+        self.assertEqual(autre.status_code, 200, autre.data)  # ADEV80
+        self.assertEqual(autre.data['id'], premier.data['id'])
+        self.assertEqual(Devis.objects.filter(lead=lead).count(), 1)
 
     def test_field_du_409_nomme_le_debit_du_forage(self):
         """AGQ22 (C-AGQ-021) — niveau d'eau connu, débit du forage inconnu :

@@ -196,6 +196,12 @@ class RefusTest(BaseGabarits):
             reponse = self._deposer(champs=brut)
             self.assertEqual(reponse.status_code, 400, (brut, reponse.data))
             self.assertIn('liste JSON', reponse.data['champs'])
+        # La liste envoyée en PARTIE À NOM DE FICHIER (harnais Schemathesis) :
+        # lue puis validée — « 0 » refusé, « [] » accepté.
+        fichier_zero = SimpleUploadedFile('champs', b'0', content_type='text/plain')
+        reponse = self._deposer(champs=fichier_zero)
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('liste JSON', reponse.data['champs'])
         reponse = self._deposer(pieces_attendues='5')
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('pieces_attendues', reponse.data)
