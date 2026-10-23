@@ -236,6 +236,22 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertTrue(devis.lignes.filter(produit=pompe).exists())
         self.assertTrue(devis.lignes.filter(produit=si22).exists())
 
+    def test_etude_calculee_une_fois_sans_tmy(self):
+        """AGQ24 (C-AGQ-023) — le devis automatique calcule l'étude UNE fois
+        (le rafraîchisseur relit l'étude écrite) et n'appelle jamais la TMY."""
+        self._pompe('15000')
+        lead = self._lead()
+        with mock.patch.object(pompage, 'etudier_pompage',
+                               wraps=pompage.etudier_pompage) as espion:
+            rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        self.assertEqual(espion.call_count, 1)
+        self.assertTrue(espion.call_args.kwargs.get('sans_tmy'))
+        for appel in pompage.temperatures_du_site.call_args_list:
+            self.assertTrue(appel.kwargs.get('sans_tmy'))
+        etude = Devis.objects.get(pk=rep.data['id']).etude_params
+        self.assertIn('_empreinte', etude['provenance_pompage'])
+
     def test_raccordement_inconnu_409_nommant_le_raccordement(self):
         """AGQ7 (C-AGQ-006) — raccordement inconnu : 409 qui nomme la saisie
         (champ ``raccordement``), jamais « aucune pompe compatible »."""

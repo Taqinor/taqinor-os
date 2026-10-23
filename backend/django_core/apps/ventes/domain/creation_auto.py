@@ -365,7 +365,8 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         visite_point_eau_requise
     from apps.ventes.domain.catalogue import catalogue_de_la_societe
     from apps.ventes.domain.pompage import (
-        etudier_pompage, lignes_kit_auto, saisies_economie_pompage_du_lead)
+        etude_precalculee, etudier_pompage, lignes_kit_auto,
+        saisies_economie_pompage_du_lead)
     from apps.ventes.models import Devis
 
     manquants = champs_devis_auto_manquants(lead)
@@ -389,7 +390,9 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             'Alimentation de la pompe inconnue : renseignez mono ou tri '
             '(raccordement du lead)', field='raccordement')
     corps['alim'] = alim
-    sortie = etudier_pompage(company, corps, lead=lead)
+    # AGQ24 (C-AGQ-023) — latence bornée : aucune TMY sur ce chemin (replis
+    # MENTIONNÉS du noyau électrique), étude calculée UNE fois.
+    sortie = etudier_pompage(company, corps, lead=lead, sans_tmy=True)
     hmt_m = (sortie.get('hmt') or {}).get('valeur_m')
     debit = (sortie.get('conception') or {}).get('debit_conception_m3h')
     pompe = sortie.get('pompe') or {}
@@ -491,9 +494,10 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             taux_tva=taux_tva, mode_installation='agricole',
             etude_params=etude)
 
-    devis = _ecrire_devis_auto_par_pipeline(
-        company=company, user=user, lead=lead, creer=_create, lignes=lignes,
-        mode_installation='agricole')
+    with etude_precalculee(lead, sortie):
+        devis = _ecrire_devis_auto_par_pipeline(
+            company=company, user=user, lead=lead, creer=_create,
+            lignes=lignes, mode_installation='agricole')
     if journal_auto is not None:
         alertes = [dict(a) for a in (sortie.get('alertes') or [])]
         for designation in omises:

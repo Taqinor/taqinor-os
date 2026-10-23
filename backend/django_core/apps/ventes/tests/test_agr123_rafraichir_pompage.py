@@ -111,6 +111,17 @@ class _Base(TestCase):
 
 class EtudeSuitLaPompeFactureeTests(_Base):
 
+    def test_etude_deja_calculee_relue_jamais_recalculee(self):
+        """AGQ24 (C-AGQ-023) — une étude passée au rafraîchisseur (devis
+        automatique) est RELUE : aucun second appel au moteur."""
+        devis = self.devis()
+        sortie = pompage.etudier_pompage(self.co, dict(ENTREES), devis=devis)
+        with mock.patch.object(pompage, 'etudier_pompage') as espion:
+            derivees = pompage.rafraichir_etude_pompage_devis(
+                devis, sortie=sortie)
+        espion.assert_not_called()
+        self.assertEqual(derivees['pompe_kw'], 5.5)
+
     def test_cv_de_plaque_servi_jamais_le_cv_derive(self):
         """AGQ29 (C-AGQ-027) — OSP 30/8 : plaque 10 CV / 7,5 kW ⇒ l'étude
         sert 10 CV, jamais 7,5 ÷ 0,7355 = 10,2."""

@@ -32,6 +32,8 @@ Appelants de :func:`etudier_pompage` (``git grep -n etudier_pompage``) :
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import logging
 from decimal import Decimal
 
@@ -507,11 +509,14 @@ def profils_horaires_site(*, ville=None, lat=None, lon=None):
     return profils
 
 
-def temperatures_du_site(lat, lon):
+def temperatures_du_site(lat, lon, *, sans_tmy=False):
     """Températures TMY du site par la façade ``calepinage.services``
     (``{froid_c, chaud_c, source}``), ou ``None`` (replis MENTIONNÉS du
-    noyau électrique)."""
-    if lat is None or lon is None:
+    noyau électrique).
+
+    AGQ24 (C-AGQ-023) — ``sans_tmy`` : le chemin du devis automatique ne
+    paie jamais l'appel TMY (replis MENTIONNÉS du noyau électrique)."""
+    if sans_tmy or lat is None or lon is None:
         return None
     from apps.calepinage import services as calepinage_services
     try:
@@ -777,7 +782,7 @@ def _reglage(reglages, cle):
 
 
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
-                    facture=None):
+                    facture=None, sans_tmy=False):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
     ``etude_pompage_preview.json`` (``exemple``). Aucune écriture.
 
@@ -827,7 +832,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             "(débit × heures du réglage société), sans variation mensuelle."))
     elif lat is not None and lon is not None:
         coordonnees = {'lat': lat, 'lon': lon, 'fige_le': _aujourdhui()}
-    temperatures = temperatures_du_site(lat, lon)
+    temperatures = temperatures_du_site(lat, lon, sans_tmy=sans_tmy)
     heures_repli = _reglage(reglages, 'agricole_pump_hours')
 
     # Besoin (D-AGR-3) puis débit de conception (passe 1, sans production).
@@ -1298,7 +1303,33 @@ def derivees_de_l_etude(sortie, *, pvgis_fige=None):
     }
 
 
-def rafraichir_etude_pompage_devis(devis, *, force=False):
+#: AGQ24 (C-AGQ-023) — l'étude DÉJÀ calculée par le devis automatique, posée
+#: le temps de son écriture : ``(lead_id, sortie)``. Le rafraîchisseur la
+#: relit au lieu de relancer le moteur (une seule étude par devis auto).
+_ETUDE_PRECALCULEE = contextvars.ContextVar('etude_pompage_precalculee',
+                                            default=None)
+
+
+@contextlib.contextmanager
+def etude_precalculee(lead, sortie):
+    """AGQ24 — pendant ce bloc, :func:`rafraichir_etude_pompage_devis` d'un
+    devis de ce ``lead`` relit ``sortie`` (aucun second calcul)."""
+    jeton = _ETUDE_PRECALCULEE.set((getattr(lead, 'pk', None), sortie))
+    try:
+        yield
+    finally:
+        _ETUDE_PRECALCULEE.reset(jeton)
+
+
+def _sortie_precalculee(devis):
+    courante = _ETUDE_PRECALCULEE.get()
+    if not courante or courante[0] is None:
+        return None
+    lead_id, sortie = courante
+    return sortie if getattr(devis, 'lead_id', None) == lead_id else None
+
+
+def rafraichir_etude_pompage_devis(devis, *, force=False, sortie=None):
     """AGR123 — l'étude pompage d'un devis AGRICOLE suit ses LIGNES.
 
     Cinquième étude de ``etudes.rafraichir_etudes_du_devis`` (donc appelée à
@@ -1340,8 +1371,12 @@ def rafraichir_etude_pompage_devis(devis, *, force=False):
                      or localisation.get('lon') is None)):
             corps['localisation'] = dict(localisation, lat=fige['lat'],
                                          lon=fige['lon'])
-        sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
-                                 facture=facture)
+        # AGQ24 — l'étude écrite par le devis automatique est RELUE (passée
+        # ou posée par :func:`etude_precalculee`) : jamais deux calculs.
+        sortie = sortie or _sortie_precalculee(devis)
+        if sortie is None:
+            sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
+                                     facture=facture)
         derivees = derivees_de_l_etude(sortie, pvgis_fige=fige or None)
         # ``pvgis_fige`` est À LA FOIS une entrée de l'empreinte et une dérivée
         # que CE rafraîchisseur écrit (premier appel : None → coordonnées
