@@ -322,11 +322,17 @@ def _production(nb, pmax_wc, **kwargs):
     return production_mensuelle(kwc=nb * pmax_wc / 1000.0, **kwargs)
 
 
-def _couvre(prod, besoin, mois):
+def _couvre(prod, besoin):
+    """AGQ2 (D-AGQ-2) — la production couvre-t-elle CHAQUE mois d'irrigation
+    (besoin > 0) ? Le pire mois réel (production ÷ besoin minimal) est donc
+    couvert, quel que soit le mois désigné par la forme du profil."""
     serie = prod.get("m3_jour_mois") if prod else None
-    if not serie or not mois:
+    if not serie:
         return False
-    return (serie[mois - 1] or 0.0) >= besoin[mois - 1] - 1e-9
+    mois_besoin = [i for i in range(12) if (_flottant(besoin[i]) or 0.0) > 0]
+    if not mois_besoin:
+        return False
+    return all((serie[i] or 0.0) >= besoin[i] - 1e-9 for i in mois_besoin)
 
 
 def _mois_critique_energie(besoin, e_d):
@@ -528,10 +534,10 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                        and prod.get("mode") in ("courbe", "debit_declare"))
     if heure_par_heure and mois:
         nb = nb or 1
-        if _couvre(prod, besoin, mois):
+        if _couvre(prod, besoin):
             while nb > 1:
                 essai = _production(nb - 1, pmax, **params)
-                if not _couvre(essai, besoin, mois):
+                if not _couvre(essai, besoin):
                     break
                 nb, prod = nb - 1, essai
         else:
@@ -539,7 +545,7 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
             for _ in range(_ITERATIONS_MAX):
                 nb += 1
                 prod = _production(nb, pmax, **params)
-                if _couvre(prod, besoin, mois):
+                if _couvre(prod, besoin):
                     couvert = True
                     break
             if not couvert:
@@ -548,8 +554,8 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                 alertes.append(_alerte(
                     "besoin_non_couvert_champ", "pompe",
                     "Même avec un champ très surdimensionné, la pompe ne "
-                    "couvre pas le besoin du mois critique : champ ramené au "
-                    "kWc de départ (énergie hydraulique)."))
+                    "couvre pas le besoin de chaque mois d'irrigation : champ ramené "
+                    "au kWc de départ (énergie hydraulique)."))
     elif nb is None:
         alertes.append(_alerte(
             "irradiation_inconnue", "production",
@@ -593,6 +599,10 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
     if nb != nb_initial:
         prod = _production(nb, pmax, **params)
 
+    if heure_par_heure and prod.get("mois_critique"):
+        # AGQ2 (D-AGQ-2) — mois critique RECALCULÉ sur la production réelle :
+        # le mois d'irrigation où production ÷ besoin est le plus bas.
+        sortie["mois_critique"] = prod["mois_critique"]
     kwc = nb * pmax / 1000.0
     sortie.update({
         "kwc": round(kwc, 2), "nb_panneaux": nb, "chaines": chaines,

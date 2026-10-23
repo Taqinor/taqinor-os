@@ -87,6 +87,43 @@ class BesoinRetenu(unittest.TestCase):
         self.assertEqual(besoin["m3_jour_mois"][0], 0.0)
 
 
+class Controle(unittest.TestCase):
+    """AGQ2 (D-AGQ-2) — contrôle sur CHAQUE mois d'irrigation."""
+
+    BESOIN = [0.0] * 3 + [120.0] * 7 + [0.0] * 2
+
+    def test_mois_critique_recalcule_et_mois_sous_tolerance_listes(self):
+        # Sonde C-AGQ-002 : couverture [102, 96, 94, 94, 94, 94, 80] %.
+        prod = [0.0] * 3 + [122.4, 115.2, 112.8, 112.8, 112.8, 112.8, 96.0] \
+            + [0.0] * 2
+        r = conception(besoin=besoin_retenu(volume_declare_m3_jour=120,
+                                            mois_irrigation=range(4, 11)),
+                       profils_horaires=PROFILS, debit_exploitation_m3h=50,
+                       niveau_eau_m=30, production_m3_jour_mois=prod)
+        self.assertEqual(r["conception"]["mois_critique"], 10)
+        controle = r["controle_conception"]
+        self.assertEqual(controle["statut"], "couverture_insuffisante")
+        self.assertEqual(controle["couverture_mois_critique_pct"], 80)
+        self.assertEqual(controle["mois_sous_tolerance"], [6, 7, 8, 9, 10])
+
+    def test_tous_les_mois_couverts_conforme_liste_vide(self):
+        r = conception(besoin=besoin_retenu(volume_declare_m3_jour=120,
+                                            mois_irrigation=range(4, 11)),
+                       profils_horaires=PROFILS, debit_exploitation_m3h=50,
+                       niveau_eau_m=30,
+                       production_m3_jour_mois=[130.0] * 12)
+        self.assertEqual(r["controle_conception"]["statut"], "conforme")
+        self.assertEqual(r["controle_conception"]["mois_sous_tolerance"], [])
+
+    def test_mois_designe_conforme_mais_autre_mois_sous_tolerance(self):
+        prod = [100.0] * 12
+        prod[9] = 80.0
+        controle = controle_conception(self.BESOIN[:3] + [100.0] * 7
+                                       + self.BESOIN[10:], prod, 4)
+        self.assertEqual(controle["statut"], "couverture_insuffisante")
+        self.assertEqual(controle["mois_sous_tolerance"], [10])
+
+
 class Plafonds(unittest.TestCase):
 
     def test_forage_20_pour_un_besoin_de_32(self):

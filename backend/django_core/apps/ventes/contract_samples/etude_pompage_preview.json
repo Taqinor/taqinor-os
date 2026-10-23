@@ -301,6 +301,7 @@
       },
       "couverture_mois_critique_pct": 99,
       "statut": "conforme",
+      "mois_sous_tolerance": [],
       "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
     },
     "ha_irrigables": {
@@ -643,6 +644,7 @@
       },
       "couverture_mois_critique_pct": 78,
       "statut": "couverture_insuffisante",
+      "mois_sous_tolerance": [12],
       "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
     },
     "ha_irrigables": {
@@ -859,6 +861,7 @@
       },
       "couverture_mois_critique_pct": null,
       "statut": "non_verifiable",
+      "mois_sous_tolerance": [],
       "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
     },
     "ha_irrigables": {
@@ -1108,6 +1111,7 @@
       },
       "couverture_mois_critique_pct": 158,
       "statut": "surdimensionnement",
+      "mois_sous_tolerance": [],
       "source_tolerance": "hypotheses_pompage.json › tolerance_conception_pct (source secondaire)"
     },
     "ha_irrigables": {
@@ -1210,7 +1214,7 @@
     "champ.chaines.verifiable": "false ⇒ `motif` obligatoire (fiche variateur absente, températures absentes…), jamais un blocage muet",
     "production": "null quand aucune pompe à courbe et aucun débit déclaré (« jamais de m³/jour sans courbe ») ; `mode` courbe | debit_declare | repli_plat ; `source_irradiation` pvgis | repli ; `coordonnees_figees` = coordonnées + date de l'appel PVGIS gardées dans l'étude (reproductibilité)",
     "couverture_pct_mois": "production ÷ besoin par mois, en %, NON plafonnée ; null quand la production est null",
-    "controle_conception.statut": "conforme | couverture_insuffisante (< 95 % au mois critique) | surdimensionnement (> 120 %) | non_verifiable — bornes = la tolérance de la table d'hypothèses, aucun autre seuil ; jamais bloquant (QX48(f))",
+    "controle_conception.statut": "conforme | couverture_insuffisante (< 95 % au mois critique, ou un mois d'irrigation listé dans `mois_sous_tolerance` — AGQ2/D-AGQ-2 : le mois critique est le mois d'irrigation au ratio production ÷ besoin le plus bas) | surdimensionnement (> 120 %) | non_verifiable — bornes = la tolérance de la table d'hypothèses, aucun autre seuil ; jamais bloquant (QX48(f))",
     "ha_irrigables": "{valeur, base, motif} — seulement avec un besoin agronomique (« estimation » si l'ET0 est EST.)",
     "autonomie_reservoir_jours": "{valeur, motif} — volume de réservoir DÉCLARÉ ÷ besoin ; aucun bassin dimensionné, aucun « ×2 »",
     "tailles": "≤ 3, clés recommandee | inferieure | superieure ; défaut = recommandee ; palier absent ⇒ dans `tailles_omises` avec motif ; mode existante ⇒ une seule taille",

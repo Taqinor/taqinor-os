@@ -793,6 +793,9 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     plaque_kw = _num((plaque or {}).get('kw'))
     passe1 = _conception(res, besoin, reglages, profils=profils, hmt_m=None)
     debit_conception = passe1['conception']['debit_conception_m3h']
+    # Passe 1 : mois des heures-pic = simple indication de départ du champ ;
+    # AGQ2 (D-AGQ-2) — les tailles et la passe 2 lisent le mois critique
+    # RECALCULÉ sur la production (pire mois production ÷ besoin).
     mois_critique = passe1['conception']['mois_critique']
 
     # HMT au débit de conception (pertes Hazen-Williams à ce débit).
@@ -841,8 +844,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             debit_declare_m3h=_num(res.valeur('besoin.debit_actuel_m3h')),
             besoin_m3_jour_mois=serie, hmt_m=hmt_m, alimentation=alim,
             type_pompe=type_pompe, variateurs=variateurs, panneau=panneau,
-            mois_critique=mois_critique, besoin_agronomique=agro,
-            kit=kit_params, **commun)
+            besoin_agronomique=agro, kit=kit_params, **commun)
         pompe = existante['pompe']
         champ_complet = existante['champ']
         variateur = existante['variateur']
@@ -872,8 +874,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             mode_pompe='neuve', choix_pompe=choix, besoin_m3_jour_mois=serie,
             hmt_m=hmt_m, alimentation=alim, type_pompe=type_pompe,
             variateurs=variateurs, panneau=panneau,
-            mois_critique=mois_critique, besoin_agronomique=agro,
-            kit=kit_params, **commun)
+            besoin_agronomique=agro, kit=kit_params, **commun)
         par_cle = {t['cle']: t for t in tailles['tailles']}
         taille_retenue = (taille_voulue if taille_voulue in par_cle
                           else 'recommandee')

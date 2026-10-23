@@ -116,6 +116,25 @@ class EnergieKwc(unittest.TestCase):
         self.assertLess(e_d[11], e_d[6])
 
 
+class Couverture(unittest.TestCase):
+    """AGQ2 (D-AGQ-2) — mois critique = pire mois RÉEL de production."""
+
+    BESOIN = [0.0] * 3 + [120.0] * 7 + [0.0] * 2  # avril → octobre
+
+    def test_mois_critique_est_le_pire_mois_de_production(self):
+        # Le mois 4 (avril) est celui que désignait la forme du profil
+        # (heures-pic identiques sur la saison) : il n'est qu'une indication.
+        res = dimensionner_champ(
+            besoin_m3_jour_mois=self.BESOIN, hmt_m=70, panneau=PANNEAU,
+            variateurs_candidats=[_var(30, 7.5, 380)],
+            pompe={"courbe_pompe": OSP_30_8}, p_plaque_kw=7.5,
+            profils_horaires=PROFILS, mois_critique=4)
+        self.assertEqual(res["mois_critique"], 10)  # octobre
+        prod = res["production"]["m3_jour_mois"]
+        for i in range(3, 10):
+            self.assertGreaterEqual(prod[i], 120.0, "mois %d" % (i + 1))
+
+
 class Champ(unittest.TestCase):
 
     def test_4cv_tri_fenetre_250_780_releve_au_minimum_de_chaine(self):

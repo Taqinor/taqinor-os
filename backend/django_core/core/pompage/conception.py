@@ -21,6 +21,7 @@ from __future__ import annotations
 from core.pompage.hydraulique import _flottant
 from core.pompage.hypotheses import utilisees, valeur
 from core.pompage.volumes import JOURS_PAR_MOIS, couverture_besoin_eau
+from core.pompage.volumes import mois_critique as mois_critique_production
 
 NATURE_DECLARE = "declare"
 NATURE_AGRONOMIQUE = "agronomique_plein"
@@ -141,20 +142,34 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
 
 def controle_conception(besoin_m3_jour_mois, production_m3_jour_mois,
                         mois):
-    """Contrôle -5/+20 % au mois critique (bornes de la table AGR110).
+    """Contrôle -5/+20 % au mois critique (bornes de la table AGR110), et
+    AGQ2 (D-AGQ-2) sur CHAQUE mois d'irrigation : ``mois_sous_tolerance`` =
+    mois (1-12) de besoin > 0 dont la couverture est sous 100 % + borne basse ;
+    un seul suffit pour ``couverture_insuffisante``.
 
     Rend ``{tolerance_pct, couverture_mois_critique_pct, statut,
-    source_tolerance}`` ; statut ``conforme | couverture_insuffisante |
-    surdimensionnement | non_verifiable``. Jamais bloquant."""
+    mois_sous_tolerance, source_tolerance}`` ; statut ``conforme |
+    couverture_insuffisante | surdimensionnement | non_verifiable``. Jamais
+    bloquant."""
     tolerance = valeur("tolerance_conception_pct")
     sortie = {
         "tolerance_pct": tolerance.en_dict(),
         "couverture_mois_critique_pct": None,
         "statut": "non_verifiable",
+        "mois_sous_tolerance": [],
         "source_tolerance": ("hypotheses_pompage.json › "
                              "tolerance_conception_pct (source secondaire)"),
     }
-    if not mois or not besoin_m3_jour_mois or not production_m3_jour_mois:
+    if not besoin_m3_jour_mois or not production_m3_jour_mois:
+        return sortie
+    for index in range(min(12, len(besoin_m3_jour_mois),
+                           len(production_m3_jour_mois))):
+        b = _flottant(besoin_m3_jour_mois[index])
+        p = _flottant(production_m3_jour_mois[index])
+        if b is not None and b > 0 and p is not None \
+                and p / b * 100 < 100 + tolerance.min:
+            sortie["mois_sous_tolerance"].append(index + 1)
+    if not mois:
         return sortie
     besoin = _flottant(besoin_m3_jour_mois[mois - 1])
     prod = _flottant(production_m3_jour_mois[mois - 1])
@@ -162,7 +177,7 @@ def controle_conception(besoin_m3_jour_mois, production_m3_jour_mois,
         return sortie
     couverture = prod / besoin * 100
     sortie["couverture_mois_critique_pct"] = round(couverture)
-    if couverture < 100 + tolerance.min:
+    if couverture < 100 + tolerance.min or sortie["mois_sous_tolerance"]:
         sortie["statut"] = "couverture_insuffisante"
     elif couverture > 100 + tolerance.max:
         sortie["statut"] = "surdimensionnement"
@@ -304,12 +319,23 @@ def conception(*, besoin, profils_horaires=None, agricole_pump_hours=None,
             (round(_flottant(production_m3_jour_mois[i], 0.0) / serie[i] * 100)
              if serie[i] else None) for i in range(12)]
 
+    # AGQ2 (D-AGQ-2) — production connue : le mois critique est le mois
+    # d'irrigation où production ÷ besoin est le plus bas (plus la forme du
+    # profil, identique sur une saison).
+    if production_m3_jour_mois and serie:
+        mois_production = mois_critique_production(serie,
+                                                   production_m3_jour_mois)
+        if mois_production:
+            mois = mois_production
     controle = controle_conception(serie, production_m3_jour_mois, mois)
     if controle["statut"] in ("couverture_insuffisante", "surdimensionnement"):
+        message = ("Couverture au mois critique : %s %% (tolérance -5/+20 %%)."
+                   % controle["couverture_mois_critique_pct"])
+        if controle["mois_sous_tolerance"]:
+            message += " Mois sous la tolérance : %s." % ", ".join(
+                str(m) for m in controle["mois_sous_tolerance"])
         alertes.append(_alerte(
-            controle["statut"], "conception.debit_conception_m3h",
-            "Couverture au mois critique : %s %% (tolérance -5/+20 %%)."
-            % controle["couverture_mois_critique_pct"]))
+            controle["statut"], "conception.debit_conception_m3h", message))
 
     # Autonomie d'un réservoir DÉCLARÉ (CAL155) — aucun bassin dimensionné.
     autonomie = {"valeur": None, "motif": "aucun réservoir déclaré"}
