@@ -116,6 +116,37 @@ class EntreesCi(TestCase):
         self.assertEqual(self._colonnes_conso(lead),
                          ['releve_conso', 'conso_mensuelle_kwh'])
 
+    # ── ALEA49 — l'audit énergétique lit la conso comme le moteur ──────────
+
+    @staticmethod
+    def _audit(entrees):
+        from apps.crm.audit_energetique import indicateur_du_lead
+        return indicateur_du_lead('commercial', {'entrees': entrees})
+
+    @staticmethod
+    def _releve(lignes):
+        return {'colonne': 'releve_conso', 'valeur': lignes,
+                'provenance': {'origine': 'lead', 'detail': 'facture'}}
+
+    def test_audit_releve_trois_mois_moyenne_fois_douze_estimation(self):
+        r = self._audit([self._releve([{'mois': '2026-0%d' % m, 'kwh': kwh}
+                                       for m, kwh in ((6, 3000), (7, 4000), (8, 5000))])])
+        self.assertEqual(r['tep_electricite'], round(4000 * 12 / 1e6 * 86, 1))
+        self.assertIn('estimation (3 mois relevés)', r['motif'])
+        self.assertNotIn('relevé de moins de 12 mois', r['motif'])
+
+    def test_audit_zero_kwh_declare_est_absent(self):
+        r = self._audit([{'colonne': 'conso_mensuelle_kwh', 'valeur': 0,
+                          'provenance': {'origine': 'lead', 'detail': 'client'}}])
+        self.assertIsNone(r['statut'])
+        self.assertIsNone(r['tep_electricite'])
+
+    def test_audit_douze_lignes_un_mois_en_double_onze_mois_distincts(self):
+        lignes = [{'mois': '2025-%02d' % m, 'kwh': 1000} for m in range(2, 13)]
+        lignes.append({'mois': '2026-03', 'kwh': 1000})
+        r = self._audit([self._releve(lignes)])
+        self.assertIn('estimation (11 mois relevés)', r['motif'])
+
     def test_activity_profile_seulement_en_information(self):
         lead = self._lead(web_questionnaire={'activity_profile': 'continuous'})
         bloc = entrees_ci_du_lead(lead)
