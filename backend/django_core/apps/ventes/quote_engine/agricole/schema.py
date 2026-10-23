@@ -50,7 +50,11 @@ FONT = "DejaVu Sans, Arial, sans-serif"
 _MOTS = ("forage", "pompe", "variateur", "panneaux", "bassin", "irrigation",
          "profondeur", "niveau", "distance", "hmt", "debit", "ligne_eau",
          "ligne_energie")
-LIBELLES = {mot: dict(_i18n.LIBELLES[f"agr_schema_{mot}"]) for mot in _MOTS}
+#: AGQ32 — le libellé précis de la distance vit sous une clé NEUVE (la clé
+#: d'origine ``agr_schema_distance`` garde son texte : empreinte #898).
+_CLE_PAR_MOT = {"distance": "agr_schema_distance_champ_coffret"}
+LIBELLES = {mot: dict(_i18n.LIBELLES[_CLE_PAR_MOT.get(mot, f"agr_schema_{mot}")])
+            for mot in _MOTS}
 
 #: Phrase imprimée à la place de la courbe quand la pompe n'en a pas.
 TEXTE_COURBE_ABSENTE = {
