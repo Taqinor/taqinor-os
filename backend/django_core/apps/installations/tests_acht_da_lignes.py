@@ -80,6 +80,9 @@ class DaLignesTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['importees'], 1)
         self.assertEqual(len(r.data['erreurs']), 4)  # dont quantité nulle (409 de ligne)
+        # ENF11 — forme déclarée : entiers pour lignes_creees, {ligne, erreur}.
+        self.assertTrue(all(isinstance(i, int) for i in r.data['lignes_creees']))
+        self.assertTrue(all(set(e) == {'ligne', 'erreur'} for e in r.data['erreurs']))
         self.assertEqual(self.da.lignes.count(), 1)
         self.da.refresh_from_db()
         self.assertEqual(self.da.montant_estime, Decimal('20'))

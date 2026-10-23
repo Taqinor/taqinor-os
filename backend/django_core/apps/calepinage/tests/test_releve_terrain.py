@@ -336,6 +336,19 @@ class EndpointTest(BaseReleve):
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('releve_le', reponse.data)
 
+    def test_date_future_est_un_conflit_409_detail(self):
+        # ENF11 — règle d'horloge : 409 ``{"detail": …}`` ; illisible = 400.
+        reponse = self.api.post(
+            self.url, {'releve_le': DEMAIN.isoformat(), 'chaines': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('futur', reponse.data['detail'])
+        reponse = self.api.post(
+            self.url, {'releve_le': 'hier matin', 'chaines': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(ReleveTerrain.objects.count(), 0)
+
     def test_get_liste_les_releves(self):
         enregistrer_releve(self.calepinage,
                            {'releve_le': HIER.isoformat(), 'chaines': []},

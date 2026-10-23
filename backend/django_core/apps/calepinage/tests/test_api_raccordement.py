@@ -114,6 +114,20 @@ class ActionRaccordementTest(BaseApiCalepinage):
             self.calepinage.resultat[CLE_SAISIE]['tension_nominale_v'],
             400.0)
 
+    def test_bornes_publiees_ENF11(self):
+        """Strictement positif (0 et négatif refusés) ; plafond >= 0."""
+        for champ in ('puissance_souscrite_kva', 'tension_nominale_v',
+                      'limite_elevation_pct', 'cos_phi_impose'):
+            for valeur in (0, -1):
+                with self.subTest(champ=champ, valeur=valeur):
+                    reponse = self.api.post(
+                        url_raccordement(self.calepinage.pk),
+                        {champ: valeur}, format='json')
+                    self.assertEqual(reponse.status_code, 400)
+        reponse = self.api.post(url_raccordement(self.calepinage.pk),
+                                {'plafond_injection_kw': -1}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+
     def test_la_saisie_survit_au_get_suivant(self):
         self.api.post(url_raccordement(self.calepinage.pk),
                       {'phases': 1, 'tension_nominale_v': 230},

@@ -4,6 +4,7 @@ Un corps qui n'est pas un objet JSON (``[null]``, ``-1``…) levait une 500 sur
 ``request.data.get`` ; un champ de mauvais type était coercé en silence. Ces
 sérialiseurs répondent 400 (DRF) et servent aussi de déclaration OpenAPI.
 """
+from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_field, inline_serializer,
@@ -47,13 +48,19 @@ class CodeTotp(ChaineStricte):
         return code
 
 
-@extend_schema_field({
-    'type': 'string', 'minLength': 8, 'pattern': r'^[\s\S]*\D[\s\S]*$'})
 class MotDePasseReinit(serializers.CharField):
     """Déclaration (schéma seul) du mot de passe de
-    ``users/{id}/reinitialiser-mot-de-passe/`` : ≥ 8 caractères, pas
-    entièrement numérique. Le serveur reste la vérité (validateurs Django +
+    ``users/{id}/reinitialiser-mot-de-passe/`` : ≥ 8 caractères (``min_length``
+    → ``minLength`` publié), pas entièrement numérique (``RegexValidator`` →
+    ``pattern`` publié). Le serveur reste la vérité (validateurs Django +
     politique de la société) ; la vue n'utilise pas ce champ pour valider."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('min_length', 8)
+        kwargs.setdefault('trim_whitespace', False)
+        kwargs.setdefault('validators', [RegexValidator(
+            r'^[\s\S]*\D[\s\S]*$', message='Mot de passe entièrement numérique.')])
+        super().__init__(**kwargs)
 
 
 class TwoFactorEnableRequete(serializers.Serializer):

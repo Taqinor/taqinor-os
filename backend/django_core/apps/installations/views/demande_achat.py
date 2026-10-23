@@ -48,6 +48,10 @@ from . import _openapi as oa
 
 import logging
 
+#: Une erreur de ligne de l'import CSV : ``{ligne, erreur}`` (jamais une chaîne).
+_ERREUR_LIGNE_CSV = oa.body(
+    'ImportLignesErreur', ligne=oa.i(required=True), erreur=oa.s(required=True))
+
 logger = logging.getLogger(__name__)
 
 # SCA36 — 'chatter_historique' est une lecture (patron flotte : le
@@ -467,9 +471,11 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         request=oa.body('ImporterLignesCsvRequete', fichier=oa.serializers.FileField()),
         responses={
             (200, 'application/json'): oa.body(
-                'ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()),
+                'ImportLignesResultat', importees=oa.i(required=True), lignes_creees=oa.ints(required=True),
+                erreurs=oa.lst(child=_ERREUR_LIGNE_CSV, required=True)),
             (201, 'application/json'): oa.body(
-                'ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()),
+                'ImportLignesResultat', importees=oa.i(required=True), lignes_creees=oa.ints(required=True),
+                erreurs=oa.lst(child=_ERREUR_LIGNE_CSV, required=True)),
         },
     )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='importer-lignes-csv')

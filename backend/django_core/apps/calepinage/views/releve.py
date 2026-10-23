@@ -28,6 +28,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.champs_stricts import DateStricte
+from core.conflit_etat import ConflitEtat
 
 from ..permissions import PeutGererCalepinage, PeutLireOuEcrireCalepinage
 from ..serializers import forme_reponse
@@ -73,6 +74,9 @@ class ReleveTerrainMixin:
                 request.data if isinstance(request.data, dict) else None,
                 user=request.user)
         except ReleveRefuse as refus:
+            if refus.champ == 'releve_le' and 'futur' in str(refus):
+                # ENF11 — règle d'HORLOGE, que le schéma ne peut pas dire.
+                raise ConflitEtat(str(refus))
             return Response({refus.champ or 'detail': str(refus)},
                             status=status.HTTP_400_BAD_REQUEST)
 

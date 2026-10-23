@@ -154,3 +154,14 @@ class ReinitialisationMotDePasseTests(TestCase):
             UserModificationSerializer, UserSerializer)
         self.assertIn('password', UserSerializer().fields)
         self.assertNotIn('password', UserModificationSerializer().fields)
+
+    def test_corps_publie_minlength_8_et_motif_non_numerique(self):
+        """ENF11 : le champ déclaré porte ``min_length=8`` (publié ``minLength``)
+        et le motif « pas entièrement numérique » (publié ``pattern``)."""
+        from authentication.corps_requetes import MotDePasseReinit
+        champ = MotDePasseReinit()
+        self.assertEqual(champ.min_length, 8)
+        champ.run_validation('abcdefg1')
+        for mauvais in (':', '1234567890'):
+            with self.assertRaises(Exception):
+                champ.run_validation(mauvais)

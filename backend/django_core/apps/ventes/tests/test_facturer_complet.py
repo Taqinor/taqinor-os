@@ -373,6 +373,15 @@ class FacturerVenteTrancheVNT26(_BaseVente):
         for lg in devis.lignes.select_related('produit'):
             self.assertEqual(lg.produit.quantite_stock, stocks[lg.produit_id])
 
+    def test_devis_refuse_est_un_conflit_409(self):
+        """Un devis non accepté est un refus d'ÉTAT (409), même corps."""
+        devis = self._388('DEV-VNT26-REF')
+        devis.statut = 'refuse'
+        devis.save(update_fields=['statut'])
+        refus = self._refus(devis, nature='solde')
+        self.assertEqual(refus.status, 409)
+        self.assertIn('Seul un devis accepté', refus.corps['detail'])
+
     def test_rien_a_facturer(self):
         devis = self._388('DEV-VNT26-FIN', echeancier=[
             {'type': 'solde', 'libelle': 'Solde', 'unite': 'pct',
