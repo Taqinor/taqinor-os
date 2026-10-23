@@ -2924,8 +2924,9 @@ def _bankable_pct(valeur):
 #: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
 #: panneau de plus pèse déjà bien davantage).
 # AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
-from .bankable import TOLERANCE_KWC_SIMULATION, TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
+from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .agricole.garanties import garantie_ligne_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _bankable_decrit_ce_champ(bank):
