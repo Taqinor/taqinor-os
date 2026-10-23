@@ -88,6 +88,10 @@ CHEMINS_LEAD = {
     'puissance_souscrite_kva': 'puissance_souscrite_kva',
     'rythme.jours_ouverts': 'jours_ouverts', 'rythme.plages': 'plages',
     'rythme.equipes': 'equipes', 'rythme.fermetures': 'fermetures',
+    # ADEV76 — heure de début d'un régime 1x8 / 2x8 sans heure de fin, et le
+    # secteur industriel (clé du profil société retenu, D-ACI-7=a).
+    'rythme.debut_equipe_h': 'debut_equipe_h',
+    'rythme.secteur_industriel': 'secteur_industriel',
     'rythme.categorie_commerciale': 'categorie_commerciale',
     'rythme.reponses_categorie': 'reponses_categorie',
     'toit.surface_utile_m2': 'surface_utile_m2',
@@ -590,9 +594,13 @@ def lire_production(site):
     return productibles, formes, source
 
 
-def _profil_societe(company, mode, categorie):
-    """Profil SAISI par la société (famille du mode), par la façade calepinage."""
-    if company is None:
+def _profil_societe(company, mode, cle):
+    """Profil SAISI par la société (famille du mode), par la façade calepinage.
+
+    ADEV76 (D-ACI-7=a) — retenu SEULEMENT si sa clé = ``cle`` (catégorie
+    commerciale, ou secteur industriel déclaré du lead) : jamais le premier
+    profil venu à la place de l'archétype ou d'un profil déclaré exigé."""
+    if company is None or _vide(cle):
         return None
     from apps.calepinage import services as calepinage_services
     try:
@@ -600,10 +608,10 @@ def _profil_societe(company, mode, categorie):
     except Exception:  # lecture best-effort : l'archétype sourcé prend le relais
         logger.warning('CIQ118 — profils société illisibles', exc_info=True)
         return None
-    candidats = [p for p in profils if p.get('famille') == mode]
-    if not candidats:
+    choisi = next((p for p in profils
+                   if p.get('famille') == mode and p.get('cle') == cle), None)
+    if choisi is None:
         return None
-    choisi = next((p for p in candidats if p.get('cle') == categorie), candidats[0])
     return {'cle': choisi.get('cle'), 'libelle': choisi.get('libelle'),
             'courbe': choisi.get('courbes'), 'provenance': choisi.get('provenance')}
 
@@ -922,6 +930,11 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             'Longueurs de câble non relevées — à confirmer à la visite.'))
     tension = res.valeur('tension')
     tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension)
+    # ADEV76 — dit dès la résolution : un refus nomme le contrat du lead même
+    # quand le profil de charge arrête l'étude plus loin.
+    if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:
+        alertes.append(_alerte('tarif_omis', 'tarif', tarif_ci.MENTION_OMIS,
+                               niveau='bloquant'))
     conso, _feuille = _consommation(res, tarif, alertes, hypotheses)
     registres = _registres_resolus(res)
     mesuree = _courbe_mesuree_resolue(res.valeur('courbe_mesuree'), _aujourdhui().year - 1)
@@ -994,7 +1007,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         jours_types, prov_charge, al_charge = courbe_declaree(
             {k: v for k, v in rythme.items() if v is not None}, conso,
             annee_reference=_aujourdhui().year - 1, archetype=categorie,
-            profil_societe=_profil_societe(company, mode, categorie),
+            profil_societe=_profil_societe(
+                company, mode, categorie if mode == 'commercial'
+                else res.valeur('secteur_industriel')),
             production_jours_types=production['jours_types'])
     alertes.extend(al_charge)
     niveau = (prov_charge or {}).get('niveau_donnees')
@@ -1041,9 +1056,6 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             _apercu_valorisation(bilan, jours_types, tension), tarif, tarif_declare=td)
         return (resultat.get('economie_annee1') or {}).get('total_mad')
 
-    if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:
-        alertes.append(_alerte('tarif_omis', 'tarif', tarif_ci.MENTION_OMIS,
-                               niveau='bloquant'))
     hypotheses.append({'cle': 'base_taille', 'valeur': 'HT', 'statut': 'estimation',
                        'source': 'coût de vente HT ÷ économie HT (la base HT/TTC du '
                                  'document suit D-CIQ-3, economie_ci)'})
@@ -1138,28 +1150,70 @@ def entrees_pour_etude_params(entrees_resolues):
     return arbre
 
 
+#: ADEV76 (D-ACI-5=a) — champ d'une alerte BLOQUANTE du moteur → champ du
+#: LEAD qui la lève (un 409 nomme toujours ce que la fiche lead sait poser).
+CHAMP_LEAD_DES_ALERTES = {
+    'tarif': 'contrat_electricite',
+    'rythme.jours_ouverts': 'jours_ouverture',
+    'rythme.plages': 'heure_debut',
+}
+#: L'ordre dans lequel un refus nomme le premier champ manquant du lead.
+ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut')
+MESSAGES_CHAMP_LEAD_CI = {
+    'jours_ouverture': ("Jours d'ouverture du site à déclarer sur le lead : profil de "
+                        'charge déclaré exigé (aucun week-end supposé).'),
+    'heure_debut': ("Heures d'ouverture (ou régime d'équipes) à déclarer sur le lead : "
+                    'aucun archétype sourcé pour cette activité, profil déclaré exigé.'),
+}
+MESSAGE_MAD_SANS_CONTRAT = (
+    "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
+    '(BT patenté / force motrice) ou saisissez la conso en kWh.')
+
+
+def _champ_lead_manquant(alertes):
+    """``(champ du lead, alerte)`` du PREMIER manquant (ordre fixe), ou ``None``."""
+    trouves = {}
+    for alerte in alertes:
+        if alerte.get('niveau') != 'bloquant':
+            continue
+        champ = CHAMP_LEAD_DES_ALERTES.get(alerte.get('champ'))
+        if champ is not None:
+            trouves.setdefault(champ, alerte)
+    for champ in ORDRE_CHAMPS_LEAD_CI:
+        if champ in trouves:
+            return champ, trouves[champ]
+    return None
+
+
 def refus_devis_auto_ci(etude):
     """``(message, champ)`` qui interdit un devis automatique C&I, ou ``None``.
 
-    Les refus nomment la donnée manquante de la règle « devis auto prêt » pro
-    (contrat CIQ1 : le groupe consommation) ou la cause du moteur."""
-    codes = {a.get('code'): a for a in etude.get('alertes') or []}
+    Les refus nomment un CHAMP DU LEAD (ADEV76) : la consommation, puis le
+    contrat d'électricité, les jours et les heures d'ouverture (dans cet
+    ordre, la règle des prérequis ``moteur_ci.charge.profil_charge_prerequis``)
+    — testés AVANT « prix à renseigner » — ou la cause du moteur."""
+    alertes = etude.get('alertes') or []
+    codes = {a.get('code'): a for a in alertes}
     if 'mode_inconnu' in codes:
         return codes['mode_inconnu']['message'], 'type_installation'
     if 'kwh_incoherent_factures' in codes:
         return codes['kwh_incoherent_factures']['message'], 'conso_mensuelle_kwh'
-    if 'consommation_absente' in codes or 'conversion_mad_impossible' in codes:
+    if 'conversion_mad_impossible' in codes:
+        return MESSAGE_MAD_SANS_CONTRAT, 'contrat_electricite'
+    if 'consommation_absente' in codes:
         return ('Consommation (kWh) ou facture mensuelle (MAD) manquante : '
                 'aucun devis automatique sans consommation.', 'conso_mensuelle_kwh')
     if 'production_indisponible' in codes:
         return codes['production_indisponible']['message'], 'ville'
+    manquant = _champ_lead_manquant(alertes)
+    if manquant is not None:
+        champ, alerte = manquant
+        return MESSAGES_CHAMP_LEAD_CI.get(champ) or alerte.get('message'), champ
     taille = etude.get('taille') or {}
     if taille.get('raison_arret') == 'prix_manquants':
         manquants = (etude.get('composition') or {}).get('prix_a_renseigner') or []
         return ('Prix à renseigner : %s.' % ', '.join(str(m) for m in manquants),
                 'composition')
-    if 'tarif_omis' in codes:
-        return codes['tarif_omis']['message'], 'tarif_declare'
     if not taille.get('retenue_kwc'):
         alerte = next((a for a in etude.get('alertes') or []
                        if a.get('niveau') == 'bloquant'), None)

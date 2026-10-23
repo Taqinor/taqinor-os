@@ -15,6 +15,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import tarif_ci
@@ -140,6 +141,61 @@ class DevisAutoCITests(_Base):
         with self.assertRaises(AutoDevisError) as ctx:
             build_devis_auto(lead=lead, user=self.user, company=self.co, origine='tunnel')
         self.assertEqual(ctx.exception.field, 'type_installation')
+
+    # ── ADEV76 : les refus nomment un CHAMP DU LEAD ─────────────────────────
+
+    def _refus(self, lead, *, reel=False):
+        avant = Devis.objects.filter(company=self.co).count()
+        with self.assertRaises(AutoDevisError) as ctx:
+            if reel:
+                build_devis_auto(lead=lead, user=self.user, company=self.co)
+            else:
+                self._auto(lead)
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+        return ctx.exception
+
+    def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_le_contrat(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), facture_hiver=Decimal('18000'),
+                          categorie_commerciale=None, surface_toiture_m2=Decimal('200'))
+        erreur = self._refus(lead, reel=True)
+        self.assertEqual(erreur.field, 'contrat_electricite')
+
+    def test_sans_categorie_ni_heures_nomme_les_jours_puis_les_heures(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None)
+        self.assertEqual(self._refus(lead).field, 'jours_ouverture')
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None,
+                          jours_ouverture=[1, 2, 3, 4, 5])
+        erreur = self._refus(lead)
+        self.assertEqual(erreur.field, 'heure_debut')
+        self.assertIn("Heures d'ouverture", erreur.message)
+
+    def test_facture_mad_seule_sans_contrat_nomme_le_contrat(self):
+        lead = self._lead(facture_hiver=Decimal('3500'))
+        erreur = self._refus(lead, reel=True)
+        self.assertEqual(erreur.field, 'contrat_electricite')
+        self.assertIn('Facture en MAD sans contrat', erreur.message)
+
+    def test_profil_societe_dune_autre_categorie_jamais_retenu(self):
+        ProfilTypeConsommation.objects.create(
+            company=self.co, cle='hotel', libelle='Hôtel relevé', famille='commercial',
+            provenance='relevé hôtel 2025', courbe={'annuel': [0] * 8 + [10] * 10 + [0] * 6})
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        archetype = devis.etude_params['etude_ci']['profil_charge']['archetype']
+        self.assertEqual(archetype['cle'], 'bureau')
+        self.assertNotEqual(archetype['source'], 'relevé hôtel 2025')
+
+    def test_profil_societe_industriel_sur_le_secteur_declare_seulement(self):
+        ProfilTypeConsommation.objects.create(
+            company=self.co, cle='textile', libelle='Tissage relevé', famille='industriel',
+            provenance='relevé tissage 2025', courbe={'annuel': [1] * 6 + [10] * 14 + [1] * 4})
+        commun = dict(type_installation='industriel', categorie_commerciale=None,
+                      conso_mensuelle_kwh=Decimal('20000'))
+        devis = self._auto(self._lead(secteur_industriel='textile', **commun))
+        self.assertEqual(devis.etude_params['etude_ci']['profil_charge']['archetype']['cle'],
+                         'textile')
+        erreur = self._refus(self._lead(secteur_industriel='agroalimentaire',
+                                        jours_ouverture=[1, 2, 3, 4, 5, 6], **commun))
+        self.assertEqual(erreur.field, 'heure_debut')
 
     def test_agricole_tunnel_toujours_refuse(self):
         # AGR124 — l'agricole est ouvert au bouton (origine « auto ») ; le

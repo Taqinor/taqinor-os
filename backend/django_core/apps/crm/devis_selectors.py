@@ -553,6 +553,10 @@ def entrees_ci_du_lead(lead):
     if lead.heure_debut is None or lead.heure_fin is None:
         manquants.extend(c for c in ('heure_debut', 'heure_fin')
                          if getattr(lead, c) is None)
+        # ADEV76 — un régime 1x8 / 2x8 se place sur l'heure de début seule.
+        if lead.heure_debut is not None and not _entree_vide(lead.regime_equipes):
+            _entree('heure_debut', lead.heure_debut, 'rythme',
+                    'rythme.debut_equipe_h')
     else:
         _entree('heure_debut', {'ouvre': [[lead.heure_debut, lead.heure_fin]]},
                 'rythme', 'rythme.plages')
