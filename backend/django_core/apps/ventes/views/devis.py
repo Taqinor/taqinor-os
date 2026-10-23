@@ -508,21 +508,6 @@ class DevisViewSet(DevisEditionActionsMixin,
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
         journal = {}
 
-        def reponse_auto(devis, alertes, statut_http):
-            link = ShareLink.for_devis(devis)
-            return Response(
-                {
-                    'id': devis.id,
-                    'reference': devis.reference,
-                    'statut': devis.statut,
-                    'kwc': (devis.etude_params or {}).get('puissance_kwc'),
-                    'nb_lignes': devis.lignes.count(),
-                    'proposal_token': link.token,
-                    'proposal_path': chemin_proposition(devis, link.token),
-                    'alertes': list(alertes or []),
-                },
-                status=statut_http)
-
         # ADEV80 (C-ACI-009) — idempotence : deux clics rapides ne créent
         # JAMAIS deux brouillons. (1) REJEU : même utilisateur, même lead,
         # corps identique, < 120 s -> 200 avec le MÊME brouillon (forme du
@@ -551,8 +536,19 @@ class DevisViewSet(DevisEditionActionsMixin,
                 pk=trace['id'], company=company, lead=lead_obj,
                 created_by=request.user).first()
             if deja is not None:
-                return reponse_auto(deja, trace.get('alertes'),
-                                    status.HTTP_200_OK)
+                link = ShareLink.for_devis(deja)
+                return Response(
+                    {
+                        'id': deja.id,
+                        'reference': deja.reference,
+                        'statut': deja.statut,
+                        'kwc': (deja.etude_params or {}).get('puissance_kwc'),
+                        'nb_lignes': deja.lignes.count(),
+                        'proposal_token': link.token,
+                        'proposal_path': chemin_proposition(deja, link.token),
+                        'alertes': list(trace.get('alertes') or []),
+                    },
+                    status=status.HTTP_200_OK)
 
         cle_verrou = 'devis-auto:%s:%s' % (company.id, lead_obj.id)
         try:
@@ -585,15 +581,25 @@ class DevisViewSet(DevisEditionActionsMixin,
                     cache.delete(cle_verrou)
                 except Exception:
                     logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
-                    pass
 
         alertes = list(journal.get('alertes') or [])
         try:
             cache.set(cle_rejeu, {'id': devis.id, 'alertes': alertes}, 120)
         except Exception:
             logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
-            pass
-        return reponse_auto(devis, alertes, status.HTTP_201_CREATED)
+        link = ShareLink.for_devis(devis)
+        return Response(
+            {
+                'id': devis.id,
+                'reference': devis.reference,
+                'statut': devis.statut,
+                'kwc': (devis.etude_params or {}).get('puissance_kwc'),
+                'nb_lignes': devis.lignes.count(),
+                'proposal_token': link.token,
+                'proposal_path': chemin_proposition(devis, link.token),
+                'alertes': alertes,
+            },
+            status=status.HTTP_201_CREATED)
 
     @extend_schema(methods=['GET'], responses=D.VarianteConfigResponse)
     @extend_schema(methods=['PUT'], request=D.VarianteConfigRequest,
