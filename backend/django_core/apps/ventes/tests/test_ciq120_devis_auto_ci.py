@@ -15,7 +15,9 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
+from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
+from apps.parametres.models import CompanyProfile
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes import tarif_ci
 from apps.ventes.domain import etude_ci
@@ -25,6 +27,8 @@ from apps.ventes.tests.test_ciq118_etude_ci_preview import _production_casablanc
 from authentication.models import Company
 
 User = get_user_model()
+FORFAITS_TEST = ('etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
+                 'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci')
 
 
 class _Base(TestCase):
@@ -52,6 +56,24 @@ class _Base(TestCase):
         cls.structure = Produit.objects.create(
             company=cls.co, nom='Structure bac acier C&I', prix_vente=Decimal('300'),
             prix_achat=Decimal('150'), role_ci='structure_ci', type_pose='bac_acier')
+        # ADEV79 (D-ACI-6=a) — un poste fixe sans prix fait refuser : le cas
+        # « complet » porte ses coffrets, protection, comptage, logger et
+        # forfaits de prestations TARIFÉS.
+        for role, nom, prix in (('coffret_dc', 'Coffret DC C&I', '1500'),
+                                ('coffret_ac', 'Coffret AC C&I', '2500'),
+                                ('compteur_injection', 'Smart Meter C&I', '1800'),
+                                ('logger_supervision', 'Logger C&I', '2200')):
+            Produit.objects.create(company=cls.co, nom=nom, prix_vente=Decimal(prix),
+                                   prix_achat=Decimal('100'), role_ci=role)
+        cls.disjoncteur = Produit.objects.create(
+            company=cls.co, nom='Disjoncteur AC 80 A 4P', prix_vente=Decimal('900'),
+            prix_achat=Decimal('400'), role_ci='protection_ac')
+        FicheTechnique.objects.create(
+            company=cls.co, produit=cls.disjoncteur, type_fiche='protection',
+            prot_type='disjoncteur', prot_cote='ac', prot_calibre_a=80, prot_poles=4)
+        CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
+            cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ120 de test'}
+            for cle in FORFAITS_TEST}})
 
     def setUp(self):
         patcher = mock.patch.object(etude_ci, 'lire_production',
@@ -140,6 +162,126 @@ class DevisAutoCITests(_Base):
         with self.assertRaises(AutoDevisError) as ctx:
             build_devis_auto(lead=lead, user=self.user, company=self.co, origine='tunnel')
         self.assertEqual(ctx.exception.field, 'type_installation')
+
+    # ── ADEV76 : les refus nomment un CHAMP DU LEAD ─────────────────────────
+
+    def _refus(self, lead, *, reel=False):
+        avant = Devis.objects.filter(company=self.co).count()
+        with self.assertRaises(AutoDevisError) as ctx:
+            if reel:
+                build_devis_auto(lead=lead, user=self.user, company=self.co)
+            else:
+                self._auto(lead)
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+        return ctx.exception
+
+    def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_le_contrat(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), facture_hiver=Decimal('18000'),
+                          categorie_commerciale=None, surface_toiture_m2=Decimal('200'))
+        erreur = self._refus(lead, reel=True)
+        self.assertEqual(erreur.field, 'contrat_electricite')
+
+    def test_sans_categorie_ni_heures_nomme_les_jours_puis_les_heures(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None)
+        self.assertEqual(self._refus(lead).field, 'jours_ouverture')
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None,
+                          jours_ouverture=[1, 2, 3, 4, 5])
+        erreur = self._refus(lead)
+        self.assertEqual(erreur.field, 'heure_debut')
+        self.assertIn("Heures d'ouverture", erreur.message)
+
+    def test_facture_mad_seule_sans_contrat_nomme_le_contrat(self):
+        lead = self._lead(facture_hiver=Decimal('3500'))
+        erreur = self._refus(lead, reel=True)
+        self.assertEqual(erreur.field, 'contrat_electricite')
+        self.assertIn('Facture en MAD sans contrat', erreur.message)
+
+    def test_profil_societe_dune_autre_categorie_jamais_retenu(self):
+        ProfilTypeConsommation.objects.create(
+            company=self.co, cle='hotel', libelle='Hôtel relevé', famille='commercial',
+            provenance='relevé hôtel 2025', courbe={'annuel': [0] * 8 + [10] * 10 + [0] * 6})
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        archetype = devis.etude_params['etude_ci']['profil_charge']['archetype']
+        self.assertEqual(archetype['cle'], 'bureau')
+        self.assertNotEqual(archetype['source'], 'relevé hôtel 2025')
+
+    def test_profil_societe_industriel_sur_le_secteur_declare_seulement(self):
+        ProfilTypeConsommation.objects.create(
+            company=self.co, cle='textile', libelle='Tissage relevé', famille='industriel',
+            provenance='relevé tissage 2025', courbe={'annuel': [1] * 6 + [10] * 14 + [1] * 4})
+        commun = dict(type_installation='industriel', categorie_commerciale=None,
+                      conso_mensuelle_kwh=Decimal('20000'))
+        devis = self._auto(self._lead(secteur_industriel='textile', **commun))
+        self.assertEqual(devis.etude_params['etude_ci']['profil_charge']['archetype']['cle'],
+                         'textile')
+        erreur = self._refus(self._lead(secteur_industriel='agroalimentaire',
+                                        jours_ouverture=[1, 2, 3, 4, 5, 6], **commun))
+        self.assertEqual(erreur.field, 'heure_debut')
+
+    # ── ADEV78 : refus sur toute alerte bloquante, vraie cause nommée ──────
+
+    def test_onduleurs_ineligibles_refus_composition_nommant_les_onduleurs(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement='monophase')
+        erreur = self._refus(lead)
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Aucun onduleur C&I éligible', erreur.message)
+        self.assertIn(self.onduleur.nom, erreur.message)
+        self.assertNotIn('rentable', erreur.message)
+
+    def test_module_sans_pmax_refus_aucun_devis(self):
+        FicheTechnique.objects.filter(produit=self.panneau).update(pmax_wc=None)
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Pmax', erreur.message)
+
+    def test_taille_saisie_onduleurs_infaisables_refusee(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement='monophase',
+                          taille_souhaitee_kwc=Decimal('20'))
+        self.assertEqual(self._refus(lead).field, 'composition')
+
+    def test_module_a_puissance_publiee_prefere_au_module_tarife_sans_pmax(self):
+        Produit.objects.filter(pk=self.panneau.pk).update(prix_vente=0)
+        Produit.objects.create(company=self.co, nom='Panneau sans fiche 700W',
+                               prix_vente=Decimal('1000'), prix_achat=Decimal('600'),
+                               role_devis='panneau')
+        module = etude_ci.lire_catalogue_ci(self.co)['module']
+        self.assertEqual(module['produit'], self.panneau.id)
+        self.assertEqual(module['pmax_wc'], 710)
+
+    # ── ADEV79 : postes fixes sans prix refusés, lignes de visite hors total ─
+
+    def test_forfaits_vides_refus_nommant_les_prestations_et_parametres(self):
+        CompanyProfile.objects.filter(company=self.co).update(forfaits_ci={})
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Études et ingénierie C&I', erreur.message)
+        self.assertIn('Pose des modules C&I', erreur.message)
+        self.assertIn('Paramètres › Devis › Prestations C&I', erreur.message)
+
+    def test_coffret_ac_sans_prix_refus(self):
+        Produit.objects.filter(company=self.co, role_ci='coffret_ac').update(prix_vente=0)
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Coffret AC C&I', erreur.message)
+
+    def test_type_de_toit_inconnu_brouillon_sous_reserve_sans_structure(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), type_toiture=None)
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                     journal_auto=journal)
+        produits = set(devis.lignes.values_list('produit_id', flat=True))
+        self.assertNotIn(self.structure.id, produits)
+        self.assertIn(self.panneau.id, produits)
+        etude = devis.etude_params['etude_ci']
+        self.assertIn('Structure C&I', etude['composition']['a_chiffrer_visite'])
+        self.assertIn('Câble solaire DC', etude['composition']['a_chiffrer_visite'])
+        self.assertEqual(etude['taille']['statut'], 'estimation')
+        self.assertTrue(journal['alertes'])
+        self.assertIn('Structure C&I', ' '.join(a['message'] for a in journal['alertes']))
+        # Persistance : rouvert, le brouillon relit la même liste.
+        relu = Devis.objects.get(pk=devis.pk).etude_params['etude_ci']['composition']
+        self.assertEqual(relu['a_chiffrer_visite'], etude['composition']['a_chiffrer_visite'])
 
     def test_agricole_tunnel_toujours_refuse(self):
         # AGR124 — l'agricole est ouvert au bouton (origine « auto ») ; le
