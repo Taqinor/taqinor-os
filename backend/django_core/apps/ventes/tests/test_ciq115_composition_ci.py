@@ -187,6 +187,64 @@ class CompositionTests(TestCase):
         self.assertEqual(article['type_pose'], 'toit_plat_leste')
         self.assertEqual(structure['quantite'], math.ceil(100000 / 710))
 
+    # ── ADEV82 : composition cohérente avec le devis écrit ──────────────────
+
+    def test_palier_prix_unitaire_ht_de_la_ligne_est_le_prix_de_palier(self):
+        cat = [dict(p) for p in self.cat]
+        for p in cat:
+            if p['role_ci'] == 'structure_ci' and p['type_pose'] == 'bac_acier':
+                p.update(prix_connu=True, prix_vente_ht=Decimal('300'), tva_pct=Decimal('20'),
+                         paliers_prix_vente=[{'seuil_min': 1, 'seuil_max': None,
+                                              'prix_vente_ttc': '240'}])
+        module = dict(MODULE, prix_vente_ht=Decimal('1000'), tva_pct=Decimal('10'),
+                      paliers_prix_vente=[{'seuil_min': 1, 'seuil_max': None,
+                                           'prix_vente_ttc': '880'}])
+        comp = composer_ci(100, cat, onduleurs=_onduleurs(cat, 100),
+                           entrees=_entrees(module=module), forfaits={})
+        structure = self._lignes(comp, 'structure_ci')[0]
+        self.assertEqual(structure['prix_unitaire_ht'], '200.00')
+        self.assertEqual(self._lignes(comp, 'panneau')[0]['prix_unitaire_ht'], '800.00')
+
+    def test_compteur_compatible_tarife_prefere_au_controleur_sans_prix(self):
+        cat = [dict(p) for p in self.cat]
+        for p in cat:
+            if p['role_ci'] == 'onduleur_string_tri':
+                p['fiche'] = {'ond_compteurs_compatibles': ['DTSU666-H']}
+        cat += [{'id': 5000, 'nom': 'Smart Meter DTSU666-H', 'marque': 'Huawei',
+                 'role_devis': '', 'role_ci': 'compteur_injection', 'classement': 'declare',
+                 'type_pose': '', 'fiche': None, 'prix_connu': True,
+                 'prix_vente_ht': Decimal('1800'), 'eligible_ci': True,
+                 'motif_exclusion': None},
+                {'id': 5001, 'nom': 'Compteur générique', 'marque': '',
+                 'role_devis': '', 'role_ci': 'compteur_injection', 'classement': 'declare',
+                 'type_pose': '', 'fiche': None, 'prix_connu': True,
+                 'prix_vente_ht': Decimal('900'), 'eligible_ci': True,
+                 'motif_exclusion': None}]
+        self.assertTrue(any(p['role_ci'] == 'controleur_injection' and not p['prix_connu']
+                            for p in cat))
+        comp = composer_ci(100, cat, onduleurs=_onduleurs(cat, 100), entrees=_entrees(),
+                           forfaits={})
+        comptage = [ligne for ligne in comp['lignes'] if ligne['role'] in (
+            'compteur_injection', 'controleur_injection')]
+        self.assertEqual(len(comptage), 1)
+        self.assertEqual(comptage[0]['produit'], 5000)
+        self.assertTrue(comptage[0]['prix_connu'])
+
+    def test_logger_a_fiche_publiee_n_est_plus_a_confirmer(self):
+        cat = [dict(p) for p in self.cat if p['role_ci'] != 'logger_supervision']
+        cat.append({'id': 5002, 'nom': 'SmartLogger 3000', 'marque': 'Huawei',
+                    'role_devis': '', 'role_ci': 'logger_supervision', 'classement': 'declare',
+                    'type_pose': '', 'fiche': {'log_onduleurs_max': 80}, 'prix_connu': True,
+                    'prix_vente_ht': Decimal('4500'), 'eligible_ci': True,
+                    'motif_exclusion': None})
+        ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50, 'quantite': 3}]}
+        comp = composer_ci(180, cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+        logger = self._lignes(comp, 'logger_supervision')[0]
+        self.assertEqual(logger['produit'], 5002)
+        self.assertFalse(logger['a_confirmer_visite'])
+        self.assertIsNone(logger['motif'])
+        self.assertEqual(logger['quantite'], 1)
+
     def test_aucune_cle_prix_achat(self):
         comp = composer_ci(100, self.cat, onduleurs=_onduleurs(self.cat, 100),
                            entrees=_entrees(), forfaits={})

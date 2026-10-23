@@ -34,6 +34,7 @@ from apps.ventes.dimensionnement import (
     ratio_pas_marginal,
 )
 from apps.ventes.moteur_ci.autoconso import bilan_horaire
+from apps.ventes.moteur_ci.composition import prix_palier_ht
 
 PAS_KWC = 5
 #: Garde de terminaison du balayage (nombre de pas), jamais une taille : la
@@ -88,12 +89,7 @@ def cout_vente_ht(composition, onduleurs, *, taux_tva_pct=None):
         quantite = _dec(ligne.get('quantite'))
         if quantite is None or not ligne.get('prix_connu'):
             continue
-        unitaire = None
-        tva = _dec(ligne.get('tva_pct'))
-        if tva is None:
-            tva = _dec(taux_tva_pct)
-        if ligne.get('palier') and ligne.get('prix_unitaire_ttc') and tva is not None:
-            unitaire = _dec(ligne['prix_unitaire_ttc']) / (1 + tva / 100)
+        unitaire = prix_palier_ht(ligne, taux_tva_pct)
         if unitaire is None:
             unitaire = _dec(ligne.get('prix_unitaire_ht'))
         if unitaire is not None:

@@ -94,7 +94,9 @@ def _alerte(code, message, niveau='alerte', champ='composition'):
 
 def _du_role(catalogue, role, filtre=None):
     """Le premier article ÉLIGIBLE du rôle (C&I ou de devis) qui passe le
-    filtre de fiche — ordre déterministe (id)."""
+    filtre de fiche — ordre déterministe (id). ADEV82 : un article TARIFÉ
+    passe devant un article sans prix du même rôle."""
+    premier = None
     for p in sorted(catalogue, key=lambda x: (x.get('id') or 0)):
         if p.get('eligible_ci') is False:
             continue
@@ -102,8 +104,10 @@ def _du_role(catalogue, role, filtre=None):
             continue
         if filtre is not None and not filtre(p.get('fiche') or {}, p):
             continue
-        return p
-    return None
+        if p.get('prix_connu'):
+            return p
+        premier = premier or p
+    return premier
 
 
 def _ligne(role, article, designation, quantite, unite, *, motif=None,
@@ -168,9 +172,30 @@ def _appliquer_palier(ligne, article):
                        'seuil_max': atteint.get('seuil_max'),
                        'mention': 'prix palier dès %s unités' % (
                            atteint.get('seuil_min'),)} if atteint else None
+    # ADEV82 — la ligne porte le HT du PALIER (celui de la taille), plus le
+    # prix catalogue : taille et devis au même prix.
+    palier_ht = prix_palier_ht(ligne)
+    if palier_ht is not None:
+        ligne['prix_unitaire_ht'] = str(palier_ht)
     ligne['prix_connu'] = True
     if ligne.get('motif') == MOTIF_PRIX:
         ligne['motif'] = None
+
+
+def prix_palier_ht(ligne, taux_tva_pct=None):
+    """ADEV82 — LA règle du prix unitaire HT (au centime) d'une ligne au prix
+    de PALIER (TTC, CIQ123) : la TVA de son article (``tva_pct``), à défaut
+    ``taux_tva_pct`` ; ``None`` hors palier ou sans taux. La taille
+    (``taille.cout_vente_ht``) et la ligne écrite au devis portent CE prix."""
+    if not ligne.get('palier') or not ligne.get('prix_unitaire_ttc'):
+        return None
+    tva = _d(ligne.get('tva_pct'))
+    if tva is None:
+        tva = _d(taux_tva_pct)
+    ttc = _d(ligne['prix_unitaire_ttc'])
+    if tva is None or ttc is None:
+        return None
+    return (ttc / (1 + tva / 100)).quantize(Decimal('0.01'))
 
 
 def postes_non_chiffres(lignes):
@@ -251,7 +276,39 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
             proposee.critere, ib, calibre, proposee.chute_pct)})
 
 
-def _comptage(catalogue, nb_ond, entrees, lignes, alertes):
+def _du_role_tous(catalogue, role):
+    """Tous les articles ÉLIGIBLES du rôle, ordre déterministe (id)."""
+    return [p for p in sorted(catalogue, key=lambda x: (x.get('id') or 0))
+            if p.get('eligible_ci') is not False
+            and role in (p.get('role_ci'), p.get('role_devis'))]
+
+
+def _article_de_comptage(catalogue, onduleurs):
+    """ADEV82 — un article TARIFÉ passe devant un article sans prix ; à prix
+    égal, le contrôleur d'injection, puis le compteur que la fiche des
+    onduleurs retenus dit compatible (``ond_compteurs_compatibles``)."""
+    par_id = _par_id(catalogue)
+    compatibles = set()
+    for item in (onduleurs or {}).get('combinaison') or []:
+        fiche = (par_id.get(item.get('produit')) or {}).get('fiche') or {}
+        compatibles.update(str(t).strip().lower()
+                           for t in fiche.get('ond_compteurs_compatibles') or []
+                           if str(t).strip())
+
+    def compatible(p):
+        texte = ('%s %s' % (p.get('nom') or '', p.get('marque') or '')).lower()
+        return not compatibles or any(t in texte for t in compatibles)
+
+    controleurs = _du_role_tous(catalogue, 'controleur_injection')
+    compteurs = _du_role_tous(catalogue, 'compteur_injection')
+    ordre = ([c for c in controleurs if c.get('prix_connu')]
+             + [c for c in compteurs if c.get('prix_connu') and compatible(c)]
+             + [c for c in compteurs if c.get('prix_connu')]
+             + controleurs + compteurs)
+    return ordre[0] if ordre else None
+
+
+def _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs=None):
     tension = (entrees.get('tension') or '').upper()
     revente = bool(entrees.get('revente_choisie'))
     if tension == 'MT' and revente:
@@ -263,8 +320,7 @@ def _comptage(catalogue, nb_ond, entrees, lignes, alertes):
         points = None
     a_confirmer = points is None
     points = points or 1
-    article = (_du_role(catalogue, 'controleur_injection')
-               or _du_role(catalogue, 'compteur_injection'))
+    article = _article_de_comptage(catalogue, onduleurs)
     role = article.get('role_ci') if article else 'compteur_injection'
     fiche = (article or {}).get('fiche') or {}
     max_pilotes = fiche.get('lim_onduleurs_max')
@@ -292,9 +348,12 @@ def _logger(catalogue, nb_ond, lignes):
     article = _du_role(catalogue, 'logger_supervision')
     max_sup = ((article or {}).get('fiche') or {}).get('log_onduleurs_max')
     quantite = int(math.ceil(nb_ond / float(max_sup))) if max_sup else 1
+    # ADEV82 — « à confirmer fournisseur » seulement quand la fiche se tait
+    # sur le nombre d'onduleurs supervisés.
     lignes.append(_ligne('logger_supervision', article,
                          'Logger de supervision', quantite, 'u',
-                         motif=MOTIF_FOURNISSEUR, a_confirmer=True))
+                         motif=None if max_sup else MOTIF_FOURNISSEUR,
+                         a_confirmer=not max_sup))
 
 
 def _prestation(cle, libelle, forfait, article, kwc, nb_panneaux):
@@ -403,7 +462,7 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
                              'confirmer à la visite', a_confirmer=True, visite=True))
 
     # ── Comptage / limitation, logger, coffret AC
-    _comptage(catalogue, nb_ond, entrees, lignes, alertes)
+    _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs)
     _logger(catalogue, nb_ond, lignes)
     lignes.append(_ligne('coffret_ac', _du_role(catalogue, 'coffret_ac'),
                          'Coffret AC C&I', 1, 'u'))

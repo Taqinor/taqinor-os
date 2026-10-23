@@ -175,6 +175,21 @@ class ContratTests(_Base):
             self.assertEqual(set(entree['provenance']), {'origine', 'detail', 'date'})
         self.assertIsNotNone(data['taille']['retenue_kwc'])
 
+    # ── ADEV82 — bande interne DH/kWc lue ───────────────────────────────────
+
+    def test_bande_prix_kwc_posee_hors_bande_alerte_interne(self):
+        CompanyProfile.objects.filter(company=self.co).update(bande_prix_kwc_ci={
+            'min_ht': 1, 'max_ht': 2, 'source': 'bande de test'})
+        data = self.post(self.corps())
+        alerte = next(a for a in data['alertes'] if a['code'] == 'PRIX_KWC_HORS_BANDE')
+        self.assertTrue(alerte['interne'])
+        self.assertNotEqual(alerte['niveau'], 'bloquant')
+
+    def test_bande_prix_kwc_vide_aucune_alerte(self):
+        CompanyProfile.objects.filter(company=self.co).update(bande_prix_kwc_ci=None)
+        data = self.post(self.corps())
+        self.assertNotIn('PRIX_KWC_HORS_BANDE', [a['code'] for a in data['alertes']])
+
     def test_aucune_cle_prix_achat_ni_marge(self):
         data = self.post(self.corps())
         cles = set(_cles(data))

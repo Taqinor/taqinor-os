@@ -697,6 +697,8 @@ def lire_catalogue_ci(company):
             'prix_connu': bool(produit.prix_vente and produit.prix_vente > 0),
             'prix_vente_ht': produit.prix_vente,
             'tva_pct': getattr(produit, 'tva', None),
+            # ADEV82 — le module porte aussi ses paliers (prix de la taille).
+            'paliers_prix_vente': list(getattr(produit, 'paliers_prix_vente', None) or []),
             'longueur_mm': _num(specs.get('longueur_mm')),
             'largeur_mm': _num(specs.get('largeur_mm')),
             'poids_kg': _num(specs.get('poids_kg')),
@@ -813,9 +815,13 @@ def _regime(kwc, puissance_ac, tension):
     return {'regime': regime, 'seuil': seuil, 'source': SOURCE_REGIME}
 
 
-def _completer_prix(composition, prix_par_id):
+def _completer_prix(composition, prix_par_id, tva_defaut=None):
     """Les lignes dont l'article a un prix de vente connu mais que la
-    composition n'a pas chiffré (panneau) reçoivent ce prix unitaire HT."""
+    composition n'a pas chiffré (panneau) reçoivent ce prix unitaire HT.
+    ADEV82 — une ligne au prix de PALIER porte le HT de ce palier (même règle
+    que la taille, ``moteur_ci.taille.prix_palier_ht``) : taille et devis au
+    même prix."""
+    from apps.ventes.moteur_ci.composition import prix_palier_ht
     for ligne in composition.get('lignes') or []:
         prix = prix_par_id.get(ligne.get('produit'))
         if prix is not None and not ligne.get('prix_unitaire_ht') \
@@ -824,6 +830,9 @@ def _completer_prix(composition, prix_par_id):
             ligne['prix_connu'] = True
             if ligne.get('motif') and 'prix' in ligne['motif']:
                 ligne['motif'] = None
+        palier_ht = prix_palier_ht(ligne, tva_defaut)
+        if palier_ht is not None and ligne.get('role') != 'onduleur_string_tri':
+            ligne['prix_unitaire_ht'] = str(palier_ht)
     from apps.ventes.moteur_ci.composition import postes_non_chiffres
     a_renseigner, visite = postes_non_chiffres(composition.get('lignes'))
     composition['prix_a_renseigner'] = a_renseigner
@@ -852,6 +861,29 @@ def _alertes_reactif(res, tension, bilan, registres):
                           for r in regs],
         cos_phi_declare=res.valeur('_cos_phi'),
         provenance_cos_phi=res.provenance('_cos_phi'))['alertes']
+
+
+def _alerte_bande_prix_kwc(reglages, evaluation):
+    """ADEV82 — total HT/kWc hors de la bande INTERNE saisie par la société
+    (``CompanyProfile.bande_prix_kwc_ci``) ⇒ alerte interne (jamais au
+    document) ; bande vide ⇒ rien."""
+    bande = getattr(reglages, 'bande_prix_kwc_ci', None)
+    kwc = _num((evaluation or {}).get('kwc'))
+    if not isinstance(bande, dict) or not kwc:
+        return []
+    bas, haut = _num(bande.get('min_ht')), _num(bande.get('max_ht'))
+    if bas is None and haut is None:
+        return []
+    prix = float(evaluation.get('cout') or 0) / kwc
+    if (bas is not None and prix < bas) or (haut is not None and prix > haut):
+        return [_alerte(
+            'PRIX_KWC_HORS_BANDE', 'composition',
+            'Total HT %.0f DH/kWc hors de la bande interne %s–%s DH/kWc%s.' % (
+                prix, '%.0f' % bas if bas is not None else '…',
+                '%.0f' % haut if haut is not None else '…',
+                ' (%s)' % bande['source'] if bande.get('source') else ''),
+            interne=True)]
+    return []
 
 
 def _apercu_valorisation(bilan, jours_types, tension):
@@ -1068,7 +1100,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     def composer(kwc, onduleurs):
         return _completer_prix(composer_ci(kwc, catalogue['elements'], onduleurs=onduleurs,
                                            entrees=entrees_compo, forfaits=forfaits),
-                               catalogue['prix_par_id'])
+                               catalogue['prix_par_id'],
+                               getattr(reglages, 'tva_standard', None))
 
     td = res.valeur('tarif_declare')
 
@@ -1111,6 +1144,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             _apercu_valorisation(bilan, jours_types, tension), tarif, tarif_declare=td)
         regime = _regime(evaluation['kwc'], evaluation['puissance_ac'], tension)
         alertes.extend(_alertes_reactif(res, tension, bilan, registres))
+        alertes.extend(_alerte_bande_prix_kwc(reglages, evaluation))
     elif resultat.get('prix_manquants'):
         # ADEV79 (D-ACI-6=a) — les postes de taille ET les postes fixes sans
         # prix : le refus les nomme tous, une seule fois.
