@@ -17,7 +17,7 @@ from apps.stock.management.commands.seed_catalogue import CATALOGUE, ht_at
 from apps.ventes import economie_ci, tarif_ci
 from apps.ventes.dimensionnement import HORIZON_MARGINAL_PV
 from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
-from apps.ventes.moteur_ci.taille import dimensionner_ci
+from apps.ventes.moteur_ci.taille import cout_vente_ht, dimensionner_ci
 from apps.ventes.tests.test_ciq110_autoconso_horaire import _charge, _production
 from apps.ventes.tests.test_ciq111_combinaison_onduleurs import _catalogue_huawei
 
@@ -136,9 +136,57 @@ class TailleCITests(unittest.TestCase):
         self.assertIn('Structure C&I', r['prix_manquants'])
 
     def test_poste_fixe_sans_prix_monte_quand_meme(self):
+        # ADEV79 — re-scopé : seul un poste HORS rôles de taille (mise en
+        # service) laisse la taille monter ; le devis automatique refuse
+        # ensuite en le nommant (D-ACI-6=a, refus_devis_auto_ci).
         r = self._taille('bureau', 6000)
         self.assertIsNotNone(r['taille']['retenue_kwc'])
         self.assertIn('postes_fixes_sans_prix', [a['code'] for a in r['alertes']])
+        self.assertEqual(r['taille']['statut'], 'calculee')
+
+    # ── ADEV79 : lignes de taille sans prix, lignes à chiffrer après visite ──
+
+    def _avec(self, ligne):
+        def composer(kwc, onduleurs):
+            base = _composer(kwc, onduleurs)
+            base['lignes'].append(dict(ligne, quantite=ligne.get('quantite', 3)))
+            return base
+        return composer
+
+    def test_structure_a_confirmer_sans_prix_prix_manquants(self):
+        def composer(kwc, onduleurs):
+            base = _composer(kwc, onduleurs, prix_structure=None)
+            base['lignes'][1]['a_confirmer_visite'] = True
+            return base
+        r = self._taille('bureau', 6000, composer=composer)
+        self.assertEqual(r['taille']['raison_arret'], 'prix_manquants')
+        self.assertIn('Structure C&I', r['prix_manquants'])
+
+    def test_pose_modules_sans_prix_prix_manquants(self):
+        r = self._taille('bureau', 6000, composer=self._avec(
+            {'role': 'pose_modules', 'designation': 'Pose des modules C&I', 'quantite': 1,
+             'prix_connu': False, 'a_confirmer_visite': False}))
+        self.assertEqual(r['taille']['raison_arret'], 'prix_manquants')
+        self.assertIn('Pose des modules C&I', r['prix_manquants'])
+        self.assertIn('Mise en service', r['postes_fixes_sans_prix'])
+
+    def test_ligne_a_chiffrer_visite_hors_taille_statut_estimation(self):
+        r = self._taille('bureau', 6000, composer=self._avec(
+            {'role': 'cable_dc', 'designation': 'Câble solaire DC', 'quantite': None,
+             'prix_connu': False, 'a_confirmer_visite': True, 'a_chiffrer_visite': True}))
+        self.assertIsNotNone(r['taille']['retenue_kwc'])
+        self.assertEqual(r['taille']['statut'], 'estimation')
+        self.assertNotIn('Câble solaire DC', r['evaluation']['prix_manquants'])
+
+    def test_palier_ttc_ramene_ht_par_la_tva_de_l_article(self):
+        ligne = {'role': 'panneau', 'quantite': 10, 'prix_connu': True,
+                 'prix_unitaire_ht': '999', 'prix_unitaire_ttc': '110', 'tva_pct': '10',
+                 'palier': {'seuil_min': 10, 'seuil_max': None, 'mention': 'palier'}}
+        cout = cout_vente_ht({'lignes': [ligne]}, {}, taux_tva_pct=20)
+        self.assertEqual(cout, Decimal('1000.00'))
+        sans_tva_article = cout_vente_ht({'lignes': [dict(ligne, tva_pct=None)]}, {},
+                                         taux_tva_pct=10)
+        self.assertEqual(sans_tva_article, Decimal('1000.00'))
 
     # ── ADEV78 : la vraie cause d'un arrêt « onduleurs » ou « module » ──────
 

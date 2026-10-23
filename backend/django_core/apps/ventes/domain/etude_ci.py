@@ -645,7 +645,9 @@ def lire_catalogue_ci(company):
         if produit is not None and produit.prix_vente and produit.prix_vente > 0:
             element = dict(element, prix_vente_ht=produit.prix_vente,
                            paliers_prix_vente=list(
-                               getattr(produit, 'paliers_prix_vente', None) or []))
+                               getattr(produit, 'paliers_prix_vente', None) or []),
+                           # ADEV79 — la TVA de l'article (TTC des paliers → HT).
+                           tva_pct=getattr(produit, 'tva', None))
         elements.append(element)
 
     onduleurs = []
@@ -694,6 +696,7 @@ def lire_catalogue_ci(company):
             'pmax_wc': _num(specs.get('pmax_wc')),
             'prix_connu': bool(produit.prix_vente and produit.prix_vente > 0),
             'prix_vente_ht': produit.prix_vente,
+            'tva_pct': getattr(produit, 'tva', None),
             'longueur_mm': _num(specs.get('longueur_mm')),
             'largeur_mm': _num(specs.get('largeur_mm')),
             'poids_kg': _num(specs.get('poids_kg')),
@@ -821,10 +824,11 @@ def _completer_prix(composition, prix_par_id):
             ligne['prix_connu'] = True
             if ligne.get('motif') and 'prix' in ligne['motif']:
                 ligne['motif'] = None
-    composition['prix_a_renseigner'] = [ligne['designation']
-                                        for ligne in composition.get('lignes') or []
-                                        if not ligne['prix_connu']]
-    composition['incomplet'] = bool(composition['prix_a_renseigner'])
+    from apps.ventes.moteur_ci.composition import postes_non_chiffres
+    a_renseigner, visite = postes_non_chiffres(composition.get('lignes'))
+    composition['prix_a_renseigner'] = a_renseigner
+    composition['a_chiffrer_visite'] = visite
+    composition['incomplet'] = bool(a_renseigner or visite)
     return composition
 
 
@@ -859,7 +863,8 @@ def _forme_composition(composition):
     if composition is None:
         return None
     return {k: composition.get(k) for k in
-            ('lignes', 'onduleurs', 'prix_a_renseigner', 'incomplet', 'options')}
+            ('lignes', 'onduleurs', 'prix_a_renseigner', 'a_chiffrer_visite', 'incomplet',
+             'options')}
 
 
 def _vide_etude(res, alertes, hypotheses, sous_reserve=None):
@@ -1087,7 +1092,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         revente_choisie=revente,
         taille_explicite_kwc=_taille_en_panneaux_entiers(
             res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
-        taux_tva_pct=20)
+        # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
+        # standard SAISI de la société (lecture seule), jamais un 20 codé.
+        taux_tva_pct=getattr(reglages, 'tva_standard', None))
     alertes.extend(resultat['alertes'])
     hypotheses.extend(resultat['hypotheses'])
     evaluation = resultat['evaluation']
@@ -1105,15 +1112,25 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         regime = _regime(evaluation['kwc'], evaluation['puissance_ac'], tension)
         alertes.extend(_alertes_reactif(res, tension, bilan, registres))
     elif resultat.get('prix_manquants'):
+        # ADEV79 (D-ACI-6=a) — les postes de taille ET les postes fixes sans
+        # prix : le refus les nomme tous, une seule fois.
+        a_renseigner = list(resultat['prix_manquants'])
+        a_renseigner += [p for p in resultat.get('postes_fixes_sans_prix') or []
+                         if p not in a_renseigner]
         composition = {'lignes': [], 'onduleurs': {'combinaison': [], 'ratio_dc_ac': {
             'valeur': None, 'bornes': None, 'source': None}, 'chaines': None},
-            'prix_a_renseigner': resultat['prix_manquants'], 'incomplet': True,
-            'options': []}
+            'prix_a_renseigner': a_renseigner, 'a_chiffrer_visite': [],
+            'incomplet': True, 'options': []}
     if composition is not None and composition.get('prix_a_renseigner'):
         alertes.append(_alerte(
             'prix_a_renseigner', 'composition.lignes',
             '%d articles C&I sans prix de vente : devis incomplet.'
             % len(composition['prix_a_renseigner'])))
+    if composition is not None and composition.get('a_chiffrer_visite'):
+        alertes.append(_alerte(
+            'a_chiffrer_visite', 'composition.lignes',
+            'À chiffrer après la visite technique, hors total (estimation sous réserve '
+            'de visite) : %s.' % ', '.join(composition['a_chiffrer_visite'])))
 
     etude = {
         'entrees_resolues': res.entrees_resolues(),
@@ -1192,6 +1209,9 @@ MESSAGES_ARRET = {
     'puissance_souscrite': ('Puissance souscrite déclarée inférieure à la première '
                             'tranche de 5 kWc : aucune taille C&I.', 'compteur_puissance_kva'),
 }
+MESSAGE_PRIX_A_RENSEIGNER = (
+    'Prix à renseigner avant un devis automatique C&I : %s → Paramètres › Devis › '
+    'Prestations C&I ou fiche produit.')
 MESSAGE_MAD_SANS_CONTRAT = (
     "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
     '(BT patenté / force motrice) ou saisissez la conso en kWh.')
@@ -1243,9 +1263,11 @@ def refus_devis_auto_ci(etude):
         alerte = next((a for a in bloquants if a.get('code') == code), None)
         if alerte is not None:
             return alerte['message'], 'composition'
-    if taille.get('raison_arret') == 'prix_manquants':
-        manquants = (etude.get('composition') or {}).get('prix_a_renseigner') or []
-        return ('Prix à renseigner : %s.' % ', '.join(str(m) for m in manquants),
+    # ADEV79 (D-ACI-6=a) — un poste de taille OU un poste fixe sans prix fait
+    # refuser en nommant les postes et le chemin où les régler (jamais un 0).
+    manquants = (etude.get('composition') or {}).get('prix_a_renseigner') or []
+    if taille.get('raison_arret') == 'prix_manquants' or manquants:
+        return (MESSAGE_PRIX_A_RENSEIGNER % ', '.join(str(m) for m in manquants),
                 'composition')
     # ADEV78 — TOUTE alerte bloquante refuse, même quand une taille existe
     # (taille saisie aux onduleurs infaisables comprise).
@@ -1262,9 +1284,12 @@ def lignes_du_devis_ci(composition):
     """Les lignes du devis : les articles du catalogue que le moteur a
     composés, au prix de VENTE HT. Une ligne sans article (« prix à
     renseigner », « à confirmer à la visite ») reste dans l'étude, jamais une
-    ligne à 0."""
+    ligne à 0 ; une ligne « à chiffrer après visite » (ADEV79, D-ACI-2=a)
+    reste hors du devis, listée dans ``composition.a_chiffrer_visite``."""
     lignes = []
     for ligne in (composition or {}).get('lignes') or []:
+        if ligne.get('a_chiffrer_visite'):
+            continue
         produit = ligne.get('produit')
         quantite = _num(ligne.get('quantite'))
         prix = _num(ligne.get('prix_unitaire_ht'))

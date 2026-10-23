@@ -107,7 +107,7 @@ def _du_role(catalogue, role, filtre=None):
 
 
 def _ligne(role, article, designation, quantite, unite, *, motif=None,
-           a_confirmer=False):
+           a_confirmer=False, visite=False):
     prix_connu = bool(article and article.get('prix_connu'))
     if article is None and motif is None:
         motif = MOTIF_PRIX
@@ -124,6 +124,11 @@ def _ligne(role, article, designation, quantite, unite, *, motif=None,
         'motif': motif,
         'a_confirmer_visite': bool(a_confirmer),
     }
+    if visite:
+        # ADEV79 (D-ACI-2=a) — poste qui dépend de la VISITE (type de pose,
+        # longueurs, chaînes, section du bureau d'études) : « à chiffrer après
+        # visite », hors total du devis, jamais un « prix à renseigner ».
+        ligne['a_chiffrer_visite'] = True
     if article is not None and article.get('prix_vente_ht') is not None:
         ligne['prix_unitaire_ht'] = str(article['prix_vente_ht'])
     _appliquer_palier(ligne, article)
@@ -156,6 +161,9 @@ def _appliquer_palier(ligne, article):
             atteint = p
     ligne['prix_unitaire_ttc'] = str(
         (total / quantite).quantize(Decimal('0.01')))
+    # ADEV79 — la TVA de l'ARTICLE ramène ce TTC au HT (jamais un 20 % codé).
+    if article.get('tva_pct') is not None:
+        ligne['tva_pct'] = str(article['tva_pct'])
     ligne['palier'] = {'seuil_min': atteint.get('seuil_min'),
                        'seuil_max': atteint.get('seuil_max'),
                        'mention': 'prix palier dès %s unités' % (
@@ -163,6 +171,19 @@ def _appliquer_palier(ligne, article):
     ligne['prix_connu'] = True
     if ligne.get('motif') == MOTIF_PRIX:
         ligne['motif'] = None
+
+
+def postes_non_chiffres(lignes):
+    """ADEV79 — ``(prix à renseigner, à chiffrer après visite)`` : les
+    désignations des lignes sans prix (hors visite) et celles qui attendent
+    la visite (hors total, chiffrées ou non)."""
+    a_renseigner, visite = [], []
+    for ligne in lignes or []:
+        if ligne.get('a_chiffrer_visite'):
+            visite.append(ligne['designation'])
+        elif not ligne.get('prix_connu'):
+            a_renseigner.append(ligne['designation'])
+    return a_renseigner, visite
 
 
 def _par_id(catalogue):
@@ -194,7 +215,7 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
     if ib > calibre + 1e-9:
         lignes.append(_ligne('protection_ac', None,
                              'Protection AC sortie %s' % nom, 1, 'u',
-                             motif=MOTIF_BUREAU, a_confirmer=True))
+                             motif=MOTIF_BUREAU, a_confirmer=True, visite=True))
     else:
         lignes.append(_ligne(
             'protection_ac', disj,
@@ -203,7 +224,7 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
     if longueur is None or longueur <= 0:
         lignes.append(_ligne('cable_ac', None,
                              'Câble AC %s → TGBT' % nom, None, 'm',
-                             motif=MOTIF_LONGUEUR, a_confirmer=True))
+                             motif=MOTIF_LONGUEUR, a_confirmer=True, visite=True))
         return
     base = AMPACITE_U1000R2V_TRI if triphase else AMPACITE_U1000R2V_MONO
     bareme = bareme_pour(base, ib, calibre)
@@ -214,7 +235,7 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
     if proposee.thermique_hors_bareme or proposee.hors_bareme:
         lignes.append(_ligne('cable_ac', None,
                              'Câble AC %s → TGBT' % nom, longueur, 'm',
-                             motif=MOTIF_BUREAU, a_confirmer=True))
+                             motif=MOTIF_BUREAU, a_confirmer=True, visite=True))
         return
     section = float(proposee.section_mm2)
     cable = _du_role(catalogue, 'cable_ac', lambda f, _p: (
@@ -345,10 +366,10 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     if not chaines:
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
                              'm', motif='chaînes à vérifier : quantité non '
-                             'calculée', a_confirmer=True))
+                             'calculée', a_confirmer=True, visite=True))
     elif longueur_dc is None or longueur_dc <= 0:
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
-                             'm', motif=MOTIF_LONGUEUR, a_confirmer=True))
+                             'm', motif=MOTIF_LONGUEUR, a_confirmer=True, visite=True))
     else:
         nb_chaines = sum(int(c.get('nb_chaines') or 0) for c in chaines)
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC',
@@ -379,7 +400,7 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
         lignes.append(_ligne('structure_ci', None, 'Structure C&I',
                              nb_panneaux, 'module',
                              motif='type de pose non déclaré : structure à '
-                             'confirmer à la visite', a_confirmer=True))
+                             'confirmer à la visite', a_confirmer=True, visite=True))
 
     # ── Comptage / limitation, logger, coffret AC
     _comptage(catalogue, nb_ond, entrees, lignes, alertes)
@@ -415,8 +436,7 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
                         'prix_connu': bool(batterie.get('prix_connu')),
                         'valeur': 'valeur non chiffrée'})
 
-    prix_a_renseigner = [ligne['designation'] for ligne in lignes
-                         if not ligne['prix_connu']]
+    prix_a_renseigner, a_chiffrer_visite = postes_non_chiffres(lignes)
     return {
         'lignes': lignes,
         'onduleurs': {
@@ -425,7 +445,8 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
             'chaines': chaines,
         },
         'prix_a_renseigner': prix_a_renseigner,
-        'incomplet': bool(prix_a_renseigner),
+        'a_chiffrer_visite': a_chiffrer_visite,
+        'incomplet': bool(prix_a_renseigner or a_chiffrer_visite),
         'options': options,
         'alertes': alertes,
         'hypotheses': hypotheses,
