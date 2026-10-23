@@ -22,6 +22,8 @@ constantes.
 """
 from __future__ import annotations
 
+from core.pompage import hypotheses as hypotheses_noyau
+
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
@@ -1087,20 +1089,50 @@ def _debit_et_mois_annexe(d, synthese, lg):
     return "".join(blocs)
 
 
+def _texte_hyp(h, champ, lg, repli):
+    """AGQ12 (C-AGQ-011) — texte CLIENT ``champ`` (``libelle`` ou
+    ``source_client``) en langue ``lg`` : servi par le payload, sinon lu dans
+    la table du noyau par sa clé (devis d'hier sans ces champs), sinon
+    ``repli``. Jamais ``source`` (trace interne : chemins, décisions)."""
+    textes = h.get(champ)
+    if not isinstance(textes, dict):
+        try:
+            textes = getattr(hypotheses_noyau.hypothese(h.get("cle")), champ)
+        except KeyError:
+            textes = {}
+    return textes.get(lg) or textes.get("fr") or repli
+
+
+def _valeur_hyp(valeur):
+    """AGQ12 — une plage s'imprime « 1,2 – 1,5 », une liste « 0,75, 1,1, … »."""
+    if isinstance(valeur, dict) and "min" in valeur:
+        return f'{_n(valeur.get("min"), 3)} – {_n(valeur.get("max"), 3)}'
+    if isinstance(valeur, (list, tuple)):
+        return ", ".join(str(_n(v, 3)) for v in valeur)
+    if _num(valeur) is not None:
+        return _n(valeur, 3)
+    return theme._esc(valeur if valeur is not None else "")
+
+
 def _hypotheses_annexe(d, lg):
     hyps = [h for h in ((d.get("etude") or {}).get("hypotheses_pompage")
                         or []) if isinstance(h, dict) and h.get("cle")]
     if not hyps:
         return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
-    lignes = []
+    lignes = [f'<tr><th>{_t(lg, "agr_annexe_hyp_libelle")}</th>'
+              f'<th class="r">{_t(lg, "agr_annexe_hyp_valeur")}</th>'
+              f'<th>{_t(lg, "agr_annexe_hyp_source")}</th></tr>']
     for h in hyps:
-        source = (_t(lg, "agr_annexe_est") if h.get("statut") == "estimation"
-                  or not h.get("source") else theme._esc(h.get("source")))
-        valeur = h.get("valeur")
-        valeur = _n(valeur, 3) if _num(valeur) is not None \
-            else theme._esc(valeur if valeur is not None else "")
-        lignes.append(f'<tr><td>{theme._esc(h.get("cle"))}</td>'
-                      f'<td class="r">{valeur}</td><td>{source}</td></tr>')
+        # AGQ12 — libellé et source lisibles par le client ; une estimation
+        # reste marquée « EST. » ; jamais la clé brute ni la trace interne.
+        libelle = theme._esc(_texte_hyp(
+            h, "libelle", lg, str(h["cle"]).replace("_", " ")))
+        source = theme._esc(_texte_hyp(h, "source_client", lg, ""))
+        if h.get("statut") in ("estimation", "EST.") or not source:
+            source = _t(lg, "agr_annexe_est") + (f" — {source}" if source else "")
+        lignes.append(f'<tr><td>{libelle}</td>'
+                      f'<td class="r">{_valeur_hyp(h.get("valeur"))}</td>'
+                      f'<td>{source}</td></tr>')
     return f'<table class="ag-tbl">{"".join(lignes)}</table>'
 
 

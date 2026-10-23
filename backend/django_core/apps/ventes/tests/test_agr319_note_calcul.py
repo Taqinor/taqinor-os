@@ -75,7 +75,9 @@ class Agr319NoteCalculTests(SimpleTestCase):
                         'Pertes linéaires', 'Pression de service',
                         'Débit de conception : 30,7 m³/h (mois critique : '
                         'décembre)',
-                        'energie_hydraulique_wh_par_m3_m', 'EST.',
+                        # AGQ12 — libellé client, jamais la clé brute.
+                        'Énergie hydraulique par m³ et par mètre de hauteur',
+                        'EST.',
                         'Fiche de VARIATEUR VEICHI SI23 7.5KW 380V'):
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, annexe)
@@ -83,6 +85,40 @@ class Agr319NoteCalculTests(SimpleTestCase):
         self.assertNotIn('Aucune référence', annexe)
         self.assertNotIn('Références de la société', annexe)
         self.assertNotIn('None', annexe)
+
+    def test_annexe_sans_cle_brute_ni_chemin_de_depot(self):
+        """AGQ12 (C-AGQ-011) — l'annexe imprime, pour chaque hypothèse de la
+        table du noyau, son libellé, sa valeur (plage « min – max ») et sa
+        source PUBLIQUE : aucune clé brute, aucun chemin du dépôt, aucune
+        décision interne, aucun id de tâche. Mutant : imprimer ``source`` au
+        lieu de ``source_client`` ⇒ « docs/ » revient ⇒ rouge."""
+        from core.pompage import hypotheses as H
+        d = _data()
+        d['etude']['hypotheses_pompage'] = H.utilisees([
+            'energie_hydraulique_wh_par_m3_m', 'ratio_champ_pompe_bande_alerte',
+            'tolerance_conception_pct', 'pertes_pvgis_comprises_pct',
+            'rendement_groupe'])
+        annexe = _annexe(_html(d))
+        bloc = annexe.split('Hypothèses de calcul et leurs sources')[1].split(
+            '<div class="ag-sec">')[0]
+        for attendu in ('<th>Hypothèse</th>', 'Rapport puissance du champ solaire',
+                        '1,2 – 1,5', '-5 – 20',
+                        'Règle de dimensionnement de la société',
+                        'EST. — Estimation prudente'):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, bloc)
+        for interdit in ('docs/', 'backend/', 'décision', 'JAMAIS',
+                         'ratio_champ_pompe_bande_alerte', 'energie_hydraulique'):
+            with self.subTest(interdit=interdit):
+                self.assertNotIn(interdit, bloc)
+        self.assertIsNone(re.search(r'[A-Z]{3,}\d+', bloc), bloc)
+        # Devis d'hier : entrée sans ``libelle`` → lue dans la table par sa clé.
+        d['etude']['hypotheses_pompage'] = [
+            {'cle': 'cv_vers_kw', 'valeur': 0.7355, 'statut': 'physique',
+             'source': 'interne'}]
+        bloc = _annexe(_html(d)).split('Hypothèses de calcul')[1]
+        self.assertIn('Conversion cheval-vapeur', bloc)
+        self.assertNotIn('interne', bloc)
 
     def test_references_agricoles_servies(self):
         html = _html(_data(references=[

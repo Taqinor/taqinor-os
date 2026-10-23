@@ -31,6 +31,22 @@ class ChaqueEntreeEstSourcee(unittest.TestCase):
             self.assertIn(entree.usage, H.USAGES, entree.cle)
             self.assertTrue(entree.source and entree.source.strip(), entree.cle)
 
+    def test_libelle_et_source_client_lisibles_par_le_client(self):
+        """AGQ12 (C-AGQ-011) — chaque entrée porte ``libelle`` et
+        ``source_client`` en fr/en/ar, textes PUBLICS : jamais un chemin du
+        dépôt, une décision interne ni un id de tâche (``AGR606``…)."""
+        interdit = re.compile(r"docs/|backend/|décision|[A-Z]{3,}\d+")
+        for entree in H.TABLE:
+            for champ in ("libelle", "source_client"):
+                textes = getattr(entree, champ)
+                self.assertEqual(set(textes), {"fr", "en", "ar"}, entree.cle)
+                for langue, texte in textes.items():
+                    self.assertTrue(texte and texte.strip(), (entree.cle, champ, langue))
+                    self.assertIsNone(interdit.search(texte), (entree.cle, champ, texte))
+            exporte = entree.en_dict()
+            self.assertEqual(exporte["libelle"], entree.libelle)
+            self.assertEqual(exporte["source_client"], entree.source_client)
+
     def test_les_estimations_sont_marquees_est(self):
         rendement = H.hypothese("rendement_groupe")
         self.assertEqual(rendement.statut, "EST.")

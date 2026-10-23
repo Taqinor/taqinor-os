@@ -224,9 +224,11 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
           <summary>Hypothèses ({d.hypotheses.length})</summary>
           <ul className="mt-1 grid gap-0.5">
             {d.hypotheses.map((h) => (
+              // AGQ12 — libellé et source lisibles par le client (jamais la clé
+              // brute ni la trace interne) ; une plage s'écrit « min – max ».
               <li key={h.cle}>
-                {h.cle} = {String(h.valeur)} —{' '}
-                {h.statut === 'estimation' ? 'EST.' : (h.source || 'EST.')}
+                {h.libelle?.fr || h.cle} = {valeurHypothese(h.valeur)} —{' '}
+                {h.statut === 'estimation' || h.statut === 'EST.' ? 'EST.' : (h.source_client?.fr || 'EST.')}
               </li>
             ))}
           </ul>
@@ -390,6 +392,12 @@ function AttestationUsageAgricole({ attestation, majAttestation }) {
     </div>
   )
 }
+
+// AGQ12 — valeur d'une hypothèse : plage « 1,2 – 1,5 », liste « 0,75, 1,1, … ».
+const valeurHypothese = (v) => (
+  v && typeof v === 'object' && !Array.isArray(v) && 'min' in v ? `${v.min} – ${v.max}`
+    : Array.isArray(v) ? v.join(', ') : String(v)
+)
 
 export default function PanneauAgricole({
   marche,

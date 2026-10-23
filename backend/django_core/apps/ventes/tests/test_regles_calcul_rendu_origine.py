@@ -153,6 +153,8 @@ _CLES_AGQ = frozenset((
     # AGQ3 (D-AGQ-2) — mois de conception, plus bas, mois sous tolérance.
     'agr_heures_equivalentes_mois', 'agr_hero_mois_conception',
     'agr_au_plus_bas', 'agr_mois_sous_tolerance', 'agr_mois_couverture',
+    # AGQ12 — en-tête de la table des hypothèses de l'annexe.
+    'agr_annexe_hyp_libelle', 'agr_annexe_hyp_valeur', 'agr_annexe_hyp_source',
     'agr_acompte_apres_fda', 'agr_au_dela_de_n_ans',
     'agr_controle_forage_depasse', 'agr_controle_forage_ok',
     'agr_cout_eau_solaire', 'agr_declares_par_vous_le',

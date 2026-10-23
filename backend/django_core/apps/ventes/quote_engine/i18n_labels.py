@@ -687,6 +687,10 @@ LIBELLES = {
                               'en': 'Calculation assumptions and their sources',
                               'ar': 'فرضيات الحساب ومصادرها'},
     'agr_annexe_est': {'fr': 'EST.', 'en': 'EST.', 'ar': 'تقدير'},
+    # AGQ12 — en-tête de la table des hypothèses de l'annexe (libellé client).
+    'agr_annexe_hyp_libelle': {'fr': 'Hypothèse', 'en': 'Assumption', 'ar': 'الفرضية'},
+    'agr_annexe_hyp_valeur': {'fr': 'Valeur', 'en': 'Value', 'ar': 'القيمة'},
+    'agr_annexe_hyp_source': {'fr': 'Source', 'en': 'Source', 'ar': 'المصدر'},
     'agr_annexe_fiches': {'fr': 'Fiches produits', 'en': 'Product sheets',
                           'ar': 'بطاقات المنتجات'},
     'agr_annexe_references': {'fr': 'Références de la société',
