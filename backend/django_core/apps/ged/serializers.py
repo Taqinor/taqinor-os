@@ -1002,7 +1002,8 @@ class ChampSignatureSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         demande = attrs.get('demande', getattr(self.instance, 'demande', None))
         modele = attrs.get('modele', getattr(self.instance, 'modele', None))
         if bool(demande) == bool(modele):
-            raise serializers.ValidationError(
+            _refus_cible(
+                self, ('demande', 'modele'),
                 "Un champ cible exactement une demande OU un modèle de document.")
         request = self.context.get('request')
         if request is not None:
@@ -1507,6 +1508,21 @@ class RegleApprobationGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalM
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
 
+def _refus_cible(serializer, noms, message):
+    """ENF11 — refus de la règle « exactement une cible » / « au moins un
+    principal ». Le CORPS d'un PATCH qui ne nomme qu'UN des champs liés ne dit
+    pas à lui seul si la règle tient : c'est la ligne en base qui tranche → 409
+    d'ÉTAT. Dans tous les autres cas la règle se lit dans le corps (publiée au
+    schéma) → 400."""
+    donnees = getattr(serializer, 'initial_data', None) or {}
+    nommes = [n for n in noms if n in donnees]
+    if (serializer.instance is not None and serializer.partial
+            and 0 < len(nommes) < len(noms)):
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat({'non_field_errors': [message]})
+    raise serializers.ValidationError(message)
+
+
 class AclGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                        SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """WIR163 — Droit d'accès GED19 par dossier/document (héritage + override).
@@ -1551,7 +1567,8 @@ class AclGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         document = attrs.get(
             'document', getattr(self.instance, 'document', None))
         if bool(folder) == bool(document):
-            raise serializers.ValidationError(
+            _refus_cible(
+                self, ('folder', 'document'),
                 "Une entrée ACL cible exactement un dossier OU un document.")
         utilisateur = attrs.get(
             'utilisateur', getattr(self.instance, 'utilisateur', None))
@@ -1561,7 +1578,8 @@ class AclGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         # base ``ged_acl_principal_required_v2``).
         client = attrs.get('client', getattr(self.instance, 'client', None))
         if not utilisateur and not role and not client:
-            raise serializers.ValidationError(
+            _refus_cible(
+                self, ('utilisateur', 'role', 'client'),
                 "Une entrée ACL désigne au moins un utilisateur, un rôle ou "
                 "un client (portail).")
         request = self.context.get('request')

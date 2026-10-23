@@ -3501,7 +3501,9 @@ class SignataireDemandeViewSet(CorpsObjetMixin, TenantMixin, mixins.ListModelMix
 @extend_schema_view(list=extend_schema(parameters=[
     oa.P('demande', oa.ID, description='Demande de signature.'),
     oa.P('modele', oa.ID, description='Modèle de document.')]),
-    create=extend_schema(extensions=oa.CHAMP_CIBLE_UNIQUE))
+    create=extend_schema(extensions=oa.CHAMP_CIBLE_UNIQUE),
+    update=extend_schema(extensions=oa.CHAMP_CIBLE_UNIQUE),
+    partial_update=extend_schema(extensions=oa.CHAMP_CIBLE_UNIQUE_PARTIELLE))
 class ChampSignatureViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
     """XGED3 — Zones de champs positionnées (placement de modèle de signature).
 
@@ -4145,7 +4147,10 @@ class RegleApprobationGedViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelVie
 
 
 @extend_schema_view(list=extend_schema(parameters=oa.Q_ACLS),
-                    create=extend_schema(extensions=oa.ACL_CIBLE_UNIQUE))
+                    create=extend_schema(extensions=oa.ACL_CIBLE_UNIQUE),
+                    update=extend_schema(extensions=oa.ACL_CIBLE_UNIQUE),
+                    partial_update=extend_schema(
+                        extensions=oa.ACL_CIBLE_UNIQUE_PARTIELLE))
 class AclGedViewSet(CorpsObjetMixin, CompanyScopedModelViewSet):
     """WIR163 — API de gestion des droits d'accès GED19 (`AclGed`).
 

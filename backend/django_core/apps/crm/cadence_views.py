@@ -27,7 +27,7 @@ from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, corps_objet, entier_param
-from .cadence_reponses import REPONSES_TOUCHE, TYPES_PIECE_RECUE
+from .cadence_reponses import CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ChoixDocumente
@@ -1078,7 +1078,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                             status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(etape).data)
 
-    @extend_schema(parameters=[sd.P_CLE, sd.P_LANGUE], responses=sd.OBJ)
+    @extend_schema(parameters=sd.parametres_message(CLES_MESSAGE_REPONSE, Lead.LanguePreferee.values), responses=sd.OBJ)
     @action(detail=True, methods=['get'])
     def message(self, request, pk=None):
         """MRY13 — Le message de CETTE touche, rendu côté serveur.
