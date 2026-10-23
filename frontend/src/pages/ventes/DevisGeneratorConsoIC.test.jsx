@@ -111,6 +111,10 @@ describe('CIQ125 — profil déclaré C&I et résultat serveur en direct', () =>
     r.data.entrees_resolues = { kwh_mensuel_declare: { valeur: 6000, provenance: { origine: 'lead', detail: 'client' } } }
     ventesApi.etudeCiPreview.mockResolvedValue(r)
     rendre()
+    // L'aperçu serveur doit être LU avant d'enregistrer (c'est lui qui porte
+    // la consommation résolue) : la taille retenue affichée en est la preuve.
+    const retenue = exempleContrat('ventes', 'etude_ci_preview').taille.retenue_kwc
+    expect(await screen.findByTestId('ci-taille-retenue')).toHaveTextContent(String(retenue))
     fireEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
     await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalled())
     expect(screen.queryByTestId('erreur-conso')).toBeNull()
