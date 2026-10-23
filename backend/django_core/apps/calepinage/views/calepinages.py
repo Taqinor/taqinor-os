@@ -294,8 +294,8 @@ class _OrdreStatutDerive(filters.OrderingFilter):
 @extend_schema_view(
     # ENF11 (nocturne 15/10) — ACAL179 refuse toute clé ni inscriptible ni
     # ignorée d'un PATCH : le corps publié le dit (additionalProperties false).
-    partial_update=extend_schema(responses={
-        200: CalepinageLectureSerializer, 404: OpenApiTypes.OBJECT},
+    partial_update=extend_schema(
+        responses=CalepinageLectureSerializer,
         extensions={EXTENSION_CORPS_RESSERRE: {
             'properties': {cle: {} for cle in CalepinageSerializer.cles_patch()},
             'additionalProperties': False}}),
@@ -465,7 +465,6 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
 
     @extend_schema(request=_CORPS_CREATION,
                    responses={201: CalepinageLectureSerializer,
-                              404: OpenApiTypes.OBJECT,
                               409: inline_serializer(
                                   'CalepinageCreationConflit', {
                                       'lead': drf_serializers.CharField(
@@ -876,8 +875,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     @extend_schema(parameters=[_param_chemin(
         'variante_id', "L'identifiant de la variante de ce calepinage.")],
         request=CalepinageVarianteSerializer,
-        responses={200: CalepinageVarianteSerializer, 204: None,
-                   409: OpenApiTypes.OBJECT})
+        responses={200: CalepinageVarianteSerializer, 204: None})
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)',
             permission_classes=[PeutLireOuEcrireCalepinage])

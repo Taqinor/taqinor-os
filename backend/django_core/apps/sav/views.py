@@ -1056,14 +1056,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # client est optionnel au niveau sérialiseur (peut venir de l'équipement) ;
         # s'il n'a pas pu être résolu, on rétablit l'exigence ici.
         if not serializer.validated_data.get('client'):
-            if serializer.validated_data.get('equipement') is not None:
-                # ENF11 — corps conforme au schéma publié (client OU
-                # équipement) : c'est l'ÉTAT de l'équipement (ni chantier ni
-                # client de vente) qui empêche de déduire le client → 409.
-                raise ConflitEtat(
-                    "Le client ne peut pas être déduit de cet équipement "
-                    "(aucun chantier ni client de vente) : précisez le client.")
-            raise ValidationError({'client': 'Ce champ est obligatoire.'})
+            # ENF11 — corps conforme au schéma publié (client OU équipement) :
+            # l'ÉTAT d'un équipement sans chantier ni client de vente empêche
+            # la déduction → 409 ; ni l'un ni l'autre → 400.
+            raise (ConflitEtat(
+                "Le client ne peut pas être déduit de cet équipement "
+                "(aucun chantier ni client de vente) : précisez le client.")
+                if serializer.validated_data.get('equipement') is not None
+                else ValidationError({'client': 'Ce champ est obligatoire.'}))
         date_ouverture = (
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())

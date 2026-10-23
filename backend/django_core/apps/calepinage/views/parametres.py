@@ -24,7 +24,6 @@ ligne en base est un GET qui ment).
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     extend_schema, extend_schema_field, inline_serializer,
 )
@@ -300,8 +299,7 @@ class ParametresCalepinageView(APIView):
                        'properties': {s: {} for s in ParametresCalepinage.SECTIONS},
                        'additionalProperties': False}},
                    responses={200: _forme_reglages(
-                       'CalepinageParametresEcrite'),
-                       409: OpenApiTypes.OBJECT})
+                       'CalepinageParametresEcrite')})
     def put(self, request, *args, **kwargs):
         if request.META.get('CONTENT_LENGTH') in (None, '', '0'):
             # Corps absent : le schéma le déclare obligatoire.
