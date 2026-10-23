@@ -117,7 +117,7 @@ class Agr304DevisCompletTests(SimpleTestCase):
         for cle in ('version', 'mode_pompe', 'eau', 'provenance',
                     'a_confirmer_par_visite', 'pompe', 'champ',
                     'besoin_vs_livre', 'point_fonctionnement', 'schema',
-                    'options_kit', 'non_inclus', 'omissions'):
+                    'options_kit', 'non_inclus', 'notes', 'omissions'):
             with self.subTest(cle=cle):
                 self.assertIn(cle, s)
                 self.assertIn(cle, contrat)
@@ -474,6 +474,58 @@ class SyntheseAgricoleTests(SimpleTestCase):
             '<div class="page">')[1]
         self.assertIn('en décembre, mois de conception', p1)
         self.assertNotIn('au plus bas', p1)
+
+    def test_notes_client_depuis_les_alertes_du_noyau(self):
+        """AGQ38 (C-AGQ-032) — les alertes du noyau de la LISTE BLANCHE
+        deviennent des notes client (fr/en/ar) : ratio champ/pompe hors
+        bande (valeur servie + bande de la table), variateur supérieur retenu
+        (ligne du devis, nombre de modèles écartés) ; une alerte interne
+        n'est jamais servie ; page 2 les imprime ; sans alerte : rien.
+        Mutant : servir une alerte hors liste blanche ⇒ rouge."""
+        from apps.ventes.quote_engine.agricole import pages, renderer
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete,
+        )
+        alertes = [
+            {'code': 'ratio_champ_pompe', 'champ': 'champ.kwc',
+             'message': 'Ratio champ/pompe 1,51× hors de la bande 1,2-1,5×.'},
+            {'code': 'variateur_suivant', 'champ': 'variateur',
+             'message': 'Variateur VEICHI SI23 7.5KW écarté pour ce champ.'},
+            {'code': 'variateur_suivant', 'champ': 'variateur',
+             'message': 'Variateur VEICHI SI23 11KW écarté pour ce champ.'},
+            {'code': 'kw_plaque_a_relever', 'champ': 'plaque',
+             'message': 'ALERTE INTERNE : plaque à relever.'},
+        ]
+        data = _data_complete()
+        data['etude']['alertes_pompage'] = copy.deepcopy(alertes)
+        data['etude']['champ']['ratio'] = 1.51
+        s = synthese_agricole(data)
+        self.assertEqual([n['code'] for n in s['notes']],
+                         ['ratio_champ_pompe', 'variateur_suivant'])
+        fr = [n['textes']['fr'] for n in s['notes']]
+        self.assertIn('Champ 1,51× la pompe', fr[0])
+        self.assertIn('bande usuelle 1,2 – 1,5×', fr[0])
+        self.assertIn('Pourquoi ce variateur : VARIATEUR VEICHI SI23 7.5KW '
+                      '380V — 2 modèle(s)', fr[1])
+        for note in s['notes']:
+            self.assertEqual(set(note['textes']), {'fr', 'en', 'ar'})
+            for texte in note['textes'].values():
+                self.assertNotIn('INTERNE', texte)
+        d = data_complete()
+        d['etude']['alertes_pompage'] = copy.deepcopy(alertes)
+        d['etude'].setdefault('champ', {})['ratio'] = 1.51
+        p2 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[2]
+        for attendu in ('Notes de dimensionnement', 'Champ 1,51× la pompe',
+                        'Pourquoi ce variateur'):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, p2)
+        self.assertNotIn('plaque à relever', p2)
+        # Sans alerte : aucune note, aucun titre.
+        self.assertEqual(synthese_agricole(_data_complete())['notes'], [])
+        p2 = pages.build_html(renderer._augment(data_complete())).split(
+            '<div class="page">')[2]
+        self.assertNotIn('Notes de dimensionnement', p2)
 
     def test_option_deja_ligne_du_devis_non_reproposee(self):
         data = _data_complete()

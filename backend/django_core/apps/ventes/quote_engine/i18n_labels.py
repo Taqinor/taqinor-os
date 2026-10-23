@@ -260,6 +260,62 @@ LIBELLES = {
     'agr_mois_couverture': {'fr': '{mois} : {pct} % de votre besoin',
                             'en': '{mois}: {pct} % of your need',
                             'ar': '{mois}: {pct} % من حاجتكم'},
+    # AGQ38 — notes client issues des alertes du noyau (liste blanche,
+    # agricole/synthese.py::CODES_NOTES_CLIENT) ; valeurs lues, jamais calculées.
+    'agr_notes_titre': {'fr': 'Notes de dimensionnement', 'en': 'Sizing notes',
+                        'ar': 'ملاحظات التحجيم'},
+    'agr_note_ratio_champ_pompe': {
+        'fr': 'Champ {ratio}× la pompe : hors de la bande usuelle {min} – {max}× '
+              '— le champ couvre le besoin du mois le plus défavorable, par '
+              'chaînes entières acceptées par le variateur.',
+        'en': 'Array {ratio}× the pump: outside the usual {min} – {max}× band '
+              '— the array covers the need of the worst month, in whole strings '
+              'accepted by the drive.',
+        'ar': 'الحقل {ratio}× المضخة: خارج المجال المعتاد {min} – {max}× — الحقل '
+              'يغطي حاجة أصعب شهر، بسلاسل كاملة يقبلها المغير.'},
+    'agr_note_variateur_suivant': {
+        'fr': 'Pourquoi ce variateur : {nom} — {n} modèle(s) de puissance '
+              "inférieure n'acceptent pas le courant de ce champ (plage MPPT) ; "
+              'le modèle supérieur est retenu.',
+        'en': 'Why this drive: {nom} — {n} lower-rated model(s) cannot accept '
+              "this array's current (MPPT range); the next model up is selected.",
+        'ar': 'لماذا هذا المغير: {nom} — {n} نموذج (نماذج) بقدرة أدنى لا تقبل '
+              'تيار هذا الحقل (مجال MPPT)؛ تم اختيار النموذج الأعلى.'},
+    'agr_note_site_inconnu': {
+        'fr': 'Site non renseigné (ville ou GPS) : production calculée à plat '
+              "(débit × heures de pompage), sans variation d'un mois à l'autre.",
+        'en': 'Site not provided (town or GPS): yield computed flat (flow × '
+              'pumping hours), with no month-to-month variation.',
+        'ar': 'الموقع غير محدد (مدينة أو GPS): الإنتاج محسوب بشكل ثابت (الصبيب × '
+              'ساعات الضخ)، دون تغير من شهر إلى آخر.'},
+    'agr_note_irradiation_repli': {
+        'fr': 'Ensoleillement du site indisponible : production calculée à plat '
+              "(débit × heures de pompage), sans variation d'un mois à l'autre.",
+        'en': 'Site irradiation unavailable: yield computed flat (flow × pumping '
+              'hours), with no month-to-month variation.',
+        'ar': 'إشعاع الموقع غير متاح: الإنتاج محسوب بشكل ثابت (الصبيب × ساعات '
+              'الضخ)، دون تغير من شهر إلى آخر.'},
+    'agr_note_rendement_pompe': {
+        'fr': 'Rendement de la pompe non publié par le fabricant : la puissance '
+              'est calculée sur un rendement de groupe prudent (estimation).',
+        'en': 'Pump efficiency not published by the manufacturer: power computed '
+              'on a conservative unit efficiency (estimate).',
+        'ar': 'مردود المضخة غير منشور من الصانع: القدرة محسوبة على مردود مجموعة '
+              'حذر (تقدير).'},
+    'agr_note_rendement_variateur': {
+        'fr': 'Rendement du variateur non publié sur sa fiche : aucune perte du '
+              "variateur n'est comptée (production en borne haute).",
+        'en': 'Drive efficiency not published on its datasheet: no drive loss is '
+              'counted (upper-bound yield).',
+        'ar': 'مردود المغير غير منشور في بطاقته: لم تُحتسب أي خسارة للمغير (إنتاج '
+              'بالحد الأعلى).'},
+    'agr_note_plafond_forage': {
+        'fr': 'Débit limité par le forage : {plafond} m³/h au plus ; le besoin '
+              "du mois le plus défavorable n'est pas entièrement couvert.",
+        'en': 'Flow limited by the borehole: {plafond} m³/h at most; the need of '
+              'the worst month is not fully covered.',
+        'ar': 'الصبيب محدود بالبئر: {plafond} م³/س على الأكثر؛ حاجة أصعب شهر غير '
+              'مغطاة بالكامل.'},
     # AGQ30 — étapes suivantes (textes des étapes : agricole/mentions.py).
     'agr_etapes_suivantes': {'fr': 'Étapes suivantes', 'en': 'Next steps',
                              'ar': 'الخطوات التالية'},

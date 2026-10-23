@@ -573,6 +573,23 @@ def _sous_tolerance(bvl, lg):
     return f' {_t(lg, "agr_mois_sous_tolerance", liste=liste)}' if liste else ""
 
 
+def _dict_textes(note):
+    textes = note.get("textes") if isinstance(note, dict) else None
+    return textes if isinstance(textes, dict) else {}
+
+
+def _notes_html(synthese, lg):
+    """AGQ38 — les notes client du noyau (``synthese.notes``), au plus
+    quatre, dans la langue du document ; "" sans note (ni titre)."""
+    textes = [(_dict_textes(n).get(lg) or _dict_textes(n).get("fr"))
+              for n in (synthese.get("notes") or [])[:4]]
+    lignes = "".join(f'<div class="ag-li">{t}</div>' for t in textes if t)
+    if not lignes:
+        return ""
+    return (f'<div class="ag-sec">{_t(lg, "agr_notes_titre")}</div>'
+            f'<div class="ag-box ag-small">{lignes}</div>{_qj(15)}')
+
+
 def page2(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
     lg = _langue(d)
@@ -659,7 +676,7 @@ def page2(ctx):
             f'{bloc_courbe}</div><div class="ag-col">'
             f'<div class="ag-sec">{_t(lg, "agr_besoin_livre_titre")}</div>'
             f'{bloc_besoin}</div></div>{_qj(30)}{plaque_html}{_qj(15)}'
-            f'{aide_html}</div>')
+            f'{_notes_html(synthese, lg)}{aide_html}</div>')
 
 
 # ── page 3 — équipement, prix, garanties ────────────────────────────────────

@@ -43,6 +43,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from core.pompage.hypotheses import valeur as hypothese_valeur
 from core.pompage.kit import MENTION_COMPTEUR
 
 from ..i18n_labels import est_rtl, libelle
@@ -325,6 +326,73 @@ def texte_heures_eau(eau, langue, fmt):
         texte += " · " + libelle("agr_au_plus_bas", langue).format(
             m3=fmt(bas), mois=libelle(f"agr_mois_{mois_bas}", langue))
     return texte
+
+
+# AGQ38 (C-AGQ-032) — liste BLANCHE des alertes du noyau dites au client :
+# code → clé i18n (le rendement non publié se dit selon la fiche en cause).
+# Toute alerte hors de cette liste reste INTERNE, jamais servie.
+CODES_NOTES_CLIENT = {
+    "ratio_champ_pompe": "agr_note_ratio_champ_pompe",
+    "variateur_suivant": "agr_note_variateur_suivant",
+    "site_inconnu": "agr_note_site_inconnu",
+    "pvgis_indisponible": "agr_note_irradiation_repli",
+    "plafond_forage": "agr_note_plafond_forage",
+}
+_NOTES_RENDEMENT = {"pompe.fiche": "agr_note_rendement_pompe",
+                    "variateur.fiche": "agr_note_rendement_variateur"}
+
+
+def _fr_nombre(v, dec=2):
+    """« 1,51 » — nombre à la française, sans zéro inutile (forme du noyau)."""
+    n = _num(v)
+    if n is None:
+        return "?"
+    return f"{n:.{dec}f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
+def _cle_note(alerte):
+    code = alerte.get("code")
+    if code == "rendement_non_publie":
+        return _NOTES_RENDEMENT.get(alerte.get("champ"))
+    return CODES_NOTES_CLIENT.get(code)
+
+
+def _valeurs_note(code, etude, items, alertes):
+    """Les valeurs du gabarit, LUES (champ servi, table du noyau, lignes)."""
+    if code == "ratio_champ_pompe":
+        bande = hypothese_valeur("ratio_champ_pompe_bande_alerte")
+        return {"ratio": _fr_nombre(_dict(etude.get("champ")).get("ratio")),
+                "min": _fr_nombre(bande.min), "max": _fr_nombre(bande.max)}
+    if code == "variateur_suivant":
+        lignes = [it for it in items
+                  if str(it.get("role_pompage") or "").startswith("variateur")]
+        nom = ((lignes[0].get("designation") if lignes else None)
+               or _dict(etude.get("variateur")).get("nom") or "")
+        return {"nom": nom,
+                "n": sum(1 for a in alertes if a.get("code") == code)}
+    if code == "plafond_forage":
+        return {"plafond": _fr_nombre(
+            _dict(etude.get("production")).get("plafond_forage_m3h"), 1)}
+    return {}
+
+
+def _bloc_notes(etude, items):
+    """AGQ38 — ``[{code, textes{fr,en,ar}}]`` : les alertes de la liste
+    blanche, dites au client en trois langues, une note par (code, fiche) ;
+    ``[]`` sans alerte. Aucun recalcul : valeurs lues telles que servies."""
+    alertes = [a for a in (etude.get("alertes_pompage") or [])
+               if isinstance(a, dict)]
+    vues, notes = set(), []
+    for alerte in alertes:
+        cle = _cle_note(alerte)
+        if cle is None or cle in vues:
+            continue
+        vues.add(cle)
+        valeurs = _valeurs_note(alerte.get("code"), etude, items, alertes)
+        notes.append({"code": alerte.get("code"), "textes": {
+            lg: libelle(cle, lg).format(**valeurs)
+            for lg in ("fr", "en", "ar")}})
+    return notes
 
 
 def _bloc_besoin_vs_livre(etude):
@@ -674,6 +742,8 @@ def synthese_agricole(data):
     synthese["formalites"] = formalites()
     # AGQ30 — les étapes suivantes, sans délai chiffré (D-AGR-10).
     synthese["etapes_suivantes"] = etapes_suivantes()
+    # AGQ38 — les alertes client du noyau, dites au client (page 2 + page web).
+    synthese["notes"] = _bloc_notes(etude, items)
 
     omissions.extend(dict(o) for o in OMISSIONS_DE_PRINCIPE)
     synthese["omissions"] = omissions
