@@ -1781,3 +1781,43 @@ class WebhookCorpsInvalideTests(TestCase):
     def test_rule_absente_400(self):
         res = self.api.post(WEBHOOKS_ENTRANTS_URL, {}, format='json')
         self.assertEqual(res.status_code, 400)
+
+
+class ConfigRegleNormaliseeTests(TestCase):
+    """ENF11 (nocturne 23/10, ``POST automation/rules/`` 500) — config en
+    objet, caractère nul et substituts isolés retirés avant le ``jsonb``."""
+
+    def setUp(self):
+        self.co = make_company('enf11-cfg', 'ENF11 cfg')
+        self.api = auth(make_user(self.co, 'enf11-cfg-admin'))
+
+    def _corps(self, **extra):
+        return {'nom': 'Cfg', 'trigger_type': TriggerType.LEAD_STAGE_CHANGE,
+                'action_type': ActionType.CREATE_ACTIVITY, **extra}
+
+    def test_nul_dans_les_cles_et_valeurs_est_retire(self):
+        res = self.api.post('/api/django/automation/rules/', self._corps(
+            trigger_config={}, action_config={
+                'a\x00b': {'': 1.7976931348623157e+308, 'k': ['x\x00']}}),
+            format='json')
+        self.assertEqual(res.status_code, 201, res.content)
+        regle = AutomationRule.objects.get(pk=res.data['id'])
+        self.assertEqual(regle.action_config, {
+            'ab': {'': 1.7976931348623157e+308, 'k': ['x']}})
+
+    def test_config_non_objet_400_nomme(self):
+        for champ in ('action_config', 'trigger_config'):
+            for valeur in ([1], 'texte', 5, None):
+                with self.subTest(champ=champ, valeur=valeur):
+                    res = self.api.post(
+                        '/api/django/automation/rules/',
+                        self._corps(**{champ: valeur}), format='json')
+                    self.assertEqual(res.status_code, 400, res.content)
+                    self.assertIn(champ, res.json())
+
+    def test_substituts_isoles_retires(self):
+        from apps.automation.serializers import ConfigRegleJSON
+        champ = ConfigRegleJSON()
+        self.assertEqual(
+            champ.to_internal_value({'a\ud800b': ['\udc00x', {'k\udfff': 1}]}),
+            {'ab': ['x', {'k': 1}]})

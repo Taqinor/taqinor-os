@@ -16,7 +16,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
-from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
+from core.champs_stricts import (
+    MOTIF_NON_BLANC_SANS_NUL, ChampsStrictsMixin, IdInconnu404Mixin,
+)
 from core.mixins import TenantMixin
 
 from core.mixins import SameCompanyFKSerializerMixin
@@ -99,7 +101,10 @@ USER_XOR_PALIER = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
         'menu_tier': {'type': 'string', 'maxLength': 0}}},
     {'required': ['menu_tier'], 'properties': {
         'user': {'enum': [None]},
-        'menu_tier': {'type': 'string', 'minLength': 1, 'pattern': r'\S'}}},
+        # « non blanc » au sens de ``str.strip`` (- compris) : le
+        # motif ``\S`` laissait passer une chaîne que DRF rogne en vide.
+        'menu_tier': {'type': 'string', 'minLength': 1, 'maxLength': 20,
+                      'pattern': MOTIF_NON_BLANC_SANS_NUL}}},
 ]}}
 
 

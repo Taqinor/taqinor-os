@@ -320,6 +320,23 @@ class DashboardConfigRegleUserOuPalierTests(TestCase):
             'requestBody']['content'].values()))['schema']
         self.assertNotIn('allOf', corps)
 
+    def test_palier_publie_non_blanc_au_sens_de_drf(self):
+        """ENF11 (nocturne 23/10) : le palier publié exclut ce que DRF rogne
+        en vide (-) — le serveur le refuse, le schéma aussi."""
+        import re
+
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+        corps = next(iter(self._operation('post')[
+            'requestBody']['content'].values()))['schema']
+        palier = corps['allOf'][1]['anyOf'][1]['properties']['menu_tier']
+        self.assertEqual(palier['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+        self.assertEqual(palier['maxLength'], 20)
+        self.assertIsNone(re.fullmatch(palier['pattern'], ''))
+        res = self.api.post(BASE_URL, {
+            'menu_tier': '', 'cards': ['kpis']}, format='json')
+        self.assertEqual(res.status_code, 400, res.data)
+        self.assertFalse(DashboardConfig.objects.exists())
+
     def test_utilisateur_inconnu_404(self):
         res = self.api.post(BASE_URL, {
             'user': 987654, 'menu_tier': '', 'cards': ['kpis'],

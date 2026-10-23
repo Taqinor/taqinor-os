@@ -167,3 +167,20 @@ class XSAV17ReleveCompteurTest(TestCase):
             self.assertIn(champ, resp.json())
         resp = api.post(url, [{'type': 'kwh'}], format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_api_releve_bornes_publiees_aux_limites(self):
+        """ENF11 (nocturne 23/10) : 0 et 9999999999.99 passent (bornes
+        publiées au motif de ``valeur``), 10**10 est refusé."""
+        equip = self._equip()
+        api = auth(self.admin)
+        url = f'/api/django/sav/equipements/{equip.id}/releves-compteur/'
+        resp = api.post(url, {'type': 'kwh', 'valeur': '0',
+                              'date': '2026-01-01'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        resp = api.post(url, {'type': 'kwh', 'valeur': '9999999999.99',
+                              'date': '2026-01-02'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        resp = api.post(url, {'type': 'kwh', 'valeur': '10000000000',
+                              'date': '2026-01-03'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('valeur', resp.json())
