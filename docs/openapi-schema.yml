@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3532}
+counts: {paths: 4814, operations: 7566, components: 3530}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9712,9 +9712,6 @@ components:
 - CauseDefaillance
 - CauseDefaillanceRequest
 - CertificatCarbone
-- CertificatCarboneEmissionRequest
-- CertificatCarboneParClientRequest
-- CertificatCarboneParSystemeRequest
 - CertificatDestruction
 - ChampSignature
 - ChampSignatureRequest
@@ -10539,6 +10536,7 @@ components:
 - ImpersonationSessionActive
 - ImportCommitRequeteRequest
 - ImportDryRunRequeteRequest
+- ImportLignesErreur
 - ImportLignesResultat
 - ImportMappingEnregistre
 - ImportMappingLigne
