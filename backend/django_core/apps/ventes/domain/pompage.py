@@ -387,16 +387,38 @@ def _dict_catalogue(produit, **extra):
     return d
 
 
+def _bareme_produit(produit):
+    """Barème ``prix_fixe_ht`` / ``prix_par_panneau_ht`` lu sur le produit
+    (jamais supposé)."""
+    return {'prix_fixe_ht': _num(getattr(produit, 'prix_fixe_ht', None)),
+            'prix_par_panneau_ht': _num(getattr(produit, 'prix_par_panneau_ht',
+                                                None))}
+
+
+def _premier_chiffrable(produits):
+    """AGQ5 — le premier produit PRICÉ ou à BARÈME saisi (plus petit id)."""
+    from core.pompage.kit import bareme_saisi
+
+    for produit in sorted(produits, key=lambda p: p.id):
+        if (produit.prix_vente and produit.prix_vente > 0) or bareme_saisi(
+                _bareme_produit(produit)):
+            return produit
+    return None
+
+
 def lire_catalogue(company):
-    """Le catalogue pompage (AGR103) + panneau, structure, installations et
-    transport du catalogue de la société. Lecture seule, bornée société."""
+    """Le catalogue pompage (AGR103) + panneau, structure, installations,
+    socle et transport du catalogue de la société. Lecture seule, bornée
+    société. AGQ5 — l'installation de repli et le socle sont trouvés par RÔLE
+    (``role_devis`` sinon ``classer_produit``), jamais par un SKU codé."""
     from apps.stock.selectors import produits_pompage
 
     from .catalogue import catalogue_de_la_societe, classer_produit
 
     pompage = [_json(p) for p in produits_pompage(company)]
+    ids_pompage = {e.get('id') for e in pompage if e.get('role_pompage')}
     par_id = {}
-    panneaux, transports, inst_cat = [], [], None
+    panneaux, transports, installations, socles = [], [], [], []
     for produit in catalogue_de_la_societe(company):
         par_id[produit.id] = produit
         role = getattr(produit, 'role_devis', None) or classer_produit(
@@ -405,8 +427,10 @@ def lire_catalogue(company):
             panneaux.append(produit)
         elif role == 'transport':
             transports.append(produit)
-        if (produit.sku or '').upper() == 'INST-CAT':
-            inst_cat = produit
+        elif role == 'installation' and produit.id not in ids_pompage:
+            installations.append(produit)
+        elif role == 'socle':
+            socles.append(produit)
 
     # Barème des prestations (INST-PMP) : lu sur le produit, jamais supposé.
     for element in pompage:
@@ -435,10 +459,13 @@ def lire_catalogue(company):
     pricees = [p for p in transports if p.prix_vente and p.prix_vente > 0]
     if pricees:
         transport = _dict_catalogue(pricees[0])
-    installation_toiture = (_dict_catalogue(inst_cat)
-                            if inst_cat is not None else None)
+    inst = _premier_chiffrable(installations)
+    installation_toiture = (_dict_catalogue(inst, **_bareme_produit(inst))
+                            if inst is not None else None)
+    socle = _premier_chiffrable(socles)
     return {'pompage': pompage, 'panneau': panneau, 'transport': transport,
-            'installation_toiture': installation_toiture}
+            'installation_toiture': installation_toiture,
+            'socle': (_dict_catalogue(socle) if socle is not None else None)}
 
 
 def _par_role(produits, role):
@@ -822,6 +849,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
         structure=_par_role(produits, 'structure_sol'),
         installation_pompage=_par_role(produits, 'installation_pompage'),
         installation_toiture=catalogue['installation_toiture'],
+        socle=catalogue.get('socle'),
         transport=catalogue['transport'], produits_options=produits,
         distance_champ_m=_num(res.valeur('distance_champ_m')),
         profondeur_calage_m=_num(res.valeur('source.profondeur_calage_m')),
