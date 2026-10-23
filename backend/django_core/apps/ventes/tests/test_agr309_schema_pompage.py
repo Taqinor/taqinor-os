@@ -43,7 +43,18 @@ class Agr309SchemaTests(SimpleTestCase):
         self.assertIn('Profondeur 90 m', textes)
         self.assertIn('Niveau 40 m', textes)
         self.assertIn('HMT 60 m', textes)
-        self.assertIn('Distance 25 m', textes)
+        # AGQ32 — la distance est libellée « champ → coffret ».
+        self.assertIn('Distance champ → coffret 25 m', textes)
+
+    def test_deux_lignes_eau_et_energie(self):
+        """AGQ32 — l'eau en haut, l'énergie (panneaux, variateur) dessous."""
+        racine = ET.fromstring(S.schema_svg(_synthese()))
+        lignes = [r.get('data-ligne') for r in racine.iter(f'{SVG_NS}rect')]
+        self.assertEqual(lignes.count('eau'), 3)
+        self.assertEqual(lignes.count('energie'), 2)
+        y = {r.get('data-ligne'): float(r.get('y'))
+             for r in racine.iter(f'{SVG_NS}rect')}
+        self.assertLess(y['eau'], y['energie'])
 
     def test_sans_profondeur_aucun_libelle_de_profondeur(self):
         svg = S.schema_svg(_synthese(schema={

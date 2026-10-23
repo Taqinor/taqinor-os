@@ -25,7 +25,7 @@ from __future__ import annotations
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import fmt_centimes, lignes_remisees
+from ..montants import fmt_centimes, lignes_remisees, pct_fr
 from ..textes import tronquer_au_mot
 from ..residential import theme
 from ..sequence import sequence_affichage
@@ -469,11 +469,27 @@ def _barres_besoin(bvl, lg):
              f'stroke="#1F2937" stroke-width="1.2"/>']
     for i, (b, q) in enumerate(valeurs):
         x = x0 + (11 - i if rtl else i) * pas + 4
+        if not b:
+            # AGQ32 — mois SANS besoin : bande grisée « eau disponible »
+            # (jamais lu comme une donnée manquante).
+            corps.append(f'<rect x="{x - 3:.1f}" y="{y1 - 14}" '
+                         f'width="{pas - 2:.1f}" height="{y0 - y1 + 14}" '
+                         f'fill="#F3F4F6" data-mois-sans-besoin="{i + 1}"/>')
         for j, (v, coul) in enumerate(((b, "#9CA3AF"), (q, "#2C5F8A"))):
             h = (v / haut) * (y0 - y1)
-            corps.append(f'<rect x="{x + j * (pas / 2 - 3):.1f}" '
+            xb = x + j * (pas / 2 - 3)
+            corps.append(f'<rect x="{xb:.1f}" '
                          f'y="{y0 - h:.1f}" width="{pas / 2 - 5:.1f}" '
                          f'height="{h:.1f}" fill="{coul}"/>')
+            if v:
+                # AGQ32 — la valeur sur la barre (chiffres seuls : sûrs en
+                # SVG dans toutes les langues).
+                corps.append(
+                    f'<text x="{xb + (pas / 2 - 5) / 2:.1f}" '
+                    f'y="{y0 - h - 3:.1f}" font-size="8" '
+                    f'text-anchor="middle" fill="{coul}" '
+                    f'font-family="DejaVu Sans, Arial, sans-serif">'
+                    f'{_n(v)}</text>')
         nom = _t(lg, f"agr_moisc_{i + 1}")
         if rtl:
             legendes.append(legende(x + pas / 2 - 4, y0 + 16, nom,
@@ -526,7 +542,11 @@ def page2(ctx):
                       phrase=_phrase.get(lg) or _phrase["fr"])
         else:
             _leg = _t(lg, "agr_legende_barres")
+        sans_besoin = any(not (m or {}).get("besoin_m3_jour")
+                          for m in bvl.get("mois") or [])
         legende = (f'<div class="ag-note">{_leg}'
+                   + (f' {_t(lg, "agr_mois_sans_besoin")}'
+                      if sans_besoin else "")
                    + (f' {_t(lg, "agr_mois_serre", mois=serre_txt)}'
                       if serre_txt else "") + '</div>')
         bloc_besoin = f'<div class="ag-svg">{barres}</div>{legende}'
@@ -654,13 +674,23 @@ def _totaux(d, lg):
         lignes.append(("remise", tot.get("remise"), "- "))
     if (_num(tot.get("arrondi")) or 0) > 0:
         lignes.append(("arrondi", tot.get("arrondi"), "- "))
-    lignes += [("total_ht", tot.get("ht_net"), ""),
-               ("tva", tot.get("tva"), "")]
+    lignes.append(("total_ht", tot.get("ht_net"), ""))
+    # AGQ32 — la TVA ventilée par taux du builder (``tva_par_taux``), comme
+    # le une-page ; un seul taux : la ligne unique d'hier.
+    paliers = [b for b in tot.get("tva_par_taux") or []
+               if isinstance(b, dict) and _num(b.get("taux")) is not None]
+    if len(paliers) <= 1:
+        lignes.append(("tva", tot.get("tva"), ""))
     corps = ""
     for cle, val, signe in lignes:
         f = fmt_centimes(_num(val) or 0)
         corps += (f'<tr><td>{_t(lg, cle)}{ancre(cle, f)}</td>'
                   f'<td class="r">{signe}{f} MAD</td></tr>')
+    for b in paliers if len(paliers) > 1 else []:
+        f = fmt_centimes(_num(b.get("montant")) or 0)
+        corps += (f'<tr><td>{_t(lg, "lg_tva_pct", r=pct_fr(b["taux"]))}'
+                  f'{ancre("tva_taux", f, taux=b["taux"])}</td>'
+                  f'<td class="r">{f} MAD</td></tr>')
     ttc = fmt_centimes(_num(tot.get("ttc")) or 0)
     corps += (f'<tr class="ag-tot-ttc"><td>{_t(lg, "total_ttc")}'
               f'{ancre("total_ttc", ttc)}</td><td class="r">{ttc} MAD</td></tr>')
@@ -1024,8 +1054,8 @@ def _references_annexe(d, lg):
     refs = [r for r in d.get("references_pompage") or []
             if isinstance(r, dict) and r.get("titre")]
     if not refs:
-        return (f'<div class="ag-small">'
-                f'{_t(lg, "agr_annexe_aucune_reference")}</div>')
+        # AGQ32 — aucune référence : aucune phrase (la section est omise).
+        return ""
     return "".join(
         f'<div class="ag-li">{theme._esc(r.get("titre"))}'
         + (f' — {theme._esc(r.get("ville"))}' if r.get("ville") else "")
@@ -1043,6 +1073,9 @@ def page_annexe_note_calcul(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
     lg = _langue(d)
     sec = '<div class="ag-sec">{}</div>'.format
+    refs = _references_annexe(d, lg)
+    refs_html = (f'{sec(_t(lg, "agr_annexe_references"))}'
+                 f'<div class="ag-box">{refs}</div>' if refs else "")
     return (f'<div class="ag-pad">'
             f'<div class="ag-kicker">{_t(lg, "agr_annexe_kicker")}</div>'
             f'<div class="ag-title">{_t(lg, "agr_annexe_titre")}</div>'
@@ -1058,9 +1091,7 @@ def page_annexe_note_calcul(ctx):
             f'<div class="ag-box">{_hypotheses_annexe(d, lg)}</div>'
             f'{sec(_t(lg, "agr_annexe_fiches"))}'
             f'<div class="ag-box">{_fiches_annexe(d, lg)}</div>'
-            f'{sec(_t(lg, "agr_annexe_references"))}'
-            f'<div class="ag-box">{_references_annexe(d, lg)}</div>'
-            f'</div>')
+            f'{refs_html}</div>')
 
 
 # ── assemblage ──────────────────────────────────────────────────────────────

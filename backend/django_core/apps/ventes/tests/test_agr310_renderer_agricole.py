@@ -232,6 +232,55 @@ class Renderer(SimpleTestCase):
         self.assertIn("après l'accord FDA si vous demandez l'aide", p3)
 
 
+class RendererPages23(SimpleTestCase):
+    """AGQ32 (C-AGQ-030) — pages 2 et 3 lisibles."""
+
+    def test_tva_ventilee_par_taux(self):
+        d = data_complete()
+        d['totaux_all']['tva_par_taux'] = [
+            {'taux': 10.0, 'montant': 2100.0, 'ht_net': 21000.0},
+            {'taux': 20.0, 'montant': 4130.0, 'ht_net': 20650.0}]
+        p3 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[3]
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        self.assertIn('TVA (10 %)', p3)
+        self.assertIn('TVA (20 %)', p3)
+        self.assertIn(f'{fmt_centimes(2100.0)} MAD', p3)
+        self.assertIn(f'{fmt_centimes(4130.0)} MAD', p3)
+        self.assertEqual(p3.count('data-figure="tva_taux"'), 2)
+        # Un seul taux : la ligne unique d'hier.
+        p3 = pages.build_html(renderer._augment(data_complete())).split(
+            '<div class="page">')[3]
+        self.assertNotIn('tva_taux', p3)
+
+    def test_barres_valeurs_et_mois_sans_besoin(self):
+        d = data_complete()
+        d['etude']['besoin_mensuel']['m3_jour_mois'] = (
+            [0, 0] + [135] * 8 + [0, 0])
+        p2 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[2]
+        self.assertIn('data-mois-sans-besoin="1"', p2)
+        self.assertEqual(p2.count('data-mois-sans-besoin='), 4)
+        self.assertIn('eau disponible', p2)
+        self.assertIn('>228,8<', p2)  # valeur livrée de juillet
+        self.assertIn('>135<', p2)
+
+    def test_schema_deux_lignes_et_distance_libellee(self):
+        p2 = pages.build_html(renderer._augment(data_complete())).split(
+            '<div class="page">')[2]
+        self.assertIn('Distance champ → coffret 25 m', p2)
+        self.assertIn('data-ligne="eau"', p2)
+        self.assertIn('data-ligne="energie"', p2)
+
+    def test_aucune_phrase_de_reference_vide(self):
+        d = data_complete()
+        d['include_note_calcul'] = True
+        annexe = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[4]
+        self.assertNotIn('Aucune référence', annexe)
+        self.assertNotIn('Références de la société', annexe)
+
+
 def pages_et_debordements(pdf_bytes):
     """``(nb_pages, [(page, y1_mm, footer_top_mm)])`` — un bloc de texte qui
     commence au-dessus de la bande de pied (13 mm) et finit dedans déborde."""

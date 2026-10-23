@@ -564,8 +564,17 @@ LIBELLES = {
     'agr_schema_profondeur': {'fr': 'Profondeur', 'en': 'Depth',
                               'ar': 'العمق'},
     'agr_schema_niveau': {'fr': 'Niveau', 'en': 'Level', 'ar': 'المستوى'},
-    'agr_schema_distance': {'fr': 'Distance', 'en': 'Distance',
-                            'ar': 'المسافة'},
+    # AGQ32 — la distance saisie est celle du champ au coffret (variateur).
+    'agr_schema_distance': {'fr': 'Distance champ → coffret',
+                            'en': 'Array → control box distance',
+                            'ar': 'المسافة من الحقل إلى العلبة'},
+    'agr_schema_ligne_eau': {'fr': 'Eau', 'en': 'Water', 'ar': 'الماء'},
+    'agr_schema_ligne_energie': {'fr': 'Énergie', 'en': 'Energy',
+                                 'ar': 'الطاقة'},
+    'agr_mois_sans_besoin': {
+        'fr': 'Mois grisés : aucun besoin — eau disponible.',
+        'en': 'Greyed months: no need — water available.',
+        'ar': 'الأشهر الرمادية: لا حاجة — الماء متوفر.'},
     'agr_schema_hmt': {'fr': 'HMT', 'en': 'Head', 'ar': 'الارتفاع'},
     'agr_schema_debit': {'fr': 'Débit', 'en': 'Flow', 'ar': 'الصبيب'},
     # Annexe « Note de calcul du kit de pompage » (AGR319, dossier FDA).
@@ -620,10 +629,6 @@ LIBELLES = {
     'agr_annexe_references': {'fr': 'Références de la société',
                               'en': 'Company references',
                               'ar': 'مراجع الشركة'},
-    'agr_annexe_aucune_reference': {
-        'fr': 'Aucune référence de pompage à ce jour.',
-        'en': 'No pumping reference to date.',
-        'ar': 'لا توجد مراجع للضخ إلى حد الآن.'},
     'agr_annexe_omis': {'fr': 'Non renseigné à ce jour.',
                         'en': 'Not provided to date.',
                         'ar': 'غير مدخل إلى حد الآن.'},
