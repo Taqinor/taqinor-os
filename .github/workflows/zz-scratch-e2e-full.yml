@@ -1,0 +1,264 @@
+name: zz-scratch e2e-full (EDC10 + visual) — TEMPORAIRE
+
+# Clone jetable de `ci-image-check` + `e2e-full` de release-verify.yml, déclenché
+# par push sur la branche de travail : seule façon de vérifier en CI (pas de
+# Docker local). Supprimé dans le dernier commit de la PR.
+on:
+  push:
+    branches: [claude/reverent-chaplygin-7e4a91]
+
+concurrency:
+  group: zz-scratch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-image-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente — chemin rapide : $ref"
+              echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE — construction en ligne : $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Resume
+        run: |
+          echo "ci-backend = ${{ steps.tag.outputs.image }} (deja presente = ${{ steps.exists.outputs.backend }})"
+          echo "ci-e2e     = ${{ steps.tag.outputs.image_e2e }} (deja presente = ${{ steps.exists.outputs.e2e }})"
+
+  e2e-full:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image_e2e }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      # Même raison que `backend-full` : `postgres` disparait (serveur local
+      # dans le conteneur, via `backend-env`), `redis` reste un service mais
+      # s'atteint par son NOM (`redis`), plus par `localhost`.
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      # AGR423 / CIQ424 — secret de TEST du récepteur de leads du site : sans
+      # lui, le récepteur répond 401 et les étapes « lead arrivé du site » des
+      # specs se sautent. Valeur factice, propre au CI (jamais celle de prod) ;
+      # Playwright lit la même via E2E_WEBHOOK_SECRET (frontend/e2e/helpers.js).
+      WEBSITE_LEAD_WEBHOOK_SECRET: e2e-webhook-secret
+      E2E_WEBHOOK_SECRET: e2e-webhook-secret
+      # Emplacement des navigateurs bakés dans l'image `ci-e2e` (chromium ET
+      # webkit, VX68) — doit rester identique à l'ENV PLAYWRIGHT_BROWSERS_PATH
+      # de `.github/ci-image/Dockerfile.e2e`, sinon Playwright les chercherait
+      # dans `~/.cache/ms-playwright`, ne les trouverait pas, et les
+      # retéléchargerait — l'image ne servirait à rien.
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      # NTPLT42/PACT8 — même règle que le job `e2e` de ci.yml : throttle par
+      # tenant OFF pour la matrice complète (encore plus de requêtes pour la
+      # même société démo que la fumée par-merge). Sans cette env, `/auth/me/`
+      # finit en 429 → redirection /login → faux « page blanche ».
+      TENANT_RATE_LIMIT: '0'
+      # Nocturne #726 — 5 connexions/min par IP (/token/) : la matrice complète
+      # (comptes portail reconnectés, workers parallèles) répondait 429.
+      LOGIN_RATE_LIMIT: '1000/minute'
+    steps:
+      - uses: actions/checkout@v4
+      # Python 3.11 + les navigateurs Playwright sont déjà dans l'image
+      # `ci-e2e` — plus de `setup-python` ici (même suppression que `e2e-shard`
+      # dans ci.yml). Node reste (cache npm, sans lequel `npm ci` serait
+      # beaucoup plus lent).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # WOW7 — shared WeasyPrint + pip (requirements-dev.txt) + MinIO setup.
+      # WOW8 — restore the cached pre-migrated dump into erp_db (the migrate
+      # step below becomes a fast no-op; the demo seeds still run fresh).
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'true'
+      - name: Migrate + seed throwaway demo data
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+          # AOF186/AOF190 — fixture des specs `ao-*.spec.js` (l'affaire de
+          # démonstration `FRDISI`, construite DEPUIS les goldens AOF183).
+          # La matrice complète ci-dessous inclut `mobile-safari`, donc la
+          # même dépendance qu'en CI : sans ce seed, les specs AO expirent.
+          # SOLMVP (21/09/2026) — plus de seed_ao_demo : app AO en coquille.
+          # NTDMO37/38 — fixture de `demo-first-login.spec.js`/
+          # `demo-reset-isolation.spec.js` (auto-découvertes par le
+          # `--grep-invert @visual` ci-dessous, comme tout spec). CAD177 :
+          # `Faker` est déjà dans `requirements-dev.txt`, bakée dans l'image
+          # par `prebuilt-image` ci-dessus ; ce `pip install` explicite reste
+          # inoffensif (déjà satisfait) et documente la dépendance de cette
+          # étape.
+          pip install Faker==40.28.1
+          python manage.py seed_demo_company
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright browsers (chromium + webkit)
+        working-directory: frontend
+        # CAD177 — chromium ET webkit sont déjà bakés dans l'image `ci-e2e`
+        # (VX68) : plus de `--with-deps` (dépaquetage apt inutile) — même
+        # changement que `e2e-shard` dans ci.yml. L'appel reste, sans
+        # `--with-deps` : idempotent si les binaires sont déjà là, il échoue
+        # franchement s'ils manquaient.
+        run: npx playwright install chromium webkit
+      - name: Build frontend (no service worker for E2E)
+        working-directory: frontend
+        env:
+          VITE_E2E: '1'
+        run: npm run build
+      # QAH7 — le projet dédié `monkey` (frontend/playwright.config.js) tourne
+      # ICI : `--grep-invert @visual` ne filtre que le tag visuel, donc TOUS
+      # les projets non filtrés (dont `monkey`) s'exécutent faute de
+      # `--project` explicite. `monkey.spec.js` (marcheur aléatoire
+      # gremlins.js, un test par module MVP) n'apparaît JAMAIS dans le shard
+      # par-merge de ci.yml (qui liste ses fichiers explicitement) — cette
+      # matrice complète est le SEUL endroit où il tourne. Ajoute ~15 min au
+      # budget par défaut (19 modules x 4 s/écran, voir DUREE_PAR_ECRAN_MS) ;
+      # surchargeable via `MONKEY_MS_PAR_ECRAN` sur ce job si besoin. Sécurité
+      # : boutons destructifs/d'envoi neutralisés par sélecteur dans le spec
+      # lui-même, jamais une écriture vers un service externe.
+      - name: Start Django + EDC10 (x2) + instrumentation scratch
+        working-directory: backend/django_core
+        run: |
+          gunicorn erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
+            --access-logfile /tmp/gunicorn-access.log \
+            --error-logfile /tmp/gunicorn-error.log --capture-output &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then
+              echo "Django prêt (HTTP $code)"; break
+            fi
+            echo "Attente Django ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+          cd ../../frontend
+          set +e
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-edc PLAYWRIGHT_HTML_REPORT=playwright-report-edc \
+            npx playwright test --project=chromium e2e/devis-edition-complete.spec.js --repeat-each 2
+          rc_edc=$?
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-scratch PLAYWRIGHT_HTML_REPORT=playwright-report-scratch \
+            npx playwright test --project=chromium e2e/zz-scratch-edc10.spec.js --output test-results-scratch
+          rc_scratch=$?
+          set -e
+          echo "rc_edc=$rc_edc rc_scratch=$rc_scratch"
+          echo "RC_EDC=$rc_edc" >> "$GITHUB_ENV"
+      - name: Forcer le mode présentation ON (preuve de la remise à zéro par visual.spec.js)
+        if: ${{ !cancelled() }}
+        working-directory: backend/django_core
+        run: |
+          python manage.py shell -c "from authentication.models import CustomUser as U; c=U.objects.get(username='demo_admin').company; c.mode_presentation_actif=True; c.save(update_fields=['mode_presentation_actif']); print('mode présentation forcé ON sur', c.pk, c.nom, 'est_demo=', c.est_demo)"
+      - name: Visual regression (baselines committées)
+        if: ${{ !cancelled() }}
+        working-directory: frontend
+        run: |
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-visual PLAYWRIGHT_HTML_REPORT=playwright-report-visual \
+            npx playwright test --grep @visual --output test-results-visual
+      - name: Verdict EDC10
+        if: ${{ !cancelled() }}
+        run: |
+          echo "EDC10 (x2) rc=$RC_EDC"
+          exit "$RC_EDC"
+      - name: Upload gunicorn logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zz-gunicorn-logs
+          path: /tmp/gunicorn-*.log
+          retention-days: 3
+          if-no-files-found: ignore
+      - name: Upload Playwright reports + résultats
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zz-playwright
+          path: |
+            frontend/playwright-report*
+            frontend/test-results*
+          retention-days: 3
+          if-no-files-found: ignore

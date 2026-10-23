@@ -13,6 +13,35 @@ import { test, expect } from '@playwright/test'
 // Tolérance commune : la base démo est déterministe mais l'anti-aliasing varie.
 const SHOT = { fullPage: true, animations: 'disabled', maxDiffPixelRatio: 0.02 }
 
+// ── Précondition de TOUTES les captures : mode présentation ÉTEINT ──────────
+// Nocturnes 39568748738 (21/10), 39747525775 (22/10) et 39924022026 (23/10),
+// même commit : 12 captures sur 16 rouges une nuit sur deux. L'écran capturé
+// portait le bandeau « Mode présentation actif — les coordonnées des clients
+// sont masquées » (NTDMO10 : drapeau `mode_presentation_actif` de la SOCIÉTÉ,
+// persisté côté serveur, servi par /auth/me/), qui décale toute la colonne
+// principale et masque les noms de clients des listes — login et tableau de
+// bord, sans bandeau ni client, restaient verts. Qui l'allume : le marcheur
+// aléatoire `monkey.spec.js` (projet `monkey`, matrice complète qui précède
+// cette étape) clique la case « Activer le mode présentation » de /parametres
+// des dizaines de fois par nuit (journal gunicorn : 74, 64 puis 75 `PATCH
+// /companies/1/`) ; la PARITÉ du dernier clic décide de l'état que trouve la
+// capture (dernière réponse 206 octets = `true` les deux nuits rouges, 207 =
+// `false` la nuit verte). Les baselines committées sont celles de l'écran SANS
+// bandeau : on éteint le mode avant chaque capture, par le PATCH même que fait
+// PresentationModeToggle.jsx — même écran chaque nuit, quel que soit l'état
+// laissé par la matrice. Sans session (captures `login`, storageState vide),
+// /auth/me/ répond 401 et il n'y a rien à éteindre.
+test.beforeEach(async ({ page }) => {
+  const me = await page.request.get('/api/django/auth/me/')
+  if (!me.ok()) return
+  const moi = await me.json()
+  if (!moi?.company_mode_presentation_actif) return
+  const eteint = await page.request.patch(`/api/django/companies/${moi.company_id}/`, {
+    data: { mode_presentation_actif: false },
+  })
+  expect(eteint.ok(), `mode présentation éteint avant la capture (${eteint.status()})`).toBeTruthy()
+})
+
 test('dashboard — capture de référence', { tag: '@visual' }, async ({ page }) => {
   // Le tour produit « Votre tableau de bord » (ProductTour, NTDMO14) s'ouvre
   // pour un utilisateur de moins de 30 jours et n'est pas marqué vu par le
