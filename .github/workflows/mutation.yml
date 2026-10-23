@@ -118,6 +118,23 @@ jobs:
           psql -h localhost -U erp_user -d template1 -v ON_ERROR_STOP=1 -c
           "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS btree_gist;
           CREATE EXTENSION IF NOT EXISTS unaccent; CREATE EXTENSION IF NOT EXISTS pg_trgm;"
+      - name: Collecte pytest de la sélection (garde lisible avant mutmut)
+        # 23/10/2026 — mutmut 3 avale la sortie de pytest sous son spinner : un
+        # code 4 (usage) ne remonte qu'en `BadTestExecutionCommandsException`
+        # sans la cause. Cette collecte à blanc (secondes) échoue AVANT avec
+        # l'erreur pytest réelle, sur la même sélection que setup.cfg.
+        working-directory: backend/django_core
+        run: |
+          sel=$(python - <<'EOF'
+          import configparser
+          c = configparser.ConfigParser()
+          c.read('setup.cfg', encoding='utf-8')
+          print(' '.join(c['mutmut']['pytest_add_cli_args_test_selection'].split()))
+          EOF
+          )
+          echo "sélection : $sel"
+          python -m pytest --collect-only -q --rootdir=. -p no:randomly -p no:random-order $sel | tail -n 15
+          test "${PIPESTATUS[0]}" -eq 0
       - name: Run mutmut on high-risk modules
         working-directory: backend/django_core
         run: |
