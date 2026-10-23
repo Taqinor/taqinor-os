@@ -32,7 +32,8 @@ from ..sequence import sequence_affichage
 from . import mentions
 from .schema import (TEXTE_COURBE_ABSENTE, courbe_svg, legende, schema_svg,
                      superposer)
-from .synthese import CONDITION_ECONOMIES, debit_declare_sans_courbe
+from .synthese import (CONDITION_ECONOMIES, debit_declare_sans_courbe,
+                       texte_heures_eau)
 
 NB_PAGES = 3
 
@@ -220,10 +221,11 @@ def _hero(synthese, lg, declare=False):
                 f'</div></div>')
     a_hmt = (f' {_t(lg, "agr_hero_a_hmt", hmt=hmt)}'
              f'{ancre("pompe_hmt_m", hmt)}' if hmt is not None else "")
-    # AGQ28 — ces heures sont des heures ÉQUIVALENTES plein soleil (PVGIS,
-    # mois de conception), pas des heures de marche : l'étiquette le dit.
-    sur = (_t(lg, "agr_heures_equivalentes", heures=heures)
-           if heures is not None else "")
+    # AGQ28/AGQ3 — heures ÉQUIVALENTES à plein débit, pas des heures de
+    # marche ; AGQ3 (D-AGQ-2) — le mois de conception et le plus bas nommés.
+    sur = texte_heures_eau(eau, lg, _n) or (
+        _t(lg, "agr_heures_equivalentes", heures=heures)
+        if heures is not None else "")
     # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ (pompe sans courbe) :
     # la pastille le dit (« estimation · débit déclaré par vous »).
     pastille = (f'<span class="ag-hero-e">{_t(lg, "estimation")}'
@@ -556,6 +558,19 @@ def _barres_besoin(bvl, lg):
         f'{h_vb + 10}" width="100%">{"".join(corps)}</svg>', legendes)
 
 
+def _sous_tolerance(bvl, lg):
+    """AGQ3 (D-AGQ-2) — « Mois sous la tolérance de conception : octobre :
+    80 % de votre besoin. » ; "" quand aucun mois n'est sous la tolérance."""
+    mois = [m for m in bvl.get("mois_sous_tolerance") or []
+            if isinstance(m, dict) and m.get("mois") in range(1, 13)]
+    liste = "; ".join(
+        _t(lg, "agr_mois_couverture", mois=_t(lg, f"agr_mois_{m['mois']}"),
+           pct=_n(m.get("couverture_pct"), 0))
+        if _n(m.get("couverture_pct"), 0) is not None
+        else _t(lg, f"agr_mois_{m['mois']}") for m in mois)
+    return f' {_t(lg, "agr_mois_sous_tolerance", liste=liste)}' if liste else ""
+
+
 def page2(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
     lg = _langue(d)
@@ -599,7 +614,8 @@ def page2(ctx):
                    + (f' {_t(lg, "agr_mois_sans_besoin")}'
                       if sans_besoin else "")
                    + (f' {_t(lg, "agr_mois_serre", mois=serre_txt)}'
-                      if serre_txt else "") + '</div>')
+                      if serre_txt else "")
+                   + _sous_tolerance(bvl, lg) + '</div>')
         bloc_besoin = f'<div class="ag-svg">{barres}</div>{legende}'
     else:
         motif = _omission(synthese, "besoin_vs_livre")
