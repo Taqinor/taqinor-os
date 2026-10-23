@@ -186,6 +186,25 @@ class EntreesPompage(TestCase):
         vide = selectors.entrees_pompage_du_lead(self._lead())
         self.assertIn('jours_irrigation_semaine', vide['manquants'])
 
+    def test_mode_pompe_et_plaque_servis_au_moteur(self):
+        """AGQ39 (D-AGQ-10) — le mode et la plaque de la pompe actuelle
+        sont servis vers ``mode_pompe`` et ``plaque.*`` ; les phases en 1/3."""
+        lead = self._lead(
+            mode_pompe='existante', pompe_actuelle_kw=Decimal('5.5'),
+            pompe_actuelle_tension_v=380, pompe_actuelle_phases='tri')
+        par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        self.assertEqual(par['mode_pompe']['chemin'], 'mode_pompe')
+        self.assertEqual(par['mode_pompe']['valeur'], 'existante')
+        self.assertEqual(par['pompe_actuelle_kw']['chemin'], 'plaque.kw')
+        self.assertEqual(par['pompe_actuelle_kw']['valeur'], 5.5)
+        self.assertEqual(par['pompe_actuelle_tension_v']['valeur'], 380)
+        self.assertEqual(par['pompe_actuelle_phases']['chemin'],
+                         'plaque.phases')
+        self.assertEqual(par['pompe_actuelle_phases']['valeur'], 3)
+        self.assertTrue(par['pompe_actuelle_kw']['information'])
+        vide = selectors.entrees_pompage_du_lead(self._lead())
+        self.assertIn('mode_pompe', vide['manquants'])
+
     def test_lecture_filtree_par_societe(self):
         lead = self._lead(niveau_statique_m=Decimal('20'))
         autre, _ = Company.objects.get_or_create(
@@ -237,3 +256,21 @@ class EntreesPompageServiesAuDetail(TestCase):
                               format='json')
         self.assertEqual(trop.status_code, 400, trop.data)
         self.assertIn('jours_irrigation_semaine', trop.data)
+
+    def test_mode_pompe_et_plaque_persistent_et_journalisent(self):
+        """AGQ39 — enregistrer → rouvrir : identique, chatter old→new."""
+        url = f'/api/django/crm/leads/{self.lead.id}/'
+        corps = {'mode_pompe': 'existante', 'pompe_actuelle_kw': '5.50',
+                 'pompe_actuelle_tension_v': 380,
+                 'pompe_actuelle_phases': 'tri'}
+        rep = self.api.patch(url, corps, format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        relu = self.api.get(url).data
+        for cle, valeur in corps.items():
+            self.assertEqual(relu[cle], valeur, cle)
+        self.assertEqual(relu['devis_auto']['mode_pompe'],
+                         {'valeur': 'existante', 'par_defaut': False})
+        for champ in corps:
+            self.assertTrue(LeadActivity.objects.filter(
+                lead=self.lead, kind=LeadActivity.Kind.MODIFICATION,
+                field=champ).exists(), champ)

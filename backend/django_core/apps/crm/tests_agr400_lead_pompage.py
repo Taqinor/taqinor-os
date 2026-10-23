@@ -237,6 +237,46 @@ class ReglePret(SimpleTestCase):
         self.assertFalse(visite_point_eau_avant_devis(lead)['requise'])
 
 
+class ModePompeEtPlaque(SimpleTestCase):
+    """AGQ39 (D-AGQ-10) — « existante » exige la plaque COMPLÈTE (une puce) ;
+    un mode vide part en « neuve », étiqueté « par défaut »."""
+
+    def _lead(self, **extra):
+        champs = dict(nom='Ferme', type_installation='agricole',
+                      pompe_hmt_m=Decimal('60'), besoin_eau_m3j=Decimal('80'))
+        champs.update(extra)
+        return Lead(**champs)
+
+    def test_existante_sans_plaque_pas_pret_une_puce(self):
+        from apps.crm import devis_auto
+        lead = self._lead(mode_pompe='existante',
+                          pompe_actuelle_kw=Decimal('5.5'),
+                          pompe_actuelle_tension_v=380)
+        self.assertEqual(devis_auto.champs_requis(lead)[-1],
+                         ['pompe_actuelle_kw'])
+        self.assertEqual(devis_auto.champs_manquants_detail(lead), [{
+            'champ': 'pompe_actuelle_kw',
+            'label': 'plaque de la pompe actuelle (kW, tension, phases)'}])
+        lead.pompe_actuelle_phases = 'tri'
+        self.assertEqual(devis_auto.champs_manquants_detail(lead), [])
+
+    def test_neuve_n_exige_pas_la_plaque(self):
+        from apps.crm import devis_auto
+        lead = self._lead(mode_pompe='neuve')
+        self.assertEqual(len(devis_auto.champs_requis(lead)), 2)
+        self.assertEqual(devis_auto.champs_manquants_detail(lead), [])
+
+    def test_mode_vide_neuve_par_defaut(self):
+        from apps.crm.devis_auto import mode_pompe_du_lead
+        self.assertEqual(mode_pompe_du_lead(self._lead()),
+                         {'valeur': 'neuve', 'par_defaut': True})
+        self.assertEqual(
+            mode_pompe_du_lead(self._lead(mode_pompe='existante')),
+            {'valeur': 'existante', 'par_defaut': False})
+        self.assertIsNone(mode_pompe_du_lead(
+            Lead(nom='Villa', type_installation='residentiel')))
+
+
 class FusionConserveLePompage(TestCase):
     def test_la_fusion_recopie_les_colonnes_vides_du_survivant(self):
         company, _ = Company.objects.get_or_create(

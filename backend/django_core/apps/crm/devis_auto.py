@@ -37,8 +37,27 @@ GROUPES_HYDRAULIQUES_AGRICOLES = (
     ('pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h'),
 )
 
-#: Champ qui ne compte qu'accompagné d'un autre (sinon il vaut « vide »).
-_COMPTE_SEULEMENT_AVEC = {'pompe_actuelle_debit_m3h': 'pompage_heures_jour'}
+#: Champ qui ne compte qu'accompagné d'autres (sinon il vaut « vide »).
+#: AGQ39 (D-AGQ-10) — la plaque de la pompe conservée ne compte que COMPLÈTE
+#: (kW, tension, phases) : une seule puce, jamais une plaque à moitié lue.
+_COMPTE_SEULEMENT_AVEC = {
+    'pompe_actuelle_debit_m3h': ('pompage_heures_jour',),
+    'pompe_actuelle_kw': ('pompe_actuelle_tension_v', 'pompe_actuelle_phases'),
+}
+
+#: AGQ39 (D-AGQ-10) — groupe requis en plus quand le lead dit « pompe
+#: existante conservée » : la plaque de la pompe actuelle.
+GROUPE_PLAQUE_EXISTANTE = ('pompe_actuelle_kw',)
+
+
+def mode_pompe_du_lead(lead):
+    """AGQ39 (D-AGQ-10) — ``{valeur, par_defaut}`` pour un lead AGRICOLE,
+    ``None`` ailleurs. Vide ⇒ « neuve » comme avant, étiqueté « par défaut »
+    (jamais écrit sur le lead)."""
+    if (lead.type_installation or '') != _MODE_AGRICOLE:
+        return None
+    mode = getattr(lead, 'mode_pompe', None) or None
+    return {'valeur': mode or 'neuve', 'par_defaut': mode is None}
 
 
 def _releve_rempli(lead):
@@ -82,8 +101,8 @@ def _rempli(lead, champ):
     if (champ == 'facture_hiver' and lead.type_installation in _MODES_ETUDE
             and not _facture_mad_compte(lead)):
         return False
-    compagnon = _COMPTE_SEULEMENT_AVEC.get(champ)
-    return not compagnon or bool(getattr(lead, compagnon, None))
+    return all(getattr(lead, compagnon, None)
+               for compagnon in _COMPTE_SEULEMENT_AVEC.get(champ, ()))
 
 
 def releve_eau_manquant(lead) -> bool:
@@ -106,7 +125,10 @@ def champs_requis(lead) -> list[list[str]]:
     même sémantique du vide que :func:`champs_manquants` (0 = manquant)."""
     mode = lead.type_installation or 'residentiel'
     if mode == _MODE_AGRICOLE:
-        return [list(groupe) for groupe in GROUPES_HYDRAULIQUES_AGRICOLES]
+        requis = [list(groupe) for groupe in GROUPES_HYDRAULIQUES_AGRICOLES]
+        if getattr(lead, 'mode_pompe', None) == 'existante':
+            requis.append(list(GROUPE_PLAQUE_EXISTANTE))
+        return requis
     if mode in _MODES_ETUDE:
         # CAD166 — conso éditable OU kWh du tunnel : l'un vaut l'autre.
         # CIQ404 (contrat CIQ1) — + le relevé de factures et la facture en
@@ -142,6 +164,8 @@ _LIBELLES = {
     'pompe_hmt_m': 'HMT (m)',
     'pompe_debit_m3h': ('Débit souhaité, besoin en eau (m³/jour) ou débit '
                         'de la pompe actuelle'),
+    # AGQ39 (D-AGQ-10) — une seule puce pour la plaque complète.
+    'pompe_actuelle_kw': 'plaque de la pompe actuelle (kW, tension, phases)',
     # ── CAD-M ── CAD166 — LE DOSSIER PRO ÉTAIT BLOQUÉ ALORS QUE LA DONNÉE
     # ÉTAIT LÀ. Le tunnel professionnel du site n'écrit que ``bill_kwh``
     # (archive web, lecture seule) ; ce gating, lui, n'interrogeait que

@@ -1186,6 +1186,17 @@ export default function DevisGenerator({
     if ('energie' in eco) eco.energieProvenance = res.eco.energieProvenance
     if ('mois' in eco) eco.moisProvenance = res.eco.moisProvenance
     if (Object.keys(eco).length) setEcoPompage((e) => ({ ...e, ...eco }))
+    // AGQ39 (D-AGQ-10) — mode de pompe et plaque du lead → `pompageSaisie`,
+    // même règle : une saisie du vendeur n'est jamais écrasée.
+    const saisieLead = Object.entries(res.saisie || {})
+    if (saisieLead.length) {
+      setPompageSaisie((s) => saisieLead.reduce((suite, [chemin, valeur]) => {
+        const courant = chemin.split('.').reduce((n, k) => (n == null ? n : n[k]), suite)
+        if (!libre(`saisie.${chemin}`, courant)) return suite
+        posesLead.current[`saisie.${chemin}`] = valeur
+        return poserSaisie(suite, chemin, valeur)
+      }, s))
+    }
     setProvenancesLead(res.provenances)
   }
 

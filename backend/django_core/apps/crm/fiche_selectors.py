@@ -329,6 +329,9 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         'autorisation_debit_l_s', 'autorisation_volume_m3_an',
         'compteur_eau', 'projet_pompage', 'deja_beneficiaire_fda',
         'pompe_hmt_source',
+        # AGQ39 — la plaque de la pompe actuelle (D-AGQ-10).
+        'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+        'pompe_actuelle_phases',
     )]
     # CIQ401 — colonnes du lead pro (contrat CIQ1 ``lead_pro.json``) qui
     # portent un marqueur énergie : nommées une à une, avec leur raison.

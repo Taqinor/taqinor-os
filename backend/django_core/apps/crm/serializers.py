@@ -35,7 +35,8 @@ from .models import (
 )
 from .devis_auto import (
     champs_manquants_detail, champs_requis, message_manquants,
-    source_conso, visite_avant_devis, visite_point_eau_avant_devis)
+    mode_pompe_du_lead, source_conso, visite_avant_devis,
+    visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
 
@@ -749,6 +750,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # industriel seulement, null ailleurs ; jamais un blocage.
             'source_conso': source_conso(obj),
             'visite_avant_devis': visite_avant_devis(obj),
+            # AGQ39 (D-AGQ-10) — {valeur, par_defaut} pour un agricole (mode
+            # vide ⇒ « neuve » étiqueté « par défaut »), null ailleurs.
+            'mode_pompe': mode_pompe_du_lead(obj),
         }
 
     @extend_schema_field(serializers.DictField(allow_null=True))

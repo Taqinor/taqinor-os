@@ -695,6 +695,16 @@ class Lead(SoftDeleteModel):
         SURFACE = 'surface', 'De surface'
         NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
 
+    # AGQ39 (D-AGQ-10) — le choix du lead lu par le devis automatique : pompe
+    # neuve, ou pompe ACTUELLE conservée (D-AGR-7, variateur sur la plaque).
+    class ModePompe(models.TextChoices):
+        NEUVE = 'neuve', 'Pompe neuve'
+        EXISTANTE = 'existante', 'Pompe actuelle conservée'
+
+    class PompeActuellePhases(models.TextChoices):
+        MONO = 'mono', 'Monophasé'
+        TRI = 'tri', 'Triphasé'
+
     class ElectriciteSurPlace(models.TextChoices):
         AUCUNE = 'aucune', 'Aucune'
         MONOPHASE = 'monophase', 'Monophasé'
@@ -1174,6 +1184,32 @@ class Lead(SoftDeleteModel):
                   'actuelle sort-elle par heure ? » (m³/h, vide = pas encore '
                   'posée). Avec les heures de la pompe actuelle, donne le '
                   'volume déclaré.')
+    # AGQ39 (D-AGQ-10) — mode de pompe + plaque de la pompe ACTUELLE. Sans
+    # défaut : un mode vide part en « neuve », étiqueté « par défaut » ;
+    # « existante » exige la plaque complète (kW, tension, phases).
+    mode_pompe = models.CharField(
+        max_length=10, choices=ModePompe.choices, null=True, blank=True,
+        verbose_name='Mode de pompe',
+        help_text="Question à l'appel : « On installe une pompe neuve, ou on "
+                  'garde votre pompe actuelle et on la passe au solaire ? » '
+                  '(neuve ou existante conservée, vide = pas encore posée).')
+    pompe_actuelle_kw = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Pompe actuelle — puissance plaque (kW)',
+        help_text="Question à l'appel : « Quelle puissance en kW est écrite "
+                  'sur la plaque de votre pompe actuelle ? » (kW, vide = pas '
+                  'encore posée).')
+    pompe_actuelle_tension_v = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Pompe actuelle — tension plaque (V)',
+        help_text="Question à l'appel : « Quelle tension est écrite sur la "
+                  'plaque : 220 V ou 380 V ? » (volts, vide = pas encore '
+                  'posée).')
+    pompe_actuelle_phases = models.CharField(
+        max_length=4, choices=PompeActuellePhases.choices, null=True,
+        blank=True, verbose_name='Pompe actuelle — phases plaque',
+        help_text="Question à l'appel : « Sur la plaque, la pompe est-elle "
+                  'monophasée ou triphasée ? » (vide = pas encore posée).')
     butane_bouteilles_jour = models.DecimalField(
         max_digits=5, decimal_places=1, null=True, blank=True,
         verbose_name='Butane — bouteilles par jour',

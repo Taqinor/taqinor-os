@@ -75,6 +75,7 @@
       }
      ],
      "message": "Manque : facture hiver",
+     "mode_pompe": null,
      "pret": false,
      "requis": [
       [
@@ -149,6 +150,7 @@
     "meta_adset_id": null,
     "meta_campaign_id": null,
     "meta_form_id": null,
+    "mode_pompe": null,
     "mois_irrigation": null,
     "montant_estime": null,
     "motif_perte": null,
@@ -181,6 +183,9 @@
     "pompage_heures_jour": null,
     "pompe_actuelle_cv": null,
     "pompe_actuelle_debit_m3h": null,
+    "pompe_actuelle_kw": null,
+    "pompe_actuelle_phases": null,
+    "pompe_actuelle_tension_v": null,
     "pompe_actuelle_type": null,
     "pompe_alim_actuelle": null,
     "pompe_debit_m3h": null,
@@ -349,6 +354,7 @@
       }
      ],
      "message": "Manque : facture hiver",
+     "mode_pompe": null,
      "pret": false,
      "requis": [
       [
@@ -423,6 +429,7 @@
     "meta_adset_id": null,
     "meta_campaign_id": null,
     "meta_form_id": null,
+    "mode_pompe": null,
     "mois_irrigation": null,
     "montant_estime": null,
     "motif_perte": null,
@@ -455,6 +462,9 @@
     "pompage_heures_jour": null,
     "pompe_actuelle_cv": null,
     "pompe_actuelle_debit_m3h": null,
+    "pompe_actuelle_kw": null,
+    "pompe_actuelle_phases": null,
+    "pompe_actuelle_tension_v": null,
     "pompe_actuelle_type": null,
     "pompe_alim_actuelle": null,
     "pompe_debit_m3h": null,
@@ -623,6 +633,7 @@
       }
      ],
      "message": "Manque : facture hiver",
+     "mode_pompe": null,
      "pret": false,
      "requis": [
       [
@@ -697,6 +708,7 @@
     "meta_adset_id": null,
     "meta_campaign_id": null,
     "meta_form_id": null,
+    "mode_pompe": null,
     "mois_irrigation": null,
     "montant_estime": null,
     "motif_perte": null,
@@ -729,6 +741,9 @@
     "pompage_heures_jour": null,
     "pompe_actuelle_cv": null,
     "pompe_actuelle_debit_m3h": null,
+    "pompe_actuelle_kw": null,
+    "pompe_actuelle_phases": null,
+    "pompe_actuelle_tension_v": null,
     "pompe_actuelle_type": null,
     "pompe_alim_actuelle": null,
     "pompe_debit_m3h": null,

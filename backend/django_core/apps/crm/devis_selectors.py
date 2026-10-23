@@ -199,6 +199,12 @@ ENTREES_POMPAGE_CIBLES = (
     # laisse le bloc « Votre argent » omis.
     ('jours_irrigation_semaine', 'saisies_economie_pompage',
      'saisies_economie_pompage.consommation.jours_irrigation_par_semaine'),
+    # AGQ39 (D-AGQ-10) — le mode de pompe du lead et la plaque de la pompe
+    # ACTUELLE : « existante » ⇒ aucune ligne pompe, variateur sur la plaque.
+    ('mode_pompe', 'mode_pompe', 'mode_pompe'),
+    ('pompe_actuelle_kw', 'plaque', 'plaque.kw'),
+    ('pompe_actuelle_tension_v', 'plaque', 'plaque.tension_v'),
+    ('pompe_actuelle_phases', 'plaque', 'plaque.phases'),
 )
 
 
@@ -223,7 +229,12 @@ _ENTREES_POMPAGE_SOURCES = {
 
 #: La pompe ACTUELLE : lue par le moteur seulement en mode « pompe existante
 #: conservée » (D-AGR-7) — servie marquée « information ».
-_ENTREES_POMPAGE_INFORMATION = ('pompe_actuelle_cv', 'pompe_actuelle_type')
+_ENTREES_POMPAGE_INFORMATION = ('pompe_actuelle_cv', 'pompe_actuelle_type',
+                                'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+                                'pompe_actuelle_phases')
+
+#: AGQ39 — phases de la plaque : vocabulaire du lead → phases du moteur.
+_PHASES_PLAQUE = {'mono': 1, 'tri': 3}
 
 
 #: Les heures de la pompe ACTUELLE, jamais des heures de pompage solaire.
@@ -318,6 +329,10 @@ def entrees_pompage_du_lead(lead):
                 (Decimal(str(brute)) * Decimal('3.6')).quantize(
                     Decimal('0.01')))
             entree['conversion'] = 'L/s × 3,6 → m³/h'
+        if colonne == 'pompe_actuelle_phases':
+            # Conversion de vocabulaire (mono → 1, tri → 3), jamais un défaut.
+            entree['valeur'] = _PHASES_PLAQUE.get(brute)
+            entree['conversion'] = 'mono → 1, tri → 3'
         if colonne == 'debit_forage_m3h' and lead.debit_forage_source:
             entree['origine'] = lead.debit_forage_source
         if colonne in _ENTREES_POMPAGE_INFORMATION:

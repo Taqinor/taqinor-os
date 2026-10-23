@@ -146,6 +146,11 @@ TRACKED_FIELDS = {
     'region_agricole': 'Région agricole',
     'pompe_actuelle_type': 'Pompe actuelle — type',
     'pompe_actuelle_debit_m3h': 'Pompe actuelle — débit (m³/h)',
+    # AGQ39 (D-AGQ-10) — mode de pompe + plaque de la pompe actuelle.
+    'mode_pompe': 'Mode de pompe',
+    'pompe_actuelle_kw': 'Pompe actuelle — puissance plaque (kW)',
+    'pompe_actuelle_tension_v': 'Pompe actuelle — tension plaque (V)',
+    'pompe_actuelle_phases': 'Pompe actuelle — phases plaque',
     'butane_bouteilles_jour': 'Butane — bouteilles par jour',
     'carburant_prix_unitaire_mad': 'Prix payé (bouteille ou litre, MAD)',
     'carburant_prix_declare_le': 'Prix du carburant déclaré le',
@@ -312,6 +317,8 @@ _CHOICE_FIELDS = {
     'pompe_actuelle_type', 'electricite_sur_place',
     'autorisation_prelevement', 'projet_pompage', 'pompe_hmt_source',
     'dossier_subvention',
+    # AGQ39 — mode de pompe et phases de la plaque.
+    'mode_pompe', 'pompe_actuelle_phases',
     # CIQ401 — vocabulaires fermés du lead pro.
     'tension_raccordement', 'tension_source', 'puissance_souscrite_source',
     'contrat_electricite', 'option_tarifaire_bt',

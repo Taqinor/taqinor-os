@@ -343,6 +343,50 @@ class DevisAutoAgricoleTests(TestCase):
         attendu = round(sum(2 * 5 * j / 7.0 * 50 for j in jours_du_mois), 2)
         self.assertEqual(corps['depense_actuelle']['annuelle_mad'], attendu)
 
+    def _lead_existante(self, **extra):
+        champs = dict(
+            mode_pompe='existante', pompe_actuelle_kw=Decimal('5.5'),
+            pompe_actuelle_tension_v=380, pompe_actuelle_phases='tri',
+            pompe_actuelle_type='immergee',
+            pompe_actuelle_debit_m3h=Decimal('30'),
+            pompage_heures_jour=Decimal('6'))
+        champs.update(extra)
+        return self._lead(**champs)
+
+    def test_lead_existante_sans_ligne_pompe(self):
+        """AGQ39 (D-AGQ-10) — « pompe existante conservée » sur le lead : le
+        devis automatique n'ajoute AUCUNE ligne pompe ; variateur et champ
+        sont dimensionnés sur la plaque (5,5 kW / 380 V / tri)."""
+        pompe = self._pompe('15000')
+        lead = self._lead_existante()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertFalse(devis.lignes.filter(produit=pompe).exists())
+        self.assertFalse(devis.lignes.filter(
+            produit__role_pompage='pompe').exists())
+        self.assertTrue(devis.lignes.filter(produit=self.variateur).exists())
+        self.assertTrue(devis.lignes.filter(produit=self.panneau).exists())
+
+    def test_lead_existante_sans_plaque_refuse_en_la_nommant(self):
+        self._pompe('15000')
+        lead = self._lead_existante(pompe_actuelle_tension_v=None)
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'pompe_actuelle_kw')
+        self.assertIn('plaque de la pompe actuelle', rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_lead_existante_variateur_sans_prix_409_nomme(self):
+        self._pompe('15000')
+        Produit.objects.filter(pk=self.variateur.pk).update(
+            prix_vente=Decimal('0'))
+        lead = self._lead_existante()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.variateur')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
     def test_agnr39_cible_kwc_refusee_400_nommant_target_kwc(self):
         """AGNR39 — une puissance cible envoyée pour un lead agricole est
         refusée en la nommant, jamais ignorée en silence ; aucun devis."""
