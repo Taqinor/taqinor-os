@@ -52,7 +52,8 @@ def health_score_view(request):
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'periode', OpenApiTypes.INT, required=False, default=30,
+        'periode', {'type': 'integer', 'minimum': 1, 'maximum': 3650,
+                    'default': 30}, required=False,
         description='Fenêtre en jours (7/30/90), entier 1..3650.')],
     responses=inline_serializer('AdoptionUsage', {
         'par_module': drf_serializers.JSONField(),

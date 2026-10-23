@@ -159,8 +159,6 @@ class CorbeilleApiTests(CorbeilleBase):
         archiver(self.lead)
         api = auth(self.directeur)
         for requete in (
-                {'depuis': '4901-01-04T02:19:12Z'},
-                {'jusqua': '3422-10-02T19:20:22.0+20:24'},
                 {'depuis': 'pas-une-date'},
                 {'ordering': 'zzz'},
                 {'ordering': 'donnees_snapshot'},
@@ -168,6 +166,13 @@ class CorbeilleApiTests(CorbeilleBase):
             resp = api.get(self.BASE, requete)
             self.assertEqual(resp.status_code, 400, (requete, resp.content))
             self.assertIn(next(iter(requete)), resp.json())
+        # Dates valides hors 1970-2100 : ramenées à la borne, jamais refusées.
+        resp = api.get(self.BASE, {'depuis': '4901-01-04T02:19:12Z'})
+        self.assertEqual((resp.status_code, len(rows(resp))), (200, 0))
+        resp = api.get(self.BASE, {'jusqua': '3422-10-02T19:20:22.0+20:24'})
+        self.assertEqual((resp.status_code, len(rows(resp))), (200, 1))
+        resp = api.get(self.BASE, {'jusqua': '1900-01-01'})
+        self.assertEqual((resp.status_code, len(rows(resp))), (200, 0))
         for requete in ({'ordering': '-supprime_le'}, {'restaures': 'false'},
                         {'depuis': '2020-01-01'},
                         {'jusqua': '2099-01-01T00:00:00+02:00'},
@@ -227,7 +232,10 @@ class CorbeilleApiTests(CorbeilleBase):
         element = ElementSupprime.objects.get()
         api = auth(self.directeur)
         self.assertEqual(api.post(f'{self.BASE}{element.pk}/restaurer/').status_code, 200)
-        self.assertEqual(api.post(f'{self.BASE}{element.pk}/restaurer/').status_code, 400)
+        # ENF11 : refus d'ÉTAT = 409 (même corps {"detail": …}), pas 400.
+        resp = api.post(f'{self.BASE}{element.pk}/restaurer/')
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('déjà été restauré', resp.json()['detail'])
 
     def test_restaurer_refuse_une_entree_dune_autre_societe(self):
         archiver(self.lead)

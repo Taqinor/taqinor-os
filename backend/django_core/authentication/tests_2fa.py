@@ -130,7 +130,13 @@ class TestTwoFactorSetupEnableDisable(TestCase):
         # Code invalide → refus, 2FA toujours désactivé.
         bad = self.auth.post(
             '/api/django/auth/2fa/enable/', {'code': '000000'}, format='json')
-        self.assertEqual(bad.status_code, 400, bad.data)
+        # ENF11 : code bien formé mais faux = 409 ; mal formé/absent = 400.
+        self.assertEqual(bad.status_code, 409, bad.data)
+        self.assertIn('Code invalide', bad.data['detail'])
+        for corps in ({}, {'code': ''}, {'code': '12345'}, {'code': 'abcdef'}):
+            r = self.auth.post('/api/django/auth/2fa/enable/', corps,
+                               format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
         self.user.refresh_from_db()
         self.assertFalse(self.user.totp_enabled)
 

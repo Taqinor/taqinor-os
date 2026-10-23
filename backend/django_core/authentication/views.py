@@ -18,6 +18,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .corps_requetes import (
     CalendrierHegirienRequete, LangueInterfaceRequete, MobileHomeRouteRequete,
+    REPONSES_AVATAR_REFUS, REPONSES_REINIT, REQUETE_AVATAR, REQUETE_REINIT,
+    statut_refus_avatar, statut_refus_mot_de_passe,
     ID_COMPTE, REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
     TwoFactorDisableRequete, TwoFactorEnableRequete,
 )
@@ -1233,9 +1235,8 @@ class UserViewSet(viewsets.ModelViewSet):
             old=uname, new=None)
 
     @extend_schema(
-        request={'multipart/form-data': inline_serializer(
-            'AvatarUpload', {'file': drf_serializers.FileField()})},
-        parameters=ID_COMPTE, responses=UserSerializer)
+        request=REQUETE_AVATAR, parameters=ID_COMPTE,
+        responses={200: UserSerializer, **REPONSES_AVATAR_REFUS})
     @action(detail=True, methods=['post'], url_path='avatar',
             parser_classes=[MultiPartParser])
     def avatar(self, request, pk=None):
@@ -1257,18 +1258,15 @@ class UserViewSet(viewsets.ModelViewSet):
         # (avatars/{company_id}/…). L'ancienne clé (supprimée) garde sa forme.
         key, err = store_avatar(file, target.avatar_key, company=target.company)
         if err:
-            return Response({'detail': err},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 : 413 / 415 déclarés (corps_requetes), jamais un 400.
+            return Response({'detail': err}, status=statut_refus_avatar(err))
         target.avatar_key = key
         target.save(update_fields=['avatar_key'])
         return Response(
             UserSerializer(target, context={'request': request}).data)
 
     @extend_schema(
-        request=inline_serializer('ReinitialiserMotDePasseRequete', {
-            'password': drf_serializers.CharField()}), parameters=ID_COMPTE,
-        responses=inline_serializer('ReinitialiserMotDePasseReponse', {
-            'detail': drf_serializers.CharField()}))
+        request=REQUETE_REINIT, parameters=ID_COMPTE, responses=REPONSES_REINIT)
     @action(detail=True, methods=['post'],
             url_path='reinitialiser-mot-de-passe')
     def reinitialiser_mot_de_passe(self, request, pk=None):
@@ -1283,8 +1281,9 @@ class UserViewSet(viewsets.ModelViewSet):
         errors = reinitialiser_mot_de_passe(
             request.user, target, request.data.get('password', ''))
         if errors:
-            return Response({'password': errors},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 : forme publiée → 400 ; politique → 409 (corps_requetes).
+            return Response({'password': errors}, status=statut_refus_mot_de_passe(
+                request.data.get('password', '')))
         return Response({'detail': 'Mot de passe réinitialisé.'})
 
     @extend_schema(

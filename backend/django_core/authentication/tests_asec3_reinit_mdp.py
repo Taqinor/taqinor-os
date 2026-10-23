@@ -97,6 +97,16 @@ class ReinitialisationMotDePasseTests(TestCase):
         self.api.get(f'/api/django/users/{self.cible.id}/')
         self.assertEqual(lignes.count(), 1)
 
+    def test_forme_400_politique_409(self):
+        # ENF11 : forme publiée (< 8 car., tout numérique) = 400 ; refus de
+        # politique que le schéma ne dit pas (trop courant) = 409.
+        for mdp, attendu in (('a', 400), ('12345678901', 400),
+                             ('password123', 409)):
+            resp = self.api.post(
+                _URL.format(self.cible.id), {'password': mdp}, format='json')
+            self.assertEqual(resp.status_code, attendu, (mdp, resp.data))
+            self.assertIn('password', resp.data)
+
     def test_password_refuse_dans_patch(self):
         for methode in ('patch', 'put'):
             with self.subTest(methode=methode):
