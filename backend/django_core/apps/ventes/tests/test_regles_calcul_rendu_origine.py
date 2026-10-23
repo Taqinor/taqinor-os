@@ -148,7 +148,26 @@ _LIBELLES_APDF = tuple(
 #: AGQ (audit agricole du 23/10/2026) — libellés du document agricole ajoutés
 #: après le merge-base (options du kit, étapes suivantes, unités, notes,
 #: annexe) : des TEXTES de ``libelles_document``, jamais un chiffre.
-_CLES_AGQ = frozenset(('agr_acompte_apres_fda', 'agr_au_dela_de_n_ans', 'agr_controle_forage_depasse', 'agr_controle_forage_ok', 'agr_cout_eau_solaire', 'agr_declares_par_vous_le', 'agr_estimation_fao56', 'agr_etapes_suivantes', 'agr_formule_m3_solaire', 'agr_gar_court_production', 'agr_gar_court_produit', 'agr_heures_equivalentes', 'agr_mad_par_m3', 'agr_mois_irrigation_phrase', 'agr_mois_sans_besoin', 'agr_non_inclus_cable_dc', 'agr_non_inclus_installation', 'agr_non_inclus_pompe', 'agr_non_inclus_structure', 'agr_non_inclus_variateur', 'agr_option_afficheur_variateur', 'agr_option_antivol', 'agr_option_bassin', 'agr_option_cable_descente', 'agr_option_clapet', 'agr_option_cloture', 'agr_option_colonne_refoulement', 'agr_option_compteur_eau', 'agr_option_entretien_pompage', 'agr_option_mention_compteur_eau', 'agr_option_protection_dc', 'agr_option_sonde_niveau', 'agr_option_tuyauterie', 'agr_prix_sur_devis', 'agr_schema_ligne_eau', 'agr_schema_ligne_energie', 'agr_selon_fiche_fournisseur', 'unite_cv', 'unite_ha', 'unite_kwc', 'unite_m', 'unite_m3h', 'unite_m3j'))
+_CLES_AGQ = frozenset((
+    'agr_acompte_apres_fda', 'agr_au_dela_de_n_ans',
+    'agr_controle_forage_depasse', 'agr_controle_forage_ok',
+    'agr_cout_eau_solaire', 'agr_declares_par_vous_le',
+    'agr_estimation_fao56', 'agr_etapes_suivantes',
+    'agr_formule_m3_solaire', 'agr_gar_court_production',
+    'agr_gar_court_produit', 'agr_heures_equivalentes', 'agr_mad_par_m3',
+    'agr_mois_irrigation_phrase', 'agr_mois_sans_besoin',
+    'agr_non_inclus_cable_dc', 'agr_non_inclus_installation',
+    'agr_non_inclus_pompe', 'agr_non_inclus_structure',
+    'agr_non_inclus_variateur', 'agr_option_afficheur_variateur',
+    'agr_option_antivol', 'agr_option_bassin', 'agr_option_cable_descente',
+    'agr_option_clapet', 'agr_option_cloture',
+    'agr_option_colonne_refoulement', 'agr_option_compteur_eau',
+    'agr_option_entretien_pompage', 'agr_option_mention_compteur_eau',
+    'agr_option_protection_dc', 'agr_option_sonde_niveau',
+    'agr_option_tuyauterie', 'agr_prix_sur_devis', 'agr_schema_ligne_eau',
+    'agr_schema_ligne_energie', 'agr_selon_fiche_fournisseur', 'unite_cv',
+    'unite_ha', 'unite_kwc', 'unite_m', 'unite_m3h', 'unite_m3j',
+))
 _LIBELLES_AGQ = tuple(('libelles_document', cle) for cle in i18n_labels.LIBELLES
                       if cle in _CLES_AGQ)
 CLES_HORS_RENDU_ORIGINE = (
