@@ -227,6 +227,42 @@ class DevisAutoCITests(_Base):
         self.assertIn('Aucun onduleur C&I éligible', erreur.message)
         self.assertIn(self.onduleur.nom, erreur.message)
         self.assertNotIn('rentable', erreur.message)
+        # ADEV86 (D-ACI-3=b) — le refus dit la cause de phase.
+        self.assertIn('aucun onduleur C&I monophasé éligible', erreur.message)
+
+    # ── ADEV86 (D-ACI-3=b) : le C&I s'ouvre au monophasé ───────────────────
+
+    def _onduleur_mono(self):
+        onduleur = Produit.objects.create(
+            company=self.co, nom='Onduleur réseau Huawei 10kW Monophasé',
+            prix_vente=Decimal('9000'), prix_achat=Decimal('6000'),
+            role_devis='onduleur_reseau', garantie='10 ans constructeur')
+        FicheTechnique.objects.create(
+            company=self.co, produit=onduleur, type_fiche='onduleur',
+            ond_ac_kw=Decimal('10'), ond_phases=1, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('90'), ond_mppt_v_max=Decimal('550'),
+            ond_v_max_abs=Decimal('600'), ond_i_max_mppt_a=Decimal('20'),
+            ond_rendement_euro_pct=Decimal('97.8'))
+        disjoncteur = Produit.objects.create(
+            company=self.co, nom='Disjoncteur AC 50 A 2P', prix_vente=Decimal('350'),
+            prix_achat=Decimal('150'), role_ci='protection_ac')
+        FicheTechnique.objects.create(
+            company=self.co, produit=disjoncteur, type_fiche='protection',
+            prot_type='disjoncteur', prot_cote='ac', prot_calibre_a=50, prot_poles=2)
+        return onduleur, disjoncteur
+
+    def test_lead_mono_onduleur_mono_brouillon(self):
+        onduleur, disjoncteur = self._onduleur_mono()
+        lead = self._lead(conso_mensuelle_kwh=Decimal('1500'), raccordement='monophase')
+        devis = self._auto(lead)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        produits = set(devis.lignes.values_list('produit_id', flat=True))
+        self.assertIn(onduleur.id, produits)
+        self.assertNotIn(self.onduleur.id, produits)  # jamais un triphasé
+        self.assertIn(disjoncteur.id, produits)       # disjoncteur bipolaire
+        self.assertNotIn(self.disjoncteur.id, produits)
+        noms = ' '.join(devis.lignes.values_list('designation', flat=True)).lower()
+        self.assertNotIn('triphas', noms)
 
     def test_module_sans_pmax_refus_aucun_devis(self):
         FicheTechnique.objects.filter(produit=self.panneau).update(pmax_wc=None)

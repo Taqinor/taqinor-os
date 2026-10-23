@@ -64,6 +64,22 @@ def _alerte(code, message, niveau='alerte', champ='onduleurs', interne=True):
             'niveau': niveau, 'interne': interne}
 
 
+#: ADEV86 (D-ACI-3=b) — rôle C&I d'onduleur string → triphasé ?
+_ROLE_TRIPHASE = {'onduleur_string_tri': True, 'onduleur_string_mono': False}
+
+
+def _triphase(c):
+    """La phase d'un candidat : ``triphase`` classé par l'orchestrateur,
+    sinon ``phases`` publié (1 / 3), sinon son rôle C&I ; ``None`` inconnue."""
+    tri = c.get('triphase')
+    if isinstance(tri, bool):
+        return tri
+    phases = c.get('phases')
+    if phases in (1, 3):
+        return phases == 3
+    return _ROLE_TRIPHASE.get(c.get('role_ci'))
+
+
 def _vivier(candidats, phase, alertes):
     """Les candidats retenus pour la recherche + les exclus nommés."""
     retenus, exclus = [], []
@@ -90,7 +106,7 @@ def _vivier(candidats, phase, alertes):
             exclus.append({'produit': produit, 'nom': nom,
                            'motif': 'puissance AC non publiée'})
             continue
-        tri = c.get('triphase')
+        tri = _triphase(c)
         if phase == PHASE_TRI and tri is not True:
             exclus.append({'produit': produit, 'nom': nom, 'motif': (
                 'onduleur non triphasé sur un raccordement triphasé'
@@ -101,7 +117,7 @@ def _vivier(candidats, phase, alertes):
                 'onduleur triphasé sur un raccordement monophasé'
                 if tri is True else 'phase de l\'onduleur non publiée')})
             continue
-        retenus.append({**c, 'kw_ac': kw, 'prix': prix})
+        retenus.append({**c, 'kw_ac': kw, 'prix': prix, 'triphase': tri})
     if phase not in (PHASE_TRI, PHASE_MONO):
         alertes.append(_alerte(
             'OND_RACCORDEMENT_A_CONFIRMER',
@@ -218,7 +234,9 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
     """La combinaison d'onduleurs au coût de vente minimal pour ``kwc``.
 
     ``candidats`` : ``[{produit, nom, kw_ac, prix (vente HT), triphase,
-    eligible_ci, motif_exclusion, dc_max_kwc?, spec? (SpecOnduleur)}]`` —
+    role_ci?, phases?, eligible_ci, motif_exclusion, dc_max_kwc?, spec?
+    (SpecOnduleur)}]`` — phase du candidat : ``triphase``, sinon ``phases``,
+    sinon le rôle (``onduleur_string_tri`` / ``onduleur_string_mono``) ;
     construits par l'orchestrateur depuis ``stock.selectors.produits_ci``.
     ``phase`` : ``'tri'`` | ``'mono'`` | autre (inconnue). ``bornes_dc_ac`` :
     ``core.electrique.onduleurs.BornesDcAc`` (réglages société), sinon les
@@ -264,7 +282,7 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
         return vide
     if not retenus:
         if phase == PHASE_MONO:
-            motif = ('raccordement monophasé déclaré : aucun onduleur '
+            motif = ('raccordement monophasé déclaré : aucun onduleur C&I '
                      'monophasé éligible et pricé au catalogue — aucun '
                      'triphasé n\'est proposé à sa place')
         else:

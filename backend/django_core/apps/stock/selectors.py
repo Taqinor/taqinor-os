@@ -3297,7 +3297,7 @@ FICHE_CI_CHAMPS = {
 #: Rôles qui fixent la TAILLE d'une composition C&I : un prix vide les rend
 #: inéligibles (on ne choisit jamais un onduleur sans prix). Les autres rôles
 #: restent éligibles « prix à renseigner » (le devis est alors « incomplet »).
-ROLES_CI_DE_TAILLE = ('onduleur_string_tri',)
+ROLES_CI_DE_TAILLE = ('onduleur_string_tri', 'onduleur_string_mono')
 
 #: Repli par MOTS du nom (jumelle de l'ancienne lecture JS/serveur) — ordre
 #: significatif : le premier motif qui répond l'emporte.
@@ -3307,6 +3307,8 @@ _ROLES_CI_PAR_NOM = (
      'controleur_injection'),
     (('smart meter', 'compteur'), 'compteur_injection'),
     (('cellule mt',), 'cellule_mt'),
+    # ADEV87 — câble solaire DC (seed ``CAB-H1Z2Z2-*-M``, sans fiche).
+    (('h1z2z2',), 'cable_dc'),
 )
 
 
@@ -3341,6 +3343,13 @@ def _fiche_ci_dict(produit):
 
 def _role_ci_par_fiche(produit, fiche):
     """Rôle C&I DÉDUIT de la fiche (``role_devis`` + ``type_fiche``)."""
+    # ADEV87 — un câble DÉCLARÉ câble DC (rôle de devis ou de pompage), sans
+    # côté publié sur une fiche câble, sert le câble DC du C&I.
+    sans_cote = fiche is None or (fiche.type_fiche in ('cable', 'autre', '')
+                                  and not fiche.cable_cote)
+    if sans_cote and 'cable_dc' in (produit.role_devis,
+                                    getattr(produit, 'role_pompage', '')):
+        return 'cable_dc'
     if fiche is None:
         return None
     t = fiche.type_fiche
@@ -3349,6 +3358,10 @@ def _role_ci_par_fiche(produit, fiche):
                   or famille_onduleur(produit) == FAMILLE_ONDULEUR_RESEAU)
         if reseau and fiche.ond_phases == 3:
             return 'onduleur_string_tri'
+        # ADEV86 (D-ACI-3=b) — un onduleur réseau MONOPHASÉ publié sert le C&I
+        # monophasé (petit commerce) sous son propre rôle.
+        if reseau and fiche.ond_phases == 1:
+            return 'onduleur_string_mono'
         return None
     if t == 'limiteur':
         return ('controleur_injection' if fiche.lim_mode == 'controleur'
@@ -3359,7 +3372,7 @@ def _role_ci_par_fiche(produit, fiche):
         return {'ac': 'protection_ac', 'dc': 'protection_dc'}.get(
             fiche.prot_cote)
     if t == 'cable':
-        return 'cable_ac' if fiche.cable_cote == 'ac' else None
+        return {'ac': 'cable_ac', 'dc': 'cable_dc'}.get(fiche.cable_cote)
     if t == 'structure':
         return 'structure_ci'
     return None
@@ -3393,7 +3406,10 @@ def role_ci_pour(produit):
 
 def _eligibilite_ci(produit, role, prix_connu):
     """``(eligible_ci, motif_exclusion)`` — règles du contrat."""
-    if role == 'onduleur_string_tri':
+    from core.product_roles import PHASES_ONDULEUR_CI
+
+    phase_attendue = PHASES_ONDULEUR_CI.get(role)
+    if phase_attendue is not None:
         fiche = getattr(produit, 'fiche_technique', None)
         if fiche is None or fiche.type_fiche != 'onduleur':
             return False, 'fiche onduleur absente'
@@ -3402,9 +3418,13 @@ def _eligibilite_ci(produit, role, prix_connu):
             return False, 'fiche incomplète : ' + ', '.join(manquantes)
         if fiche.ond_phases is None:
             return False, 'phase non publiée'
-        if fiche.ond_phases != 3:
-            return False, ('onduleur monophasé : un onduleur string C&I est '
-                           'triphasé')
+        # ADEV86 — chaque rôle d'onduleur string exige SA phase publiée.
+        if fiche.ond_phases != phase_attendue:
+            if phase_attendue == 3:
+                return False, ('onduleur monophasé : un onduleur string C&I '
+                               'est triphasé')
+            return False, ('onduleur triphasé déclaré au rôle monophasé : '
+                           'fiche à 1 phase exigée')
     if role in ROLES_CI_DE_TAILLE and not prix_connu:
         return False, 'prix de vente non saisi'
     return True, None
@@ -3431,7 +3451,8 @@ def produits_ci(company, avec_prix=False):
     ``element_produits_ci`` de ``produit_ci.json``.
 
     Rôle : ``role_ci`` déclaré, sinon déduit de la fiche (``role_devis`` +
-    ``type_fiche`` / ``ond_phases``), sinon des mots du nom (repli) ;
+    ``type_fiche`` / ``ond_phases`` / ``cable_cote``), sinon des mots du nom
+    (repli) ;
     ``classement`` dit lequel. Produits ARCHIVÉS exclus ; lecture seule,
     bornée à la société ; une seule requête (catégorie et fiche préchargées).
     ``avec_prix=True`` ne garde que les produits à prix de vente saisi (> 0).

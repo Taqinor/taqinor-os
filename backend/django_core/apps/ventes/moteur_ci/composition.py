@@ -224,10 +224,29 @@ def _onduleurs_unitaires(onduleurs):
     return sortie
 
 
+#: ADEV86 (D-ACI-3=b) — rôle C&I d'onduleur string → triphasé ?
+_ROLE_TRIPHASE = {'onduleur_string_tri': True, 'onduleur_string_mono': False}
+
+
+def _onduleur_triphase(catalogue, ondu, entrees):
+    """ADEV86 — la phase de la SORTIE de l'onduleur : sa fiche (``ond_phases``),
+    sinon son rôle C&I, sinon la phase déclarée du site (règle d'hier)."""
+    article = _par_id(catalogue).get(ondu.get('produit')) or {}
+    phases = (article.get('fiche') or {}).get('ond_phases')
+    if phases in (1, 3):
+        return phases == 3
+    role = _ROLE_TRIPHASE.get(article.get('role_ci'))
+    if role is not None:
+        return role
+    return entrees.get('phase') != 'mono'
+
+
 def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
                             hypotheses):
     kw = _f(ondu.get('kw_ac')) or 0.0
-    triphase = entrees.get('phase') != 'mono'
+    # ADEV86 — un onduleur monophasé prend le disjoncteur BIPOLAIRE (2P) du
+    # calibre, un triphasé le tétrapolaire (4P).
+    triphase = _onduleur_triphase(catalogue, ondu, entrees)
     phases = 3 if triphase else 1
     ib = courant_emploi_ac(kw, phases)
     calibre = calibre_disjoncteur(ib)
@@ -457,7 +476,10 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
                                'module sans puissance publiée : nombre de '
                                'panneaux non calculé', niveau='bloquant'))
 
-    # ── Onduleurs (combinaison CIQ111)
+    # ── Onduleurs (combinaison CIQ111). ADEV86 — la ligne garde le rôle de
+    # LIGNE « onduleur string » (``onduleur_string_tri``) que lisent
+    # ``taille.cout_vente_ht`` et ``etude_ci._completer_prix`` : l'article
+    # monophasé y est désigné par son nom, jamais par un texte « triphasé ».
     par_id = _par_id(catalogue)
     for item in (onduleurs or {}).get('combinaison') or []:
         lignes.append(_ligne(
@@ -475,6 +497,12 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     if not chaines:
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
                              'm', motif='chaînes à vérifier : quantité non '
+                             'calculée', a_confirmer=True, visite=True))
+    elif any(c.get('bloquants') for c in chaines):
+        # ADEV87 — chaînes infaisables (alerte bloquante de la combinaison) :
+        # aucune quantité tirée d'une conception impossible.
+        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
+                             'm', motif='chaînes non faisables : quantité non '
                              'calculée', a_confirmer=True, visite=True))
     elif longueur_dc is None or longueur_dc <= 0:
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
