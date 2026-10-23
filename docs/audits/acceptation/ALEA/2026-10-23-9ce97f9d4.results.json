@@ -1,0 +1,38 @@
+{
+  "sha": "9ce97f9d4050a5759763165b55474287fe415cae",
+  "date": "2026-10-23",
+  "groupe": "ALEA",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEA48"
+  ],
+  "couvre_avec_ecart": [
+    "ALEA48"
+  ],
+  "etapes": [
+    {
+      "id": "P-ACI-5",
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ADEV/traces/2026-10-23/ACI-P5-generateur.txt",
+      "taches": [
+        "ALEA48"
+      ],
+      "notes": [
+        "bouton « Compléter : Contrat d'électricité » exercé en direct (focus du champ) ; 409 à field lead inatteignable depuis l'écran depuis ALEA47 — boîte 409 couverte par le test unitaire + 409 API de P-ACI-1"
+      ]
+    }
+  ]
+}

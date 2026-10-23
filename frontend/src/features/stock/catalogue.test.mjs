@@ -5,6 +5,7 @@ import assert from 'node:assert/strict'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
   typeOfProduit, familleAttendue, categorieIcone,
+  ROLES_CI_PRESTATION, etatPrixCi, produitCiACompleter, raisonCiACompleter,
 } from './catalogue.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
@@ -221,4 +222,61 @@ test('STKCAT16 — structure/protection/service : keySpec renvoie explicitement 
   assert.equal(keySpec({ nom: 'Rail alu 3m', categorie_type: 'structure' }), null)
   assert.equal(keySpec({ nom: 'Disjoncteur différentiel 32A', categorie_type: 'protection' }), null)
   assert.equal(keySpec({ nom: 'Installation', categorie_type: 'service' }), null)
+})
+
+// ASTK254 (D-ACI-4=a) — les prestations C&I sont tarifées dans Paramètres ›
+// Devis › Prestations C&I (le moteur ne lit que ces forfaits) : la fiche Stock
+// ne dit plus « prix à renseigner » et le filtre « C&I à compléter » les
+// ignore. Les articles matériels C&I sans prix gardent « prix à renseigner ».
+const _ci = (role, extra = {}, etat = {}) => ({
+  id: 900, nom: role, prix_vente: '0.00', tva: '20.00', role_ci: role,
+  etat_ci: {
+    role_ci: role, libelle: role, classement: 'declare', prix_connu: false,
+    eligible_ci: true, motif_exclusion: null, ...etat,
+  },
+  ...extra,
+})
+
+test('ASTK254 — les 9 rôles de prestation C&I (liste figée)', () => {
+  assert.deepEqual([...ROLES_CI_PRESTATION], [
+    'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
+    'mise_en_service', 'dossier_raccordement', 'levage_acces',
+    'transport_ci', 'om_ci',
+  ])
+})
+
+test('ASTK254 — prestation C&I sans prix : état « parametres », pas « a_renseigner »', () => {
+  for (const role of ROLES_CI_PRESTATION) {
+    assert.equal(etatPrixCi(_ci(role)), 'parametres', role)
+  }
+})
+
+test('ASTK254 — matériel C&I sans prix : « a_renseigner » ; avec prix : « ok »', () => {
+  for (const role of ['onduleur_string_tri', 'compteur_injection', 'cable_ac', 'batterie_ci']) {
+    assert.equal(etatPrixCi(_ci(role)), 'a_renseigner', role)
+    assert.equal(etatPrixCi(_ci(role, { prix_vente: '1500.00' }, { prix_connu: true })), 'ok', role)
+  }
+  // Article sans rôle C&I (panneau, etc.) : règle historique sansPrix.
+  assert.equal(etatPrixCi({ nom: 'Panneau', prix_vente: '0' }), 'a_renseigner')
+  assert.equal(etatPrixCi({ nom: 'Panneau', prix_vente: '1272.73' }), 'ok')
+})
+
+test('ASTK254 — le filtre « C&I à compléter » exclut les prestations, garde le matériel', () => {
+  for (const role of ROLES_CI_PRESTATION) {
+    assert.equal(produitCiACompleter(_ci(role)), false, role)
+    assert.equal(raisonCiACompleter(_ci(role)), '', role)
+  }
+  const materiel = _ci('compteur_injection')
+  assert.equal(produitCiACompleter(materiel), true)
+  assert.equal(raisonCiACompleter(materiel), 'prix à renseigner')
+})
+
+test('ASTK254 — une prestation exclue pour un autre motif reste à compléter', () => {
+  const exclue = _ci('om_ci', {}, { eligible_ci: false, motif_exclusion: 'fiche incomplète' })
+  assert.equal(produitCiACompleter(exclue), true)
+  assert.equal(raisonCiACompleter(exclue), 'fiche incomplète')
+})
+
+test('ASTK254 — le rôle se lit aussi sur role_ci quand etat_ci manque', () => {
+  assert.equal(etatPrixCi({ nom: 'Pose', prix_vente: '0', role_ci: 'pose_modules' }), 'parametres')
 })

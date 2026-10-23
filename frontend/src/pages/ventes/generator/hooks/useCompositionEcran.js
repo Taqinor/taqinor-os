@@ -8,8 +8,33 @@ import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
 import { SCENARIO_AVEC, SCENARIO_LES_DEUX } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
-import { corpsCiDepuisProfil, lignesDepuisCompositionCi } from '../../../../features/ventes/quote/profilCi'
-import { useEffect } from 'react'
+import {
+  corpsCiDepuisProfil, lignesDepuisCompositionCi, avertissementsCompositionCi,
+} from '../../../../features/ventes/quote/profilCi'
+import { createElement, Fragment, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+
+// ADEV84 — l'avertissement « devis incomplet » : chaque poste est un lien (Stock
+// pour un article, Paramètres pour une prestation C&I), puis les postes « à
+// chiffrer après visite » (hors total). Un nœud React dans `errors.autofill`
+// (la carte l'affiche dans un <span>) ; `null` quand il n'y a rien à dire.
+export function avertissementCompositionCi(composition) {
+  const { aRenseigner, aChiffrerVisite } = avertissementsCompositionCi(composition)
+  const liste = (items) => items.flatMap((it, i) => [
+    i > 0 ? ', ' : null,
+    createElement(Link, { key: it.nom, to: it.lien, className: 'underline' }, it.nom),
+  ])
+  const parties = []
+  if (aRenseigner.length) {
+    parties.push(createElement('span', { key: 'prix' }, 'Prix à renseigner : ',
+      ...liste(aRenseigner), ' — devis incomplet.'))
+  }
+  if (aChiffrerVisite.length) {
+    parties.push(createElement('span', { key: 'visite' },
+      `${parties.length ? ' ' : ''}À chiffrer après visite : ${aChiffrerVisite.join(', ')}.`))
+  }
+  return parties.length ? createElement(Fragment, null, ...parties) : null
+}
 
 export function useCompositionEcran(ctx) {
   const {
@@ -17,7 +42,7 @@ export function useCompositionEcran(ctx) {
     structureProduitId, recalcDimTick, setPompageAutoFilled, setOnduleursIncomplets,
     setAutoFillLoading, setCompositionErreur, profilCi, horsReseau, kwp, selectedLead,
     etudeHoraireDonnees, etudeHoraireChargement, marcheCi, ctxProfilCi, apercuCi, resolveKwcAvec,
-    recomposerLignes, avecQuantitesFigees, apercuPompage,
+    recomposerLignes, avecQuantitesFigees, apercuPompage, tvaStandard,
   } = ctx
 
   // U3COMPOSE — l'optimum AXE BATTERIE envoyé au dry-run serveur : même
@@ -235,17 +260,15 @@ export function useCompositionEcran(ctx) {
     setAutoFillLoading(true)
     try {
       const { data } = await ventesApi.etudeCiPreview(corps)
-      const generated = lignesDepuisCompositionCi(data?.composition, produits)
+      const generated = lignesDepuisCompositionCi(data?.composition, produits, tvaStandard)
       if (!generated.length) {
         setErrors(e => ({ ...e, autofill: 'Le moteur C&I n\'a retenu aucune taille : '
           + 'voir la raison d\'arrêt sous le profil.' }))
         return
       }
-      const aRenseigner = data?.composition?.prix_a_renseigner || []
       setErrors(e => ({
         ...e,
-        autofill: aRenseigner.length
-          ? `Prix à renseigner : ${aRenseigner.join(', ')} — devis incomplet.` : null,
+        autofill: avertissementCompositionCi(data?.composition),
         autofillKwc: null,
         marquesManquantes: null,
       }))

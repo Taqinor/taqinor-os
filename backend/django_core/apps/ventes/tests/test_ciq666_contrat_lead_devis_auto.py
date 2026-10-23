@@ -46,11 +46,13 @@ class DevisAutoContratDuLead(_Base):
         self.assertGreater(devis.lignes.count(), 0)
 
     def test_bt_sans_contrat_refuse_tarif_omis(self):
+        # ADEV76 — le refus nomme le CHAMP DU LEAD (contrat d'électricité),
+        # plus la feuille du moteur ``tarif_declare``.
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
         avant = Devis.objects.filter(company=self.co).count()
         with self.assertRaises(AutoDevisError) as ctx:
             self._auto_reel(lead)
-        self.assertEqual(ctx.exception.field, 'tarif_declare')
+        self.assertEqual(ctx.exception.field, 'contrat_electricite')
         self.assertIn("contrat d'électricité inconnu", ctx.exception.message)
         self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
 
@@ -59,7 +61,7 @@ class DevisAutoContratDuLead(_Base):
                           contrat_electricite='ne_sait_pas')
         with self.assertRaises(AutoDevisError) as ctx:
             self._auto_reel(lead)
-        self.assertEqual(ctx.exception.field, 'tarif_declare')
+        self.assertEqual(ctx.exception.field, 'contrat_electricite')
 
 
 class TarifSaisiSansContrat(_Base):

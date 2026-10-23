@@ -46,6 +46,13 @@ import logging
 import math
 from decimal import Decimal
 
+# 23/10/2026 — le balayage ADAPTATIF (grille grossière + raffinement, seuil
+# « hors résidentiel », plafond dur) vit dans son module PUR ; ce fichier-ci
+# (> 2 000 lignes, budget de croissance nul) ne fait que l'appeler.
+from apps.ventes.balayage_adaptatif import (
+    monter_champ_ve, motivation_hors_residentiel, pas_balayage,
+    tableau_adaptatif)
+
 logger = logging.getLogger(__name__)
 
 #: Critère de recommandation par DÉFAUT — nommé pour être discutable.
@@ -125,10 +132,12 @@ RATIO_ONDULEUR_MIN = 0.80
 #: un zéro de trop (1 200 000 au lieu de 1 200) ferait sinon balayer des
 #: milliers de tailles, chacune avec deux compositions catalogue et une
 #: simulation horaire de douze mois, SYNCHRONEMENT dans la création du devis.
-#: 120 panneaux ≈ 85 kWc en 710 Wc : très au-delà de tout résidentiel réel, et
-#: au-delà du plus gros onduleur du catalogue (50 kW). Atteindre ce plafond
-#: produit un avertissement — on ne tronque jamais en silence.
-MAX_PANNEAUX_BALAYAGE = 120
+#: 23/10/2026 (décision fondateur, lead 1635) : 2 000 panneaux — l'ancien 120
+#: est devenu ``balayage_adaptatif.SEUIL_PANNEAUX_RESIDENTIEL``, un SIGNAL
+#: (taille recommandée ET marquée « étude sur mesure conseillée »). Atteindre
+#: ce plafond produit un avertissement et retire la recommandation (QJR411) —
+#: on ne tronque jamais en silence.
+MAX_PANNEAUX_BALAYAGE = 2000
 
 #: DIM2 — GARDE-FOU du mini-balayage de stockage : nombre maximal de paliers
 #: explorés PAR TAILLE DE CHAMP. Ce n'est PAS une règle métier — les vraies
@@ -634,23 +643,27 @@ def bornes_candidates(*, conso_annuelle_kwh, productible_annuel_kwh_kwc,
         # étendre — la borne historique suffit.
         return 1, borne_parite
 
+    # 23/10/2026 — la sonde avance du PAS du balayage adaptatif (1 sous le
+    # seuil dense : byte-identique ; sinon ⌈parité / 40⌉, pour qu'un gros
+    # profil ne sonde pas des centaines de tailles une à une).
+    pas_sonde = pas_balayage(borne_parite)
     taille = borne_parite
     while taille < plafond_extension:
-        courant = sonde_residuel(taille + 1)
+        courant = sonde_residuel(min(taille + pas_sonde, plafond_extension))
         if courant is None:
             break
         progres = residuel - courant
-        taille, residuel = taille + 1, courant
+        taille, residuel = min(taille + pas_sonde, plafond_extension), courant
         if residuel < cible:
             break
         if progres <= 0:
             break
-        # PROJECTION — au rythme actuel, combien de panneaux resterait-il ? Si
-        # le budget n'y suffit pas, on s'arrête ICI plutôt que de calculer des
+        # PROJECTION — au rythme actuel, combien de pas resterait-il ? Si le
+        # budget n'y suffit pas, on s'arrête ICI plutôt que de calculer des
         # dizaines de tailles pour rien. C'est une DÉDUCTION du progrès mesuré,
         # pas un seuil choisi.
         manquant = math.ceil((residuel - cible) / progres)
-        if taille + manquant > plafond_extension:
+        if taille + manquant * pas_sonde > plafond_extension:
             break
     return 1, taille
 
@@ -1466,27 +1479,22 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             'consommation probablement aberrante',
             MAX_PANNEAUX_BALAYAGE, borne_max)
 
-    tableau = _construire_tableau(evaluer, debut, fin, plafond_atteint)
+    # 23/10/2026 — BALAYAGE ADAPTATIF (module ``balayage_adaptatif``) : dense
+    # et byte-identique sous le seuil, grille grossière + raffinement au-delà ;
+    # le marquage QJR411 d'un balayage tronqué y vit aussi.
+    choisirs = (choisir_recommandation, choisir_recommandation_avec)
+    tableau = tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs,
+                                MAX_PANNEAUX_BALAYAGE)
     if (etude_kwargs_sans_ve is not None and etat_plancher['candidats_vus']
             and not plafond_atteint
             and not any(ligne.get('balayage_stockage') for ligne in tableau)):
-        # QJR612 — « add more panels so battery is always charged » : la
-        # borne haute (parité + 1, falaise) ignore le plancher VE nocturne, si
-        # bien qu'aucune taille balayée ne remplissait la banque relevée. Le
-        # CHAMP MONTE donc, panneau par panneau au-delà de ``fin``, jusqu'à la
-        # première taille où une banque ≥ plancher se remplit chaque jour
-        # (+ un panneau de marge, comme la parité) ; garde-fou
-        # :data:`MAX_PANNEAUX_BALAYAGE`. Jamais pour un lead sans recharge
-        # nocturne (``etude_kwargs_sans_ve`` vaut alors ``None``).
-        taille = fin
-        while taille < MAX_PANNEAUX_BALAYAGE:
-            taille += 1
-            ligne = evaluer(taille)
-            if ligne is not None and ligne.get('balayage_stockage'):
-                tableau = _construire_tableau(
-                    evaluer, debut, min(taille + 1, MAX_PANNEAUX_BALAYAGE),
-                    plafond_atteint)
-                break
+        # QJR612 — « add more panels so battery is always charged » : le champ
+        # monte au-delà de ``fin`` jusqu'à la première taille qui remplit la
+        # banque relevée (``balayage_adaptatif.monter_champ_ve``). Jamais pour
+        # un lead sans recharge nocturne (``etude_kwargs_sans_ve`` = ``None``).
+        tableau = monter_champ_ve(
+            evaluer, tableau, debut, fin, plafond_atteint, choisirs,
+            MAX_PANNEAUX_BALAYAGE)
     if (etude_kwargs_sans_ve is not None and etat_plancher['candidats_vus']
             and not any(ligne.get('balayage_stockage') for ligne in tableau)):
         # QJR612 — REPLI : le plancher VE nocturne n'est rempli à AUCUNE taille
@@ -1494,37 +1502,9 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         # retient la plus grande banque qui s'y remplit encore (``plafonne``).
         etat_plancher['repli'] = True
         cache.clear()
-        tableau = _construire_tableau(evaluer, debut, fin, plafond_atteint)
-    return tableau
-
-
-def _construire_tableau(evaluer, debut, fin, plafond_atteint):
-    """Les lignes du balayage, de ``debut`` à ``fin`` panneaux inclus."""
-    tableau = []
-    for panneaux in range(debut, fin + 1):
-        ligne = evaluer(panneaux)
-        if ligne is None:
-            continue
-        if plafond_atteint:
-            # QJR411 (DR4, 31/08/2026) — LE PLAFOND EST GARDÉ (voir
-            # MAX_PANNEAUX_BALAYAGE ci-dessus, VOULU, jamais déplacé) ; seul le
-            # DISCOURS change. Un consommateur au-delà de ~9 000 kWh/mois est
-            # PARFAITEMENT légitime — ce n'était pas une facture douteuse
-            # (« anormalement élevée », « vérifier la facture »), mais un
-            # profil hors résidentiel. ``plafond_panneaux_atteint`` est un
-            # champ STRUCTURÉ (pas un texte à reconnaître) : c'est lui, pas ce
-            # message, que :func:`choisir_recommandation` lit pour ne plus
-            # présenter ce résultat tronqué comme LA recommandation — il reste
-            # affiché ici, il cesse seulement d'être étiqueté « recommandé ».
-            message = (
-                'Balayage plafonné à %d panneaux : profil au-delà du '
-                'dimensionnement résidentiel — étude sur mesure.'
-                % MAX_PANNEAUX_BALAYAGE)
-            if message not in ligne['avertissements']:
-                ligne['avertissements'].insert(0, message)
-            ligne['plafond_panneaux_atteint'] = True
-        tableau.append(ligne)
-
+        tableau = tableau_adaptatif(
+            evaluer, debut, fin, plafond_atteint, choisirs,
+            MAX_PANNEAUX_BALAYAGE)
     return tableau
 
 
@@ -1618,6 +1598,15 @@ def point_depart_meilleur_payback(eligibles):
 
 
 def choisir_recommandation(tableau, critere=CRITERE_DEFAUT):
+    """La taille RECOMMANDÉE dans un tableau, avec sa MOTIVATION en clair —
+    voir :func:`_choisir_recommandation_brute` pour la doctrine. Cette façade
+    n'ajoute que le signal « hors résidentiel » (décision fondateur du
+    23/10/2026) à la motivation d'une taille au-dessus du seuil."""
+    retenu, motivation = _choisir_recommandation_brute(tableau, critere)
+    return retenu, motivation_hors_residentiel(retenu, motivation)
+
+
+def _choisir_recommandation_brute(tableau, critere=CRITERE_DEFAUT):
     """La taille RECOMMANDÉE dans un tableau, avec sa MOTIVATION en clair.
 
     Règle par défaut (:data:`CRITERE_DEFAUT`), DOCTRINE FONDATEUR DU
@@ -1896,6 +1885,14 @@ def _ligne_avec_palier(ligne, palier):
 
 
 def choisir_recommandation_avec(tableau):
+    """L'optimum conjoint champ × stockage — voir
+    :func:`_choisir_recommandation_avec_brute` pour la doctrine. Cette façade
+    n'ajoute que le signal « hors résidentiel » (23/10/2026) à la motivation."""
+    retenu, motivation = _choisir_recommandation_avec_brute(tableau)
+    return retenu, motivation_hors_residentiel(retenu, motivation)
+
+
+def _choisir_recommandation_avec_brute(tableau):
     """DIM2 + DOCTRINE 25/08/2026 — L'OPTIMUM CONJOINT champ × stockage.
 
     L'axe « avec batterie » a son propre gagnant depuis DIM2, parce qu'il a son

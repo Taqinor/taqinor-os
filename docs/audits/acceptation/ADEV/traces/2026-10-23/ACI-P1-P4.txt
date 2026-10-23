@@ -1,0 +1,52 @@
+Sonde d'acceptation ACI — pile locale (copie seed_demo, société « TAQINOR Démo »), transaction annulée, code à 676f4f49c, 2026-10-23.
+Script : acceptation_aci.py (lead Meta-like → devis auto → refus nommés → fiche complétée → brouillon → rejeu → /proposal).
+
+    module = importlib.import_module("STAGES")
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    return self.models[model_name.lower()]
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+    modele = django_apps.get_model(label)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    return app_config.get_model(model_name, require_ready=require_ready)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    raise LookupError(
+    return self.models[model_name.lower()]
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+    modele = django_apps.get_model(label)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    return app_config.get_model(model_name, require_ready=require_ready)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    raise LookupError(
+OK  P1.pret_false — [{'champ': 'contrat_electricite', 'label': "Contrat d'électricité"}, {'champ': 'jours_ouverture', 'label': "Jours et heures d'ouverture (ou catégorie d'activité)"}]
+OK  P1.labels — Contrat d'électricité | Jours et heures d'ouverture (ou catégorie d'activité)
+OK  P1.409_contrat — {'detail': "Tarif non déclaré et contrat d'électricité inconnu : économies non chiffrées (aucun prix plat supposé).", 'field': 'contrat_electricite'}
+OK  P1.409_jours — {'detail': "Jours d'ouverture du site à déclarer sur le lead : profil de charge déclaré exigé (aucun week-end supposé).", 'field': 'jours_ouverture'}
+OK  P1.409_heures — {'detail': "Heures d'ouverture (ou régime d'équipes) à déclarer sur le lead : aucun archétype sourcé pour cette activité, profil déclaré exigé.", 'field': 'heure_debut'}
+   seed_catalogue : articles C&I = 71
+   module à fiche : Panneau mono 450W
+KO  P2.409_onduleurs_sans_fiche — {'detail': 'Prix à renseigner avant un devis automatique C&I : Coffret DC C&I, Disjoncteur AC 16 A tétrapolaire (C&I), Pose de la structure C&I, Pose des modules C&I, Coffret AC C&I, Études et ingénierie C&I, Raccordement AC C&I, Mise en service C&I, Dossier de raccordement C&I, Levage et accès C&I,
+OK  P2.409_prix_a_renseigner — {'detail': 'Prix à renseigner avant un devis automatique C&I : Coffret DC C&I, Disjoncteur AC 16 A tétrapolaire (C&I), Pose de la structure C&I, Pose des modules C&I, Coffret AC C&I, Études et ingénierie C&I, Raccordement AC C&I, Mise en service C&I, Dossier de raccordement C&I, Levage et accès C&I,
+   articles C&I tarifés à 900 : 70
+OK  P2.201_brouillon — {'id': 1037, 'reference': 'DEV-202610-0075', 'statut': 'brouillon', 'kwc': 65.32, 'nb_lignes': 14, 'proposal_token': 'P10oKp81W2d5OAOuNsWURNOkT2ZnKkaC_W-ylIvAvO8', 'proposal_path': '/proposition/aci-hotel-e2e/P10oKp81W2d5OAOuNsWURNOkT2ZnKkaC_W-ylIvAvO8', 'alertes': [{'code': 'a_chiffrer_visite', 'ch
+OK  P2.lignes_panneau_onduleur — ['Panneau Canadien Solar 710W', 'Onduleur réseau Huawei 50kW Triphasé', 'Coffret DC C&I', 'Disjoncteur AC 80 A tétrapolaire (C&I)', "Contrôleur d'injection C&I", 'Coffret AC C&I', 'Études et ingénierie C&I', 'Pose de la structure C&I', 'Pose des modules C&I', 'Raccordement AC C&I', 'Mise en service 
+OK  P2.aucune_ligne_a_zero — [1272.73, 45833.33, 900.0, 900.0, 900.0, 900.0, 2500.0, 2500.0, 2500.0, 2500.0, 2500.0, 2500.0, 2500.0, 2500.0]
+   taille {"bornes": {"toit": {"kwc": null, "source": "aucune surface d\u00e9clar\u00e9e ni calepinage"}, "phase": {"kwc": null, "motif": "triphas\u00e9 : aucune borne de phase"}, "regime_8221": {"motif": "aucu | a_chiffrer_visite ['Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)', 'Câble AC Onduleur réseau Huawei 50kW Triphasé → TGBT', 'Structure C&I']
+   alertes API [{'code': 'a_chiffrer_visite', 'champ': 'composition', 'message': '« Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre) » à chiffrer après la visite technique : hors total, devis estimé sous réserve de visite.'}, {'code': 'a_chiffrer_visite', 'champ': 'composition', 'message': '« Câble AC Onduleur réseau Huawei 50kW Triphasé → TGBT » à chiffrer après la visite technique : hors total, devis estimé sous réserve de visite.'}, {'code': 'a_chiffrer_visite', 'champ': 'composition', 'message': '« Structure C&I » à chiffrer après la visite technique : hors total, devis estimé sous réserve de visite.'}, {'code': 'longueurs_non_relevees', 'champ': 'contraintes', 'message': 'Longueurs de câble non relevées — à confirmer à la visite.', 'niveau': 'alerte', 'interne': True}, {'code': 'contenance_toit_inconnue', 'champ': 'toit', 'message': 'Contenance du toit non bornée : mode de pose non déclaré : contenance à établir au calepinage.', 'niveau': 'alerte', 'interne': True}, {'code': 'TOIT_CHARGE_NON_DECLAREE', 'champ': 'toit.charge_admissible_kg_m2', 'message': 'charge admissible non déclarée — vérification structure requise avant le devis final', 'niveau': 'alerte', 'interne': True}, {'code': 'puissance_souscrite_inconnue', 'champ': 'puissance_souscrite_kva', 'message': 'Puissance souscrite non déclarée : la borne réseau n’est pas vérifiée (à relever à la visite).', 'niveau': 'alerte', 'interne': True}, {'code': 'POSTE_ABSENT_CATALOGUE', 'champ': 'composition.protection_dc', 'message': 'Protection DC (fusibles / sectionneur) par MPPT : aucun article de ce rôle au catalogue (poste non composé, à créer en Stock).', 'niveau': 'alerte', 'interne': True}, {'code': 'POSTE_ABSENT_CATALOGUE', 'champ': 'composition.parafoudre_dc', 'message': 'Parafoudre DC par onduleur : aucun article de ce rôle au catalogue (poste non composé, à créer en Stock).', 'niveau': 'alerte', 'interne': True}, {'code': 'POSTE_ABSENT_CATALOGUE', 'champ': 'composition.parafoudre_ac', 'message': 'Parafoudre AC : aucun article de ce rôle au catalogue (poste non composé, à créer en Stock).', 'niveau': 'alerte', 'interne': True}, {'code': 'POSTE_ABSENT_CATALOGUE', 'champ': 'composition.mise_a_la_terre', 'message': 'Mise à la terre du champ PV : aucun article de ce rôle au catalogue (poste non composé, à créer en Stock).', 'niveau': 'alerte', 'interne': True}, {'code': 'CI_POINTS_RACCORDEMENT', 'champ': 'composition', 'message': 'nombre de points de raccordement non déclaré : un dispositif de comptage compté, à confirmer à la visite', 'niveau': 'alerte', 'interne': True}]
+OK  P3.rejeu_200_meme_id — (200, 1037)
+OK  P3.un_seul_devis — 1
+    sig = devis.signature
+          ^^^^^^^^^^^^^^^
+    raise self.RelatedObjectDoesNotExist(
+OK  P4.proposal_200 — (200, '2.9s')
+OK  P4.3_pages — 3
+OK  P4.pas_de_MT_sur_BT — 
+OK  P4.pas_bareme_ONEE_SRM — 
+OK  P4.suivi_production — 
+OK  P4.om_nommee — 
+OK  P4.pas_de_code_interne — 
+OK  P4.kwc_imprime — 
+   extrait p1: R É F. D E V I S | DEV-202610-0075 | 23/10/2026 | Valable jusqu’au 22/11/2026 | P R O P O S I T I O N — A U T O C O N S O M M A T I O N S O L A I R E C O M M E R C I A L E | Autre commerce | Le solaire produit pendant la journée de votre établissement, en autoconsommation. | ACI Hôtel E2E  · Casablanca · 0661000001  | Autre commerce | À l'attention de ACI Hôtel E2E | Estimation sous réserve de la visite technique | À confirmer : À chiffrer après la visite technique, hors total : Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre), Câble AC Onduleur réseau Huawei 50kW | Triphasé → TGBT, Structure C&I · Puissance souscrite,
+RESUME {"P1.pret_false": true, "P1.labels": true, "P1.409_contrat": true, "P1.409_jours": true, "P1.409_heures": true, "P2.409_onduleurs_sans_fiche": false, "P2.409_prix_a_renseigner": true, "P2.201_brouillon": true, "P2.lignes_panneau_onduleur": true, "P2.aucune_ligne_a_zero": true, "P3.rejeu_200_meme_id": true, "P3.un_seul_devis": true, "P4.proposal_200": true, "P4.3_pages": true, "P4.pas_de_MT_sur_BT": true, "P4.pas_bareme_ONEE_SRM": true, "P4.suivi_production": true, "P4.om_nommee": true, "P4.pas_de_code_interne": true, "P4.kwc_imprime": true}
+FIN (transaction annulée)

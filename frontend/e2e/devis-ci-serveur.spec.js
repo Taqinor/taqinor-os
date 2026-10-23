@@ -12,7 +12,7 @@
 import { test, expect } from '@playwright/test'
 import {
   choisirMarche, declarerProfilCi, telephoneMobileUnique, uniq, cliquerCreerDevis,
-  retirerLignesPrixARenseigner,
+  retirerLignesPrixARenseigner, tariferPostesCiDemo,
 } from './helpers'
 
 const API = '/api/django'
@@ -138,6 +138,8 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
   }), 'lead commercial')
   expect(lead.contrat_electricite).toBe('bt_patente')
   leadIds.push(lead.id)
+  // ADEV79 (D-ACI-6=a) — postes C&I de la démo tarifés par l'API (helper partagé).
+  await tariferPostesCiDemo(request)
   await page.goto(`/crm/leads/${lead.id}`)
   const appel = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/auto\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 })

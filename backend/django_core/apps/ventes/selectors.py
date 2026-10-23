@@ -1908,3 +1908,24 @@ def unite_par_energie():
     (``economie_pompage.UNITE_PAR_ENERGIE``), copie neuve."""
     from .economie_pompage import UNITE_PAR_ENERGIE
     return dict(UNITE_PAR_ENERGIE)
+
+
+def profil_charge_prerequis_ci(rythme, categorie=None, *, company=None, mode=None,
+                               cle_profil=None, en_champs_lead=False):
+    """ADEV76 (D-ACI-5=a) — LA règle des prérequis du profil de charge C&I,
+    exposée aux autres apps (la fiche lead la LIT, jamais une copie).
+
+    ``rythme`` : bloc ``rythme`` du moteur (``jours_ouverts``, ``plages``,
+    ``equipes``, ``debut_equipe_h``, ``reponses_categorie``…). ``company`` +
+    ``mode`` + ``cle_profil`` (catégorie commerciale ou secteur industriel)
+    : le profil SAISI par la société n'est retenu que sur sa clé exacte (même
+    lecture que le moteur). Rend les feuilles manquantes, ou — avec
+    ``en_champs_lead`` — les champs du LEAD qui les posent, dans l'ordre."""
+    from .domain.etude_ci import CHAMP_LEAD_DES_ALERTES, _profil_societe
+    from .moteur_ci.charge import profil_charge_prerequis
+
+    profil = _profil_societe(company, mode, cle_profil) if company is not None else None
+    feuilles = profil_charge_prerequis(rythme, categorie, profil)
+    if not en_champs_lead:
+        return feuilles
+    return [CHAMP_LEAD_DES_ALERTES[f] for f in feuilles]

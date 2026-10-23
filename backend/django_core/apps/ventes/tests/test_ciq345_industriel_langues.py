@@ -155,3 +155,74 @@ class Ciq345LanguesIndustriel(SimpleTestCase):
                 doc = HTML(string=_html(_data(langue))).render()
                 self.assertEqual(len(doc.pages), 4)
                 self.assertFalse(deborde(doc.pages[2]))
+
+
+#: AMOT84 — textes DYNAMIQUES français que le moteur sert ou imprime.
+MOTIFS_VISITE_FR = (
+    "site MT : visite avant le devis final", "tension de raccordement inconnue",
+    "puissance souscrite inconnue", "surface disponible inconnue",
+    "profil horaire non déclaré : estimation sous réserve de visite")
+MOTIF_SENSIBILITE_FR = "charge horaire déclarée absente"
+
+
+class Amot84TextesDynamiquesIndustriel(SimpleTestCase):
+    """AMOT84 — en ``en`` / ``ar`` : ni MENTION_MT, ni motif de réserve de
+    visite, ni motif de sensibilité, ni « ans » / « HT » du une-page en
+    français ; le français est inchangé."""
+
+    def _avec_motifs(self, langue):
+        d = _data(langue)
+        etude_ci = dict(d["etude"].get("etude_ci") or {})
+        etude_ci["sous_reserve_visite"] = {"valeur": True, "motif": (
+            "site MT : visite avant le devis final (D-CIQ-5); tension de "
+            "raccordement inconnue; puissance souscrite inconnue; surface "
+            "disponible inconnue; profil horaire non déclaré : estimation "
+            "sous réserve de visite")}
+        d["etude"] = dict(d["etude"], etude_ci=etude_ci)
+        d["economie_ci"]["sensibilites"].append(
+            {"cle": "production", "variation_pct": 5.0, "retour_ans": None,
+             "motif": ("charge horaire déclarée absente : production non "
+                       "recalculable heure par heure — scénario non chiffré")})
+        return _html(d)
+
+    def test_motifs_traduits_en_et_ar(self):
+        for langue in ("en", "ar"):
+            html = self._avec_motifs(langue)
+            for fr in MOTIFS_VISITE_FR + (MOTIF_SENSIBILITE_FR,):
+                with self.subTest(langue=langue, fr=fr):
+                    self.assertNotIn(fr, html)
+        self.assertIn("site survey before the final quote",
+                      self._avec_motifs("en"))
+
+    def test_francais_inchange_sans_code_interne(self):
+        html = self._avec_motifs(None)
+        for fr in MOTIFS_VISITE_FR + (MOTIF_SENSIBILITE_FR,):
+            self.assertIn(fr, html)
+        self.assertNotIn("D-CIQ-5", html)
+
+    def test_mention_mt_dans_la_langue_du_document(self):
+        from apps.ventes.quote_engine.ci.mentions import mention_tarif_mt
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_MT
+        grille = {"origine": "grille_officielle"}
+        self.assertEqual(mention_tarif_mt(grille), MENTION_MT)
+        self.assertEqual(mention_tarif_mt(grille, langue="fr"), MENTION_MT)
+        for langue in ("en", "ar"):
+            with self.subTest(langue=langue):
+                texte = mention_tarif_mt(grille, langue=langue)
+                self.assertNotIn("Barème", texte)
+                self.assertNotIn("relevé le", texte)
+                self.assertIn("03/10/2026", texte)
+
+    def test_une_page_ans_et_ht_traduits(self):
+        from apps.ventes.tests.test_ciq210_onepage_ci import _onepage
+        _d, fr = _onepage("industriel")
+        self.assertIn(">3 ans<", fr)
+        self.assertIn("/ an (HT)<", fr)
+        for langue, ans, ht in (("en", " years", "(excl. VAT)"),
+                                ("ar", " سنوات", "(دون احتساب الضريبة)")):
+            with self.subTest(langue=langue):
+                _d, html = _onepage("industriel", langue_sortie=langue)
+                self.assertIn(ans, html)
+                self.assertIn(ht, html)
+                self.assertNotIn(">3 ans<", html)
+                self.assertNotIn("MAD/an<", html)

@@ -399,7 +399,11 @@ jobs:
         run: |
           n=$(git ls-files 'e2e/*-snapshots/*' | wc -l)
           set +e
-          npx playwright test --grep @visual
+          # Nocturnes 21-23/10/2026 : ce second `playwright test` réécrivait
+          # `playwright-report/` — l'artefact `playwright-report-full` ne
+          # contenait plus que les 16 captures, jamais la trace d'un rouge de
+          # la matrice (EDC10). Rapport visuel dans son propre dossier.
+          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-visual             npx playwright test --grep @visual
           rc=$?
           set -e
           if [ "$n" -eq 0 ]; then
@@ -420,7 +424,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-full
-          path: frontend/playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/playwright-report-visual
           retention-days: 14
       - name: Upload visual baselines (à relire + commiter)
         if: ${{ !cancelled() }}

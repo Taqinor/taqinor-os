@@ -122,15 +122,32 @@
   },
   "exemple_commercial": {
     "devis_auto": {
-      "pret": true,
-      "manquants": [],
-      "manquants_detail": [],
+      "pret": false,
+      "manquants": [
+        "Jours et heures d'ouverture (ou catégorie d'activité)"
+      ],
+      "manquants_detail": [
+        {
+          "champ": "jours_ouverture",
+          "label": "Jours et heures d'ouverture (ou catégorie d'activité)"
+        }
+      ],
       "requis": [
         [
           "conso_mensuelle_kwh",
           "bill_kwh",
           "releve_conso",
           "facture_hiver"
+        ],
+        [
+          "contrat_electricite"
+        ],
+        [
+          "jours_ouverture"
+        ],
+        [
+          "heure_debut",
+          "regime_equipes"
         ]
       ],
       "source_conso": "facture_hiver",
@@ -147,12 +164,17 @@
     "devis_auto": {
       "pret": false,
       "manquants": [
-        "Consommation (kWh), relevé de factures, ou facture en MAD si la basse tension est déclarée"
+        "Consommation (kWh), relevé de factures, ou facture en MAD si la basse tension est déclarée",
+        "Jours et heures d'ouverture (ou catégorie d'activité)"
       ],
       "manquants_detail": [
         {
           "champ": "conso_mensuelle_kwh",
           "label": "Consommation (kWh), relevé de factures, ou facture en MAD si la basse tension est déclarée"
+        },
+        {
+          "champ": "jours_ouverture",
+          "label": "Jours et heures d'ouverture (ou catégorie d'activité)"
         }
       ],
       "requis": [
@@ -161,6 +183,13 @@
           "bill_kwh",
           "releve_conso",
           "facture_hiver"
+        ],
+        [
+          "jours_ouverture"
+        ],
+        [
+          "heure_debut",
+          "regime_equipes"
         ]
       ],
       "source_conso": null,

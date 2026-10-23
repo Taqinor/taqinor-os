@@ -175,6 +175,58 @@ class TestCourbeDeclaree(unittest.TestCase):
             self.assertNotIn(interdit, texte)
 
 
+class TestProfilChargePrerequis(unittest.TestCase):
+    """ADEV76 — LA règle des prérequis : un cas par branche de ``courbe_declaree``."""
+
+    PROFIL_SOCIETE = {'cle': 'hotel', 'libelle': 'Hôtel relevé', 'provenance': 'relevé 2025',
+                      'courbe': {'annuel': [0] * 8 + [10] * 10 + [0] * 6}}
+
+    def _accord(self, rythme, categorie=None, profil_societe=None):
+        """La règle et le moteur disent la MÊME chose (jours types ⇔ [])."""
+        manquants = charge.profil_charge_prerequis(rythme, categorie, profil_societe)
+        jt, _prov, alertes = courbe_declaree(
+            dict(rythme, talon={'kw': 1}), [1000] * 12, annee_reference=ANNEE,
+            archetype=categorie, profil_societe=profil_societe, feries=[])
+        self.assertEqual(jt is None, bool(manquants), (rythme, manquants))
+        bloquants = {a['champ'] for a in alertes if a['niveau'] == 'bloquant'}
+        self.assertEqual(bloquants, set(manquants))
+        return manquants
+
+    def test_heures_et_jours_declares_pret(self):
+        self.assertEqual(self._accord({'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}}), [])
+
+    def test_heures_sans_jours_exige_les_jours(self):
+        self.assertEqual(self._accord({'plages': {'ouvre': [[8, 18]]}}, 'bureau'),
+                         ['rythme.jours_ouverts'])
+
+    def test_regime_3x8_sans_heures_pret(self):
+        self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '3x8'}, 'industriel'), [])
+
+    def test_regime_2x8_sans_heure_de_debut_exige_les_heures(self):
+        self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '2x8'}, 'industriel'),
+                         ['rythme.plages'])
+        self.assertEqual(self._accord({'jours_ouverts': TOUS, 'equipes': '2x8',
+                                       'debut_equipe_h': 6}, 'industriel'), [])
+
+    def test_reponses_de_categorie_posent_des_plages(self):
+        rythme = {'reponses_categorie': {'horaires': 'midi_soir', 'heures': [[11, 23]]}}
+        # Des plages déclarées par la catégorie ⇒ les jours sont exigés (l'archétype
+        # restaurant ne sert plus).
+        self.assertEqual(self._accord(rythme, 'restaurant'), ['rythme.jours_ouverts'])
+        self.assertEqual(self._accord({}, 'restaurant'), [])
+
+    def test_sans_plage_archetype_vendorise_pret(self):
+        self.assertEqual(self._accord({}, 'bureau'), [])
+
+    def test_sans_plage_profil_societe_pret(self):
+        self.assertEqual(self._accord({}, 'industriel', self.PROFIL_SOCIETE), [])
+
+    def test_sans_plage_ni_repli_jours_puis_heures(self):
+        self.assertEqual(self._accord({}, 'hammam'), ['rythme.jours_ouverts', 'rythme.plages'])
+        self.assertEqual(self._accord({}, None), ['rythme.jours_ouverts', 'rythme.plages'])
+        self.assertEqual(self._accord({'jours_ouverts': TOUS}, 'industriel'), ['rythme.plages'])
+
+
 class TestPurete(unittest.TestCase):
 
     def test_aucun_import_django(self):

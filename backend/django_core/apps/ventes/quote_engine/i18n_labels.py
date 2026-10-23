@@ -875,9 +875,11 @@ LIBELLES = {
         'en': 'Roof type and permissible load, at the visit',
         'ar': 'نوع السقف والحمولة المسموح بها، أثناء الزيارة'},
     'ci_confirmer_etude_ci': {
-        'fr': "étude du moteur C&I à faire : chiffres préliminaires",
-        'en': 'C&I study still to be run: preliminary figures',
-        'ar': 'دراسة المحرك التجاري والصناعي لم تنجز بعد: أرقام أولية'},
+        'fr': 'étude détaillée de votre site à finaliser : chiffres '
+              'préliminaires',
+        'en': 'detailed study of your site to be finalised: preliminary '
+              'figures',
+        'ar': 'الدراسة المفصلة لموقعكم قيد الإنجاز: أرقام أولية'},
     'ci_confirmer_visite': {
         'fr': 'Relevé du site à la visite technique',
         'en': 'Site survey at the technical visit',
@@ -988,12 +990,14 @@ LIBELLES = {
         'ar': 'التحجيم والزيارة التقنية والمصادقة على المشروع.'},
     'ci_etape_installation_t': {'fr': 'Installation', 'en': 'Installation',
                                 'ar': 'التركيب'},
+    # AMOT83 — « en coordination avec votre activité » (jamais une promesse
+    # de continuité que le chantier ne tient pas toujours).
     'ci_etape_installation_s': {
-        'fr': 'Pose des équipements par nos équipes, sans interrompre votre '
-              'activité.',
-        'en': 'Equipment installed by our teams, without interrupting your '
+        'fr': 'Pose des équipements par nos équipes, en coordination avec '
+              'votre activité.',
+        'en': 'Equipment installed by our teams, in coordination with your '
               'business.',
-        'ar': 'تركيب المعدات من طرف فرقنا دون توقيف نشاطكم.'},
+        'ar': 'تركيب المعدات من طرف فرقنا بتنسيق مع نشاطكم.'},
     'ci_etape_mes_t': {'fr': 'Mise en service', 'en': 'Commissioning',
                        'ar': 'التشغيل'},
     'ci_etape_mes_s': {
@@ -1045,6 +1049,17 @@ LIBELLES = {
     'ci_suivi_production': {'fr': 'Suivi de production',
                             'en': 'Production monitoring',
                             'ar': 'تتبع الإنتاج'},
+    # AMOT83 (D-ACI-11=a, D-ACI-12=a) — suivi nommé sans délai inventé ;
+    # dossier 82-21 monté par la société émettrice.
+    'ci_suivi_production_inclus': {'fr': 'Suivi de production inclus',
+                                   'en': 'Production monitoring included',
+                                   'ar': 'تتبع الإنتاج مشمول'},
+    'ci_dossier_raccordement': {
+        'fr': 'Raccordement et autorisations du site&#160;: dossier monté et '
+              'suivi par {societe}',
+        'en': 'Site grid connection and permits: file prepared and followed '
+              'up by {societe}',
+        'ar': 'الربط بالشبكة وتراخيص الموقع: ملف تعدّه وتتابعه {societe}'},
     'ci_intervention_sous': {'fr': 'intervention sous {heures}&#160;h',
                              'en': 'intervention within {heures}&#160;h',
                              'ar': 'التدخل في غضون {heures}&#160;ساعة'},
@@ -2108,7 +2123,6 @@ LIBELLES = {
     'lg_sous_titre_stockage': {'fr': 'Stockage + autonomie nocturne', 'en': 'Storage + night-time autonomy',
                                'ar': 'تخزين + استقلالية ليلية'},
     'lg_prix_total_ttc': {'fr': 'Prix total TTC', 'en': 'Total price incl. VAT', 'ar': 'السعر الإجمالي شامل الضريبة'},
-    'lg_prix_onee_hausse': {'fr': 'Prix ONEE en hausse', 'en': 'Rising ONEE prices', 'ar': 'أسعار ONEE في ارتفاع'},
     'lg_energie_propre': {'fr': '&#201;nergie propre', 'en': 'Clean energy', 'ar': 'طاقة نظيفة'},
     'lg_etape_devis': {'fr': 'Devis', 'en': 'Quote', 'ar': 'العرض'},
     'lg_etape_visite': {'fr': 'Visite', 'en': 'Visit', 'ar': 'الزيارة'},
@@ -2540,6 +2554,93 @@ LIBELLES = {
     # dont le débit est déclaré (une-page et document agricole).
     'lg_debit_declare_par_vous': {'fr': 'débit déclaré par vous', 'en': 'flow rate declared by you',
                                   'ar': 'صبيب صرّحتم به'},
+    # AMOT80 (D-ACI-8=a) — investissement non chiffré, base de la tuile
+    # retour, coût moyen NON actualisé, argent servi sans motif client.
+    'ci_invest_non_chiffre': {'fr': 'Investissement non encore chiffré',
+                              'en': 'Investment not yet priced',
+                              'ar': 'الاستثمار لم يُسعَّر بعد'},
+    'ci_invest_non_chiffre_1': {
+        'fr': 'Investissement non encore chiffré (1 article sans prix)',
+        'en': 'Investment not yet priced (1 item without a price)',
+        'ar': 'الاستثمار لم يُسعَّر بعد (بند واحد بدون سعر)'},
+    'ci_invest_non_chiffre_n': {
+        'fr': 'Investissement non encore chiffré ({n} articles sans prix)',
+        'en': 'Investment not yet priced ({n} items without a price)',
+        'ar': 'الاستثمار لم يُسعَّر بعد ({n} بنود بدون سعر)'},
+    'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
+                              'en': 'Estimated payback ({base})',
+                              'ar': 'مدة الاسترداد المقدرة ({base})'},
+    'ci_non_chiffre_sans_motif': {
+        'fr': 'Économies et retour sur investissement non chiffrés à ce '
+              'stade.',
+        'en': 'Savings and payback not calculated at this stage.',
+        'ar': 'لم تُحتسب الوفورات ومدة الاسترداد في هذه المرحلة.'},
+    'ci_ind_motif_invest': {
+        'fr': "<b>{motif}</b> : le retour, le TRI et le cashflow ne sont "
+              "publiés que sur un investissement entièrement chiffré.",
+        'en': '<b>{motif}</b>: payback, IRR and cash flow are only published '
+              'on a fully priced investment.',
+        'ar': '<b>{motif}</b>: لا تُنشر مدة الاسترداد ومعدل العائد الداخلي '
+              'والتدفق النقدي إلا على استثمار مُسعَّر بالكامل.'},
+    'ci_ind_lcoe_non_actualise': {
+        'fr': 'Coût moyen non actualisé du kWh produit ({base})',
+        'en': 'Average undiscounted cost of the kWh produced ({base})',
+        'ar': 'متوسط التكلفة غير المحيَّنة للكيلوواط ساعة المنتج ({base})'},
+    # AMOT80 — sources d'hypothèses INTERNES du moteur → mots du client
+    # (table ``ci.couverture.SOURCES_CLIENT``).
+    'ci_src_economie': {
+        'fr': 'valorisation heure par heure au tarif de chaque poste',
+        'en': 'hour-by-hour valuation at the rate of each time band',
+        'ar': 'تقييم ساعة بساعة بسعر كل فترة'},
+    'ci_src_production': {
+        'fr': 'étude de production de votre site, heure par heure',
+        'en': 'hour-by-hour production study of your site',
+        'ar': 'دراسة إنتاج موقعكم ساعة بساعة'},
+    'ci_src_horizon': {'fr': "durée d'analyse : 25 ans",
+                       'en': 'analysis period: 25 years',
+                       'ar': 'مدة التحليل: 25 سنة'},
+    'ci_src_methode': {'fr': 'méthode de calcul du devis',
+                       'en': 'quote calculation method',
+                       'ar': 'طريقة حساب عرض السعر'},
+    'ci_src_onduleur': {
+        'fr': "remplacement à mi-vie (principe IEA PVPS), au montant réel de "
+              "la ligne onduleur du devis",
+        'en': 'mid-life replacement (IEA PVPS principle), at the actual '
+              'amount of the quote inverter line',
+        'ar': 'استبدال في منتصف العمر (مبدأ IEA PVPS)، بالمبلغ الفعلي لبند '
+              'العاكس في عرض السعر'},
+    # AMOT84 — textes DYNAMIQUES du moteur C&I dans la langue du document
+    # (le français est le texte servi, octet pour octet).
+    'ci_reserve_site_mt': {'fr': 'site MT : visite avant le devis final',
+                           'en': 'MV site: site survey before the final quote',
+                           'ar': 'موقع بالجهد المتوسط: زيارة قبل العرض النهائي'},
+    'ci_reserve_tension': {'fr': 'tension de raccordement inconnue',
+                           'en': 'connection voltage unknown',
+                           'ar': 'جهد الربط غير معروف'},
+    'ci_reserve_puissance': {'fr': 'puissance souscrite inconnue',
+                             'en': 'subscribed power unknown',
+                             'ar': 'القدرة المكتتبة غير معروفة'},
+    'ci_reserve_surface': {'fr': 'surface disponible inconnue',
+                           'en': 'available area unknown',
+                           'ar': 'المساحة المتاحة غير معروفة'},
+    'ci_reserve_profil': {
+        'fr': 'profil horaire non déclaré : estimation sous réserve de visite',
+        'en': 'hourly profile not declared: estimate subject to a site visit',
+        'ar': 'المنحنى الساعي غير مصرح به: تقدير رهين بالزيارة'},
+    'ci_ind_sens_motif_sans_charge': {
+        'fr': 'charge horaire déclarée absente : production non recalculable '
+              'heure par heure — scénario non chiffré',
+        'en': 'no declared hourly load: production cannot be recalculated hour '
+              'by hour — scenario not calculated',
+        'ar': 'لا يوجد حمل ساعي مصرح به: يتعذر إعادة حساب الإنتاج ساعة بساعة '
+              '— سيناريو غير محسوب'},
+    'op_unite_ans': {'fr': ' ans', 'en': ' years', 'ar': ' سنوات'},
+    # AMOT82 (D-ACI-10=a) — bandeau « sous réserve » du une-page C&I (même
+    # phrase que la couverture, ``ci.mentions.TEXTES_VISITE``, sans le point).
+    'op_reserve_visite': {
+        'fr': 'Estimation sous réserve de la visite technique',
+        'en': 'Estimate subject to the technical site visit',
+        'ar': 'تقدير رهين بالزيارة التقنية'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

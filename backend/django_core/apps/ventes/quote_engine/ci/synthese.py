@@ -38,6 +38,8 @@ ceux du moteur, seulement exprimés en %), aucun taux fixe (D-CIQ-1), aucun
 """
 from __future__ import annotations
 
+import html
+
 from ..lecture_pure import nombre_normalise
 from .mentions import mentions_ci
 import logging
@@ -139,8 +141,9 @@ MOTIF_PRODUCTION_ABSENTE = (
     "jamais une production par ville à côté de taux d'un autre modèle")
 MOTIF_BASELINE_ABSENTE = (
     "consommation de référence non résolue par le moteur C&I")
+#: AMOT80 — en mots du CLIENT (jamais « moteur C&I »).
 MOTIF_ETUDE_A_FAIRE = (
-    "étude du moteur C&I à faire : chiffres préliminaires")
+    "étude détaillée de votre site à finaliser : chiffres préliminaires")
 LIBELLE_VISITE = "Relevé du site à la visite technique"
 
 #: CIQ304 — ce qui manque quand le moteur n'a pas chiffré l'argent : ce que
@@ -336,6 +339,17 @@ def _statut_et_a_confirmer(etude_ci, lead):
         statut = STATUT_SOUS_RESERVE if reserve.get("valeur") else STATUT_FERME
         if reserve.get("valeur"):
             _ajoute("visite", reserve.get("motif") or LIBELLE_VISITE)
+        # ADEV79 (D-ACI-2=a) — des lignes « à chiffrer après la visite »
+        # (structure, câbles) hors total : le document est une estimation sous
+        # réserve de visite et DIT ce qui reste à chiffrer.
+        hors_total = [str(x.get("designation") if isinstance(x, dict) else x)
+                      for x in (_dict(etude_ci.get("composition")).get("a_chiffrer_visite") or [])
+                      if x]
+        if hors_total:
+            statut = STATUT_SOUS_RESERVE
+            _ajoute("a_chiffrer_visite",
+                    "À chiffrer après la visite technique, hors total : "
+                    + ", ".join(hors_total))
     for manquant in _dict(lead).get("manquants") or []:
         if manquant in A_CONFIRMER_LEAD:
             _ajoute(*A_CONFIRMER_LEAD[manquant])
@@ -431,7 +445,9 @@ def _est_mt(data, etude_ci, economie):
     if not isinstance(tension, str) or not tension.strip():
         # Sans moteur : la tension DÉCLARÉE à l'écran (une saisie, pas un
         # chiffre calculé).
-        tension = _dict(data.get("etude")).get("tension_raccordement")
+        # AMOT81 — ou ``tension`` (clé d'un brouillon auto C&I).
+        tension = (_dict(data.get("etude")).get("tension_raccordement")
+                   or _dict(data.get("etude")).get("tension"))
     if isinstance(tension, str) and tension.strip().lower() in ("mt", "ht"):
         return True
     return _dict(_dict(economie).get("tarif")).get("contrat") == "mt_general"
@@ -489,6 +505,23 @@ def _om_option(data):
     }
 
 
+def _om_composition(data):
+    """AMOT83 (D-ACI-12=a) — l'option O&M NOMMÉE par la composition C&I
+    (``options[cle='om']``) quand le devis ne porte aucune ligne ``om_ci`` :
+    statut « tarif à renseigner », jamais un prix."""
+    composition = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get(
+        "composition"))
+    om = next((o for o in composition.get("options") or []
+               if isinstance(o, dict) and o.get("cle") == "om"), None)
+    libelle = html.escape(str((om or {}).get("libelle") or "").strip(),
+                          quote=False)
+    if not libelle:
+        return None
+    return {"statut": "tarif_a_renseigner", "libelle": libelle,
+            "lignes": [{"designation": libelle, "total_ht": None,
+                        "total_ttc": None}]}
+
+
 def _garanties(data):
     try:
         from ..residential import theme
@@ -513,12 +546,19 @@ def _services(data):
     d'intervention SAISI par la société, les garanties des fabricants.
     Clé absente quand le devis ne la porte pas — jamais un défaut."""
     services = {}
-    om = _om_option(data)
+    om = _om_option(data) or _om_composition(data)
     if om is not None:
         services["om_option"] = om
+    # AMOT83 (D-ACI-12=a) — le suivi de production est NOMMÉ ; son délai
+    # n'est imprimé que s'il est saisi (jamais un défaut).
     delai = _num(data.get("delai_intervention_suivi_heures"))
-    if delai:
-        services["suivi_production"] = {"delai_intervention": delai}
+    services["suivi_production"] = {"delai_intervention": delai or None}
+    # AMOT83 (D-ACI-11=a) — régime 82-21 calculé ⇒ le dossier est monté par
+    # la société (phrase fixe, jamais le texte de loi, D-CIQ-6).
+    regime = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get(
+        "regime_8221_suggere")).get("regime")
+    if regime and regime != "aucun":
+        services["raccordement"] = {"regime": regime}
     services["garanties"] = _garanties(data)
     return services
 
@@ -648,6 +688,12 @@ def chiffres_cles(synthese):
                         None)
     pointe = next((h for h in s.get("hypotheses") or []
                    if isinstance(h, dict) and h.get("cle") == "pointe"), None)
+    # AMOT80 / ADEV81 — investissement non chiffré : son motif (omission
+    # ``investissement_mad`` du bloc servi), jamais un retour.
+    motif_investissement = next(
+        (o.get("motif") for o in argent.get("omissions") or []
+         if isinstance(o, dict) and o.get("cle") == "investissement_mad"),
+        None)
     return {
         "kwc": _num(systeme.get("kwc")),
         "production_kwh_an": _num(systeme.get("production_kwh_an")),
@@ -668,5 +714,6 @@ def chiffres_cles(synthese):
                         if isinstance(a, dict) and a.get("libelle")],
         "motif_argent": motif_argent,
         "argent_mt": motif_argent == MOTIF_ARGENT_MT,
+        "motif_investissement": motif_investissement,
         "note_pointe": _dict(_dict(pointe).get("textes")).get("fr"),
     }

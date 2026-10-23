@@ -98,9 +98,16 @@ def build(ctx):
     # CIQ331 — l'argent sur sa propre rangée (économie de l'année 1, retour du
     # flux) : lu sur ``synthese_ci.argent``, absent ⇒ rangée omise.
     argent = ci_couverture.tuiles_argent(d, "com", kpi, fmt)
+    # AMOT81 — l'origine du prix du kWh, sous les tuiles, quand c'est la
+    # grille ONEE de repli (``ci.mentions.ligne_tarif_grille``).
+    from ..ci.mentions import ligne_tarif_grille
+    grille = ligne_tarif_grille(((d.get("com_synthese") or {}).get("argent")
+                                 or {}).get("tarif"), ci_couverture.langue(d))
     kpis_argent = ('<table class="c1c-kpirow" style="margin-top:9px;"><tr>'
                    + '<td class="c1c-kgap"></td>'.join(argent)
-                   + '</tr></table>') if argent else ""
+                   + '</tr></table>'
+                   + (f'<div class="c1c-mtsrc">{grille}</div>' if grille
+                      else "")) if argent else ""
     bandeau = ci_couverture.bandeau_reserve(d, "com", "c1c")
     methode_line = ci_couverture.ligne_methode(d, "com", "c1c")
     note_pointe = ci_couverture.note_pointe(d, "com")

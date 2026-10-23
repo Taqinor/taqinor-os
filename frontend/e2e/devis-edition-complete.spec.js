@@ -31,10 +31,18 @@ async function ouvrirEditionComplete(page) {
   await expect(page.locator('.ldp-pdf-area canvas')).toHaveCount(0)
 }
 
-/** Le générateur et ses lignes sont montés (jamais mesurer une table vide). */
+/** Le générateur et ses lignes sont montés (jamais mesurer une table vide),
+ *  ET le catalogue produits est appliqué aux lignes : tant qu'il n'est pas
+ *  arrivé, chaque picker affiche « — Produit — » et la colonne « Produit
+ *  (stock) » fait 170 px ; une mesure prise à cet instant est un faux vert
+ *  (nocturne 39568748738 : vert, puis 1 031 px dans 1 018 px les deux nuits
+ *  suivantes sur le même commit — la largeur réelle est celle d'APRÈS le
+ *  catalogue, voir EDC10 dans 44-edition-complete-edc.css). */
 async function attendreLignes(page) {
   await expect(page.getByRole('toolbar', { name: /Actions du devis/ })).toBeVisible()
-  await expect(page.locator('tr[data-line-key]').first()).toBeVisible()
+  const premiere = page.locator('tr[data-line-key]').first()
+  await expect(premiere).toBeVisible()
+  await expect(premiere.locator('td[data-label="Produit (stock)"] button')).not.toHaveText(/— Produit —/)
 }
 
 /** Rend l'éditeur « modifié ». La fenêtre de référence QJR581 (1,5 s après

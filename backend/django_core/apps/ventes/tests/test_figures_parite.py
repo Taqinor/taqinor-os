@@ -149,10 +149,23 @@ def _etude_au_kwc(etude, kwc):
     return etude
 
 
-ETUDE_CI_BT = {'etude_ci': _etude_au_kwc(_ETUDE_CI['exemple'], KWC_FULL_LINES),
+def _composition_complete(etude):
+    """ACI (D-ACI-2=a, D-ACI-6=a) — l'exemple du contrat porte des postes « prix à
+    renseigner » / « à chiffrer après visite » (comme la prod) : l'investissement
+    serait alors NON chiffré et le retour omis par conception (ADEV81). La parité
+    des chiffres se vérifie sur une composition complète (aucun poste hors devis)."""
+    composition = (etude.get('composition') or {})
+    composition['prix_a_renseigner'] = []
+    composition['a_chiffrer_visite'] = []
+    composition['incomplet'] = False
+    etude['composition'] = composition
+    return etude
+
+
+ETUDE_CI_BT = {'etude_ci': _composition_complete(_etude_au_kwc(_ETUDE_CI['exemple'], KWC_FULL_LINES)),
                'tarif_declare': {'contrat': 'bt_patente'}}
-ETUDE_CI_MT = {'etude_ci': _etude_au_kwc(_ETUDE_CI['exemple_industriel_mt'],
-                                         KWC_FULL_LINES)}
+ETUDE_CI_MT = {'etude_ci': _composition_complete(
+    _etude_au_kwc(_ETUDE_CI['exemple_industriel_mt'], KWC_FULL_LINES))}
 
 FORMATS = {
     'full': {'pdf_mode': 'full'},

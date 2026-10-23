@@ -29,9 +29,9 @@ import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
-// AGQ22 — un 409 qui nomme un champ de la fiche : même saut que les puces.
-import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
+import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
+import fieldLabels from '../../../features/crm/workspace/fieldLabels'
 // AGQ25 — le journal du devis automatique, même rendu que le générateur.
 import AlertesDevisAuto from './AlertesDevisAuto'
 import {
@@ -97,6 +97,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const contenuRef = useRef(null)
   const [discount, setDiscount] = useState('0')
   const [errorMsg, setErrorMsg] = useState(null)
+  // ALEA48 — champ du lead nommé par le 409 du devis auto (bouton « Compléter »).
+  const [errorField, setErrorField] = useState(null)
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
   // (agricole : étude pompage, articles « prix à renseigner » omis).
   const [alertes, setAlertes] = useState([])
@@ -149,10 +151,20 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     preview.reload()
   }
 
+  // ALEA48 — même geste que les puces « manquants » de DevisTab : on ferme le
+  // panneau (modal) puis `jumpToField` déplie, scrolle et focalise le champ.
+  const completerChamp = (champ) => {
+    const cible = missingFieldTarget(champ)
+    if (!cible) return
+    onClose?.()
+    setTimeout(() => jumpToField(cible), 0)
+  }
+
   // ── Création auto (auto / onepage / premium : pas de saisie préalable) ──
   const doCreateAuto = async (discountStr) => {
     setPhase('creating')
     setErrorMsg(null)
+    setErrorField(null)
     try {
       if (!produitsRef.current) {
         // RÉGRESSION CONFIRMÉE (CI run 32200473257, e2e devis.spec.js E4) —
@@ -199,24 +211,16 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
       onDevisChanged?.()
       setPhase('preview')
     } catch (err) {
-      const message = typeof err?.detail === 'string'
+      setErrorMsg(typeof err?.detail === 'string'
         ? err.detail
-        : "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez."
-      // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ de la fiche (`field`
-      // du 409, ex. `debit_forage_m3h`) : le panneau se ferme et le champ est
-      // mis en évidence, avec UN seul message (le toast global est coupé
-      // pour cet appel, `suppressErrorToast`).
+        : "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez.")
       // AGQ23 — délai dépassé : le devis a pu être créé ; la liste du lead
       // se recharge (le parent relit ses devis).
       if (err?.delaiDepasse) onDevisChanged?.()
-      const cible = err?.field ? missingFieldTarget(err.field) : null
-      if (cible) {
-        toast.error(message)
-        onClose()
-        jumpToField(cible)
-        return
-      }
-      setErrorMsg(message)
+      // ALEA48 / AGQ22 — un refus qui NOMME un champ de la fiche (`field` du
+      // 409) : le panneau le dit et propose « Compléter : <champ> » (un seul
+      // message : le toast global est coupé pour cet appel, `suppressErrorToast`).
+      setErrorField(typeof err?.field === 'string' ? err.field : null)
       setPhase('error')
     }
   }
@@ -500,6 +504,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'error' && (
             <div className="ldp-center">
               <div className="form-error-box" role="alert">{errorMsg}</div>
+              {errorField && missingFieldTarget(errorField) && (
+                <Button type="button" variant="outline" data-testid="ldp-completer"
+                        onClick={() => completerChamp(errorField)}>
+                  Compléter : {fieldLabels[errorField].label}
+                </Button>
+              )}
               <div className="ldp-actions">
                 <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
                 {editable && (

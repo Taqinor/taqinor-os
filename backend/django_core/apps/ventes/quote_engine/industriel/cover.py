@@ -126,7 +126,10 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
         motif_html = ci_couverture.ligne_non_chiffre(d, "ind", prefixe)
         lignes.append((L("ci_ind_rentabilite", "Rentabilité"),
                        motif_html))
-    if not d.get("ind_sous_reserve"):
+    # AMOT80 — « offre ferme » seulement sans réserve de visite ET sur un
+    # tarif lu sur la facture du client (jamais sur la grille de repli).
+    if not d.get("ind_sous_reserve") and isinstance(argent, dict) and \
+            (argent.get("tarif") or {}).get("origine") == "declare_facture":
         lignes.append((L("ci_ind_statut", "Statut de l'étude"),
                        L("ci_ind_offre_ferme", "offre ferme")))
     rangees = "".join(
@@ -266,6 +269,11 @@ def build(ctx):
     cellules.extend(ci_couverture.tuiles_argent(d, "ind", kpi, fmt))
     kpis = '<td class="i1-kgap"></td>'.join(cellules)
     bandeau = ci_couverture.bandeau_reserve(d, "ind", "i1")
+    # AMOT80 — le sous-titre « cashflow et payback » seulement sur un flux.
+    from .finance import flux_principal
+    sous_titre = L("ci_ind_sous_titre", "Analyse de rentabilité (CFO) — "
+                   "baseline, cashflow et payback.") if flux_principal(
+        (d.get("ind_synthese") or {}).get("argent"))[1].get("flux") else ""
     methode_line = ci_couverture.ligne_methode(d, "ind", "i1")
     note_pointe = ci_couverture.note_pointe(d, "ind")
 
@@ -399,7 +407,7 @@ def build(ctx):
     <div class="i1-hbody">
       <div class="i1-kicker">{L("ci_ind_kicker", "Proposition — Autoconsommation solaire industrielle")}</div>
       <div class="i1-serif i1-title">{L("ci_ind_titre", "Réduire votre coût de l'énergie")}</div>
-      <div class="i1-sub">{L("ci_ind_sous_titre", "Analyse de rentabilité (CFO) — baseline, cashflow et payback.")}</div>
+      <div class="i1-sub">{sous_titre}</div>
     </div>
   </div>
 

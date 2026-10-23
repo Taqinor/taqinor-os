@@ -98,6 +98,31 @@ class CombinaisonTests(TestCase):
         for x in r['combinaison']:
             self.assertFalse(par_id[x['produit']]['triphase'])
 
+    def test_phase_par_role_ci_et_phases_publiees(self):
+        # ADEV86 (D-ACI-3=b) — les candidats du catalogue C&I portent leur
+        # rôle et leur phase publiée : mono ⇒ seuls les monophasés, tri ⇒
+        # seuls les triphasés.
+        cat = []
+        for source in self.cat:
+            tri = source['triphase']
+            c = {k: v for k, v in source.items() if k != 'triphase'}
+            c['role_ci'] = 'onduleur_string_tri' if tri else 'onduleur_string_mono'
+            c['phases'] = 3 if tri else 1
+            cat.append(c)
+        par_id = {c['produit']: c for c in cat}
+        r = combiner_onduleurs(12, cat, phase='mono')
+        self.assertTrue(r['combinaison'])
+        for x in r['combinaison']:
+            self.assertEqual(par_id[x['produit']]['role_ci'], 'onduleur_string_mono')
+        r = combiner_onduleurs(60, cat, phase='tri')
+        self.assertTrue(r['combinaison'])
+        for x in r['combinaison']:
+            self.assertEqual(par_id[x['produit']]['role_ci'], 'onduleur_string_tri')
+        sans_mono = [c for c in cat if c['role_ci'] == 'onduleur_string_tri']
+        r = combiner_onduleurs(12, sans_mono, phase='mono')
+        self.assertIsNone(r['combinaison'])
+        self.assertIn('aucun onduleur C&I monophasé éligible', r['motif'])
+
     def test_phase_inconnue_alerte(self):
         r = combiner_onduleurs(30, self.cat, phase='inconnu')
         self.assertTrue(any(a['code'] == 'OND_RACCORDEMENT_A_CONFIRMER'
@@ -130,6 +155,33 @@ class CombinaisonTests(TestCase):
         self.assertIsNone(r['chaines'])
         self.assertTrue(any(a['code'] == 'OND_CHAINES_A_VERIFIER'
                             for a in r['alertes']))
+
+    def _avec_fiches(self, onduleur):
+        from apps.calepinage.services.chaines import specs_module, specs_onduleur
+        module = specs_module({'vmp_v': 40, 'voc_v': 48, 'isc_a': 18, 'imp_a': 17,
+                               'pmax_wc': 710}, 'Panneau 710W')[0]
+        spec = specs_onduleur(dict(onduleur, ac_kw=50, phases=3), 'Onduleur 50kW')[0]
+        cat = [dict(c, spec=spec) for c in self.cat if c['kw_ac'] == 50 and c['triphase']]
+        return module, cat
+
+    def test_chaines_rendues_avec_module_et_fiches(self):
+        # ADEV87 — module + fiche de chaque candidat ⇒ chaînes conçues.
+        module, cat = self._avec_fiches({'n_mppt': 4, 'mppt_v_min': 200, 'mppt_v_max': 1000,
+                                         'v_max_abs': 1100, 'i_max_mppt_a': 30})
+        r = combiner_onduleurs(35, cat, phase='tri', module=module)
+        self.assertTrue(r['chaines'])
+        self.assertGreater(sum(c['nb_chaines'] for c in r['chaines']), 0)
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 50)
+        codes = [a['code'] for a in r['alertes']]
+        self.assertNotIn('OND_CHAINES_A_VERIFIER', codes)
+        self.assertNotIn('OND_CHAINES_NON_FAISABLES', codes)
+
+    def test_chaines_infaisables_bloquant_nomme(self):
+        module, cat = self._avec_fiches({'n_mppt': 1, 'mppt_v_min': 30, 'mppt_v_max': 45,
+                                         'v_max_abs': 45, 'i_max_mppt_a': 30})
+        r = combiner_onduleurs(35, cat, phase='tri', module=module)
+        alerte = next(a for a in r['alertes'] if a['code'] == 'OND_CHAINES_NON_FAISABLES')
+        self.assertEqual(alerte['niveau'], 'bloquant')
 
     def test_aucune_cle_prix_achat(self):
         r = combiner_onduleurs(100, self.cat, phase='tri')

@@ -13,6 +13,8 @@ garde ses littéraux d'hier, octet pour octet.
 """
 from __future__ import annotations
 
+import re
+
 from .blocs import langue, libelle
 from .mentions import TEXTES_POINTE_SANS, TEXTES_VISITE, texte
 
@@ -36,12 +38,77 @@ MOTIFS_ARGENT = {
 }
 
 
+#: AMOT80 — sources / motifs INTERNES servis par le moteur C&I → clé du
+#: libellé CLIENT (``i18n_labels``). Hors table : les codes internes
+#: résiduels (décisions, fichiers, clés de module) sont retirés.
+SOURCES_CLIENT = {
+    "economie_ci.economie_annee1 (valorisation horaire au tarif du poste)":
+        "ci_src_economie",
+    "etude_ci.bilan (moteur C&I)": "ci_src_production",
+    "etude_ci.bilan": "ci_src_production",
+    "D-CIQ-10 : 25 ans": "ci_src_horizon",
+    "conventions Groupe CIQ": "ci_src_methode",
+    ("remplacement à mi-vie (principe IEA PVPS, décision Q1 du 20/08/2026), "
+     "au montant réel de la ligne onduleur du devis"): "ci_src_onduleur",
+    # AMOT84 — motif de sensibilité servi par ``economie_ci``.
+    ("charge horaire déclarée absente : production non recalculable heure "
+     "par heure — scénario non chiffré"): "ci_ind_sens_motif_sans_charge",
+}
+#: AMOT84 — motifs de réserve de visite (``etude_ci.sous_reserve_visite``,
+#: séparés par « ; », codes internes déjà retirés) → clé du catalogue.
+RESERVES_CLIENT = {
+    "site MT : visite avant le devis final": "ci_reserve_site_mt",
+    "tension de raccordement inconnue": "ci_reserve_tension",
+    "puissance souscrite inconnue": "ci_reserve_puissance",
+    "surface disponible inconnue": "ci_reserve_surface",
+    "profil horaire non déclaré : estimation sous réserve de visite":
+        "ci_reserve_profil",
+}
+_CODES_INTERNES = re.compile(
+    r"\s*\((?:D-[A-Z]+-\d+(?:\s*,\s*)?)+\)"
+    r"|\bD-[A-Z]+-\d+\s*:\s*"
+    r"|,?\s*décision Q\d+ du [\d/]+"
+    r"|\b[\w.]+\.json\s*(?:—\s*)?"
+    r"|\b(?:saisies_economie_ci|economie_ci|etude_ci)\.[\w.]+\s*")
+
+
+def texte_client(d, texte):
+    """AMOT80 — un texte SERVI par le moteur (source d'hypothèse, motif)
+    dans les mots du client : la table ``SOURCES_CLIENT`` (traduite), sinon
+    le texte sans ses codes internes (« D-CIQ-10 », « economie_ci. »…)."""
+    brut = str(texte or "").strip()
+    if brut in SOURCES_CLIENT:
+        from .. import i18n_labels
+        cle = SOURCES_CLIENT[brut]
+        return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"])
+    return _CODES_INTERNES.sub("", brut).strip(" —")
+
+
+def motif_investissement(d, cle):
+    """AMOT80 (D-ACI-8=a) — « Investissement non encore chiffré (N articles
+    sans prix) » quand le bloc servi omet l'investissement (ADEV81), ou
+    None. Lu sur ``synthese_ci`` — aucun calcul."""
+    from .synthese import chiffres_cles
+    motif = chiffres_cles(d.get(f"{cle}_synthese") or {})[
+        "motif_investissement"]
+    n = re.search(r"\((\d+) articles? sans prix\)", motif or "")
+    if not motif or n is None:
+        return motif and libelle(d, "ci_invest_non_chiffre",
+                                 "Investissement non encore chiffré")
+    if n.group(1) == "1":
+        return libelle(d, "ci_invest_non_chiffre_1", "Investissement non "
+                       "encore chiffré (1 article sans prix)")
+    return libelle(d, "ci_invest_non_chiffre_n", "Investissement non encore "
+                   "chiffré ({n} articles sans prix)", n=n.group(1))
+
+
 def _a_confirmer(d, cle):
     """Les points « à confirmer » dans la langue du document : un libellé
     connu du moteur (``ci_confirmer_<clé>``) est traduit ; un motif propre
     au dossier reste tel quel."""
     from .. import i18n_labels
-    libelles = [a for a in d.get(f"{cle}_a_confirmer") or [] if a]
+    libelles = [texte_client(d, a)
+                for a in d.get(f"{cle}_a_confirmer") or [] if a]
     if langue(d) == "fr":
         return libelles
     cles = d.get(f"{cle}_a_confirmer_cles") or []
@@ -52,7 +119,12 @@ def _a_confirmer(d, cle):
                 texte_fr == i18n_labels.LIBELLES[cat]["fr"]:
             sortie.append(libelle(d, cat, texte_fr))
         else:
-            sortie.append(texte_fr)
+            # AMOT84 — chaque motif connu du moteur dans la langue du
+            # document ; un motif propre au dossier reste tel quel.
+            sortie.append("; ".join(
+                libelle(d, RESERVES_CLIENT[m.strip()], m.strip())
+                if m.strip() in RESERVES_CLIENT else m.strip()
+                for m in texte_fr.split(";")))
     return sortie
 
 
@@ -95,12 +167,24 @@ def _argent_mt(d, cle):
     if d.get(f"{cle}_motif_argent"):
         return bool(d.get(f"{cle}_argent_mt"))
     etude = d.get("etude") if isinstance(d.get("etude"), dict) else {}
-    tension = str(etude.get("tension_raccordement") or "").strip().lower()
+    # AMOT81 — ``tension`` : la clé d'un brouillon auto C&I.
+    tension = str(etude.get("tension_raccordement") or etude.get("tension")
+                  or "").strip().lower()
     return tension in ("mt", "ht")
 
 
 def ligne_non_chiffre(d, cle, prefixe):
-    """Le motif quand l'argent n'est pas chiffré (``masquer_economies``)."""
+    """Le motif quand l'argent n'est pas chiffré (``masquer_economies``).
+
+    AMOT80 — investissement non chiffré ⇒ SON motif ; argent servi sans
+    motif client ⇒ aucune demande de factures (la consommation est là)."""
+    phrase = motif_investissement(d, cle)
+    if phrase is None and not d.get(f"{cle}_motif_argent") and \
+            (d.get(f"{cle}_synthese") or {}).get("argent"):
+        phrase = libelle(d, "ci_non_chiffre_sans_motif", "Économies et "
+                         "retour sur investissement non chiffrés à ce stade.")
+    if phrase:
+        return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
     motif = d.get(f"{cle}_motif_argent") or "vos 12 dernières factures"
     if motif in MOTIFS_ARGENT:
         motif = libelle(d, MOTIFS_ARGENT[motif], motif)
@@ -230,8 +314,22 @@ def tuiles_argent(d, cle, kpi, fmt):
                           "economie_annuelle"))
     payback = d.get(f"{cle}_payback")
     if payback is not None:
+        # AMOT80 — la tuile retour dit sa base (celle du flux servi).
+        argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
+        base = libelle(d, "ci_ttc", "TTC") if argent.get("base") == "ttc" \
+            else libelle(d, "ci_ht", "HT")
         tuiles.append(kpi(ans(payback),
                           libelle(d, "ci_unite_ans", "&nbsp;ans"),
+                          libelle(d, "ci_retour_estime_base",
+                                  "Retour estimé ({base})", base=base)
+                          if argent else
                           libelle(d, "ci_retour_estime", "Retour estimé"),
                           "payback_ans"))
+    elif motif_investissement(d, cle):
+        # AMOT80 (D-ACI-8=a) — investissement non chiffré : le MOTIF à la
+        # place du retour, jamais « 0 an » ni « 1 an ».
+        tuiles.append(kpi(
+            f'<span style="font-size:9pt;">'
+            f'{motif_investissement(d, cle)}</span>', "",
+            libelle(d, "ci_retour_estime", "Retour estimé")))
     return tuiles

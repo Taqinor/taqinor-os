@@ -257,7 +257,7 @@ def _ecrire_devis_auto_par_pipeline(*, company, user, lead, creer, lignes,
 
 
 def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
-                         target_kwc=None):
+                         journal_auto=None, target_kwc=None):
     """CIQ120 — devis automatique COMMERCIAL / INDUSTRIEL par le serveur.
 
     Chaîne : ``etude_ci.etudier_ci`` (entrées du lead, CIQ405 ; garde
@@ -314,6 +314,17 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     devis = _ecrire_devis_auto_par_pipeline(
         company=company, user=user, lead=lead, creer=_create, lignes=lignes,
         mode_installation=lead.type_installation)
+    if journal_auto is not None:
+        # ADEV79 (D-ACI-2=a) — même forme que l'agricole : les postes « à
+        # chiffrer après visite » hors total, NOMMÉS, puis les alertes de l'étude.
+        alertes = [{'code': 'a_chiffrer_visite', 'champ': 'composition',
+                    'message': ('« %s » à chiffrer après la visite technique : hors '
+                                'total, devis estimé sous réserve de visite.' % poste)}
+                   for poste in (etude.get('composition') or {}).get('a_chiffrer_visite') or []]
+        alertes += [dict(a) for a in etude.get('alertes') or []
+                    if a.get('niveau') in ('alerte', 'bloquant')
+                    and a.get('code') != 'a_chiffrer_visite']
+        journal_auto['alertes'] = alertes
     logger.info('Auto-devis C&I %s: %s kWc (lead %s, company %s)', devis.reference,
                 (etude.get('taille') or {}).get('retenue_kwc'), getattr(lead, 'pk', '?'),
                 getattr(company, 'id', '?'))
@@ -595,7 +606,8 @@ def build_devis_auto(*, lead, user, company, taux_tva=None,
                 "commercial et à l'industriel : le commercial le lance depuis "
                 "la fiche lead.", field='type_installation')
         return _build_devis_auto_ci(lead=lead, user=user, company=company,
-                                    taux_tva=taux_tva, target_kwc=target_kwc)
+                                    taux_tva=taux_tva, journal_auto=journal_auto,
+                                    target_kwc=target_kwc)
     if marche == 'agricole':
         # AGR124 — l'agricole passe par LE moteur serveur (D-AGR-1), origine
         # « auto » seulement : le tunnel du site reste refusé.
