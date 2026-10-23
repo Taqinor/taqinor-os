@@ -87,15 +87,16 @@ def _rempli(lead, champ):
 
 
 def releve_eau_manquant(lead) -> bool:
-    """AGR530 (D-AGR-4 côté cadence) — lead AGRICOLE dont un groupe
-    HYDRAULIQUE de la règle « devis auto prêt » (AGR403 :
-    ``GROUPES_HYDRAULIQUES_AGRICOLES``) n'a aucun champ rempli : le devis ne
-    peut pas se chiffrer, la suite est le relevé du point d'eau. Faux pour
-    tout autre segment."""
+    """AGR530 (D-AGR-4 côté cadence) — lead AGRICOLE dont le niveau d'eau
+    OU le débit du forage est inconnu (:func:`visite_point_eau_avant_devis`) :
+    la suite est le relevé du point d'eau. Faux pour tout autre segment."""
     if (getattr(lead, 'type_installation', None) or '') != _MODE_AGRICOLE:
         return False
-    return any(not any(_rempli(lead, champ) for champ in groupe)
-               for groupe in GROUPES_HYDRAULIQUES_AGRICOLES)
+    # AGQ9 (D-AGQ-5) — la HMT est une DÉCLARATION, pas une mesure : son
+    # absence ne demande pas un relevé. Le relevé suit la règle D-AGR-4
+    # (niveau d'eau ou débit du forage inconnu), une seule définition.
+    bloc = visite_point_eau_avant_devis(lead)
+    return bool(bloc and bloc['requise'])
 
 
 def champs_requis(lead) -> list[list[str]]:
