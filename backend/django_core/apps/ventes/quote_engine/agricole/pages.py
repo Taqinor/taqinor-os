@@ -300,6 +300,29 @@ def _argent_nouveau_forage(eco, lg):
             f'</table>{note}</div>')
 
 
+def _economie_et_retour(economie, lg):
+    """AGQ20 — « Économie nette, année 1 » = ``economie_nette_an1`` servie
+    (économie − charges, hors remplacement) ; retour « 1 an » / « N ans » ;
+    sans retour sur l'horizon (flux calculé, cumul final négatif) : « au-delà
+    de N ans » — jamais une ligne omise en silence."""
+    lignes = []
+    nette = _mad(economie.get("economie_nette_an1"))
+    if nette is not None:
+        lignes.append((_t(lg, "agr_economie_nette_an1"), f"{nette} MAD"))
+    retour = _num(economie.get("retour_ans"))
+    flux = [f for f in economie.get("flux") or [] if isinstance(f, dict)]
+    horizon = _n(economie.get("horizon_ans"), 0)
+    if retour is not None:
+        cle = "agr_n_an" if retour == 1 else "agr_n_ans"
+        lignes.append((_t(lg, "agr_retour_sans_aide"),
+                       _t(lg, cle, n=_n(retour))))
+    elif flux and horizon is not None \
+            and (_num(flux[-1].get("cumul_mad")) or 0) < 0:
+        lignes.append((_t(lg, "agr_retour_sans_aide"),
+                       _t(lg, "agr_au_dela_de_n_ans", n=horizon)))
+    return lignes
+
+
 def _mois_declares(eco, lg):
     """AGQ18 — « Mois d'irrigation : déclarés par vous le JJ/MM/AAAA. » lu
     sur l'entrée ``mois_irrigation`` du bloc (des mois du calendrier non
@@ -336,16 +359,7 @@ def _argent(synthese, lg):
     if _mad(charges.get("total_mad_an")) is not None:
         lignes.append((_t(lg, "agr_charges_solaires"),
                        f"{_mad(charges.get('total_mad_an'))} MAD"))
-    flux = ((eco.get("economie") or {}).get("flux") or [])
-    an1 = next((f for f in flux if isinstance(f, dict)
-                and f.get("annee") == 1), None)
-    if an1 and _mad(an1.get("flux_mad")) is not None:
-        lignes.append((_t(lg, "agr_economie_nette_an1"),
-                       f"{_mad(an1.get('flux_mad'))} MAD"))
-    retour = _n((eco.get("economie") or {}).get("retour_ans"))
-    if retour is not None:
-        lignes.append((_t(lg, "agr_retour_sans_aide"),
-                       _t(lg, "agr_n_ans", n=retour)))
+    lignes.extend(_economie_et_retour(eco.get("economie") or {}, lg))
     m3 = eco.get("mad_par_m3") or {}
     if _num(m3.get("actuel")) is not None and _num(m3.get("solaire")) is not None:
         lignes.append((_t(lg, "agr_cout_m3"),

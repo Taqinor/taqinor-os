@@ -821,3 +821,62 @@ class Mois(SimpleTestCase):
                               'energie_actuelle': {'valeur': 'diesel'}}, 'fr')
         self.assertIn("Mois d'irrigation : déclarés par vous le 12/09/2026.",
                       html)
+
+
+class Retour(SimpleTestCase):
+    """AGQ20 — le retour est le DERNIER passage du cumul au non-négatif ;
+    sans retour, le motif est imprimé ; « 1 an » ; l'économie nette de
+    l'année 1 ne soustrait que les charges, jamais un remplacement."""
+
+    def bloc(self, lignes, charges_an, saisies=None):
+        reglages = {'charges_pompage_solaire': [
+            {'libelle': 'Nettoyage', 'montant_mad_an': charges_an,
+             'source': 'barème société'}]}
+        return E.economie_pompage(saisies or saisies_12000(),
+                                  sortie_etude=ETUDE_COUVERTE, lignes=lignes,
+                                  reglages=reglages)
+
+    def html(self, bloc):
+        from apps.ventes.quote_engine.agricole import pages
+        return pages._argent({'economies': E.economie_pompage_publique(bloc),
+                              'energie_actuelle': {'valeur': 'diesel'}}, 'fr')
+
+    def test_dernier_passage_apres_remplacement(self):
+        from apps.ventes.economie import _retour
+        cumuls = [-60000, -50000, -40000, -30000, -20000, -10000, 0,
+                  -10000, 0, 10000, 20000]
+        self.assertEqual(_retour('retour_ans', cumuls, 10, []), 8)
+        self.assertIsNone(_retour('retour_ans', cumuls[:8], 7, []))
+        # Investissement 60 000 TTC (pompe 20 000 remplacée en année 7),
+        # 12 000 économisés − 2 000 de charges = 10 000 nets par an.
+        lignes = [ligne('Pompe', 20000, type_equipement='pompe'),
+                  ligne('Panneaux', 40000)]
+        bloc = self.bloc(lignes, 2000.0)
+        cumul = [f['cumul_mad'] for f in bloc['economie']['flux']]
+        self.assertEqual(cumul[6], 0.0)
+        self.assertEqual(cumul[7], -10000.0)
+        self.assertEqual(bloc['economie']['retour_ans'], 8)
+
+    def test_economie_nette_an1_hors_remplacement(self):
+        # Variateur 6 000 TTC à 12 mois de garantie : remplacé en année 1.
+        lignes = lignes_reference(garantie_variateur=12)
+        bloc = self.bloc(lignes, 600.0)
+        an1 = bloc['economie']['flux'][1]
+        self.assertEqual(an1['flux_mad'], 12000.0 - 600.0 - 6000.0)
+        self.assertEqual(bloc['economie']['economie_nette_an1'],
+                         12000.0 - 600.0)
+        self.assertIn('11 400,00 MAD', self.html(bloc))
+
+    def test_un_an_au_singulier(self):
+        # 12 000 − 600 = 11 400 nets ≥ 10 000 investis : retour en 1 an.
+        bloc = self.bloc([ligne('Panneaux', 10000)], 600.0)
+        self.assertEqual(bloc['economie']['retour_ans'], 1)
+        html = self.html(bloc)
+        self.assertIn('>1 an<', html)
+        self.assertNotIn('1 ans', html)
+
+    def test_sans_retour_sur_10_ans_motif_imprime(self):
+        bloc = self.bloc([ligne('Panneaux', 500000)], 600.0)
+        self.assertIsNone(bloc['economie']['retour_ans'])
+        self.assertIn('Retour sur investissement, sans aide</td>'
+                      '<td class="r">au-delà de 10 ans', self.html(bloc))

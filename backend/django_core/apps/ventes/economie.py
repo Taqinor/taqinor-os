@@ -261,11 +261,17 @@ def _lire_remplacements(remplacements, horizon):
 # ── Retours ─────────────────────────────────────────────────────────────────
 
 def _premiere_annee_positive(cumuls):
-    """Première année (index) où le cumul devient ``>= 0``, ou ``None``."""
-    for annee, cumul in enumerate(cumuls):
-        if cumul >= 0:
-            return annee
-    return None
+    """AGQ20 — l'année (index) du DERNIER passage du cumul à ``>= 0`` : la
+    première année à partir de laquelle le cumul RESTE ``>= 0`` jusqu'à
+    l'horizon (un remplacement qui le fait rechuter repousse le retour) ;
+    ``None`` si le cumul final est négatif."""
+    annee = None
+    for rang, cumul in enumerate(cumuls):
+        if cumul < 0:
+            annee = None
+        elif annee is None:
+            annee = rang
+    return annee
 
 
 def _retour(cle, cumuls, horizon, omissions):

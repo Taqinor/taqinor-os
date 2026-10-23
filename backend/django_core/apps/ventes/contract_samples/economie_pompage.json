@@ -73,7 +73,7 @@
     "depense_actuelle": "{par_mois[12], entretien_mad_an, annuelle_mad, formule} — jamais × 12 ; null si une saisie manque (motif nommé)",
     "charges_solaires": "{total_mad_an, lignes[{libelle, montant_mad_an, source}]} — barème société ; absent ⇒ publiable_client false",
     "remplacements": "[{composant, annee, montant_ttc_mad, source, motif}] — pompe année 7 au TTC réel de sa ligne (Banque mondiale 2018) ; variateur à ceil(garantie_mois / 12) au TTC réel, sinon omis avec motif ; pompe existante conservée ⇒ aucune provision pompe ; cas nouveau_forage ⇒ [] (AGQ17 : aucun flux d'économie, aucun remplacement compté, ni publié ni dans le coût du m³ — voir `exemple_nouveau_forage`)",
-    "economie": "forme EXACTE de `ventes_economie.json` (horizon_ans, flux[{annee, economie_mad, flux_mad, cumul_mad, flux_actualise_mad}], van_mad, tri_pct, lcoe_mad_kwh, retour_ans, retour_actualise_ans, hypotheses, omissions) ; VAN et actualisé toujours null ici (vue interne)",
+    "economie": "forme EXACTE de `ventes_economie.json` (horizon_ans, flux[{annee, economie_mad, flux_mad, cumul_mad, flux_actualise_mad}], van_mad, tri_pct, lcoe_mad_kwh, retour_ans, retour_actualise_ans, hypotheses, omissions) ; VAN et actualisé toujours null ici (vue interne) ; + `economie_nette_an1` (AGQ20) = économie de l'année 1 − charges solaires, HORS remplacement — null si non calculée ; `retour_ans` = DERNIER passage du cumul à >= 0 (un remplacement qui le fait rechuter repousse le retour), null si le cumul final est négatif",
     "couverture": "{verifiee, part_evitee_par_mois[12] = min(1, couverture du mois servie par AGR2), motif} — pompe sans courbe ⇒ part 1, verifiee false, motif « couverture non vérifiable : pompe sans courbe »",
     "mad_par_m3": "{actuel, solaire, formule} — omis (null) si une donnée manque ; seul repère du cas nouveau_forage",
     "sensibilite_carburant": "[{facteur, libelle, valeur_unitaire_mad, economie_nette_mad_an, retour_ans}] — facteurs 0,8 / 0,9 / 1,1 / 1,2 / 1,5 ; grille de présentation « si le prix était X », jamais une prévision, indexation 0 %",
@@ -355,7 +355,8 @@
           "cle": "remplacement_variateur",
           "motif": "garantie constructeur du variateur non renseignée sur la fiche produit : remplacement omis"
         }
-      ]
+      ],
+      "economie_nette_an1": 32271.45
     },
     "couverture": {
       "verifiee": true,
@@ -513,7 +514,8 @@
           "cle": "economie",
           "motif": "énergie actuelle non déclarée : aucune économie calculée"
         }
-      ]
+      ],
+      "economie_nette_an1": null
     },
     "couverture": {
       "verifiee": false,
@@ -606,7 +608,8 @@
           "cle": "economie",
           "motif": "nouveau forage : aucune énergie remplacée, aucune économie calculée"
         }
-      ]
+      ],
+      "economie_nette_an1": null
     },
     "couverture": {
       "verifiee": false,

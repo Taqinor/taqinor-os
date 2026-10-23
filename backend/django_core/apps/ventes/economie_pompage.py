@@ -634,6 +634,11 @@ def _flux(investissement, economie1, charges, remplacements, *,
         'cle': 'lcoe_mad_kwh',
         'motif': 'sans objet pour le pompage : aucune énergie vendue ni '
                  'valorisée en kWh'})
+    # AGQ20 — l'économie nette de l'année 1 = économie − charges, HORS
+    # remplacement (le flux de l'an 1 peut porter un variateur remplacé) ;
+    # inconnue (null) tant que le barème des charges manque.
+    bloc['economie_nette_an1'] = (None if charges is None
+                                  else round(economie1 - charges, 2))
     return bloc
 
 
@@ -641,6 +646,7 @@ def _economie_vide(motif):
     return {'horizon_ans': HORIZON_ANS, 'flux': [], 'van_mad': None,
             'tri_pct': None, 'lcoe_mad_kwh': None, 'retour_ans': None,
             'retour_actualise_ans': None, 'hypotheses': [],
+            'economie_nette_an1': None,
             'omissions': [{'cle': 'economie', 'motif': motif}]}
 
 
