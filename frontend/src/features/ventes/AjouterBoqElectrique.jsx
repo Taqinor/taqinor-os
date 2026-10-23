@@ -66,3 +66,4 @@ export default function AjouterBoqElectrique({ devisId, modifiable, onAjoute }) 
     </div>
   )
 }
+// ci-timing : marqueur temporaire de mesure CI (retire avant la PR)
