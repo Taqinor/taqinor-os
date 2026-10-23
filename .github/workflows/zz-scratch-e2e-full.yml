@@ -201,16 +201,12 @@ jobs:
       # surchargeable via `MONKEY_MS_PAR_ECRAN` sur ce job si besoin. Sécurité
       # : boutons destructifs/d'envoi neutralisés par sélecteur dans le spec
       # lui-même, jamais une écriture vers un service externe.
-      - name: Start Django + EDC10 (x2) + instrumentation scratch
+      - name: Start Django + run FULL e2e matrix (comme release-verify)
         working-directory: backend/django_core
         run: |
-          gunicorn erp_agentique.wsgi:application \
-            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
-            --access-logfile /tmp/gunicorn-access.log \
-            --error-logfile /tmp/gunicorn-error.log --capture-output &
+          gunicorn erp_agentique.wsgi:application             --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync             --access-logfile /tmp/gunicorn-access.log             --error-logfile /tmp/gunicorn-error.log --capture-output &
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" \
-              http://127.0.0.1:8000/api/django/admin/login/ || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}"               http://127.0.0.1:8000/api/django/admin/login/ || true)
             if [ -n "$code" ] && [ "$code" != "000" ]; then
               echo "Django prêt (HTTP $code)"; break
             fi
@@ -219,14 +215,10 @@ jobs:
           done
           cd ../../frontend
           set +e
-          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-edc PLAYWRIGHT_HTML_REPORT=playwright-report-edc \
-            npx playwright test --project=chromium e2e/devis-edition-complete.spec.js --repeat-each 2
+          npx playwright test --grep-invert @visual
           rc_edc=$?
-          PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-scratch PLAYWRIGHT_HTML_REPORT=playwright-report-scratch \
-            npx playwright test --project=chromium e2e/zz-scratch-edc10.spec.js --output test-results-scratch
-          rc_scratch=$?
           set -e
-          echo "rc_edc=$rc_edc rc_scratch=$rc_scratch"
+          echo "rc_matrice=$rc_edc"
           echo "RC_EDC=$rc_edc" >> "$GITHUB_ENV"
       - name: Forcer le mode présentation ON (preuve de la remise à zéro par visual.spec.js)
         if: ${{ !cancelled() }}
@@ -239,10 +231,10 @@ jobs:
         run: |
           PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-visual PLAYWRIGHT_HTML_REPORT=playwright-report-visual \
             npx playwright test --grep @visual --output test-results-visual
-      - name: Verdict EDC10
+      - name: Verdict matrice complète
         if: ${{ !cancelled() }}
         run: |
-          echo "EDC10 (x2) rc=$RC_EDC"
+          echo "matrice complète rc=$RC_EDC"
           exit "$RC_EDC"
       - name: Upload gunicorn logs
         if: ${{ !cancelled() }}
