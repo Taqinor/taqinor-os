@@ -26,6 +26,10 @@ Règles (zéro chiffre inventé, D-CIQ-4) :
 from __future__ import annotations
 
 RELEVE_LE = '2026-10-03'
+# APAR68 (C-ACI-019) : la grille BT n'a JAMAIS été relue en 2026 — elle vient
+# des captures Wayback du 16/02/2025 ; sa date de relevé est celle de la
+# capture (pas celle de la lecture du code) et elle porte un drapeau explicite.
+RELEVE_BT_LE = '2025-02-16'
 
 _URL_MT = ("https://www.one.org.ma/ (Professionnels — « Tarif vert », "
            "id1=2&id2=35 ; page « Tarif Général (MT) » id1=14&id2=114)")
@@ -37,7 +41,7 @@ _URL_BT_FM = ("captures Wayback one.org.ma 20250216142859 et "
 
 def _ligne(cle, valeur, unite, *, source_url, page_audience,
            inchange_depuis=None, regle_tranches='non_publiee',
-           tva_libelle_page=18):
+           tva_libelle_page=18, releve_le=RELEVE_LE):
     return {
         'cle': cle,
         'valeur': valeur,
@@ -46,7 +50,7 @@ def _ligne(cle, valeur, unite, *, source_url, page_audience,
         'tva_libelle_page': tva_libelle_page,
         'source_url': source_url,
         'page_audience': page_audience,
-        'releve_le': RELEVE_LE,
+        'releve_le': releve_le,
         'inchange_depuis': inchange_depuis,
         'regle_tranches': regle_tranches,
     }
@@ -70,25 +74,33 @@ _PAT = dict(source_url=_URL_BT_PATENTE,
             page_audience='Professionnels — BT patenté')
 _FM = dict(source_url=_URL_BT_FM,
            page_audience='Professionnels — BT force motrice')
+
+
+def _ligne_bt(cle, valeur, unite, **kw):
+    """Ligne BT : date de la capture Wayback + « non reconfirmée 2026 »."""
+    return dict(_ligne(cle, valeur, unite, releve_le=RELEVE_BT_LE, **kw),
+                reconfirme_2026=False)
+
+
 BT_PATENTE = [
-    dict(_ligne('bt_patente_tranche_1', 1.5146, 'MAD/kWh', **_PAT),
+    dict(_ligne_bt('bt_patente_tranche_1', 1.5146, 'MAD/kWh', **_PAT),
          seuil_min_kwh=0, seuil_max_kwh=150),
-    dict(_ligne('bt_patente_tranche_2', 1.7090, 'MAD/kWh', **_PAT),
+    dict(_ligne_bt('bt_patente_tranche_2', 1.7090, 'MAD/kWh', **_PAT),
          seuil_min_kwh=150, seuil_max_kwh=None),
 ]
 BT_FORCE_MOTRICE = [
-    dict(_ligne('bt_force_motrice_tranche_1', 1.3639, 'MAD/kWh', **_FM),
+    dict(_ligne_bt('bt_force_motrice_tranche_1', 1.3639, 'MAD/kWh', **_FM),
          seuil_min_kwh=0, seuil_max_kwh=100),
-    dict(_ligne('bt_force_motrice_tranche_2', 1.4663, 'MAD/kWh', **_FM),
+    dict(_ligne_bt('bt_force_motrice_tranche_2', 1.4663, 'MAD/kWh', **_FM),
          seuil_min_kwh=100, seuil_max_kwh=500),
-    dict(_ligne('bt_force_motrice_tranche_3', 1.6758, 'MAD/kWh', **_FM),
+    dict(_ligne_bt('bt_force_motrice_tranche_3', 1.6758, 'MAD/kWh', **_FM),
          seuil_min_kwh=500, seuil_max_kwh=None),
 ]
 # Bi-horaire : OPTIONNEL, réservé aux ménages et à la force motrice
 # > 500 kWh/mois — JAMAIS aux patentés.
 BT_BI_HORAIRE = {
-    'hp': _ligne('bt_bi_horaire_hp', 2.4250, 'MAD/kWh', **_FM),
-    'hn': _ligne('bt_bi_horaire_hn', 1.3472, 'MAD/kWh', **_FM),
+    'hp': _ligne_bt('bt_bi_horaire_hp', 2.4250, 'MAD/kWh', **_FM),
+    'hn': _ligne_bt('bt_bi_horaire_hn', 1.3472, 'MAD/kWh', **_FM),
 }
 BI_HORAIRE_SEUIL_FM_KWH_MOIS = 500
 
