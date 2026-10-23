@@ -38,6 +38,26 @@ def _par_colonne(bloc):
     return {e['colonne']: e for e in bloc['entrees']}
 
 
+class Provenance(TestCase):
+    """AGQ29 (C-AGQ-027) — le débit du foreur ou d'un essai est une MESURE."""
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='agq29-co', defaults={'nom': 'AGQ29 Co'})
+
+    def _provenance_debit(self, source):
+        lead = Lead.objects.create(
+            company=self.company, nom='Ferme', type_installation='agricole',
+            debit_forage_m3h=Decimal('25'), debit_forage_source=source)
+        bloc = selectors.entrees_pompage_du_lead(lead)
+        return _par_colonne(bloc)['debit_forage_m3h']['provenance']
+
+    def test_foreur_est_une_mesure(self):
+        self.assertEqual(self._provenance_debit('foreur'), 'foreur')
+        self.assertEqual(self._provenance_debit('essai'), 'essai')
+        self.assertEqual(self._provenance_debit('client'), 'client')
+
+
 class EntreesPompage(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(

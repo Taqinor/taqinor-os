@@ -579,6 +579,17 @@ def _fr_m3h(valeur):
     return texte.replace('.', ',')
 
 
+def _cv_plaque_ou_derive(produit, kw):
+    """AGQ29 (C-AGQ-027) — le CV de PLAQUE du produit (``pompe_cv``, « 10 »
+    pour l'OSP 30/8) ; dérivé kW ÷ ``cv_vers_kw`` SEULEMENT sans plaque."""
+    from core.pompage.hypotheses import valeur
+
+    plaque = _num((produit or {}).get('pompe_cv'))
+    if plaque is not None and plaque > 0:
+        return plaque
+    return kw / valeur('cv_vers_kw') if kw else None
+
+
 def _forme_champ(champ, motif_vide):
     vide_chaines = {'serie': None, 'paralleles': None, 'voc_froid_v': None,
                     'vmp_chaud_v': None, 'verifiable': False,
@@ -781,7 +792,6 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     les tailles et le kit restent la proposition du moteur.
     """
     from core.pompage.hydraulique import debit_a_hmt
-    from core.pompage.hypotheses import valeur
     from core.pompage.selection import _sortie_pompe, choisir_pompe, kw_pompe
     from core.pompage.tailles import proposer_tailles
 
@@ -938,7 +948,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             variateur = _forme_variateur(
                 (champ_complet or {}).get('variateur'),
                 'aucun variateur compatible au catalogue')
-            cv = kw / valeur('cv_vers_kw') if kw else None
+            cv = _cv_plaque_ou_derive(produit, kw)
             puissance = {'kw': round(kw, 2) if kw else None,
                          'cv': round(cv, 1) if cv else None}
             if champ_complet:
@@ -1080,7 +1090,6 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
         _chaines_pour, _chaines_vides, _fiche, spec_module,
     )
     from core.pompage.hydraulique import debit_a_hmt
-    from core.pompage.hypotheses import valeur
     from core.pompage.selection import _sortie_pompe, kw_pompe
     from core.pompage.volumes import production_mensuelle
 
@@ -1099,7 +1108,7 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
                  if courbe is not None and hmt_m is not None else None)
         pompe = _sortie_pompe(produit_pompe, kw=p_kw, debit_hmt=debit,
                               hmt=hmt_m)
-        cv = p_kw / valeur('cv_vers_kw') if p_kw else None
+        cv = _cv_plaque_ou_derive(produit_pompe, p_kw)
         puissance = {'kw': round(p_kw, 2) if p_kw else None,
                      'cv': round(cv, 1) if cv else None}
     else:

@@ -348,7 +348,7 @@
         {
           "colonne": "debit_forage_m3h",
           "valeur": 36,
-          "provenance": "client",
+          "provenance": "foreur",
           "date": "2026-09-12",
           "cle_etude": "source",
           "chemin": "source.debit_exploitation_m3h"
@@ -468,7 +468,7 @@
     "entrees_pompage.cibles": {
       "niveau_statique_m": "source.niveau_statique_m (provenance : niveau_statique_source declare→client, site_web→site_web, mesure_visite→mesure_visite)",
       "profondeur_forage_m": "source.profondeur_forage_m",
-      "debit_forage_m3h": "source.debit_exploitation_m3h ; `debit_forage_source` → source.debit_exploitation_origine (essai|foreur|client|mesure_visite) ; provenance detail : mesure_visite si mesuré par TAQINOR, sinon client",
+      "debit_forage_m3h": "source.debit_exploitation_m3h ; `debit_forage_source` → source.debit_exploitation_origine (essai|foreur|client|mesure_visite) ; provenance detail : mesure_visite si mesuré par TAQINOR, foreur / essai si mesuré par le foreur ou un essai de pompage (AGQ29 : une mesure), sinon client",
       "besoin_eau_m3j": "besoin.volume_m3_jour (provenance : besoin_eau_source client→client, site_web→site_web, pompe_actuelle→derive)",
       "culture": "besoin.cultures[0].crop",
       "surface_irriguee_ha": "besoin.cultures[0].surface_ha",

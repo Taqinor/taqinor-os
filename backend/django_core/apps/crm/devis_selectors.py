@@ -204,8 +204,10 @@ _ENTREES_POMPAGE_SOURCES = {
     'niveau_statique_m': ('niveau_statique_source', {
         'declare': 'client', 'site_web': 'site_web',
         'mesure_visite': 'mesure_visite'}),
+    # AGQ29 (C-AGQ-027) — le débit du FOREUR ou d'un ESSAI de pompage est une
+    # MESURE, jamais une simple déclaration du client.
     'debit_forage_m3h': ('debit_forage_source', {
-        'essai': 'client', 'foreur': 'client', 'client': 'client',
+        'essai': 'essai', 'foreur': 'foreur', 'client': 'client',
         'mesure_visite': 'mesure_visite'}),
     'besoin_eau_m3j': ('besoin_eau_source', {
         'client': 'client', 'site_web': 'site_web',
