@@ -537,7 +537,7 @@ class DevisViewSet(DevisEditionActionsMixin,
             sort_keys=True, default=str, separators=(',', ':'))
         cle_rejeu = 'devis-auto:replay:%s:%s:%s:%s' % (
             company.id, lead_obj.id, request.user.id,
-            hashlib.sha1(corps_canonique.encode('utf-8')).hexdigest())
+            hashlib.sha1(corps_canonique.encode('utf-8'), usedforsecurity=False).hexdigest())
         try:
             trace = cache.get(cle_rejeu)
         except Exception:  # cache indisponible : pas de rejeu
