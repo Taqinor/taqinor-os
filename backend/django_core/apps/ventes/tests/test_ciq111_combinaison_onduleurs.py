@@ -156,6 +156,33 @@ class CombinaisonTests(TestCase):
         self.assertTrue(any(a['code'] == 'OND_CHAINES_A_VERIFIER'
                             for a in r['alertes']))
 
+    def _avec_fiches(self, onduleur):
+        from apps.calepinage.services.chaines import specs_module, specs_onduleur
+        module = specs_module({'vmp_v': 40, 'voc_v': 48, 'isc_a': 18, 'imp_a': 17,
+                               'pmax_wc': 710}, 'Panneau 710W')[0]
+        spec = specs_onduleur(dict(onduleur, ac_kw=50, phases=3), 'Onduleur 50kW')[0]
+        cat = [dict(c, spec=spec) for c in self.cat if c['kw_ac'] == 50 and c['triphase']]
+        return module, cat
+
+    def test_chaines_rendues_avec_module_et_fiches(self):
+        # ADEV87 — module + fiche de chaque candidat ⇒ chaînes conçues.
+        module, cat = self._avec_fiches({'n_mppt': 4, 'mppt_v_min': 200, 'mppt_v_max': 1000,
+                                         'v_max_abs': 1100, 'i_max_mppt_a': 30})
+        r = combiner_onduleurs(35, cat, phase='tri', module=module)
+        self.assertTrue(r['chaines'])
+        self.assertGreater(sum(c['nb_chaines'] for c in r['chaines']), 0)
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 50)
+        codes = [a['code'] for a in r['alertes']]
+        self.assertNotIn('OND_CHAINES_A_VERIFIER', codes)
+        self.assertNotIn('OND_CHAINES_NON_FAISABLES', codes)
+
+    def test_chaines_infaisables_bloquant_nomme(self):
+        module, cat = self._avec_fiches({'n_mppt': 1, 'mppt_v_min': 30, 'mppt_v_max': 45,
+                                         'v_max_abs': 45, 'i_max_mppt_a': 30})
+        r = combiner_onduleurs(35, cat, phase='tri', module=module)
+        alerte = next(a for a in r['alertes'] if a['code'] == 'OND_CHAINES_NON_FAISABLES')
+        self.assertEqual(alerte['niveau'], 'bloquant')
+
     def test_aucune_cle_prix_achat(self):
         r = combiner_onduleurs(100, self.cat, phase='tri')
         self.assertNotIn('prix_achat', repr(r))

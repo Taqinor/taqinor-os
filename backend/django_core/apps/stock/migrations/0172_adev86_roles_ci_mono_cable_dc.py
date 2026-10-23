@@ -1,7 +1,8 @@
-"""ADEV86 — vocabulaire ``Produit.role_ci`` étendu (ADDITIF PUR).
+"""ADEV86 + ADEV87 — vocabulaire ``Produit.role_ci`` étendu (ADDITIF PUR).
 
-ADEV86 (D-ACI-3=b) : le C&I s'ouvre au monophasé — rôle
-``onduleur_string_mono`` AJOUTÉ en fin de ``core.product_roles.ROLES_CI``.
+UNE migration, DEUX rôles AJOUTÉS en fin de ``core.product_roles.ROLES_CI`` :
+* ADEV86 (D-ACI-3=b) : le C&I s'ouvre au monophasé — ``onduleur_string_mono`` ;
+* ADEV87 : le câble solaire DC du moteur C&I — ``cable_dc``.
 
 Seuls les ``choices`` du champ changent (aucune colonne, aucune donnée réécrite,
 aucun produit reclassé) : ``AlterField`` sans effet SQL. RÉVERSIBLE : le retour
@@ -17,7 +18,7 @@ ROLES_CI = [
     'cellule_mt', 'etudes_ingenierie', 'pose_structure', 'pose_modules',
     'raccordement_ac', 'mise_en_service', 'dossier_raccordement',
     'levage_acces', 'transport_ci', 'om_ci', 'batterie_ci',
-    'onduleur_string_mono',
+    'onduleur_string_mono', 'cable_dc',
 ]
 
 

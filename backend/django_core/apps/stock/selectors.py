@@ -3307,6 +3307,8 @@ _ROLES_CI_PAR_NOM = (
      'controleur_injection'),
     (('smart meter', 'compteur'), 'compteur_injection'),
     (('cellule mt',), 'cellule_mt'),
+    # ADEV87 — câble solaire DC (seed ``CAB-H1Z2Z2-*-M``, sans fiche).
+    (('h1z2z2',), 'cable_dc'),
 )
 
 
@@ -3341,6 +3343,13 @@ def _fiche_ci_dict(produit):
 
 def _role_ci_par_fiche(produit, fiche):
     """Rôle C&I DÉDUIT de la fiche (``role_devis`` + ``type_fiche``)."""
+    # ADEV87 — un câble DÉCLARÉ câble DC (rôle de devis ou de pompage), sans
+    # côté publié sur une fiche câble, sert le câble DC du C&I.
+    sans_cote = fiche is None or (fiche.type_fiche in ('cable', 'autre', '')
+                                  and not fiche.cable_cote)
+    if sans_cote and 'cable_dc' in (produit.role_devis,
+                                    getattr(produit, 'role_pompage', '')):
+        return 'cable_dc'
     if fiche is None:
         return None
     t = fiche.type_fiche
@@ -3363,7 +3372,7 @@ def _role_ci_par_fiche(produit, fiche):
         return {'ac': 'protection_ac', 'dc': 'protection_dc'}.get(
             fiche.prot_cote)
     if t == 'cable':
-        return 'cable_ac' if fiche.cable_cote == 'ac' else None
+        return {'ac': 'cable_ac', 'dc': 'cable_dc'}.get(fiche.cable_cote)
     if t == 'structure':
         return 'structure_ci'
     return None
@@ -3442,7 +3451,8 @@ def produits_ci(company, avec_prix=False):
     ``element_produits_ci`` de ``produit_ci.json``.
 
     Rôle : ``role_ci`` déclaré, sinon déduit de la fiche (``role_devis`` +
-    ``type_fiche`` / ``ond_phases``), sinon des mots du nom (repli) ;
+    ``type_fiche`` / ``ond_phases`` / ``cable_cote``), sinon des mots du nom
+    (repli) ;
     ``classement`` dit lequel. Produits ARCHIVÉS exclus ; lecture seule,
     bornée à la société ; une seule requête (catégorie et fiche préchargées).
     ``avec_prix=True`` ne garde que les produits à prix de vente saisi (> 0).

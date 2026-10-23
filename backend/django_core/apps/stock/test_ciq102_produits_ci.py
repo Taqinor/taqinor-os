@@ -98,6 +98,20 @@ class ProduitsCiTests(TestCase):
             garantie='10 ans')
         _fiche_onduleur(cls.company, cls.ond_tri_declare_mono,
                         ond_ac_kw=Decimal('20'))
+        # ADEV87 — câbles solaires DC : fiche côté DC, rôle de devis déclaré,
+        # et le câble seedé H1Z2Z2-K sans fiche ni rôle (repli par le nom).
+        cls.cable_dc_fiche = Produit.objects.create(
+            company=cls.company, nom='Câble DC 6 mm²', prix_vente=Decimal('12'))
+        FicheTechnique.objects.create(
+            company=cls.company, produit=cls.cable_dc_fiche, type_fiche='cable',
+            cable_cote='dc', cable_section_mm2=6)
+        cls.cable_dc_role = Produit.objects.create(
+            company=cls.company, nom='Câble solaire 4 mm² (au mètre)',
+            role_devis='cable_dc', prix_vente=Decimal('10'))
+        cls.cable_dc_seed = Produit.objects.create(
+            company=cls.company, sku='CAB-H1Z2Z2-6-M',
+            nom='Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',
+            prix_vente=Decimal('14'))
 
     def _par_id(self, **kw):
         return {e['id']: e for e in produits_ci(self.company, **kw)}
@@ -135,6 +149,19 @@ class ProduitsCiTests(TestCase):
         self.assertEqual(e['classement'], 'declare')
         self.assertFalse(e['eligible_ci'])
         self.assertIn('fiche à 1 phase', e['motif_exclusion'])
+
+    def test_cable_dc_servi(self):
+        # ADEV87 — fiche ``cable_cote='dc'``, ``role_devis='cable_dc'`` ou nom
+        # H1Z2Z2-K (seed) ⇒ rôle C&I ``cable_dc``, éligible.
+        par_id = self._par_id()
+        for produit, classement in ((self.cable_dc_fiche, 'fiche'),
+                                    (self.cable_dc_role, 'fiche'),
+                                    (self.cable_dc_seed, 'nom')):
+            e = par_id[produit.id]
+            self.assertEqual(e['role_ci'], 'cable_dc', produit.nom)
+            self.assertEqual(e['classement'], classement, produit.nom)
+            self.assertTrue(e['eligible_ci'])
+        self.assertEqual(par_id[self.cable_dc_fiche.id]['fiche']['cable_cote'], 'dc')
 
     def test_onduleur_fiche_incomplete_exclu_motif_pvond(self):
         e = self._par_id()[self.ond_incomplet.id]

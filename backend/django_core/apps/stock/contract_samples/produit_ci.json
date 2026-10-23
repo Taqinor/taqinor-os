@@ -57,7 +57,8 @@
     "transport_ci": "Transport C&I",
     "om_ci": "Exploitation et maintenance (O&M)",
     "batterie_ci": "Batterie C&I",
-    "onduleur_string_mono": "Onduleur string monophasé"
+    "onduleur_string_mono": "Onduleur string monophasé",
+    "cable_dc": "Câble DC"
   },
   "fiches": {
     "onduleur": {
@@ -145,7 +146,7 @@
     },
     "cable": {
       "type_fiche": "cable",
-      "roles": ["cable_ac", "mise_a_la_terre"],
+      "roles": ["cable_ac", "mise_a_la_terre", "cable_dc"],
       "champs": {
         "cable_cote": "texte : ac | dc",
         "cable_section_mm2": "nombre ou null — section (mm²)",

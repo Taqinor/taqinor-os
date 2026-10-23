@@ -121,6 +121,8 @@ ROLES_CI = (
     # ADEV86 (D-ACI-3=b) — le C&I s'ouvre au monophasé : rôle AJOUTÉ en fin de
     # tuple (ordre existant intact, contrat ``produit_ci.json`` réaligné).
     'onduleur_string_mono',
+    # ADEV87 — câble solaire DC (H1Z2Z2-K) : quantifié par les chaînes.
+    'cable_dc',
 )
 
 #: ADEV86 — les rôles C&I d'onduleur string et la phase PUBLIÉE (``ond_phases``)
@@ -154,6 +156,7 @@ LIBELLES_ROLES_CI = {
     'om_ci': 'Exploitation et maintenance (O&M)',
     'batterie_ci': 'Batterie C&I',
     'onduleur_string_mono': 'Onduleur string monophasé',
+    'cable_dc': 'Câble DC',
 }
 
 #: CIQ101 — types de pose d'une STRUCTURE (et des prestations de pose) : les

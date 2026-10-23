@@ -204,6 +204,25 @@ class ContratTests(_Base):
         data = self.post(self.corps())
         self.assertNotIn('étranger', json.dumps(data, ensure_ascii=False))
 
+    def test_longueur_dc_declaree_fiches_completes_cable_dc_quantifie(self):
+        # ADEV87 — module et onduleurs à fiches complètes : les chaînes se
+        # calculent, le câble DC = Σ chaînes × longueur DÉCLARÉE, au prix
+        # catalogue.
+        cable = self._produit(self.co, 'Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',
+                              role_devis='cable_dc', prix_vente=Decimal('12'))
+        corps = self.corps()
+        corps['contraintes']['longueur_dc_m'] = 30
+        data = self.post(corps)
+        self.assertNotIn('OND_CHAINES_A_VERIFIER', [a['code'] for a in data['alertes']])
+        chaines = data['composition']['onduleurs']['chaines']
+        self.assertTrue(chaines)
+        ligne = next(lg for lg in data['composition']['lignes'] if lg['role'] == 'cable_dc')
+        self.assertEqual(ligne['produit'], cable.id)
+        self.assertGreater(ligne['quantite'], 0)
+        self.assertEqual(ligne['quantite'],
+                         sum(c['nb_chaines'] for c in chaines) * 30)
+        self.assertTrue(ligne['prix_connu'])
+
     def test_pvgis_indisponible_etude_null_et_avertissement(self):
         self.production.side_effect = None
         self.production.return_value = None

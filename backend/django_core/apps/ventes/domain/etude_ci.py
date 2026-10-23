@@ -633,6 +633,7 @@ def _profil_societe(company, mode, cle):
 def lire_catalogue_ci(company):
     """Catalogue C&I (``stock.selectors.produits_ci``) + prix de VENTE HT du
     catalogue de la société + module retenu. Jamais ``prix_achat``."""
+    from apps.calepinage.services.chaines import specs_module, specs_onduleur
     from apps.stock.selectors import produits_ci, specs_for_produit
     from core.product_roles import ROLES_ONDULEUR_CI
 
@@ -676,9 +677,11 @@ def lire_catalogue_ci(company):
             'motif_exclusion': element.get('motif_exclusion'),
             'dc_max_kwc': specs.get('dc_max_kwc'),
             's_max_kva': specs.get('s_max_kva'),
+            # ADEV87 — la fiche électrique (chaînes), ``None`` si incomplète.
+            'spec': specs_onduleur(specs, element.get('nom') or '')[0] if specs else None,
         })
 
-    module = None
+    module = module_spec = None
     candidats = []
     for produit in objets.values():
         role = getattr(produit, 'role_devis', None) or classer_produit(produit.nom)
@@ -708,11 +711,13 @@ def lire_catalogue_ci(company):
             'largeur_mm': _num(specs.get('largeur_mm')),
             'poids_kg': _num(specs.get('poids_kg')),
         }
+        # ADEV87 — la fiche électrique du module retenu (chaînes).
+        module_spec = specs_module(specs, produit.nom)[0] if specs else None
     prix_par_id = {e['id']: e['prix_vente_ht'] for e in elements if e.get('prix_vente_ht')}
     if module and module.get('prix_vente_ht'):
         prix_par_id[module['produit']] = module['prix_vente_ht']
     return {'elements': elements, 'onduleurs': onduleurs, 'module': module,
-            'prix_par_id': prix_par_id}
+            'module_spec': module_spec, 'prix_par_id': prix_par_id}
 
 
 def _reglages_societe(company):
@@ -1116,7 +1121,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     def combiner(kwc):
         if onduleurs_imposes:
             return _combinaison_imposee(onduleurs_imposes, catalogue['onduleurs'])
-        return combiner_onduleurs(kwc, catalogue['onduleurs'], phase=phase)
+        # ADEV87 — module et fiches onduleur passés : les chaînes se calculent.
+        return combiner_onduleurs(kwc, catalogue['onduleurs'], phase=phase,
+                                  module=catalogue.get('module_spec'))
 
     def composer(kwc, onduleurs):
         return _completer_prix(composer_ci(kwc, catalogue['elements'], onduleurs=onduleurs,

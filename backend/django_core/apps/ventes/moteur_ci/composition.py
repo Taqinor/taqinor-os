@@ -498,6 +498,12 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
                              'm', motif='chaînes à vérifier : quantité non '
                              'calculée', a_confirmer=True, visite=True))
+    elif any(c.get('bloquants') for c in chaines):
+        # ADEV87 — chaînes infaisables (alerte bloquante de la combinaison) :
+        # aucune quantité tirée d'une conception impossible.
+        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
+                             'm', motif='chaînes non faisables : quantité non '
+                             'calculée', a_confirmer=True, visite=True))
     elif longueur_dc is None or longueur_dc <= 0:
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
                              'm', motif=MOTIF_LONGUEUR, a_confirmer=True, visite=True))

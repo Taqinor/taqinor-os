@@ -50,7 +50,7 @@ from .valeurs import nombre as _nombre
 
 __all__ = [
     'PanPose', 'ModulePan', 'Conception', 'REGLE_UNE_ORIENTATION_PAR_CHAINE',
-    'specs_module', 'entree_electrique', 'concevoir_par_pan',
+    'specs_module', 'specs_onduleur', 'entree_electrique', 'concevoir_par_pan',
     'affectation', 'empreinte_entree', 'bloc_electrique', 'bloc_pose',
     # CAL234 — affectation IMPOSÉE (manuelle) et son verdict.
     'SOURCE_AUTO', 'SOURCE_MANUELLE', 'AffectationInvalide',
@@ -441,6 +441,14 @@ def _specs_onduleur(specs, designation=''):
         i_max_mppt_a=float(specs['i_max_mppt_a']),
         ac_kw=float(specs['ac_kw']), phases=phases or 1,
         designation=designation or '', **optionnels), ())
+
+
+def specs_onduleur(specs, designation=''):
+    """ADEV87 — ``(SpecOnduleur | None, manquantes)`` depuis un bloc
+    ``onduleur`` de ``apps.stock.selectors.specs_for_produit`` : l'enveloppe
+    PUBLIQUE de :func:`_specs_onduleur` (même règle, aucune copie) pour les
+    lecteurs hors calepinage (moteur C&I de ``apps.ventes``)."""
+    return _specs_onduleur(specs, designation)
 
 
 def _chaines_max_par_mppt(specs):
