@@ -115,6 +115,19 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertIn("relevé du point d'eau", rep.data['detail'].lower())
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
+    def test_field_du_409_nomme_le_debit_du_forage(self):
+        """AGQ22 (C-AGQ-021) — niveau d'eau connu, débit du forage inconnu :
+        le 409 de la règle de visite nomme ``debit_forage_m3h`` (jamais
+        ``niveau_statique_m`` par défaut)."""
+        self._pompe('15000')
+        lead = self._lead(debit_forage_m3h=None)
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertIn('D-AGR-4', rep.data['detail'])
+        self.assertEqual(rep.data['field'], 'debit_forage_m3h')
+        lead = self._lead(niveau_statique_m=None, debit_forage_m3h=None)
+        self.assertEqual(self._post(lead).data['field'], 'niveau_statique_m')
+
     def test_donnee_hydraulique_manquante_422_nommant_le_champ(self):
         self._pompe('15000')
         lead = self._lead(pompe_hmt_m=None, niveau_statique_m=None)

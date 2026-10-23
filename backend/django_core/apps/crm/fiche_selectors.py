@@ -802,6 +802,17 @@ def champs_devis_auto_manquants(lead):
     return champs_manquants_detail(lead)
 
 
+def visite_point_eau_du_lead(lead):
+    """AGQ22 — ``{requise, motifs, motifs_detail}`` de la règle de visite
+    D-AGR-4 (``devis_auto.visite_point_eau_avant_devis``) pour un lead
+    agricole, ``None`` ailleurs : point d'entrée cross-app du devis
+    automatique serveur (le 409 nomme le champ du motif). Lecture seule."""
+    from .devis_auto import visite_point_eau_avant_devis
+    if lead is None:
+        return None
+    return visite_point_eau_avant_devis(lead)
+
+
 def lead_en_attente_ou_veille(lead_id, today, *, company):
     """CIQ523 — le lead ``lead_id`` (de ``company`` seulement) attend-il une
     décision déclarée ?

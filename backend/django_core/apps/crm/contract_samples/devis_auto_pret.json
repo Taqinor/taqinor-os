@@ -54,6 +54,16 @@
         "motifs": [
           "niveau d'eau du forage inconnu",
           "débit du forage inconnu"
+        ],
+        "motifs_detail": [
+          {
+            "champ": "niveau_statique_m",
+            "libelle": "niveau d'eau du forage (visite)"
+          },
+          {
+            "champ": "debit_forage_m3h",
+            "libelle": "débit du forage (visite)"
+          }
         ]
       },
       "mode_pompe": {
@@ -89,7 +99,8 @@
       ],
       "visite_point_eau_avant_devis": {
         "requise": false,
-        "motifs": []
+        "motifs": [],
+        "motifs_detail": []
       },
       "mode_pompe": {
         "valeur": "existante",
@@ -162,5 +173,6 @@
     }
   },
   "regle_pro_ciq1": "CIQ1 (Groupe CIQ) — règle PRO v2 (contrat `lead_pro.json`, `regles_devis_auto`) : groupe « l'un des » [['conso_mensuelle_kwh','bill_kwh','releve_conso','facture_hiver']] ; `facture_hiver` (MAD) ne compte pour un commercial que si la tension n'est pas « mt », pour un industriel que si la tension « bt » est DÉCLARÉE (exemple_industriel : facture en MAD présente mais site MT ⇒ non comptée) ; le bloc gagne `source_conso` et `visite_avant_devis` {requise, motifs} (D-CIQ-5) pour un commercial/industriel, null ailleurs. `pret` ne mesure que les données.",
-  "regle_mode_pompe_agq39": "AGQ39 (D-AGQ-10) — `devis_auto.mode_pompe` = {valeur, par_defaut} pour un agricole, null ailleurs : `Lead.mode_pompe` vide ⇒ « neuve » étiqueté « par défaut » (jamais écrit sur le lead) ; « existante » ajoute le groupe [['pompe_actuelle_kw']] qui ne compte que si `pompe_actuelle_tension_v` et `pompe_actuelle_phases` sont aussi renseignés (UNE puce « plaque de la pompe actuelle (kW, tension, phases) »). Le devis automatique en mode existante : aucune ligne pompe, variateur et champ sur la plaque, 409 nommé si aucun variateur chiffrable."
+  "regle_mode_pompe_agq39": "AGQ39 (D-AGQ-10) — `devis_auto.mode_pompe` = {valeur, par_defaut} pour un agricole, null ailleurs : `Lead.mode_pompe` vide ⇒ « neuve » étiqueté « par défaut » (jamais écrit sur le lead) ; « existante » ajoute le groupe [['pompe_actuelle_kw']] qui ne compte que si `pompe_actuelle_tension_v` et `pompe_actuelle_phases` sont aussi renseignés (UNE puce « plaque de la pompe actuelle (kW, tension, phases) »). Le devis automatique en mode existante : aucune ligne pompe, variateur et champ sur la plaque, 409 nommé si aucun variateur chiffrable.",
+  "regle_visite_agq22": "AGQ22 (C-AGQ-021) — `visite_point_eau_avant_devis.motifs_detail` = [{champ, libelle}] (même ordre que `motifs`, textes inchangés) : la fiche affiche une puce par motif (« débit du forage (visite) ») et garde le bouton « Devis automatique » inactif tant que la visite est requise ; le 409 de POST /ventes/devis/auto/ porte `field` = le champ du PREMIER motif (débit du forage ≠ niveau d'eau)."
 }

@@ -58,7 +58,9 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
       remise_globale: discountStr || '0',
       // AGNR39 — jamais pour le pompage : le champ découle de la pompe.
       ...(cible > 0 && marche !== 'agricole' ? { target_kwc: cible } : {}),
-    })
+    // AGQ22 — agricole : l'écran (panneau lead, générateur) affiche lui-même
+    // le refus nommé ; le toast global ferait un second message.
+    }, marche === 'agricole' ? { suppressErrorToast: true } : undefined)
   } catch (err) {
     const data = err?.response?.data || {}
     throw {

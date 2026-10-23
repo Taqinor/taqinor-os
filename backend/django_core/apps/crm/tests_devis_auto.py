@@ -208,16 +208,23 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
 
     def test_visite_point_eau_requise_tant_que_niveau_ou_debit_manque(self):
         lead = self._lead()
+        # AGQ22 — chaque motif porte aussi son champ (``motifs_detail``).
+        niveau = {'champ': 'niveau_statique_m',
+                  'libelle': "niveau d'eau du forage (visite)"}
+        debit = {'champ': 'debit_forage_m3h',
+                 'libelle': 'débit du forage (visite)'}
         self.assertEqual(visite_point_eau_avant_devis(lead), {
             'requise': True,
             'motifs': ["niveau d'eau du forage inconnu",
-                       'débit du forage inconnu']})
+                       'débit du forage inconnu'],
+            'motifs_detail': [niveau, debit]})
         lead.niveau_statique_m = Decimal('32')
         self.assertEqual(visite_point_eau_avant_devis(lead), {
-            'requise': True, 'motifs': ['débit du forage inconnu']})
+            'requise': True, 'motifs': ['débit du forage inconnu'],
+            'motifs_detail': [debit]})
         lead.debit_forage_m3h = Decimal('36')
         self.assertEqual(visite_point_eau_avant_devis(lead),
-                         {'requise': False, 'motifs': []})
+                         {'requise': False, 'motifs': [], 'motifs_detail': []})
 
     def test_visite_point_eau_vaut_none_hors_agricole(self):
         for mode in (None, '', 'residentiel', 'industriel', 'commercial'):

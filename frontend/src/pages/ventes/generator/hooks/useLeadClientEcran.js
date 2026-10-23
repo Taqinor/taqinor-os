@@ -7,6 +7,8 @@ import { LEAD_TYPE_TO_MODE, createAutoQuote } from '../../../../features/ventes/
 import crmApi from '../../../../api/crmApi'
 import { estimerMois } from '../../../../features/ventes/solar'
 import ventesApi from '../../../../api/ventesApi'
+// AGQ22 — libellé du champ du lead nommé par un 409 (carte unique).
+import fieldLabels from '../../../../features/crm/workspace/fieldLabels'
 import { useEffect, useRef } from 'react'
 
 export function useLeadClientEcran(ctx) {
@@ -169,9 +171,14 @@ export function useLeadClientEcran(ctx) {
       const devisId = await createAutoQuote({ lead, discountStr, bareme: baremeSociete })
       finish(devisId)
     } catch (err) {
-      const msg = typeof err?.detail === 'string'
+      // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ du lead (`field` du
+      // 409) dit lequel corriger sur la fiche ; un seul message (le toast
+      // global est coupé pour cet appel).
+      const champ = err?.field ? fieldLabels[err.field]?.label : null
+      const msg = (typeof err?.detail === 'string'
         ? err.detail
-        : 'Le devis automatique a échoué — vérifiez le lead et réessayez.'
+        : 'Le devis automatique a échoué — vérifiez le lead et réessayez.')
+        + (champ ? ` — à corriger sur la fiche lead : ${champ}.` : '')
       setErrors(prev => ({ ...prev, submit: msg }))
       setSaving(false)
     }

@@ -258,9 +258,17 @@ def visite_point_eau_avant_devis(lead):
     """
     if (lead.type_installation or '') != _MODE_AGRICOLE:
         return None
-    motifs = []
+    # AGQ22 (C-AGQ-021) — chaque motif porte le CHAMP du lead qu'il vise
+    # (``motifs_detail``) : la puce et le 409 du devis automatique nomment le
+    # bon champ (débit du forage ≠ niveau). ``motifs`` (textes) inchangé.
+    motifs, detail = [], []
     if lead.niveau_statique_m is None:
         motifs.append("niveau d'eau du forage inconnu")
+        detail.append({'champ': 'niveau_statique_m',
+                       'libelle': "niveau d'eau du forage (visite)"})
     if lead.debit_forage_m3h is None:
         motifs.append('débit du forage inconnu')
-    return {'requise': bool(motifs), 'motifs': motifs}
+        detail.append({'champ': 'debit_forage_m3h',
+                       'libelle': 'débit du forage (visite)'})
+    return {'requise': bool(motifs), 'motifs': motifs,
+            'motifs_detail': detail}

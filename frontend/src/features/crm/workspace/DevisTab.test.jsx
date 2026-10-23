@@ -193,6 +193,39 @@ describe('LW21 — CTA devis automatique', () => {
     expect(onAction).toHaveBeenCalledWith('open-devis', 'auto')
   })
 
+  // AGQ22 (C-AGQ-021) — la règle de visite D-AGR-4 repliée dans le bouton :
+  // prêt mais débit du forage inconnu ⇒ bouton inactif + puce qui saute au
+  // champ du débit (jamais au niveau d'eau).
+  it('AGQ22 — lead agricole prêt, débit du forage inconnu : bouton inactif et puce « débit du forage (visite) »', async () => {
+    const user = userEvent.setup()
+    const input = document.createElement('input')
+    input.id = 'lf-debit-forage'
+    document.body.appendChild(input)
+    const focusSpy = vi.spyOn(input, 'focus')
+    try {
+      const { onAction } = renderTab({
+        state: leadState({
+          type_installation: 'agricole',
+          devis_auto: {
+            pret: true, manquants: [], manquants_detail: [],
+            requis: [['pompe_hmt_m'], ['pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h']],
+            visite_point_eau_avant_devis: {
+              requise: true, motifs: ['débit du forage inconnu'],
+              motifs_detail: [{ champ: 'debit_forage_m3h', libelle: 'débit du forage (visite)' }],
+            },
+          },
+        }),
+      })
+      const bouton = screen.getByTestId('lw-devis-auto-visite')
+      expect(bouton).toBeDisabled()
+      await user.click(screen.getByText('débit du forage (visite)'))
+      await waitFor(() => expect(focusSpy).toHaveBeenCalled())
+      expect(onAction).not.toHaveBeenCalledWith('open-devis', 'auto')
+    } finally {
+      input.remove()
+    }
+  })
+
   it('lead industriel : le champ « puissance cible » reste et sa cible voyage', async () => {
     const user = userEvent.setup()
     const { onAction } = renderTab({ state: leadState({ type_installation: 'industriel' }) })

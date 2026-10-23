@@ -29,6 +29,9 @@ import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
+// AGQ22 — un 409 qui nomme un champ de la fiche : même saut que les puces.
+import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
+import { jumpToField } from '../../../features/crm/workspace/jumpToField'
 import {
   Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
@@ -186,9 +189,21 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
       onDevisChanged?.()
       setPhase('preview')
     } catch (err) {
-      setErrorMsg(typeof err?.detail === 'string'
+      const message = typeof err?.detail === 'string'
         ? err.detail
-        : "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez.")
+        : "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez."
+      // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ de la fiche (`field`
+      // du 409, ex. `debit_forage_m3h`) : le panneau se ferme et le champ est
+      // mis en évidence, avec UN seul message (le toast global est coupé
+      // pour cet appel, `suppressErrorToast`).
+      const cible = err?.field ? missingFieldTarget(err.field) : null
+      if (cible) {
+        toast.error(message)
+        onClose()
+        jumpToField(cible)
+        return
+      }
+      setErrorMsg(message)
       setPhase('error')
     }
   }

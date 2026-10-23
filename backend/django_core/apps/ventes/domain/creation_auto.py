@@ -360,9 +360,9 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     if taux_tva is None:
         from apps.ventes.utils.company_settings import tva_standard
         taux_tva = tva_standard(company)
-    from apps.crm.selectors import champs_devis_auto_manquants
-    from apps.crm.services import resolve_client_for_lead, \
-        visite_point_eau_requise
+    from apps.crm.selectors import (
+        champs_devis_auto_manquants, visite_point_eau_du_lead)
+    from apps.crm.services import resolve_client_for_lead
     from apps.ventes.domain.catalogue import catalogue_de_la_societe
     from apps.ventes.domain.pompage import (
         etude_precalculee, etudier_pompage, lignes_kit_auto,
@@ -374,9 +374,14 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         raise AutoDevisError(
             'Manque : ' + ', '.join(m['label'] for m in manquants),
             field=manquants[0]['champ'])
-    if visite_point_eau_requise(lead):
+    visite = visite_point_eau_du_lead(lead)
+    if visite and visite.get('requise'):
+        # AGQ22 (C-AGQ-021) — le 409 nomme le champ du PREMIER motif (débit
+        # du forage ≠ niveau d'eau), lu sur la règle servie, jamais figé.
+        detail = visite.get('motifs_detail') or [{}]
         raise AutoDevisError(MESSAGE_RELEVE_POINT_EAU,
-                             field='niveau_statique_m')
+                             field=detail[0].get('champ')
+                             or 'niveau_statique_m')
 
     # L'alimentation est DÉDUITE du raccordement déclaré (mono/tri) ; inconnu
     # ⇒ absente (jamais « tri » par défaut).
