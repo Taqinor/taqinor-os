@@ -134,7 +134,10 @@ class Agr304DevisCompletTests(SimpleTestCase):
         self.assertEqual(s['mode_pompe'], 'neuve')
         self.assertEqual(s['eau'], {'m3_jour': 134.2, 'heures_pompage': 4.4,
                                     'hmt_m': 58.7, 'debit_hmt_m3h': 30.5,
-                                    'estimation': False})
+                                    'estimation': False,
+                                    'mois_conception': 12,
+                                    'm3_jour_min': 134.2,
+                                    'mois_m3_jour_min': 12})
         self.assertEqual(s['pompe'], {'cv': 10.2, 'kw': 7.5})
         self.assertEqual(s['champ'], {'kwc': 9.94, 'nb_panneaux': 14})
         bvl = s['besoin_vs_livre']
@@ -414,11 +417,63 @@ class SyntheseAgricoleTests(SimpleTestCase):
                       "vous le 12/09/2026", p1)
         self.assertIn("Débit d'exploitation du forage</b> : 36 m³/h —", p1)
         self.assertIn('Pompe 30,5 m³/h ≤ forage 36 m³/h', p1)
-        self.assertIn('h équivalentes plein soleil', p1)
+        self.assertIn('h de pompage équivalentes à plein débit', p1)
         d['etude']['debit_hmt_m3h'] = 40
         p1 = pages.build_html(renderer._augment(d)).split(
             '<div class="page">')[1]
         self.assertIn('Pompe 40 m³/h &gt; forage 36 m³/h', p1)
+
+    def test_mois_sous_tolerance_et_mois_du_hero(self):
+        """AGQ3 (D-AGQ-2) — le héro nomme le mois de conception et le mois
+        le plus bas ; la page 2 liste chaque mois sous la tolérance avec sa
+        couverture ; les heures sont des heures ÉQUIVALENTES à plein débit.
+        Valeurs lues telles que servies (sonde C-AGQ-014), jamais
+        recalculées."""
+        from apps.ventes.quote_engine.agricole import pages, renderer
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete,
+        )
+        production = [60.1, 70.4, 98.0, 122.3, 125.0, 126.2, 124.8, 118.9,
+                      110.5, 96.0, 73.2, 58.4]
+        sonde = {
+            'besoin_mensuel': {'m3_jour_mois': [0, 0, 0] + [120] * 7
+                               + [0, 0], 'nature': 'declare',
+                               'source_et0': None},
+            'production': {'m3_jour_mois': production,
+                           'source_irradiation': 'pvgis', 'mode': 'courbe'},
+            'conception': {'mois_critique': 10},
+            'couverture_pct_mois': [None, None, None, 102, 104, 105, 104,
+                                    99, 92, 80, None, None],
+            'controle_conception': {'statut': 'couverture_insuffisante',
+                                    'mois_sous_tolerance': [9, 10]},
+            'm3_jour': 96.0, 'heures_pompage': 5.1,
+        }
+        data = _data_complete()
+        data['etude'].update(copy.deepcopy(sonde))
+        s = synthese_agricole(data)
+        self.assertEqual(s['eau']['mois_conception'], 10)
+        self.assertEqual(s['eau']['m3_jour_min'], 58.4)
+        self.assertEqual(s['eau']['mois_m3_jour_min'], 12)
+        self.assertEqual(s['besoin_vs_livre']['mois_sous_tolerance'], [
+            {'mois': 9, 'couverture_pct': 92},
+            {'mois': 10, 'couverture_pct': 80}])
+        d = data_complete()
+        d['etude'].update(copy.deepcopy(sonde))
+        html = pages.build_html(renderer._augment(d))
+        p1, p2 = html.split('<div class="page">')[1:3]
+        self.assertIn('sur 5,1 h de pompage équivalentes à plein débit en '
+                      'octobre, mois de conception', p1)
+        self.assertIn('au plus bas : 58,4 m³/j en décembre', p1)
+        self.assertIn('septembre : 92 % de votre besoin', p2)
+        self.assertIn('octobre : 80 % de votre besoin', p2)
+        # Sans mois sous la tolérance : aucune liste ; mois le plus bas =
+        # mois de conception : aucune redite « au plus bas ».
+        s = synthese_agricole(_data_complete())
+        self.assertEqual(s['besoin_vs_livre']['mois_sous_tolerance'], [])
+        p1 = pages.build_html(renderer._augment(data_complete())).split(
+            '<div class="page">')[1]
+        self.assertIn('en décembre, mois de conception', p1)
+        self.assertNotIn('au plus bas', p1)
 
     def test_option_deja_ligne_du_devis_non_reproposee(self):
         data = _data_complete()

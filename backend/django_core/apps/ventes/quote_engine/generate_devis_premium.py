@@ -3946,14 +3946,16 @@ def _cartes_pompage_synthese(synthese):
              _ancre_figure("pompe_debit_m3h", _fdec_fr(_dq, 1))))
     _m3j, _hrs = eau.get("m3_jour"), eau.get("heures_pompage")
     # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ : la carte le dit.
-    from .agricole.synthese import debit_declare_sans_courbe
+    # AGQ3 (D-AGQ-2) — mois de conception, plus bas et heures équivalentes :
+    # LA phrase du héro du 3 pages ; devis v1 (aucun mois) : texte d'hier.
+    from .agricole.synthese import debit_declare_sans_courbe, texte_heures_eau
     if _m3j is not None and _hrs is not None:
         _est = (f"{_L('estimation')} &#183; {_L('lg_debit_declare_par_vous')}, "
                 if debit_declare_sans_courbe({"etude": ETUDE, "all_items": SANS_ITEMS + AVEC_ITEMS})
                 else f"{_L('estimation')}, " if eau.get("estimation") else "")
         cellules.append(
             (f"{_L('eau_jour')} &#8212; {_est}"
-             f"{_L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
+             f"{texte_heures_eau(eau, LANGUE_SORTIE, lambda v: _fdec_fr(v, 1)) or _L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
              f" ({_L('hypothese')})",
              f"&#8776; {fnum(_m3j)} m&#179;",
              _ancre_figure("pompe_volume_m3_jour", fnum(_m3j))))

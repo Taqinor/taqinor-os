@@ -45,7 +45,7 @@ import unicodedata
 
 from core.pompage.kit import MENTION_COMPTEUR
 
-from ..i18n_labels import est_rtl
+from ..i18n_labels import est_rtl, libelle
 from ..lecture_pure import nombre_normalise
 from .garanties import garanties_pompage_et_omissions
 from .mentions import etapes_suivantes, formalites, regle_fda
@@ -278,6 +278,55 @@ def _courbe_points(courbe):
     return points
 
 
+def _mois(v):
+    """Un numéro de mois 1-12, sinon None."""
+    n = _num(v)
+    return int(n) if n is not None and n == int(n) and 1 <= n <= 12 else None
+
+
+def _au_plus_bas(etude):
+    """AGQ3 — ``(m³/j, mois)`` le plus bas de l'ANNÉE sur la série livrée
+    servie (``production.m3_jour_mois``) ; ``(None, None)`` sans série."""
+    serie = _serie_12(_dict(etude.get("production")))
+    if serie is None:
+        return None, None
+    return min(serie), serie.index(min(serie)) + 1
+
+
+def _mois_sous_tolerance(etude):
+    """AGQ3 (D-AGQ-2) — ``[{mois, couverture_pct}]`` de chaque mois
+    d'irrigation sous la tolérance de conception, LUS dans
+    ``controle_conception.mois_sous_tolerance`` et ``couverture_pct_mois``
+    servis par le moteur (AGQ2) — aucun recalcul ; [] sinon."""
+    couverture = etude.get("couverture_pct_mois")
+    if not isinstance(couverture, (list, tuple)) or len(couverture) != 12:
+        couverture = [None] * 12
+    mois = _dict(etude.get("controle_conception")).get("mois_sous_tolerance")
+    return [{"mois": m, "couverture_pct": _num(couverture[m - 1])}
+            for m in (_mois(v) for v in mois or []) if m is not None]
+
+
+def texte_heures_eau(eau, langue, fmt):
+    """AGQ3 (D-AGQ-2) — « sur 5,1 h de pompage équivalentes à plein débit en
+    octobre, mois de conception · au plus bas : 73,2 m³/j en novembre » :
+    LA phrase du héro (3 pages) et de la carte eau (une-page). ``fmt``
+    formate un nombre à la française (gabarit appelant). "" quand l'étude
+    ne nomme aucun mois (devis v1 : l'appelant garde son texte d'hier)."""
+    mois = _mois(eau.get("mois_conception"))
+    if mois is None:
+        return ""
+    nom = libelle(f"agr_mois_{mois}", langue)
+    heures = eau.get("heures_pompage")
+    texte = (libelle("agr_heures_equivalentes_mois", langue).format(
+        heures=fmt(heures), mois=nom) if heures is not None else
+        libelle("agr_hero_mois_conception", langue).format(mois=nom))
+    bas, mois_bas = eau.get("m3_jour_min"), _mois(eau.get("mois_m3_jour_min"))
+    if bas is not None and mois_bas not in (None, mois):
+        texte += " · " + libelle("agr_au_plus_bas", langue).format(
+            m3=fmt(bas), mois=libelle(f"agr_mois_{mois_bas}", langue))
+    return texte
+
+
 def _bloc_besoin_vs_livre(etude):
     """(bloc, motif) — bloc None quand il est omis, motif dit pourquoi."""
     besoin_mensuel = etude.get("besoin_mensuel")
@@ -312,6 +361,7 @@ def _bloc_besoin_vs_livre(etude):
             _dict(etude.get("ha_irrigables")).get("valeur"))
         if nature == "agronomique_plein" else None,
         "base_besoin": nature,
+        "mois_sous_tolerance": _mois_sous_tolerance(etude),
     }, None
 
 
@@ -524,7 +574,11 @@ def synthese_agricole(data):
         "hmt_m": _num(etude.get("hmt_m")),
         "debit_hmt_m3h": _num(etude.get("debit_hmt_m3h")),
         "estimation": _estimation(etude),
+        # AGQ3 — le mois du héro (mois de conception servi) et le plus bas.
+        "mois_conception": _mois(
+            _dict(etude.get("conception")).get("mois_critique")),
     }
+    eau["m3_jour_min"], eau["mois_m3_jour_min"] = _au_plus_bas(etude)
     provenance = _bloc_provenance(etude)
     champ = _dict(etude.get("champ"))
 

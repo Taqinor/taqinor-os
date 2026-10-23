@@ -232,12 +232,34 @@ LIBELLES = {
     # AGQ28 — valeurs à côté de leur provenance, contrôle du forage.
     'unite_m3j': {'fr': 'm³/j', 'en': 'm³/day', 'ar': 'م³/يوم'},
     'unite_m': {'fr': 'm', 'en': 'm', 'ar': 'م'},
+    # AGQ3 — heures ÉQUIVALENTES à plein débit (volume ÷ débit nominal),
+    # jamais des heures de marche ; le mois de conception nommé.
     'agr_heures_equivalentes': {
-        'fr': 'sur {heures} h équivalentes plein soleil par jour (mois de '
-              'conception)',
-        'en': 'over {heures} equivalent full-sun hours per day (design '
+        'fr': 'sur {heures} h de pompage équivalentes à plein débit (mois '
+              'de conception)',
+        'en': 'over {heures} h of pumping at equivalent full flow (design '
               'month)',
-        'ar': 'على مدى {heures} ساعات مكافئة من الشمس الكاملة يوميا (شهر التصميم)'},
+        'ar': 'على مدى {heures} ساعات ضخ مكافئة بالصبيب الكامل (شهر التصميم)'},
+    'agr_heures_equivalentes_mois': {
+        'fr': 'sur {heures} h de pompage équivalentes à plein débit en '
+              '{mois}, mois de conception',
+        'en': 'over {heures} h of pumping at equivalent full flow in {mois}, '
+              'design month',
+        'ar': 'على مدى {heures} ساعات ضخ مكافئة بالصبيب الكامل في {mois}، '
+              'شهر التصميم'},
+    'agr_hero_mois_conception': {'fr': 'en {mois}, mois de conception',
+                                 'en': 'in {mois}, design month',
+                                 'ar': 'في {mois}، شهر التصميم'},
+    'agr_au_plus_bas': {'fr': 'au plus bas : {m3} m³/j en {mois}',
+                        'en': 'at its lowest: {m3} m³/day in {mois}',
+                        'ar': 'في أدناه: {m3} م³/يوم في {mois}'},
+    'agr_mois_sous_tolerance': {
+        'fr': 'Mois sous la tolérance de conception : {liste}.',
+        'en': 'Months below the design tolerance: {liste}.',
+        'ar': 'أشهر دون هامش التصميم: {liste}.'},
+    'agr_mois_couverture': {'fr': '{mois} : {pct} % de votre besoin',
+                            'en': '{mois}: {pct} % of your need',
+                            'ar': '{mois}: {pct} % من حاجتكم'},
     # AGQ30 — étapes suivantes (textes des étapes : agricole/mentions.py).
     'agr_etapes_suivantes': {'fr': 'Étapes suivantes', 'en': 'Next steps',
                              'ar': 'الخطوات التالية'},
