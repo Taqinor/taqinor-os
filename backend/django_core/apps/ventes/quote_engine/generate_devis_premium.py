@@ -2313,7 +2313,6 @@ def page1():
   <div style="background:{CN};flex-shrink:0;display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:8px 24px;gap:16px;">
     <div style="display:flex;gap:5px;flex-shrink:0;">
       {_pill_productible}
-      <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_ZAP}{_L("lg_prix_onee_hausse")}</span>
       <span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.35);border-radius:11px;padding:2px 7px;font-size:6.5pt;color:white;white-space:nowrap;">{SVG_GLOBE}{_L("lg_energie_propre")}</span>
     </div>
     <div style="width:1px;height:16px;background:rgba(255,255,255,0.2);flex-shrink:0;"></div>
@@ -4167,9 +4166,25 @@ def page_onepage(items, tronquees=0):
             f'<div style="font-size:9pt;font-weight:800;color:{CN};margin-top:2px;">{val}</div>'
             f'{"".join(_fig)}</div>'
             for label, val, *_fig in _sum_cells)
+        # AMOT82 (D-ACI-10=a) — une-page C&I « sous réserve de visite » : le
+        # bandeau de la couverture puis la ligne de méthode des taux, sous les
+        # cartes (deux lignes fines ; la densité adaptative des lignes produit
+        # garde la page unique). Sans réserve : rien, octet pour octet.
         summary_html = (
             f'<div style="display:flex;background:{CAL};border-bottom:2px solid {CA};'
-            f'padding:8px 24px;">{cells}</div>')
+            f'padding:8px 24px;">{cells}</div>'
+            + "".join(
+                f'<div style="padding:2px 24px;font-size:6.5pt;color:{CG7};'
+                f'line-height:1.3;">{texte}</div>'
+                for texte in (
+                    [f"<b>{_L('op_reserve_visite')}</b>"]
+                    + ([_L(f"ci_methode_{CHIFFRES_CI['methode']}")
+                        if f"ci_methode_{CHIFFRES_CI['methode']}"
+                        in i18n_labels.LIBELLES
+                        else CHIFFRES_CI["libelle_methode"]]
+                       if CHIFFRES_CI.get("libelle_methode") else [])
+                    if isinstance(CHIFFRES_CI, dict)
+                    and CHIFFRES_CI.get("sous_reserve") else ())))
 
     # Build table rows (per-line HT, with description + warranty detail lines).
     # Densité ADAPTATIVE pour tenir sur UNE page quoi qu'il arrive :

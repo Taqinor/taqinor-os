@@ -1849,7 +1849,6 @@ LIBELLES = {
     'lg_sous_titre_stockage': {'fr': 'Stockage + autonomie nocturne', 'en': 'Storage + night-time autonomy',
                                'ar': 'تخزين + استقلالية ليلية'},
     'lg_prix_total_ttc': {'fr': 'Prix total TTC', 'en': 'Total price incl. VAT', 'ar': 'السعر الإجمالي شامل الضريبة'},
-    'lg_prix_onee_hausse': {'fr': 'Prix ONEE en hausse', 'en': 'Rising ONEE prices', 'ar': 'أسعار ONEE في ارتفاع'},
     'lg_energie_propre': {'fr': '&#201;nergie propre', 'en': 'Clean energy', 'ar': 'طاقة نظيفة'},
     'lg_etape_devis': {'fr': 'Devis', 'en': 'Quote', 'ar': 'العرض'},
     'lg_etape_visite': {'fr': 'Visite', 'en': 'Visit', 'ar': 'الزيارة'},
@@ -2362,6 +2361,12 @@ LIBELLES = {
         'ar': 'لا يوجد حمل ساعي مصرح به: يتعذر إعادة حساب الإنتاج ساعة بساعة '
               '— سيناريو غير محسوب'},
     'op_unite_ans': {'fr': ' ans', 'en': ' years', 'ar': ' سنوات'},
+    # AMOT82 (D-ACI-10=a) — bandeau « sous réserve » du une-page C&I (même
+    # phrase que la couverture, ``ci.mentions.TEXTES_VISITE``, sans le point).
+    'op_reserve_visite': {
+        'fr': 'Estimation sous réserve de la visite technique',
+        'en': 'Estimate subject to the technical site visit',
+        'ar': 'تقدير رهين بالزيارة التقنية'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',
