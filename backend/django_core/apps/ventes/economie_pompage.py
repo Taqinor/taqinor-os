@@ -187,6 +187,22 @@ def _quantite_du_mois(quantite, periode, mois, jours_par_semaine):
     return quantite
 
 
+def _verifier_unite(energie, unite):
+    """L'unité de consommation : dans ``UNITES`` et, AGQ19 (C-AGQ-018), celle
+    du carburant déclaré — butane en litres ou gasoil en bouteilles : refus
+    NOMMÉ (plus de garde de cohérence auto-désactivée)."""
+    if unite not in UNITES:
+        raise EconomieInvalide(
+            f"consommation.unite : choisir parmi {', '.join(UNITES)}.",
+            champ='consommation.unite')
+    attendue = UNITE_PAR_ENERGIE.get(energie)
+    if attendue and unite != attendue:
+        raise EconomieInvalide(
+            f"consommation.unite : le {'gasoil' if energie == 'diesel' else energie} "
+            f"se déclare en {_NOM_UNITE[attendue]} (reçu : {_NOM_UNITE[unite]}).",
+            champ='consommation.unite')
+
+
 def depense_actuelle(saisies):
     """AGR201 — la dépense ACTUELLE déclarée, mois par mois.
 
@@ -294,18 +310,7 @@ def depense_actuelle(saisies):
         else:
             quantite = _positif('consommation.quantite', conso['quantite'])
             unite, periode = conso.get('unite'), conso.get('periode')
-            if unite not in UNITES:
-                raise EconomieInvalide(
-                    f"consommation.unite : choisir parmi {', '.join(UNITES)}.",
-                    champ='consommation.unite')
-            attendue = UNITE_PAR_ENERGIE.get(energie)
-            if attendue and unite != attendue:
-                # AGQ19 (C-AGQ-018) — butane en litres, gasoil en bouteilles :
-                # refus NOMMÉ (plus de garde de cohérence auto-désactivée).
-                raise EconomieInvalide(
-                    f"consommation.unite : le {'gasoil' if energie == 'diesel' else energie} "
-                    f"se déclare en {_NOM_UNITE[attendue]} (reçu : {_NOM_UNITE[unite]}).",
-                    champ='consommation.unite')
+            _verifier_unite(energie, unite)
             if periode not in PERIODES:
                 raise EconomieInvalide(
                     'consommation.periode : choisir parmi '
