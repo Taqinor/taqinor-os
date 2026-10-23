@@ -27,6 +27,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
+from apps.parametres.models import CompanyProfile
 from apps.parametres.pvgis_profils import (
     SAISONS,
     productible_mensuel,
@@ -78,6 +79,17 @@ class _Base(TestCase):
             pmax_wc=Decimal('710'), vmp_v=Decimal('40'), voc_v=Decimal('48'),
             isc_a=Decimal('18'), imp_a=Decimal('17'))
         cls.onduleur = cls._onduleur(cls.co, 'Onduleur réseau Huawei 50kW Triphasé', 50)
+        # ADEV79 (D-ACI-6=a) — coffret DC, disjoncteur AC et pose sont des
+        # rôles de TAILLE : sans prix, aucune taille. Tarifés pour le test.
+        cls._produit(cls.co, 'Coffret DC C&I', role_ci='coffret_dc', prix_vente=Decimal('1500'))
+        disjoncteur = cls._produit(cls.co, 'Disjoncteur AC 80 A 4P', role_ci='protection_ac',
+                                   prix_vente=Decimal('900'))
+        FicheTechnique.objects.create(
+            company=cls.co, produit=disjoncteur, type_fiche='protection',
+            prot_type='disjoncteur', prot_cote='ac', prot_calibre_a=80, prot_poles=4)
+        CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
+            cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ118 de test'}
+            for cle in ('pose_structure', 'pose_modules')}})
         # Un onduleur d'une AUTRE société, moins cher : jamais lu.
         cls.onduleur_etranger = cls._onduleur(
             cls.autre, 'Onduleur réseau étranger 50kW Triphasé', 50,
