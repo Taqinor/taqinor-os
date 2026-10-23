@@ -1130,7 +1130,11 @@ class Ci997FuzzGedTour4Tests(TestCase):
                 {'op': 'and', 'conditions': [
                     {'field': 'type', 'operator': 'eq', 'value': {'x': 1}}]},
                 {'op': 'and', 'conditions': [
-                    {'field': 'ty\u0000pe', 'operator': 'eq'}]}):
+                    {'field': 'ty\u0000pe', 'operator': 'eq'}]},
+                # élément ``null`` dans une liste : hors schéma, refusé nommé
+                {'op': 'and', 'conditions': [
+                    {'field': '0', 'operator': 'eq', 'value': [None],
+                     'op': None}]}):
             resp = self.api.put(url, corps(arbre), format='json')
             self.assertEqual(resp.status_code, 400, resp.content)
             self.assertIn('condition_group', resp.json())

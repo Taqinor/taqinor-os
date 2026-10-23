@@ -21,6 +21,7 @@ traduire HTTP ↔ service.
 """
 from __future__ import annotations
 
+from django.http import QueryDict
 from drf_spectacular.utils import (
     extend_schema, extend_schema_serializer, inline_serializer,
 )
@@ -124,6 +125,10 @@ def _fichier_mal_forme(request):
     """ENF11 (api-fuzz « accepted schema-violating request », ``fichier=``) —
     ``fichier`` est un FICHIER (multipart) : une valeur de formulaire vide ou un
     texte est hors schéma et refusé en 400 nommé, jamais ignoré en silence."""
+    if not isinstance(request.data, (dict, QueryDict)):
+        return Response({'detail': "Le corps doit être un objet "
+                                   "(multipart ou JSON)."},
+                        status=status.HTTP_400_BAD_REQUEST)
     if 'fichier' in request.data and 'fichier' not in request.FILES:
         return Response({'fichier': [
             "Le gabarit se dépose en fichier PDF (envoi multipart) : "

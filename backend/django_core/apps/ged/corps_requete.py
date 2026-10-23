@@ -349,7 +349,12 @@ def schema_groupe_conditions(profondeur=3):
     feuille = {'type': 'object', 'required': ['field', 'operator'], 'properties': {
         'field': {'type': 'string', 'minLength': 1,
                   'pattern': MOTIF_NON_BLANC_SANS_NUL},
+        # ``value`` absente ou ``null`` (opérateur ``exists``) reste admise ;
+        # dans une LISTE, un élément ``null`` est refusé par le serveur
+        # (``_valeur_feuille_valide``) comme par ce schéma.
         'value': {'anyOf': [*scalaire['anyOf'],
+                            {'type': 'string', 'nullable': True,
+                             'enum': [None]},
                             {'type': 'array', 'items': scalaire}]},
         'operator': {'type': 'string', 'enum': list(LEAF_OPERATORS)},
         'op': {'not': {'type': 'string', 'pattern': _MOTIF_OP_GROUPE}}}}
@@ -383,14 +388,14 @@ def _feuille_sans_champ_lisible(noeud):
 
 def _valeur_feuille_valide(valeur):
     """``value`` d'une feuille : null, texte sans NUL, nombre, booléen ou liste
-    de scalaires (jamais un objet) — ce que le schéma publié annonce."""
+    de scalaires NON nuls (jamais un objet) — ce que le schéma publié annonce."""
     if valeur is None or isinstance(valeur, (bool, int, float)):
         return True
     if isinstance(valeur, str):
         return '\x00' not in valeur
     if isinstance(valeur, list):
-        return all(not isinstance(v, (list, dict)) and _valeur_feuille_valide(v)
-                   for v in valeur)
+        return all(v is not None and not isinstance(v, (list, dict))
+                   and _valeur_feuille_valide(v) for v in valeur)
     return False
 
 

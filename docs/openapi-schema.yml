@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3530}
+counts: {paths: 4814, operations: 7566, components: 3532}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9910,6 +9910,7 @@ components:
 - CrmLeadMergeRequestRequest
 - CrmLeadMessageVisite
 - CrmLeadSupprime
+- CrmLeadVisitePassee
 - CrmLeadVisitePlanifiee
 - CrmLeadVisites
 - CrmLeadsExportRequestRequest
@@ -10065,13 +10066,13 @@ components:
 - DevisDupliquerVarianteGammeRequestRequest
 - DevisDupliquerVarianteGammeResponse
 - DevisDupliquerVarianteRequestRequest
-- DevisEcheancierPutRequest
 - DevisEconomie
 - DevisEconomieCi
 - DevisEconomiePompage
 - DevisEnvoyerEmailEchec
 - DevisEnvoyerEmailRequestRequest
 - DevisEnvoyerEmailResponse
+- DevisEnvoyerEmailSansDestinataire
 - DevisErreurComposition
 - DevisErreurDetail
 - DevisErreurEconomie
@@ -10114,7 +10115,6 @@ components:
 - DevisPrefillSiteResponse
 - DevisPreset
 - DevisPrixNegocieReponse
-- DevisPrixNegocieRequestRequest
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
 - DevisRevoquerLienPublicResponse
@@ -11647,6 +11647,7 @@ components:
 - PermissionsDisponibles
 - PertesCalepinage
 - PeseeLigneCorpsRequest
+- PhasesEnum
 - PhotoAnnotation
 - PhotoChecklistMeta
 - PhotoSiteCorpsRequest
@@ -12021,6 +12022,7 @@ components:
 - ReleveComptePortail
 - ReleveCompteurEquipement
 - ReleveCompteurEquipementTypeEnum
+- ReleveImportCommitRequestRequest
 - ReleveImportCommitResponse
 - ReleveImportDryRunRequestRequest
 - ReleveImportDryRunResponse

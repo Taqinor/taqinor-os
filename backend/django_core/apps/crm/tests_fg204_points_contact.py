@@ -339,7 +339,7 @@ class TestPointContactScoping(TestCase):
         resp = api1.post(BASE, {
             'lead': self.lead2.pk, 'canal': 'meta_ads',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
         self.assertIn('lead', resp.data)
 
     def test_attribution_other_company_lead_404(self):

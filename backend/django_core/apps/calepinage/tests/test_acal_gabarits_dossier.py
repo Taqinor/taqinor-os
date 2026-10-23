@@ -265,6 +265,11 @@ class RefusTest(BaseGabarits):
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('fichier', reponse.data)
         self.assertEqual(GabaritDossierReglementaire.objects.count(), avant)
+        # corps JSON non objet (null, liste) : 400 nommé, jamais 500
+        for brut in ('null', '[]'):
+            r = self.api.post(URL, brut, content_type='application/json')
+            self.assertEqual(r.status_code, 400, (brut, r.data))
+        self.assertEqual(GabaritDossierReglementaire.objects.count(), avant)
 
     def test_403_sans_calepinage_gerer(self):
         lecteur = Role.objects.create(

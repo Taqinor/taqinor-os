@@ -180,8 +180,23 @@ class ActionRaccordementTest(BaseApiCalepinage):
             'requestBody']['content']['application/json']['schema']
         nom = corps['$ref'].rsplit('/', 1)[-1]
         phases = schema['components']['schemas'][nom]['properties']['phases']
-        enum = phases.get('enum') or phases['allOf'][0]['enum']
-        self.assertEqual([v for v in enum if v is not None], [1, 3])
+        composants = schema['components']['schemas']
+
+        def valeurs_enum(noeud):
+            # La forme dépend du post-traitement des enums (``$ref`` direct,
+            # ``allOf``/``oneOf`` + NullEnum, ``enum`` en ligne) : on la
+            # parcourt jusqu'à trouver les valeurs.
+            if '$ref' in noeud:
+                return valeurs_enum(composants[noeud['$ref'].rsplit('/', 1)[-1]])
+            trouvees = list(noeud.get('enum') or [])
+            for cle in ('allOf', 'oneOf', 'anyOf'):
+                for sous in noeud.get(cle, []):
+                    trouvees += valeurs_enum(sous)
+            return trouvees
+
+        enum = valeurs_enum(phases)
+        self.assertEqual(sorted(v for v in enum if v is not None
+                                and v != ''), [1, 3])
 
     def test_un_refus_ne_laisse_aucune_trace_en_base(self):
         self.api.post(url_raccordement(self.calepinage.pk),

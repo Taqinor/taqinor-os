@@ -1798,12 +1798,23 @@ class ConfigRegleNormaliseeTests(TestCase):
     def test_nul_dans_les_cles_et_valeurs_est_retire(self):
         res = self.api.post('/api/django/automation/rules/', self._corps(
             trigger_config={}, action_config={
-                'a\x00b': {'': 1.7976931348623157e+308, 'k': ['x\x00']}}),
+                'a\x00b': {'': 1.5, 'k': ['x\x00']}}),
             format='json')
         self.assertEqual(res.status_code, 201, res.content)
         regle = AutomationRule.objects.get(pk=res.data['id'])
         self.assertEqual(regle.action_config, {
-            'ab': {'': 1.7976931348623157e+308, 'k': ['x']}})
+            'ab': {'': 1.5, 'k': ['x']}})
+
+    def test_seuil_chaine_vide_400_nomme_null_accepte(self):
+        """Le motif publié du seuil exclut ``""`` : 400 (plus de 201 hors
+        schéma) ; ``null`` reste le « non renseigné »."""
+        res = self.api.post('/api/django/automation/rules/', self._corps(
+            approval_threshold=''), format='json')
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertIn('approval_threshold', res.json())
+        res = self.api.post('/api/django/automation/rules/', self._corps(
+            approval_threshold=None), format='json')
+        self.assertEqual(res.status_code, 201, res.content)
 
     def test_config_non_objet_400_nomme(self):
         for champ in ('action_config', 'trigger_config'):

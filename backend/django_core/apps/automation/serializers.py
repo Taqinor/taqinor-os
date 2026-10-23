@@ -58,6 +58,17 @@ class ConfigRegleJSON(ObjetJSON):
         return super().to_internal_value(data)
 
 
+class SeuilDecimal(serializers.DecimalField):
+    """ENF11 — seuil décimal dont le motif publié exclut la chaîne vide : DRF
+    lisait ``""`` comme ``null`` en silence (201 hors schéma). ``""`` est un 400
+    nommé ; ``null`` reste le « non renseigné » publié."""
+
+    def run_validation(self, data=serializers.empty):
+        if isinstance(data, str) and not data.strip():
+            self.fail('invalid')
+        return super().run_validation(data)
+
+
 class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
                                serializers.ModelSerializer):
     # ERR-ENF11-FUZZ-AUTOMATION — texte et booléens STRICTS (nom sans caractère
@@ -69,6 +80,8 @@ class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
         source='get_action_type_display', read_only=True)
     trigger_config = ConfigRegleJSON(required=False)
     action_config = ConfigRegleJSON(required=False)
+    approval_threshold = SeuilDecimal(
+        max_digits=12, decimal_places=2, required=False, allow_null=True)
 
     class Meta:
         model = AutomationRule

@@ -1928,7 +1928,7 @@ class TwoFactorEnableView(APIView):
             return Response(
                 {'detail': 'Code invalide. Vérifiez le code à 6 chiffres de '
                            'votre application d\'authentification.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         plain, hashed = _generate_recovery_codes()
         user.totp_enabled = True
