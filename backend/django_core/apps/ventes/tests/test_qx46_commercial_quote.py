@@ -123,6 +123,10 @@ class TestCommercialCategoryBlocks(SimpleTestCase):
         base = sample_data.build("hotel")
         base["etude"] = dict(base["etude"])
         base["etude"].pop("categorie_commerciale", None)
+        # AMOT85 — la catégorie se lit aussi dans le rythme (devis auto) :
+        # « sans catégorie » = nulle part.
+        base["etude"]["rythme"] = {k: v for k, v in dict(base["etude"].get("rythme") or {}).items()
+                                   if k != "categorie_commerciale"}
         html = render.build_html(renderer._augment(base))
         self.assertIn("Votre établissement", html)
         self.assertIn("Autre commerce", html)

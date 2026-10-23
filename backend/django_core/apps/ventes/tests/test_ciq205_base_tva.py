@@ -141,8 +141,12 @@ class InvestissementNonChiffreTest(SimpleTestCase):
         self.assertEqual(bloc['statut'], 'calcule')
         omis = _omission_investissement(bloc)
         self.assertIsNotNone(omis)
-        self.assertTrue(omis['motif'].startswith(
-            'investissement non encore chiffré'), omis['motif'])
+        # AMOT85 — « non encore chiffré » (article sans prix) ou « à compléter
+        # après la visite technique » (postes hors total seulement).
+        self.assertTrue(omis['motif'].startswith((
+            'investissement non encore chiffré',
+            'investissement à compléter après la visite technique')),
+            omis['motif'])
         for cle in ('flux_ht', 'flux_ttc'):
             if bloc[cle] is not None:
                 self.assertEqual(bloc[cle]['flux'], [])
@@ -215,9 +219,11 @@ class InvestissementNonChiffreTest(SimpleTestCase):
         bloc = _assembler({'ht': 400000.0, 'ttc': 480000.0}, lignes,
                           controle_lignes=True, apercu=apercu)
         self._assert_non_chiffre(bloc)
+        # AMOT85 — seul un poste HORS TOTAL manque : le motif dit la visite,
+        # jamais « sans prix » à côté d'un investissement imprimé.
         self.assertEqual(_omission_investissement(bloc)['motif'],
-                         'investissement non encore chiffré (1 article '
-                         'sans prix)')
+                         'investissement à compléter après la visite '
+                         'technique (1 poste hors total)')
 
     def test_investissement_complet_toujours_chiffre(self):
         # D-ACI-2 (a) : « complet » = aucun article de la composition laissé

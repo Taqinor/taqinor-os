@@ -155,3 +155,24 @@ class CategoriesCommerciales(SimpleTestCase):
         data = _data("bureau", {"effectif": 40})
         page = c_render.build_html(c_renderer._augment(data))
         self.assertIn(synthese_ci(data)["categorie"]["accroche"], page)
+
+
+class CategorieDuDevisAutomatique(SimpleTestCase):
+    """AMOT85 (rejeu « humain » 23/10/2026) — le devis AUTOMATIQUE range la
+    catégorie dans ``rythme.categorie_commerciale`` (et l'étude résolue),
+    jamais à plat : un hôtel sortait « Autre commerce » sur la page 1."""
+
+    def test_categorie_lue_dans_le_rythme(self):
+        cat = ci_categories.categorie_ci(
+            {"etude": {"rythme": {"categorie_commerciale": "hotel"}}})
+        self.assertEqual(cat["cle"], "hotel")
+        self.assertNotEqual(cat["libelle"], "Autre commerce")
+
+    def test_categorie_lue_dans_l_etude_resolue(self):
+        cat = ci_categories.categorie_ci({"etude": {"etude_ci": {
+            "entrees_resolues": {"categorie_commerciale": {
+                "valeur": "restaurant", "provenance": {"origine": "lead"}}}}}})
+        self.assertEqual(cat["cle"], "restaurant")
+
+    def test_sans_categorie_reste_autre(self):
+        self.assertEqual(ci_categories.categorie_ci({"etude": {}})["cle"], "autre")

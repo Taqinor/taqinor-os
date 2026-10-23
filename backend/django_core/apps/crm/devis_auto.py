@@ -86,6 +86,8 @@ def _rempli(lead, champ):
         return False
     if champ == 'contrat_electricite':
         return lead.contrat_electricite != 'ne_sait_pas'
+    if champ == 'raccordement':
+        return lead.raccordement != 'inconnu'
     if (champ == 'facture_hiver' and lead.type_installation in _MODES_ETUDE
             and not (_facture_mad_compte(lead) and _contrat_bt_declare(lead))):
         return False
@@ -121,6 +123,9 @@ def champs_requis(lead) -> list[list[str]]:
         # ALEA47 (D-ACI-5=a) — + le contrat (MT déclarée : Tarif Général).
         if _tension_declaree(lead) != 'mt':
             requis.append(['contrat_electricite'])
+        # ADEV89 (rejeu « humain » 23/10/2026) — + la phase du site : la
+        # combinaison d'onduleurs la suit (jamais « je ne sais pas »).
+        requis.append(['raccordement'])
         return requis + _groupes_rythme(lead)
     requis = [['facture_hiver']]
     if lead.ete_differente:
@@ -211,6 +216,8 @@ _LIBELLES = {
     # ALEA47 (D-ACI-5=a) — un libellé par groupe ; les deux groupes de
     # rythme partagent le leur (une seule puce).
     'contrat_electricite': "Contrat d'électricité",
+    # ADEV89 — la phase du site, prérequis de la combinaison d'onduleurs.
+    'raccordement': 'Phase du site (monophasé ou triphasé)',
     'jours_ouverture': "Jours et heures d'ouverture (ou catégorie d'activité)",
     'heure_debut': "Jours et heures d'ouverture (ou catégorie d'activité)",
 }

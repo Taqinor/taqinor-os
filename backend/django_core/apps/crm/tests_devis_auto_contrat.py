@@ -51,7 +51,8 @@ class TestDevisAutoContrat(TestCase):
         lead = Lead.objects.create(
             company=self.company, nom='Usine', type_installation='industriel',
             bill_kwh=500, contrat_electricite='bt_patente',
-            regime_equipes='3x8', jours_ouverture=[1, 2, 3, 4, 5, 6, 7])
+            regime_equipes='3x8', jours_ouverture=[1, 2, 3, 4, 5, 6, 7],
+            raccordement='triphase')
         bloc = self._bloc(lead)
         self.assertEqual(bloc['manquants_detail'], [])
         self.assertTrue(bloc['pret'])
@@ -64,14 +65,16 @@ class TestDevisAutoContrat(TestCase):
         depuis ses kWh : aucune facture exigée. ALEA47 (D-ACI-5=a) — mais kWh
         SEUL ≠ prêt : le contrat et le rythme manquent (lead 1637)."""
         complet = {'contrat_electricite': 'bt_patente', 'regime_equipes': '3x8',
-                   'jours_ouverture': [1, 2, 3, 4, 5, 6, 7]}
+                   'jours_ouverture': [1, 2, 3, 4, 5, 6, 7],
+                   'raccordement': 'triphase'}  # ADEV89 — la phase aussi
         for type_installation, kwh in (
                 ('industriel', {'conso_mensuelle_kwh': 30000}),
                 ('industriel', {'bill_kwh': 30000}),
                 ('commercial', {'conso_mensuelle_kwh': 30000})):
             seul = Lead.objects.create(
                 company=self.company, nom='Kwh seul',
-                type_installation=type_installation, facture_hiver=None, **kwh)
+                type_installation=type_installation, facture_hiver=None,
+                raccordement='triphase', **kwh)
             bloc = self._bloc(seul)
             self.assertFalse(bloc['pret'], (type_installation, kwh))
             self.assertEqual([e['champ'] for e in bloc['manquants_detail']],

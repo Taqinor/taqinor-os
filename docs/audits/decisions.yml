@@ -2162,3 +2162,16 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-015"
     taches: [AMOT83]
+  - id: D-ACI-13
+    question: "Borne de toit du moteur C&I quand le mode de pose n'est pas déclaré (constat C-ACI-026 : 92 panneaux retenus sur 200 m² déclarés, la contenance restait « non bornée ») : que faire ?"
+    options:
+      - cle: a
+        texte: "estimer la contenance avec un mode de pose par défaut selon le type de surface (toiture → surimposition, terrasse/sol → lestée) et la dire « estimation, à confirmer au calepinage » ; la borne s'applique"
+      - cle: b
+        texte: "refuser le devis automatique tant que le mode de pose n'est pas déclaré (prérequis du lead, bouton « Compléter »)"
+      - cle: c
+        texte: "laisser non borné (comportement actuel), l'alerte interne suffit"
+    reponse: ouverte
+    date: "2026-10-23"
+    source: "rejeu humain du 23/10/2026 (session moteur C&I) ; constat C-ACI-026"
+    taches: [ADEV90]

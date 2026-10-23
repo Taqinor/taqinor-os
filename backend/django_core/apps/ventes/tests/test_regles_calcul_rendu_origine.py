@@ -168,7 +168,9 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_src_economie', 'ci_src_horizon', 'ci_src_methode',
         'ci_src_onduleur', 'ci_src_production', 'ci_suivi_production_inclus',
         'op_reserve_visite', 'op_unite_ans', 'lg_prix_onee_hausse',
-        'ci_confirmer_etude_ci', 'ci_etape_installation_s')),
+        'ci_confirmer_etude_ci', 'ci_etape_installation_s',
+        # AMOT85 (rejeu humain) — « à compléter après la visite ».
+        'ci_invest_apres_visite_1', 'ci_invest_apres_visite_n')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

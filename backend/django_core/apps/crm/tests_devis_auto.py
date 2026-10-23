@@ -65,6 +65,10 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
     kWh exigés en MT, drapeau « visite avant devis ». Règle pure."""
 
     def _lead(self, **kw):
+        # ADEV89 — la phase du site est un prérequis C&I ; ces cas testent
+        # la consommation et le contrat, la phase est déclarée.
+        if kw.get('type_installation') in ('commercial', 'industriel'):
+            kw.setdefault('raccordement', 'triphase')
         return Lead(nom='Pro', **kw)
 
     def test_commercial_mad_sans_kwh_pret_source_facture(self):
@@ -244,7 +248,8 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
                              [['conso_mensuelle_kwh', 'bill_kwh',
                                'releve_conso', 'facture_hiver'],
-                              ['contrat_electricite'], ['jours_ouverture'],
+                              ['contrat_electricite'], ['raccordement'],
+                              ['jours_ouverture'],
                               ['heure_debut', 'regime_equipes']])
 
     def test_sortie_reelle_egale_l_exemple_agricole_du_contrat(self):
@@ -279,6 +284,10 @@ class TestChampsManquants(TestCase):
         self.company = make_company()
 
     def _lead(self, **kwargs):
+        # ADEV89 — la phase du site est un prérequis C&I ; ces cas testent la
+        # consommation, le contrat et le rythme : la phase est déclarée.
+        if kwargs.get('type_installation') in ('commercial', 'industriel'):
+            kwargs.setdefault('raccordement', 'triphase')
         return Lead(company=self.company, nom='Gate', **kwargs)
 
     def test_type_none_defaults_to_residentiel(self):

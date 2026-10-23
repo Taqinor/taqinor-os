@@ -1096,8 +1096,13 @@ export default function DevisGenerator({
   const resoluesCi = apercuCi.donnees?.entrees_resolues || {}
   // Consommation connue : saisie dans le profil (ou taille explicite), ou
   // reprise de la fiche lead par le serveur (valeur résolue non vide).
+  // ADEV91 (rejeu « humain » 23/10/2026) — un lead Meta ne porte qu'un kWh
+  // MENSUEL (`conso_mensuelle_kwh`) : le serveur le résout sous
+  // `kwh_mensuel_declare` (étude calculée, 30,53 kWc), mais l'écran ne lisait
+  // que les 12 mois / l'annuel et refusait « Créer le devis ».
   const consoCiConnue = profilCiAncre(profilCi)
-    || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur]
+    || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur,
+      resoluesCi.kwh_mensuel_declare?.valeur]
       .some((v) => (Array.isArray(v) ? v.some((x) => Number(x) > 0) : Number(v) > 0))
   const setChampCi = (chemin, valeur) => setProfilCi((p) => poserProfilCi(p, chemin, valeur))
 

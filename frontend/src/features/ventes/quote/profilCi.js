@@ -11,7 +11,7 @@
 // n'est arrondi ; aucun jour n'est coché d'office (le week-end n'est jamais
 // supposé) ; fonctions PURES, sans React ni réseau (node --test).
 import { normaliserCorpsCi, construireCorpsCi } from '../etudeCiPreviewPur.js'
-import { ligneProduitCatalogue, TVA_STANDARD_DEFAUT } from '../solar.js'
+import { ligneProduitCatalogue, TVA_STANDARD_DEFAUT, ttcExactFromHt } from '../solar.js'
 import { ROLES_CI_PRESTATION, ROUTE_PARAMETRES_PRESTATIONS_CI } from '../../stock/catalogue.js'
 
 export const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -352,13 +352,24 @@ export function lignesDepuisCompositionCi(composition, produits, tvaStandard) {
     const p = (it.produit == null || it.prix_connu === false) ? null
       : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
     // ATOT28 — un produit tarifé : ligne catalogue (HT d'origine porté).
-    rows.push(p ? ligneProduitCatalogue(p, quantite) : {
+    const row = p ? ligneProduitCatalogue(p, quantite) : {
       produit: '',
       designation: `${it.designation || 'Article C&I'} — prix à renseigner`,
       quantite,
       prix_unit_ttc: 0,
       taux_tva: tva,
-    })
+    }
+    // ADEV92 (rejeu « humain » 23/10/2026) — le serveur sert le prix HT de la
+    // ligne (`prix_unitaire_ht` : forfait société de Paramètres pour une
+    // prestation, D-ACI-4=a ; prix catalogue pour un article) : l'écran le
+    // porte tel quel, comme le devis automatique — un même site ne sort plus
+    // à deux totaux selon le chemin (108 100 vs 123 500 MAD mesurés).
+    const htServeur = Number(it.prix_unitaire_ht)
+    if (p && Number.isFinite(htServeur) && htServeur > 0) {
+      row.prix_unit_ttc = ttcExactFromHt(htServeur, row.taux_tva)
+      row.prixHtOrigine = htServeur.toFixed(2)
+    }
+    rows.push(row)
   }
   return rows
 }

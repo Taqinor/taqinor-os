@@ -91,6 +91,15 @@ def motif_investissement(d, cle):
     from .synthese import chiffres_cles
     motif = chiffres_cles(d.get(f"{cle}_synthese") or {})[
         "motif_investissement"]
+    visite = re.search(r"\((\d+) postes? hors total\)", motif or "")
+    if visite is not None:
+        # AMOT85 — seuls des postes hors total (visite) manquent.
+        if visite.group(1) == "1":
+            return libelle(d, "ci_invest_apres_visite_1", "Investissement à "
+                           "compléter après la visite technique (1 poste hors total)")
+        return libelle(d, "ci_invest_apres_visite_n", "Investissement à compléter "
+                       "après la visite technique ({n} postes hors total)",
+                       n=visite.group(1))
     n = re.search(r"\((\d+) articles? sans prix\)", motif or "")
     if not motif or n is None:
         return motif and libelle(d, "ci_invest_non_chiffre",

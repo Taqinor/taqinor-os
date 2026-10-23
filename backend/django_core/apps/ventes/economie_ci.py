@@ -1308,6 +1308,20 @@ def _bloc_omis(motif, tarif, *, alertes, vue_interne):
 # sans ligne au devis n'est pas l'investissement de l'installation :
 # le flux n'est pas construit, l'omission le dit, l'économie reste servie.
 MOTIF_INVESTISSEMENT_NON_CHIFFRE = 'investissement non encore chiffré'
+#: AMOT85 (rejeu « humain » 23/10/2026) — quand SEULS des postes « à chiffrer
+#: après la visite » (hors total : câbles, structure) manquent, le client lit
+#: « à compléter après la visite technique », jamais « sans prix » à côté d'un
+#: investissement imprimé.
+MOTIF_INVESTISSEMENT_APRES_VISITE = ('investissement à compléter après la visite '
+                                     'technique')
+
+
+def motif_investissement_apres_visite(n_postes):
+    """« investissement à compléter après la visite technique (N postes hors
+    total) »."""
+    n = int(n_postes or 0)
+    return '%s (%d poste%s hors total)' % (
+        MOTIF_INVESTISSEMENT_APRES_VISITE, n, 's' if n > 1 else '')
 
 
 def motif_investissement_non_chiffre(n_sans_prix):
@@ -1347,12 +1361,16 @@ def investissement_non_chiffre(investissement, lignes, apercu, *,
     lignes = [li for li in (lignes or []) if isinstance(li, dict)]
     au_devis = {_norme(li.get('designation')) for li in lignes
                 if not li.get('optionnelle')} - {''}
-    sans_prix = []
-    for nom in (_noms_composition(composition, 'prix_a_renseigner')
-                + _noms_composition(composition, 'a_chiffrer_visite')):
-        if nom not in au_devis and nom not in sans_prix:
-            sans_prix.append(nom)
-    motif = motif_investissement_non_chiffre(len(sans_prix))
+    sans_prix, a_renseigner = [], []
+    for cle in ('prix_a_renseigner', 'a_chiffrer_visite'):
+        for nom in _noms_composition(composition, cle):
+            if nom not in au_devis and nom not in sans_prix:
+                sans_prix.append(nom)
+                if cle == 'prix_a_renseigner':
+                    a_renseigner.append(nom)
+    motif = (motif_investissement_apres_visite(len(sans_prix))
+             if sans_prix and not a_renseigner
+             else motif_investissement_non_chiffre(len(sans_prix)))
     if isinstance(investissement, dict):
         ht = _montant(investissement.get('ht'), strictement_positif=True)
         ttc = _montant(investissement.get('ttc'), strictement_positif=True)

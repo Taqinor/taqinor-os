@@ -89,6 +89,7 @@ class _Base(TestCase):
         kw.setdefault('ville', 'Casablanca')
         kw.setdefault('categorie_commerciale', 'bureau')
         kw.setdefault('tension_raccordement', 'bt')
+        kw.setdefault('raccordement', 'triphase')  # ADEV89 — phase du site
         kw.setdefault('raccordement', 'triphase')
         kw.setdefault('type_toiture', 'bac_acier')
         return Lead.objects.create(company=self.co, nom='Pro CIQ120', **kw)

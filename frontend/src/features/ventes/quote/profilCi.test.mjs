@@ -171,3 +171,22 @@ test('ADEV84 — l’avertissement lie chaque poste : Paramètres (prestation) o
   assert.equal(sans.aChiffrerVisite.length, 2)
   assert.deepEqual(avertissementsCompositionCi(null), { aRenseigner: [], aChiffrerVisite: [] })
 })
+
+// ── ADEV92 — le prix servi par le serveur (forfait Paramètres) prime le catalogue ──
+test('ADEV92 — une prestation C&I porte le forfait société servi, pas le prix catalogue', () => {
+  const composition = { lignes: [
+    { role: 'pose_modules', produit: 77, designation: 'Pose des modules C&I', quantite: 1, unite: 'forfait',
+      prix_connu: true, prix_unitaire_ht: '2500.00' },
+    { role: 'onduleur_string_tri', produit: 48, designation: 'Onduleur 50kW', quantite: 1, prix_connu: true },
+  ], prix_a_renseigner: [], a_chiffrer_visite: [] }
+  const produits = [
+    { id: 77, nom: 'Pose des modules C&I', prix_vente: '900', tva: 20 },
+    { id: 48, nom: 'Onduleur 50kW', prix_vente: '10000', tva: 20 },
+  ]
+  const rows = lignesDepuisCompositionCi(composition, produits, 20)
+  assert.equal(rows[0].prixHtOrigine, '2500.00', 'forfait Paramètres, jamais le 900 du catalogue')
+  assert.equal(rows[0].prix_unit_ttc, 3000)
+  // sans prix serveur : le prix catalogue du produit, comme avant
+  assert.equal(rows[1].prixHtOrigine, '10000.00')
+  assert.equal(rows[1].prix_unit_ttc, 12000)
+})

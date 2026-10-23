@@ -1263,7 +1263,11 @@ CHAMP_LEAD_DES_ALERTES = {
 }
 #: L'ordre dans lequel un refus nomme le premier champ manquant du lead.
 ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut')
+#: ADEV89 — phases du site admises par le devis automatique (jamais « inconnu »).
+PHASES_DECLAREES = ('mono', 'tri')
 MESSAGES_CHAMP_LEAD_CI = {
+    'raccordement': ('Phase du site (monophasé ou triphasé) à déclarer sur le lead : '
+                     'la combinaison d’onduleurs C&I suit la phase, aucune phase supposée.'),
     'jours_ouverture': ("Jours d'ouverture du site à déclarer sur le lead : profil de "
                         'charge déclaré exigé (aucun week-end supposé).'),
     'heure_debut': ("Heures d'ouverture (ou régime d'équipes) à déclarer sur le lead : "
@@ -1327,6 +1331,13 @@ def refus_devis_auto_ci(etude):
     if manquant is not None:
         champ, alerte = manquant
         return MESSAGES_CHAMP_LEAD_CI.get(champ) or alerte.get('message'), champ
+    # ADEV89 (rejeu « humain » 23/10/2026) — la PHASE du site est un prérequis
+    # du devis automatique : sans elle, un hôtel triphasé à 14 MWh/mois sortait
+    # composé d'onduleurs monophasés de 5 kW (puis refusé sur un disjoncteur
+    # mono sans prix). Le refus nomme le champ du lead (bouton « Compléter »).
+    phase = ((etude.get('entrees_resolues') or {}).get('phases') or {}).get('valeur')
+    if phase not in PHASES_DECLAREES:
+        return MESSAGES_CHAMP_LEAD_CI['raccordement'], 'raccordement'
     taille = etude.get('taille') or {}
     bloquants = [a for a in alertes if a.get('niveau') == 'bloquant']
     # ADEV78 — la VRAIE cause d'un arrêt « module » ou « onduleurs ».

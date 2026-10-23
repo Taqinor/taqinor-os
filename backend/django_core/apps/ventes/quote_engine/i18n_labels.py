@@ -2293,6 +2293,14 @@ LIBELLES = {
         'fr': 'Investissement non encore chiffré ({n} articles sans prix)',
         'en': 'Investment not yet priced ({n} items without a price)',
         'ar': 'الاستثمار لم يُسعَّر بعد ({n} بنود بدون سعر)'},
+    'ci_invest_apres_visite_1': {
+        'fr': 'Investissement à compléter après la visite technique (1 poste hors total)',
+        'en': 'Investment to be completed after the site visit (1 item outside the total)',
+        'ar': 'الاستثمار يُستكمل بعد الزيارة التقنية (بند واحد خارج الإجمالي)'},
+    'ci_invest_apres_visite_n': {
+        'fr': 'Investissement à compléter après la visite technique ({n} postes hors total)',
+        'en': 'Investment to be completed after the site visit ({n} items outside the total)',
+        'ar': 'الاستثمار يُستكمل بعد الزيارة التقنية ({n} بنود خارج الإجمالي)'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},
