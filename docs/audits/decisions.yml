@@ -2028,3 +2028,137 @@ decisions:
     date: "2026-10-11"
     source: "question interactive du 11/10/2026 (session loop work on all plans, dev-all-laptop) — le mode auto avait refusé la suppression à la lane ENF23"
     taches: [ENF23]
+
+  - id: D-AGQ-1
+    question: "Un lead agricole qui ne declare QUE le debit souhaite (m3/h) est marque devis auto pret, mais le moteur ignore cette valeur et refuse en la redemandant : que fait le moteur du debit souhaite ?"
+    options:
+      - cle: a
+        texte: "le debit souhaite devient le debit de conception : besoin = debit x heures-pic PVGIS de chaque mois, etiquete derive du debit souhaite, servi a cote du debit livre"
+      - cle: b
+        texte: "il ne suffit plus : retire du groupe devis auto pret, affiche seulement a cote du debit livre"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (audit L3 devis agricole, sonde executee sur la copie anonymisee : L2 pret puis 409 Debit de conception introuvable)"
+    taches: [AGQ1]
+
+  - id: D-AGQ-2
+    question: "Le champ PV est dimensionne sur le mois critique choisi par la forme du profil PVGIS (identique pour une saison) : avril declare le plus serre a 102 % alors qu'octobre est couvert a 80 % et le controle dit conforme. Quelle regle ?"
+    options:
+      - cle: a
+        texte: "mois critique = mois d'irrigation ou production / besoin est le plus bas (heures equivalentes PVGIS) ; champ dimensionne dessus ; le document nomme ce mois et tout mois sous 95 %"
+      - cle: b
+        texte: "regle inchangee ; PDF et ecran listent chaque mois sous 95 %"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (sonde executee : couverture [102,96,94,94,94,94,80] et controle conforme)"
+    taches: [AGQ2, AGQ3, AGQ33]
+
+  - id: D-AGQ-3
+    question: "Le devis automatique agricole omet en silence les lignes du kit minimum sans prix (structure au sol, installation) : le PDF sort sans structure ni pose. Que faire quand un element du kit MINIMUM (D-AGR-8) n'a pas de prix ?"
+    options:
+      - cle: a
+        texte: "refuser le devis auto en nommant l'article (409) tant que pompe, variateur, panneaux, structure et pose ne sont pas tous chiffres ; les options restent facultatives"
+      - cle: b
+        texte: "creer le brouillon avec la ligne prix a renseigner visible et bloquer l'envoi et le PDF"
+      - cle: c
+        texte: "garder : omettre + alerte ecran, le PDF ajoute non inclus"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (sonde executee : devis 62 700 MAD TTC sans structure ni installation, journal seul)"
+    taches: [AGQ4, AGQ5, AGQ6]
+
+  - id: D-AGQ-4
+    question: "Le PDF imprime Garantie constructeur de la pompe : 2 ans et du variateur : 2 ans, 24 mois poses par le seeder sans garantie ecrite fournisseur (AGRM22 ouvert). Que faire d'ici la garantie ecrite ?"
+    options:
+      - cle: a
+        texte: "retirer les 24 mois semes sur pompes et variateurs ; sans duree structuree le PDF imprime garantie selon fiche fournisseur et l'omission est nommee"
+      - cle: b
+        texte: "garder 2 ans comme engagement TAQINOR"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (garantie_mois=24 lu sur les produits OSP/VEICHI en prod, lecture seule)"
+    taches: [AGQ14]
+
+  - id: D-AGQ-5
+    question: "Un lead qui donne seulement le niveau d'eau (sans HMT) est marque pret (libelle HMT ou niveau d'eau) mais le moteur ne calcule jamais de HMT sans denivele, conduite et pertes : quelle regle ?"
+    options:
+      - cle: a
+        texte: "la HMT saisie est requise : le groupe pret exige pompe_hmt_m ; le niveau d'eau ne compte que pour la regle de visite (D-AGR-4) ; libelle, puce et 409 corriges"
+      - cle: b
+        texte: "HMT partielle = niveau dynamique seul (ou statique + rabattement), etiquetee partielle sur ecran et PDF"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (sonde executee : lead avec niveau statique 45 m sans HMT -> hmt null, 409 HMT introuvable)"
+    taches: [AGQ9]
+
+  - id: D-AGQ-6
+    question: "Le bloc Votre argent ne sort jamais d'un devis automatique depuis le lead : la depense butane par jour d'irrigation exige les jours d'irrigation par semaine, absents de la fiche lead. Ajouter cette donnee au lead ?"
+    options:
+      - cle: a
+        texte: "oui : colonne jours_irrigation_semaine sans defaut, section Pompage du lead, question du tunnel agricole du site, lue par le moteur economie (migration additive)"
+      - cle: b
+        texte: "non : l'argent reste au generateur, le bloc reste omis avec son motif"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (sonde executee : economie statut omis, motif jours d'irrigation par semaine non declares)"
+    taches: [AGQ10, AGQ34]
+
+  - id: D-AGQ-7
+    question: "La carte Surface irrigable 4,4 ha (estimation FAO-56) s'imprime en page 1 alors que le fermier declare 5 ha et un volume, sans mention estimation : que faire quand le besoin est DECLARE ?"
+    options:
+      - cle: a
+        texte: "omettre la carte : les hectares irrigables ne s'impriment que lorsque le besoin vient des cultures (FAO-56), avec l'etiquette estimation"
+      - cle: b
+        texte: "garder la carte avec estimation et la surface declaree a cote"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (rendu reel full_p1 : carte 4,4 ha sans etiquette, lead 5 ha)"
+    taches: [AGQ28]
+
+  - id: D-AGQ-8
+    question: "Pre-dimensionnement et production : le kW minimal d'une pompe sans courbe applique le rendement de groupe 0,35 a la plaque, et la production horaire prend la puissance PV pour la plaque (aucune perte moteur/variateur, 0,61 implique). Quelle regle sans chiffre invente ?"
+    options:
+      - cle: a
+        texte: "rendement pompe (pompe_rendement_pct) et rendement variateur (var_rendement_mppt_pct) lus sur les fiches quand saisis ; absents : regle actuelle + alerte rendement non publie, production en borne haute ; aucune constante nouvelle"
+      - cle: b
+        texte: "nouvelle hypothese EST. rendement moteur + variateur dans la table AGR110 (source a trouver)"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (noyau execute : kw_min 9,27 kW pour Q 17 / H 70 alors que l'OSP 30/8 de 7,5 kW livre 24 m3/h sur sa courbe)"
+    taches: [AGQ8]
+
+  - id: D-AGQ-9
+    question: "Le debit du forage plafonne le debit de conception mais pas la pompe retenue : une pompe livrant 30 m3/h sur un forage de 25 m3/h est proposee sans alerte et comptee a 30. Que faire ?"
+    options:
+      - cle: a
+        texte: "plafonner la production horaire au debit d'exploitation du forage (x part du reglage societe) ; le document dit debit limite par votre forage ; refus seulement si le besoin declare devient incouvrable"
+      - cle: b
+        texte: "ecarter toute pompe dont le point de fonctionnement depasse le debit du forage ; 409 nomme si aucune ne couvre"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (critique de completude R4 : plafond lu dans conception.py, absent de volumes.production_mensuelle et de selection.choisir_pompe)"
+    taches: [AGQ40]
+
+  - id: D-AGQ-10
+    question: "Le chemin lead -> devis automatique produit toujours une pompe neuve (aucune colonne mode de pompe sur le lead), meme avec une pompe actuelle declaree ; seul le generateur propose existante conservee (D-AGR-7). Quelle regle sur le lead ?"
+    options:
+      - cle: a
+        texte: "neuve par defaut + bandeau pompe actuelle X CV : variante conservee disponible au generateur ; aucune colonne nouvelle"
+      - cle: b
+        texte: "choix sur le lead : colonne mode_pompe (neuve / existante conservee, sans defaut) lue par le devis auto ; existante exige la plaque (kW, tension, phases) sur le lead"
+    reponse: b
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (ENTREES_POMPAGE_CIBLES sans mode_pompe ; domain/pompage.py mode_pompe = ... or neuve)"
+    taches: [AGQ39]
+
+  - id: D-AGQ-11
+    question: "La page /proposition du site affiche pour l'agricole la frise residentielle (visite sous 48-72 h, pose sous 7-14 jours) a cote de la regle FDA accord avant travaux. Quelle frise agricole ?"
+    options:
+      - cle: a
+        texte: "frise agricole sans delai chiffre : visite du point d'eau -> accord FDA si demande -> commande -> pose -> mise en service avec debit mesure ; aucun delai en jours (D-AGR-10)"
+      - cle: b
+        texte: "garder les delais, conditionner la pose a l'accord FDA si demande"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (apps/web/src/lib/proposition.ts nextSteps() sans argument de mode)"
+    taches: [AGQ33]
