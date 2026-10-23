@@ -421,28 +421,38 @@
         "volume_m3_jour": {
           "origine": "lead",
           "detail": "client",
-          "date": "2026-09-12"
+          "date": "2026-09-12",
+          "valeur": 135
         },
         "niveau_statique_m": {
           "origine": "lead",
           "detail": "mesure_visite",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 32
         },
         "niveau_dynamique_m": {
           "origine": "lead",
           "detail": "mesure_visite",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 40
         },
         "debit_exploitation_m3h": {
           "origine": "saisie",
           "detail": "foreur",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 36
         },
         "energie_actuelle": {
           "origine": "saisie",
           "detail": null,
-          "date": "2026-09-12"
+          "date": "2026-09-12",
+          "valeur": "butane"
         }
+      },
+      "controle_forage": {
+        "debit_pompe_m3h": 30.5,
+        "debit_forage_m3h": 36,
+        "conforme": true
       },
       "a_confirmer_par_visite": [
         "profondeur_forage_m"
@@ -550,6 +560,7 @@
         "bassin": null
       },
       "schema_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 300\"><!-- schéma forage → pompe → variateur → panneaux, rendu par le serveur ; abrégé dans l'exemple --></svg>",
+      "schema_legendes": [],
       "economies": {
         "statut": "calcule",
         "publiable_client": true,
@@ -945,14 +956,26 @@
       ],
       "options_kit": [
         {
+          "cle": "afficheur_variateur",
           "ligne_id": 90311,
           "designation": "Afficheur du variateur",
-          "total_ttc": 950.0
+          "total_ttc": 950.0,
+          "prix_connu": true,
+          "mention": null
+        },
+        {
+          "cle": "compteur_eau",
+          "ligne_id": null,
+          "designation": "Compteur d'eau",
+          "total_ttc": null,
+          "prix_connu": false,
+          "mention": "exigé par la loi 36-15 et le dossier FDA 2024"
         }
       ],
       "non_inclus": [
         "forage",
-        "genie_civil"
+        "genie_civil",
+        "compteur_eau"
       ],
       "formalites": [
         {
@@ -963,6 +986,48 @@
             "ar": "منشأة غير مرتبطة بالشبكة: تخضع للتصريح (القانون 82-21، المادة 3)."
           },
           "source": "Loi 82-21, art. 3"
+        }
+      ],
+      "etapes_suivantes": [
+        {
+          "cle": "visite_point_eau",
+          "textes": {
+            "fr": "Visite du point d'eau : niveau, débit du forage et HMT relevés sur place.",
+            "en": "Water point visit: level, borehole flow and head measured on site.",
+            "ar": "زيارة نقطة الماء: قياس المستوى وصبيب الثقب والارتفاع في عين المكان."
+          }
+        },
+        {
+          "cle": "accord_fda",
+          "textes": {
+            "fr": "Accord FDA, si vous demandez l'aide : dossier déposé avant toute commande.",
+            "en": "FDA approval, if you apply for the subsidy: file submitted before any order.",
+            "ar": "موافقة صندوق التنمية الفلاحية، إن طلبتم الدعم: يودع الملف قبل أي طلب."
+          }
+        },
+        {
+          "cle": "commande",
+          "textes": {
+            "fr": "Commande : acompte versé, matériel commandé.",
+            "en": "Order: down payment made, equipment ordered.",
+            "ar": "الطلب: أداء الدفعة المقدمة وطلب المعدات."
+          }
+        },
+        {
+          "cle": "pose",
+          "textes": {
+            "fr": "Pose : pompe, variateur, champ solaire et protections.",
+            "en": "Installation: pump, drive, solar array and protections.",
+            "ar": "التركيب: المضخة والمغير والحقل الشمسي والحمايات."
+          }
+        },
+        {
+          "cle": "mise_en_service",
+          "textes": {
+            "fr": "À la mise en service : débit et HMT mesurés, écart affiché contre ce devis.",
+            "en": "At commissioning: flow and head measured, gap shown against this quote.",
+            "ar": "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض."
+          }
         }
       ],
       "omissions": [

@@ -76,10 +76,12 @@ class Agr319NoteCalculTests(SimpleTestCase):
                         'Débit de conception : 30,7 m³/h (mois critique : '
                         'décembre)',
                         'energie_hydraulique_wh_par_m3_m', 'EST.',
-                        'Fiche de VARIATEUR VEICHI SI23 7.5KW 380V',
-                        'Aucune référence de pompage à ce jour.'):
+                        'Fiche de VARIATEUR VEICHI SI23 7.5KW 380V'):
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, annexe)
+        # AGQ32 — sans référence, aucune phrase ni section.
+        self.assertNotIn('Aucune référence', annexe)
+        self.assertNotIn('Références de la société', annexe)
         self.assertNotIn('None', annexe)
 
     def test_references_agricoles_servies(self):

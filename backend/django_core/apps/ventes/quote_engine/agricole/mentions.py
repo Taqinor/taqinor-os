@@ -216,6 +216,53 @@ def formalites():
     ]
 
 
+# ── AGQ30 — étapes suivantes (D-AGQ-11, D-AGR-10 : AUCUN délai chiffré) ────
+#: (clé, fr, en, ar) — l'ordre est celui du chantier agricole ; jamais un
+#: jour ni une semaine (D-AGR-10), l'accord FDA AVANT la commande (D-AGR-6).
+_ETAPES = (
+    ("visite_point_eau",
+     "Visite du point d'eau : niveau, débit du forage et HMT relevés sur "
+     "place.",
+     "Water point visit: level, borehole flow and head measured on site.",
+     "زيارة نقطة الماء: قياس المستوى وصبيب الثقب والارتفاع في عين المكان."),
+    ("accord_fda",
+     "Accord FDA, si vous demandez l'aide : dossier déposé avant toute "
+     "commande.",
+     "FDA approval, if you apply for the subsidy: file submitted before "
+     "any order.",
+     "موافقة صندوق التنمية الفلاحية، إن طلبتم الدعم: يودع الملف قبل أي طلب."),
+    ("commande",
+     "Commande : acompte versé, matériel commandé.",
+     "Order: down payment made, equipment ordered.",
+     "الطلب: أداء الدفعة المقدمة وطلب المعدات."),
+    ("pose",
+     "Pose : pompe, variateur, champ solaire et protections.",
+     "Installation: pump, drive, solar array and protections.",
+     "التركيب: المضخة والمغير والحقل الشمسي والحمايات."),
+    ("mise_en_service",
+     "À la mise en service : débit et HMT mesurés, écart affiché contre ce "
+     "devis.",
+     "At commissioning: flow and head measured, gap shown against this "
+     "quote.",
+     "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض."),
+)
+
+#: L'entretien, dit au client à côté des étapes (contrat en option).
+ENTRETIEN = {
+    "fr": "Entretien : nettoyage des panneaux et contrôle annuel (contrat en "
+          "option).",
+    "en": "Maintenance: panel cleaning and yearly check (optional contract).",
+    "ar": "الصيانة: تنظيف الألواح والمراقبة السنوية (عقد اختياري).",
+}
+
+
+def etapes_suivantes():
+    """AGQ30 — les 5 étapes du devis agricole, ``[{cle, textes}]`` en
+    fr/en/ar ; aucun délai chiffré (D-AGR-10)."""
+    return [{"cle": cle, "textes": {"fr": fr, "en": en, "ar": ar}}
+            for cle, fr, en, ar in _ETAPES]
+
+
 #: Les phrases de provenance (contrat AGR2 › ``provenance``), par langue.
 PHRASES_PROVENANCE = {
     "declare": {"fr": "déclaré par vous le {date}",
