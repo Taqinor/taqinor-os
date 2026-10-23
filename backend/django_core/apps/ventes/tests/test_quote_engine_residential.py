@@ -454,7 +454,10 @@ class TestResidentialQRESRound(TestCase):
         """La bande légale lit l'identité résolue : même email que le pied de
         page (le PDF réel imprimait .ma en pied et .com dans la bande)."""
         html, _ = self._render("deux")   # profil TAQINOR avec contact@taqinor.ma
-        self.assertNotIn("contact@taqinor.ma", html)
+        # L'ancienne adresse .com ne doit survivre nulle part (QJEQUIPE4 a
+        # remplacé .com -> .ma partout — y compris, par erreur, dans la ligne
+        # ci-dessous, qui niait alors l'adresse qu'elle compte juste après).
+        self.assertNotIn("contact@taqinor.com", html)
         self.assertGreaterEqual(html.count("contact@taqinor.ma"), 2)
 
     def test_hypotheses_deduplicated_by_builder_shape(self):

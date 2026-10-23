@@ -1,0 +1,178 @@
+# zz-scratch-nightly — ATELIER TEMPORAIRE (supprimé avant la fusion).
+# Rejoue les seules surfaces rouges du nocturne backend-full (tests `pdf`,
+# goldens PNG, pages arabes) dans l'image CI, en ~15 min au lieu d'une nuit.
+# Copie du squelette ci-image-check + backend-full de release-verify.yml.
+name: zz-scratch-nightly (temporaire)
+
+on:
+  push:
+    branches: [claude/nightly-runs-troubleshoot-342562]
+
+concurrency:
+  group: zz-scratch-nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-image-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente — chemin rapide : $ref"
+              echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE — construction en ligne : $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Resume
+        run: |
+          echo "ci-backend = ${{ steps.tag.outputs.image }} (deja presente = ${{ steps.exists.outputs.backend }})"
+          echo "ci-e2e     = ${{ steps.tag.outputs.image_e2e }} (deja presente = ${{ steps.exists.outputs.e2e }})"
+
+  backend-pdf:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: test_erp_db
+          prebuilt-image: 'true'
+      - name: Tests pdf ciblés (rouges du nocturne)
+        id: tests
+        continue-on-error: true
+        working-directory: backend/django_core
+        run: |
+          python manage.py test             apps.ventes.tests.test_quote_engine_residential.TestResidentialQRESRound.test_legal_band_contact_matches_footer             apps.ventes.tests.test_quote_engine_snapshot             apps.ventes.tests.test_pdf_apdf_arabe             -v 2 --keepdb
+      - name: Régénérer les goldens PNG dans l'image CI
+        working-directory: backend/django_core
+        env:
+          UPDATE_PDF_SNAPSHOTS: '1'
+        run: |
+          python manage.py test apps.ventes.tests.test_quote_engine_snapshot -v 2 --keepdb || true
+          git status --short apps/ventes/tests/baselines/
+          mkdir -p /tmp/baselines-out
+          cp apps/ventes/tests/baselines/*.png /tmp/baselines-out/
+      - name: Diagnostic pages arabes (3 attendues)
+        working-directory: backend/django_core
+        env:
+          DB_NAME: test_erp_db
+        run: |
+          python - <<'EOF'
+          import os
+          import django
+          django.setup()
+          import fitz
+          from apps.ventes.tests.test_pdf_apdf_arabe import _donnees_residentiel
+          from apps.ventes.quote_engine.residential import renderer, render
+          out = '/tmp/ar-pages'
+          os.makedirs(out, exist_ok=True)
+          for langue in ('ar', 'fr'):
+              renderer._PDF_CACHE.clear()
+              donnees = _donnees_residentiel(langue)
+              html = render.build_html(renderer._augment(donnees))
+              open(f'{out}/{langue}.html', 'w', encoding='utf-8').write(html)
+              pdf = renderer.render_pdf_bytes(donnees)
+              open(f'{out}/{langue}.pdf', 'wb').write(pdf)
+              doc = fitz.open(stream=pdf, filetype='pdf')
+              print(f'=== {langue}: {len(doc)} page(s)')
+              for i, page in enumerate(doc, 1):
+                  page.get_pixmap(dpi=80).save(f'{out}/{langue}_p{i}.png')
+                  txt = page.get_text()[:300].replace(chr(10), ' | ')
+                  print(f'--- {langue} p{i}: {txt}')
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scratch-baselines
+          path: /tmp/baselines-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scratch-ar-pages
+          path: /tmp/ar-pages
+      - name: Verdict des tests ciblés
+        run: |
+          echo "tests ciblés : ${{ steps.tests.outcome }}"
