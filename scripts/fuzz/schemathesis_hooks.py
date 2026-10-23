@@ -845,6 +845,26 @@ def _rester_positif(case, etait_positif):
             meta.update_validated_hash(lieu, empreinte(case.body))
 
 
+def _est_multipart(operation):
+    """Le corps déclaré de l'opération est-il multipart ?"""
+    return any(str(getattr(corps, 'media_type', '')).lower().startswith('multipart/')
+               for corps in getattr(operation, 'body', None) or ())
+
+
+def _parts_nuls_absents(case):
+    """CI #1021 fuzz — un champ ``nullable`` d'un corps MULTIPART tiré à ``null``
+    part sur le fil comme la chaîne « None » (``prepare_multipart``), que le
+    serveur refuse (400 « « None » n'est pas un choix valide », « JSON valide »,
+    « boolean ») : POST /stock/fiches-techniques/. En multipart, la seule forme
+    d'un null est l'ABSENCE du part : ces clés sont retirées du corps avant
+    l'envoi (le cas reste schéma-conforme, le champ est facultatif)."""
+    corps = getattr(case, 'body', None)
+    if not isinstance(corps, dict) or not _est_multipart(case.operation):
+        return
+    for cle in [k for k, v in corps.items() if v is None]:
+        corps.pop(cle)
+
+
 def _est_positif(case):
     meta = case.meta
     return meta is not None and meta.generation.mode == GenerationMode.POSITIVE
@@ -857,5 +877,6 @@ def before_call(context, case, kwargs):
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
+    _parts_nuls_absents(case)
     _fichiers_valides(case)
     _rester_positif(case, etait_positif)
