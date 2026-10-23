@@ -86,7 +86,7 @@ class SeedScaleOrphanProduitCollisionTests(TestCase):
 
         def fake_seed(label, count, **kw):
             for _ in range(2):
-                p = Produit(nom='genou', sku='', company=None)
+                p = Produit(nom='genou', sku='', company=None, prix_vente=0)
                 p.save()
                 pks.append(p.pk)
 
