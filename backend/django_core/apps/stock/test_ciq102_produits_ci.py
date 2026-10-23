@@ -82,6 +82,22 @@ class ProduitsCiTests(TestCase):
         cls.panneau = Produit.objects.create(
             company=cls.company, nom='Panneau 710W', role_devis='panneau',
             prix_vente=1400)
+        # ADEV86 (D-ACI-3=b) — onduleur réseau MONOPHASÉ à fiche complète.
+        cls.ond_mono = Produit.objects.create(
+            company=cls.company, nom='Onduleur réseau Huawei 10kW Monophasé',
+            role_devis='onduleur_reseau', prix_vente=Decimal('12000'),
+            garantie='10 ans')
+        _fiche_onduleur(cls.company, cls.ond_mono, ond_ac_kw=Decimal('10'),
+                        ond_phases=1, ond_n_mppt=2,
+                        ond_mppt_v_max=Decimal('550'),
+                        ond_v_max_abs=Decimal('600'),
+                        ond_i_max_mppt_a=Decimal('20'))
+        cls.ond_tri_declare_mono = Produit.objects.create(
+            company=cls.company, nom='Onduleur 20kW déclaré mono',
+            role_ci='onduleur_string_mono', prix_vente=Decimal('15000'),
+            garantie='10 ans')
+        _fiche_onduleur(cls.company, cls.ond_tri_declare_mono,
+                        ond_ac_kw=Decimal('20'))
 
     def _par_id(self, **kw):
         return {e['id']: e for e in produits_ci(self.company, **kw)}
@@ -103,6 +119,22 @@ class ProduitsCiTests(TestCase):
         self.assertEqual(set(e['fiche']) - {'type_fiche'}, set(
             CONTRAT['fiches']['onduleur']['champs_onduleur_existants'])
             | set(CONTRAT['fiches']['onduleur']['champs']))
+
+    def test_onduleur_monophase_role_mono_eligible(self):
+        # ADEV86 — ``ond_phases == 1`` ⇒ rôle ``onduleur_string_mono``, éligible.
+        e = self._par_id()[self.ond_mono.id]
+        self.assertEqual(e['role_ci'], 'onduleur_string_mono')
+        self.assertEqual(e['classement'], 'fiche')
+        self.assertTrue(e['eligible_ci'])
+        self.assertIsNone(e['motif_exclusion'])
+        self.assertEqual(e['fiche']['ond_phases'], 1)
+
+    def test_role_mono_sur_fiche_triphasee_exclu(self):
+        e = self._par_id()[self.ond_tri_declare_mono.id]
+        self.assertEqual(e['role_ci'], 'onduleur_string_mono')
+        self.assertEqual(e['classement'], 'declare')
+        self.assertFalse(e['eligible_ci'])
+        self.assertIn('fiche à 1 phase', e['motif_exclusion'])
 
     def test_onduleur_fiche_incomplete_exclu_motif_pvond(self):
         e = self._par_id()[self.ond_incomplet.id]

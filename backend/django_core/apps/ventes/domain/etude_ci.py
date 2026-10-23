@@ -634,6 +634,7 @@ def lire_catalogue_ci(company):
     """Catalogue C&I (``stock.selectors.produits_ci``) + prix de VENTE HT du
     catalogue de la société + module retenu. Jamais ``prix_achat``."""
     from apps.stock.selectors import produits_ci, specs_for_produit
+    from core.product_roles import ROLES_ONDULEUR_CI
 
     from ..compatibilites import est_triphase_produit
     from .catalogue import catalogue_de_la_societe, classer_produit
@@ -652,7 +653,9 @@ def lire_catalogue_ci(company):
 
     onduleurs = []
     for element in elements:
-        if element.get('role_ci') != 'onduleur_string_tri':
+        # ADEV86 (D-ACI-3=b) — triphasés ET monophasés : la combinaison ne
+        # garde que ceux de la phase du site.
+        if element.get('role_ci') not in ROLES_ONDULEUR_CI:
             continue
         produit = objets.get(element['id'])
         specs = {}
@@ -667,6 +670,8 @@ def lire_catalogue_ci(company):
             'kw_ac': (element.get('fiche') or {}).get('ond_ac_kw') or specs.get('ac_kw'),
             'prix': element.get('prix_vente_ht'),
             'triphase': est_triphase_produit(produit) if produit is not None else None,
+            'role_ci': element.get('role_ci'),
+            'phases': (element.get('fiche') or {}).get('ond_phases'),
             'eligible_ci': element.get('eligible_ci'),
             'motif_exclusion': element.get('motif_exclusion'),
             'dc_max_kwc': specs.get('dc_max_kwc'),
@@ -950,6 +955,22 @@ def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
             'motif': None, 'alertes': [], 'hypotheses': []}
 
 
+#: ADEV86 (D-ACI-3=b) — site monophasé sans onduleur C&I monophasé éligible :
+#: l'alerte bloquante (et donc le refus, ADEV78) le DIT avant de nommer les
+#: candidats exclus.
+MESSAGE_MONO_SANS_ONDULEUR = (
+    "Raccordement monophasé déclaré : aucun onduleur C&I monophasé éligible et "
+    "pricé au catalogue (aucun triphasé n'est proposé à sa place).")
+
+
+def _alertes_phase_du_site(alertes, phase):
+    if phase != 'mono':
+        return alertes
+    return [dict(a, message='%s %s' % (MESSAGE_MONO_SANS_ONDULEUR, a.get('message') or ''))
+            if a.get('code') == 'OND_AUCUN_CANDIDAT' and a.get('niveau') == 'bloquant'
+            else a for a in alertes]
+
+
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
                onduleurs_imposes=None, source_production_figee=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
@@ -1128,7 +1149,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
         # standard SAISI de la société (lecture seule), jamais un 20 codé.
         taux_tva_pct=getattr(reglages, 'tva_standard', None))
-    alertes.extend(resultat['alertes'])
+    alertes.extend(_alertes_phase_du_site(resultat['alertes'], phase))
     hypotheses.extend(resultat['hypotheses'])
     evaluation = resultat['evaluation']
 

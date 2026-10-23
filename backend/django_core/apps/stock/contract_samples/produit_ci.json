@@ -56,7 +56,8 @@
     "levage_acces": "Levage et accès",
     "transport_ci": "Transport C&I",
     "om_ci": "Exploitation et maintenance (O&M)",
-    "batterie_ci": "Batterie C&I"
+    "batterie_ci": "Batterie C&I",
+    "onduleur_string_mono": "Onduleur string monophasé"
   },
   "fiches": {
     "onduleur": {
@@ -261,7 +262,7 @@
     "note_exemples": "Les `id` sont ILLUSTRATIFS. Le Smart Meter et l'onduleur sont des articles du seed ; la structure bac acier n'existe pas encore (créée « prix à renseigner » par la tâche catalogue) : `prix_connu: false` — le devis qui l'emploie est marqué « incomplet » (convention du groupe), jamais un prix supposé."
   },
   "regles": {
-    "onduleur_eligible": "Un onduleur est éligible C&I s'il porte `role_ci=onduleur_string_tri`, OU `role_devis=onduleur_reseau`, AVEC une fiche complète au verrou PVOND (`stock.selectors.onduleur_specs_manquantes` renvoie une liste vide). Sinon il est EXCLU, `eligible_ci=false`, et `motif_exclusion` nomme la cause (ex. « fiche incomplète : courant maxi par MPPT (A) » — les libellés de `CONTRAT_ONDULEUR`, jamais une clé brute).",
+    "onduleur_eligible": "Un onduleur est éligible C&I s'il porte `role_ci=onduleur_string_tri` (fiche `ond_phases=3`) ou `role_ci=onduleur_string_mono` (fiche `ond_phases=1`, ADEV86 / D-ACI-3=b), OU `role_devis=onduleur_reseau` (rôle déduit de `ond_phases`), AVEC une fiche complète au verrou PVOND (`stock.selectors.onduleur_specs_manquantes` renvoie une liste vide). Sinon il est EXCLU, `eligible_ci=false`, et `motif_exclusion` nomme la cause (ex. « fiche incomplète : courant maxi par MPPT (A) » — les libellés de `CONTRAT_ONDULEUR`, jamais une clé brute).",
     "phase": "La phase est ensuite filtrée par le raccordement DÉCLARÉ du client (`crm.Lead.raccordement`, règle PVCOMPAT) : jamais un onduleur triphasé (`ond_phases=3`) sur un raccordement monophasé — BLOQUANT, motif nommé. Raccordement `inconnu` ou vide ⇒ pas de filtre, mais question de visite (D-CIQ-5).",
     "vide_non_publie": "Toute valeur de fiche vide est « non publiée » : le moteur ne la remplace JAMAIS par une valeur par défaut ; une règle qui en dépend rend « non vérifiable » avec un motif nommé.",
     "prix": "`prix_connu=false` n'exclut pas un article (un article C&I manquant est créé « prix à renseigner ») ; le devis qui l'emploie est marqué « incomplet » tant qu'une ligne n'a pas de prix.",

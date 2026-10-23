@@ -98,6 +98,31 @@ class CombinaisonTests(TestCase):
         for x in r['combinaison']:
             self.assertFalse(par_id[x['produit']]['triphase'])
 
+    def test_phase_par_role_ci_et_phases_publiees(self):
+        # ADEV86 (D-ACI-3=b) — les candidats du catalogue C&I portent leur
+        # rôle et leur phase publiée : mono ⇒ seuls les monophasés, tri ⇒
+        # seuls les triphasés.
+        cat = []
+        for source in self.cat:
+            tri = source['triphase']
+            c = {k: v for k, v in source.items() if k != 'triphase'}
+            c['role_ci'] = 'onduleur_string_tri' if tri else 'onduleur_string_mono'
+            c['phases'] = 3 if tri else 1
+            cat.append(c)
+        par_id = {c['produit']: c for c in cat}
+        r = combiner_onduleurs(12, cat, phase='mono')
+        self.assertTrue(r['combinaison'])
+        for x in r['combinaison']:
+            self.assertEqual(par_id[x['produit']]['role_ci'], 'onduleur_string_mono')
+        r = combiner_onduleurs(60, cat, phase='tri')
+        self.assertTrue(r['combinaison'])
+        for x in r['combinaison']:
+            self.assertEqual(par_id[x['produit']]['role_ci'], 'onduleur_string_tri')
+        sans_mono = [c for c in cat if c['role_ci'] == 'onduleur_string_tri']
+        r = combiner_onduleurs(12, sans_mono, phase='mono')
+        self.assertIsNone(r['combinaison'])
+        self.assertIn('aucun onduleur C&I monophasé éligible', r['motif'])
+
     def test_phase_inconnue_alerte(self):
         r = combiner_onduleurs(30, self.cat, phase='inconnu')
         self.assertTrue(any(a['code'] == 'OND_RACCORDEMENT_A_CONFIRMER'

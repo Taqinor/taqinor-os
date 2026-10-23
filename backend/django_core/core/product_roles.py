@@ -118,7 +118,16 @@ ROLES_CI = (
     'cellule_mt', 'etudes_ingenierie', 'pose_structure', 'pose_modules',
     'raccordement_ac', 'mise_en_service', 'dossier_raccordement',
     'levage_acces', 'transport_ci', 'om_ci', 'batterie_ci',
+    # ADEV86 (D-ACI-3=b) — le C&I s'ouvre au monophasé : rôle AJOUTÉ en fin de
+    # tuple (ordre existant intact, contrat ``produit_ci.json`` réaligné).
+    'onduleur_string_mono',
 )
+
+#: ADEV86 — les rôles C&I d'onduleur string et la phase PUBLIÉE (``ond_phases``)
+#: que chacun exige sur sa fiche : un seul endroit pour l'éligibilité (stock)
+#: et le catalogue de l'étude (ventes).
+PHASES_ONDULEUR_CI = {'onduleur_string_tri': 3, 'onduleur_string_mono': 1}
+ROLES_ONDULEUR_CI = tuple(PHASES_ONDULEUR_CI)
 
 #: Libellés FR des rôles C&I (voyagent par l'API : aucun miroir JS).
 LIBELLES_ROLES_CI = {
@@ -144,6 +153,7 @@ LIBELLES_ROLES_CI = {
     'transport_ci': 'Transport C&I',
     'om_ci': 'Exploitation et maintenance (O&M)',
     'batterie_ci': 'Batterie C&I',
+    'onduleur_string_mono': 'Onduleur string monophasé',
 }
 
 #: CIQ101 — types de pose d'une STRUCTURE (et des prestations de pose) : les

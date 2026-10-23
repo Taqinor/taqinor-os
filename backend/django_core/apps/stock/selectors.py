@@ -3297,7 +3297,7 @@ FICHE_CI_CHAMPS = {
 #: Rôles qui fixent la TAILLE d'une composition C&I : un prix vide les rend
 #: inéligibles (on ne choisit jamais un onduleur sans prix). Les autres rôles
 #: restent éligibles « prix à renseigner » (le devis est alors « incomplet »).
-ROLES_CI_DE_TAILLE = ('onduleur_string_tri',)
+ROLES_CI_DE_TAILLE = ('onduleur_string_tri', 'onduleur_string_mono')
 
 #: Repli par MOTS du nom (jumelle de l'ancienne lecture JS/serveur) — ordre
 #: significatif : le premier motif qui répond l'emporte.
@@ -3349,6 +3349,10 @@ def _role_ci_par_fiche(produit, fiche):
                   or famille_onduleur(produit) == FAMILLE_ONDULEUR_RESEAU)
         if reseau and fiche.ond_phases == 3:
             return 'onduleur_string_tri'
+        # ADEV86 (D-ACI-3=b) — un onduleur réseau MONOPHASÉ publié sert le C&I
+        # monophasé (petit commerce) sous son propre rôle.
+        if reseau and fiche.ond_phases == 1:
+            return 'onduleur_string_mono'
         return None
     if t == 'limiteur':
         return ('controleur_injection' if fiche.lim_mode == 'controleur'
@@ -3393,7 +3397,10 @@ def role_ci_pour(produit):
 
 def _eligibilite_ci(produit, role, prix_connu):
     """``(eligible_ci, motif_exclusion)`` — règles du contrat."""
-    if role == 'onduleur_string_tri':
+    from core.product_roles import PHASES_ONDULEUR_CI
+
+    phase_attendue = PHASES_ONDULEUR_CI.get(role)
+    if phase_attendue is not None:
         fiche = getattr(produit, 'fiche_technique', None)
         if fiche is None or fiche.type_fiche != 'onduleur':
             return False, 'fiche onduleur absente'
@@ -3402,9 +3409,13 @@ def _eligibilite_ci(produit, role, prix_connu):
             return False, 'fiche incomplète : ' + ', '.join(manquantes)
         if fiche.ond_phases is None:
             return False, 'phase non publiée'
-        if fiche.ond_phases != 3:
-            return False, ('onduleur monophasé : un onduleur string C&I est '
-                           'triphasé')
+        # ADEV86 — chaque rôle d'onduleur string exige SA phase publiée.
+        if fiche.ond_phases != phase_attendue:
+            if phase_attendue == 3:
+                return False, ('onduleur monophasé : un onduleur string C&I '
+                               'est triphasé')
+            return False, ('onduleur triphasé déclaré au rôle monophasé : '
+                           'fiche à 1 phase exigée')
     if role in ROLES_CI_DE_TAILLE and not prix_connu:
         return False, 'prix de vente non saisi'
     return True, None
