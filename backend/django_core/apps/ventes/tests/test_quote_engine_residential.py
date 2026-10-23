@@ -1094,6 +1094,33 @@ class TestPageUnQrProposition(SimpleTestCase):
         self.assertIn('Consultez votre proposition interactive', html)
 
 
+class TestCompactionProgressive(SimpleTestCase):
+    """Nocturne 23/10/2026 — ``theme.compact_css`` / ``build_html(compact_level)``
+    (arabe rendu sur 5 pages au lieu de 3 ; le niveau 0 reste au bit près)."""
+
+    def _donnees(self):
+        from apps.ventes.quote_engine.residential import renderer, sample_data
+        return renderer._augment(sample_data.build("deux"))
+
+    def test_niveau_zero_sans_effet(self):
+        from apps.ventes.quote_engine.residential import render, theme
+        self.assertEqual(theme.compact_css(0), "")
+        self.assertEqual(theme.compact_css(None), "")
+        d = self._donnees()
+        self.assertEqual(render.build_html(d), render.build_html(d, compact_level=0))
+
+    def test_niveaux_croissants_en_fin_de_corps(self):
+        from apps.ventes.quote_engine.residential import render, theme
+        blocs = [theme.compact_css(n) for n in (1, 2, 3)]
+        for bloc in blocs:
+            self.assertTrue(bloc.startswith("<style>") and bloc.endswith("</style>"))
+            self.assertIn(".i18n-rtl{", bloc)
+        self.assertEqual(len(set(blocs)), 3)
+        html = render.build_html(self._donnees(), compact_level=2)
+        self.assertTrue(html.endswith(blocs[1] + "</body></html>"))
+        self.assertEqual(html.count("compaction niveau"), 1)
+
+
 class TestQjr31TauxTvaParColonne(SimpleTestCase):
     """QJR31 — ``_row_pair`` imprimait UN seul taux pour une ligne à deux
     valeurs : celui de la colonne SANS, y compris quand les deux variantes

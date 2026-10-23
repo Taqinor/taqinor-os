@@ -135,7 +135,7 @@ jobs:
           git status --short apps/ventes/tests/baselines/
           mkdir -p /tmp/baselines-out
           cp apps/ventes/tests/baselines/*.png /tmp/baselines-out/
-      - name: Diagnostic pages arabes (3 attendues)
+      - name: Diagnostic pages arabes (3 attendues) — balayage des niveaux
         working-directory: backend/django_core
         env:
           DB_NAME: test_erp_db
@@ -145,23 +145,38 @@ jobs:
           import django
           django.setup()
           import fitz
+          from weasyprint import HTML
           from apps.ventes.tests.test_pdf_apdf_arabe import _donnees_residentiel
           from apps.ventes.quote_engine.residential import renderer, render
           out = '/tmp/ar-pages'
           os.makedirs(out, exist_ok=True)
-          for langue in ('ar', 'fr'):
-              renderer._PDF_CACHE.clear()
-              donnees = _donnees_residentiel(langue)
-              html = render.build_html(renderer._augment(donnees))
-              open(f'{out}/{langue}.html', 'w', encoding='utf-8').write(html)
-              pdf = renderer.render_pdf_bytes(donnees)
-              open(f'{out}/{langue}.pdf', 'wb').write(pdf)
+          base = os.path.dirname(render.__file__)
+          def bas_par_page(pdf):
               doc = fitz.open(stream=pdf, filetype='pdf')
-              print(f'=== {langue}: {len(doc)} page(s)')
-              for i, page in enumerate(doc, 1):
+              res = []
+              for page in doc:
+                  mm = page.rect.height / 297.0
+                  bottom = 0.0
+                  for b in page.get_text('blocks'):
+                      bottom = max(bottom, b[3])
+                  for dr in page.get_drawings():
+                      bottom = max(bottom, dr['rect'].y1)
+                  res.append(round(bottom / mm, 1))
+              return res
+          for langue in ('ar', 'fr'):
+              donnees = renderer._augment(_donnees_residentiel(langue))
+              for niveau in (0, 1, 2, 3):
+                  html = render.build_html(donnees, compact_p3=(niveau > 0), compact_level=niveau)
+                  doc = HTML(string=html, base_url=f'file://{base}/').render()
+                  pdf = doc.write_pdf()
+                  print(f'=== {langue} niveau {niveau}: {len(doc.pages)} page(s), bas (mm) = {bas_par_page(pdf)}')
+              renderer._PDF_CACHE.clear()
+              pdf = renderer.render_pdf_bytes(_donnees_residentiel(langue))
+              d2 = fitz.open(stream=pdf, filetype='pdf')
+              print(f'=== {langue} render_pdf_bytes: {len(d2)} page(s), bas (mm) = {bas_par_page(pdf)}')
+              open(f'{out}/{langue}.pdf', 'wb').write(pdf)
+              for i, page in enumerate(d2, 1):
                   page.get_pixmap(dpi=80).save(f'{out}/{langue}_p{i}.png')
-                  txt = page.get_text()[:300].replace(chr(10), ' | ')
-                  print(f'--- {langue} p{i}: {txt}')
           EOF
       - name: Régénérer la baseline OpenAPI (docs/openapi-schema.yml)
         if: always()

@@ -144,12 +144,17 @@ def page_calepinage(ctx) -> str:
 
 
 def build_html(data: dict, elastic: dict | None = None,
-               compact_p3: bool = False) -> str:
+               compact_p3: bool = False, compact_level: int = 0) -> str:
     """``elastic`` (QRES62) : {numéro de page 1-based: mm de vide à répartir
     sur les joints de cette page}. None/absent → joints inertes (passe 1).
 
     ``compact_p3`` (ERR114) : resserre le rythme vertical de la page 3 sans en
-    retirer le moindre bloc. Faux par défaut → HTML inchangé au bit près."""
+    retirer le moindre bloc. Faux par défaut → HTML inchangé au bit près.
+
+    ``compact_level`` (nocturne 23/10/2026) : niveau 1..3 de
+    ``theme.compact_css`` posé en fin de corps quand le renderer a mesuré un
+    débordement que ``compact_p3`` ne résorbe pas (arabe à 5 pages). 0 par
+    défaut → HTML inchangé au bit près."""
     ctx = build_ctx(data, compact_p3=compact_p3)
     ident = ctx["ident"]
     # QRES17 — pagination variable : un devis chargé rend 2+ pages
@@ -184,7 +189,7 @@ def build_html(data: dict, elastic: dict | None = None,
         racine = f'<html lang="{langue}" dir="rtl">'
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{theme.css_langue(data)}</style></head>"
-            f"<body>{body}</body></html>")
+            f"<body>{body}{theme.compact_css(compact_level)}</body></html>")
 
 
 def render_pdf(out_path, data: dict | None = None) -> str:
