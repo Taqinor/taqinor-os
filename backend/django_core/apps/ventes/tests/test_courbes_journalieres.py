@@ -236,10 +236,15 @@ class OccupationTests(_CourbesBase):
         self.assertEqual(bloc['occupation_source'],
                          'defaut_residentiel_fondateur')
 
-    def test_non_residentiel_absent_par_defaut(self):
+    def test_non_residentiel_present_par_defaut(self):
+        """Décision fondateur du 23/10/2026 (lead 1635) : présence en journée
+        PARTOUT par défaut — plus de repli ``absence_jour`` hors résidentiel
+        (il faisait recommander 5,68 kWc au lieu de 17,04 dès qu'un appelant
+        oubliait ``mode_installation``). La source reste le défaut non
+        résidentiel : un profil SUPPOSÉ, pas une réponse."""
         bloc = self._bloc(_data(mode_installation='industriel'),
                           conso=CASA_CONSO)
-        self.assertEqual(bloc['occupation'], 'absence_jour')
+        self.assertEqual(bloc['occupation'], 'presence_jour')
         self.assertEqual(bloc['occupation_source'], 'defaut_non_residentiel')
 
     def test_profil_activite_pro_declare_prime_sur_le_defaut(self):
@@ -250,8 +255,12 @@ class OccupationTests(_CourbesBase):
         self.assertEqual(bloc['occupation_source'], 'lead_profil_activite:day')
 
     def test_mode_inconnu_traite_comme_non_residentiel(self):
+        # 23/10/2026 — un mode absent retombe lui aussi sur la PRÉSENCE : c'est
+        # exactement le trou par lequel l'écran générateur (corps sans
+        # ``mode_installation``) sous-dimensionnait le lead 1635.
         bloc = self._bloc(_data(mode_installation=None), conso=CASA_CONSO)
-        self.assertEqual(bloc['occupation'], 'absence_jour')
+        self.assertEqual(bloc['occupation'], 'presence_jour')
+        self.assertEqual(bloc['occupation_source'], 'defaut_non_residentiel')
 
 
 # ── L4 (extension fondateur, 21/08/2026) — occupation_jour du lead PRIME ─────
@@ -378,16 +387,16 @@ class OccupationDevisMemeLecteurTests(_CourbesBase):
         self.assertEqual(self._source(None),
                          cj.occupation_du_lead(_LeadFactice(None)))
 
-    def test_le_defaut_non_residentiel_reste_intact(self):
-        """Non-régression : hors résidentiel et sans réponse du lead, le
-        défaut historique ``absence_jour`` ne bouge PAS (D4 ne concerne que
-        les deux chemins résidentiels)."""
+    def test_le_defaut_non_residentiel_est_aussi_la_presence(self):
+        """Décision fondateur du 23/10/2026 : hors résidentiel et sans réponse
+        du lead, le repli est la PRÉSENCE en journée (même drapeau que D4),
+        sous sa propre source — le libellé dit que c'est un défaut."""
         with mock.patch('apps.crm.selectors.occupation_jour_pour_devis',
                         return_value=None):
             self.assertEqual(
                 cj.occupation_du_devis(
                     object(), _data(mode_installation='industriel')),
-                ('absence_jour', 'defaut_non_residentiel'))
+                ('presence_jour', 'defaut_non_residentiel'))
 
 
 class OccupationPipelineAutoTests(SimpleTestCase):
