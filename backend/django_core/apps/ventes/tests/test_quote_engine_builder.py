@@ -1937,3 +1937,59 @@ class TestQjr626MentionTvaDesLignes(TestCase):
         self.assertIn('ligne par ligne', note)
         self.assertIn('10 % / 20 %', note)
         self.assertNotIn('panneaux photovolta', note)
+
+
+@patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
+class TestAmot79AucunRepliLegacyCi(TestCase):
+    """AMOT79 (D-ACI-9=a) — C&I refusé ou en erreur : ValueError nommée, jamais
+    le legacy (le résidentiel garde son repli : test_qjr17 ci-dessus)."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user, self.client_obj = make_user(self.company), make_client(self.company)
+
+    def _rendre(self, mode, lignes, n, erreur=None, renderer=None):
+        from contextlib import nullcontext
+
+        from apps.ventes.quote_engine import generate_devis_premium as legacy
+        from apps.ventes.quote_engine import generate_premium_devis_pdf
+        devis = make_devis(self.company, self.user, self.client_obj, lignes, reference=f'DEV-AMOT79-{n}')
+        devis.mode_installation = mode
+        devis.save(update_fields=['mode_installation'])
+        refus = patch.object(renderer, 'render_pdf_bytes', side_effect=erreur) if renderer else nullcontext()
+        with refus, patch.object(legacy, 'generate_premium_pdf') as moteur_legacy, \
+                patch('apps.ventes.utils.pdf._upload_pdf') as depot:
+            try:
+                generate_premium_devis_pdf(devis.id, persist=False)
+                message = None
+            except ValueError as exc:
+                message = str(exc)
+        moteur_legacy.assert_not_called()
+        return message, depot
+
+    def test_refus_ou_erreur_du_renderer_c_i_erreur_nommee(self, _bucket):
+        from apps.ventes.quote_engine.builder import FRAGMENT_REFUS_CI
+        from apps.ventes.quote_engine.commercial import renderer as commercial
+        from apps.ventes.quote_engine.industriel import renderer as industriel
+        lignes = [('Panneau mono 710W', '90', '1100'), ('Onduleur réseau 50kW', '1', '60000')]
+        for n, (mode, renderer, erreur, motif) in enumerate((
+                ('commercial', commercial, commercial.Unsupported('x'), ': x ;'),
+                ('commercial', commercial, RuntimeError('boom'), 'du renderer (RuntimeError)'),
+                ('industriel', industriel, industriel.Unsupported('champ manquant'), 'champ manquant'))):
+            with self.subTest(mode=mode, erreur=erreur), \
+                    self.assertLogs('apps.ventes.quote_engine.builder', level='WARNING'):
+                message, depot = self._rendre(mode, lignes, n, erreur, renderer)
+            self.assertTrue((message or '').startswith(FRAGMENT_REFUS_CI), message)
+            self.assertIn(motif, message)
+            self.assertIn('aucun repli legacy pour un devis commercial / industriel', message)
+            depot.assert_not_called()
+
+    @tag('weasyprint')  # rendu PDF réel
+    def test_brouillon_onduleur_et_compteur_servi_par_le_commercial(self, _bucket):
+        """Sonde du 23/10 : « onduleur + Smart Meter » sans panneau ⇒ renderer
+        COMMERCIAL, 3 pages — ni refus, ni legacy."""
+        import fitz
+        message, depot = self._rendre('commercial', [
+            ('Onduleur réseau Huawei 100kW Triphasé', '1', '62000'), ('Smart Meter', '1', '4500')], 9)
+        self.assertIsNone(message)
+        self.assertEqual(len(fitz.open(stream=depot.call_args[0][0], filetype='pdf')), 3)
