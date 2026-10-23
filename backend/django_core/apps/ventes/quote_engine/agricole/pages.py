@@ -1071,6 +1071,9 @@ def _hmt_annexe(d, synthese, lg, nom_societe):
                     phrase=mentions.phrase_provenance(
                         cle, lg, date=prov.get("date"),
                         nom_societe=nom_societe))
+    # AGQ31 — une HMT SAISIE (aucune composante) le dit, jamais un calcul.
+    if not lignes and (etude.get("hmt") or {}).get("source") == "saisie":
+        phrase = phrase or _t(lg, "agr_annexe_hmt_saisie")
     return (f'<div class="ag-small"><b>{_t(lg, "agr_annexe_hmt", hmt=hmt)}'
             f'</b></div>'
             + (f'<table class="ag-tbl">{lignes}</table>' if lignes else "")
@@ -1096,11 +1099,26 @@ def _debit_et_mois_annexe(d, synthese, lg):
             _num(v) is not None for v in serie):
         entetes = "".join(f'<td class="r"><b>{_t(lg, f"agr_moisc_{i}")}</b>'
                           f'</td>' for i in range(1, 13))
-        valeurs = "".join(f'<td class="r">{_n(v)}</td>' for v in serie)
+        # AGQ31 — besoin / livré / couverture par mois, LUS (synthèse AGR304,
+        # ``couverture_pct_mois`` du moteur) ; une ligne absente est omise.
+        bvl = (synthese.get("besoin_vs_livre") or {}).get("mois") or []
+        besoin = [m.get("besoin_m3_jour") for m in bvl if isinstance(m, dict)]
+        couv = etude.get("couverture_pct_mois")
+        rangs = [("agr_annexe_ligne_livre", serie, 1)]
+        if len(besoin) == 12 and all(_num(v) is not None for v in besoin):
+            rangs.insert(0, ("agr_annexe_ligne_besoin", besoin, 1))
+        if isinstance(couv, (list, tuple)) and len(couv) == 12:
+            rangs.append(("agr_annexe_ligne_couverture", couv, 0))
+        corps_tbl = "".join(
+            f'<tr><td>{_t(lg, cle)}</td>' + "".join(
+                f'<td class="r">{_n(v, dec) if _num(v) is not None else "—"}'
+                f'{" %" if cle.endswith("couverture") and _num(v) is not None else ""}</td>'
+                for v in valeurs) + '</tr>'
+            for cle, valeurs, dec in rangs)
         blocs.append(f'<div class="ag-small" style="margin-top:4px;">'
                      f'{_t(lg, "agr_annexe_m3_mois")}</div>'
-                     f'<table class="ag-tbl"><tr>{entetes}</tr>'
-                     f'<tr>{valeurs}</tr></table>')
+                     f'<table class="ag-tbl"><tr><td></td>{entetes}</tr>'
+                     f'{corps_tbl}</table>')
     if not blocs:
         return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
     return "".join(blocs)
@@ -1188,6 +1206,91 @@ def _references_annexe(d, lg):
         + '</div>' for r in refs)
 
 
+def _lis(lignes):
+    return "".join(f'<div class="ag-li">{l}</div>' for l in lignes)
+
+
+def _site_et_besoin_annexe(d, lg):
+    """AGQ31 — site, cultures/surface/irrigation déclarées, nature du besoin
+    (déclaré ou FAO-56 avec sa source ET0), source d'ensoleillement : LUS."""
+    etude = d.get("etude") or {}
+    lignes = []
+    loc = ((etude.get("entrees_resolues") or {}).get("localisation") or {})
+    loc = loc.get("valeur") if isinstance(loc, dict) else None
+    ville = (loc or etude.get("localisation") or {}).get("ville") \
+        if isinstance(loc or etude.get("localisation"), dict) else None
+    if ville:
+        lignes.append(_t(lg, "agr_annexe_site", ville=theme._esc(str(ville))))
+    cultures = [c for c in ((etude.get("besoin") or {}).get("cultures") or [])
+                if isinstance(c, dict) and c.get("culture")]
+    if cultures:
+        parts = []
+        for c in cultures:
+            txt = theme._esc(str(c["culture"]))
+            if _n(c.get("surface_ha"), 2) is not None:
+                txt += f' · {_n(c.get("surface_ha"), 2)} ha'
+            if c.get("irrigation"):
+                txt += f' · {theme._esc(str(c["irrigation"]))}'
+            parts.append(txt)
+        lignes.append(_t(lg, "agr_annexe_cultures", liste="; ".join(parts)))
+    mensuel = etude.get("besoin_mensuel") or {}
+    if mensuel.get("nature") == "declare":
+        lignes.append(_t(lg, "agr_annexe_besoin_declare"))
+    elif mensuel.get("nature"):
+        et0 = mensuel.get("source_et0")
+        lignes.append(_t(lg, "agr_annexe_besoin_fao56", et0=theme._esc(str(et0))
+                         if et0 else _t(lg, "agr_annexe_est")))
+    src = (etude.get("production") or {}).get("source_irradiation")
+    if src:
+        lignes.append(_t(lg, "agr_annexe_irradiation_pvgis" if src == "pvgis"
+                         else "agr_annexe_irradiation_repli"))
+    return _lis(lignes) if lignes else f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
+
+
+def _dimensionnement_annexe(d, synthese, lg):
+    """AGQ31 — calage de la pompe, chaînes PV contre l'entrée du variateur
+    (série × parallèle, Voc froid, Vmp chaud), point de fonctionnement, et la
+    phrase qui distingue débit de conception et débit livré : LUS."""
+    etude = d.get("etude") or {}
+    lignes = []
+    calage = _n((etude.get("source") or {}).get("profondeur_calage_m"))
+    if calage is not None:
+        lignes.append(_t(lg, "agr_annexe_calage", m=calage))
+    ch = (etude.get("champ") or {}).get("chaines") or {}
+    nom = theme._esc(str((etude.get("variateur") or {}).get("nom") or ""))
+    if ch.get("verifiable") and _n(ch.get("serie"), 0) is not None:
+        lignes.append(_t(lg, "agr_annexe_chaines", serie=_n(ch.get("serie"), 0),
+                         paralleles=_n(ch.get("paralleles"), 0),
+                         voc=_n(ch.get("voc_froid_v"), 0),
+                         vmp=_n(ch.get("vmp_chaud_v"), 0),
+                         variateur=nom or _t(lg, "agr_annexe_omis")))
+    elif ch.get("motif"):
+        lignes.append(_t(lg, "agr_annexe_chaines_non_verifiees",
+                         motif=theme._esc(str(ch["motif"]))))
+    pt = (synthese.get("point_fonctionnement") or {}).get("point") or {}
+    if _n(pt.get("debit_m3h")) is not None and _n(pt.get("hmt_m")) is not None:
+        lignes.append(_t(lg, "agr_annexe_point", q=_n(pt.get("debit_m3h")),
+                         hmt=_n(pt.get("hmt_m"))))
+    lignes.append(_t(lg, "agr_annexe_debits_explique"))
+    return _lis(lignes)
+
+
+def _garanties_et_cartouche_annexe(d, synthese, lg, nom_societe):
+    """AGQ31 — garanties par composant (lues sur les lignes, AGR305) et le
+    cartouche « Étude réalisée par … le … »."""
+    gars = []
+    for g in synthese.get("garanties") or []:
+        if not isinstance(g, dict) or not g.get("libelle"):
+            continue
+        mois = g.get("mois")
+        duree = (_duree(lg, mois) if isinstance(mois, int)
+                 and not isinstance(mois, bool) and mois > 0 else None)
+        gars.append(theme._esc(str(g["libelle"])) + (f" : {duree}" if duree else ""))
+    html = (f'<div class="ag-li">{_t(lg, "agr_annexe_garanties", liste="; ".join(gars))}'
+            f'</div>' if gars else "")
+    return html + (f'<div class="ag-note">{_t(lg, "agr_annexe_cartouche", societe=theme._esc(str(nom_societe or "")), date=theme._esc(str(d.get("date") or "")))}</div>')
+
+
 def page_annexe_note_calcul(ctx):
     """AGR319 — annexe rendue SEULEMENT sur ``include_note_calcul`` : kWc et
     panneaux, pompe et variateur (marque, garantie), HMT retenue et ses
@@ -1204,13 +1307,19 @@ def page_annexe_note_calcul(ctx):
             f'<div class="ag-kicker">{_t(lg, "agr_annexe_kicker")}</div>'
             f'<div class="ag-title">{_t(lg, "agr_annexe_titre")}</div>'
             f'{sec(_t(lg, "agr_annexe_equipement"))}'
-            f'<div class="ag-box">{_equipement_annexe(d, synthese, lg)}</div>'
+            f'<div class="ag-box">{_equipement_annexe(d, synthese, lg)}'
+            f'{_garanties_et_cartouche_annexe(d, synthese, lg, ctx["nom_societe"])}</div>'
+            f'{sec(_t(lg, "agr_annexe_site_titre"))}'
+            f'<div class="ag-box ag-small">{_site_et_besoin_annexe(d, lg)}</div>'
             f'{sec(_t(lg, "agr_entree_hmt_m"))}'
             f'<div class="ag-box">'
             f'{_hmt_annexe(d, synthese, lg, ctx["nom_societe"])}</div>'
             f'{sec(_t(lg, "agr_debit"))}'
             f'<div class="ag-box">{_debit_et_mois_annexe(d, synthese, lg)}'
             f'</div>'
+            f'{sec(_t(lg, "agr_annexe_dimensionnement_titre"))}'
+            f'<div class="ag-box ag-small">'
+            f'{_dimensionnement_annexe(d, synthese, lg)}</div>'
             f'{sec(_t(lg, "agr_annexe_hypotheses"))}'
             f'<div class="ag-box">{_hypotheses_annexe(d, lg)}</div>'
             f'{sec(_t(lg, "agr_annexe_fiches"))}'

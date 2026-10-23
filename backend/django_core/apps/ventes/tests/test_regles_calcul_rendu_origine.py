@@ -159,6 +159,13 @@ _CLES_AGQ = frozenset((
     'agr_notes_titre', 'agr_note_ratio_champ_pompe', 'agr_note_variateur_suivant',
     'agr_note_site_inconnu', 'agr_note_irradiation_repli', 'agr_note_rendement_pompe',
     'agr_note_rendement_variateur', 'agr_note_plafond_forage',
+    # AGQ31 — annexe FDA complétée.
+    'agr_annexe_site_titre', 'agr_annexe_site', 'agr_annexe_cultures',
+    'agr_annexe_besoin_declare', 'agr_annexe_besoin_fao56', 'agr_annexe_irradiation_pvgis',
+    'agr_annexe_irradiation_repli', 'agr_annexe_hmt_saisie', 'agr_annexe_ligne_besoin',
+    'agr_annexe_ligne_livre', 'agr_annexe_ligne_couverture', 'agr_annexe_dimensionnement_titre',
+    'agr_annexe_calage', 'agr_annexe_chaines', 'agr_annexe_chaines_non_verifiees',
+    'agr_annexe_point', 'agr_annexe_debits_explique', 'agr_annexe_garanties', 'agr_annexe_cartouche',
     'agr_acompte_apres_fda', 'agr_au_dela_de_n_ans',
     'agr_controle_forage_depasse', 'agr_controle_forage_ok',
     'agr_cout_eau_solaire', 'agr_declares_par_vous_le',

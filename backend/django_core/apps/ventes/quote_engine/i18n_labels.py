@@ -747,6 +747,63 @@ LIBELLES = {
     'agr_annexe_hyp_libelle': {'fr': 'Hypothèse', 'en': 'Assumption', 'ar': 'الفرضية'},
     'agr_annexe_hyp_valeur': {'fr': 'Valeur', 'en': 'Value', 'ar': 'القيمة'},
     'agr_annexe_hyp_source': {'fr': 'Source', 'en': 'Source', 'ar': 'المصدر'},
+    # AGQ31 — annexe FDA complétée (site, besoin, calage, chaînes, point,
+    # besoin/livré/%, garanties, cartouche) : textes, jamais un calcul.
+    'agr_annexe_site_titre': {'fr': 'Site et besoin', 'en': 'Site and need', 'ar': 'الموقع والحاجة'},
+    'agr_annexe_site': {'fr': 'Site : {ville}', 'en': 'Site: {ville}', 'ar': 'الموقع: {ville}'},
+    'agr_annexe_cultures': {'fr': 'Cultures et surfaces déclarées : {liste}',
+                            'en': 'Declared crops and areas: {liste}',
+                            'ar': 'الزراعات والمساحات المصرح بها: {liste}'},
+    'agr_annexe_besoin_declare': {'fr': 'Besoin déclaré par vous (volume par jour).',
+                                  'en': 'Need declared by you (daily volume).',
+                                  'ar': 'الحاجة صرحتم بها (الحجم اليومي).'},
+    'agr_annexe_besoin_fao56': {'fr': 'Besoin agronomique FAO-56 (ET0 : {et0}).',
+                                'en': 'FAO-56 agronomic need (ET0: {et0}).',
+                                'ar': 'الحاجة الفلاحية FAO-56 (ET0: {et0}).'},
+    'agr_annexe_irradiation_pvgis': {
+        'fr': 'Ensoleillement : PVGIS (Commission européenne), profil horaire du site.',
+        'en': 'Sunshine: PVGIS (European Commission), hourly profile of the site.',
+        'ar': 'الإشعاع الشمسي: PVGIS (المفوضية الأوروبية)، التوزيع الساعي للموقع.'},
+    'agr_annexe_irradiation_repli': {
+        'fr': 'Ensoleillement : repli à plat (débit × heures de pompage du réglage société).',
+        'en': 'Sunshine: flat fallback (flow × pumping hours of the company setting).',
+        'ar': 'الإشعاع الشمسي: بديل ثابت (الصبيب × ساعات الضخ حسب إعداد الشركة).'},
+    'agr_annexe_hmt_saisie': {'fr': 'HMT saisie telle quelle (aucune composante calculée).',
+                              'en': 'Head entered as such (no component computed).',
+                              'ar': 'الارتفاع المانومتري أُدخل كما هو (دون حساب المكونات).'},
+    'agr_annexe_ligne_besoin': {'fr': 'Besoin (m³/j)', 'en': 'Need (m³/day)', 'ar': 'الحاجة (م³/يوم)'},
+    'agr_annexe_ligne_livre': {'fr': 'Livré (m³/j)', 'en': 'Delivered (m³/day)', 'ar': 'المضخوخ (م³/يوم)'},
+    'agr_annexe_ligne_couverture': {'fr': 'Couverture', 'en': 'Coverage', 'ar': 'التغطية'},
+    'agr_annexe_dimensionnement_titre': {
+        'fr': 'Calage, chaînes et point de fonctionnement',
+        'en': 'Setting depth, strings and operating point',
+        'ar': 'عمق التثبيت والسلاسل ونقطة التشغيل'},
+    'agr_annexe_calage': {'fr': 'Profondeur de calage : {m} m', 'en': 'Setting depth: {m} m',
+                          'ar': 'عمق تثبيت المضخة: {m} م'},
+    'agr_annexe_chaines': {
+        'fr': 'Chaînes : {serie} en série × {paralleles} en parallèle ; Voc à froid {voc} V, '
+              'Vmp à chaud {vmp} V — vérifiées contre l\'entrée du variateur {variateur}.',
+        'en': 'Strings: {serie} in series × {paralleles} in parallel; cold Voc {voc} V, '
+              'hot Vmp {vmp} V — checked against the drive input {variateur}.',
+        'ar': 'السلاسل: {serie} على التوالي × {paralleles} على التوازي؛ Voc بارد {voc} ف، '
+              'Vmp ساخن {vmp} ف — تم التحقق منها مقابل مدخل المغير {variateur}.'},
+    'agr_annexe_chaines_non_verifiees': {'fr': 'Chaînes non vérifiées : {motif}.',
+                                         'en': 'Strings not checked: {motif}.',
+                                         'ar': 'السلاسل غير متحقق منها: {motif}.'},
+    'agr_annexe_point': {'fr': 'Point de fonctionnement : {q} m³/h à {hmt} m (sur la courbe constructeur).',
+                         'en': 'Operating point: {q} m³/h at {hmt} m (on the manufacturer curve).',
+                         'ar': 'نقطة التشغيل: {q} م³/س عند {hmt} م (على منحنى الصانع).'},
+    'agr_annexe_debits_explique': {
+        'fr': 'Débit de conception : ce que la pompe doit fournir au mois critique ; débit livré : '
+              "l'eau réellement pompée chaque jour selon l'ensoleillement.",
+        'en': 'Design flow: what the pump must supply in the critical month; delivered flow: '
+              'the water actually pumped each day according to sunshine.',
+        'ar': 'صبيب التصميم: ما يجب أن توفره المضخة في الشهر الحرج؛ الصبيب المضخوخ: '
+              'الماء المضخوخ فعلاً كل يوم حسب الإشعاع الشمسي.'},
+    'agr_annexe_garanties': {'fr': 'Garanties : {liste}', 'en': 'Warranties: {liste}', 'ar': 'الضمانات: {liste}'},
+    'agr_annexe_cartouche': {'fr': 'Étude réalisée par {societe} le {date}.',
+                             'en': 'Study carried out by {societe} on {date}.',
+                             'ar': 'دراسة أنجزتها {societe} بتاريخ {date}.'},
     'agr_annexe_fiches': {'fr': 'Fiches produits', 'en': 'Product sheets',
                           'ar': 'بطاقات المنتجات'},
     'agr_annexe_references': {'fr': 'Références de la société',

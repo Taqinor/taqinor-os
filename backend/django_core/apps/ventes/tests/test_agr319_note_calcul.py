@@ -120,7 +120,47 @@ class Agr319NoteCalculTests(SimpleTestCase):
         self.assertIn('Conversion cheval-vapeur', bloc)
         self.assertNotIn('interne', bloc)
 
-    def test_references_agricoles_servies(self):
+    def test_annexe_porte_hmt_composantes_chaines_et_cartouche(self):
+        """AGQ31 (C-AGQ-029) — l'annexe FDA porte le site, les cultures et
+        surfaces déclarées, la nature du besoin, la source d'ensoleillement,
+        le calage, les chaînes contre l'entrée du variateur, le point de
+        fonctionnement, le tableau besoin / livré / couverture, les garanties
+        et le cartouche. Valeurs LUES (etude_params, synthèse). Mutant :
+        omettre les chaînes ⇒ rouge."""
+        d = _data()
+        d['etude']['champ']['chaines'] = {
+            'serie': 7, 'paralleles': 2, 'voc_froid_v': 360,
+            'vmp_chaud_v': 250, 'verifiable': True, 'motif': None}
+        d['etude']['variateur'] = {'nom': 'VEICHI SI23 7.5KW'}
+        d['etude']['besoin']['cultures'] = [
+            {'culture': 'agrumes', 'surface_ha': 4, 'irrigation': 'goutte'}]
+        d['etude']['source']['profondeur_calage_m'] = 70
+        d['etude']['couverture_pct_mois'] = [104] * 12
+        d['etude']['entrees_resolues'] = {
+            'localisation': {'valeur': {'ville': 'Taroudant'}}}
+        annexe = _annexe(_html(d))
+        for attendu in ('Site : Taroudant', 'agrumes · 4 ha · goutte',
+                        'Besoin déclaré par vous', 'PVGIS',
+                        'Profondeur de calage : 70 m',
+                        '7 en série × 2 en parallèle', 'Voc à froid 360 V',
+                        'Vmp à chaud 250 V', 'VEICHI SI23 7.5KW',
+                        'Point de fonctionnement : 30,5 m³/h à 58,7 m',
+                        'Débit de conception', 'Besoin (m³/j)',
+                        'Couverture', '104 %', 'Garanties :',
+                        'Étude réalisée par Soleil Agri le 05/10/2026'):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, annexe)
+        self.assertEqual(annexe.count('<div class="page">'), 0)
+        # Chaînes non vérifiables : le motif servi est dit ; HMT saisie dite.
+        d['etude']['champ']['chaines'] = {
+            'verifiable': False, 'motif': 'fiche panneau incomplète'}
+        d['etude']['hmt'] = {'source': 'saisie', 'composantes': None}
+        d['etude']['hmt_composantes'] = {}
+        annexe = _annexe(_html(d))
+        self.assertIn('Chaînes non vérifiées : fiche panneau incomplète', annexe)
+        self.assertIn('HMT saisie telle quelle', annexe)
+        self.assertNotIn('None', annexe)
+
         html = _html(_data(references=[
             {'titre': 'Pompage 7,5 kW', 'ville': 'Taroudant',
              'mise_en_service': '2026-05'}]))
