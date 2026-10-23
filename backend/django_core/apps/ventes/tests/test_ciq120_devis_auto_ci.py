@@ -197,6 +197,36 @@ class DevisAutoCITests(_Base):
                                         jours_ouverture=[1, 2, 3, 4, 5, 6], **commun))
         self.assertEqual(erreur.field, 'heure_debut')
 
+    # ── ADEV78 : refus sur toute alerte bloquante, vraie cause nommée ──────
+
+    def test_onduleurs_ineligibles_refus_composition_nommant_les_onduleurs(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement='monophase')
+        erreur = self._refus(lead)
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Aucun onduleur C&I éligible', erreur.message)
+        self.assertIn(self.onduleur.nom, erreur.message)
+        self.assertNotIn('rentable', erreur.message)
+
+    def test_module_sans_pmax_refus_aucun_devis(self):
+        FicheTechnique.objects.filter(produit=self.panneau).update(pmax_wc=None)
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Pmax', erreur.message)
+
+    def test_taille_saisie_onduleurs_infaisables_refusee(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement='monophase',
+                          taille_souhaitee_kwc=Decimal('20'))
+        self.assertEqual(self._refus(lead).field, 'composition')
+
+    def test_module_a_puissance_publiee_prefere_au_module_tarife_sans_pmax(self):
+        Produit.objects.filter(pk=self.panneau.pk).update(prix_vente=0)
+        Produit.objects.create(company=self.co, nom='Panneau sans fiche 700W',
+                               prix_vente=Decimal('1000'), prix_achat=Decimal('600'),
+                               role_devis='panneau')
+        module = etude_ci.lire_catalogue_ci(self.co)['module']
+        self.assertEqual(module['produit'], self.panneau.id)
+        self.assertEqual(module['pmax_wc'], 710)
+
     def test_agricole_tunnel_toujours_refuse(self):
         # AGR124 — l'agricole est ouvert au bouton (origine « auto ») ; le
         # tunnel du site, lui, reste refusé.

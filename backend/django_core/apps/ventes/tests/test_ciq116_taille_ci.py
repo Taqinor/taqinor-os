@@ -140,6 +140,48 @@ class TailleCITests(unittest.TestCase):
         self.assertIsNotNone(r['taille']['retenue_kwc'])
         self.assertIn('postes_fixes_sans_prix', [a['code'] for a in r['alertes']])
 
+    # ── ADEV78 : la vraie cause d'un arrêt « onduleurs » ou « module » ──────
+
+    def test_aucun_onduleur_eligible_alerte_nomme_chaque_candidat(self):
+        inel = [dict(c, eligible_ci=False, motif_exclusion='fiche onduleur absente')
+                for c in self.huawei[:2]]
+        r = self._taille('bureau', 6000, combiner=partial(
+            combiner_onduleurs, candidats=inel, phase='tri'))
+        self.assertIsNone(r['taille']['retenue_kwc'])
+        self.assertEqual(r['taille']['raison_arret'], 'onduleurs')
+        alerte = next(a for a in r['alertes'] if a['code'] == 'OND_AUCUN_CANDIDAT')
+        self.assertEqual(alerte['niveau'], 'bloquant')
+        self.assertTrue(alerte['message'].startswith('Aucun onduleur C&I éligible'))
+        for c in inel:
+            self.assertIn('%s (fiche onduleur absente)' % c['nom'], alerte['message'])
+        self.assertNotIn('rentable', alerte['message'])
+
+    def test_module_sans_pmax_arret_module_aucun_palier_a_cout_nul(self):
+        def sans_panneau(kwc, onduleurs):
+            lignes = [ligne for ligne in _composer(kwc, onduleurs)['lignes']
+                      if ligne['role'] != 'panneau']
+            return {'lignes': lignes}
+        r = self._taille('bureau', 6000, composer=sans_panneau)
+        self.assertIsNone(r['taille']['retenue_kwc'])
+        self.assertEqual(r['taille']['raison_arret'], 'module')
+        self.assertEqual(r['taille']['paliers'], [])
+        self.assertIsNone(r['evaluation'])
+        self.assertIn('CI_MODULE_FICHE',
+                      [a['code'] for a in r['alertes'] if a['niveau'] == 'bloquant'])
+        explicite = self._taille('bureau', 6000, composer=sans_panneau, taille_explicite_kwc=50)
+        self.assertEqual(explicite['taille']['raison_arret'], 'module')
+        self.assertIsNone(explicite['evaluation'])
+
+    def test_palier_a_cout_nul_jamais_admis(self):
+        def gratuit(kwc, onduleurs):
+            return {'lignes': [dict(ligne, prix_unitaire_ht='0')
+                               for ligne in _composer(kwc, onduleurs)['lignes']]}
+        gratuits = [dict(c, prix='0.01') for c in self.huawei]
+        r = self._taille('bureau', 6000, composer=gratuit, combiner=lambda kwc: dict(
+            combiner_onduleurs(kwc, gratuits, phase='tri'), prix_vente_total_ht='0'))
+        self.assertFalse(any(p['admis'] for p in r['taille']['paliers']))
+        self.assertIsNone(r['taille']['retenue_kwc'])
+
     def test_distributeur_sans_effet(self):
         # La valeur du distributeur (onee / srm_casablanca) n'est pas une entrée du
         # moteur : deux appels identiques rendent la même taille (CAD167/Q16).

@@ -684,7 +684,9 @@ def lire_catalogue_ci(company):
             specs = {}
         pmax = _num(specs.get('pmax_wc'))
         prix = bool(produit.prix_vente and produit.prix_vente > 0)
-        candidats.append(((prix, bool(pmax), pmax or 0, -produit.id), produit, specs))
+        # ADEV78 — un module à puissance PUBLIÉE passe devant un module tarifé
+        # sans Pmax (sans Pmax, aucun panneau ne se compte).
+        candidats.append(((bool(pmax), prix, pmax or 0, -produit.id), produit, specs))
     if candidats:
         _cle, produit, specs = max(candidats, key=lambda c: c[0])
         module = {
@@ -1179,6 +1181,17 @@ MESSAGES_CHAMP_LEAD_CI = {
     'heure_debut': ("Heures d'ouverture (ou régime d'équipes) à déclarer sur le lead : "
                     'aucun archétype sourcé pour cette activité, profil déclaré exigé.'),
 }
+#: ADEV78 — champs d'alerte (racine) dont le refus porte sur la composition.
+CHAMPS_COMPOSITION = frozenset({'composition', 'onduleurs', 'taille_explicite_kwc'})
+#: ADEV78 — refus d'une étude SANS taille et sans alerte bloquante, par
+#: raison d'arrêt : « aucune taille rentable » est réservé à l'horizon.
+MESSAGES_ARRET = {
+    'horizon_marginal': ('Aucune taille C&I rentable dans l’horizon de 10 ans.', 'taille'),
+    'toit': ('Contenance du toit inférieure à la première tranche de 5 kWc : '
+             'aucune taille C&I.', 'surface_toiture_m2'),
+    'puissance_souscrite': ('Puissance souscrite déclarée inférieure à la première '
+                            'tranche de 5 kWc : aucune taille C&I.', 'compteur_puissance_kva'),
+}
 MESSAGE_MAD_SANS_CONTRAT = (
     "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
     '(BT patenté / force motrice) ou saisissez la conso en kWh.')
@@ -1224,15 +1237,24 @@ def refus_devis_auto_ci(etude):
         champ, alerte = manquant
         return MESSAGES_CHAMP_LEAD_CI.get(champ) or alerte.get('message'), champ
     taille = etude.get('taille') or {}
+    bloquants = [a for a in alertes if a.get('niveau') == 'bloquant']
+    # ADEV78 — la VRAIE cause d'un arrêt « module » ou « onduleurs ».
+    for code in ('CI_MODULE_FICHE', 'OND_AUCUN_CANDIDAT'):
+        alerte = next((a for a in bloquants if a.get('code') == code), None)
+        if alerte is not None:
+            return alerte['message'], 'composition'
     if taille.get('raison_arret') == 'prix_manquants':
         manquants = (etude.get('composition') or {}).get('prix_a_renseigner') or []
         return ('Prix à renseigner : %s.' % ', '.join(str(m) for m in manquants),
                 'composition')
+    # ADEV78 — TOUTE alerte bloquante refuse, même quand une taille existe
+    # (taille saisie aux onduleurs infaisables comprise).
+    if bloquants:
+        champ = bloquants[0].get('champ') or ''
+        return bloquants[0].get('message'), (
+            'composition' if champ.split('.')[0] in CHAMPS_COMPOSITION else 'taille')
     if not taille.get('retenue_kwc'):
-        alerte = next((a for a in etude.get('alertes') or []
-                       if a.get('niveau') == 'bloquant'), None)
-        return ((alerte or {}).get('message')
-                or 'Aucune taille C&I rentable dans l’horizon de 10 ans.', 'taille')
+        return MESSAGES_ARRET.get(taille.get('raison_arret'), MESSAGES_ARRET['horizon_marginal'])
     return None
 
 

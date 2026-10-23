@@ -128,7 +128,10 @@ def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
                                          revente_choisie=revente_choisie)
     economie = valoriser(bilan)
     de_taille, fixes = _prix_manquants(composition, onduleurs)
+    sans_panneau = not any(ligne.get('role') == 'panneau' and ligne.get('quantite')
+                           for ligne in composition.get('lignes') or [])
     return {
+        'sans_panneau': sans_panneau,
         'kwc': kwc,
         'onduleurs': onduleurs,
         'composition': composition,
@@ -247,6 +250,12 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     meilleur = None
     for rang in range(1, MAX_PAS + 1):
         e = evaluer(PAS_KWC * rang)
+        if e['sans_panneau']:
+            # ADEV78 — sans panneau composé, aucun palier n'a de sens (jamais
+            # un palier « onduleur seul » admis) : arrêt propre, nommé.
+            alertes.append(_alerte_module())
+            return {'taille': _vide('module', bornes_pub), 'evaluation': None,
+                    'alertes': alertes, 'hypotheses': hypotheses}
         if e['prix_manquants']:
             alertes.append(_alerte(
                 'prix_manquants', 'taille',
@@ -257,7 +266,9 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
             return {'taille': taille, 'evaluation': None, 'alertes': alertes,
                     'hypotheses': hypotheses, 'prix_manquants': e['prix_manquants']}
         borne = _borne_du_palier(e, kwc_toit, ps_kva)
-        admis = borne is None and (e['economie'] or 0) > 0
+        # ADEV78 — un palier à coût nul n'est jamais admis (garde à la source
+        # C&I : ``ratio_pas_marginal``, partagé avec le résidentiel, intouché).
+        admis = borne is None and (e['economie'] or 0) > 0 and e['cout'] > 0
         if borne is None and not admis:
             borne = 'horizon_marginal'
         precedent = evals[-1] if evals else None
@@ -265,6 +276,8 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         evals.append(e)
         if borne in ('toit', 'onduleurs', 'puissance_souscrite'):
             break
+        if e['cout'] <= 0:
+            break             # ADEV78 — rien de chiffré : aucune montée à mesurer
         ratio = paliers[-1]['ratio_marginal_annees']
         if admis and e['economie']:
             payback = e['cout'] / e['economie']
@@ -285,6 +298,8 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         derniere_borne = paliers[-1]['borne'] if paliers else None
         raison = derniere_borne if derniere_borne in ('toit', 'onduleurs', 'puissance_souscrite') \
             else 'horizon_marginal'
+        if raison == 'onduleurs':
+            alertes.append(_alerte_onduleurs(evals[-1]['onduleurs']))
         return {'taille': _vide(raison, bornes_pub, paliers), 'evaluation': None,
                 'alertes': alertes, 'hypotheses': hypotheses}
 
@@ -348,8 +363,32 @@ def _alertes_injection(e, ps_kva, revente_choisie):
         'raccordement.' % (pointe, ps_kva))]
 
 
+def _alerte_module():
+    return _alerte('CI_MODULE_FICHE', 'composition',
+                   'Module sans puissance publiée (Pmax) sur sa fiche : nombre de panneaux '
+                   'non calculé — taille non proposée.', niveau='bloquant')
+
+
+def _alerte_onduleurs(onduleurs):
+    """ADEV78 — « aucun onduleur éligible » nommant CHAQUE candidat exclu et
+    son motif (dernière évaluation), jamais « aucune taille rentable »."""
+    exclus = (onduleurs or {}).get('exclus') or []
+    if exclus:
+        detail = ' ; '.join('%s (%s)' % (x.get('nom') or 'onduleur n° %s' % x.get('produit'),
+                                         x.get('motif') or 'motif non publié')
+                            for x in exclus)
+    else:
+        detail = (onduleurs or {}).get('motif') or 'aucun onduleur C&I au catalogue'
+    return _alerte('OND_AUCUN_CANDIDAT', 'composition',
+                   'Aucun onduleur C&I éligible : %s.' % detail, niveau='bloquant')
+
+
 def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses):
     """D-QJR5-13 : une taille saisie est SOUVERAINE — calculée telle quelle."""
+    if e['sans_panneau']:
+        alertes.append(_alerte_module())
+        return {'taille': _vide('module', bornes_pub), 'evaluation': None,
+                'alertes': alertes, 'hypotheses': hypotheses}
     if kwc_toit is not None and kwc > kwc_toit + 1e-9:
         alertes.append(_alerte('taille_au_dela_du_toit', 'taille_explicite_kwc',
                                'Taille saisie au-delà de la contenance du toit (%g kWc).'
@@ -362,6 +401,8 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses)
         alertes.append(_alerte('onduleurs_infaisables', 'taille_explicite_kwc',
                                e['onduleurs'].get('motif') or 'aucune combinaison d’onduleurs',
                                niveau='bloquant'))
+        if not e['onduleurs'].get('combinaison') and e['onduleurs'].get('exclus'):
+            alertes.append(_alerte_onduleurs(e['onduleurs']))
     hypotheses.append({'cle': 'taille_explicite_kwc', 'valeur': kwc, 'statut': 'declare',
                        'source': 'D-QJR5-13 — taille saisie souveraine'})
     taille = {
