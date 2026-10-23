@@ -424,6 +424,7 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(request=D.AutoDevisRequest,
                    responses={201: D.AutoDevisResponse,
+                              200: D.AutoDevisResponse,
                               409: D.ErreurComposition},
                    extensions=D.CORPS_LEAD_OU_CLIENT)
     @action(detail=False, methods=['post'], url_path='auto',
@@ -503,6 +504,62 @@ class DevisViewSet(DevisEditionActionsMixin,
         # (étude pompage + articles « prix à renseigner » omis), rendues à
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
         journal = {}
+
+        def reponse_auto(devis, alertes, statut_http):
+            link = ShareLink.for_devis(devis)
+            return Response(
+                {
+                    'id': devis.id,
+                    'reference': devis.reference,
+                    'statut': devis.statut,
+                    'kwc': (devis.etude_params or {}).get('puissance_kwc'),
+                    'nb_lignes': devis.lignes.count(),
+                    'proposal_token': link.token,
+                    'proposal_path': chemin_proposition(devis, link.token),
+                    'alertes': list(alertes or []),
+                },
+                status=statut_http)
+
+        # ADEV80 (C-ACI-009) — idempotence : deux clics rapides ne créent
+        # JAMAIS deux brouillons. (1) REJEU : même utilisateur, même lead,
+        # corps identique, < 120 s -> 200 avec le MÊME brouillon (forme du
+        # 201). La trace vit dans le cache (clé = hachage du corps canonique,
+        # TTL 120 s) : aucune migration. (2) VERROU par lead : ``cache.add``
+        # testé ``is False`` UNIQUEMENT — un cache en panne (django_redis
+        # fail-soft, NTPLT24) répond ``None`` : pas de verrou, jamais un 409
+        # pour tous. Jamais ``select_for_update`` sur le lead.
+        import hashlib
+        import json
+        from django.core.cache import cache
+        corps_canonique = json.dumps(
+            {k: v for k, v in dict(request.data).items()
+             if k not in ('lead', 'client')},
+            sort_keys=True, default=str, separators=(',', ':'))
+        cle_rejeu = 'devis-auto:replay:%s:%s:%s:%s' % (
+            company.id, lead_obj.id, request.user.id,
+            hashlib.sha1(corps_canonique.encode('utf-8')).hexdigest())
+        try:
+            trace = cache.get(cle_rejeu)
+        except Exception:  # cache indisponible : pas de rejeu
+            trace = None
+        if isinstance(trace, dict) and trace.get('id'):
+            deja = Devis.objects.filter(
+                pk=trace['id'], company=company, lead=lead_obj,
+                created_by=request.user).first()
+            if deja is not None:
+                return reponse_auto(deja, trace.get('alertes'),
+                                    status.HTTP_200_OK)
+
+        cle_verrou = 'devis-auto:%s:%s' % (company.id, lead_obj.id)
+        try:
+            pose = cache.add(cle_verrou, 1, 180)
+        except Exception:  # cache indisponible : pas de verrou
+            pose = None
+        if pose is False:
+            return Response(
+                {'detail': 'Un devis automatique est déjà en cours pour '
+                           'ce lead.'},
+                status=status.HTTP_409_CONFLICT)
         try:
             devis = build_devis_auto(
                 lead=lead_obj, user=request.user, company=company,
@@ -517,20 +574,19 @@ class DevisViewSet(DevisEditionActionsMixin,
             return Response(
                 {'detail': exc.message, 'field': exc.field},
                 status=status.HTTP_409_CONFLICT)
+        finally:
+            if pose is True:
+                try:
+                    cache.delete(cle_verrou)
+                except Exception:
+                    pass
 
-        link = ShareLink.for_devis(devis)
-        return Response(
-            {
-                'id': devis.id,
-                'reference': devis.reference,
-                'statut': devis.statut,
-                'kwc': (devis.etude_params or {}).get('puissance_kwc'),
-                'nb_lignes': devis.lignes.count(),
-                'proposal_token': link.token,
-                'proposal_path': chemin_proposition(devis, link.token),
-                'alertes': list(journal.get('alertes') or []),
-            },
-            status=status.HTTP_201_CREATED)
+        alertes = list(journal.get('alertes') or [])
+        try:
+            cache.set(cle_rejeu, {'id': devis.id, 'alertes': alertes}, 120)
+        except Exception:
+            pass
+        return reponse_auto(devis, alertes, status.HTTP_201_CREATED)
 
     @extend_schema(methods=['GET'], responses=D.VarianteConfigResponse)
     @extend_schema(methods=['PUT'], request=D.VarianteConfigRequest,
