@@ -34,6 +34,12 @@ const NUM_HMT = ['saisie_m', 'denivele_m', 'pertes_singulieres_m',
   'pression_service_bar']
 const NUM_CONDUITE = ['diametre_interieur_mm', 'longueur_m', 'c_hazen_williams']
 
+// AGQ27 — les champs PROPRES à un mode de besoin (absents des autres modes).
+const CHAMPS_PAR_MODE_BESOIN = {
+  volume_declare: ['volume_m3_jour'],
+  pompe_actuelle: ['debit_actuel_m3h', 'heures_actuelles_jour'],
+}
+
 const MODES_POMPE = ['neuve', 'existante']
 const TAILLES = ['recommandee', 'inferieure', 'superieure']
 
@@ -65,9 +71,17 @@ function construireBesoin(b = {}) {
       surface_ha: nombreOuNull(c.surface_ha),
       irrigation: texteOuNull(c.irrigation),
     })) : []
+  const numeriques = blocNumerique(b, NUM_BESOIN)
+  // AGQ27 (C-AGQ-026) — seuls les champs du mode CHOISI partent : une valeur
+  // tapée sous un autre mode (pompe actuelle, volume) part `null`, jamais en
+  // valeur fantôme. Débit souhaité, mois de pointe, cultures et région
+  // restent (servis à côté, quel que soit le mode).
+  for (const [mode, champs] of Object.entries(CHAMPS_PAR_MODE_BESOIN)) {
+    if (b.mode !== mode) for (const champ of champs) numeriques[champ] = null
+  }
   return {
     mode: texteOuNull(b.mode),
-    ...blocNumerique(b, NUM_BESOIN),
+    ...numeriques,
     cultures,
     region: texteOuNull(b.region),
   }

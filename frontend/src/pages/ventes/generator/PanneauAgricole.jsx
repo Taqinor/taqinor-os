@@ -541,6 +541,25 @@ export default function PanneauAgricole({
                       options={[['oui', 'Oui'], ['non', 'Non']]} />
           <ChampNombre id="gen-source-niveau-dynamique" label="Niveau dynamique (m)"
                        valeur={source.niveau_dynamique_m} onChange={maj('source.niveau_dynamique_m')} />
+          {/* AGQ27 (C-AGQ-026) — UNE seule saisie du niveau d'eau : statique et
+              rabattement vivent ici, dans « Point d'eau », plus dans « Votre
+              exploitation ». */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="gen-farm-static">
+              Niveau statique de l'eau (m) — optionnel
+            </Label>
+            <Input id="gen-farm-static" type="number" min="0" step="any"
+                   placeholder="ex: 40" value={farmHmtStatic}
+                   onChange={e => setFarmHmtStatic(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="gen-farm-drawdown">
+              Rabattement en pompage (m) — optionnel
+            </Label>
+            <Input id="gen-farm-drawdown" type="number" min="0" step="any"
+                   placeholder="ex: 15" value={farmHmtDrawdown}
+                   onChange={e => setFarmHmtDrawdown(e.target.value)} />
+          </div>
           <ChampNombre id="gen-source-tubage" label="Diamètre de tubage (mm)"
                        valeur={source.diametre_tubage_mm} onChange={maj('source.diametre_tubage_mm')} />
           <ChampNombre id="gen-source-calage" label="Profondeur de calage (m)"
@@ -685,22 +704,6 @@ export default function PanneauAgricole({
                   <SelectItem value="gravitaire">Gravitaire</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="gen-farm-static">
-                Niveau statique de l'eau (m) — optionnel
-              </Label>
-              <Input id="gen-farm-static" type="number" min="0" step="any"
-                     placeholder="ex: 40" value={farmHmtStatic}
-                     onChange={e => setFarmHmtStatic(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="gen-farm-drawdown">
-                Rabattement en pompage (m) — optionnel
-              </Label>
-              <Input id="gen-farm-drawdown" type="number" min="0" step="any"
-                     placeholder="ex: 15" value={farmHmtDrawdown}
-                     onChange={e => setFarmHmtDrawdown(e.target.value)} />
             </div>
           </div>
 
