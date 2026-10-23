@@ -17,6 +17,11 @@ Ces tests verrouillent :
 4. le devis auto d'un lead à ville seule n'ouvre AUCUNE connexion réseau, et
    celui d'un lead GPS aboutit même PVGIS injoignable (repli table sourcée).
 
+5. ADEV80 (C-ACI-009) — le POST est idempotent et patient : deux POST
+   identiques < 120 s => UN seul brouillon (le second répond 200, même forme),
+   un corps différent => un nouveau brouillon, verrou par lead (409 si
+   ``cache.add`` répond ``False``, création normale si le cache est en panne).
+
 Run :
     python manage.py test apps.ventes.tests.test_err_autodevis_lent -v 2
 """
@@ -25,6 +30,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import TestCase
 
 from apps.crm.models import Lead
@@ -129,3 +135,84 @@ class AucunServiceExterneNeBloque(_Base):
         devis = Devis.objects.get(pk=reponse.data['id'])
         self.assertIsInstance((devis.etude_params or {}).get('dimensionnement'),
                               dict)
+
+
+class AutoDevisIdempotentEtVerrou(_Base):
+    """ADEV80 — « deux clics rapides => un seul brouillon » (P-ACI-3)."""
+    slug = 'err-autodevis-idempotent'
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def _nb(self, lead):
+        return Devis.objects.filter(lead=lead).count()
+
+    def _cle_verrou(self, lead):
+        return 'devis-auto:%d:%d' % (self.company.id, lead.id)
+
+    def test_deux_post_identiques_un_seul_devis_et_200_meme_forme(self):
+        lead = self.lead()
+        premier = self.creer(lead, dict(ETUDE_ECRAN))
+        second = self.creer(lead, dict(ETUDE_ECRAN))
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(second.data['id'], premier.data['id'])
+        self.assertEqual(set(second.data), set(premier.data))
+        for cle in ('reference', 'statut', 'kwc', 'nb_lignes',
+                    'proposal_token', 'proposal_path', 'alertes'):
+            self.assertEqual(second.data[cle], premier.data[cle], cle)
+        self.assertEqual(self._nb(lead), 1)
+
+    def test_target_kwc_different_cree_un_second_devis(self):
+        lead = self.lead()
+        premier = self.api.post(
+            AUTO_URL, {'lead': lead.id, 'target_kwc': 6}, format='json')
+        second = self.api.post(
+            AUTO_URL, {'lead': lead.id, 'target_kwc': 9}, format='json')
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(second.status_code, 201, second.data)
+        self.assertNotEqual(second.data['id'], premier.data['id'])
+        self.assertEqual(self._nb(lead), 2)
+
+    def test_rejeu_expire_cree_un_nouveau_devis(self):
+        """Le rejeu s'éteint avec sa clé (TTL 120 s) : un clic tardif crée."""
+        lead = self.lead()
+        premier = self.creer(lead)
+        cache.clear()  # simule l'expiration des 120 s
+        second = self.creer(lead)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        self.assertEqual(second.status_code, 201, second.data)
+        self.assertEqual(self._nb(lead), 2)
+
+    def test_verrou_pose_donne_409(self):
+        lead = self.lead()
+        with mock.patch('django.core.cache.cache.add',
+                        return_value=False) as add:
+            reponse = self.creer(lead)
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertEqual(
+            reponse.data['detail'],
+            'Un devis automatique est déjà en cours pour ce lead.')
+        self.assertEqual(self._nb(lead), 0)
+        self.assertIn(self._cle_verrou(lead),
+                      [c.args[0] for c in add.call_args_list])
+
+    def test_cache_en_panne_pas_de_verrou_creation_normale(self):
+        """NTPLT24 : ``add`` -> None (django_redis fail-soft) n'est PAS un 409."""
+        lead = self.lead()
+        with mock.patch('django.core.cache.cache.add', return_value=None):
+            reponse = self.creer(lead)
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertEqual(self._nb(lead), 1)
+
+    def test_verrou_libere_apres_creation_et_apres_refus(self):
+        lead = self.lead()
+        self.assertEqual(self.creer(lead).status_code, 201)
+        self.assertIsNone(cache.get(self._cle_verrou(lead)))
+        # Refus d'état (clé d'étude rejetée) : le verrou est quand même levé.
+        autre = self.lead()
+        refus = self.creer(autre, {'dimensionnement': {'faux': 1}})
+        self.assertEqual(refus.status_code, 409)
+        self.assertIsNone(cache.get(self._cle_verrou(autre)))

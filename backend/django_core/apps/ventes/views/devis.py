@@ -44,6 +44,9 @@ from .devis_calepinage import DevisCalepinageActionsMixin  # SPL140
 from .devis_facturation import DevisFacturationActionsMixin  # SPL141
 from .devis_cadence import DevisCadenceActionsMixin  # SPL142
 from authentication.scoping import visible_user_ids
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -424,6 +427,7 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(request=D.AutoDevisRequest,
                    responses={201: D.AutoDevisResponse,
+                              200: D.AutoDevisResponse,
                               409: D.ErreurComposition},
                    extensions=D.CORPS_LEAD_OU_CLIENT)
     @action(detail=False, methods=['post'], url_path='auto',
@@ -503,6 +507,60 @@ class DevisViewSet(DevisEditionActionsMixin,
         # (étude pompage + articles « prix à renseigner » omis), rendues à
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.
         journal = {}
+
+        # ADEV80 (C-ACI-009) — idempotence : deux clics rapides ne créent
+        # JAMAIS deux brouillons. (1) REJEU : même utilisateur, même lead,
+        # corps identique, < 120 s -> 200 avec le MÊME brouillon (forme du
+        # 201). La trace vit dans le cache (clé = hachage du corps canonique,
+        # TTL 120 s) : aucune migration. (2) VERROU par lead : ``cache.add``
+        # testé ``is False`` UNIQUEMENT — un cache en panne (django_redis
+        # fail-soft, NTPLT24) répond ``None`` : pas de verrou, jamais un 409
+        # pour tous. Jamais ``select_for_update`` sur le lead.
+        import hashlib
+        import json
+        from django.core.cache import cache
+        corps_canonique = json.dumps(
+            {k: v for k, v in dict(request.data).items()
+             if k not in ('lead', 'client')},
+            sort_keys=True, default=str, separators=(',', ':'))
+        cle_rejeu = 'devis-auto:replay:%s:%s:%s:%s' % (
+            company.id, lead_obj.id, request.user.id,
+            hashlib.sha1(corps_canonique.encode('utf-8'), usedforsecurity=False).hexdigest())
+        try:
+            trace = cache.get(cle_rejeu)
+        except Exception:  # cache indisponible : pas de rejeu
+            logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
+            trace = None
+        if isinstance(trace, dict) and trace.get('id'):
+            deja = Devis.objects.filter(
+                pk=trace['id'], company=company, lead=lead_obj,
+                created_by=request.user).first()
+            if deja is not None:
+                link = ShareLink.for_devis(deja)
+                return Response(
+                    {
+                        'id': deja.id,
+                        'reference': deja.reference,
+                        'statut': deja.statut,
+                        'kwc': (deja.etude_params or {}).get('puissance_kwc'),
+                        'nb_lignes': deja.lignes.count(),
+                        'proposal_token': link.token,
+                        'proposal_path': chemin_proposition(deja, link.token),
+                        'alertes': list(trace.get('alertes') or []),
+                    },
+                    status=status.HTTP_200_OK)
+
+        cle_verrou = 'devis-auto:%s:%s' % (company.id, lead_obj.id)
+        try:
+            pose = cache.add(cle_verrou, 1, 180)
+        except Exception:  # cache indisponible : pas de verrou
+            logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
+            pose = None
+        if pose is False:
+            return Response(
+                {'detail': 'Un devis automatique est déjà en cours pour '
+                           'ce lead.'},
+                status=status.HTTP_409_CONFLICT)
         try:
             devis = build_devis_auto(
                 lead=lead_obj, user=request.user, company=company,
@@ -517,7 +575,18 @@ class DevisViewSet(DevisEditionActionsMixin,
             return Response(
                 {'detail': exc.message, 'field': exc.field},
                 status=status.HTTP_409_CONFLICT)
+        finally:
+            if pose is True:
+                try:
+                    cache.delete(cle_verrou)
+                except Exception:
+                    logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
 
+        alertes = list(journal.get('alertes') or [])
+        try:
+            cache.set(cle_rejeu, {'id': devis.id, 'alertes': alertes}, 120)
+        except Exception:
+            logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
         link = ShareLink.for_devis(devis)
         return Response(
             {
@@ -528,7 +597,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                 'nb_lignes': devis.lignes.count(),
                 'proposal_token': link.token,
                 'proposal_path': chemin_proposition(devis, link.token),
-                'alertes': list(journal.get('alertes') or []),
+                'alertes': alertes,
             },
             status=status.HTTP_201_CREATED)
 

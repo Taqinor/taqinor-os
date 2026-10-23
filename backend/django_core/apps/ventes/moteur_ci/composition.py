@@ -94,7 +94,9 @@ def _alerte(code, message, niveau='alerte', champ='composition'):
 
 def _du_role(catalogue, role, filtre=None):
     """Le premier article ÉLIGIBLE du rôle (C&I ou de devis) qui passe le
-    filtre de fiche — ordre déterministe (id)."""
+    filtre de fiche — ordre déterministe (id). ADEV82 : un article TARIFÉ
+    passe devant un article sans prix du même rôle."""
+    premier = None
     for p in sorted(catalogue, key=lambda x: (x.get('id') or 0)):
         if p.get('eligible_ci') is False:
             continue
@@ -102,12 +104,14 @@ def _du_role(catalogue, role, filtre=None):
             continue
         if filtre is not None and not filtre(p.get('fiche') or {}, p):
             continue
-        return p
-    return None
+        if p.get('prix_connu'):
+            return p
+        premier = premier or p
+    return premier
 
 
 def _ligne(role, article, designation, quantite, unite, *, motif=None,
-           a_confirmer=False):
+           a_confirmer=False, visite=False):
     prix_connu = bool(article and article.get('prix_connu'))
     if article is None and motif is None:
         motif = MOTIF_PRIX
@@ -124,6 +128,11 @@ def _ligne(role, article, designation, quantite, unite, *, motif=None,
         'motif': motif,
         'a_confirmer_visite': bool(a_confirmer),
     }
+    if visite:
+        # ADEV79 (D-ACI-2=a) — poste qui dépend de la VISITE (type de pose,
+        # longueurs, chaînes, section du bureau d'études) : « à chiffrer après
+        # visite », hors total du devis, jamais un « prix à renseigner ».
+        ligne['a_chiffrer_visite'] = True
     if article is not None and article.get('prix_vente_ht') is not None:
         ligne['prix_unitaire_ht'] = str(article['prix_vente_ht'])
     _appliquer_palier(ligne, article)
@@ -156,13 +165,50 @@ def _appliquer_palier(ligne, article):
             atteint = p
     ligne['prix_unitaire_ttc'] = str(
         (total / quantite).quantize(Decimal('0.01')))
+    # ADEV79 — la TVA de l'ARTICLE ramène ce TTC au HT (jamais un 20 % codé).
+    if article.get('tva_pct') is not None:
+        ligne['tva_pct'] = str(article['tva_pct'])
     ligne['palier'] = {'seuil_min': atteint.get('seuil_min'),
                        'seuil_max': atteint.get('seuil_max'),
                        'mention': 'prix palier dès %s unités' % (
                            atteint.get('seuil_min'),)} if atteint else None
+    # ADEV82 — la ligne porte le HT du PALIER (celui de la taille), plus le
+    # prix catalogue : taille et devis au même prix.
+    palier_ht = prix_palier_ht(ligne)
+    if palier_ht is not None:
+        ligne['prix_unitaire_ht'] = str(palier_ht)
     ligne['prix_connu'] = True
     if ligne.get('motif') == MOTIF_PRIX:
         ligne['motif'] = None
+
+
+def prix_palier_ht(ligne, taux_tva_pct=None):
+    """ADEV82 — LA règle du prix unitaire HT (au centime) d'une ligne au prix
+    de PALIER (TTC, CIQ123) : la TVA de son article (``tva_pct``), à défaut
+    ``taux_tva_pct`` ; ``None`` hors palier ou sans taux. La taille
+    (``taille.cout_vente_ht``) et la ligne écrite au devis portent CE prix."""
+    if not ligne.get('palier') or not ligne.get('prix_unitaire_ttc'):
+        return None
+    tva = _d(ligne.get('tva_pct'))
+    if tva is None:
+        tva = _d(taux_tva_pct)
+    ttc = _d(ligne['prix_unitaire_ttc'])
+    if tva is None or ttc is None:
+        return None
+    return (ttc / (1 + tva / 100)).quantize(Decimal('0.01'))
+
+
+def postes_non_chiffres(lignes):
+    """ADEV79 — ``(prix à renseigner, à chiffrer après visite)`` : les
+    désignations des lignes sans prix (hors visite) et celles qui attendent
+    la visite (hors total, chiffrées ou non)."""
+    a_renseigner, visite = [], []
+    for ligne in lignes or []:
+        if ligne.get('a_chiffrer_visite'):
+            visite.append(ligne['designation'])
+        elif not ligne.get('prix_connu'):
+            a_renseigner.append(ligne['designation'])
+    return a_renseigner, visite
 
 
 def _par_id(catalogue):
@@ -194,7 +240,7 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
     if ib > calibre + 1e-9:
         lignes.append(_ligne('protection_ac', None,
                              'Protection AC sortie %s' % nom, 1, 'u',
-                             motif=MOTIF_BUREAU, a_confirmer=True))
+                             motif=MOTIF_BUREAU, a_confirmer=True, visite=True))
     else:
         lignes.append(_ligne(
             'protection_ac', disj,
@@ -203,7 +249,7 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
     if longueur is None or longueur <= 0:
         lignes.append(_ligne('cable_ac', None,
                              'Câble AC %s → TGBT' % nom, None, 'm',
-                             motif=MOTIF_LONGUEUR, a_confirmer=True))
+                             motif=MOTIF_LONGUEUR, a_confirmer=True, visite=True))
         return
     base = AMPACITE_U1000R2V_TRI if triphase else AMPACITE_U1000R2V_MONO
     bareme = bareme_pour(base, ib, calibre)
@@ -214,7 +260,7 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
     if proposee.thermique_hors_bareme or proposee.hors_bareme:
         lignes.append(_ligne('cable_ac', None,
                              'Câble AC %s → TGBT' % nom, longueur, 'm',
-                             motif=MOTIF_BUREAU, a_confirmer=True))
+                             motif=MOTIF_BUREAU, a_confirmer=True, visite=True))
         return
     section = float(proposee.section_mm2)
     cable = _du_role(catalogue, 'cable_ac', lambda f, _p: (
@@ -230,7 +276,89 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
             proposee.critere, ib, calibre, proposee.chute_pct)})
 
 
-def _comptage(catalogue, nb_ond, entrees, lignes, alertes):
+MOTIF_MPPT = ("nombre de MPPT non publié sur la fiche onduleur : une "
+              "protection par onduleur, à confirmer")
+
+
+def _est_parafoudre(fiche, article):
+    return (fiche.get('prot_type') == 'parafoudre'
+            or 'parafoudre' in (article.get('nom') or '').lower())
+
+
+def _protections_dc_et_terre(catalogue, unitaires, lignes, alertes):
+    """ADEV83 — dès qu'un article porte le rôle : protection DC (fusibles /
+    sectionneur) PAR MPPT, parafoudre DC PAR ONDULEUR, parafoudre AC et mise
+    à la terre par installation, au prix du catalogue. Aucun article du
+    rôle ⇒ alerte INTERNE ``POSTE_ABSENT_CATALOGUE`` nommant le poste : ni
+    ligne « prix à renseigner », ni refus (on ne bloque pas sur un article
+    que la société n'a pas créé)."""
+    par_id = _par_id(catalogue)
+    nb_ond = len(unitaires)
+    mppt, mppt_connus = 0, True
+    for ondu in unitaires:
+        fiche = (par_id.get(ondu.get('produit')) or {}).get('fiche') or {}
+        n = _f(fiche.get('ond_n_mppt'))
+        if n and n > 0:
+            mppt += int(n)
+        else:
+            mppt += 1
+            mppt_connus = False
+    postes = (
+        ('protection_dc', 'protection_dc', lambda f, p: not _est_parafoudre(f, p),
+         'Protection DC (fusibles / sectionneur) par MPPT', mppt,
+         None if mppt_connus else MOTIF_MPPT, not mppt_connus),
+        ('parafoudre_dc', 'protection_dc', _est_parafoudre,
+         'Parafoudre DC par onduleur', nb_ond, None, False),
+        ('parafoudre_ac', 'protection_ac', _est_parafoudre,
+         'Parafoudre AC', 1, None, False),
+        ('mise_a_la_terre', 'mise_a_la_terre', None,
+         'Mise à la terre du champ PV', 1, None, False),
+    )
+    for cle, role, filtre, libelle, quantite, motif, a_confirmer in postes:
+        article = _du_role(catalogue, role, filtre)
+        if article is None:
+            alertes.append(_alerte(
+                'POSTE_ABSENT_CATALOGUE',
+                '%s : aucun article de ce rôle au catalogue (poste non composé, '
+                'à créer en Stock).' % libelle, champ='composition.%s' % cle))
+            continue
+        lignes.append(_ligne(role, article, libelle, quantite, 'u',
+                             motif=motif, a_confirmer=a_confirmer))
+
+
+def _du_role_tous(catalogue, role):
+    """Tous les articles ÉLIGIBLES du rôle, ordre déterministe (id)."""
+    return [p for p in sorted(catalogue, key=lambda x: (x.get('id') or 0))
+            if p.get('eligible_ci') is not False
+            and role in (p.get('role_ci'), p.get('role_devis'))]
+
+
+def _article_de_comptage(catalogue, onduleurs):
+    """ADEV82 — un article TARIFÉ passe devant un article sans prix ; à prix
+    égal, le contrôleur d'injection, puis le compteur que la fiche des
+    onduleurs retenus dit compatible (``ond_compteurs_compatibles``)."""
+    par_id = _par_id(catalogue)
+    compatibles = set()
+    for item in (onduleurs or {}).get('combinaison') or []:
+        fiche = (par_id.get(item.get('produit')) or {}).get('fiche') or {}
+        compatibles.update(str(t).strip().lower()
+                           for t in fiche.get('ond_compteurs_compatibles') or []
+                           if str(t).strip())
+
+    def compatible(p):
+        texte = ('%s %s' % (p.get('nom') or '', p.get('marque') or '')).lower()
+        return not compatibles or any(t in texte for t in compatibles)
+
+    controleurs = _du_role_tous(catalogue, 'controleur_injection')
+    compteurs = _du_role_tous(catalogue, 'compteur_injection')
+    ordre = ([c for c in controleurs if c.get('prix_connu')]
+             + [c for c in compteurs if c.get('prix_connu') and compatible(c)]
+             + [c for c in compteurs if c.get('prix_connu')]
+             + controleurs + compteurs)
+    return ordre[0] if ordre else None
+
+
+def _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs=None):
     tension = (entrees.get('tension') or '').upper()
     revente = bool(entrees.get('revente_choisie'))
     if tension == 'MT' and revente:
@@ -242,8 +370,7 @@ def _comptage(catalogue, nb_ond, entrees, lignes, alertes):
         points = None
     a_confirmer = points is None
     points = points or 1
-    article = (_du_role(catalogue, 'controleur_injection')
-               or _du_role(catalogue, 'compteur_injection'))
+    article = _article_de_comptage(catalogue, onduleurs)
     role = article.get('role_ci') if article else 'compteur_injection'
     fiche = (article or {}).get('fiche') or {}
     max_pilotes = fiche.get('lim_onduleurs_max')
@@ -271,9 +398,12 @@ def _logger(catalogue, nb_ond, lignes):
     article = _du_role(catalogue, 'logger_supervision')
     max_sup = ((article or {}).get('fiche') or {}).get('log_onduleurs_max')
     quantite = int(math.ceil(nb_ond / float(max_sup))) if max_sup else 1
+    # ADEV82 — « à confirmer fournisseur » seulement quand la fiche se tait
+    # sur le nombre d'onduleurs supervisés.
     lignes.append(_ligne('logger_supervision', article,
                          'Logger de supervision', quantite, 'u',
-                         motif=MOTIF_FOURNISSEUR, a_confirmer=True))
+                         motif=None if max_sup else MOTIF_FOURNISSEUR,
+                         a_confirmer=not max_sup))
 
 
 def _prestation(cle, libelle, forfait, article, kwc, nb_panneaux):
@@ -345,10 +475,10 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     if not chaines:
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
                              'm', motif='chaînes à vérifier : quantité non '
-                             'calculée', a_confirmer=True))
+                             'calculée', a_confirmer=True, visite=True))
     elif longueur_dc is None or longueur_dc <= 0:
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
-                             'm', motif=MOTIF_LONGUEUR, a_confirmer=True))
+                             'm', motif=MOTIF_LONGUEUR, a_confirmer=True, visite=True))
     else:
         nb_chaines = sum(int(c.get('nb_chaines') or 0) for c in chaines)
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC',
@@ -366,6 +496,9 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     for ondu in unitaires:
         _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
                                 hypotheses)
+    # ── ADEV83 — protections DC, parafoudres DC / AC, mise à la terre
+    if nb_ond:
+        _protections_dc_et_terre(catalogue, unitaires, lignes, alertes)
 
     # ── Structure par type de pose du toit
     type_pose = (entrees.get('type_pose') or '').strip()
@@ -379,10 +512,10 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
         lignes.append(_ligne('structure_ci', None, 'Structure C&I',
                              nb_panneaux, 'module',
                              motif='type de pose non déclaré : structure à '
-                             'confirmer à la visite', a_confirmer=True))
+                             'confirmer à la visite', a_confirmer=True, visite=True))
 
     # ── Comptage / limitation, logger, coffret AC
-    _comptage(catalogue, nb_ond, entrees, lignes, alertes)
+    _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs)
     _logger(catalogue, nb_ond, lignes)
     lignes.append(_ligne('coffret_ac', _du_role(catalogue, 'coffret_ac'),
                          'Coffret AC C&I', 1, 'u'))
@@ -415,8 +548,7 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
                         'prix_connu': bool(batterie.get('prix_connu')),
                         'valeur': 'valeur non chiffrée'})
 
-    prix_a_renseigner = [ligne['designation'] for ligne in lignes
-                         if not ligne['prix_connu']]
+    prix_a_renseigner, a_chiffrer_visite = postes_non_chiffres(lignes)
     return {
         'lignes': lignes,
         'onduleurs': {
@@ -425,7 +557,8 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
             'chaines': chaines,
         },
         'prix_a_renseigner': prix_a_renseigner,
-        'incomplet': bool(prix_a_renseigner),
+        'a_chiffrer_visite': a_chiffrer_visite,
+        'incomplet': bool(prix_a_renseigner or a_chiffrer_visite),
         'options': options,
         'alertes': alertes,
         'hypotheses': hypotheses,

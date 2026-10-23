@@ -162,9 +162,13 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc 
       // Le serveur parle FRANÇAIS (422 : marque épinglée introuvable,
       // données de dimensionnement manquantes…) et ses appelants lisent
       // `err.detail` — on rend son message tel quel, jamais un nôtre.
+      // ALEA48 — le 409 nomme aussi le champ à compléter (`field`) : on le
+      // relaie, comme la branche C&I, pour que l'écran propose « Compléter ».
+      const champ = err?.response?.data?.field
       throw {
         detail: err?.response?.data?.detail
           || "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez.",
+        ...(champ ? { field: champ } : {}),
       }
     }
     const id = reponse?.data?.id

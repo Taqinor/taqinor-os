@@ -31,6 +31,11 @@ vi.mock('../../ventes/DevisGenerator', async () => (await import('../../../test/
   .generateurSimule(() => <ProduitPicker produits={PRODUITS} value="" onChange={() => {}} />))
 
 import ventesApi from '../../../api/ventesApi'
+import { jumpToField } from '../../../features/crm/workspace/jumpToField'
+import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
+
+// ALEA48 — le saut DOM est espionné : seul l'appel (cible) compte ici.
+vi.mock('../../../features/crm/workspace/jumpToField', () => ({ jumpToField: vi.fn() }))
 
 // Ces tests montent un Magasinier dans le store (`auth: true`).
 const rendre = (props) => rendrePanneau(props, { auth: true })
@@ -269,5 +274,37 @@ describe('EDC6 — les autres phases gardent leur comportement actuel', () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 5)) })
     await echap()
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+  })
+})
+
+// ALEA48 — le 409 du devis auto garde son `field` jusqu'à l'écran : bouton
+// « Compléter : <champ> » qui saute au champ du lead (même geste que DevisTab).
+describe('ALEA48 — 409 du devis automatique : bouton « Compléter »', () => {
+  const LEAD_RESIDENTIEL = { id: 92, nom: 'Maison', type_installation: 'residentiel' }
+  const rejeter409 = (data) => ventesApi.creerDevisAuto.mockRejectedValueOnce({ response: { status: 409, data } })
+
+  beforeEach(() => jumpToField.mockClear())
+
+  it('409 avec `field` ⇒ message serveur + bouton, le clic saute au champ', async () => {
+    rejeter409({ detail: "Contrat d'électricité manquant.", field: 'contrat_electricite' })
+    const { onClose } = rendrePanneau({ lead: LEAD_RESIDENTIEL, mode: 'auto', existingDevisId: undefined })
+    expect(await screen.findByText("Contrat d'électricité manquant.")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: "Compléter : Contrat d'électricité" }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(jumpToField).toHaveBeenCalledWith(missingFieldTarget('contrat_electricite')))
+  })
+
+  it('409 sans `field` ⇒ message seul, aucun bouton', async () => {
+    rejeter409({ detail: 'Données insuffisantes.' })
+    rendrePanneau({ lead: LEAD_RESIDENTIEL, mode: 'auto', existingDevisId: undefined })
+    expect(await screen.findByText('Données insuffisantes.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Compléter/ })).toBeNull()
+  })
+
+  it('409 avec un `field` inconnu ⇒ message seul, aucun bouton', async () => {
+    rejeter409({ detail: 'Champ exotique.', field: 'champ_inconnu_xyz' })
+    rendrePanneau({ lead: LEAD_RESIDENTIEL, mode: 'auto', existingDevisId: undefined })
+    expect(await screen.findByText('Champ exotique.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Compléter/ })).toBeNull()
   })
 })
