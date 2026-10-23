@@ -552,6 +552,29 @@ class GardeDeCoherenceTests(SimpleTestCase):
         self.assertEqual(len(bloc['coherence']), 1)
         self.assertTrue(bloc['publiable_client'])
 
+    def test_butane_en_litres_refuse_en_nommant_le_champ(self):
+        """AGQ19 (C-AGQ-018) — butane en litres (ou gasoil en bouteilles) :
+        ``EconomieInvalide`` sur ``consommation.unite``, message qui nomme
+        l'unité attendue ; plus aucune garde « auto-désactivée ». Mutant :
+        retirer ``UNITE_PAR_ENERGIE`` ⇒ le butane en litres passe ⇒ rouge."""
+        with self.assertRaises(E.EconomieInvalide) as refus:
+            E.depense_actuelle(saisies_carburant(
+                energie='butane', quantite=30, unite='litre', periode='mois'))
+        self.assertEqual(refus.exception.champ, 'consommation.unite')
+        self.assertIn('butane se déclare en bouteilles de 12 kg',
+                      str(refus.exception))
+        with self.assertRaises(E.EconomieInvalide) as refus:
+            E.depense_actuelle(saisies_carburant(
+                energie='diesel', quantite=3, unite='bouteille_12kg'))
+        self.assertEqual(refus.exception.champ, 'consommation.unite')
+        self.assertIn('gasoil se déclare en litres', str(refus.exception))
+        self.assertEqual(E.UNITE_PAR_ENERGIE,
+                         {'butane': 'bouteille_12kg', 'diesel': 'litre'})
+        # L'unité attendue passe, comme avant.
+        self.assertEqual(E.depense_actuelle(saisies_carburant(
+            energie='diesel', quantite=40, unite='litre',
+            periode='mois'))['cas'], E.CAS_CARBURANT)
+
     def test_pci_non_source_omission_nommee(self):
         from unittest import mock
         sans = {k: dict(v, source='') for k, v in E.PCI_CARBURANTS.items()}

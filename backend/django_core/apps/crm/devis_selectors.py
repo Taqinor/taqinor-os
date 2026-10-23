@@ -344,6 +344,14 @@ def entrees_pompage_du_lead(lead):
                 'jour_irrigation'
         if colonne == 'carburant_litres_mois':
             entree['unite'], entree['periode'] = 'litre', 'mois'
+        if colonne in ('butane_bouteilles_jour', 'carburant_litres_mois'):
+            # AGQ19 (C-AGQ-018) — une seule colonne correspond à l'énergie du
+            # lead : l'autre est servie MARQUÉE ``ignoree`` (jamais « le
+            # dernier lu gagne » sur ``consommation.quantite``).
+            from apps.ventes.selectors import unite_par_energie
+            attendue = unite_par_energie().get(lead.pompe_alim_actuelle)
+            if attendue and entree['unite'] != attendue:
+                entree['ignoree'] = f'énergie {lead.pompe_alim_actuelle}'
         entrees.append(entree)
 
     # D-AGR-3 — volume déclaré : besoin_eau_m3j, sinon débit ACTUEL × heures

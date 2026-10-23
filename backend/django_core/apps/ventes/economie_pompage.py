@@ -39,6 +39,10 @@ __all__ = [
 #: Vocabulaire de ``crm.Lead.PompeAlimActuelle`` (contrat AGR3).
 ENERGIES = ('aucune', 'butane', 'diesel', 'electrique')
 UNITES = ('bouteille_12kg', 'litre')
+#: AGQ19 (C-AGQ-018) — l'unité qui va avec chaque carburant : LA seule table
+#: énergie → unité (le sélecteur crm la lit via ``apps.ventes.selectors``).
+UNITE_PAR_ENERGIE = {'butane': 'bouteille_12kg', 'diesel': 'litre'}
+_NOM_UNITE = {'bouteille_12kg': 'bouteilles de 12 kg', 'litre': 'litres'}
 PERIODES = ('jour_irrigation', 'semaine', 'mois')
 PERIODICITES = ('mensuelle', 'bimestrielle')
 
@@ -293,6 +297,14 @@ def depense_actuelle(saisies):
             if unite not in UNITES:
                 raise EconomieInvalide(
                     f"consommation.unite : choisir parmi {', '.join(UNITES)}.",
+                    champ='consommation.unite')
+            attendue = UNITE_PAR_ENERGIE.get(energie)
+            if attendue and unite != attendue:
+                # AGQ19 (C-AGQ-018) — butane en litres, gasoil en bouteilles :
+                # refus NOMMÉ (plus de garde de cohérence auto-désactivée).
+                raise EconomieInvalide(
+                    f"consommation.unite : le {'gasoil' if energie == 'diesel' else energie} "
+                    f"se déclare en {_NOM_UNITE[attendue]} (reçu : {_NOM_UNITE[unite]}).",
                     champ='consommation.unite')
             if periode not in PERIODES:
                 raise EconomieInvalide(

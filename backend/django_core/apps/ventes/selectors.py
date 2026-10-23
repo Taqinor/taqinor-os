@@ -1901,3 +1901,10 @@ def modules_vendus_du_devis(devis):
               and not getattr(li, 'optionnelle', False)]
     nb, _watt = panneaux_et_watt_lu(lignes)
     return int(nb) if nb else None
+
+
+def unite_par_energie():
+    """AGQ19 — la table unique énergie → unité de consommation
+    (``economie_pompage.UNITE_PAR_ENERGIE``), copie neuve."""
+    from .economie_pompage import UNITE_PAR_ENERGIE
+    return dict(UNITE_PAR_ENERGIE)

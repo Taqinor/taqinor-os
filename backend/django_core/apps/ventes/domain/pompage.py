@@ -1444,6 +1444,8 @@ def saisies_economie_pompage_du_lead(lead):
         chemin = entree.get('chemin') or ''
         if not chemin.startswith('saisies_economie_pompage.'):
             continue
+        if entree.get('ignoree'):
+            continue  # AGQ19 — colonne d'une autre énergie, jamais appliquée
         morceaux = chemin.split('.')[1:]
         if len(morceaux) != 2:
             continue

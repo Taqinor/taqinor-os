@@ -186,6 +186,29 @@ class EntreesPompage(TestCase):
         vide = selectors.entrees_pompage_du_lead(self._lead())
         self.assertIn('jours_irrigation_semaine', vide['manquants'])
 
+    def test_une_seule_colonne_de_consommation_par_energie(self):
+        """AGQ19 (C-AGQ-018) — ``butane_bouteilles_jour`` ET
+        ``carburant_litres_mois`` visent ``consommation.quantite`` : seule la
+        colonne de l'énergie du lead est servie telle quelle, l'autre porte
+        ``ignoree`` (le moteur la saute). Table unique : ``apps.ventes``."""
+        from apps.ventes.selectors import unite_par_energie
+        self.assertEqual(unite_par_energie(),
+                         {'butane': 'bouteille_12kg', 'diesel': 'litre'})
+        lead = self._lead(
+            pompe_alim_actuelle='butane', butane_bouteilles_jour=Decimal('2'),
+            carburant_litres_mois=Decimal('100'))
+        par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        self.assertNotIn('ignoree', par['butane_bouteilles_jour'])
+        self.assertEqual(par['carburant_litres_mois']['ignoree'],
+                         'énergie butane')
+        lead = self._lead(
+            pompe_alim_actuelle='diesel', butane_bouteilles_jour=Decimal('2'),
+            carburant_litres_mois=Decimal('100'))
+        par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        self.assertEqual(par['butane_bouteilles_jour']['ignoree'],
+                         'énergie diesel')
+        self.assertNotIn('ignoree', par['carburant_litres_mois'])
+
     def test_mode_pompe_et_plaque_servis_au_moteur(self):
         """AGQ39 (D-AGQ-10) — le mode et la plaque de la pompe actuelle
         sont servis vers ``mode_pompe`` et ``plaque.*`` ; les phases en 1/3."""
