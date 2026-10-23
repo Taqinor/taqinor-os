@@ -258,7 +258,8 @@ export function etatPompageEcran(saisie, ecran = {}) {
     },
     alim: e.pompeAlim || '',
     type_pompe: e.pompeType || '',
-    localisation: { ville: e.ville || '', lat: '', lon: '' },
+    // AGQ26 — ville ET GPS du lead quand l'écran les a (jamais inventés).
+    localisation: { ville: e.ville || '', lat: e.lat ?? '', lon: e.lon ?? '' },
     distance_champ_m: e.pompeDistance ?? '',
     options_cochees: [...(s.options_cochees || [])],
     taille: s.taille || '',

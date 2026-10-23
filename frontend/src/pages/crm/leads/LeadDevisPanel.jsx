@@ -29,6 +29,11 @@ import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
+// AGQ22 — un 409 qui nomme un champ de la fiche : même saut que les puces.
+import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
+import { jumpToField } from '../../../features/crm/workspace/jumpToField'
+// AGQ25 — le journal du devis automatique, même rendu que le générateur.
+import AlertesDevisAuto from './AlertesDevisAuto'
 import {
   Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
@@ -123,6 +128,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const produitsRef = useRef(null)
   const marquesRef = useRef(undefined) // PVMRQ — cache du réglage marques
   const startedRef = useRef(false)
+  const cleIdempotenceRef = useRef(null) // AGQ23 — une clé par ouverture
 
   // Octets du PDF : récupérés par usePdfPreview (MÊME source que le
   // téléchargement) ; changer de format ou fermer le panneau avorte le rendu
@@ -177,18 +183,40 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         }
       }
       setAlertes([])
+      // AGQ23 (C-AGQ-022) — UNE clé d'idempotence par ouverture du panneau :
+      // un 2ᵉ clic (après un délai dépassé) rejoue le 1ᵉʳ devis au serveur.
+      if (!cleIdempotenceRef.current) {
+        cleIdempotenceRef.current = globalThis.crypto?.randomUUID?.()
+          || `auto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+      }
       const id = await createAutoQuote({
         lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
         marques: marquesRef.current || undefined,
         onAlertes: setAlertes,
+        idempotencyKey: cleIdempotenceRef.current,
       })
       setDevisId(id)
       onDevisChanged?.()
       setPhase('preview')
     } catch (err) {
-      setErrorMsg(typeof err?.detail === 'string'
+      const message = typeof err?.detail === 'string'
         ? err.detail
-        : "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez.")
+        : "Le devis automatique a échoué — vérifiez la fiche du lead et réessayez."
+      // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ de la fiche (`field`
+      // du 409, ex. `debit_forage_m3h`) : le panneau se ferme et le champ est
+      // mis en évidence, avec UN seul message (le toast global est coupé
+      // pour cet appel, `suppressErrorToast`).
+      // AGQ23 — délai dépassé : le devis a pu être créé ; la liste du lead
+      // se recharge (le parent relit ses devis).
+      if (err?.delaiDepasse) onDevisChanged?.()
+      const cible = err?.field ? missingFieldTarget(err.field) : null
+      if (cible) {
+        toast.error(message)
+        onClose()
+        jumpToField(cible)
+        return
+      }
+      setErrorMsg(message)
       setPhase('error')
     }
   }
@@ -511,22 +539,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'preview' && (
             <div className="ldp-preview">
               {/* AGR126 — ce que le devis automatique serveur signale (jamais
-                  un chiffre inventé : le message du serveur, tel quel). */}
-              {alertes.length > 0 && (
-                <div className="form-error-box" role="status" data-testid="ldp-alertes-auto">
-                  <strong>Alertes du devis automatique :</strong>
-                  <ul>
-                    {alertes.map((a, i) => (
-                      <li key={`${a.code || 'alerte'}-${i}`}>
-                        {/* CIQ127 — une alerte INTERNE du moteur (C&I) n'atteint
-                            jamais le client : marquée pour le vendeur. */}
-                        {a.interne === true && <strong data-testid="ldp-alerte-interne">Vendeur seulement — </strong>}
-                        {a.message || a.code}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                  un chiffre inventé : le message du serveur, tel quel).
+                  AGQ25 — rendu UNIQUE, partagé avec le générateur. */}
+              <AlertesDevisAuto alertes={alertes} />
               {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
                   (envoyé : le client verra la version corrigée) ; figé →
                   « Réviser ». Le détail est déjà lu (getDevisById). */}

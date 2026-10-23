@@ -882,7 +882,7 @@
    "kwargs": {
     "blank": true,
     "decimal_places": 2,
-    "help_text": "Question à l'appel : « Quel débit voulez-vous, en m³ par heure ? » (débit SOUHAITÉ, vide = pas encore posée). Servi à côté du débit livré, il ne fixe jamais seul le besoin.",
+    "help_text": "Question à l'appel : « Quel débit voulez-vous, en m³ par heure ? » (débit SOUHAITÉ, vide = pas encore posée). Débit souhaité (m³/h) : devient le débit de conception quand aucun volume n'est déclaré (D-AGQ-1).",
     "max_digits": 8,
     "null": true
    },
@@ -1190,6 +1190,74 @@
    "args": [],
    "kwargs": {
     "blank": true,
+    "choices": [
+     [
+      "neuve",
+      "Pompe neuve"
+     ],
+     [
+      "existante",
+      "Pompe actuelle conservée"
+     ]
+    ],
+    "help_text": "Question à l'appel : « On installe une pompe neuve, ou on garde votre pompe actuelle et on la passe au solaire ? » (neuve ou existante conservée, vide = pas encore posée).",
+    "max_length": 10,
+    "null": true,
+    "verbose_name": "Mode de pompe"
+   },
+   "nom": "mode_pompe",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Quelle puissance en kW est écrite sur la plaque de votre pompe actuelle ? » (kW, vide = pas encore posée).",
+    "max_digits": 6,
+    "null": true,
+    "verbose_name": "Pompe actuelle — puissance plaque (kW)"
+   },
+   "nom": "pompe_actuelle_kw",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "help_text": "Question à l'appel : « Quelle tension est écrite sur la plaque : 220 V ou 380 V ? » (volts, vide = pas encore posée).",
+    "null": true,
+    "verbose_name": "Pompe actuelle — tension plaque (V)"
+   },
+   "nom": "pompe_actuelle_tension_v",
+   "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "mono",
+      "Monophasé"
+     ],
+     [
+      "tri",
+      "Triphasé"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Sur la plaque, la pompe est-elle monophasée ou triphasée ? » (vide = pas encore posée).",
+    "max_length": 4,
+    "null": true,
+    "verbose_name": "Pompe actuelle — phases plaque"
+   },
+   "nom": "pompe_actuelle_phases",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
     "decimal_places": 1,
     "help_text": "Question à l'appel : « Combien de bouteilles de butane par jour en saison ? » (bouteilles de 12 kg par jour d'irrigation, vide = pas encore posée).",
     "max_digits": 5,
@@ -1248,6 +1316,19 @@
    },
    "nom": "mois_irrigation",
    "type": "JSONField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 1,
+    "help_text": "Question à l'appel : « Vous irriguez combien de jours par semaine en saison ? » (1 à 7, vide = pas encore posée).",
+    "max_digits": 3,
+    "null": true,
+    "verbose_name": "Jours d'irrigation par semaine"
+   },
+   "nom": "jours_irrigation_semaine",
+   "type": "DecimalField"
   },
   {
    "args": [],

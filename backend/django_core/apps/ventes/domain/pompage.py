@@ -809,7 +809,14 @@ def _site_du_calcul(res, reglages, sans_tmy):
     profils = profils_horaires_site(ville=ville, lat=lat, lon=lon)
     alertes_pvgis = []
     coordonnees = None
-    if profils is None:
+    if profils is None and not ville and (lat is None or lon is None):
+        # AGQ26 (C-AGQ-025) — aucun site transmis : ce n'est PAS une panne
+        # PVGIS, c'est la localisation qui manque — l'alerte le dit.
+        alertes_pvgis.append(_alerte(
+            'site_inconnu', 'localisation',
+            "Site non renseigné (ville ou GPS) : production en repli plat "
+            "(débit × heures du réglage société), sans variation mensuelle."))
+    elif profils is None:
         alertes_pvgis.append(_alerte(
             'pvgis_indisponible', 'production',
             "Irradiation du site indisponible : production en REPLI PLAT "

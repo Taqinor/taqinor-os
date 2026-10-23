@@ -41,6 +41,10 @@ import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
 } from '../../features/ventes/etudePompagePreviewPur'
 import { entreesPompageDuLead } from '../../features/ventes/quote/entreesPompageLead'
+// AGQ25 — journal du devis automatique, rendu unique partagé avec la fiche lead.
+import AlertesDevisAuto from '../crm/leads/AlertesDevisAuto'
+// AGQ16 — lignes du devis en cours → corps de la carte économie (fonction pure).
+import { lignesEconomieDepuisEcran } from '../../features/ventes/economiePompagePreviewPur'
 import {
   ECO_POMPAGE_VIDE, ATTESTATION_VIDE,
 } from '../../features/ventes/quote/etudeMarcheBloc'
@@ -1186,12 +1190,23 @@ export default function DevisGenerator({
     if ('energie' in eco) eco.energieProvenance = res.eco.energieProvenance
     if ('mois' in eco) eco.moisProvenance = res.eco.moisProvenance
     if (Object.keys(eco).length) setEcoPompage((e) => ({ ...e, ...eco }))
+    // AGQ39 (D-AGQ-10) — mode de pompe et plaque du lead → `pompageSaisie`,
+    // même règle : une saisie du vendeur n'est jamais écrasée.
+    const saisieLead = Object.entries(res.saisie || {})
+    if (saisieLead.length) {
+      setPompageSaisie((s) => saisieLead.reduce((suite, [chemin, valeur]) => {
+        const courant = chemin.split('.').reduce((n, k) => (n == null ? n : n[k]), suite)
+        if (!libre(`saisie.${chemin}`, courant)) return suite
+        posesLead.current[`saisie.${chemin}`] = valeur
+        return poserSaisie(suite, chemin, valeur)
+      }, s))
+    }
     setProvenancesLead(res.provenances)
   }
 
   // SPL50 — lien lead/client du devis (déplacé tel quel dans le hook ; l'effet d'arrivée du lead reste plus bas).
   const {
-    applyLead, applyClient, runAutoQuote,
+    applyLead, applyClient, runAutoQuote, alertesAuto,
   } = useLeadClientEcran({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
@@ -1445,9 +1460,14 @@ export default function DevisGenerator({
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
     farmHmtStatic, farmHmtDrawdown, leadId: leadId || null,
     editId: editId || null,
+    // AGQ26 (C-AGQ-025) — le SITE du lead (ville de calcul + GPS) : sans lui,
+    // la production retombait en repli plat en accusant PVGIS.
+    ville: villeCalculLead || '',
+    lat: selectedLead?.gps_lat ?? '', lon: selectedLead?.gps_lng ?? '',
   }), [pompageSaisie, pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit,
     pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId])
+    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId,
+    villeCalculLead, selectedLead])
   const pompageManquants = modeInstallation === 'agricole'
     ? manquantsPompage(etatPompage) : []
   const corpsPompage = modeInstallation === 'agricole'
@@ -1708,6 +1728,8 @@ export default function DevisGenerator({
                 <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
               )}
             </div>
+            {/* AGQ25 — le journal du devis automatique (même rendu que la fiche lead). */}
+            <AlertesDevisAuto alertes={alertesAuto} />
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
               <Button
                 onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}
@@ -2034,6 +2056,8 @@ export default function DevisGenerator({
           farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
           pompageSaisie={pompageSaisie} majPompage={majPompage}
           apercuPompage={apercuPompage}
+          // AGQ16 — la carte économie chiffre le devis EN COURS (lignes comptées + remise globale).
+          lignesDevis={lignesEconomieDepuisEcran(lines, discountPct)}
         />
 
         {/* ── Paramètres techniques ── */}

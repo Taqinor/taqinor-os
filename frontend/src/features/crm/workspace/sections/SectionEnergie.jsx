@@ -557,6 +557,10 @@ const REGION_AGRICOLE = {
 }
 // source-choix: crm.Lead.pompe_actuelle_type
 const POMPE_ACTUELLE_TYPE = { immergee: 'Immergée', surface: 'De surface', ne_sait_pas: 'Ne sait pas' }
+// source-choix: crm.Lead.mode_pompe
+const MODE_POMPE = { neuve: 'Pompe neuve', existante: 'Pompe actuelle conservée' }
+// source-choix: crm.Lead.pompe_actuelle_phases
+const POMPE_ACTUELLE_PHASES = { mono: 'Monophasé', tri: 'Triphasé' }
 // source-choix: crm.Lead.pompe_alim_actuelle
 const POMPE_ALIM_ACTUELLE = {
   aucune: 'Aucune pompe', diesel: 'Diesel', butane: 'Butane', electrique: 'Électrique (réseau)',
@@ -600,6 +604,10 @@ const QUESTIONS_POMPAGE = {
   pompe_actuelle_cv: "« Quelle est la puissance de votre pompe ACTUELLE, en chevaux ? »",
   pompe_actuelle_type: "« Votre pompe actuelle est-elle immergée dans le forage, ou en surface ? »",
   pompe_actuelle_debit_m3h: "« Combien d'eau votre pompe actuelle sort-elle par heure ? »",
+  mode_pompe: "« On installe une pompe neuve, ou on garde votre pompe actuelle et on la passe au solaire ? »",
+  pompe_actuelle_kw: "« Quelle puissance en kW est écrite sur la plaque de votre pompe actuelle ? »",
+  pompe_actuelle_tension_v: "« Quelle tension est écrite sur la plaque : 220 V ou 380 V ? »",
+  pompe_actuelle_phases: "« Sur la plaque, la pompe est-elle monophasée ou triphasée ? »",
   pompage_heures_jour: "« Combien d'heures par jour la pompe ACTUELLE tourne-t-elle ? »",
   pompe_alim_actuelle: "« Votre pompe actuelle marche à quoi — diesel, butane, électricité, ou vous n'en avez pas ? »",
   butane_bouteilles_jour: "« Combien de bouteilles de butane utilisez-vous par jour d'irrigation ? »",
@@ -607,6 +615,7 @@ const QUESTIONS_POMPAGE = {
   carburant_prix_unitaire_mad: "« Combien payez-vous la bouteille (ou le litre) ? »",
   depense_carburant_mad_mois: "« Combien dépensez-vous en carburant par mois ? »",
   mois_irrigation: "« Quels mois de l'année irriguez-vous ? »",
+  jours_irrigation_semaine: "« Vous irriguez combien de jours par semaine en saison ? »",
   distance_forage_champ_m: "« Quelle distance entre le forage et l'endroit où on poserait les panneaux ? »",
   electricite_sur_place: "« Avez-vous l'électricité sur place : monophasé, triphasé, ou pas du tout ? »",
   autorisation_prelevement: "« Avez-vous une autorisation de prélèvement de l'agence de bassin (ABH) ? »",
@@ -749,6 +758,7 @@ export function SectionPompage({ state, setField, errors = {} }) {
   const debitEgalHmt = debit !== null && hmt !== null && debit === hmt
   const nouveauForage = getField(state, 'projet_pompage') === 'nouveau_forage'
   const prixDeclareLe = state?.server?.carburant_prix_declare_le
+  const modeParDefaut = state?.server?.devis_auto?.mode_pompe?.par_defaut === true
   return (
     <>
       <BlocPompage titre="Énergie actuelle">
@@ -801,6 +811,10 @@ export function SectionPompage({ state, setField, errors = {} }) {
           <PompChoix data-field-anchor="lf-region-agricole" cle="region_agricole" ctx={ctx} choix={REGION_AGRICOLE} />
         </div>
         <PompMois data-field-anchor="lf-mois-irrigation" cle="mois_irrigation" ctx={ctx} />
+        {/* AGQ10 (D-AGQ-6) — sans eux, une conso butane « par jour d'irrigation » laisse « Votre argent » omis. */}
+        <div className="form-row">
+          <PompNombre data-field-anchor="lf-jours-irrigation-semaine" cle="jours_irrigation_semaine" ctx={ctx} placeholder="ex: 5" />
+        </div>
       </BlocPompage>
 
       <BlocPompage titre="Pompe actuelle & site">
@@ -813,6 +827,18 @@ export function SectionPompage({ state, setField, errors = {} }) {
           <PompNombre data-field-anchor="lf-pompe-actuelle-debit" cle="pompe_actuelle_debit_m3h" ctx={ctx} />
           <PompNombre data-field-anchor="lf-pompage-heures-jour" cle="pompage_heures_jour" ctx={ctx} placeholder="ex: 8" />
         </div>
+        {/* AGQ39 (D-AGQ-10) — neuve, ou pompe actuelle conservée : la plaque (kW, tension, phases) est alors exigée. */}
+        <div className="form-row">
+          <PompChoix data-field-anchor="lf-mode-pompe" cle="mode_pompe" ctx={ctx} choix={MODE_POMPE} />
+          <PompNombre data-field-anchor="lf-pompe-actuelle-kw" cle="pompe_actuelle_kw" ctx={ctx} placeholder="ex: 5,5" />
+          <PompNombre data-field-anchor="lf-pompe-actuelle-tension" cle="pompe_actuelle_tension_v" ctx={ctx} placeholder="ex: 380" />
+          <PompChoix data-field-anchor="lf-pompe-actuelle-phases" cle="pompe_actuelle_phases" ctx={ctx} choix={POMPE_ACTUELLE_PHASES} />
+        </div>
+        {modeParDefaut && (
+          <p className="gen-hint" data-mode-pompe="par-defaut">
+            Mode de pompe non renseigné : le devis automatique part en pompe neuve (par défaut).
+          </p>
+        )}
         <div className="form-row">
           <PompNombre data-field-anchor="lf-distance-forage-champ" cle="distance_forage_champ_m" ctx={ctx} placeholder="ex: 25" />
           <PompChoix data-field-anchor="lf-electricite-sur-place" cle="electricite_sur_place" ctx={ctx} choix={ELECTRICITE_SUR_PLACE} />

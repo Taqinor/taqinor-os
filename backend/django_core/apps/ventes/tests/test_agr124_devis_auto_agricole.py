@@ -115,6 +115,39 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertIn("relevé du point d'eau", rep.data['detail'].lower())
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
+    def test_meme_cle_un_seul_devis(self):
+        """AGQ23 (C-AGQ-022) — deux POST identiques avec la même
+        ``Idempotency-Key`` (2ᵉ clic après un délai dépassé) : UN seul devis,
+        la seconde réponse rejoue le 201 ; une autre clé en crée un autre."""
+        self._pompe('15000')
+        lead = self._lead()
+        cle = {'HTTP_IDEMPOTENCY_KEY': 'agq23-panneau-1'}
+        premier = self.api.post(AUTO_URL, {'lead': lead.id}, format='json',
+                                **cle)
+        self.assertEqual(premier.status_code, 201, premier.data)
+        second = self.api.post(AUTO_URL, {'lead': lead.id}, format='json',
+                               **cle)
+        self.assertEqual(second.status_code, 201, second.data)
+        self.assertEqual(second.data['id'], premier.data['id'])
+        self.assertEqual(Devis.objects.filter(lead=lead).count(), 1)
+        autre = self.api.post(AUTO_URL, {'lead': lead.id}, format='json',
+                              HTTP_IDEMPOTENCY_KEY='agq23-panneau-2')
+        self.assertEqual(autre.status_code, 201, autre.data)
+        self.assertEqual(Devis.objects.filter(lead=lead).count(), 2)
+
+    def test_field_du_409_nomme_le_debit_du_forage(self):
+        """AGQ22 (C-AGQ-021) — niveau d'eau connu, débit du forage inconnu :
+        le 409 de la règle de visite nomme ``debit_forage_m3h`` (jamais
+        ``niveau_statique_m`` par défaut)."""
+        self._pompe('15000')
+        lead = self._lead(debit_forage_m3h=None)
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertIn('D-AGR-4', rep.data['detail'])
+        self.assertEqual(rep.data['field'], 'debit_forage_m3h')
+        lead = self._lead(niveau_statique_m=None, debit_forage_m3h=None)
+        self.assertEqual(self._post(lead).data['field'], 'niveau_statique_m')
+
     def test_donnee_hydraulique_manquante_422_nommant_le_champ(self):
         self._pompe('15000')
         lead = self._lead(pompe_hmt_m=None, niveau_statique_m=None)
@@ -314,6 +347,78 @@ class DevisAutoAgricoleTests(TestCase):
                          [4, 5, 6, 7, 8, 9])
         self.assertEqual(saisies['mois_irrigation']['provenance']['origine'],
                          'lead')
+
+    def test_lead_butane_jours_irrigation_economie_calculee(self):
+        """AGQ10 (D-AGQ-6) — avec les jours d'irrigation par semaine du lead,
+        la dépense butane « par jour d'irrigation » se chiffre : le bloc
+        économie du devis automatique est ``calcule`` (plus ``omis``)."""
+        self._pompe('15000')
+        lead = self._lead(
+            pompe_alim_actuelle='butane',
+            butane_bouteilles_jour=Decimal('2'),
+            carburant_prix_unitaire_mad=Decimal('50'),
+            carburant_prix_declare_le=date(2026, 9, 12),
+            mois_irrigation=[4, 5, 6, 7, 8, 9, 10],
+            jours_irrigation_semaine=Decimal('5'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        saisies = Devis.objects.get(
+            pk=rep.data['id']).etude_params['saisies_economie_pompage']
+        self.assertEqual(
+            saisies['consommation']['jours_irrigation_par_semaine'], 5)
+        eco = self.api.get(
+            f"/api/django/ventes/devis/{rep.data['id']}/economie-pompage/")
+        self.assertEqual(eco.status_code, 200, eco.content[:500])
+        corps = eco.json()
+        self.assertEqual(corps['statut'], 'calcule', corps.get('omissions'))
+        # Σ mois cochés : 2 bouteilles × 5 j ÷ 7 × jours du mois × 50 MAD.
+        jours_du_mois = (30, 31, 30, 31, 31, 30, 31)  # avril → octobre
+        attendu = round(sum(2 * 5 * j / 7.0 * 50 for j in jours_du_mois), 2)
+        self.assertEqual(corps['depense_actuelle']['annuelle_mad'], attendu)
+
+    def _lead_existante(self, **extra):
+        champs = dict(
+            mode_pompe='existante', pompe_actuelle_kw=Decimal('5.5'),
+            pompe_actuelle_tension_v=380, pompe_actuelle_phases='tri',
+            pompe_actuelle_type='immergee',
+            pompe_actuelle_debit_m3h=Decimal('30'),
+            pompage_heures_jour=Decimal('6'))
+        champs.update(extra)
+        return self._lead(**champs)
+
+    def test_lead_existante_sans_ligne_pompe(self):
+        """AGQ39 (D-AGQ-10) — « pompe existante conservée » sur le lead : le
+        devis automatique n'ajoute AUCUNE ligne pompe ; variateur et champ
+        sont dimensionnés sur la plaque (5,5 kW / 380 V / tri)."""
+        pompe = self._pompe('15000')
+        lead = self._lead_existante()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertFalse(devis.lignes.filter(produit=pompe).exists())
+        self.assertFalse(devis.lignes.filter(
+            produit__role_pompage='pompe').exists())
+        self.assertTrue(devis.lignes.filter(produit=self.variateur).exists())
+        self.assertTrue(devis.lignes.filter(produit=self.panneau).exists())
+
+    def test_lead_existante_sans_plaque_refuse_en_la_nommant(self):
+        self._pompe('15000')
+        lead = self._lead_existante(pompe_actuelle_tension_v=None)
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'pompe_actuelle_kw')
+        self.assertIn('plaque de la pompe actuelle', rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_lead_existante_variateur_sans_prix_409_nomme(self):
+        self._pompe('15000')
+        Produit.objects.filter(pk=self.variateur.pk).update(
+            prix_vente=Decimal('0'))
+        lead = self._lead_existante()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.variateur')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
     def test_agnr39_cible_kwc_refusee_400_nommant_target_kwc(self):
         """AGNR39 — une puissance cible envoyée pour un lead agricole est

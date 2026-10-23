@@ -98,6 +98,7 @@ from .fiche_selectors import (
     lead_current_stage, lead_criteria_for_territoire, leads_recents_pour_couverture,
     leads_export_rows, dernier_contact_lead, leads_signes_sans_devis_accepte,
     champs_devis_auto_manquants, lead_en_attente_ou_veille,
+    visite_point_eau_du_lead,
 )
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
@@ -166,5 +167,5 @@ __all__ = [
     'salle_vente_analytics', 'salle_vente_summary_for_lead', 'signed_lead_phone_keys',
     'signed_leads_for_campaigns', 'site_location_for_devis', 'site_profile_for_client',
     'soumissions_partenaire_portail', 'specialites_partenaire_cles', 'stats_equipe',
-    'trier_file_du_jour', 'ville_effective',
+    'trier_file_du_jour', 'ville_effective', 'visite_point_eau_du_lead',
 ]

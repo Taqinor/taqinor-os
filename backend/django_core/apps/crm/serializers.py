@@ -35,7 +35,8 @@ from .models import (
 )
 from .devis_auto import (
     champs_manquants_detail, champs_requis, message_manquants,
-    source_conso, visite_avant_devis, visite_point_eau_avant_devis)
+    mode_pompe_du_lead, source_conso, visite_avant_devis,
+    visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
 
@@ -704,6 +705,14 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def validate_whatsapp(self, value):
         return self._canonical_phone(value)
 
+    def validate_jours_irrigation_semaine(self, value):
+        """AGQ10 (D-AGQ-6) — 0 < jours ≤ 7 ; vide reste vide (jamais un
+        défaut). Refus nommé, jamais un arrondi silencieux."""
+        if value is not None and not (0 < value <= 7):
+            raise serializers.ValidationError(
+                "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu).")
+        return value
+
     def validate_ville(self, value):
         """VREF — auto-correction de la ville à l'écriture (même règle que
         le webhook site et la sync Odoo) : une graphie connue, une forme
@@ -741,6 +750,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # industriel seulement, null ailleurs ; jamais un blocage.
             'source_conso': source_conso(obj),
             'visite_avant_devis': visite_avant_devis(obj),
+            # AGQ39 (D-AGQ-10) — {valeur, par_defaut} pour un agricole (mode
+            # vide ⇒ « neuve » étiqueté « par défaut »), null ailleurs.
+            'mode_pompe': mode_pompe_du_lead(obj),
         }
 
     @extend_schema_field(serializers.DictField(allow_null=True))

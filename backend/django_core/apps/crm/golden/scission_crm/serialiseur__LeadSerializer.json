@@ -595,6 +595,30 @@
    "required": false
   },
   {
+   "classe": "ChoiceField",
+   "nom": "mode_pompe",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pompe_actuelle_kw",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "pompe_actuelle_tension_v",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "pompe_actuelle_phases",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "LeadDecimalField",
    "nom": "butane_bouteilles_jour",
    "read_only": false,
@@ -621,6 +645,12 @@
   {
    "classe": "ListeMois",
    "nom": "mois_irrigation",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "jours_irrigation_semaine",
    "read_only": false,
    "required": false
   },
