@@ -101,8 +101,10 @@ class SuiteApresAppel(_Base):
         self.assertIn('ABH', etape.note)
 
     def test_b_agricole_avec_niveau_et_debit_etape_devis(self):
+        # AGQ9 (D-AGQ-5, réaligné) — la HMT saisie fait le groupe prêt.
         lead = self._lead(type_installation='agricole',
-                          niveau_statique_m='32', pompe_debit_m3h='12')
+                          niveau_statique_m='32', pompe_debit_m3h='12',
+                          pompe_hmt_m='60')
         self.assertFalse(releve_eau_manquant(lead))
         self._joint_au_premier_appel(lead)
         cles = self._cles_ouvertes(lead)

@@ -29,8 +29,11 @@ _MODE_AGRICOLE = 'agricole'
 #: aussi par AGR530). ``pompe_actuelle_debit_m3h`` ne compte QUE si
 #: ``pompage_heures_jour`` est renseigné (volume déclaré = débit actuel ×
 #: heures actuelles, D-AGR-3 ; dérivé par AGR404).
+#: AGQ9 (D-AGQ-5) — la HMT SAISIE est requise : le niveau d'eau seul ne fait
+#: aucune HMT (il faut dénivelé, conduite, pertes) et ne compte que pour la
+#: règle de visite D-AGR-4 (``visite_point_eau_avant_devis``).
 GROUPES_HYDRAULIQUES_AGRICOLES = (
-    ('pompe_hmt_m', 'niveau_statique_m'),
+    ('pompe_hmt_m',),
     ('pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h'),
 )
 
@@ -135,7 +138,7 @@ _ORDRE_SOURCE_CONSO = ('releve_conso', 'conso_mensuelle_kwh', 'bill_kwh',
 #: groupe (celui que la puce « manquant » vise). Libellés inchangés.
 _LIBELLES = {
     # AGR403 — libellés du contrat ``devis_auto_pret.json``.
-    'pompe_hmt_m': "HMT (m) ou niveau d'eau",
+    'pompe_hmt_m': 'HMT (m)',
     'pompe_debit_m3h': ('Débit souhaité, besoin en eau (m³/jour) ou débit '
                         'de la pompe actuelle'),
     # ── CAD-M ── CAD166 — LE DOSSIER PRO ÉTAIT BLOQUÉ ALORS QUE LA DONNÉE

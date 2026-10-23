@@ -212,6 +212,31 @@ class SaisieParLApi(TestCase):
         self.assertIsNone(self.lead.niveau_statique_source)
 
 
+class ReglePret(SimpleTestCase):
+    """AGQ9 (D-AGQ-5) — la HMT SAISIE est requise ; le niveau d'eau ne
+    compte que pour la règle de visite D-AGR-4."""
+
+    def test_niveau_seul_ne_suffit_pas(self):
+        from apps.crm import devis_auto
+        lead = Lead(nom='Ferme', type_installation='agricole',
+                    niveau_statique_m=Decimal('45'),
+                    pompe_debit_m3h=Decimal('20'))
+        self.assertEqual(devis_auto.champs_manquants_detail(lead),
+                         [{'champ': 'pompe_hmt_m', 'label': 'HMT (m)'}])
+        self.assertEqual(devis_auto.champs_requis(lead)[0], ['pompe_hmt_m'])
+        lead.pompe_hmt_m = Decimal('70')
+        self.assertEqual(devis_auto.champs_manquants_detail(lead), [])
+
+    def test_la_visite_lit_toujours_le_niveau_et_le_debit_du_forage(self):
+        from apps.crm.devis_auto import visite_point_eau_avant_devis
+        lead = Lead(nom='Ferme', type_installation='agricole',
+                    pompe_hmt_m=Decimal('70'), pompe_debit_m3h=Decimal('20'))
+        self.assertTrue(visite_point_eau_avant_devis(lead)['requise'])
+        lead.niveau_statique_m = Decimal('45')
+        lead.debit_forage_m3h = Decimal('25')
+        self.assertFalse(visite_point_eau_avant_devis(lead)['requise'])
+
+
 class FusionConserveLePompage(TestCase):
     def test_la_fusion_recopie_les_colonnes_vides_du_survivant(self):
         company, _ = Company.objects.get_or_create(

@@ -30,7 +30,7 @@ from apps.ventes.models import Devis
 User = get_user_model()
 
 # AGR403 — libellés du contrat ``devis_auto_pret.json`` (exemple_agricole).
-LIB_HMT = "HMT (m) ou niveau d'eau"
+LIB_HMT = 'HMT (m)'  # AGQ9 (D-AGQ-5)
 LIB_DEBIT = ('Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe '
              'actuelle')
 MSG_AGRICOLE = f'Manque : {LIB_HMT}, {LIB_DEBIT}'
@@ -173,19 +173,24 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
                           pompe_debit_m3h=Decimal('20'))
         self.assertEqual(champs_manquants(lead), [])
 
-    def test_niveau_et_besoin_m3j_est_pret(self):
-        lead = self._lead(niveau_statique_m=Decimal('32'),
+    def test_hmt_et_besoin_m3j_est_pret(self):
+        # AGQ9 (D-AGQ-5, réaligné) — la HMT saisie fait le groupe ; le niveau
+        # d'eau seul ne suffit plus.
+        lead = self._lead(pompe_hmt_m=Decimal('60'),
                           besoin_eau_m3j=Decimal('135'))
         self.assertEqual(champs_manquants(lead), [])
-
-    def test_niveau_et_debit_actuel_avec_heures_est_pret(self):
         lead = self._lead(niveau_statique_m=Decimal('32'),
+                          besoin_eau_m3j=Decimal('135'))
+        self.assertEqual(champs_manquants(lead), [LIB_HMT])
+
+    def test_hmt_et_debit_actuel_avec_heures_est_pret(self):
+        lead = self._lead(pompe_hmt_m=Decimal('60'),
                           pompe_actuelle_debit_m3h=Decimal('10'),
                           pompage_heures_jour=Decimal('7'))
         self.assertEqual(champs_manquants(lead), [])
 
     def test_debit_actuel_sans_heures_n_est_pas_pret(self):
-        lead = self._lead(niveau_statique_m=Decimal('32'),
+        lead = self._lead(pompe_hmt_m=Decimal('60'),
                           pompe_actuelle_debit_m3h=Decimal('10'))
         self.assertEqual(champs_manquants(lead), [LIB_DEBIT])
 

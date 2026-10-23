@@ -396,9 +396,9 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     mode_pompe = ((sortie.get('entrees_resolues') or {}).get(
         'mode_pompe') or {}).get('valeur') or 'neuve'
     if hmt_m is None:
-        raise AutoDevisError(
-            "HMT introuvable : saisissez la HMT ou le niveau d'eau du forage.",
-            field='pompe_hmt_m')
+        # AGQ9 (D-AGQ-5) — le niveau d'eau seul ne fait pas une HMT.
+        raise AutoDevisError('HMT introuvable : saisissez la HMT (m).',
+                             field='pompe_hmt_m')
     if mode_pompe != 'existante' and debit is None:
         # AGQ1 (D-AGQ-1) — le débit souhaité fait le besoin (× heures-pic) :
         # s'il est saisi, ce qui manque ce sont les heures de pompage.
