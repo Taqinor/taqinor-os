@@ -69,6 +69,43 @@ class OptionsPompageTests(TestCase):
         self.assertEqual(p.role_pompage, '')
 
 
+class Pompage(TestCase):
+    """AGQ36 (C-AGQ-004) — le kit minimum a un article de structure AU SOL
+    à chiffrer (rôle ``structure_sol``), jamais la structure de toiture."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='agq36-co', defaults={'nom': 'AGQ36 Co'})[0]
+
+    def test_structure_sol_semee_a_prix_vide(self):
+        from apps.stock.selectors import produits_pompage
+        from core.product_roles import est_panneau
+        _seed(self.co)
+        p = Produit.objects.get(company=self.co, sku='STR-SOL-PMP')
+        self.assertEqual(p.role_pompage, 'structure_sol')
+        self.assertEqual(p.prix_vente, 0)
+        self.assertEqual(p.prix_achat, 0)
+        # Jamais lu comme un panneau (puissance crête, décompte de modules).
+        self.assertFalse(est_panneau(p.nom))
+        self.assertEqual(p.fiche_technique.struct_type_pose, 'sol')
+        roles = {e['sku']: e.get('role_pompage')
+                 for e in produits_pompage(self.co)}
+        self.assertEqual(roles.get('STR-SOL-PMP'), 'structure_sol')
+        # La structure de TOITURE reste sans rôle pompage.
+        for toit in Produit.objects.filter(company=self.co,
+                                           nom='Structures acier'):
+            self.assertNotEqual(toit.role_pompage, 'structure_sol')
+
+    def test_structure_sol_rejouee_sans_doublon_prix_saisi_garde(self):
+        _seed(self.co)
+        Produit.objects.filter(company=self.co, sku='STR-SOL-PMP').update(
+            prix_vente=450)
+        _seed(self.co)
+        qs = Produit.objects.filter(company=self.co, sku='STR-SOL-PMP')
+        self.assertEqual(qs.count(), 1)
+        self.assertEqual(qs.get().prix_vente, 450)
+
+
 class MigrationRolesTests(TestCase):
     def setUp(self):
         self.co = Company.objects.get_or_create(
