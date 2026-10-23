@@ -1092,7 +1092,6 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
 from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     FACTEUR_MAX_FALAISE,
     MAX_PALIERS_STOCKAGE,
-    SEUIL_PANNEAUX_RESIDENTIEL,
     _arrondi,
     _lire_composition,
     _num,
@@ -1100,3 +1099,4 @@ from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-
     capacite_utile_batterie,
     paliers_stockage_candidats,
 )
+from apps.ventes.balayage_adaptatif import SEUIL_PANNEAUX_RESIDENTIEL  # noqa: E402 — fin de module (D-ENF22)

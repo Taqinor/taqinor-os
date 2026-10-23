@@ -33,6 +33,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
 
+from apps.ventes import balayage_adaptatif as B
 from apps.ventes import dimensionnement as D
 from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE
 from authentication.models import Company
@@ -76,9 +77,9 @@ class LePlafondResteGardeTest(SimpleTestCase):
     dur (troncature + perte de la recommandation, QJR411 inchangé)."""
 
     def test_le_seuil_vaut_120_et_le_plafond_dur_2000(self):
-        self.assertEqual(D.SEUIL_PANNEAUX_RESIDENTIEL, 120)
+        self.assertEqual(B.SEUIL_PANNEAUX_RESIDENTIEL, 120)
         self.assertEqual(D.MAX_PANNEAUX_BALAYAGE, 2000)
-        self.assertGreater(D.MAX_PANNEAUX_BALAYAGE, D.SEUIL_PANNEAUX_RESIDENTIEL)
+        self.assertGreater(D.MAX_PANNEAUX_BALAYAGE, B.SEUIL_PANNEAUX_RESIDENTIEL)
 
 
 class HorsResidentielRecommandeEtSignaleTest(SimpleTestCase):
@@ -94,12 +95,12 @@ class HorsResidentielRecommandeEtSignaleTest(SimpleTestCase):
         ]
         for ligne in tableau[2:]:
             ligne['hors_residentiel'] = True
-            ligne['avertissements'] = [D.MESSAGE_HORS_RESIDENTIEL]
+            ligne['avertissements'] = [B.MESSAGE_HORS_RESIDENTIEL]
         reco, motivation = D.choisir_recommandation(tableau)
         self.assertIsNotNone(reco)
         self.assertEqual(reco['panneaux'], 122)
         self.assertIn('étude sur mesure conseillée', motivation)
-        self.assertIn(str(D.SEUIL_PANNEAUX_RESIDENTIEL), motivation)
+        self.assertIn(str(B.SEUIL_PANNEAUX_RESIDENTIEL), motivation)
         for phrase in PHRASES_INTERDITES:
             self.assertNotIn(phrase, motivation)
 
@@ -250,7 +251,7 @@ class BalayageReelDeclencheLePlafondTest(TestCase):
         productibles, _source = productible_mensuel(ville=VILLE)
         productible_an = sum(productibles)
         watt = float(self._sizer(300.0)['tableau'][0]['panel_watt'])
-        panneaux_vises = D.SEUIL_PANNEAUX_RESIDENTIEL + 20
+        panneaux_vises = B.SEUIL_PANNEAUX_RESIDENTIEL + 20
         conso_an = panneaux_vises * (watt / 1000.0) * productible_an
         mensuel = math.ceil(conso_an / 12.0 / 100.0) * 100.0
 
@@ -259,15 +260,15 @@ class BalayageReelDeclencheLePlafondTest(TestCase):
         self.assertTrue(tableau)
         self.assertFalse(any(ligne.get('plafond_panneaux_atteint')
                              for ligne in tableau))
-        pas = D.pas_balayage(max(ligne['panneaux'] for ligne in tableau))
+        pas = B.pas_balayage(max(ligne['panneaux'] for ligne in tableau))
         self.assertGreater(pas, 1)
         for ligne in tableau:
             self.assertEqual(ligne.get('pas_balayage'), pas)
             self.assertEqual(
                 bool(ligne.get('hors_residentiel')),
-                ligne['panneaux'] > D.SEUIL_PANNEAUX_RESIDENTIEL)
+                ligne['panneaux'] > B.SEUIL_PANNEAUX_RESIDENTIEL)
             if ligne.get('hors_residentiel'):
-                self.assertIn(D.MESSAGE_HORS_RESIDENTIEL,
+                self.assertIn(B.MESSAGE_HORS_RESIDENTIEL,
                               ligne['avertissements'])
         reco = resultat['recommandation']
         self.assertIsNotNone(
@@ -279,7 +280,7 @@ class BalayageReelDeclencheLePlafondTest(TestCase):
             self.assertIn(reco['panneaux'] - 1, tailles)
         if reco['panneaux'] < max(tailles):
             self.assertIn(reco['panneaux'] + 1, tailles)
-        if reco['panneaux'] > D.SEUIL_PANNEAUX_RESIDENTIEL:
+        if reco['panneaux'] > B.SEUIL_PANNEAUX_RESIDENTIEL:
             self.assertIn('étude sur mesure conseillée',
                           resultat['motivation'])
         else:

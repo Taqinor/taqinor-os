@@ -38,7 +38,11 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from apps.ventes import balayage_adaptatif as B
 from apps.ventes import dimensionnement as D
+
+#: Les deux choisisseurs que le balayage adaptatif reçoit en argument.
+CHOISIRS = (D.choisir_recommandation, D.choisir_recommandation_avec)
 
 #: La note de résidu, et le bloc machine qu'elle porte. ``parents[5]`` est la
 #: racine du dépôt : tests → ventes → apps → django_core → backend → racine.
@@ -108,7 +112,7 @@ class VolumeDuBalayageTests(SimpleTestCase):
         # balayage DENSE : il est évalué taille par taille, byte-identique.
         for valeur in mesures.values():
             self.assertLess(valeur, D.MAX_PANNEAUX_BALAYAGE)
-            self.assertLessEqual(valeur, D.SEUIL_BALAYAGE_DENSE)
+            self.assertLessEqual(valeur, B.SEUIL_BALAYAGE_DENSE)
 
     def test_le_zero_de_trop_est_signale_puis_plafonne(self):
         """Décision fondateur du 23/10/2026 : un gros profil n'est plus REFUSÉ
@@ -124,11 +128,11 @@ class VolumeDuBalayageTests(SimpleTestCase):
         self.assertEqual(tailles_balayees(96000),
                          int(note['TAILLES_ZERO_DE_TROP']))
         self.assertLessEqual(tailles_balayees(96000),
-                             D.SEUIL_PANNEAUX_RESIDENTIEL)
+                             B.SEUIL_PANNEAUX_RESIDENTIEL)
         self.assertEqual(tailles_balayees(200000),
                          int(note['TAILLES_200000']))
         self.assertGreater(tailles_balayees(200000),
-                           D.SEUIL_PANNEAUX_RESIDENTIEL)
+                           B.SEUIL_PANNEAUX_RESIDENTIEL)
         self.assertLessEqual(tailles_balayees(200000), D.MAX_PANNEAUX_BALAYAGE)
         self.assertGreater(tailles_balayees(2000000), D.MAX_PANNEAUX_BALAYAGE)
 
@@ -151,11 +155,11 @@ class VolumeDuBalayageTests(SimpleTestCase):
         # plafond (``tailles_max_evaluees``), chacune avec une composition sans
         # batterie et au plus MAX_PALIERS_STOCKAGE paliers.
         note = chiffres_de_la_note()
-        self.assertEqual(D.tailles_max_evaluees(),
+        self.assertEqual(B.tailles_max_evaluees(),
                          int(note['TAILLES_MAX_EVALUEES']),
                          'le pire cas du balayage a bougé : la note de résidu '
                          'le chiffre, elle doit bouger aussi.')
-        pire_cas = D.tailles_max_evaluees() * (1 + D.MAX_PALIERS_STOCKAGE)
+        pire_cas = B.tailles_max_evaluees() * (1 + D.MAX_PALIERS_STOCKAGE)
         self.assertEqual(pire_cas, 237 * 17)
 
     def test_les_douze_jours_types_sont_PARTAGES_entre_les_capacites(self):
@@ -188,11 +192,11 @@ class NoteDeResiduTests(SimpleTestCase):
         self.assertEqual(int(note['MAX_PANNEAUX_BALAYAGE']),
                          D.MAX_PANNEAUX_BALAYAGE)
         self.assertEqual(int(note['SEUIL_PANNEAUX_RESIDENTIEL']),
-                         D.SEUIL_PANNEAUX_RESIDENTIEL)
+                         B.SEUIL_PANNEAUX_RESIDENTIEL)
         self.assertEqual(int(note['SEUIL_BALAYAGE_DENSE']),
-                         D.SEUIL_BALAYAGE_DENSE)
+                         B.SEUIL_BALAYAGE_DENSE)
         self.assertEqual(int(note['POINTS_GRILLE_GROSSIERE']),
-                         D.POINTS_GRILLE_GROSSIERE)
+                         B.POINTS_GRILLE_GROSSIERE)
         self.assertEqual(int(note['MAX_PALIERS_STOCKAGE']),
                          D.MAX_PALIERS_STOCKAGE)
         self.assertEqual(float(note['FACTEUR_MAX_FALAISE']),
@@ -240,33 +244,33 @@ class BalayageAdaptatifTests(SimpleTestCase):
     PURES de la grille, et le volume d'évaluations qu'elle garantit."""
 
     def test_le_pas_vaut_1_sous_le_seuil_dense_puis_environ_40_points(self):
-        for fin in (1, 7, 22, 39, D.SEUIL_BALAYAGE_DENSE):
-            self.assertEqual(D.pas_balayage(fin), 1, fin)
-        self.assertEqual(D.pas_balayage(D.SEUIL_BALAYAGE_DENSE + 1), 2)
-        self.assertEqual(D.pas_balayage(660), 17)
-        self.assertEqual(D.pas_balayage(D.MAX_PANNEAUX_BALAYAGE), 50)
+        for fin in (1, 7, 22, 39, B.SEUIL_BALAYAGE_DENSE):
+            self.assertEqual(B.pas_balayage(fin), 1, fin)
+        self.assertEqual(B.pas_balayage(B.SEUIL_BALAYAGE_DENSE + 1), 2)
+        self.assertEqual(B.pas_balayage(660), 17)
+        self.assertEqual(B.pas_balayage(D.MAX_PANNEAUX_BALAYAGE), 50)
         for fin in (61, 140, 660, 2000):
             with self.subTest(fin=fin):
                 self.assertLessEqual(
-                    len(D.tailles_grille(1, fin, D.pas_balayage(fin))),
-                    D.POINTS_GRILLE_GROSSIERE + 1)
+                    len(B.tailles_grille(1, fin, B.pas_balayage(fin))),
+                    B.POINTS_GRILLE_GROSSIERE + 1)
 
     def test_la_grille_dense_est_byte_identique_a_l_intervalle(self):
         for debut, fin in ((1, 39), (3, 3), (1, 60)):
             with self.subTest(debut=debut, fin=fin):
-                self.assertEqual(D.tailles_grille(debut, fin, 1),
+                self.assertEqual(B.tailles_grille(debut, fin, 1),
                                  list(range(debut, fin + 1)))
-        self.assertEqual(D.tailles_grille(5, 4, 1), [])
+        self.assertEqual(B.tailles_grille(5, 4, 1), [])
 
     def test_la_grille_grossiere_inclut_toujours_les_deux_bornes(self):
-        grille = D.tailles_grille(1, 660, 17)
+        grille = B.tailles_grille(1, 660, 17)
         self.assertEqual(grille[0], 1)
         self.assertEqual(grille[-1], 660)
         self.assertEqual(grille, sorted(set(grille)))
 
     def test_le_raffinement_ajoute_les_voisins_bornes_sans_doublon(self):
-        grille = D.tailles_grille(1, 660, 17)
-        tailles = D.tailles_raffinees(grille, [290, 660], 17, 1, 660)
+        grille = B.tailles_grille(1, 660, 17)
+        tailles = B.tailles_raffinees(grille, [290, 660], 17, 1, 660)
         self.assertEqual(tailles, sorted(set(tailles)))
         self.assertTrue(set(range(274, 307)).issubset(tailles))
         self.assertTrue(set(range(644, 661)).issubset(tailles))
@@ -284,8 +288,8 @@ class BalayageAdaptatifTests(SimpleTestCase):
             appels.append(panneaux)
             return _ligne_factice(panneaux)
 
-        pas = D.pas_balayage(660)
-        tableau = D._tableau_adaptatif(evaluer, 1, 660, False, pas)
+        pas = B.pas_balayage(660)
+        tableau = B.tableau_adaptatif(evaluer, 1, 660, False, CHOISIRS)
         self.assertLessEqual(len(set(appels)), 41 + 2 * (2 * pas - 2))
         reco, motivation = D.choisir_recommandation(tableau)
         self.assertIsNotNone(reco)
@@ -298,14 +302,14 @@ class BalayageAdaptatifTests(SimpleTestCase):
         for ligne in tableau:
             self.assertEqual(
                 ligne.get('hors_residentiel', False),
-                ligne['panneaux'] > D.SEUIL_PANNEAUX_RESIDENTIEL)
-        self.assertGreater(reco['panneaux'], D.SEUIL_PANNEAUX_RESIDENTIEL)
+                ligne['panneaux'] > B.SEUIL_PANNEAUX_RESIDENTIEL)
+        self.assertGreater(reco['panneaux'], B.SEUIL_PANNEAUX_RESIDENTIEL)
         self.assertIn('étude sur mesure conseillée', motivation)
 
     def test_un_balayage_dense_ne_porte_aucune_cle_nouvelle(self):
         """Sous le seuil dense, les lignes ont EXACTEMENT la forme d'hier :
         ni ``pas_balayage`` ni ``hors_residentiel``, motivation inchangée."""
-        tableau = D._tableau_adaptatif(_ligne_factice, 1, 39, False, 1)
+        tableau = B.tableau_adaptatif(_ligne_factice, 1, 39, False, CHOISIRS)
         self.assertEqual([ligne['panneaux'] for ligne in tableau],
                          list(range(1, 40)))
         for ligne in tableau:
