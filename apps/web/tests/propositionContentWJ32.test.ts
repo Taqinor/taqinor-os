@@ -3,12 +3,13 @@
 // quand sa donnée backend est absente — jamais un chiffre inventé.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { ETAPES_AGRICOLES } from '../src/lib/propositionAgricole';
 import {
   proposalVariants,
   proposalGammes,
   gammeEcartLabel,
   gammeComparatif,
-  nextSteps, ETAPES_AGRICOLES,
+  nextSteps,
   proposalAssumptions,
   monitoringPoints,
   objectionFaq,
