@@ -309,3 +309,23 @@
    1031px dans 1018px »), contre la promesse EDC2 « sans défilement horizontal ».
    Le texte de la cellule se coupe où il faut ; la colonne garde sa largeur. */
 .lines-table td[data-label="TVA %"] { overflow-wrap: anywhere; }
+
+/* ── EDC10 — colonne « Produit (stock) » : le nom du produit ne dicte plus la largeur ── */
+/* Nocturnes 39747525775 (22/10) et 39924022026 (23/10), « table 1031px dans
+   1018px » à 1 366 px, rail replié — mesuré en CI (scratch 39997510569, largeur
+   par colonne à chaque instant) : AVANT l'arrivée du catalogue produits, chaque
+   ProduitPicker affiche « — Produit — » et la colonne fait ses 170 px (table
+   1018, elle tient) ; DÈS que le catalogue est appliqué, le bouton du picker
+   porte le nom du produit sélectionné et ce texte (`truncate` dans un flex)
+   remonte EN ENTIER comme largeur minimale de la cellule dans la mise en page
+   automatique de la table : la colonne passe à 307 px, écrase Prix (108 au
+   lieu de 128), Total (106) et Ordre (60) sous leur largeur, et la table se
+   fige à 1 031 px. Les nuits vertes mesuraient AVANT le catalogue (faux vert :
+   l'écran débordait une fois chargé) ; CAD177 (cellule TVA, ci-dessus) visait
+   la mauvaise colonne — ce débordement n'a jamais dépendu de la police (sans
+   police de marque : 1 054 px, même colonne). `contain: inline-size` : la
+   taille intrinsèque du bouton ne lit plus son contenu, la colonne garde le
+   `minWidth` de son en-tête (170 px) + sa part de l'espace libre, et le nom
+   long se coupe en « … » comme prévu (`truncate`). Le menu déroulant garde
+   sa largeur mesurée (`--radix-popover-trigger-width`), hors flux. */
+.lines-table td[data-label="Produit (stock)"] > button { contain: inline-size; }
