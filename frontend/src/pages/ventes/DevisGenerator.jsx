@@ -1460,9 +1460,14 @@ export default function DevisGenerator({
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
     farmHmtStatic, farmHmtDrawdown, leadId: leadId || null,
     editId: editId || null,
+    // AGQ26 (C-AGQ-025) — le SITE du lead (ville de calcul + GPS) : sans lui,
+    // la production retombait en repli plat en accusant PVGIS.
+    ville: villeCalculLead || '',
+    lat: selectedLead?.gps_lat ?? '', lon: selectedLead?.gps_lng ?? '',
   }), [pompageSaisie, pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit,
     pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId])
+    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId,
+    villeCalculLead, selectedLead])
   const pompageManquants = modeInstallation === 'agricole'
     ? manquantsPompage(etatPompage) : []
   const corpsPompage = modeInstallation === 'agricole'
