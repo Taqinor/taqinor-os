@@ -447,6 +447,7 @@ export function kitPompageChiffrable(produits, fiches) {
 /** Type de fiche C&I qu'appelle un rôle C&I (`null` = pas de fiche C&I). */
 export const TYPE_FICHE_PAR_ROLE_CI = {
   onduleur_string_tri: 'onduleur',
+  onduleur_string_mono: 'onduleur',
   compteur_injection: 'limiteur',
   controleur_injection: 'limiteur',
   logger_supervision: 'logger',
@@ -455,6 +456,7 @@ export const TYPE_FICHE_PAR_ROLE_CI = {
   coffret_ac: 'protection',
   coffret_dc: 'protection',
   cable_ac: 'cable',
+  cable_dc: 'cable',
   mise_a_la_terre: 'cable',
   structure_ci: 'structure',
 }
