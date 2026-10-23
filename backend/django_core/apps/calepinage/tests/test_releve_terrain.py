@@ -329,6 +329,13 @@ class EndpointTest(BaseReleve):
                          ['façade / cage'])
         self.assertEqual(len(reponse.data['releves']), 1)
 
+    def test_date_du_releve_obligatoire_400_nomme(self):
+        # ENF11 — la date est SAISIE : le schéma la déclare obligatoire
+        # (``format: date``), le serveur la refuse sinon (400 nommé).
+        reponse = self.api.post(self.url, {}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('releve_le', reponse.data)
+
     def test_get_liste_les_releves(self):
         enregistrer_releve(self.calepinage,
                            {'releve_le': HIER.isoformat(), 'chaines': []},

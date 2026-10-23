@@ -120,6 +120,18 @@ def _refus(refus):
     return Response(refus.erreurs, status=refus.statut)
 
 
+def _fichier_mal_forme(request):
+    """ENF11 (api-fuzz « accepted schema-violating request », ``fichier=``) —
+    ``fichier`` est un FICHIER (multipart) : une valeur de formulaire vide ou un
+    texte est hors schéma et refusé en 400 nommé, jamais ignoré en silence."""
+    if 'fichier' in request.data and 'fichier' not in request.FILES:
+        return Response({'fichier': [
+            "Le gabarit se dépose en fichier PDF (envoi multipart) : "
+            "« fichier » n'est pas un fichier."]},
+            status=status.HTTP_400_BAD_REQUEST)
+    return None
+
+
 class GabaritDossierViewSet(CompanyScopedModelViewSet):
     """ACAL238 — CRUD société des gabarits de dossier réglementaire."""
 
@@ -152,6 +164,9 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     @extend_schema(request=_CORPS_GABARIT, responses={201: inline_serializer(
         'CalepinageGabaritDepose', {'gabarit': serializers.DictField()})})
     def create(self, request, *args, **kwargs):
+        mal_forme = _fichier_mal_forme(request)
+        if mal_forme is not None:
+            return mal_forme
         try:
             gabarit = deposer_gabarit(request.user.company, request.user,
                                       _donnees(request),
@@ -164,6 +179,9 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     @extend_schema(request=_CORPS_GABARIT, responses={200: _FORME_GABARIT})
     def partial_update(self, request, *args, **kwargs):
         gabarit = self.get_object()
+        mal_forme = _fichier_mal_forme(request)
+        if mal_forme is not None:
+            return mal_forme
         try:
             modifier_gabarit(gabarit, request.user, _donnees(request),
                              request.FILES.get('fichier'))

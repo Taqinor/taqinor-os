@@ -254,6 +254,18 @@ class RefusTest(BaseGabarits):
         reponse = self.api.post(URL, corps, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
 
+    def test_fichier_vide_ou_texte_refuse_400_nomme(self):
+        # ENF11 (api-fuzz « accepted schema-violating request », ``fichier=``)
+        # — ``fichier`` est un fichier : une valeur de formulaire vide n'est
+        # plus ignorée en silence, et rien n'est créé.
+        avant = GabaritDossierReglementaire.objects.count()
+        corps = {'pays': 'AA', 'code': 'zero', 'intitule': 'Zéro',
+                 'fichier': ''}
+        reponse = self.api.post(URL, corps, format='multipart')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('fichier', reponse.data)
+        self.assertEqual(GabaritDossierReglementaire.objects.count(), avant)
+
     def test_403_sans_calepinage_gerer(self):
         lecteur = Role.objects.create(
             company=self.company, nom='Lecteur calepinage',

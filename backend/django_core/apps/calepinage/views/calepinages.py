@@ -294,10 +294,11 @@ class _OrdreStatutDerive(filters.OrderingFilter):
 @extend_schema_view(
     # ENF11 (nocturne 15/10) — ACAL179 refuse toute clé ni inscriptible ni
     # ignorée d'un PATCH : le corps publié le dit (additionalProperties false).
-    partial_update=extend_schema(responses=CalepinageLectureSerializer,
-                                 extensions={EXTENSION_CORPS_RESSERRE: {
-                                     'properties': {cle: {} for cle in CalepinageSerializer.cles_patch()},
-                                     'additionalProperties': False}}),
+    partial_update=extend_schema(responses={
+        200: CalepinageLectureSerializer, 404: OpenApiTypes.OBJECT},
+        extensions={EXTENSION_CORPS_RESSERRE: {
+            'properties': {cle: {} for cle in CalepinageSerializer.cles_patch()},
+            'additionalProperties': False}}),
     list=extend_schema(responses=CalepinageLectureSerializer(many=True),
                        parameters=[
         OpenApiParameter('q', OpenApiTypes.STR, OpenApiParameter.QUERY,
@@ -349,7 +350,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
 
     # Fuzz CI #997 : le corps de création est un objet JSON (responsable/custom_data
     # typés) ; un multipart n'en porte que des chaînes → JSON seul, sans toucher aux uploads.
-    parsers_par_action = {'create': [JSONParser]}
+    parsers_par_action = {'create': [JSONParser],
+                          'partial_update': [JSONParser]}
 
     #: CALX347 — la décision d'approbation exige ``calepinage_approuver``, pas
     #: ``calepinage_gerer`` : un porteur de GÉRER seul n'y a pas droit, et un
@@ -463,6 +465,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
 
     @extend_schema(request=_CORPS_CREATION,
                    responses={201: CalepinageLectureSerializer,
+                              404: OpenApiTypes.OBJECT,
                               409: inline_serializer(
                                   'CalepinageCreationConflit', {
                                       'lead': drf_serializers.CharField(
@@ -873,7 +876,8 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     @extend_schema(parameters=[_param_chemin(
         'variante_id', "L'identifiant de la variante de ce calepinage.")],
         request=CalepinageVarianteSerializer,
-        responses={200: CalepinageVarianteSerializer, 204: None})
+        responses={200: CalepinageVarianteSerializer, 204: None,
+                   409: OpenApiTypes.OBJECT})
     @action(detail=True, methods=['get', 'patch', 'delete'],
             url_path=r'variantes/(?P<variante_id>[^/.]+)',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -902,8 +906,12 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                 roof_layout=corps.get('roof_layout', ...),
                 resultat=corps.get('resultat', ...), user=request.user)
         except VarianteRefusee as refus:
+            # ENF11 — supprimer la variante RETENUE est un refus d'ÉTAT
+            # (requête conforme) : 409, même corps.
             return Response({refus.champ or 'variante': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT
+                                    if refus.champ == 'retenue'
+                                    else status.HTTP_400_BAD_REQUEST))
         return Response(CalepinageVarianteSerializer(variante).data)
 
     @extend_schema(parameters=[_param_chemin(

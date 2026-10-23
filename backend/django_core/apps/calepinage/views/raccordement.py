@@ -125,7 +125,9 @@ _FORME_RACCORDEMENT = forme_du_contrat(
     methods=['POST'],
     request=inline_serializer('CalepinageRaccordementCorps', {
         'puissance_souscrite_kva': serializers.FloatField(required=False),
-        'phases': serializers.IntegerField(required=False),
+        # ENF11 — règle de ``_phases_saisies`` publiée : 1 ou 3 (ou vide).
+        'phases': serializers.ChoiceField(choices=[1, 3], required=False,
+                                          allow_null=True),
         'tension_nominale_v': serializers.FloatField(required=False),
         'limite_elevation_pct': serializers.FloatField(required=False),
         'source_limite': serializers.CharField(required=False),

@@ -164,6 +164,25 @@ class ActionRaccordementTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('phases', reponse.data)
 
+    def test_phases_publie_1_ou_3_au_schema(self):
+        # ENF11 — la règle de ``_phases_saisies`` est publiée (enum 1|3, vide
+        # permis) : le fuzz n'envoie plus un régime que le serveur refuse.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.calepinage import urls as calepinage_urls
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/calepinage/', include(calepinage_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['paths'][
+            '/api/django/calepinage/calepinages/{id}/raccordement/']['post'][
+            'requestBody']['content']['application/json']['schema']
+        nom = corps['$ref'].rsplit('/', 1)[-1]
+        phases = schema['components']['schemas'][nom]['properties']['phases']
+        enum = phases.get('enum') or phases['allOf'][0]['enum']
+        self.assertEqual([v for v in enum if v is not None], [1, 3])
+
     def test_un_refus_ne_laisse_aucune_trace_en_base(self):
         self.api.post(url_raccordement(self.calepinage.pk),
                       {'limite_elevation_pct': 3}, format='json')
