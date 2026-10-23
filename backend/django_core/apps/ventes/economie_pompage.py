@@ -616,6 +616,8 @@ def _flux(investissement, economie1, charges, remplacements, *,
             'valeur': charges, 'source': SOURCE_CHARGES}),
         remplacements=remplacements,
         taux_actualisation_pct=taux_actualisation,
+        # AGQ20 — dernier passage au non-négatif (pompage seul, D-AGR-5).
+        dernier_passage=True,
     )
     if taux_actualisation is None:
         bloc['omissions'] = [

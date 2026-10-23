@@ -63,7 +63,7 @@ describe('AGW304 — syntheseAgricoleArgent : lecture défensive', () => {
       { ligneId: 90311, designation: 'Afficheur du variateur', totalTtc: 950 },
       { ligneId: null, designation: "Compteur d'eau", totalTtc: null },
     ]);
-    expect(a.nonInclus).toEqual(['forage', 'genie_civil']);
+    expect(a.nonInclus).toEqual(['forage', 'genie_civil', 'compteur_eau']); // AGQ11 : rôle du kit absent des lignes
     expect(a.formalites[0].cle).toBe('declaration_8221');
     expect(a.formalites[0].textes.ar.length).toBeGreaterThan(10);
   });
