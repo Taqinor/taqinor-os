@@ -12,8 +12,15 @@ les gabarits maison, ``apply_quote_data`` pour le legacy) : rien n'est
 ré-échappé. Sans clause → chaîne vide (document octet-identique).
 """
 
+from decimal import Decimal
+
 from . import i18n_labels
 from .montants import regles_origine
+
+#: AMOT81 — modes dont les puces CGV de REPLI sont au ton C&I : UNE puce
+#: échéancier (N jalons), jamais les trois créneaux résidentiels ni « barème
+#: ONEE/SRM ». Les puces saisies ou gelées par la société restent telles.
+MODES_CI = ("commercial", "industriel")
 
 #: APDF9 — le titre vit dans ``i18n_labels`` (clé ``clauses_particulieres``) ;
 #: ``TITRE`` en reste la forme française.
@@ -123,7 +130,44 @@ def remplir_cgv_bullets(bullets, *, acompte, materiel, solde, tva_note,
     return out
 
 
-def cgv_bullets_remplies(data):
+def _pct_txt(valeur):
+    try:
+        return format(Decimal(str(valeur)).normalize(), "f")
+    except (ArithmeticError, ValueError, TypeError):
+        return str(valeur)
+
+
+def puce_echeancier_ci(data, langue=None):
+    """AMOT81 — « Échéancier de paiement : Commande : 30 % ; … » : les N
+    jalons servis par le builder (``jalons_paiement``, CIQ212), sinon les
+    créneaux SERVIS de ``payment_terms`` (jamais un repli 30/60/10, QJR146) ;
+    un créneau nul est omis. Un libellé renommé par la société reste tel
+    quel ; aucun chiffre recalculé."""
+    jalons = [(j.get("jalon"), j.get("libelle"), j.get("pct"))
+              for j in data.get("jalons_paiement") or [] if isinstance(j, dict)]
+    if not jalons:
+        terms = data.get("payment_terms") or {}
+        jalons = [(cle, None, terms.get(cle))
+                  for cle in ("acompte", "materiel", "solde")]
+    morceaux = []
+    for cle, nom, pct in jalons:
+        if pct is None or _pct_nul(pct):
+            continue
+        cat = f"cgv_jalon_{cle}"
+        if cat in i18n_labels.LIBELLES and nom in (
+                None, "", i18n_labels.LIBELLES[cat]["fr"]):
+            nom = i18n_labels.libelle(cat, langue)
+        morceaux.append(i18n_labels.libelle("cgv_jalon_format", langue).format(
+            libelle=nom or cle, valeur=_pct_txt(pct), unite="%"))
+    if not morceaux:
+        return ""
+    separateur = ("&#160;: " if i18n_labels.normaliser(langue) == "fr"
+                  else ": ")
+    return (i18n_labels.libelle("ci_echeancier", langue) + separateur
+            + " ; ".join(morceaux))
+
+
+def cgv_bullets_remplies(data, bullets=None):
     """QJR668 — les puces CGV que le rendu de ``data`` (sortie de
     ``build_quote_data``) IMPRIME, cases remplies, entités HTML conservées.
 
@@ -132,13 +176,15 @@ def cgv_bullets_remplies(data):
     l'envoi — ``Devis.clauses_appliquees`` ``cgv_gelees``, ERR-QJR668) sinon
     le littéral par défaut ; les pourcentages de ``data['payment_terms']``
     (échéancier du devis rabattu par le builder, QJR623) ; ``tva_note`` ;
-    ``valid_until``. Pure : ne lit ni n'écrit aucun global de rendu."""
+    ``valid_until``. Pure : ne lit ni n'écrit aucun global de rendu.
+    ``bullets`` (AMOT81) : les puces à remplir, à la place de celles-ci."""
     data = data or {}
     surcharges = data.get("doc_texts") or {}
     langue = data.get("langue_sortie")
-    bullets = _puces_cgv(surcharges.get("cgv_bullets")
-                         if isinstance(surcharges, dict) else None, langue,
-                         data.get("mode_installation"))
+    if bullets is None:
+        bullets = _puces_cgv(surcharges.get("cgv_bullets")
+                             if isinstance(surcharges, dict) else None,
+                             langue, data.get("mode_installation"))
     terms = data.get("payment_terms") or {}
     try:
         brut = data.get("taux_tva")
@@ -181,6 +227,15 @@ def cgv_imprimees(data):
     if puces_ci:
         return {"titre": str(data.get("cgv_ci_titre") or "").strip() or titre,
                 "puces": puces_ci}
+    saisies = textes.get("cgv_bullets")
+    if (str(data.get("mode_installation") or "").strip().lower() in MODES_CI
+            and not data.get("regles_calcul_origine")
+            and (not saisies or saisies == DEFAULT_DOC_TEXTS["cgv_bullets"])):
+        # AMOT81 — repli C&I : validité, UNE puce échéancier, note de TVA.
+        echeancier = puce_echeancier_ci(data, langue)
+        return {"titre": titre, "puces": cgv_bullets_remplies(data, [
+            "{validite_offre}",
+            echeancier.replace("{", "{{").replace("}", "}}"), "{tva_note}"])}
     return {"titre": titre, "puces": cgv_bullets_remplies(data)}
 
 

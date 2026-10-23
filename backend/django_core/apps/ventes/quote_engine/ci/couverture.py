@@ -149,7 +149,9 @@ def _argent_mt(d, cle):
     if d.get(f"{cle}_motif_argent"):
         return bool(d.get(f"{cle}_argent_mt"))
     etude = d.get("etude") if isinstance(d.get("etude"), dict) else {}
-    tension = str(etude.get("tension_raccordement") or "").strip().lower()
+    # AMOT81 — ``tension`` : la clé d'un brouillon auto C&I.
+    tension = str(etude.get("tension_raccordement") or etude.get("tension")
+                  or "").strip().lower()
     return tension in ("mt", "ht")
 
 

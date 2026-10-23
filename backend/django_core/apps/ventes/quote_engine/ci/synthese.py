@@ -432,7 +432,9 @@ def _est_mt(data, etude_ci, economie):
     if not isinstance(tension, str) or not tension.strip():
         # Sans moteur : la tension DÉCLARÉE à l'écran (une saisie, pas un
         # chiffre calculé).
-        tension = _dict(data.get("etude")).get("tension_raccordement")
+        # AMOT81 — ou ``tension`` (clé d'un brouillon auto C&I).
+        tension = (_dict(data.get("etude")).get("tension_raccordement")
+                   or _dict(data.get("etude")).get("tension"))
     if isinstance(tension, str) and tension.strip().lower() in ("mt", "ht"):
         return True
     return _dict(_dict(economie).get("tarif")).get("contrat") == "mt_general"

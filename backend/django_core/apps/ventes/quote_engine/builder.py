@@ -2785,8 +2785,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                  == "mt_general"))
     if _dossier_mt and not masquer_economies:
         try:
-            from .constants_82_21 import MENTION_MT
-            tarif_mt_mention = MENTION_MT
+            from .ci.mentions import mention_tarif_mt
+            # AMOT81 — MENTION_MT (ONEE) seulement quand la GRILLE est la
+            # source ; un tarif lu sur la facture du client le dit.
+            tarif_mt_mention = mention_tarif_mt(
+                (_economie_ci or {}).get("tarif") if _mode_ci else None,
+                langue=opts.get('langue_sortie'))
         except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
             logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
             tarif_mt_mention = ""

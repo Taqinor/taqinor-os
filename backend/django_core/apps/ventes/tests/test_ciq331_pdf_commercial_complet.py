@@ -185,3 +185,39 @@ class Ciq331EcheancierN(SimpleTestCase):
         ech = synthese_ci(data)["echeancier"]
         self.assertEqual([j["jalon"] for j in ech],
                          ["commande", "livraison", "mise_en_service"])
+
+
+class Amot81OrigineDuTarif(SimpleTestCase):
+    """AMOT81 — la couverture commerciale dit l'origine du prix du kWh quand
+    c'est la grille de repli (jamais sur une facture déclarée) ; la tension
+    d'un brouillon auto (clé ``tension``) est lue comme la saisie d'écran."""
+
+    def _page1(self, data):
+        return _html(data).split('class="page"')[1]
+
+    def test_ligne_grille_sur_repli_absente_sur_facture(self):
+        p1 = self._page1(_data())
+        self.assertIn("Prix du kWh : grille ONEE publiée (repli, HT estimé", p1)
+        self.assertIn("à confirmer sur votre facture", p1)
+        data = _data()
+        data["economie_ci"]["tarif"]["origine"] = "declare_facture"
+        self.assertNotIn("grille ONEE publiée", _html(data))
+
+    def test_capture_non_reconfirmee_dite(self):
+        data = _data()
+        for poste in data["economie_ci"]["tarif"]["tarifs_par_poste"]:
+            poste["releve_le"] = "2025-02-16"
+        self.assertIn("capture du 16/02/2025, non reconfirmée 2026",
+                      self._page1(data))
+
+    def test_tension_lue_sous_ses_deux_cles(self):
+        for tension in ("mt", "bt"):
+            data = _data(argent=False, etude_ci=False)
+            data["etude"]["tension"] = tension
+            html = _html(data)
+            with self.subTest(tension=tension):
+                if tension == "mt":
+                    self.assertIn(MOTIF_ARGENT_MT, html)
+                else:
+                    self.assertNotIn(MOTIF_ARGENT_MT, html)
+                    self.assertIn("vos 12 dernières factures", html)

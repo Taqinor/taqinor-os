@@ -31,11 +31,30 @@ from ..constants_82_21 import (
     MENTION_82_21,
     MENTION_ART13,
     MENTION_BT,
+    MENTION_MT,
     PLAFOND_INJECTION_SOURCE,
 )
 from ..lecture_pure import nombre_normalise
 
 LANGUES = ("fr", "en", "ar")
+
+#: AMOT81 — l'origine du prix du kWh dite sur le document commercial quand
+#: c'est la grille ONEE de repli ({date} : sa capture, jamais inventée).
+TEXTES_TARIF_GRILLE = {
+    "fr": ("Prix du kWh : grille ONEE publiée (repli, HT estimé{date}) — à "
+           "confirmer sur votre facture."),
+    "en": ("kWh prices: published ONEE tariff (fallback, estimated excl. "
+           "VAT{date}) — to be confirmed on your bill."),
+    "ar": ("أثمنة الكيلوواط ساعة: التعريفة المنشورة للمكتب الوطني (احتياطي، "
+           "دون احتساب الضريبة تقديرياً{date}) — تُؤكَّد على فاتورتكم."),
+}
+TEXTES_CAPTURE_NON_RECONFIRMEE = {
+    "fr": " ; capture du {date}, non reconfirmée 2026",
+    "en": "; captured on {date}, not reconfirmed for 2026",
+    "ar": "؛ نسخة بتاريخ {date}، غير مؤكدة لسنة 2026",
+}
+TEXTES_RELEVEE = {"fr": " ; relevée le {date}", "en": "; recorded on {date}",
+                  "ar": "؛ بتاريخ {date}"}
 
 #: Date de la décision ANRE 04/26 (début de validité, ``ANRE_PERIODE``).
 DATE_ANRE = ANRE_PERIODE[0].isoformat()
@@ -198,8 +217,10 @@ def _tension(data):
     tension = _dict(_dict(etude_ci.get("entrees_resolues")).get(
         "tension")).get("valeur")
     if not isinstance(tension, str) or not tension.strip():
-        # Sans moteur : la tension DÉCLARÉE à l'écran (une saisie).
-        tension = _dict(data.get("etude")).get("tension_raccordement")
+        # Sans moteur : la tension DÉCLARÉE à l'écran (une saisie) ; AMOT81 —
+        # un brouillon auto C&I la porte sous ``tension``.
+        tension = (_dict(data.get("etude")).get("tension_raccordement")
+                   or _dict(data.get("etude")).get("tension"))
     if isinstance(tension, str) and tension.strip():
         return tension.strip().lower()
     contrat = str(_dict(_dict(data.get("economie_ci")).get("tarif")).get(
@@ -248,6 +269,42 @@ def _mention_tarif(tarif):
     source = tarif.get("mention") or (postes[0].get("source")
                                       if postes else None)
     return _entree("tarif", textes, source, date)
+
+
+def mention_tarif_mt(tarif, mention_grille=MENTION_MT, langue=None):
+    """AMOT81 — la source du prix du kWh MT imprimée avec l'argent :
+    ``mention_grille`` (barème ONEE, ``MENTION_MT``) seulement quand la grille
+    officielle est la source (ou sans bloc C&I) ; tarif lu sur la facture du
+    client ⇒ « Prix du kWh : ceux de votre facture… » ; sinon rien."""
+    if not isinstance(tarif, dict) or \
+            tarif.get("origine") == "grille_officielle":
+        return mention_grille
+    entree = _mention_tarif(tarif)
+    return texte(entree["textes"], langue) if entree else ""
+
+
+def ligne_tarif_grille(tarif, langue=None):
+    """AMOT81 — « Prix du kWh : grille ONEE publiée (repli, HT estimé ;
+    capture du 16/02/2025, non reconfirmée 2026) — à confirmer sur votre
+    facture. » quand la grille de repli est la source, sinon None. La date
+    est celle de la ligne de grille (``releve_le``) ; non reconfirmée quand
+    la ligne le dit (``reconfirme_2026`` faux) ou quand la capture précède
+    2026."""
+    tarif = _dict(tarif)
+    if tarif.get("origine") != "grille_officielle":
+        return None
+    postes = [p for p in tarif.get("tarifs_par_poste") or []
+              if isinstance(p, dict)]
+    releve = next((str(p["releve_le"]) for p in postes if p.get("releve_le")),
+                  "")
+    date = ""
+    if len(releve) == 10 and releve[4] == releve[7] == "-":
+        non_reconfirmee = releve < "2026" or any(
+            p.get("reconfirme_2026") is False for p in postes)
+        date = texte(TEXTES_CAPTURE_NON_RECONFIRMEE if non_reconfirmee
+                     else TEXTES_RELEVEE, langue).format(
+            date=f"{releve[8:]}/{releve[5:7]}/{releve[:4]}")
+    return texte(TEXTES_TARIF_GRILLE, langue).format(date=date)
 
 
 def _batterie_servie(data):

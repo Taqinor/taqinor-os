@@ -1941,8 +1941,7 @@ class TestQjr626MentionTvaDesLignes(TestCase):
 
 @patch('apps.ventes.quote_engine.builder._ensure_pdf_bucket')
 class TestAmot79AucunRepliLegacyCi(TestCase):
-    """AMOT79 (D-ACI-9=a) — C&I refusé ou en erreur : ValueError nommée, jamais
-    le legacy (le résidentiel garde son repli : test_qjr17 ci-dessus)."""
+    """AMOT79 (D-ACI-9=a) — C&I refusé / en erreur : ValueError nommée, jamais le legacy."""
 
     def setUp(self):
         self.company = make_company()
@@ -1950,7 +1949,6 @@ class TestAmot79AucunRepliLegacyCi(TestCase):
 
     def _rendre(self, mode, lignes, n, erreur=None, renderer=None):
         from contextlib import nullcontext
-
         from apps.ventes.quote_engine import generate_devis_premium as legacy
         from apps.ventes.quote_engine import generate_premium_devis_pdf
         devis = make_devis(self.company, self.user, self.client_obj, lignes, reference=f'DEV-AMOT79-{n}')
@@ -1986,10 +1984,16 @@ class TestAmot79AucunRepliLegacyCi(TestCase):
 
     @tag('weasyprint')  # rendu PDF réel
     def test_brouillon_onduleur_et_compteur_servi_par_le_commercial(self, _bucket):
-        """Sonde du 23/10 : « onduleur + Smart Meter » sans panneau ⇒ renderer
-        COMMERCIAL, 3 pages — ni refus, ni legacy."""
+        """Sonde du 23/10 : onduleur + Smart Meter sans panneau ⇒ commercial, 3 pages."""
         import fitz
         message, depot = self._rendre('commercial', [
             ('Onduleur réseau Huawei 100kW Triphasé', '1', '62000'), ('Smart Meter', '1', '4500')], 9)
         self.assertIsNone(message)
         self.assertEqual(len(fitz.open(stream=depot.call_args[0][0], filetype='pdf')), 3)
+
+
+class TestAmot81MentionMt(SimpleTestCase):
+    def test_tarif_mt_mention_onee_seulement_sur_la_grille(self):
+        from apps.ventes.quote_engine.ci.mentions import mention_tarif_mt as m
+        self.assertEqual([m(t, 'X') for t in ({'origine': 'grille_officielle'}, {}, None)], ['X', '', 'X'])
+        self.assertIn('votre facture', m({'origine': 'declare_facture'}, 'X'))
