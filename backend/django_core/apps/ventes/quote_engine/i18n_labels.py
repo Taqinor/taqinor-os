@@ -716,12 +716,14 @@ LIBELLES = {
         'ar': 'التحجيم والزيارة التقنية والمصادقة على المشروع.'},
     'ci_etape_installation_t': {'fr': 'Installation', 'en': 'Installation',
                                 'ar': 'التركيب'},
+    # AMOT83 — « en coordination avec votre activité » (jamais une promesse
+    # de continuité que le chantier ne tient pas toujours).
     'ci_etape_installation_s': {
-        'fr': 'Pose des équipements par nos équipes, sans interrompre votre '
-              'activité.',
-        'en': 'Equipment installed by our teams, without interrupting your '
+        'fr': 'Pose des équipements par nos équipes, en coordination avec '
+              'votre activité.',
+        'en': 'Equipment installed by our teams, in coordination with your '
               'business.',
-        'ar': 'تركيب المعدات من طرف فرقنا دون توقيف نشاطكم.'},
+        'ar': 'تركيب المعدات من طرف فرقنا بتنسيق مع نشاطكم.'},
     'ci_etape_mes_t': {'fr': 'Mise en service', 'en': 'Commissioning',
                        'ar': 'التشغيل'},
     'ci_etape_mes_s': {
@@ -773,6 +775,17 @@ LIBELLES = {
     'ci_suivi_production': {'fr': 'Suivi de production',
                             'en': 'Production monitoring',
                             'ar': 'تتبع الإنتاج'},
+    # AMOT83 (D-ACI-11=a, D-ACI-12=a) — suivi nommé sans délai inventé ;
+    # dossier 82-21 monté par la société émettrice.
+    'ci_suivi_production_inclus': {'fr': 'Suivi de production inclus',
+                                   'en': 'Production monitoring included',
+                                   'ar': 'تتبع الإنتاج مشمول'},
+    'ci_dossier_raccordement': {
+        'fr': 'Raccordement et autorisations du site&#160;: dossier monté et '
+              'suivi par {societe}',
+        'en': 'Site grid connection and permits: file prepared and followed '
+              'up by {societe}',
+        'ar': 'الربط بالشبكة وتراخيص الموقع: ملف تعدّه وتتابعه {societe}'},
     'ci_intervention_sous': {'fr': 'intervention sous {heures}&#160;h',
                              'en': 'intervention within {heures}&#160;h',
                              'ar': 'التدخل في غضون {heures}&#160;ساعة'},

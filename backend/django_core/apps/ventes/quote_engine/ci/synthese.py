@@ -38,6 +38,8 @@ ceux du moteur, seulement exprimés en %), aucun taux fixe (D-CIQ-1), aucun
 """
 from __future__ import annotations
 
+import html
+
 from ..lecture_pure import nombre_normalise
 from .mentions import mentions_ci
 import logging
@@ -492,6 +494,23 @@ def _om_option(data):
     }
 
 
+def _om_composition(data):
+    """AMOT83 (D-ACI-12=a) — l'option O&M NOMMÉE par la composition C&I
+    (``options[cle='om']``) quand le devis ne porte aucune ligne ``om_ci`` :
+    statut « tarif à renseigner », jamais un prix."""
+    composition = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get(
+        "composition"))
+    om = next((o for o in composition.get("options") or []
+               if isinstance(o, dict) and o.get("cle") == "om"), None)
+    libelle = html.escape(str((om or {}).get("libelle") or "").strip(),
+                          quote=False)
+    if not libelle:
+        return None
+    return {"statut": "tarif_a_renseigner", "libelle": libelle,
+            "lignes": [{"designation": libelle, "total_ht": None,
+                        "total_ttc": None}]}
+
+
 def _garanties(data):
     try:
         from ..residential import theme
@@ -516,12 +535,19 @@ def _services(data):
     d'intervention SAISI par la société, les garanties des fabricants.
     Clé absente quand le devis ne la porte pas — jamais un défaut."""
     services = {}
-    om = _om_option(data)
+    om = _om_option(data) or _om_composition(data)
     if om is not None:
         services["om_option"] = om
+    # AMOT83 (D-ACI-12=a) — le suivi de production est NOMMÉ ; son délai
+    # n'est imprimé que s'il est saisi (jamais un défaut).
     delai = _num(data.get("delai_intervention_suivi_heures"))
-    if delai:
-        services["suivi_production"] = {"delai_intervention": delai}
+    services["suivi_production"] = {"delai_intervention": delai or None}
+    # AMOT83 (D-ACI-11=a) — régime 82-21 calculé ⇒ le dossier est monté par
+    # la société (phrase fixe, jamais le texte de loi, D-CIQ-6).
+    regime = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get(
+        "regime_8221_suggere")).get("regime")
+    if regime and regime != "aucun":
+        services["raccordement"] = {"regime": regime}
     services["garanties"] = _garanties(data)
     return services
 

@@ -221,3 +221,29 @@ class Amot81OrigineDuTarif(SimpleTestCase):
                 else:
                     self.assertNotIn(MOTIF_ARGENT_MT, html)
                     self.assertIn("vos 12 dernières factures", html)
+
+
+class Amot83Raccordement8221(SimpleTestCase):
+    """AMOT83 (D-ACI-11=a) — régime 82-21 calculé ⇒ la phrase fixe « dossier
+    monté et suivi par » la société (jamais le texte de loi) ; sans régime ⇒
+    absente ; la pose se fait « en coordination avec votre activité »."""
+
+    PHRASE = ("Raccordement et autorisations du site&#160;: dossier monté et "
+              "suivi par TAQINOR")
+
+    def test_accord_de_raccordement_ligne_imprimee(self):
+        self.assertEqual(_data()["etude"]["etude_ci"]["regime_8221_suggere"][
+            "regime"], "accord_raccordement")
+        html = _html(_data())
+        self.assertIn(self.PHRASE, html)
+        self.assertNotIn("décret 2.25.100", html)
+
+    def test_sans_regime_ligne_absente(self):
+        data = _data()
+        data["etude"]["etude_ci"]["regime_8221_suggere"] = {"regime": None}
+        self.assertNotIn("dossier monté et suivi", _html(data))
+
+    def test_en_coordination_avec_votre_activite(self):
+        html = _html(_data())
+        self.assertIn("en coordination avec votre activité", html)
+        self.assertNotIn("sans interrompre", html)
