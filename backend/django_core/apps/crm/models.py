@@ -696,10 +696,6 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
         SURFACE = 'surface', 'De surface'
         NE_SAIT_PAS = 'ne_sait_pas', 'Ne sait pas'
 
-
-        MONO = 'mono', 'Monophasé'
-        TRI = 'tri', 'Triphasé'
-
     class ElectriciteSurPlace(models.TextChoices):
         AUCUNE = 'aucune', 'Aucune'
         MONOPHASE = 'monophase', 'Monophasé'
@@ -1179,6 +1175,31 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
                   'actuelle sort-elle par heure ? » (m³/h, vide = pas encore '
                   'posée). Avec les heures de la pompe actuelle, donne le '
                   'volume déclaré.')
+    butane_bouteilles_jour = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        verbose_name='Butane — bouteilles par jour',
+        help_text="Question à l'appel : « Combien de bouteilles de butane "
+                  'par jour en saison ? » (bouteilles de 12 kg par jour '
+                  "d'irrigation, vide = pas encore posée).")
+    carburant_prix_unitaire_mad = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Prix payé (bouteille ou litre, MAD)',
+        help_text="Question à l'appel : « Vous la payez combien, la "
+                  'bouteille (ou le litre de gasoil) ? » (MAD, vide = pas '
+                  'encore posée). Prix PAYÉ déclaré, jamais pré-rempli.')
+    carburant_prix_declare_le = models.DateField(
+        null=True, blank=True, verbose_name='Prix du carburant déclaré le')
+    depense_carburant_mad_mois = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Dépense carburant (MAD/mois)',
+        help_text="Question à l'appel : « Combien dépensez-vous en "
+                  'carburant par mois ? » (MAD/mois, vide = pas encore '
+                  'posée). Information : jamais convertie en consommation.')
+    mois_irrigation = models.JSONField(
+        null=True, blank=True, validators=[valider_mois_irrigation],
+        verbose_name="Mois d'irrigation",
+        help_text="Question à l'appel : « Vous irriguez quels mois ? » "
+                  '(liste de mois 1 à 12, vide = pas encore posée).')
     distance_forage_champ_m = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         verbose_name='Distance forage — panneaux (m)',
