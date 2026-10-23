@@ -123,12 +123,13 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
         if valeur is None:
             continue
         cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
-        source = ci_blocs._txt(h.get("source"))
+        # AMOT80 — chaque source dans les mots du client (aucun code interne).
+        source = ci_couverture.texte_client(d, h.get("source"))
         lignes.append(f"{L(cat, fr)}&#160;: {valeur}"
                       + (f" — {source}" if source else ""))
     for h in argent.get("hypotheses") or []:
         if isinstance(h, dict) and h.get("valeur"):
-            source = ci_blocs._txt(h.get("source"))
+            source = ci_couverture.texte_client(d, h.get("source"))
             lignes.append(ci_blocs._txt(h.get("valeur"))
                           + (f" — {source}" if source else ""))
     for r in argent.get("remplacements") or []:
@@ -146,7 +147,7 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
               else r["annee"])
             + (f"&#160;: {fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
                if montant is not None else "")
-            + (f" — {ci_blocs._txt(r.get('motif'))}" if r.get("motif") else ""))
+            + (f" — {ci_couverture.texte_client(d, r.get('motif'))}" if r.get("motif") else ""))
     return lignes
 
 
@@ -233,10 +234,17 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
     indicateurs = argent.get("indicateurs") or {}
     lignes = []
     lcoe = _num(indicateurs.get("lcoe_mad_kwh"))
+    from .cover import _taux_declare
+    taux = _taux_declare(argent)
     if lcoe is not None:
         lcoe_txt = _decimal_txt(lcoe)
-        ligne = (L("ci_ind_lcoe", "Coût du kWh solaire (LCOE, {base})",
-                   base=base_txt)
+        # AMOT80 — sans taux déclaré, le coût est NON actualisé : dit tel.
+        ligne = ((L("ci_ind_lcoe", "Coût du kWh solaire (LCOE, {base})",
+                    base=base_txt)
+                  if indicateurs.get("lcoe_actualise") or taux is not None else
+                  L("ci_ind_lcoe_non_actualise",
+                    "Coût moyen non actualisé du kWh produit ({base})",
+                    base=base_txt))
                  + f"&#160;: <b>{lcoe_txt}&#160;MAD/kWh</b>"
                  + ancre("lcoe_mad_kwh", lcoe_txt))
         tarif = _num(indicateurs.get("tarif_kwh_evite_moyen"))
@@ -246,14 +254,12 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
                                "MAD/kWh", tarif=_decimal_txt(tarif)))
         lignes.append(ligne)
     van = _num(indicateurs.get("van_mad"))
-    from .cover import _taux_declare
-    taux = _taux_declare(argent)
     if van is not None and taux is not None:
         lignes.append(L("ci_ind_van", "VAN au taux déclaré de {taux} %",
                         taux=_decimal_txt(taux))
                       + f"&#160;: <b>{fmt_mad(van)}&#160;MAD</b>")
     else:
-        motif = ci_blocs._txt(indicateurs.get("van_motif"))
+        motif = ci_couverture.texte_client(d, indicateurs.get("van_motif"))
         if motif and ci_blocs.langue(d) != "fr":
             # La seule cause d'omission servie : aucun taux déclaré.
             motif = L("ci_ind_van_motif", motif)
@@ -270,7 +276,8 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
         tete = (f"{nom} {variation:+g}&#160;%".replace(".", ",")
                 if variation is not None else nom)
         if s.get("motif") and s.get("retour_ans") is None:
-            lignes.append(f"{tete}&#160;: {ci_blocs._txt(s['motif'])}")
+            # AMOT84 — le motif servi dans la langue du document.
+            lignes.append(f"{tete}&#160;: {ci_couverture.texte_client(d, s['motif'])}")
             continue
         morceaux = []
         if _num(s.get("retour_ans")) is not None:
@@ -411,7 +418,16 @@ def build(ctx):
         # chiffré (jamais une table de zéros) : la page ne peut que
         # raccourcir. CIQ341 — un site MT demande ses 12 factures MT.
         motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
-        if ci_couverture._argent_mt(d, "ind"):
+        motif_inv = ci_couverture.motif_investissement(d, "ind")
+        if motif_inv:
+            # AMOT80 (D-ACI-8=a) — l'économie est chiffrée, l'investissement
+            # non : SON motif, jamais « économies pas encore calculées ».
+            corps_txt, motif = L(
+                "ci_ind_motif_invest",
+                "<b>{motif}</b> : le retour, le TRI et le cashflow ne sont "
+                "publiés que sur un investissement entièrement chiffré.",
+                motif=motif_inv), ""
+        elif ci_couverture._argent_mt(d, "ind"):
             corps_txt = L(
                 "ci_ind_motif_mt",
                 "Votre installation est raccordée en <b>MOYENNE TENSION</b> : "
@@ -531,7 +547,7 @@ def build(ctx):
     html = f"""{css}
 <div class="i2-root">
   <div class="i2-kicker">{L("ci_ind_analyse_financiere", "Analyse financière")}</div>
-  <div class="i2-sec">{L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans", n=horizon_txt)}</div>
+  {f'<div class="i2-sec">{L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans", n=horizon_txt)}</div>' if chiffrable else ""}
   <div class="i2-lead">{lead_txt}</div>
 {corps}
 </div>

@@ -136,3 +136,108 @@ class TestSyntheseCiArgent(SimpleTestCase):
     def test_aucun_prix_achat(self):
         s = self._industriel(_economie())
         self.assertNotIn("prix_achat", json.dumps(s, ensure_ascii=False))
+
+
+class TestArgentInvestissementNonChiffre(SimpleTestCase):
+    """ADEV81 — investissement nul ou incomplet : le payback servi est nul
+    (jamais « 0 an » ni « 1 an »), le motif voyage dans ``argent``, les
+    économies de l'année 1 restent servies."""
+
+    def _economie(self, investissement, lignes=None, controle=False):
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        return eco.assembler_economie_ci(
+            _apercu("mt"), investissement=investissement, lignes=lignes,
+            mode_installation="commercial", controle_lignes=controle)
+
+    def test_payback_nul_avec_le_motif(self):
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles
+        lignes = [{"designation": "Smart Meter", "ht": 1000.0,
+                   "ttc": 1200.0, "optionnelle": False, "onduleur": False,
+                   "panneau": False, "role_ci": None}]
+        cas = (self._economie({"ht": 0.0, "ttc": 0.0}),
+               self._economie({"ht": 1000.0, "ttc": 1200.0}, lignes, True))
+        for economie in cas:
+            for segment in ("commercial", "industriel"):
+                s = synthese_ci(_data(_etude_ci(), mode_installation=segment,
+                                      economie_ci=economie))
+                chiffres = chiffres_cles(s)
+                self.assertIsNone(chiffres["payback_ans"])
+                self.assertIsNotNone(chiffres["economie_annuelle_mad"])
+                motifs = {o.get("cle"): o.get("motif")
+                          for o in s["argent"]["omissions"]}
+                self.assertTrue(motifs.get("investissement_mad", "")
+                                .startswith("investissement non encore "
+                                            "chiffré"), motifs)
+
+
+def _tuiles(synthese, cle="com"):
+    """Les tuiles d'argent de la couverture C&I (``ci.couverture``), comme
+    les pose le renderer, sous la forme « valeur|unité|libellé|clé »."""
+    from apps.ventes.quote_engine.ci import couverture
+    from apps.ventes.quote_engine.ci.synthese import chiffres_cles
+    chiffres = chiffres_cles(synthese)
+    d = {f"{cle}_synthese": synthese,
+         f"{cle}_economies": chiffres["economie_annuelle_mad"],
+         f"{cle}_economie_base": chiffres["base_economie"],
+         f"{cle}_payback": chiffres["payback_ans"],
+         f"{cle}_motif_argent": chiffres["motif_argent"]}
+    tuiles = couverture.tuiles_argent(
+        d, cle, lambda v, u, lib, k=None: f"{v}|{u}|{lib}|{k}", str)
+    return d, tuiles
+
+
+class TestAmot80TuilesArgent(SimpleTestCase):
+    """AMOT80 (D-ACI-8=a) — la tuile retour dit sa base ; investissement non
+    chiffré ⇒ la tuile porte le motif (jamais « 0 an ») ; jamais « vos 12
+    dernières factures » quand l'argent est servi."""
+
+    def _economie_nulle(self):
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        return eco.assembler_economie_ci(
+            _apercu("mt"), investissement={"ht": 0.0, "ttc": 0.0},
+            mode_installation="commercial")
+
+    def test_motif_investissement_dans_les_chiffres_cles(self):
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles
+        s = synthese_ci(_data(_etude_ci(), economie_ci=self._economie_nulle()))
+        self.assertEqual(chiffres_cles(s)["motif_investissement"],
+                         "investissement non encore chiffré (3 articles "
+                         "sans prix)")
+        complet = synthese_ci(_data(_etude_ci(), economie_ci=_economie()))
+        self.assertIsNone(chiffres_cles(complet)["motif_investissement"])
+
+    def test_tuile_retour_remplacee_par_le_motif(self):
+        s = synthese_ci(_data(_etude_ci(), economie_ci=self._economie_nulle()))
+        _d, tuiles = _tuiles(s)
+        texte = " ".join(tuiles)
+        self.assertIn("Investissement non encore chiffré (3 articles sans "
+                      "prix)", texte)
+        self.assertNotIn("|payback_ans", texte)
+        self.assertIn("|economie_annuelle", texte)
+
+    def test_tuile_retour_porte_sa_base(self):
+        s = synthese_ci(_data(_etude_ci(), economie_ci=_economie()))
+        _d, tuiles = _tuiles(s)
+        retour = [t for t in tuiles if t.endswith("|payback_ans")]
+        self.assertEqual(len(retour), 1)
+        self.assertIn("|Retour estimé (HT)|", retour[0])
+        economie = _economie()
+        economie["base"] = BASE_TTC
+        _d, tuiles = _tuiles(synthese_ci(_data(_etude_ci(),
+                                               economie_ci=economie)))
+        self.assertIn("|Retour estimé (TTC)|", " ".join(tuiles))
+
+    def test_argent_servi_jamais_les_12_factures(self):
+        from apps.ventes.quote_engine.ci import couverture
+        s = synthese_ci(_data(_etude_ci(), economie_ci=self._economie_nulle()))
+        d, _tuiles_ = _tuiles(s)
+        ligne = couverture.ligne_non_chiffre(d, "com", "c1c")
+        self.assertNotIn("12 dernières factures", ligne)
+        self.assertIn("Investissement non encore chiffré", ligne)
+        # Argent absent (consommation non chiffrée) : la demande reste.
+        absent = synthese_ci(_data(_etude_ci(), economie_ci=None))
+        d, _tuiles_ = _tuiles(absent)
+        self.assertIn("vos 12 dernières factures",
+                      couverture.ligne_non_chiffre(d, "com", "c1c"))

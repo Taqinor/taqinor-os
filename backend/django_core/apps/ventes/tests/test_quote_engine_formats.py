@@ -1299,8 +1299,10 @@ class TestPdfFormats4(TestPdfFormats):
         self.assertIn('+ acompte 30&#37;', html2)
         self.assertNotIn('Acompte à la commande&#160;: 50&#37;', html2)
         html3, _ = self._render({'pdf_mode': 'onepage'})
-        self.assertIn('Acompte à la commande&#160;: 30&#37;', html3)
-        self.assertIn('40&#37; à la réception du matériel', html3)
+        # AMOT81 — une-page C&I : les puces de ``cgv_imprimees`` au ton C&I
+        # (UNE puce échéancier à N jalons, jamais « barème ONEE/SRM »).
+        self.assertIn('Échéancier de paiement&#160;: ', html3)
+        self.assertNotIn('barème ONEE/SRM', html3)
         # Bloc « Modalités de paiement » (devis final) suit aussi le mode
         html4, _ = self._render({'devis_final': True})
         self.assertIn('Modalit', html4)

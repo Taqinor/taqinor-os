@@ -166,3 +166,27 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         html = _html(_data("ar"))
         self.assertIn("Panneau Jinko 710W", html)
         self.assertIn("Atlas SARL", html)
+
+
+class Amot84MotifsVisiteCommercial(SimpleTestCase):
+    """AMOT84 — les motifs de réserve de visite servis par le moteur C&I
+    passent par ``i18n_labels`` (fr inchangé, sans code interne)."""
+
+    MOTIF = ("site MT : visite avant le devis final (D-CIQ-5); surface "
+             "disponible inconnue")
+
+    def _html(self, langue):
+        d = _data(langue)
+        d["etude"]["etude_ci"]["sous_reserve_visite"] = {"valeur": True,
+                                                         "motif": self.MOTIF}
+        return _html(d)
+
+    def test_motifs_traduits(self):
+        self.assertIn("site MT : visite avant le devis final; surface "
+                      "disponible inconnue", self._html(None))
+        for langue in ("en", "ar"):
+            html = self._html(langue)
+            with self.subTest(langue=langue):
+                self.assertNotIn("visite avant le devis final", html)
+                self.assertNotIn("surface disponible inconnue", html)
+                self.assertNotIn("D-CIQ", html)
