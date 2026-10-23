@@ -138,6 +138,29 @@ class DevisAutoAgricoleTests(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.type_installation, 'agricole')
 
+    def test_debit_souhaite_seul_cree_le_brouillon_besoin_derive(self):
+        """AGQ1 (D-AGQ-1) — un lead qui ne déclare QUE le débit souhaité
+        (aucun volume) : le débit souhaité × heures-pic fait le besoin, le
+        débit de conception vaut ce débit, un brouillon est créé (avant : 409
+        « Débit de conception introuvable » sur un lead marqué prêt)."""
+        from apps.ventes.domain.pompage import (
+            rafraichir_etude_pompage_devis,
+        )
+        pompe = self._pompe('15000')
+        lead = self._lead(besoin_eau_m3j=None, pompe_debit_m3h=Decimal('20'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertTrue(devis.lignes.filter(produit=pompe).exists())
+        etude = devis.etude_params
+        self.assertEqual(etude['besoin_mensuel']['nature'], 'debit_souhaite')
+        self.assertEqual(etude['conception']['debit_conception_m3h'], 20)
+        # Persistance : ré-enregistrement forcé ⇒ même nature.
+        rafraichir_etude_pompage_devis(devis, force=True)
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['besoin_mensuel']['nature'],
+                         'debit_souhaite')
+
     def test_lead_butane_saisies_economie_provenance_lead(self):
         self._pompe('15000')
         lead = self._lead(

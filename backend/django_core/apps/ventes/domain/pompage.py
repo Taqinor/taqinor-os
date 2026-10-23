@@ -611,8 +611,25 @@ def _forme_kit(kit):
 
 # ── 4. L'ORCHESTRATEUR ───────────────────────────────────────────────────────
 
-def _besoin(res):
-    """``(besoin_retenu, besoin_agronomique, alertes)`` — D-AGR-3."""
+def _heures_pic_mois(profils, heures_repli):
+    """AGQ1 — ``(heures-pic des 12 mois, source)`` : profil PVGIS (passe 1),
+    sinon heures du réglage société (``repli``), sinon ``(None, None)``."""
+    from core.pompage.conception import heures_pic
+
+    if profils and len(profils) == 12:
+        heures = [heures_pic(p) for p in profils]
+        if all(heures):
+            return heures, 'pvgis'
+    repli = _num(heures_repli)
+    if repli is not None and repli > 0:
+        return [repli] * 12, 'repli'
+    return None, None
+
+
+def _besoin(res, *, profils=None, heures_repli=None):
+    """``(besoin_retenu, besoin_agronomique, alertes)`` — D-AGR-3 ; AGQ1
+    (D-AGQ-1) : sans volume ni pompe actuelle, le débit souhaité × heures-pic
+    du mois fait le besoin."""
     from core.pompage.agronomie import besoin_agronomique
     from core.pompage.conception import besoin_retenu
 
@@ -633,14 +650,24 @@ def _besoin(res):
         if mode in (None, 'pompe_actuelle') else None
     heures = res.valeur('besoin.heures_actuelles_jour') \
         if mode in (None, 'pompe_actuelle') else None
-    prov = (res.provenance('besoin.volume_m3_jour') if volume is not None
-            else res.provenance('besoin.debit_actuel_m3h'))
+    souhaite = (_num(res.valeur('besoin.debit_souhaite_m3h'))
+                if mode in (None, 'debit_souhaite') else None)
+    heures_pic, source_heures = _heures_pic_mois(profils, heures_repli)
+    if volume is not None:
+        prov = res.provenance('besoin.volume_m3_jour')
+    elif debit_actuel is not None and heures is not None:
+        prov = res.provenance('besoin.debit_actuel_m3h')
+    elif souhaite is not None:
+        prov = res.provenance('besoin.debit_souhaite_m3h')
+    else:
+        prov = res.provenance('besoin.debit_actuel_m3h')
     besoin = besoin_retenu(
         volume_declare_m3_jour=volume,
         mois_irrigation=res.valeur('besoin.mois_irrigation'),
         debit_actuel_m3h=debit_actuel, heures_actuelles=heures,
         besoin_agronomique=agro if mode in (None, 'agronomique') else None,
-        provenance_declaree=prov)
+        provenance_declaree=prov, debit_souhaite_m3h=souhaite,
+        heures_pic_mois=heures_pic, source_heures_pic=source_heures)
     return besoin, agro, alertes
 
 
@@ -759,7 +786,8 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     heures_repli = _reglage(reglages, 'agricole_pump_hours')
 
     # Besoin (D-AGR-3) puis débit de conception (passe 1, sans production).
-    besoin, agro, alertes_besoin = _besoin(res)
+    besoin, agro, alertes_besoin = _besoin(res, profils=profils,
+                                           heures_repli=heures_repli)
     serie = besoin.get('m3_jour_mois')
     plaque, _prov_plaque = res.bloc('plaque')
     plaque_kw = _num((plaque or {}).get('kw'))
@@ -888,9 +916,10 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
                    "heure par heure sur le profil PVGIS du site avec lois de "
                    "similitude de la courbe ; champ dimensionné sur le mois "
                    "critique." % (
-                       'agronomique plein (FAO-56)'
-                       if besoin.get('nature') == 'agronomique_plein'
-                       else 'déclaré'))
+                       {'agronomique_plein': 'agronomique plein (FAO-56)',
+                        'debit_souhaite': 'dérivé du débit souhaité × '
+                                          'heures-pic du mois'}.get(
+                           besoin.get('nature'), 'déclaré')))
         if pompe.get('placeholder'):
             methode = ("Aucune pompe pricée ne couvre le débit de conception :"
                        " ligne « Pompe — prix à renseigner : <noms> » (jamais "

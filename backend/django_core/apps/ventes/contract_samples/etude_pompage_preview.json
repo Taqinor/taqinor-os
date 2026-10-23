@@ -71,7 +71,7 @@
   "corps_regles": {
     "mode_pompe": "neuve | existante (D-AGR-7) — obligatoire",
     "plaque": "objet {kw, tension_v, phases, cv, courant_a} — mode existante ; null en mode neuve. kw absent (CV seul) ⇒ alerte « kW de plaque à relever », la conversion CV→kW ne sert qu'à l'affichage",
-    "besoin.mode": "volume_declare | pompe_actuelle | agronomique (D-AGR-3 : déclaré d'abord ; jamais le maximum des deux)",
+    "besoin.mode": "volume_declare | pompe_actuelle | debit_souhaite | agronomique (D-AGR-3 : déclaré d'abord ; jamais le maximum des deux)",
     "besoin.cultures": "liste [{crop, surface_ha, irrigation}] — lue seulement en mode agronomique",
     "source.niveau_dynamique_m": "ou `rabattement_m` (statique + rabattement) ; l'un des deux",
     "hmt": "soit `saisie_m`, soit les composantes (denivele_m + conduite + pertes_singulieres_m + pression_service_bar) ; composante manquante ⇒ repli sur la HMT saisie, annoncée « saisie »",
@@ -81,7 +81,7 @@
     "alim": "mono | tri | dc",
     "type_pompe": "immergee | surface | dc",
     "besoin.region": "une des 8 régions agronomiques émises par le site : souss-massa | doukkala | tadla | saiss | oriental | draa-tafilalet | gharb-loukkos | haouz (crm/webhooks.py _REGIONS_AGRICOLES)",
-    "besoin.debit_souhaite_m3h": "débit SOUHAITÉ par le client (colonne Lead `pompe_debit_m3h`) — servi à côté du débit livré (couverture) ; ne fixe jamais seul le besoin (D-AGR-3)"
+    "besoin.debit_souhaite_m3h": "débit SOUHAITÉ par le client (colonne Lead `pompe_debit_m3h`) — servi à côté du débit livré (couverture) ; sans volume ni pompe actuelle déclarés, fait le besoin = débit × heures-pic PVGIS du mois (repli : heures du réglage société), nature `debit_souhaite` (AGQ1, D-AGQ-1)"
   },
   "exemple": {
     "entrees_resolues": {
@@ -1203,7 +1203,7 @@
   "regles_sorties": {
     "entrees_resolues": "objet : <entrée> → {valeur, provenance} — provenance = la forme UNIQUE ci-dessus",
     "hmt.source": "saisie | calculee",
-    "besoin.nature": "declare | agronomique_plein (D-AGR-3) ; `source_et0` = {station, url, releve_le} ou « EST. » en mode agronomique, null sinon ; `autre_besoin` = l'autre besoin connu et son écart, servi SANS seuil (jamais le maximum des deux)",
+    "besoin.nature": "declare | debit_souhaite | agronomique_plein (D-AGR-3 ; `debit_souhaite` = dérivé du débit souhaité × heures-pic du mois, AGQ1/D-AGQ-1) ; `source_et0` = {station, url, releve_le} ou « EST. » en mode agronomique, null sinon ; `autre_besoin` = l'autre besoin connu et son écart, servi SANS seuil (jamais le maximum des deux)",
     "conception.plafonds": "plafond dur = débit d'exploitation déclaré × part du réglage AGR107 (si saisie) et débit autorisé ABH ; `atteint` true ⇒ alerte « forage »",
     "pompe.mode": "neuve | existante ; `placeholder` true = ligne « Pompe — prix à renseigner : <noms> », jamais un article gratuit",
     "puissance_retenue": "SORTIE du dimensionnement (le CV n'est plus une entrée) ; cv = kw / 0,7355 pour l'affichage",

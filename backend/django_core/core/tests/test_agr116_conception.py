@@ -50,6 +50,36 @@ class BesoinRetenu(unittest.TestCase):
         self.assertEqual(besoin["nature"], "agronomique_plein")
         self.assertEqual(besoin["source_et0"], "EST.")
 
+    def test_debit_souhaite_seul_fait_un_besoin_par_heures_pic(self):
+        """AGQ1 (D-AGQ-1) — débit souhaité seul ⇒ besoin = débit × heures-pic
+        du mois, nature ``debit_souhaite`` ; la conception retombe sur ce
+        débit."""
+        heures = [heures_pic(p) for p in PROFILS]
+        besoin = besoin_retenu(debit_souhaite_m3h=20, heures_pic_mois=heures,
+                               mois_irrigation=[4, 5, 6])
+        self.assertEqual(besoin["nature"], "debit_souhaite")
+        self.assertEqual(besoin["m3_jour_mois"][3],
+                         round(20 * heures[3], 1))
+        self.assertEqual(besoin["m3_jour_mois"][0], 0.0)
+        self.assertIn("débit souhaité", besoin["provenance"]["detail"])
+        r = conception(besoin=besoin, profils_horaires=PROFILS,
+                       debit_exploitation_m3h=50, niveau_eau_m=30)
+        self.assertAlmostEqual(r["conception"]["debit_conception_m3h"], 20,
+                               places=0)
+
+    def test_debit_souhaite_sans_pvgis_heures_du_reglage_etiquetees(self):
+        besoin = besoin_retenu(debit_souhaite_m3h=20, heures_pic_mois=[7] * 12,
+                               source_heures_pic="repli")
+        self.assertEqual(besoin["m3_jour_mois"], [140.0] * 12)
+        self.assertIn("repli", besoin["provenance"]["detail"])
+
+    def test_volume_declare_prime_sur_le_debit_souhaite(self):
+        besoin = besoin_retenu(volume_declare_m3_jour=90,
+                               debit_souhaite_m3h=20,
+                               heures_pic_mois=[7] * 12)
+        self.assertEqual(besoin["nature"], "declare")
+        self.assertEqual(besoin["m3_jour_mois"], [90.0] * 12)
+
     def test_mois_d_irrigation_declares(self):
         besoin = besoin_retenu(volume_declare_m3_jour=50,
                                mois_irrigation=[5, 6, 7])

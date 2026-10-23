@@ -24,6 +24,8 @@ from core.pompage.volumes import JOURS_PAR_MOIS, couverture_besoin_eau
 
 NATURE_DECLARE = "declare"
 NATURE_AGRONOMIQUE = "agronomique_plein"
+#: AGQ1 (D-AGQ-1) — besoin DÉRIVÉ du débit souhaité déclaré par le client.
+NATURE_DEBIT_SOUHAITE = "debit_souhaite"
 
 
 def _alerte(code, champ, message):
@@ -50,17 +52,36 @@ def heures_pic(profil_horaire):
     return sum(valeurs) / pic
 
 
+def _serie_debit_souhaite(debit, heures_pic_mois, mois_irrigation):
+    """AGQ1 — 12 valeurs m³/j = débit souhaité × heures-pic de chaque mois
+    (0 hors des mois d'irrigation déclarés) ; ``None`` si une heure manque."""
+    if not heures_pic_mois or len(heures_pic_mois) != 12:
+        return None
+    heures = [_flottant(h) for h in heures_pic_mois]
+    if any(h is None or h <= 0 for h in heures):
+        return None
+    masque = _serie_declaree(1.0, mois_irrigation)
+    return [debit * h * m for h, m in zip(heures, masque)]
+
+
 def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
                   debit_actuel_m3h=None, heures_actuelles=None,
-                  besoin_agronomique=None, provenance_declaree=None):
+                  besoin_agronomique=None, provenance_declaree=None,
+                  debit_souhaite_m3h=None, heures_pic_mois=None,
+                  source_heures_pic=None):
     """D-AGR-3 — le besoin RETENU et, s'il existe, l'AUTRE besoin connu.
 
     ``besoin_agronomique`` = la sortie de
     :func:`core.pompage.agronomie.besoin_agronomique` (ou ``None``).
+    AGQ1 (D-AGQ-1) — sans volume ni pompe actuelle déclarés, le DÉBIT
+    SOUHAITÉ déclaré fait le besoin : débit × ``heures_pic_mois`` (heures-pic
+    PVGIS de chaque mois, ou heures du réglage société quand
+    ``source_heures_pic == 'repli'``), nature ``debit_souhaite``.
     Rend ``{m3_jour_mois, nature, source_et0, autre_besoin, provenance}`` ;
     ``m3_jour_mois`` vaut ``None`` quand aucun besoin n'est connu."""
     declare = None
     detail = None
+    nature = NATURE_DECLARE
     volume = _flottant(volume_declare_m3_jour)
     if volume is not None and volume > 0:
         declare = _serie_declaree(volume, mois_irrigation)
@@ -68,9 +89,20 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
     else:
         debit = _flottant(debit_actuel_m3h)
         heures = _flottant(heures_actuelles)
+        souhaite = _flottant(debit_souhaite_m3h)
         if debit and heures and debit > 0 and heures > 0:
             declare = _serie_declaree(debit * heures, mois_irrigation)
             detail = "débit actuel × heures actuelles de la pompe déclarée"
+        elif souhaite is not None and souhaite > 0:
+            declare = _serie_debit_souhaite(souhaite, heures_pic_mois,
+                                            mois_irrigation)
+            if declare is not None:
+                nature = NATURE_DEBIT_SOUHAITE
+                detail = ("dérivé du débit souhaité : débit × %s"
+                          % ("heures de pompage du réglage société (repli, "
+                             "sans profil PVGIS)"
+                             if source_heures_pic == "repli"
+                             else "heures-pic PVGIS du mois"))
 
     agro = None
     source_et0 = None
@@ -84,6 +116,8 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
                                                   "date": None})
         if not provenance.get("detail"):
             provenance["detail"] = detail
+        elif nature == NATURE_DEBIT_SOUHAITE:
+            provenance["detail"] = "%s (%s)" % (detail, provenance["detail"])
         autre = None
         if agro is not None:
             autre = {
@@ -93,7 +127,7 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
                 "ecart_pointe_m3_jour": round(max(agro) - max(declare), 1),
             }
         return {"m3_jour_mois": [round(v, 1) for v in declare],
-                "nature": NATURE_DECLARE, "source_et0": None,
+                "nature": nature, "source_et0": None,
                 "autre_besoin": autre, "provenance": provenance}
     if agro is not None:
         return {"m3_jour_mois": [round(v, 1) for v in agro],

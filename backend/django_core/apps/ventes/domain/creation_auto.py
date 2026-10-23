@@ -395,6 +395,16 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             "HMT introuvable : saisissez la HMT ou le niveau d'eau du forage.",
             field='pompe_hmt_m')
     if mode_pompe != 'existante' and debit is None:
+        # AGQ1 (D-AGQ-1) — le débit souhaité fait le besoin (× heures-pic) :
+        # s'il est saisi, ce qui manque ce sont les heures de pompage.
+        souhaite = ((sortie.get('entrees_resolues') or {}).get(
+            'debit_souhaite_m3h') or {}).get('valeur')
+        if souhaite not in (None, ''):
+            raise AutoDevisError(
+                'Débit de conception introuvable : profil PVGIS du site '
+                'indisponible et heures de pompage du réglage société '
+                '(agricole_pump_hours) non renseignées.',
+                field='agricole_pump_hours')
         raise AutoDevisError(
             'Débit de conception introuvable : saisissez le débit souhaité ou '
             "le besoin en eau (m³/jour).", field='pompe_debit_m3h')
