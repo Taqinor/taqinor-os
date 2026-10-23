@@ -1081,6 +1081,7 @@
       "pas_kwc": 5,
       "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
+      "statut": "calculee",
       "paliers": [
         {
           "kwc": 5,
@@ -2056,6 +2057,7 @@
         "Protection AC sortie onduleur",
         "Câble AC onduleur → TGBT"
       ],
+      "a_chiffrer_visite": [],
       "incomplet": true,
       "options": [
         {
@@ -2312,6 +2314,7 @@
       "pas_kwc": 5,
       "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
+      "statut": "calculee",
       "paliers": [
         {
           "kwc": 5,
@@ -2660,6 +2663,7 @@
         "Protection AC sortie onduleur",
         "Câble AC onduleur → TGBT"
       ],
+      "a_chiffrer_visite": [],
       "incomplet": true,
       "options": [
         {
@@ -2811,6 +2815,7 @@
       "pas_kwc": 5,
       "horizon_marginal_annees": 10,
       "raison_arret": "prix_manquants",
+      "statut": null,
       "paliers": [],
       "bornes": {
         "toit": {
@@ -2847,6 +2852,7 @@
       "prix_a_renseigner": [
         "Onduleur string triphasé (aucun onduleur éligible à prix connu)"
       ],
+      "a_chiffrer_visite": [],
       "incomplet": true,
       "options": []
     },
@@ -2867,6 +2873,7 @@
       "pas_kwc": 5,
       "horizon_marginal_annees": 10,
       "raison_arret": "toit",
+      "statut": "calculee",
       "paliers": [
         {
           "kwc": 5,
@@ -2954,7 +2961,8 @@
     "profil_charge.methode": "declare | registres_mt | courbe_mesuree | archetype — priorité : courbe_mesuree > registres_mt > declare > archetype (repli étiqueté « estimation », D-CIQ-1) ; `archetype` = {cle, source, licence} ou null",
     "profil_charge.jours_types": "[{mois, type_jour ouvre|samedi|dimanche|ferme, nb_jours, charge_kwh[24]}] — Σ charge × nb_jours = consommation du mois",
     "production": "{source pvgis|calepinage, coordonnees_figees {lat, lon, date_appel}, inclinaison_deg, azimut_deg, pertes_pct, kwh_kwc_mensuel[12], jours_types[{mois, production_kwh_kwc[24]}]} — heures en GMT (aucun décalage, `decalage_maroc_h`)",
-    "taille": "pas 5 kWc ; `paliers[].cout_ht` = prix de VENTE HT de la tranche (jamais un coût d'achat) ; `ratio_marginal_annees` = cout_ht ÷ economie_annuelle marginale ; `admis` faux ⇒ `borne` nommée ; `retenue_kwc` null ⇒ `raison_arret` le dit ; raison_arret ∈ horizon_marginal | toit | puissance_souscrite | plafond_injection | onduleurs | prix_manquants | taille_explicite | consommation_absente",
+    "taille": "pas 5 kWc ; `paliers[].cout_ht` = prix de VENTE HT de la tranche (jamais un coût d'achat) ; `ratio_marginal_annees` = cout_ht ÷ economie_annuelle marginale ; `admis` faux ⇒ `borne` nommée ; `retenue_kwc` null ⇒ `raison_arret` le dit ; raison_arret ∈ horizon_marginal | toit | puissance_souscrite | plafond_injection | onduleurs | prix_manquants | module | taille_explicite | consommation_absente (ADEV78 : `module` = module sans Pmax publiée, aucun palier) ; `statut` (ADEV79, D-ACI-2=a) = `estimation` dès qu'un poste attend la visite (`composition.a_chiffrer_visite` non vide : hors total, sous réserve de visite), `calculee` sinon, null sans taille",
+    "composition.a_chiffrer_visite": "ADEV79 (D-ACI-2=a) — `composition.a_chiffrer_visite` = désignations des lignes qui dépendent de la VISITE (structure sans type de pose, câbles sans longueur ni chaînes, section/calibre du bureau d'études) : hors total et hors devis, jamais dans `prix_a_renseigner` ; une ligne sans prix d'un rôle de taille ou d'un poste fixe reste dans `prix_a_renseigner` et fait refuser le devis automatique (D-ACI-6=a).",
     "bilan": "taux_autoconso = autoconso ÷ production ; taux_couverture = autoconso ÷ consommation (COUV-AUTO) ; BT ⇒ `injecte_valorise_kwh` = 0 (aucune revente BT) ; `horaire` = la matrice que la valorisation (CIQ3) lit au prix du poste horaire",
     "economie_ci": "clé TOUJOURS présente ; valeur = l'objet du contrat `economie_ci.json` (CIQ3), null si non calculable",
     "composition.lignes": "[{role (ROLES_CI), produit (id ou null), designation, quantite, unite, prix_connu, motif, a_confirmer_visite}] — un article C&I manquant = ligne `produit: null` « prix à renseigner », devis `incomplet`",
