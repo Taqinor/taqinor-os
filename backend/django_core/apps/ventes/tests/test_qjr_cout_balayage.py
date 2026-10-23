@@ -38,7 +38,11 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
+from apps.ventes import balayage_adaptatif as B
 from apps.ventes import dimensionnement as D
+
+#: Les deux choisisseurs que le balayage adaptatif reçoit en argument.
+CHOISIRS = (D.choisir_recommandation, D.choisir_recommandation_avec)
 
 #: La note de résidu, et le bloc machine qu'elle porte. ``parents[5]`` est la
 #: racine du dépôt : tests → ventes → apps → django_core → backend → racine.
@@ -104,29 +108,33 @@ class VolumeDuBalayageTests(SimpleTestCase):
                          'docs/audit-parcours-devis-surfaces-non-auditees.md '
                          'dans le MÊME commit, et relire la note de résidu.')
         # Le pire cas absolu n'est PAS une charge normale : c'est le garde-fou.
+        # 23/10/2026 — et un profil résidentiel typique reste sous le seuil du
+        # balayage DENSE : il est évalué taille par taille, byte-identique.
         for valeur in mesures.values():
             self.assertLess(valeur, D.MAX_PANNEAUX_BALAYAGE)
+            self.assertLessEqual(valeur, B.SEUIL_BALAYAGE_DENSE)
 
-    def test_le_garde_fou_ne_couvre_PAS_la_borne_de_parite(self):
-        """LE POINT OUVERT TROUVÉ EN MESURANT, épinglé tel qu'il EST.
-
-        ``MAX_PANNEAUX_BALAYAGE`` se décrit comme le garde-fou contre « une
-        facture saisie avec un zéro de trop ». Mesuré : il ne s'applique qu'à
-        l'EXTENSION « chasse à la falaise », pas à la borne de parité du chemin
-        par défaut. Un zéro de trop sur une facture MÉDIANE reste sous le
-        plafond (107) ; sur une GROSSE facture il l'explose (222 à 200 000
-        kWh/an). Ce test épingle le comportement RÉEL — il n'affirme pas que
-        c'est bien. Le jour où la borne de parité sera plafonnée (décision de
-        moteur, hors périmètre de QJR112), il rougira et la note se corrigera
-        avec lui.
+    def test_le_zero_de_trop_est_signale_puis_plafonne(self):
+        """Décision fondateur du 23/10/2026 : un gros profil n'est plus REFUSÉ
+        à 120 panneaux — il est SIGNALÉ (``SEUIL_PANNEAUX_RESIDENTIEL``) et
+        dimensionné par la grille grossière ; seul le plafond dur
+        (``MAX_PANNEAUX_BALAYAGE``, 2 000 panneaux) tronque encore. Un zéro de
+        trop sur une facture MÉDIANE (107 tailles) reste sous le seuil ; sur
+        une GROSSE facture (222 à 200 000 kWh/an) il passe le seuil sans
+        toucher le plafond ; deux zéros de trop (2 000 000 kWh/an) touchent le
+        plafond. La note de résidu porte ces trois volumes.
         """
         note = chiffres_de_la_note()
         self.assertEqual(tailles_balayees(96000),
                          int(note['TAILLES_ZERO_DE_TROP']))
-        self.assertLessEqual(tailles_balayees(96000), D.MAX_PANNEAUX_BALAYAGE)
+        self.assertLessEqual(tailles_balayees(96000),
+                             B.SEUIL_PANNEAUX_RESIDENTIEL)
         self.assertEqual(tailles_balayees(200000),
                          int(note['TAILLES_200000']))
-        self.assertGreater(tailles_balayees(200000), D.MAX_PANNEAUX_BALAYAGE)
+        self.assertGreater(tailles_balayees(200000),
+                           B.SEUIL_PANNEAUX_RESIDENTIEL)
+        self.assertLessEqual(tailles_balayees(200000), D.MAX_PANNEAUX_BALAYAGE)
+        self.assertGreater(tailles_balayees(2000000), D.MAX_PANNEAUX_BALAYAGE)
 
     def test_une_entree_absente_ne_balaie_rien(self):
         """« On ne balaie pas dans le vide » — 0 taille, jamais un défaut."""
@@ -142,10 +150,17 @@ class VolumeDuBalayageTests(SimpleTestCase):
         """Une composition SANS batterie + au plus MAX_PALIERS_STOCKAGE AVEC."""
         self.assertIsInstance(D.MAX_PALIERS_STOCKAGE, int)
         self.assertGreater(D.MAX_PALIERS_STOCKAGE, 0)
-        pire_cas = D.MAX_PANNEAUX_BALAYAGE * (1 + D.MAX_PALIERS_STOCKAGE)
-        self.assertEqual(pire_cas, 2040,
+        # 23/10/2026 — le pire cas n'est plus « plafond × paliers » : la grille
+        # grossière borne le nombre de tailles ÉVALUÉES quel que soit le
+        # plafond (``tailles_max_evaluees``), chacune avec une composition sans
+        # batterie et au plus MAX_PALIERS_STOCKAGE paliers.
+        note = chiffres_de_la_note()
+        self.assertEqual(B.tailles_max_evaluees(D.MAX_PANNEAUX_BALAYAGE),
+                         int(note['TAILLES_MAX_EVALUEES']),
                          'le pire cas du balayage a bougé : la note de résidu '
                          'le chiffre, elle doit bouger aussi.')
+        pire_cas = B.tailles_max_evaluees(D.MAX_PANNEAUX_BALAYAGE) * (1 + D.MAX_PALIERS_STOCKAGE)
+        self.assertEqual(pire_cas, 237 * 17)
 
     def test_les_douze_jours_types_sont_PARTAGES_entre_les_capacites(self):
         """LA propriété qui divise le coût par dix-sept.
@@ -176,6 +191,12 @@ class NoteDeResiduTests(SimpleTestCase):
         note = chiffres_de_la_note()
         self.assertEqual(int(note['MAX_PANNEAUX_BALAYAGE']),
                          D.MAX_PANNEAUX_BALAYAGE)
+        self.assertEqual(int(note['SEUIL_PANNEAUX_RESIDENTIEL']),
+                         B.SEUIL_PANNEAUX_RESIDENTIEL)
+        self.assertEqual(int(note['SEUIL_BALAYAGE_DENSE']),
+                         B.SEUIL_BALAYAGE_DENSE)
+        self.assertEqual(int(note['POINTS_GRILLE_GROSSIERE']),
+                         B.POINTS_GRILLE_GROSSIERE)
         self.assertEqual(int(note['MAX_PALIERS_STOCKAGE']),
                          D.MAX_PALIERS_STOCKAGE)
         self.assertEqual(float(note['FACTEUR_MAX_FALAISE']),
@@ -195,3 +216,105 @@ class NoteDeResiduTests(SimpleTestCase):
         plafond = min(D.MAX_PANNEAUX_BALAYAGE,
                       math.ceil(parite * float(note['FACTEUR_MAX_FALAISE'])))
         self.assertEqual(plafond, 42)
+
+
+def _ligne_factice(panneaux):
+    """Une ligne de tableau FABRIQUÉE (même forme minimale que
+    ``test_qjr411_plafond_message_honnete._ligne_tableau``) dont l'économie
+    est concave : le meilleur payback tombe vers 300 panneaux, puis chaque
+    panneau de plus rapporte moins — la montée s'arrête d'elle-même."""
+    cout = 4000.0 * panneaux
+    economie = 1200.0 * panneaux * max(0.0, 1.0 - panneaux / 1500.0) + 200.0
+    payback = D._payback(cout, economie)
+    return {
+        'panneaux': panneaux, 'kwc': round(panneaux * 0.71, 3),
+        'composable': True,
+        'payback_sans_annees': None if payback is None else round(payback, 2),
+        'cout_sans_ttc': cout, 'economie_sans_mad': economie,
+        'couverture_sans': min(1.0, panneaux / 700.0),
+        'verdicts_bloquants_sans': [], 'verdicts_bloquants_avec': [],
+        'batterie_disponible': False, 'payback_avec_annees': None,
+        'residuel_kwh_mois': 400.0, 'batterie_kwh': 0.0,
+        'balayage_stockage': [], 'avertissements': [],
+    }
+
+
+class BalayageAdaptatifTests(SimpleTestCase):
+    """Décision fondateur du 23/10/2026 — « adaptive sweep » : les fonctions
+    PURES de la grille, et le volume d'évaluations qu'elle garantit."""
+
+    def test_le_pas_vaut_1_sous_le_seuil_dense_puis_environ_40_points(self):
+        for fin in (1, 7, 22, 39, B.SEUIL_BALAYAGE_DENSE):
+            self.assertEqual(B.pas_balayage(fin), 1, fin)
+        self.assertEqual(B.pas_balayage(B.SEUIL_BALAYAGE_DENSE + 1), 2)
+        self.assertEqual(B.pas_balayage(660), 17)
+        self.assertEqual(B.pas_balayage(D.MAX_PANNEAUX_BALAYAGE), 50)
+        for fin in (61, 140, 660, 2000):
+            with self.subTest(fin=fin):
+                self.assertLessEqual(
+                    len(B.tailles_grille(1, fin, B.pas_balayage(fin))),
+                    B.POINTS_GRILLE_GROSSIERE + 1)
+
+    def test_la_grille_dense_est_byte_identique_a_l_intervalle(self):
+        for debut, fin in ((1, 39), (3, 3), (1, 60)):
+            with self.subTest(debut=debut, fin=fin):
+                self.assertEqual(B.tailles_grille(debut, fin, 1),
+                                 list(range(debut, fin + 1)))
+        self.assertEqual(B.tailles_grille(5, 4, 1), [])
+
+    def test_la_grille_grossiere_inclut_toujours_les_deux_bornes(self):
+        grille = B.tailles_grille(1, 660, 17)
+        self.assertEqual(grille[0], 1)
+        self.assertEqual(grille[-1], 660)
+        self.assertEqual(grille, sorted(set(grille)))
+
+    def test_le_raffinement_ajoute_les_voisins_bornes_sans_doublon(self):
+        grille = B.tailles_grille(1, 660, 17)
+        tailles = B.tailles_raffinees(grille, [290, 660], 17, 1, 660)
+        self.assertEqual(tailles, sorted(set(tailles)))
+        self.assertTrue(set(range(274, 307)).issubset(tailles))
+        self.assertTrue(set(range(644, 661)).issubset(tailles))
+        self.assertEqual(tailles[-1], 660)
+        self.assertLessEqual(len(tailles), len(grille) + 2 * (2 * 17 - 2))
+
+    def test_le_tableau_adaptatif_est_exact_au_panneau_pour_un_volume_borne(self):
+        """Sur 660 tailles candidates, la grille (≤ 41) plus le raffinement
+        autour de la recommandation : moins de 41 + 2 × (2 × 17 − 2)
+        évaluations, et la taille retenue est entourée de ses voisines
+        immédiates — elle est exacte au panneau, pas à la grille."""
+        appels = []
+
+        def evaluer(panneaux):
+            appels.append(panneaux)
+            return _ligne_factice(panneaux)
+
+        pas = B.pas_balayage(660)
+        tableau = B.tableau_adaptatif(evaluer, 1, 660, False, CHOISIRS)
+        self.assertLessEqual(len(set(appels)), 41 + 2 * (2 * pas - 2))
+        reco, motivation = D.choisir_recommandation(tableau)
+        self.assertIsNotNone(reco)
+        tailles = {ligne['panneaux'] for ligne in tableau}
+        self.assertIn(reco['panneaux'] - 1, tailles)
+        self.assertIn(reco['panneaux'] + 1, tailles)
+        # Toute ligne porte le pas ; celles au-dessus du seuil sont SIGNALÉES
+        # et la recommandation (> 120) porte le signal dans sa motivation.
+        self.assertTrue(all(ligne['pas_balayage'] == pas for ligne in tableau))
+        for ligne in tableau:
+            self.assertEqual(
+                ligne.get('hors_residentiel', False),
+                ligne['panneaux'] > B.SEUIL_PANNEAUX_RESIDENTIEL)
+        self.assertGreater(reco['panneaux'], B.SEUIL_PANNEAUX_RESIDENTIEL)
+        self.assertIn('étude sur mesure conseillée', motivation)
+
+    def test_un_balayage_dense_ne_porte_aucune_cle_nouvelle(self):
+        """Sous le seuil dense, les lignes ont EXACTEMENT la forme d'hier :
+        ni ``pas_balayage`` ni ``hors_residentiel``, motivation inchangée."""
+        tableau = B.tableau_adaptatif(_ligne_factice, 1, 39, False, CHOISIRS)
+        self.assertEqual([ligne['panneaux'] for ligne in tableau],
+                         list(range(1, 40)))
+        for ligne in tableau:
+            self.assertNotIn('pas_balayage', ligne)
+            self.assertNotIn('hors_residentiel', ligne)
+        reco, motivation = D.choisir_recommandation(tableau)
+        self.assertIsNotNone(reco)
+        self.assertNotIn('étude sur mesure', motivation)

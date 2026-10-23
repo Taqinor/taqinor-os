@@ -2,9 +2,13 @@
 """QJR411 (DR4, 31/08/2026) — le plafond de 120 panneaux est GARDÉ, mais il
 cesse de mentir au client.
 
-``MAX_PANNEAUX_BALAYAGE`` (``dimensionnement.py:131``) reste à 120 : ce n'est
-PAS un bug, DR4 le CONSERVE — aucune borne n'est déplacée par cette tâche. Ce
-qui était faux, c'est le DISCOURS : un consommateur PARFAITEMENT légitime
+``MAX_PANNEAUX_BALAYAGE`` resta à 120 sous DR4 — aucune borne n'était déplacée
+par cette tâche. DÉCISION FONDATEUR DU 23/10/2026 (« residential clients above
+100 kDH must be resolved ») : 120 devient le SEUIL ``SEUIL_PANNEAUX_RESIDENTIEL``
+(taille signalée « étude sur mesure conseillée », mais RECOMMANDÉE), et le
+plafond dur passe à 2 000 panneaux — seul le zéro de trop le touche encore, et
+lui seul perd la recommandation. Ce qui était faux sous DR4, c'est le
+DISCOURS : un consommateur PARFAITEMENT légitime
 au-dessus de ~9 000 kWh/mois recevait (1) un dimensionnement tronqué SOUS la
 parité, présenté COMME LA RECOMMANDATION, et (2) un message affirmant à tort
 que sa facture était douteuse (``dimensionnement.py:1375-1378`` avant
@@ -29,6 +33,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
 
+from apps.ventes import balayage_adaptatif as B
 from apps.ventes import dimensionnement as D
 from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE
 from authentication.models import Company
@@ -68,10 +73,48 @@ def _ligne_tableau(panneaux, cout, economie, couverture, plafond=False):
 
 
 class LePlafondResteGardeTest(SimpleTestCase):
-    """DR4 : la borne elle-même n'est JAMAIS déplacée par cette tâche."""
+    """23/10/2026 : 120 est le SEUIL résidentiel (signal), 2 000 le plafond
+    dur (troncature + perte de la recommandation, QJR411 inchangé)."""
 
-    def test_le_plafond_vaut_toujours_120(self):
-        self.assertEqual(D.MAX_PANNEAUX_BALAYAGE, 120)
+    def test_le_seuil_vaut_120_et_le_plafond_dur_2000(self):
+        self.assertEqual(B.SEUIL_PANNEAUX_RESIDENTIEL, 120)
+        self.assertEqual(D.MAX_PANNEAUX_BALAYAGE, 2000)
+        self.assertGreater(D.MAX_PANNEAUX_BALAYAGE, B.SEUIL_PANNEAUX_RESIDENTIEL)
+
+
+class HorsResidentielRecommandeEtSignaleTest(SimpleTestCase):
+    """23/10/2026 — une taille au-dessus du seuil résidentiel, si elle est la
+    meilleure, est RECOMMANDÉE, et sa motivation porte le signal."""
+
+    def test_une_ligne_hors_residentiel_reste_recommandable(self):
+        tableau = [
+            _ligne_tableau(119, 404000, 45200, 0.55),
+            _ligne_tableau(120, 408000, 45400, 0.56),
+            _ligne_tableau(121, 412000, 47000, 0.57),
+            _ligne_tableau(122, 416000, 48600, 0.58),
+        ]
+        for ligne in tableau[2:]:
+            ligne['hors_residentiel'] = True
+            ligne['avertissements'] = [B.MESSAGE_HORS_RESIDENTIEL]
+        reco, motivation = D.choisir_recommandation(tableau)
+        self.assertIsNotNone(reco)
+        self.assertEqual(reco['panneaux'], 122)
+        self.assertIn('étude sur mesure conseillée', motivation)
+        self.assertIn(str(B.SEUIL_PANNEAUX_RESIDENTIEL), motivation)
+        for phrase in PHRASES_INTERDITES:
+            self.assertNotIn(phrase, motivation)
+
+    def test_une_ligne_sous_le_seuil_garde_sa_motivation_a_l_octet(self):
+        tableau = [
+            _ligne_tableau(8, 40000, 8000, 0.50),
+            _ligne_tableau(9, 49000, 9000, 0.56),
+            _ligne_tableau(10, 57000, 9500, 0.60),
+        ]
+        reco, motivation = D.choisir_recommandation(tableau)
+        self.assertEqual(reco['panneaux'], 9)
+        self.assertNotIn('étude sur mesure', motivation)
+        self.assertEqual(
+            (reco, motivation), D._choisir_recommandation_brute(tableau))
 
 
 class RecommandationExclutLeResultatTronqueTest(SimpleTestCase):
@@ -195,6 +238,53 @@ class BalayageReelDeclencheLePlafondTest(TestCase):
             parite + 1, D.MAX_PANNEAUX_BALAYAGE,
             'la consommation dérivée doit vraiment dépasser le plafond')
         return mensuel
+
+    def test_profil_entre_seuil_et_plafond_est_dimensionne_et_signale(self):
+        """23/10/2026 — un profil à ~140 panneaux de parité (ex-« plafond »)
+        reçoit une recommandation par la grille grossière + raffinement :
+        aucune ligne tronquée, les tailles > 120 signalées, la taille retenue
+        exacte au panneau (ses voisines immédiates sont dans le tableau)."""
+        import math
+
+        from apps.parametres.pvgis_profils import productible_mensuel
+
+        productibles, _source = productible_mensuel(ville=VILLE)
+        productible_an = sum(productibles)
+        watt = float(self._sizer(300.0)['tableau'][0]['panel_watt'])
+        panneaux_vises = B.SEUIL_PANNEAUX_RESIDENTIEL + 20
+        conso_an = panneaux_vises * (watt / 1000.0) * productible_an
+        mensuel = math.ceil(conso_an / 12.0 / 100.0) * 100.0
+
+        resultat = self._sizer(mensuel)
+        tableau = resultat['tableau']
+        self.assertTrue(tableau)
+        self.assertFalse(any(ligne.get('plafond_panneaux_atteint')
+                             for ligne in tableau))
+        pas = B.pas_balayage(max(ligne['panneaux'] for ligne in tableau))
+        self.assertGreater(pas, 1)
+        for ligne in tableau:
+            self.assertEqual(ligne.get('pas_balayage'), pas)
+            self.assertEqual(
+                bool(ligne.get('hors_residentiel')),
+                ligne['panneaux'] > B.SEUIL_PANNEAUX_RESIDENTIEL)
+            if ligne.get('hors_residentiel'):
+                self.assertIn(B.MESSAGE_HORS_RESIDENTIEL,
+                              ligne['avertissements'])
+        reco = resultat['recommandation']
+        self.assertIsNotNone(
+            reco, 'un profil sous le plafond dur doit recevoir une taille '
+                  '(décision fondateur du 23/10/2026) : %s'
+                  % resultat['motivation'])
+        tailles = {ligne['panneaux'] for ligne in tableau}
+        if reco['panneaux'] > 1:
+            self.assertIn(reco['panneaux'] - 1, tailles)
+        if reco['panneaux'] < max(tailles):
+            self.assertIn(reco['panneaux'] + 1, tailles)
+        if reco['panneaux'] > B.SEUIL_PANNEAUX_RESIDENTIEL:
+            self.assertIn('étude sur mesure conseillée',
+                          resultat['motivation'])
+        else:
+            self.assertNotIn('étude sur mesure', resultat['motivation'])
 
     def test_profil_hors_residentiel_plafonne_avec_message_honnete(self):
         """ROUGE avant le correctif : le message rendu contenait « la

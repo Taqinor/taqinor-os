@@ -74,6 +74,40 @@ class PreviewAvecLeadTests(_LeadPreviewBase):
             set(profil['equipements_actifs']),
             {'ve', 'clim', 'piscine', 'chauffe_eau'})
 
+    def test_lead_residentiel_sans_reponse_occupation_prend_le_defaut_presence(self):
+        """Lead 1635 (23/10/2026) — l'écran générateur envoie ``lead`` SANS
+        ``mode_installation`` et le lead n'a pas répondu à « présence en
+        journée » : le profil retombait sur le défaut NON résidentiel
+        ``absence_jour`` (8 panneaux / 5,68 kWc recommandés) pendant que le
+        devis automatique du même lead (``occupation_du_lead``, D4) tournait
+        en ``presence_jour`` (24 panneaux / 17,04 kWc). Le corps EXACT de
+        l'écran, sans la clé que les autres tests de ce module ajoutent."""
+        from apps.ventes.courbes_journalieres import occupation_du_lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Oulkadi', prenom='Sans réponse',
+            telephone='+212600000091', ville='Casablanca',
+            type_installation='residentiel',
+            facture_hiver=Decimal('6000'), ete_differente=False,
+            occupation_jour=None)
+        resp = self.api.post('/api/django/ventes/etude-horaire/preview/', {
+            'lead': lead.id, 'dimensionner': False,
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['profil']['occupation'], 'presence_jour')
+        # Parité avec le chemin devis automatique : UNE occupation par lead.
+        self.assertEqual(resp.data['profil']['occupation'],
+                         occupation_du_lead(lead)[0])
+        # Décision fondateur du 23/10/2026 : la présence en journée est le
+        # défaut PARTOUT — un lead non résidentiel sans réponse ni profil
+        # d'activité la reçoit aussi (plus de repli ``absence_jour``).
+        lead.type_installation = 'commercial'
+        lead.save(update_fields=['type_installation'])
+        resp = self.api.post('/api/django/ventes/etude-horaire/preview/', {
+            'lead': lead.id, 'dimensionner': False,
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['profil']['occupation'], 'presence_jour')
+
     def test_lead_seul_ancre_la_consommation_sans_facture_dans_le_corps(self):
         """Le lead porte sa PROPRE facture d'hiver : aucune facture à
         retaper dans le corps de la requête pour ancrer un calcul."""

@@ -290,7 +290,20 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
         conso_kwh_mensuelle_unique=conso_mensuelle_kwh_pour_devis(devis_duck),
         tranches=tranches, charges_fixes_mad=charges_fixes_mad)
 
-    occupation, _source_occ = occupation_du_devis(devis_duck, corps)
+    # Lead 1635 (23/10/2026) — MÊME DÉFAUT D'OCCUPATION QUE LE DEVIS QUE CE
+    # LEAD DEVIENDRA. L'écran générateur n'envoie pas ``mode_installation`` et
+    # le duck-type n'en porte pas : ``_occupation`` retombait sur le défaut
+    # NON résidentiel ``absence_jour`` pendant que le devis automatique
+    # (``domain.entrees.entrees_depuis_lead`` → ``occupation_du_lead``, D4)
+    # dimensionnait le MÊME lead en ``presence_jour`` — 8 panneaux (5,68 kWc)
+    # recommandés à l'écran contre 24 (17,04 kWc) au devis, sur une facture
+    # de 6 000 MAD. Même correctif que le chemin devis (CI #752) : le mode du
+    # lead (``type_installation``, celui que ``creation_auto`` recopie en
+    # ``mode_installation``) quand le corps ne le fournit pas, jamais écrasé.
+    contexte = dict(corps)
+    if not contexte.get('mode_installation'):
+        contexte['mode_installation'] = getattr(lead, 'type_installation', None)
+    occupation, _source_occ = occupation_du_devis(devis_duck, contexte)
     equipements = equipements_du_devis(devis_duck)
     return conso, source, detail, occupation, equipements
 

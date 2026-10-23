@@ -98,6 +98,8 @@ _OCCUPATION_JOUR_VERS_DRAPEAU = {
 DEFAUT_RESIDENTIEL = (OCCUPATION_PRESENCE, 'defaut_residentiel_fondateur')
 
 #: Source d'occupation du défaut NON résidentiel (sans profil d'activité).
+#: Depuis le 23/10/2026 ce défaut est aussi la PRÉSENCE en journée (décision
+#: fondateur, lead 1635) ; seul le libellé de source distingue les deux défauts.
 SOURCE_DEFAUT_NON_RESIDENTIEL = 'defaut_non_residentiel'
 
 # ── CAD172 — occupation non posée : présence SUPPOSÉE, et on le DIT ─────────
@@ -257,7 +259,8 @@ def _occupation(devis, data):
     (``web_questionnaire.activity_profile`` ∈ day / day_evening / continuous),
     qui décrit un site actif EN JOURNÉE : toujours utilisé pour les modes non
     résidentiels quand le lead le porte ET qu'``occupation_jour`` est absent.
-    Sinon, hors résidentiel, le défaut reste ``absence_jour``.
+    Sinon, hors résidentiel, le défaut est AUSSI la présence depuis le
+    23/10/2026 (décision fondateur, lead 1635) — voir le dernier ``return``.
     """
     # QJR10 — MÊME traducteur que le chemin lead seul (aucun dict local).
     reponse = occupation_depuis_reponse(_occupation_jour_lead(devis))
@@ -276,7 +279,14 @@ def _occupation(devis, data):
         profil = None
     if profil in ('day', 'day_evening', 'continuous'):
         return OCCUPATION_PRESENCE, 'lead_profil_activite:%s' % profil
-    return OCCUPATION_ABSENCE, SOURCE_DEFAUT_NON_RESIDENTIEL
+    # Décision fondateur du 23/10/2026 (lead 1635) : « always presume that you
+    # are present during the day ». Le dernier repli est la PRÉSENCE, quel que
+    # soit le mode — le défaut historique ``absence_jour`` hors résidentiel a
+    # fait recommander 8 panneaux (5,68 kWc) au lieu de 24 (17,04 kWc) dès
+    # qu'un appelant oubliait ``mode_installation``. La source reste
+    # ``defaut_non_residentiel`` : un défaut appliqué, pas une réponse du
+    # client (bandeau CAD172 « profil supposé » inchangé).
+    return OCCUPATION_PRESENCE, SOURCE_DEFAUT_NON_RESIDENTIEL
 
 
 def production_par_saison(kwc, mensuel, ville, lat, lon):
