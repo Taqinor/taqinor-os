@@ -449,6 +449,7 @@ def _consommation(res, tarif, alertes, hypotheses):
     annuel = _num(res.valeur('kwh_annuel'))
     if annuel and annuel > 0:
         return annuel, 'kwh_annuel'
+    partiel = None
     for feuille in ('factures_mad', 'releve_kwh'):
         lignes = res.valeur(feuille)
         if isinstance(lignes, list):
@@ -461,9 +462,23 @@ def _consommation(res, tarif, alertes, hypotheses):
                     numero = int(mois.split('-')[-1])
                 except ValueError:
                     continue
-                par_mois[numero] = _num(ligne['kwh'])
+                if 1 <= numero <= 12:
+                    par_mois[numero] = _num(ligne['kwh'])
             if len(par_mois) == 12:
                 return [par_mois[m] for m in range(1, 13)], feuille
+            if par_mois and partiel is None:
+                partiel = (par_mois, feuille)
+    bill = _num(res.valeur('bill_kwh'))
+    if partiel is not None and not (bill and bill > 0):
+        # ADEV77 (D-ACI-1=b) — relevé de n < 12 mois DISTINCTS et aucun autre
+        # kWh : moyenne des mois relevés × 12, étiquetée estimation.
+        par_mois, feuille = partiel
+        moyenne = sum(par_mois.values()) / len(par_mois)
+        hypotheses.append({
+            'cle': 'consommation', 'valeur': round(moyenne * 12, 1),
+            'statut': 'estimation',
+            'source': 'relevé partiel (%d mois)' % len(par_mois)})
+        return [moyenne] * 12, feuille
     td = res.valeur('tarif_declare')
     lignes = res.valeur('factures_mad')
     montants = {}
@@ -491,7 +506,6 @@ def _consommation(res, tarif, alertes, hypotheses):
             'conversion_mad_impossible', 'consommation.factures_mad',
             'Facture en MAD sans tarif BT sourcé applicable : aucune conversion en '
             'kWh (jamais un prix moyen supposé).'))
-    bill = _num(res.valeur('bill_kwh'))
     if bill and bill > 0:
         hypotheses.append({'cle': 'consommation', 'valeur': bill, 'statut': 'estimation',
                            'source': 'bill_kwh (lecture seule, QJR662)'})

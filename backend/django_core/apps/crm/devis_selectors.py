@@ -409,6 +409,23 @@ def _ci_nombre(brut):
         return None
 
 
+def mois_distincts_du_releve(lignes):
+    """ADEV77 — ``{numéro de mois (1-12): kWh}`` d'un relevé : les mois
+    calendaires DISTINCTS lisibles (« 2025-03 » et « 2026-03 » sont le même
+    mois ; la dernière ligne lue l'emporte), comme le moteur les compte."""
+    par_mois = {}
+    for ligne in lignes or ():
+        if not isinstance(ligne, dict) or _ci_nombre(ligne.get('kwh')) is None:
+            continue
+        try:
+            numero = int(str(ligne.get('mois') or '').split('-')[-1])
+        except ValueError:
+            continue
+        if 1 <= numero <= 12:
+            par_mois[numero] = _ci_nombre(ligne['kwh'])
+    return par_mois
+
+
 def entrees_ci_du_lead(lead):
     """CIQ405 — ``{entrees, manquants, informations}`` d'un lead commercial
     ou industriel (``None`` ailleurs). Lecture SEULE ; UNE requête au plus
@@ -472,7 +489,12 @@ def entrees_ci_du_lead(lead):
         entrees.append(entree)
 
     # 1. Consommation : le relevé prime, puis le kWh mensuel, puis la
-    # facture en MAD (convertie par le moteur, jamais ici).
+    # facture en MAD (convertie par le moteur, jamais ici). ADEV77
+    # (D-ACI-1=b) : 0 n'est pas une réponse (même règle que
+    # ``devis_auto._rempli``) ; un relevé de MOINS de 12 mois distincts ne
+    # masque plus le kWh déclaré — les deux sont servis, le moteur choisit
+    # (relevé partiel seul = moyenne × 12, estimation).
+    mois_distincts = 0
     if _releve_rempli(lead):
         releve = lead.releve_conso
         mois = []
@@ -484,20 +506,24 @@ def entrees_ci_du_lead(lead):
                 if ligne.get(registre) not in (None, ''):
                     m[registre] = _ci_nombre(ligne[registre])
             mois.append(m)
+        mois_distincts = len(mois_distincts_du_releve(mois))
         _entree('releve_conso', mois, 'consommation',
                 'consommation.factures_mad',
                 detail=_CI_DETAIL_SOURCE.get(releve.get('source'), 'client'))
-    elif not _entree_vide(lead.conso_mensuelle_kwh):
+    if mois_distincts >= 12:
+        pass                  # un relevé complet garde seul la priorité
+    elif _kwh_positif(lead.conso_mensuelle_kwh) is not None:
         _entree('conso_mensuelle_kwh', _entree_valeur(lead.conso_mensuelle_kwh),
                 'consommation', 'consommation.kwh_mensuels')
-    elif not _entree_vide(lead.bill_kwh):
+    elif _kwh_positif(lead.bill_kwh) is not None:
         _entree('bill_kwh', _entree_valeur(lead.bill_kwh), 'consommation',
                 'consommation.kwh_mensuels')
-    elif not _entree_vide(lead.facture_hiver) and _facture_mad_compte(lead):
+    elif _kwh_positif(lead.facture_hiver) is not None \
+            and _facture_mad_compte(lead):
         _entree('facture_hiver', _entree_valeur(lead.facture_hiver),
                 'consommation', 'consommation.facture_mad',
                 source_conso='facture_mad')
-    else:
+    elif not mois_distincts:
         manquants.append('conso_mensuelle_kwh')
 
     # 2. Tension : trois états, jamais « bt » par défaut.

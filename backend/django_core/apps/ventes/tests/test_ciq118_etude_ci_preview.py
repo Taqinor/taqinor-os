@@ -226,6 +226,35 @@ class LeadTests(_Base):
         self.assertEqual(data['niveau_donnees'], 'estimation')
         self.assertTrue(data['sous_reserve_visite']['valeur'])
 
+    # ── ADEV77 (D-ACI-1=b) — relevé partiel : jamais un masque, une estimation ─
+
+    def test_releve_un_mois_et_kwh_declare_les_deux_resolus_taille_calculee(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('3870'), categorie_commerciale='bureau',
+                          releve_conso={'mois': [{'mois': '2026-08', 'kwh': '3870.00'}]})
+        data = self.post(self._corps_lead(lead))
+        self.assertIn('kwh_mensuel_declare', data['entrees_resolues'])
+        self.assertIn('releve_kwh', data['entrees_resolues'])
+        self.assertIsNotNone(data['taille']['retenue_kwc'])
+
+    def test_releve_trois_mois_seul_moyenne_fois_douze_estimation(self):
+        mois = [{'mois': '2026-06', 'kwh': '3000'}, {'mois': '2026-07', 'kwh': '4000'},
+                {'mois': '2026-08', 'kwh': '5000'}]
+        lead = self._lead(categorie_commerciale='bureau', releve_conso={'mois': mois})
+        data = self.post(self._corps_lead(lead))
+        self.assertAlmostEqual(
+            sum(m['consommation_kwh'] for m in data['bilan']['par_mois']), 4000 * 12, delta=12)
+        hypothese = next(h for h in data['hypotheses'] if h['cle'] == 'consommation')
+        self.assertEqual(hypothese['statut'], 'estimation')
+        self.assertEqual(hypothese['source'], 'relevé partiel (3 mois)')
+
+    def test_zero_kwh_declare_la_facture_est_lue(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('0.00'), facture_hiver=Decimal('3500'),
+                          categorie_commerciale='bureau', tension_raccordement='bt',
+                          contrat_electricite='bt_patente')
+        etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+        self.assertNotIn('consommation_absente', [a['code'] for a in etude['alertes']])
+        self.assertIn('facture_hiver_mad', etude['entrees_resolues'])
+
     def test_lead_dune_autre_societe_ignore(self):
         lead = Lead.objects.create(company=self.autre, nom='Étranger',
                                    type_installation='commercial',

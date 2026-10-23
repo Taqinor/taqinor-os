@@ -81,6 +81,41 @@ class EntreesCi(TestCase):
         self.assertEqual(conso['provenance']['detail'], 'facture')
         self.assertEqual(conso['provenance']['origine'], 'lead')
 
+    # ── ADEV77 (D-ACI-1=b) — 0 = absent, relevé partiel ≠ masque ───────────
+
+    def _colonnes_conso(self, lead):
+        return [e['colonne'] for e in entrees_ci_du_lead(lead)['entrees']
+                if e['cle_etude'] == 'consommation']
+
+    def test_zero_kwh_et_facture_entree_facture(self):
+        lead = self._lead(conso_mensuelle_kwh='0.00', facture_hiver=3500,
+                          tension_raccordement='bt')
+        self.assertEqual(self._colonnes_conso(lead), ['facture_hiver'])
+        self.assertNotIn('conso_mensuelle_kwh',
+                         entrees_ci_du_lead(lead)['manquants'])
+
+    def test_releve_un_mois_et_kwh_deux_entrees(self):
+        releve = {'mois': [{'mois': '2026-08', 'kwh': '3870.00'}],
+                  'source': 'lu_sur_facture'}
+        lead = self._lead(releve_conso=releve, conso_mensuelle_kwh=3870)
+        self.assertEqual(self._colonnes_conso(lead),
+                         ['releve_conso', 'conso_mensuelle_kwh'])
+
+    def test_releve_douze_mois_et_kwh_releve_seul(self):
+        releve = {'mois': [{'mois': f'2025-{m:02d}', 'kwh': 1000 + m}
+                           for m in range(1, 13)]}
+        lead = self._lead(releve_conso=releve, conso_mensuelle_kwh=900)
+        self.assertEqual(self._colonnes_conso(lead), ['releve_conso'])
+
+    def test_releve_douze_lignes_un_mois_en_double_reste_partiel(self):
+        # 12 lignes, 11 mois DISTINCTS (mars 2025 et mars 2026) : partiel.
+        lignes = [{'mois': f'2025-{m:02d}', 'kwh': 1000} for m in range(2, 13)]
+        lignes.append({'mois': '2026-03', 'kwh': 1100})
+        lead = self._lead(releve_conso={'mois': lignes},
+                          conso_mensuelle_kwh=1000)
+        self.assertEqual(self._colonnes_conso(lead),
+                         ['releve_conso', 'conso_mensuelle_kwh'])
+
     def test_activity_profile_seulement_en_information(self):
         lead = self._lead(web_questionnaire={'activity_profile': 'continuous'})
         bloc = entrees_ci_du_lead(lead)
