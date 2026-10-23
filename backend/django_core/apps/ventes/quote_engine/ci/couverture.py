@@ -50,6 +50,19 @@ SOURCES_CLIENT = {
     "conventions Groupe CIQ": "ci_src_methode",
     ("remplacement à mi-vie (principe IEA PVPS, décision Q1 du 20/08/2026), "
      "au montant réel de la ligne onduleur du devis"): "ci_src_onduleur",
+    # AMOT84 — motif de sensibilité servi par ``economie_ci``.
+    ("charge horaire déclarée absente : production non recalculable heure "
+     "par heure — scénario non chiffré"): "ci_ind_sens_motif_sans_charge",
+}
+#: AMOT84 — motifs de réserve de visite (``etude_ci.sous_reserve_visite``,
+#: séparés par « ; », codes internes déjà retirés) → clé du catalogue.
+RESERVES_CLIENT = {
+    "site MT : visite avant le devis final": "ci_reserve_site_mt",
+    "tension de raccordement inconnue": "ci_reserve_tension",
+    "puissance souscrite inconnue": "ci_reserve_puissance",
+    "surface disponible inconnue": "ci_reserve_surface",
+    "profil horaire non déclaré : estimation sous réserve de visite":
+        "ci_reserve_profil",
 }
 _CODES_INTERNES = re.compile(
     r"\s*\((?:D-[A-Z]+-\d+(?:\s*,\s*)?)+\)"
@@ -106,7 +119,12 @@ def _a_confirmer(d, cle):
                 texte_fr == i18n_labels.LIBELLES[cat]["fr"]:
             sortie.append(libelle(d, cat, texte_fr))
         else:
-            sortie.append(texte_fr)
+            # AMOT84 — chaque motif connu du moteur dans la langue du
+            # document ; un motif propre au dossier reste tel quel.
+            sortie.append("; ".join(
+                libelle(d, RESERVES_CLIENT[m.strip()], m.strip())
+                if m.strip() in RESERVES_CLIENT else m.strip()
+                for m in texte_fr.split(";")))
     return sortie
 
 

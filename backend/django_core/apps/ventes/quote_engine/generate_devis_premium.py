@@ -3996,13 +3996,17 @@ def _cartes_ci_onepage(chiffres):
     eco = chiffres.get("economie_annuelle_mad")
     if eco is not None:
         base = chiffres.get("base_economie")
+        # AMOT84 — base et unité dans la langue du document (fr inchangé).
         libelle = (_L("op_economies_estimees_an")
-                   + (f" ({base})" if base else ""))
-        cellules.append((libelle, f"{fnum(eco)} MAD/an",
+                   + (f" ({_L('ci_' + base.lower())})"
+                      if base in ("HT", "TTC") else
+                      f" ({base})" if base else ""))
+        cellules.append((libelle, f"{fnum(eco)} {_L('ci_mad_an')}",
                          _ancre_figure("economie_annuelle", fnum(eco))))
     payback = chiffres.get("payback_ans")
     if payback is not None:
-        cellules.append((_L("op_retour_estime"), f"{ans(payback)} ans",
+        cellules.append((_L("op_retour_estime"),
+                         f"{ans(payback)}{_L('op_unite_ans')}",
                          _ancre_figure("payback_ans", ans(payback))))
     return cellules
 

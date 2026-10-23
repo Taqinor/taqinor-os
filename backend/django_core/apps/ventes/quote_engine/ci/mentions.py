@@ -31,8 +31,8 @@ from ..constants_82_21 import (
     MENTION_82_21,
     MENTION_ART13,
     MENTION_BT,
-    MENTION_MT,
     PLAFOND_INJECTION_SOURCE,
+    mention_mt,
 )
 from ..lecture_pure import nombre_normalise
 
@@ -271,14 +271,15 @@ def _mention_tarif(tarif):
     return _entree("tarif", textes, source, date)
 
 
-def mention_tarif_mt(tarif, mention_grille=MENTION_MT, langue=None):
+def mention_tarif_mt(tarif, mention_grille=None, langue=None):
     """AMOT81 — la source du prix du kWh MT imprimée avec l'argent :
     ``mention_grille`` (barème ONEE, ``MENTION_MT``) seulement quand la grille
     officielle est la source (ou sans bloc C&I) ; tarif lu sur la facture du
-    client ⇒ « Prix du kWh : ceux de votre facture… » ; sinon rien."""
+    client ⇒ « Prix du kWh : ceux de votre facture… » ; sinon rien.
+    AMOT84 — défaut : ``MENTION_MT`` dans la langue du document."""
     if not isinstance(tarif, dict) or \
             tarif.get("origine") == "grille_officielle":
-        return mention_grille
+        return mention_mt(langue) if mention_grille is None else mention_grille
     entree = _mention_tarif(tarif)
     return texte(entree["textes"], langue) if entree else ""
 

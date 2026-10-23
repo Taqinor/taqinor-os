@@ -2336,6 +2336,32 @@ LIBELLES = {
               'amount of the quote inverter line',
         'ar': 'استبدال في منتصف العمر (مبدأ IEA PVPS)، بالمبلغ الفعلي لبند '
               'العاكس في عرض السعر'},
+    # AMOT84 — textes DYNAMIQUES du moteur C&I dans la langue du document
+    # (le français est le texte servi, octet pour octet).
+    'ci_reserve_site_mt': {'fr': 'site MT : visite avant le devis final',
+                           'en': 'MV site: site survey before the final quote',
+                           'ar': 'موقع بالجهد المتوسط: زيارة قبل العرض النهائي'},
+    'ci_reserve_tension': {'fr': 'tension de raccordement inconnue',
+                           'en': 'connection voltage unknown',
+                           'ar': 'جهد الربط غير معروف'},
+    'ci_reserve_puissance': {'fr': 'puissance souscrite inconnue',
+                             'en': 'subscribed power unknown',
+                             'ar': 'القدرة المكتتبة غير معروفة'},
+    'ci_reserve_surface': {'fr': 'surface disponible inconnue',
+                           'en': 'available area unknown',
+                           'ar': 'المساحة المتاحة غير معروفة'},
+    'ci_reserve_profil': {
+        'fr': 'profil horaire non déclaré : estimation sous réserve de visite',
+        'en': 'hourly profile not declared: estimate subject to a site visit',
+        'ar': 'المنحنى الساعي غير مصرح به: تقدير رهين بالزيارة'},
+    'ci_ind_sens_motif_sans_charge': {
+        'fr': 'charge horaire déclarée absente : production non recalculable '
+              'heure par heure — scénario non chiffré',
+        'en': 'no declared hourly load: production cannot be recalculated hour '
+              'by hour — scenario not calculated',
+        'ar': 'لا يوجد حمل ساعي مصرح به: يتعذر إعادة حساب الإنتاج ساعة بساعة '
+              '— سيناريو غير محسوب'},
+    'op_unite_ans': {'fr': ' ans', 'en': ' years', 'ar': ' سنوات'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

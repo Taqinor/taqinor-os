@@ -276,7 +276,8 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
         tete = (f"{nom} {variation:+g}&#160;%".replace(".", ",")
                 if variation is not None else nom)
         if s.get("motif") and s.get("retour_ans") is None:
-            lignes.append(f"{tete}&#160;: {ci_blocs._txt(s['motif'])}")
+            # AMOT84 — le motif servi dans la langue du document.
+            lignes.append(f"{tete}&#160;: {ci_couverture.texte_client(d, s['motif'])}")
             continue
         morceaux = []
         if _num(s.get("retour_ans")) is not None:
