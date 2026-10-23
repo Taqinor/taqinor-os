@@ -70,3 +70,33 @@ class SeedScaleMouvementTests(TestCase):
         self.assertIsNotNone(m.company_id)
         self.assertEqual(m.company_id, m.produit.company_id)
         self.assertEqual(m.quantite_apres, m.quantite_avant + m.quantite)
+
+
+@override_settings(DEBUG=True)
+class SeedScaleOrphanProduitCollisionTests(TestCase):
+    def test_orphan_products_same_name_same_company_no_integrity_error(self):
+        """Load-smoke : deux produits orphelins de même nom réaffectés à la
+        même société ne doivent pas violer ``stock_produit_company_nom_sans_sku_uniq``."""
+        import random
+        from django.apps import apps as django_apps
+        from core.management.commands.seed_scale import Command
+        Produit = django_apps.get_model('stock', 'Produit')
+        co = Company.objects.create(nom='[SEED_SCALE] collision', slug='seed-scale-collision')
+        pks = []
+
+        def fake_seed(label, count, **kw):
+            for _ in range(2):
+                p = Produit(nom='genou', sku='', company=None)
+                p.save()
+                pks.append(p.pk)
+
+        random.seed(0)
+        Command._seed_mouvements_stock(
+            2, [co.pk], fake_seed, {'stock.produit': pks}, lambda *a: [],
+            django_apps)
+        # `pks` EST la liste portée par `pools` : les ajouts de fake_seed y
+        # sont visibles au moment de la réaffectation.
+        noms = list(Produit.objects.filter(pk__in=pks).values_list('nom', flat=True))
+        self.assertEqual(len(noms), len(set(noms)))
+        self.assertEqual(
+            Produit.objects.filter(pk__in=pks, company_id=co.pk).count(), 2)

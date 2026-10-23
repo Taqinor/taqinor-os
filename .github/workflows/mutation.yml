@@ -34,6 +34,14 @@ name: mutation (nightly)
 #     à recalibrer sur la première nuit verte, à monter par paliers de 5) ;
 #   * `--max-children 2` (au lieu de 4) : 4 workers Django en parallèle
 #     épuisaient la mémoire du runner (arrêt au démarrage des tests).
+# 23/10/2026 — DIAGNOSTIC : le job mourait CHAQUE nuit (« runner shutdown
+# signal » ~8 min après `mutmut run`, phase « Generating mutants »). mutmut 3
+# copie chaque module muté sous mutants/ et charge pytest+Django ; builder.py
+# (5 305 lignes) produisait l'essentiel des ~5 600 mutants → runner 2 coeurs /
+# 7 Go + Postgres épuisé. CORRECTIF : scope réduit à 6 modules de logique pure
+# (~1 480 lignes, setup.cfg `source_paths`) et `--max-children 1` ; clés
+# setup.cfg renommées en `source_paths` / `pytest_add_cli_args_test_selection`.
+# Runner plus gros = option payante, décision fondateur (non prise ici).
 #   * la borne `timeout 170m` (code 124) est une fin NORMALE d'une passe
 #     partielle : le score porte sur les mutants jugés avant la borne ; tout
 #     autre code de sortie de mutmut fait échouer l'étape.
@@ -121,7 +129,7 @@ jobs:
           # que les étapes d'export/résumé suivantes tournent toujours ; son
           # code 124 est la seule sortie non nulle tolérée (ENF12, voir en-tête).
           set +e
-          timeout 170m mutmut run --max-children 2
+          timeout 170m mutmut run --max-children 1
           rc=$?
           set -e
           if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
