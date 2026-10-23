@@ -200,6 +200,13 @@ EXTENSION_CORPS_RESSERRE = 'x-corps-resserre'
 def _corps_resserre(noeud):
     regle = noeud.pop(EXTENSION_CORPS_RESSERRE, None)
     corps = noeud.get('requestBody') if regle is not None else None
+    # Nocturne 23/10 (POST devis/, devis/auto/, import-releve/commit) : une
+    # règle de racine qui EXIGE quelque chose (required / anyOf / oneOf) rend
+    # le corps obligatoire — drf-spectacular ne pose `required: true` que
+    # sur un sérialiseur à champ requis, jamais sur un `request` en dict ;
+    # le fuzz envoyait alors un corps ABSENT, « conforme » puis refusé 400.
+    if corps and any(cle in regle for cle in ('required', 'anyOf', 'oneOf')):
+        corps['required'] = True
     for media in (corps or {}).get('content', {}).values():
         media['schema'] = {'allOf': [media['schema'], regle]}
 
