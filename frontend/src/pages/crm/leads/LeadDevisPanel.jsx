@@ -126,6 +126,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   const produitsRef = useRef(null)
   const marquesRef = useRef(undefined) // PVMRQ — cache du réglage marques
   const startedRef = useRef(false)
+  const cleIdempotenceRef = useRef(null) // AGQ23 — une clé par ouverture
 
   // Octets du PDF : récupérés par usePdfPreview (MÊME source que le
   // téléchargement) ; changer de format ou fermer le panneau avorte le rendu
@@ -180,10 +181,17 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         }
       }
       setAlertes([])
+      // AGQ23 (C-AGQ-022) — UNE clé d'idempotence par ouverture du panneau :
+      // un 2ᵉ clic (après un délai dépassé) rejoue le 1ᵉʳ devis au serveur.
+      if (!cleIdempotenceRef.current) {
+        cleIdempotenceRef.current = globalThis.crypto?.randomUUID?.()
+          || `auto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
+      }
       const id = await createAutoQuote({
         lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
         marques: marquesRef.current || undefined,
         onAlertes: setAlertes,
+        idempotencyKey: cleIdempotenceRef.current,
       })
       setDevisId(id)
       onDevisChanged?.()
@@ -196,6 +204,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
       // du 409, ex. `debit_forage_m3h`) : le panneau se ferme et le champ est
       // mis en évidence, avec UN seul message (le toast global est coupé
       // pour cet appel, `suppressErrorToast`).
+      // AGQ23 — délai dépassé : le devis a pu être créé ; la liste du lead
+      // se recharge (le parent relit ses devis).
+      if (err?.delaiDepasse) onDevisChanged?.()
       const cible = err?.field ? missingFieldTarget(err.field) : null
       if (cible) {
         toast.error(message)

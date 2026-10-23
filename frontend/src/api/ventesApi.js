@@ -162,11 +162,16 @@ const ventesApi = {
   // `{client}`). 422 + `detail` FR quand les données de dimensionnement
   // manquent ou que le marché n'est pas résidentiel : le message vient du
   // serveur et oriente vers le générateur complet.
-  // AGQ22 — option ADDITIVE (sans option : appel inchangé, C&I compris) :
-  // `suppressErrorToast` quand l'écran affiche lui-même le refus (un seul
-  // message, jamais le toast global en double).
-  creerDevisAuto: (data, { suppressErrorToast } = {}) => api.post('/ventes/devis/auto/', data,
-    suppressErrorToast ? { suppressErrorToast: true } : undefined),
+  // AGQ22 / AGQ23 — options ADDITIVES (sans option : appel inchangé, C&I
+  // compris) : `suppressErrorToast` quand l'écran affiche lui-même le refus
+  // (un seul message, jamais le toast global en double) ; `idempotencyKey`
+  // (une par ouverture du panneau lead) part en en-tête `Idempotency-Key`,
+  // même contrat que `createDevisAtomic` : un 2ᵉ envoi rejoue le 1ᵉʳ devis.
+  creerDevisAuto: (data, { suppressErrorToast, idempotencyKey } = {}) => api.post('/ventes/devis/auto/', data,
+    (suppressErrorToast || idempotencyKey) ? {
+      ...(suppressErrorToast ? { suppressErrorToast: true } : {}),
+      ...(idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {}),
+    } : undefined),
   // U3COMPOSE (26/08/2026) — DRY-RUN de la composition résidentielle : compose
   // le kit et rend les lignes SANS RIEN CRÉER (aucun devis, aucun statut,
   // règle #4). Même catalogue, même fonction pure, mêmes règles de gamme que
