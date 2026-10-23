@@ -80,8 +80,7 @@ ASSET_DIR = BASE_DIR / "assets"
 _RENDER_LOCK = threading.RLock()
 
 
-from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
-from .identite import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .identite import (ligne_rib as _ligne_rib_identite,  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     LEGALE_TAQINOR_LEGACY, mentions_legales as _mentions_legales,
     profil_renseigne as _profil_renseigne)
 # AMOT57 — « est-ce un onduleur ? » : LE classifieur partagé (« Deye off-Grid »).
