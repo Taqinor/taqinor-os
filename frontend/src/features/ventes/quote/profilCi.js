@@ -11,7 +11,8 @@
 // n'est arrondi ; aucun jour n'est coché d'office (le week-end n'est jamais
 // supposé) ; fonctions PURES, sans React ni réseau (node --test).
 import { normaliserCorpsCi, construireCorpsCi } from '../etudeCiPreviewPur.js'
-import { ligneProduitCatalogue } from '../solar.js'
+import { ligneProduitCatalogue, TVA_STANDARD_DEFAUT } from '../solar.js'
+import { ROLES_CI_PRESTATION, ROUTE_PARAMETRES_PRESTATIONS_CI } from '../../stock/catalogue.js'
 
 export const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -322,12 +323,32 @@ export function profilDepuisEtude(e) {
 // (TTC, l'écran est 100 % TTC). Un article « prix à renseigner »
 // (`produit: null` ou `prix_connu: false`) devient une ligne SANS produit,
 // nommée — jamais chiffrée à 0 comme un article gratuit, jamais enregistrée.
-export function lignesDepuisCompositionCi(composition, produits) {
+export const LIBELLE_A_CHIFFRER_VISITE = 'à chiffrer après visite'
+
+export function lignesDepuisCompositionCi(composition, produits, tvaStandard) {
   const lignes = composition && Array.isArray(composition.lignes) ? composition.lignes : []
+  // ADEV84 — le taux des repères est celui de la SOCIÉTÉ (`quoteLogic.tvaStandard`,
+  // Paramètres) ; le défaut nommé de solar.js ne sert que tant qu'il est inconnu.
+  const tva = Number(tvaStandard) > 0 ? Number(tvaStandard) : TVA_STANDARD_DEFAUT
   const rows = []
   for (const it of lignes) {
     const quantite = Number(it?.quantite)
-    if (!Number.isFinite(quantite) || quantite <= 0) continue
+    const quantiteOk = Number.isFinite(quantite) && quantite > 0
+    // ADEV84 — une ligne sans quantité (câble DC/AC) ou marquée par le serveur
+    // `a_chiffrer_visite` n'est plus sautée en silence : repère NOMMÉ, jamais
+    // enregistré (aucun produit — `usePersistanceDevis` ne garde que les lignes
+    // à produit) ; `a_chiffrer_visite: true` est le drapeau de CE module.
+    if (it?.a_chiffrer_visite === true || !quantiteOk) {
+      rows.push({
+        produit: '',
+        designation: `${it?.designation || 'Article C&I'} — ${LIBELLE_A_CHIFFRER_VISITE}`,
+        quantite: quantiteOk ? quantite : 0,
+        prix_unit_ttc: 0,
+        taux_tva: tva,
+        a_chiffrer_visite: true,
+      })
+      continue
+    }
     const p = (it.produit == null || it.prix_connu === false) ? null
       : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
     // ATOT28 — un produit tarifé : ligne catalogue (HT d'origine porté).
@@ -336,10 +357,32 @@ export function lignesDepuisCompositionCi(composition, produits) {
       designation: `${it.designation || 'Article C&I'} — prix à renseigner`,
       quantite,
       prix_unit_ttc: 0,
-      taux_tva: 20,
+      taux_tva: tva,
     })
   }
   return rows
+}
+
+// ADEV84 — l'avertissement « devis incomplet » de l'Auto-remplir : chaque poste
+// « prix à renseigner » avec SON lien (Paramètres pour une prestation C&I, le
+// catalogue Stock pour un article — il n'existe aucune route de fiche produit,
+// la fiche s'ouvre en volet depuis `/stock`), puis les postes « à chiffrer
+// après visite » (hors total : listés par le serveur et/ou repères sans quantité).
+export function avertissementsCompositionCi(composition) {
+  const lignes = composition && Array.isArray(composition.lignes) ? composition.lignes : []
+  const lien = (nom) => {
+    const l = lignes.find((x) => x?.designation === nom)
+    return ROLES_CI_PRESTATION.includes(l?.role) ? ROUTE_PARAMETRES_PRESTATIONS_CI : '/stock'
+  }
+  const aRenseigner = (composition?.prix_a_renseigner || []).map((nom) => ({ nom, lien: lien(nom) }))
+  const visite = new Set(composition?.a_chiffrer_visite || [])
+  for (const l of lignes) {
+    const q = Number(l?.quantite)
+    if (l?.designation && (l.a_chiffrer_visite === true || !(Number.isFinite(q) && q > 0))) {
+      visite.add(l.designation)
+    }
+  }
+  return { aRenseigner, aChiffrerVisite: [...visite] }
 }
 
 /** Le devis porte-t-il des entrées C&I v2 ? */
