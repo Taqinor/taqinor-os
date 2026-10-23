@@ -714,6 +714,20 @@ class FacturerVenteEndpointVNT31(_BaseVente):
         self.assertEqual(resp.data['code'], 'cle_inattendue')
         self.assertEqual(resp.data['cle_attendue'], 'materiel')
 
+    def test_nature_enumeration_publiee_est_celle_du_service(self):
+        """ENF11 — la nature est une énumération PUBLIÉE (= ``NATURES``) ;
+        hors liste = 400 du sérialiseur déclaré, aucune facture."""
+        from apps.ventes.domain.facturation_vente import NATURES
+        from apps.ventes.views import openapi_docs as D
+        champ = D.FacturerVenteRequest().fields['nature']
+        self.assertEqual(tuple(champ.choices), NATURES)
+        devis = self._388('DEV-VNT31-NATURE')
+        for brut in ('0', 'Acompte', '', 7):
+            resp = self.api.post(self._url(devis), {'nature': brut},
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (brut, resp.data))
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+
     def test_emettre_exige_le_code_d_encaissement(self):
         from apps.roles.permissions_registre import (
             COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)

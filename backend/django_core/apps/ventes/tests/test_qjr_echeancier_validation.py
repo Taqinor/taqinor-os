@@ -648,6 +648,38 @@ class ApiEcheancierVente(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.echeancier, ECHEANCIER_30_60_10)
 
+    def test_vnt66_forme_publiee_400_et_regle_du_devis_409(self):
+        """ENF11 — ``tranches`` requis, ``minItems: 1``, tranche de la forme
+        publiée = 400 ; un corps conforme que le DEVIS refuse (somme
+        au-delà du prix convenu, total en % ≠ 100) = 409 au même corps."""
+        devis = self._388('DEV-VNT66-40')
+        for corps in ([], [{}], [{'cle': 'a', 'valeur': 'abc'}],
+                      [{'cle': 5, 'valeur': '10'}]):
+            with self.subTest(tranches=corps):
+                r = self._put(devis, corps)
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.data['code'], 'echeancier_invalide')
+        r = self._api(self.user).put(
+            f'/api/django/ventes/devis/{devis.id}/echeancier/', {},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        for tranches, code in (
+                ([{'cle': 'acompte', 'libelle': 'A', 'unite': 'montant',
+                   'valeur': '49000.00'},
+                  {'cle': 'solde', 'libelle': 'S', 'unite': 'pct',
+                   'valeur': '10.00'}], 'somme_invalide'),
+                ([{'cle': 'acompte', 'libelle': 'A', 'unite': 'pct',
+                   'valeur': '30.00'},
+                  {'cle': 'solde', 'libelle': 'S', 'unite': 'pct',
+                   'valeur': '30.00'}], None)):
+            with self.subTest(code=code):
+                r = self._put(devis, tranches)
+                self.assertEqual(r.status_code, 409, r.data)
+                if code:
+                    self.assertEqual(r.data['code'], code)
+        devis.refresh_from_db()
+        self.assertEqual(devis.echeancier, ECHEANCIER_30_60_10)
+
     def test_vnt66_tranche_emise_modifiee_409(self):
         from apps.ventes.tests.test_echeancier_somme_total import (
             facture_tranche)
