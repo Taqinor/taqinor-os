@@ -97,8 +97,14 @@ def _milliers(n, sep):
     return str(entier).replace(".", "," if sep != "," else ".")
 
 
-def _textes_fda(plafonds, source, nom):
+def _textes_fda(plafonds, source, nom, releve=None):
     t, ha, kwc, projet = (plafonds.get(c) for c in PLAFONDS)
+    # AGQ21 — la date de relevé de la règle (JJ/MM/AAAA), quand elle existe.
+    src = {"fr": source, "en": source, "ar": source}
+    if releve:
+        src = {"fr": f"{source} (relevé le {releve})",
+               "en": f"{source} (read on {releve})",
+               "ar": f"{source} (تاريخ الاطلاع {releve})"}
 
     def fr(n):
         return _milliers(n, " ") if n is not None else "—"
@@ -116,7 +122,7 @@ def _textes_fda(plafonds, source, nom):
                f"pas déduite du prix et elle est versée après réalisation ; "
                f"un seul projet par exploitation. Décision de la DPA/ORMVA, "
                f"non garantie ; {_nom_installateur(nom, 'fr')} n'est pas organisme subventionneur. "
-               f"Source : {source}."),
+               f"Source : {src['fr']}."),
         "en": (f"State aid (Agricultural Development Fund) for solar pumping: "
                f"{en(t)}% of the investment, capped at {en(ha)} MAD per "
                f"hectare, {en(kwc)} MAD per kWp and {en(projet)} MAD per "
@@ -125,7 +131,7 @@ def _textes_fda(plafonds, source, nom):
                f"BEFORE the works; the aid is not deducted from the price and "
                f"is paid after completion; one project per farm. Decision of "
                f"the DPA/ORMVA, not guaranteed; {_nom_installateur(nom, 'en')} is not a subsidising "
-               f"body. Source: {source}."),
+               f"body. Source: {src['en']}."),
         "ar": (f"دعم الدولة (صندوق التنمية الفلاحية) للضخ بالطاقة الشمسية: "
                f"{fr(t)} % من الاستثمار، في حدود {fr(ha)} درهم للهكتار "
                f"و{fr(kwc)} درهم للكيلوواط ذروة و{fr(projet)} درهم للمشروع. "
@@ -134,7 +140,7 @@ def _textes_fda(plafonds, source, nom):
                f"من الثمن ويُصرف بعد الإنجاز؛ مشروع واحد لكل استغلالية. قرار "
                f"المديرية الإقليمية للفلاحة / المكتب الجهوي للاستثمار "
                f"الفلاحي، غير مضمون؛ {_nom_installateur(nom, 'ar')} ليست جهة مانحة للدعم. "
-               f"المصدر: {source}."),
+               f"المصدر: {src['ar']}."),
     }
 
 
@@ -148,7 +154,10 @@ def regle_fda(regle_societe=None, *, nom_societe=None):
     releve_le, textes}``.
     """
     regle = regle_societe if isinstance(regle_societe, dict) else {}
-    saisie = bool(regle.get("source"))
+    # AGQ21 — une règle société n'est imprimée qu'avec sa source ET ses
+    # quatre nombres ; incomplète ⇒ repli daté, jamais « — % … — DH ».
+    saisie = bool(regle.get("source")) and all(
+        _nombre(regle.get(cle)) is not None for cle in PLAFONDS)
     base = regle if saisie else REPLI_FDA
     plafonds = {cle: _nombre(base.get(cle)) for cle in PLAFONDS}
     source = base.get("source") or REPLI_FDA["source"]
@@ -157,14 +166,16 @@ def regle_fda(regle_societe=None, *, nom_societe=None):
     edition = (base.get("edition") or source) if saisie \
         else REPLI_FDA["edition"]
     nom = (nom_societe or "").strip() or None
+    releve_le = ((base.get("releve_le") or None) if saisie
+                 else REPLI_FDA["releve_le"])
     return {
         "conditions": list(CONDITIONS_FDA),
         "plafonds": plafonds,
         "edition": edition,
         "source": source,
-        "releve_le": (base.get("releve_le") or None) if saisie
-        else REPLI_FDA["releve_le"],
-        "textes": _textes_fda(plafonds, source, nom),
+        "releve_le": releve_le,
+        "textes": _textes_fda(plafonds, source, nom,
+                              _date_jjmmaaaa(releve_le)),
     }
 
 

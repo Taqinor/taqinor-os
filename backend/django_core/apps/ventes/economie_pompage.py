@@ -96,6 +96,24 @@ def _entree(cle, valeur, unite, provenance, saisi_le):
             'provenance': provenance, 'saisi_le': saisi_le}
 
 
+MENTION_CALENDRIER = 'pré-cochés selon le calendrier de culture'
+#: AGQ18 — des mois pré-cochés non confirmés ne sont pas une déclaration.
+MOTIF_MOIS_CALENDRIER = ("mois d'irrigation pré-cochés par le calendrier, "
+                         'non confirmés avec le client')
+
+
+def _mois_non_confirmes(saisies):
+    """AGQ18 — vrai si les mois d'irrigation cochés sont ceux du calendrier
+    de culture, jamais confirmés avec le client (lu par
+    ``mention_declaration``, la mention même qui serait imprimée) — nouveau
+    forage compris (ses mois fondent le coût du m³ solaire)."""
+    bloc = _bloc(saisies, 'mois_irrigation')
+    if not bloc or not bloc.get('mois'):
+        return False
+    return mention_declaration(
+        {'provenance': _provenance(bloc)}) == MENTION_CALENDRIER
+
+
 def mention_declaration(entree):
     """La mention imprimée d'une entrée : « déclaré par le client le JJ/MM ».
 
@@ -106,7 +124,7 @@ def mention_declaration(entree):
     prov = entree.get('provenance') or {}
     if prov.get('origine') == 'calculee' and \
             prov.get('detail') == 'calendrier_culture':
-        return 'pré-cochés selon le calendrier de culture'
+        return MENTION_CALENDRIER
     date = entree.get('saisi_le') or prov.get('date')
     if isinstance(date, str) and len(date) >= 10:
         return 'déclaré par le client le %s/%s' % (date[8:10], date[5:7])
@@ -616,6 +634,11 @@ def _flux(investissement, economie1, charges, remplacements, *,
         'cle': 'lcoe_mad_kwh',
         'motif': 'sans objet pour le pompage : aucune énergie vendue ni '
                  'valorisée en kWh'})
+    # AGQ20 — l'économie nette de l'année 1 = économie − charges, HORS
+    # remplacement (le flux de l'an 1 peut porter un variateur remplacé) ;
+    # inconnue (null) tant que le barème des charges manque.
+    bloc['economie_nette_an1'] = (None if charges is None
+                                  else round(economie1 - charges, 2))
     return bloc
 
 
@@ -623,6 +646,7 @@ def _economie_vide(motif):
     return {'horizon_ans': HORIZON_ANS, 'flux': [], 'van_mad': None,
             'tri_pct': None, 'lcoe_mad_kwh': None, 'retour_ans': None,
             'retour_actualise_ans': None, 'hypotheses': [],
+            'economie_nette_an1': None,
             'omissions': [{'cle': 'economie', 'motif': motif}]}
 
 
@@ -719,12 +743,15 @@ def _mad_par_m3(dep, sortie_etude, mois, jours_semaine, investissement,
     else:
         utile = sum(utile_jour[m - 1] * jours[m] for m in mois)
         if utile > 0:
-            total = (investissement + remplacements_mad
+            total = (investissement + (remplacements_mad or 0.0)
                      + (charges or 0.0) * HORIZON_ANS)
             bloc['solaire'] = round(total / (utile * HORIZON_ANS), 2)
+            # AGQ17 — nouveau forage : aucun remplacement compté (None).
+            compte = ('investissement + charges' if remplacements_mad is None
+                      else 'investissement + remplacements + charges')
             formules.append(
-                f'solaire = (investissement + remplacements + charges sur '
-                f'{HORIZON_ANS} ans) ÷ (volume utile annuel × {HORIZON_ANS})')
+                f'solaire = ({compte} sur {HORIZON_ANS} ans) ÷ (volume utile '
+                f'annuel × {HORIZON_ANS})')
     bloc['formule'] = ' ; '.join(formules) or None
     return bloc, omissions
 
@@ -1060,6 +1087,10 @@ def economie_pompage_publique(bloc):
 
 # ── Le bloc ─────────────────────────────────────────────────────────────────
 
+#: AGQ15 — motif quand aucune ligne chiffrée ne fonde l'investissement.
+MOTIF_SANS_LIGNE = 'aucune ligne chiffrée : investissement inconnu'
+
+
 def _bloc_vide():
     return {
         'statut': 'omis', 'publiable_client': False,
@@ -1116,6 +1147,8 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     bloc['depense_actuelle'] = dep['depense_actuelle']
     bloc['omissions'] = list(dep['omissions'])
     motifs = bloc['motifs_non_publiable'] = list(dep['motifs'])
+    if _mois_non_confirmes(saisies):
+        motifs.append(MOTIF_MOIS_CALENDRIER)
     bloc['statut'] = dep['statut']
 
     # ADEV28 — l'investissement de l'étude est le TTC CANONIQUE du devis
@@ -1125,6 +1158,17 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     investissement = (investissement_ttc(lignes)
                       if investissement_ttc_canonique is None
                       else float(investissement_ttc_canonique))
+    if investissement <= 0 and (dep['statut'] == 'calcule'
+                                or dep['cas'] == CAS_NOUVEAU_FORAGE):
+        # AGQ15 — aucune ligne chiffrée : l'investissement est INCONNU,
+        # jamais 0 — ni retour « 0 an », ni coût du m³ publié (une saisie
+        # manquante garde son seul motif, plus bas).
+        motifs.append(MOTIF_SANS_LIGNE)
+        bloc['statut'] = 'omis'
+        bloc['economie'] = _economie_vide(MOTIF_SANS_LIGNE)
+        bloc['omissions'].append({'cle': 'investissement',
+                                  'motif': MOTIF_SANS_LIGNE})
+        return bloc
     publies, remplacements, omis_rempl = _remplacements(
         lignes, mode_pompe(sortie_etude))
     bloc['remplacements'] = publies
@@ -1155,9 +1199,16 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
                               'part_evitee_par_mois': None,
                               'motif': 'aucune dépense déclarée'}
         motifs.extend(motifs_charges)
+        # AGQ17 — aucun flux d'économie : aucun remplacement publié ni compté
+        # dans le coût du m³ (``None`` = non compté, formule dite telle).
+        bloc['remplacements'] = []
+        bloc['omissions'].append({
+            'cle': 'remplacements',
+            'motif': 'nouveau forage : aucun flux d\'économie, aucun '
+                     'remplacement compté'})
         bloc['mad_par_m3'], omis_m3 = _mad_par_m3(
             dep, sortie_etude, mois, jours_semaine, investissement,
-            remplacements_mad, charges)
+            None, charges)
         bloc['omissions'].extend(omis_m3)
         aide()
         interne['omissions'].append({

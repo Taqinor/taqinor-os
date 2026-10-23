@@ -293,10 +293,25 @@ LIBELLES = {
                              'ar': 'استرجاع الاستثمار، بدون دعم'},
     'agr_n_ans': {'fr': '{n} ans', 'en': '{n} years', 'ar': '{n} سنوات'},
     'agr_n_an': {'fr': '{n} an', 'en': '{n} year', 'ar': '{n} سنة'},
+    'agr_au_dela_de_n_ans': {'fr': 'au-delà de {n} ans',
+                             'en': 'beyond {n} years',
+                             'ar': 'أكثر من {n} سنوات'},
     'agr_n_mois': {'fr': '{n} mois', 'en': '{n} months', 'ar': '{n} أشهر'},
     'agr_cout_m3': {'fr': 'Coût du m³ : avant / avec le solaire',
                     'en': 'Cost per m³: before / with solar',
                     'ar': 'تكلفة المتر المكعب: قبل / مع الطاقة الشمسية'},
+    'agr_cout_eau_solaire': {'fr': "Coût de l'eau solaire",
+                             'en': 'Cost of solar-pumped water',
+                             'ar': 'تكلفة الماء بالطاقة الشمسية'},
+    'agr_mad_par_m3': {'fr': '{n} MAD/m³', 'en': '{n} MAD/m³',
+                       'ar': '{n} درهم/م³'},
+    'agr_formule_m3_solaire': {
+        'fr': 'Calcul : (investissement + charges du solaire sur {horizon} '
+              "ans) ÷ (volume d'eau utile par an × {horizon}).",
+        'en': 'Calculation: (investment + solar running costs over {horizon} '
+              'years) ÷ (useful water volume per year × {horizon}).',
+        'ar': 'الحساب: (الاستثمار + تكاليف الطاقة الشمسية على {horizon} '
+              'سنوات) ÷ (حجم الماء النافع في السنة × {horizon}).'},
     'agr_remplacement': {'fr': 'Remplacement {composant}, année {annee} (compté)',
                          'en': 'Replacement of the {composant}, year {annee} '
                                '(included)',
@@ -307,6 +322,12 @@ LIBELLES = {
     'agr_conso_prix_paye': {'fr': 'Consommation et prix payé : {phrase}.',
                             'en': 'Consumption and price paid: {phrase}.',
                             'ar': 'الاستهلاك والثمن المؤدى: {phrase}.'},
+    'agr_mois_irrigation_phrase': {'fr': "Mois d'irrigation : {phrase}.",
+                                   'en': 'Irrigation months: {phrase}.',
+                                   'ar': 'أشهر السقي: {phrase}.'},
+    'agr_declares_par_vous_le': {'fr': 'déclarés par vous le {date}',
+                                 'en': 'declared by you on {date}',
+                                 'ar': 'صرحتم بها بتاريخ {date}'},
     'agr_indexation': {'fr': 'Indexation du carburant : 0 %.',
                        'en': 'Fuel price indexation: 0%.',
                        'ar': 'مراجعة ثمن الوقود: 0 %.'},
