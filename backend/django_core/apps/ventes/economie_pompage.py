@@ -96,6 +96,24 @@ def _entree(cle, valeur, unite, provenance, saisi_le):
             'provenance': provenance, 'saisi_le': saisi_le}
 
 
+MENTION_CALENDRIER = 'pré-cochés selon le calendrier de culture'
+#: AGQ18 — des mois pré-cochés non confirmés ne sont pas une déclaration.
+MOTIF_MOIS_CALENDRIER = ("mois d'irrigation pré-cochés par le calendrier, "
+                         'non confirmés avec le client')
+
+
+def _mois_non_confirmes(saisies):
+    """AGQ18 — vrai si les mois d'irrigation cochés sont ceux du calendrier
+    de culture, jamais confirmés avec le client (lu par
+    ``mention_declaration``, la mention même qui serait imprimée) — nouveau
+    forage compris (ses mois fondent le coût du m³ solaire)."""
+    bloc = _bloc(saisies, 'mois_irrigation')
+    if not bloc or not bloc.get('mois'):
+        return False
+    return mention_declaration(
+        {'provenance': _provenance(bloc)}) == MENTION_CALENDRIER
+
+
 def mention_declaration(entree):
     """La mention imprimée d'une entrée : « déclaré par le client le JJ/MM ».
 
@@ -106,7 +124,7 @@ def mention_declaration(entree):
     prov = entree.get('provenance') or {}
     if prov.get('origine') == 'calculee' and \
             prov.get('detail') == 'calendrier_culture':
-        return 'pré-cochés selon le calendrier de culture'
+        return MENTION_CALENDRIER
     date = entree.get('saisi_le') or prov.get('date')
     if isinstance(date, str) and len(date) >= 10:
         return 'déclaré par le client le %s/%s' % (date[8:10], date[5:7])
@@ -1123,6 +1141,8 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     bloc['depense_actuelle'] = dep['depense_actuelle']
     bloc['omissions'] = list(dep['omissions'])
     motifs = bloc['motifs_non_publiable'] = list(dep['motifs'])
+    if _mois_non_confirmes(saisies):
+        motifs.append(MOTIF_MOIS_CALENDRIER)
     bloc['statut'] = dep['statut']
 
     # ADEV28 — l'investissement de l'étude est le TTC CANONIQUE du devis

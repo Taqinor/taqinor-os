@@ -790,3 +790,34 @@ class NouveauForage(SimpleTestCase):
                          'remplace tout votre pompage actuel',
                          'Consommation et prix payé', 'avant / avec'):
             self.assertNotIn(interdit, html)
+
+
+class Mois(SimpleTestCase):
+    """AGQ18 — des mois pré-cochés par le calendrier de culture ne sont pas
+    une déclaration du client : non publiables tant que non confirmés ; une
+    fois confirmés, le document dit QUAND ils ont été déclarés."""
+
+    def bloc(self, origine, detail=None):
+        s = saisies_12000()
+        s['mois_irrigation'] = _mois(range(1, 13), origine=origine,
+                                     detail=detail)
+        return E.economie_pompage(s, sortie_etude=ETUDE_COUVERTE,
+                                  lignes=lignes_reference(), reglages=CHARGES)
+
+    def test_mois_calendrier_non_confirmes_non_publiables(self):
+        bloc = self.bloc('calculee', 'calendrier_culture')
+        self.assertFalse(bloc['publiable_client'])
+        self.assertIn('mois d\'irrigation pré-cochés par le calendrier, non '
+                      'confirmés avec le client',
+                      bloc['motifs_non_publiable'])
+        confirme = self.bloc('saisie')
+        self.assertTrue(confirme['publiable_client'])
+        self.assertEqual(confirme['motifs_non_publiable'], [])
+
+    def test_note_imprime_la_declaration_des_mois(self):
+        from apps.ventes.quote_engine.agricole import pages
+        bloc = self.bloc('saisie')
+        html = pages._argent({'economies': E.economie_pompage_publique(bloc),
+                              'energie_actuelle': {'valeur': 'diesel'}}, 'fr')
+        self.assertIn("Mois d'irrigation : déclarés par vous le 12/09/2026.",
+                      html)
