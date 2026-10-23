@@ -1304,14 +1304,10 @@ def _bloc_omis(motif, tarif, *, alertes, vue_interne):
 
 # ── ADEV81 — investissement incomplet : aucun retour, TRI ni coût du kWh ──
 # (D-ACI-8=a). Un investissement nul, sans un seul panneau, ou dont un article
-# de TAILLE (panneau, onduleur) reste « à renseigner » / « à chiffrer après
-# visite » sans ligne au devis n'est pas l'investissement de l'installation :
+# de la composition reste « à renseigner » / « à chiffrer après visite »
+# sans ligne au devis n'est pas l'investissement de l'installation :
 # le flux n'est pas construit, l'omission le dit, l'économie reste servie.
 MOTIF_INVESTISSEMENT_NON_CHIFFRE = 'investissement non encore chiffré'
-#: Rôles de la composition qui FONT la taille (``moteur_ci.composition``) :
-#: le panneau et tout rôle onduleur.
-ROLES_TAILLE_CI = ('panneau',)
-PREFIXE_ROLE_ONDULEUR = 'onduleur'
 
 
 def motif_investissement_non_chiffre(n_sans_prix):
@@ -1367,15 +1363,12 @@ def investissement_non_chiffre(investissement, lignes, apercu, *,
     if not any(li.get('panneau') and not li.get('optionnelle')
                for li in lignes):
         return motif
-    for ligne in composition.get('lignes') or []:
-        if not isinstance(ligne, dict):
-            continue
-        role = str(ligne.get('role') or '')
-        if role not in ROLES_TAILLE_CI and \
-                not role.startswith(PREFIXE_ROLE_ONDULEUR):
-            continue
-        if _norme(ligne.get('designation')) in sans_prix:
-            return motif
+    # D-ACI-2 (a) / D-ACI-6 (a) — « retour non imprimé tant que le total est
+    # incomplet » : TOUT article de la composition laissé hors devis (prix à
+    # renseigner, ou à chiffrer après la visite — structure, câbles…) rend
+    # l'investissement non chiffré, pas seulement un panneau ou un onduleur.
+    if sans_prix:
+        return motif
     return None
 
 

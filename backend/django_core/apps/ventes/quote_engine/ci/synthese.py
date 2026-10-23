@@ -339,6 +339,17 @@ def _statut_et_a_confirmer(etude_ci, lead):
         statut = STATUT_SOUS_RESERVE if reserve.get("valeur") else STATUT_FERME
         if reserve.get("valeur"):
             _ajoute("visite", reserve.get("motif") or LIBELLE_VISITE)
+        # ADEV79 (D-ACI-2=a) — des lignes « à chiffrer après la visite »
+        # (structure, câbles) hors total : le document est une estimation sous
+        # réserve de visite et DIT ce qui reste à chiffrer.
+        hors_total = [str(x.get("designation") if isinstance(x, dict) else x)
+                      for x in (_dict(etude_ci.get("composition")).get("a_chiffrer_visite") or [])
+                      if x]
+        if hors_total:
+            statut = STATUT_SOUS_RESERVE
+            _ajoute("a_chiffrer_visite",
+                    "À chiffrer après la visite technique, hors total : "
+                    + ", ".join(hors_total))
     for manquant in _dict(lead).get("manquants") or []:
         if manquant in A_CONFIRMER_LEAD:
             _ajoute(*A_CONFIRMER_LEAD[manquant])
