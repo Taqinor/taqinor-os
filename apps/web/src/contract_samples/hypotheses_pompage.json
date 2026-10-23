@@ -19,6 +19,13 @@
         "usage": "calcul"
       },
       {
+        "cle": "kw_moteur_normalises",
+        "valeur": [0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11, 15, 18.5, 22, 30, 37, 45, 55, 75],
+        "statut": "source",
+        "source": "IEC 60034-1 — puissances assignées normalisées des moteurs électriques (0,75 à 75 kW) : le kW d'une pompe connue par son seul CV est arrondi à la plus proche de ces puissances (AGQ6)",
+        "usage": "calcul"
+      },
+      {
         "cle": "rendement_groupe",
         "valeur": 0.35,
         "statut": "EST.",

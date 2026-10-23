@@ -32,6 +32,8 @@ Appelants de :func:`etudier_pompage` (``git grep -n etudier_pompage``) :
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import logging
 from decimal import Decimal
 
@@ -387,16 +389,38 @@ def _dict_catalogue(produit, **extra):
     return d
 
 
+def _bareme_produit(produit):
+    """Barème ``prix_fixe_ht`` / ``prix_par_panneau_ht`` lu sur le produit
+    (jamais supposé)."""
+    return {'prix_fixe_ht': _num(getattr(produit, 'prix_fixe_ht', None)),
+            'prix_par_panneau_ht': _num(getattr(produit, 'prix_par_panneau_ht',
+                                                None))}
+
+
+def _premier_chiffrable(produits):
+    """AGQ5 — le premier produit PRICÉ ou à BARÈME saisi (plus petit id)."""
+    from core.pompage.kit import bareme_saisi
+
+    for produit in sorted(produits, key=lambda p: p.id):
+        if (produit.prix_vente and produit.prix_vente > 0) or bareme_saisi(
+                _bareme_produit(produit)):
+            return produit
+    return None
+
+
 def lire_catalogue(company):
-    """Le catalogue pompage (AGR103) + panneau, structure, installations et
-    transport du catalogue de la société. Lecture seule, bornée société."""
+    """Le catalogue pompage (AGR103) + panneau, structure, installations,
+    socle et transport du catalogue de la société. Lecture seule, bornée
+    société. AGQ5 — l'installation de repli et le socle sont trouvés par RÔLE
+    (``role_devis`` sinon ``classer_produit``), jamais par un SKU codé."""
     from apps.stock.selectors import produits_pompage
 
     from .catalogue import catalogue_de_la_societe, classer_produit
 
     pompage = [_json(p) for p in produits_pompage(company)]
+    ids_pompage = {e.get('id') for e in pompage if e.get('role_pompage')}
     par_id = {}
-    panneaux, transports, inst_cat = [], [], None
+    panneaux, transports, installations, socles = [], [], [], []
     for produit in catalogue_de_la_societe(company):
         par_id[produit.id] = produit
         role = getattr(produit, 'role_devis', None) or classer_produit(
@@ -405,8 +429,10 @@ def lire_catalogue(company):
             panneaux.append(produit)
         elif role == 'transport':
             transports.append(produit)
-        if (produit.sku or '').upper() == 'INST-CAT':
-            inst_cat = produit
+        elif role == 'installation' and produit.id not in ids_pompage:
+            installations.append(produit)
+        elif role == 'socle':
+            socles.append(produit)
 
     # Barème des prestations (INST-PMP) : lu sur le produit, jamais supposé.
     for element in pompage:
@@ -435,10 +461,13 @@ def lire_catalogue(company):
     pricees = [p for p in transports if p.prix_vente and p.prix_vente > 0]
     if pricees:
         transport = _dict_catalogue(pricees[0])
-    installation_toiture = (_dict_catalogue(inst_cat)
-                            if inst_cat is not None else None)
+    inst = _premier_chiffrable(installations)
+    installation_toiture = (_dict_catalogue(inst, **_bareme_produit(inst))
+                            if inst is not None else None)
+    socle = _premier_chiffrable(socles)
     return {'pompage': pompage, 'panneau': panneau, 'transport': transport,
-            'installation_toiture': installation_toiture}
+            'installation_toiture': installation_toiture,
+            'socle': (_dict_catalogue(socle) if socle is not None else None)}
 
 
 def _par_role(produits, role):
@@ -480,11 +509,14 @@ def profils_horaires_site(*, ville=None, lat=None, lon=None):
     return profils
 
 
-def temperatures_du_site(lat, lon):
+def temperatures_du_site(lat, lon, *, sans_tmy=False):
     """Températures TMY du site par la façade ``calepinage.services``
     (``{froid_c, chaud_c, source}``), ou ``None`` (replis MENTIONNÉS du
-    noyau électrique)."""
-    if lat is None or lon is None:
+    noyau électrique).
+
+    AGQ24 (C-AGQ-023) — ``sans_tmy`` : le chemin du devis automatique ne
+    paie jamais l'appel TMY (replis MENTIONNÉS du noyau électrique)."""
+    if sans_tmy or lat is None or lon is None:
         return None
     from apps.calepinage import services as calepinage_services
     try:
@@ -541,7 +573,26 @@ def _forme_production(production):
         'coordonnees_figees': (production.get('coordonnees_figees')
                                if production.get('source_irradiation')
                                == 'pvgis' else None),
+        # AGQ40 (D-AGQ-9) — plafond horaire appliqué (forage × part du
+        # réglage), ``None`` sans débit de forage.
+        'plafond_forage_m3h': production.get('plafond_forage_m3h'),
     }
+
+
+def _fr_m3h(valeur):
+    texte = ('%.1f' % float(valeur)).rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
+
+
+def _cv_plaque_ou_derive(produit, kw):
+    """AGQ29 (C-AGQ-027) — le CV de PLAQUE du produit (``pompe_cv``, « 10 »
+    pour l'OSP 30/8) ; dérivé kW ÷ ``cv_vers_kw`` SEULEMENT sans plaque."""
+    from core.pompage.hypotheses import valeur
+
+    plaque = _num((produit or {}).get('pompe_cv'))
+    if plaque is not None and plaque > 0:
+        return plaque
+    return kw / valeur('cv_vers_kw') if kw else None
 
 
 def _forme_champ(champ, motif_vide):
@@ -611,8 +662,25 @@ def _forme_kit(kit):
 
 # ── 4. L'ORCHESTRATEUR ───────────────────────────────────────────────────────
 
-def _besoin(res):
-    """``(besoin_retenu, besoin_agronomique, alertes)`` — D-AGR-3."""
+def _heures_pic_mois(profils, heures_repli):
+    """AGQ1 — ``(heures-pic des 12 mois, source)`` : profil PVGIS (passe 1),
+    sinon heures du réglage société (``repli``), sinon ``(None, None)``."""
+    from core.pompage.conception import heures_pic
+
+    if profils and len(profils) == 12:
+        heures = [heures_pic(p) for p in profils]
+        if all(heures):
+            return heures, 'pvgis'
+    repli = _num(heures_repli)
+    if repli is not None and repli > 0:
+        return [repli] * 12, 'repli'
+    return None, None
+
+
+def _besoin(res, *, profils=None, heures_repli=None):
+    """``(besoin_retenu, besoin_agronomique, alertes)`` — D-AGR-3 ; AGQ1
+    (D-AGQ-1) : sans volume ni pompe actuelle, le débit souhaité × heures-pic
+    du mois fait le besoin."""
     from core.pompage.agronomie import besoin_agronomique
     from core.pompage.conception import besoin_retenu
 
@@ -633,14 +701,24 @@ def _besoin(res):
         if mode in (None, 'pompe_actuelle') else None
     heures = res.valeur('besoin.heures_actuelles_jour') \
         if mode in (None, 'pompe_actuelle') else None
-    prov = (res.provenance('besoin.volume_m3_jour') if volume is not None
-            else res.provenance('besoin.debit_actuel_m3h'))
+    souhaite = (_num(res.valeur('besoin.debit_souhaite_m3h'))
+                if mode in (None, 'debit_souhaite') else None)
+    heures_pic, source_heures = _heures_pic_mois(profils, heures_repli)
+    if volume is not None:
+        prov = res.provenance('besoin.volume_m3_jour')
+    elif debit_actuel is not None and heures is not None:
+        prov = res.provenance('besoin.debit_actuel_m3h')
+    elif souhaite is not None:
+        prov = res.provenance('besoin.debit_souhaite_m3h')
+    else:
+        prov = res.provenance('besoin.debit_actuel_m3h')
     besoin = besoin_retenu(
         volume_declare_m3_jour=volume,
         mois_irrigation=res.valeur('besoin.mois_irrigation'),
         debit_actuel_m3h=debit_actuel, heures_actuelles=heures,
         besoin_agronomique=agro if mode in (None, 'agronomique') else None,
-        provenance_declaree=prov)
+        provenance_declaree=prov, debit_souhaite_m3h=souhaite,
+        heures_pic_mois=heures_pic, source_heures_pic=source_heures)
     return besoin, agro, alertes
 
 
@@ -704,7 +782,7 @@ def _reglage(reglages, cle):
 
 
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
-                    facture=None):
+                    facture=None, sans_tmy=False):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
     ``etude_pompage_preview.json`` (``exemple``). Aucune écriture.
 
@@ -719,7 +797,6 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     les tailles et le kit restent la proposition du moteur.
     """
     from core.pompage.hydraulique import debit_a_hmt
-    from core.pompage.hypotheses import valeur
     from core.pompage.selection import _sortie_pompe, choisir_pompe, kw_pompe
     from core.pompage.tailles import proposer_tailles
 
@@ -755,16 +832,20 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             "(débit × heures du réglage société), sans variation mensuelle."))
     elif lat is not None and lon is not None:
         coordonnees = {'lat': lat, 'lon': lon, 'fige_le': _aujourdhui()}
-    temperatures = temperatures_du_site(lat, lon)
+    temperatures = temperatures_du_site(lat, lon, sans_tmy=sans_tmy)
     heures_repli = _reglage(reglages, 'agricole_pump_hours')
 
     # Besoin (D-AGR-3) puis débit de conception (passe 1, sans production).
-    besoin, agro, alertes_besoin = _besoin(res)
+    besoin, agro, alertes_besoin = _besoin(res, profils=profils,
+                                           heures_repli=heures_repli)
     serie = besoin.get('m3_jour_mois')
     plaque, _prov_plaque = res.bloc('plaque')
     plaque_kw = _num((plaque or {}).get('kw'))
     passe1 = _conception(res, besoin, reglages, profils=profils, hmt_m=None)
     debit_conception = passe1['conception']['debit_conception_m3h']
+    # Passe 1 : mois des heures-pic = simple indication de départ du champ ;
+    # AGQ2 (D-AGQ-2) — les tailles et la passe 2 lisent le mois critique
+    # RECALCULÉ sur la production (pire mois production ÷ besoin).
     mois_critique = passe1['conception']['mois_critique']
 
     # HMT au débit de conception (pertes Hazen-Williams à ce débit).
@@ -783,6 +864,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
         structure=_par_role(produits, 'structure_sol'),
         installation_pompage=_par_role(produits, 'installation_pompage'),
         installation_toiture=catalogue['installation_toiture'],
+        socle=catalogue.get('socle'),
         transport=catalogue['transport'], produits_options=produits,
         distance_champ_m=_num(res.valeur('distance_champ_m')),
         profondeur_calage_m=_num(res.valeur('source.profondeur_calage_m')),
@@ -790,10 +872,14 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
         longueur_conduite_m=_num(res.valeur('hmt.conduite.longueur_m')),
         volume_bassin_m3=_num(res.valeur('source.volume_reservoir_m3')),
         options_cochees=res.valeur('options_cochees'))
+    # AGQ40 (D-AGQ-9) — la production de chaque heure est plafonnée au
+    # plafond RETENU de la passe 1 (forage × part du réglage, ou ABH).
+    plafond_m3h = passe1['conception']['plafonds']['plafond_retenu_m3h']
     commun = dict(profils_horaires=profils, temperatures=temperatures,
                   salissure_pct=_reglage(reglages,
                                          'agricole_salissure_supp_pct'),
-                  agricole_pump_hours=heures_repli, coordonnees=coordonnees)
+                  agricole_pump_hours=heures_repli, coordonnees=coordonnees,
+                  plafond_m3h=plafond_m3h)
     alertes_moteur, hypotheses_moteur = [], []
     if panneau is None:
         alertes_moteur.append(_alerte(
@@ -813,8 +899,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             debit_declare_m3h=_num(res.valeur('besoin.debit_actuel_m3h')),
             besoin_m3_jour_mois=serie, hmt_m=hmt_m, alimentation=alim,
             type_pompe=type_pompe, variateurs=variateurs, panneau=panneau,
-            mois_critique=mois_critique, besoin_agronomique=agro,
-            kit=kit_params, **commun)
+            besoin_agronomique=agro, kit=kit_params, **commun)
         pompe = existante['pompe']
         champ_complet = existante['champ']
         variateur = existante['variateur']
@@ -844,8 +929,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             mode_pompe='neuve', choix_pompe=choix, besoin_m3_jour_mois=serie,
             hmt_m=hmt_m, alimentation=alim, type_pompe=type_pompe,
             variateurs=variateurs, panneau=panneau,
-            mois_critique=mois_critique, besoin_agronomique=agro,
-            kit=kit_params, **commun)
+            besoin_agronomique=agro, kit=kit_params, **commun)
         par_cle = {t['cle']: t for t in tailles['tailles']}
         taille_retenue = (taille_voulue if taille_voulue in par_cle
                           else 'recommandee')
@@ -869,7 +953,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             variateur = _forme_variateur(
                 (champ_complet or {}).get('variateur'),
                 'aucun variateur compatible au catalogue')
-            cv = kw / valeur('cv_vers_kw') if kw else None
+            cv = _cv_plaque_ou_derive(produit, kw)
             puissance = {'kw': round(kw, 2) if kw else None,
                          'cv': round(cv, 1) if cv else None}
             if champ_complet:
@@ -888,9 +972,10 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
                    "heure par heure sur le profil PVGIS du site avec lois de "
                    "similitude de la courbe ; champ dimensionné sur le mois "
                    "critique." % (
-                       'agronomique plein (FAO-56)'
-                       if besoin.get('nature') == 'agronomique_plein'
-                       else 'déclaré'))
+                       {'agronomique_plein': 'agronomique plein (FAO-56)',
+                        'debit_souhaite': 'dérivé du débit souhaité × '
+                                          'heures-pic du mois'}.get(
+                           besoin.get('nature'), 'déclaré')))
         if pompe.get('placeholder'):
             methode = ("Aucune pompe pricée ne couvre le débit de conception :"
                        " ligne « Pompe — prix à renseigner : <noms> » (jamais "
@@ -911,7 +996,15 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
                 puissance_actuelle=puissance, variateur_actuel=variateur))
         alertes_moteur.extend(alertes_facture)
 
-    production = _forme_production((champ_complet or {}).get('production'))
+    production_brute = (champ_complet or {}).get('production') or {}
+    production = _forme_production(production_brute or None)
+    if production and production_brute.get('plafond_atteint'):
+        alertes_moteur.append(_alerte(
+            'debit_limite_forage', 'source.debit_exploitation_m3h',
+            "Débit limité par votre forage : la pompe livrerait davantage, "
+            "la production de chaque heure est plafonnée à %s m³/h (débit "
+            "d'exploitation × part du réglage société)."
+            % _fr_m3h(production.get('plafond_forage_m3h'))))
     passe2 = _conception(
         res, besoin, reglages, profils=profils, hmt_m=hmt_m,
         production=production['m3_jour_mois'] if production else None,
@@ -1002,7 +1095,6 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
         _chaines_pour, _chaines_vides, _fiche, spec_module,
     )
     from core.pompage.hydraulique import debit_a_hmt
-    from core.pompage.hypotheses import valeur
     from core.pompage.selection import _sortie_pompe, kw_pompe
     from core.pompage.volumes import production_mensuelle
 
@@ -1021,7 +1113,7 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
                  if courbe is not None and hmt_m is not None else None)
         pompe = _sortie_pompe(produit_pompe, kw=p_kw, debit_hmt=debit,
                               hmt=hmt_m)
-        cv = p_kw / valeur('cv_vers_kw') if p_kw else None
+        cv = _cv_plaque_ou_derive(produit_pompe, p_kw)
         puissance = {'kw': round(p_kw, 2) if p_kw else None,
                      'cv': round(cv, 1) if cv else None}
     else:
@@ -1060,7 +1152,8 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
         salissure_pct=commun.get('salissure_pct'),
         debit_declare_m3h=declare,
         agricole_pump_hours=commun.get('agricole_pump_hours'),
-        besoin_m3_jour_mois=serie, coordonnees=commun.get('coordonnees'))
+        besoin_m3_jour_mois=serie, coordonnees=commun.get('coordonnees'),
+        plafond_m3h=commun.get('plafond_m3h'))
     chaines = _chaines_vides('aucun variateur facturé')
     if produit_variateur:
         nb_cable, chaines, alertes_chaines, _suivant = _chaines_pour(
@@ -1210,7 +1303,33 @@ def derivees_de_l_etude(sortie, *, pvgis_fige=None):
     }
 
 
-def rafraichir_etude_pompage_devis(devis, *, force=False):
+#: AGQ24 (C-AGQ-023) — l'étude DÉJÀ calculée par le devis automatique, posée
+#: le temps de son écriture : ``(lead_id, sortie)``. Le rafraîchisseur la
+#: relit au lieu de relancer le moteur (une seule étude par devis auto).
+_ETUDE_PRECALCULEE = contextvars.ContextVar('etude_pompage_precalculee',
+                                            default=None)
+
+
+@contextlib.contextmanager
+def etude_precalculee(lead, sortie):
+    """AGQ24 — pendant ce bloc, :func:`rafraichir_etude_pompage_devis` d'un
+    devis de ce ``lead`` relit ``sortie`` (aucun second calcul)."""
+    jeton = _ETUDE_PRECALCULEE.set((getattr(lead, 'pk', None), sortie))
+    try:
+        yield
+    finally:
+        _ETUDE_PRECALCULEE.reset(jeton)
+
+
+def _sortie_precalculee(devis):
+    courante = _ETUDE_PRECALCULEE.get()
+    if not courante or courante[0] is None:
+        return None
+    lead_id, sortie = courante
+    return sortie if getattr(devis, 'lead_id', None) == lead_id else None
+
+
+def rafraichir_etude_pompage_devis(devis, *, force=False, sortie=None):
     """AGR123 — l'étude pompage d'un devis AGRICOLE suit ses LIGNES.
 
     Cinquième étude de ``etudes.rafraichir_etudes_du_devis`` (donc appelée à
@@ -1252,8 +1371,12 @@ def rafraichir_etude_pompage_devis(devis, *, force=False):
                      or localisation.get('lon') is None)):
             corps['localisation'] = dict(localisation, lat=fige['lat'],
                                          lon=fige['lon'])
-        sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
-                                 facture=facture)
+        # AGQ24 — l'étude écrite par le devis automatique est RELUE (passée
+        # ou posée par :func:`etude_precalculee`) : jamais deux calculs.
+        sortie = sortie or _sortie_precalculee(devis)
+        if sortie is None:
+            sortie = etudier_pompage(company, corps, devis=devis, lead=lead,
+                                     facture=facture)
         derivees = derivees_de_l_etude(sortie, pvgis_fige=fige or None)
         # ``pvgis_fige`` est À LA FOIS une entrée de l'empreinte et une dérivée
         # que CE rafraîchisseur écrit (premier appel : None → coordonnées
@@ -1321,15 +1444,55 @@ def saisies_economie_pompage_du_lead(lead):
     return saisies or None
 
 
+#: AGQ4 (D-AGQ-3) — LE kit minimum du devis automatique agricole (D-AGR-8) :
+#: ``(clé de kit.inclus, libellé)``. Un rôle absent ou sans prix REFUSE le
+#: devis automatique en le nommant ; les options restent facultatives. La
+#: pompe ne compte pas en mode « existante » (aucune ligne pompe, D-AGR-7).
+ROLES_KIT_MINIMUM = (
+    ('pompe', 'Pompe'),
+    ('variateur', 'Variateur'),
+    ('panneaux', 'Panneaux'),
+    ('structure', 'Structure au sol'),
+    ('installation', 'Installation'),
+)
+
+
+def roles_minimum_manquants(sortie):
+    """AGQ4 — ``[{cle, libelle, motif}]`` des rôles du kit minimum absents
+    de ``kit.inclus`` ou sans prix connu (barème compris, AGQ5)."""
+    kit = (sortie or {}).get('kit') or {}
+    existante = ((sortie or {}).get('pompe') or {}).get('mode') == 'existante'
+    inclus = {ligne.get('cle'): ligne for ligne in kit.get('inclus') or ()}
+    champ_vide = ((sortie or {}).get('champ') or {}).get('nb_panneaux') is None
+    manquants = []
+    for cle, libelle in ROLES_KIT_MINIMUM:
+        if cle == 'pompe' and existante:
+            continue
+        ligne = inclus.get(cle)
+        if ligne is None:
+            if cle in ('panneaux', 'structure') and champ_vide:
+                motif = 'champ solaire non dimensionné (voir les alertes)'
+            else:
+                motif = 'aucun article au catalogue'
+        elif not ligne.get('prix_connu') or not ligne.get('produit'):
+            motif = 'prix à renseigner au catalogue'
+        else:
+            continue
+        manquants.append({'cle': cle, 'libelle': libelle, 'motif': motif})
+    return manquants
+
+
 def lignes_kit_auto(sortie):
     """AGR124 — le KIT MINIMUM de l'étude (``kit.inclus`` + options cochées
     par défaut, dont l'afficheur d'un variateur VEICHI) en lignes de devis
     ``[{produit_id, designation, quantite, role_pompage, cle}]``.
 
-    Seuls les articles PRICÉS deviennent des lignes ; une ligne « prix à
-    renseigner » ou sans quantité n'est JAMAIS un article gratuit : elle est
-    rendue dans ``omises`` (désignations) pour être nommée dans les alertes.
-    Rend ``(lignes, omises)``."""
+    Seuls les articles PRICÉS (prix ou barème) deviennent des lignes ; une
+    ligne « prix à renseigner » ou sans quantité n'est JAMAIS un article
+    gratuit : elle est rendue dans ``omises`` (désignations) pour être nommée
+    dans les alertes. AGQ4 — rend aussi ``manquants`` =
+    :func:`roles_minimum_manquants` (le kit minimum, qui REFUSE le devis).
+    Rend ``(lignes, omises, manquants)``."""
     kit = (sortie or {}).get('kit') or {}
     candidates = list(kit.get('inclus') or [])
     for option in kit.get('options') or []:
@@ -1352,4 +1515,4 @@ def lignes_kit_auto(sortie):
                        'quantite': Decimal(str(quantite)),
                        'role_pompage': ligne.get('role_pompage') or '',
                        'cle': ligne.get('cle') or ''})
-    return lignes, omises
+    return lignes, omises, roles_minimum_manquants(sortie)

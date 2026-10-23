@@ -22,7 +22,7 @@ sur PVGIS (ses 14 % de pertes sont déjà compris), AUCUN seuil non sourcé.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union
+from typing import Tuple, Union
 
 #: Version de l'export (champ ``version`` de ``hypotheses_pompage.json``).
 VERSION_HYPOTHESES = 1
@@ -45,14 +45,18 @@ class Plage:
 @dataclass(frozen=True)
 class Hypothese:
     cle: str
-    valeur: Union[float, int, Plage]
+    valeur: Union[float, int, Plage, Tuple[float, ...]]
     statut: str
     source: str
     usage: str
 
     def en_dict(self):
-        valeur = (self.valeur.en_dict() if isinstance(self.valeur, Plage)
-                  else self.valeur)
+        if isinstance(self.valeur, Plage):
+            valeur = self.valeur.en_dict()
+        elif isinstance(self.valeur, tuple):
+            valeur = list(self.valeur)
+        else:
+            valeur = self.valeur
         return {"cle": self.cle, "valeur": valeur, "statut": self.statut,
                 "source": self.source, "usage": self.usage}
 
@@ -70,6 +74,17 @@ TABLE = (
         valeur=0.7355,
         statut="physique",
         source="1 CV (cheval-vapeur métrique) = 735,5 W",
+        usage="calcul",
+    ),
+    Hypothese(
+        cle="kw_moteur_normalises",
+        valeur=(0.75, 1.1, 1.5, 2.2, 3, 4, 5.5, 7.5, 11, 15, 18.5, 22, 30,
+                37, 45, 55, 75),
+        statut="source",
+        source=("IEC 60034-1 — puissances assignées normalisées des moteurs "
+                "électriques (0,75 à 75 kW) : le kW d'une pompe connue par son "
+                "seul CV est arrondi à la plus proche de ces puissances "
+                "(AGQ6)"),
         usage="calcul",
     ),
     Hypothese(

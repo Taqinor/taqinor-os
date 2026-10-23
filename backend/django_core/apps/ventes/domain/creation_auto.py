@@ -365,7 +365,8 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         visite_point_eau_requise
     from apps.ventes.domain.catalogue import catalogue_de_la_societe
     from apps.ventes.domain.pompage import (
-        etudier_pompage, lignes_kit_auto, saisies_economie_pompage_du_lead)
+        etude_precalculee, etudier_pompage, lignes_kit_auto,
+        saisies_economie_pompage_du_lead)
     from apps.ventes.models import Devis
 
     manquants = champs_devis_auto_manquants(lead)
@@ -382,28 +383,80 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     corps = {'taille': 'recommandee'}
     alim = {'monophase': 'mono', 'triphase': 'tri'}.get(
         phase_et_isolement_du_lead(lead)[0])
-    if alim:
-        corps['alim'] = alim
-    sortie = etudier_pompage(company, corps, lead=lead)
+    if not alim:
+        # AGQ7 (C-AGQ-006) — refus AVANT l'étude, qui nomme la saisie
+        # manquante (et non « aucune pompe compatible au catalogue »).
+        raise AutoDevisError(
+            'Alimentation de la pompe inconnue : renseignez mono ou tri '
+            '(raccordement du lead)', field='raccordement')
+    corps['alim'] = alim
+    # AGQ24 (C-AGQ-023) — latence bornée : aucune TMY sur ce chemin (replis
+    # MENTIONNÉS du noyau électrique), étude calculée UNE fois.
+    sortie = etudier_pompage(company, corps, lead=lead, sans_tmy=True)
     hmt_m = (sortie.get('hmt') or {}).get('valeur_m')
     debit = (sortie.get('conception') or {}).get('debit_conception_m3h')
     pompe = sortie.get('pompe') or {}
     mode_pompe = ((sortie.get('entrees_resolues') or {}).get(
         'mode_pompe') or {}).get('valeur') or 'neuve'
     if hmt_m is None:
-        raise AutoDevisError(
-            "HMT introuvable : saisissez la HMT ou le niveau d'eau du forage.",
-            field='pompe_hmt_m')
+        # AGQ9 (D-AGQ-5) — le niveau d'eau seul ne fait pas une HMT.
+        raise AutoDevisError('HMT introuvable : saisissez la HMT (m).',
+                             field='pompe_hmt_m')
     if mode_pompe != 'existante' and debit is None:
+        # AGQ1 (D-AGQ-1) — le débit souhaité fait le besoin (× heures-pic) :
+        # s'il est saisi, ce qui manque ce sont les heures de pompage.
+        souhaite = ((sortie.get('entrees_resolues') or {}).get(
+            'debit_souhaite_m3h') or {}).get('valeur')
+        if souhaite not in (None, ''):
+            raise AutoDevisError(
+                'Débit de conception introuvable : profil PVGIS du site '
+                'indisponible et heures de pompage du réglage société '
+                '(agricole_pump_hours) non renseignées.',
+                field='agricole_pump_hours')
         raise AutoDevisError(
             'Débit de conception introuvable : saisissez le débit souhaité ou '
             "le besoin en eau (m³/jour).", field='pompe_debit_m3h')
 
-    lignes, omises = lignes_kit_auto(sortie)
-    prix = {p.id: p.prix_vente for p in catalogue_de_la_societe(company)}
-    lignes = [dict(ligne, prix_unitaire=Decimal(str(prix[ligne['produit_id']])))
-              for ligne in lignes
-              if prix.get(ligne['produit_id']) and prix[ligne['produit_id']] > 0]
+    # AGQ40 (D-AGQ-9) — refus SEULEMENT quand le besoin déclaré devient
+    # incouvrable sous le plafond du forage (jamais pour un simple écrêtage).
+    codes = {a.get('code') for a in sortie.get('alertes') or ()}
+    plafonds = (sortie.get('conception') or {}).get('plafonds') or {}
+    controle = sortie.get('controle_conception') or {}
+    if (controle.get('statut') == 'couverture_insuffisante'
+            and ('debit_limite_forage' in codes or plafonds.get('atteint'))):
+        raise AutoDevisError(
+            "Besoin déclaré incouvrable : débit limité par votre forage "
+            "(%s m³/h exploitables) — mois sous la tolérance : %s. Réduisez "
+            "le besoin ou relevez le débit du forage." % (
+                _fr_nombre(plafonds.get('plafond_retenu_m3h')),
+                ', '.join(str(m) for m in controle.get(
+                    'mois_sous_tolerance') or ()) or '?'),
+            field='debit_forage_m3h')
+
+    lignes, omises, manquants = lignes_kit_auto(sortie)
+    # AGQ4/AGQ5 — prix unitaire : le BARÈME de l'installation (prix fixe +
+    # par panneau, ``prix_forfait_ht``) s'il en porte un, sinon le prix de
+    # vente du produit.
+    from apps.ventes.domain.catalogue import (
+        porte_bareme_par_panneau, prix_forfait_ht)
+    produits = {p.id: p for p in catalogue_de_la_societe(company)}
+    nb_panneaux = sum(int(ligne['quantite']) for ligne in lignes
+                      if ligne.get('cle') == 'panneaux')
+    chiffrees = []
+    for ligne in lignes:
+        produit = produits.get(ligne['produit_id'])
+        if produit is None:
+            continue
+        # Barème appliqué à la seule ligne FORFAIT (installation, quantité 1),
+        # jamais à une ligne vendue à la quantité (double comptage).
+        forfait = (ligne.get('cle') == 'installation'
+                   and porte_bareme_par_panneau(produit))
+        montant = (prix_forfait_ht(produit, nb_panneaux) if forfait
+                   else produit.prix_vente)
+        if montant and montant > 0:
+            chiffrees.append(dict(ligne,
+                                  prix_unitaire=Decimal(str(montant))))
+    lignes = chiffrees
     if mode_pompe != 'existante' and (
             pompe.get('placeholder')
             or not any(ligne['role_pompage'] == 'pompe' for ligne in lignes)):
@@ -413,6 +466,20 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         if noms:
             message += ' — pompes à courbe sans prix : %s' % ', '.join(noms)
         raise AutoDevisError(message + '.', field='pompe')
+    # AGQ4 (D-AGQ-3) — kit minimum : un rôle absent ou sans prix refuse le
+    # devis en NOMMANT l'article (jamais un devis sans structure ni pose).
+    if manquants:
+        premier = manquants[0]
+        message = '%s : %s' % (premier['libelle'], premier['motif'])
+        if premier['cle'] == 'variateur' \
+                and premier['motif'] == 'aucun article au catalogue':
+            # AGQ6 (C-AGQ-005) — nommer la puissance et l'alimentation
+            # cherchées (jamais un devis sans variateur).
+            message = ('Variateur : aucun modèle compatible au catalogue '
+                       '(%s kW %s)' % (
+                           _fr_nombre((sortie.get('puissance_retenue')
+                                       or {}).get('kw')), alim))
+        raise AutoDevisError(message, field='kit.%s' % premier['cle'])
 
     client = resolve_client_for_lead(lead)
     etude = dict(corps)
@@ -427,9 +494,10 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
             taux_tva=taux_tva, mode_installation='agricole',
             etude_params=etude)
 
-    devis = _ecrire_devis_auto_par_pipeline(
-        company=company, user=user, lead=lead, creer=_create, lignes=lignes,
-        mode_installation='agricole')
+    with etude_precalculee(lead, sortie):
+        devis = _ecrire_devis_auto_par_pipeline(
+            company=company, user=user, lead=lead, creer=_create,
+            lignes=lignes, mode_installation='agricole')
     if journal_auto is not None:
         alertes = [dict(a) for a in (sortie.get('alertes') or [])]
         for designation in omises:

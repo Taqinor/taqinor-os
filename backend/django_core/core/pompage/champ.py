@@ -131,6 +131,37 @@ def _phases_alim(alimentation):
     return {"mono": 1, "tri": 3}.get(alimentation)
 
 
+def _decimales(texte):
+    """Nombre de décimales SIGNIFICATIVES d'une valeur saisie (« 3.00 » → 0,
+    « 5.50 » → 1) : la précision avec laquelle le CV a été écrit."""
+    texte = str(texte).strip().replace(",", ".")
+    if "." not in texte:
+        return 0
+    return len(texte.split(".", 1)[1].rstrip("0"))
+
+
+def kw_normalise_depuis_cv(cv):
+    """AGQ6 (C-AGQ-005) — ``(kW requis, normalisé)`` d'un moteur connu par
+    son seul CV.
+
+    kW = CV × ``cv_vers_kw`` ; la puissance assignée normalisée la plus
+    proche (``kw_moteur_normalises``, IEC 60034-1, table AGR110) est retenue
+    si elle reste dans la TOLÉRANCE D'ARRONDI du CV écrit — un demi-chiffre
+    de sa dernière décimale significative (« 3 » CV : ± 0,5 CV) : 3 CV =
+    2,21 kW ⇒ moteur 2,2 kW. Hors tolérance (un CV qui ne correspond à
+    aucune puissance normalisée), le kW calculé reste tel quel (jamais
+    arrondi vers le bas au-delà de la précision écrite)."""
+    cv_val = _flottant(cv)
+    if cv_val is None or cv_val <= 0:
+        return None, False
+    kw = cv_val * valeur("cv_vers_kw")
+    tolerance_kw = 0.5 * 10 ** (-_decimales(cv)) * valeur("cv_vers_kw")
+    proche = min(valeur("kw_moteur_normalises"), key=lambda p: abs(p - kw))
+    if abs(proche - kw) <= tolerance_kw + 1e-9:
+        return float(proche), True
+    return kw, False
+
+
 def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
                       phases=None, alimentation=None, courant_nominal_a=None):
     """AGR115 — le plus petit variateur pricé dont le kW ≥ kW PLAQUE.
@@ -158,14 +189,16 @@ def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
         kw = None
         cv_val = _flottant(cv)
         if cv_val is not None and cv_val > 0:
-            cles.add("cv_vers_kw")
-            kw = cv_val * valeur("cv_vers_kw")
+            cles.update({"cv_vers_kw", "kw_moteur_normalises"})
+            kw, normalise = kw_normalise_depuis_cv(cv)
             source_kw = "cv"
             alertes.append(_alerte(
                 "kw_plaque_a_relever", "plaque.kw",
                 "kW de plaque à relever : variateur choisi sur %s CV × 0,7355 "
-                "= %s kW, en attendant la plaque de la pompe."
-                % (_fr(cv_val), _fr(kw, 2))))
+                "= %s kW%s, en attendant la plaque de la pompe."
+                % (_fr(cv_val), _fr(cv_val * valeur("cv_vers_kw"), 2),
+                   (" (moteur normalisé %s kW, IEC 60034-1)" % _fr(kw, 2))
+                   if normalise else "")))
     tension = _flottant(tension_v)
     tension = int(tension) if tension else _tension_alim(alimentation)
     phases_voulues = phases or _phases_alim(alimentation)
@@ -226,13 +259,26 @@ def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
     return sortie
 
 
-def rendement_systeme(pompe=None, variateur=None):
+def rendement_systeme(pompe=None, variateur=None, *, pompe_seule=False):
     """η = rendement pompe × rendement MPPT, PUBLIÉS tous les deux (fiches
     ``pompe_rendement_pct`` / ``var_rendement_mppt_pct``) ; sinon le
     ``rendement_groupe`` « EST. » de la table AGR110.
 
+    AGQ8 (D-AGQ-8) — ``pompe_seule`` : le rendement de la POMPE seule
+    (``pompe_rendement_pct`` publié) pour comparer la puissance hydraulique à
+    la plaque ; non publié ⇒ le même ``rendement_groupe`` « EST. » (règle
+    d'avant, aucune constante nouvelle).
+
     Rend ``{valeur, source, cle_hypothese}``."""
     r_pompe = _flottant(_fiche(pompe).get("pompe_rendement_pct"))
+    if pompe_seule:
+        if r_pompe and 0 < r_pompe <= 100:
+            return {"valeur": r_pompe / 100.0,
+                    "source": "fiche publiée (rendement pompe)",
+                    "cle_hypothese": None}
+        return {"valeur": valeur("rendement_groupe"),
+                "source": "EST. — table AGR110 › rendement_groupe",
+                "cle_hypothese": "rendement_groupe"}
     r_mppt = _flottant(_fiche(variateur).get("var_rendement_mppt_pct"))
     if r_pompe and r_mppt and 0 < r_pompe <= 100 and 0 < r_mppt <= 100:
         return {"valeur": r_pompe / 100.0 * r_mppt / 100.0,
@@ -322,11 +368,17 @@ def _production(nb, pmax_wc, **kwargs):
     return production_mensuelle(kwc=nb * pmax_wc / 1000.0, **kwargs)
 
 
-def _couvre(prod, besoin, mois):
+def _couvre(prod, besoin):
+    """AGQ2 (D-AGQ-2) — la production couvre-t-elle CHAQUE mois d'irrigation
+    (besoin > 0) ? Le pire mois réel (production ÷ besoin minimal) est donc
+    couvert, quel que soit le mois désigné par la forme du profil."""
     serie = prod.get("m3_jour_mois") if prod else None
-    if not serie or not mois:
+    if not serie:
         return False
-    return (serie[mois - 1] or 0.0) >= besoin[mois - 1] - 1e-9
+    mois_besoin = [i for i in range(12) if (_flottant(besoin[i]) or 0.0) > 0]
+    if not mois_besoin:
+        return False
+    return all((serie[i] or 0.0) >= besoin[i] - 1e-9 for i in mois_besoin)
 
 
 def _mois_critique_energie(besoin, e_d):
@@ -448,8 +500,11 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                        e_d_kwh_kwc_mois=None, temperatures=None,
                        salissure_pct=None, agricole_pump_hours=None,
                        mois_critique=None, coordonnees=None,
-                       reponse_pvgis=None):
+                       reponse_pvgis=None, plafond_m3h=None):
     """AGR115 — nombre de panneaux, chaînes et variateur retenu.
+
+    AGQ40 (D-AGQ-9) — ``plafond_m3h`` (débit d'exploitation du forage × part
+    du réglage) plafonne la production de chaque heure (AGR114).
 
     * ``besoin_m3_jour_mois`` : besoin RETENU (AGR116) ; ``hmt_m`` : HMT ;
     * ``pompe`` : dict produit (``courbe_pompe``, ``fiche``) ou ``None`` pour
@@ -519,19 +574,29 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
         rendement_mppt=(rendement_mppt / 100.0 if rendement_mppt else None),
         salissure_pct=salissure_pct, debit_declare_m3h=debit_declare_m3h,
         agricole_pump_hours=agricole_pump_hours, besoin_m3_jour_mois=besoin,
-        coordonnees=coordonnees, reponse_pvgis=reponse_pvgis)
+        coordonnees=coordonnees, reponse_pvgis=reponse_pvgis,
+        plafond_m3h=plafond_m3h)
     pmax = module.pmax_wc
 
     nb = int(math.ceil(kwc0 * 1000.0 / pmax)) if kwc0 else None
     prod = _production(nb or 1, pmax, **params)
     heure_par_heure = (prod.get("m3_jour_mois") is not None
                        and prod.get("mode") in ("courbe", "debit_declare"))
+    if heure_par_heure and not rendement_mppt:
+        # AGQ8 (D-AGQ-8) — aucun rendement inventé : la production est en
+        # borne haute, et l'alerte nomme la fiche à compléter.
+        alertes.append(_alerte(
+            "rendement_non_publie", "variateur.fiche",
+            "Rendement MPPT du variateur %snon publié sur sa fiche : "
+            "production en borne haute (aucune perte variateur comptée)."
+            % (("%s " % variateur.get("nom")) if variateur
+               and variateur.get("nom") else "")))
     if heure_par_heure and mois:
         nb = nb or 1
-        if _couvre(prod, besoin, mois):
+        if _couvre(prod, besoin):
             while nb > 1:
                 essai = _production(nb - 1, pmax, **params)
-                if not _couvre(essai, besoin, mois):
+                if not _couvre(essai, besoin):
                     break
                 nb, prod = nb - 1, essai
         else:
@@ -539,7 +604,7 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
             for _ in range(_ITERATIONS_MAX):
                 nb += 1
                 prod = _production(nb, pmax, **params)
-                if _couvre(prod, besoin, mois):
+                if _couvre(prod, besoin):
                     couvert = True
                     break
             if not couvert:
@@ -548,8 +613,8 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                 alertes.append(_alerte(
                     "besoin_non_couvert_champ", "pompe",
                     "Même avec un champ très surdimensionné, la pompe ne "
-                    "couvre pas le besoin du mois critique : champ ramené au "
-                    "kWc de départ (énergie hydraulique)."))
+                    "couvre pas le besoin de chaque mois d'irrigation : champ ramené "
+                    "au kWc de départ (énergie hydraulique)."))
     elif nb is None:
         alertes.append(_alerte(
             "irradiation_inconnue", "production",
@@ -593,6 +658,10 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
     if nb != nb_initial:
         prod = _production(nb, pmax, **params)
 
+    if heure_par_heure and prod.get("mois_critique"):
+        # AGQ2 (D-AGQ-2) — mois critique RECALCULÉ sur la production réelle :
+        # le mois d'irrigation où production ÷ besoin est le plus bas.
+        sortie["mois_critique"] = prod["mois_critique"]
     kwc = nb * pmax / 1000.0
     sortie.update({
         "kwc": round(kwc, 2), "nb_panneaux": nb, "chaines": chaines,

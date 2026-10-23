@@ -62,6 +62,13 @@ class EntreesResoluesTests(TestCase):
             company=cls.co, produit=panneau, type_fiche='module',
             pmax_wc=Decimal('710'), vmp_v=Decimal('40'), voc_v=Decimal('48'),
             isc_a=Decimal('18'), imp_a=Decimal('17'))
+        # AGQ4 (D-AGQ-3) — kit minimum complet : structure et installation.
+        cls._produit('Structure au sol acier', '700',
+                     role_pompage='structure_sol')
+        cls._produit('Installation pompage solaire', '0',
+                     role_pompage='installation_pompage',
+                     prix_fixe_ht=Decimal('3000'),
+                     prix_par_panneau_ht=Decimal('150'))
         cls._produit(
             'Pompe immergée OSP 30/8 7,5 CV 380V', '15000',
             role_pompage='pompe', type_pompe='immergee', alimentation='tri',

@@ -58,6 +58,14 @@ class DevisAutoAgricoleTests(TestCase):
             company=cls.co, produit=cls.panneau, type_fiche='module',
             pmax_wc=Decimal('710'), vmp_v=Decimal('40'), voc_v=Decimal('48'),
             isc_a=Decimal('18'), imp_a=Decimal('17'))
+        # AGQ4 (D-AGQ-3) — le kit minimum : structure au sol chiffrée et
+        # installation pompage à BARÈME (prix de vente 0, AGQ5).
+        cls.structure = cls._produit('Structure au sol acier', '700',
+                                     role_pompage='structure_sol')
+        cls.installation = cls._produit(
+            'Installation pompage solaire', '0',
+            role_pompage='installation_pompage',
+            prix_fixe_ht=Decimal('3000'), prix_par_panneau_ht=Decimal('150'))
 
     @classmethod
     def _produit(cls, nom, prix, **kw):
@@ -126,6 +134,15 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(devis.mode_installation, 'agricole')
         self.assertTrue(devis.lignes.filter(produit=pompe).exists())
         self.assertTrue(devis.lignes.filter(produit=self.variateur).exists())
+        # AGQ4 — une ligne par rôle du kit minimum ; l'installation est
+        # chiffrée par son barème (3 000 + 150 × panneaux).
+        self.assertTrue(devis.lignes.filter(produit=self.structure).exists())
+        installation = devis.lignes.get(produit=self.installation)
+        nb = sum(int(ligne.quantite) for ligne in devis.lignes.filter(
+            produit=self.panneau))
+        self.assertGreater(nb, 0)
+        self.assertEqual(installation.prix_unitaire,
+                         Decimal('3000') + Decimal('150') * nb)
         # Aucune distance saisie ⇒ aucune ligne câble DC.
         self.assertFalse(devis.lignes.filter(
             designation__icontains='câble dc').exists())
@@ -137,6 +154,142 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertIn('_empreinte', etude['provenance_pompage'])
         lead.refresh_from_db()
         self.assertEqual(lead.type_installation, 'agricole')
+
+    def test_debit_souhaite_seul_cree_le_brouillon_besoin_derive(self):
+        """AGQ1 (D-AGQ-1) — un lead qui ne déclare QUE le débit souhaité
+        (aucun volume) : le débit souhaité × heures-pic fait le besoin, le
+        débit de conception vaut ce débit, un brouillon est créé (avant : 409
+        « Débit de conception introuvable » sur un lead marqué prêt)."""
+        from apps.ventes.domain.pompage import (
+            rafraichir_etude_pompage_devis,
+        )
+        pompe = self._pompe('15000')
+        lead = self._lead(besoin_eau_m3j=None, pompe_debit_m3h=Decimal('20'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertTrue(devis.lignes.filter(produit=pompe).exists())
+        etude = devis.etude_params
+        self.assertEqual(etude['besoin_mensuel']['nature'], 'debit_souhaite')
+        self.assertEqual(etude['conception']['debit_conception_m3h'], 20)
+        # Persistance : ré-enregistrement forcé ⇒ même nature.
+        rafraichir_etude_pompage_devis(devis, force=True)
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['besoin_mensuel']['nature'],
+                         'debit_souhaite')
+
+    def test_structure_sans_prix_refuse_en_la_nommant(self):
+        """AGQ4 (D-AGQ-3) — structure au sol sans prix : 409 qui nomme
+        l'article du kit minimum, aucun devis (avant : 201 sans structure)."""
+        Produit.objects.filter(pk=self.structure.pk).update(
+            prix_vente=Decimal('0'))
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['detail'],
+                         'Structure au sol : prix à renseigner au catalogue')
+        self.assertEqual(rep.data['field'], 'kit.structure')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_installation_absente_refuse_en_la_nommant(self):
+        Produit.objects.filter(pk=self.installation.pk).update(
+            is_archived=True)
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.installation')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def _pompe_3cv_mono(self):
+        return self._produit(
+            'Pompe immergée solaire 3 CV Monophasé', '5000',
+            role_pompage='pompe', type_pompe='immergee', alimentation='mono',
+            pompe_cv=Decimal('3'))
+
+    def test_pompe_3cv_mono_sans_variateur_compatible_409(self):
+        """AGQ6 (C-AGQ-005) — aucun variateur 220 V : 409 qui nomme la
+        puissance et l'alimentation (avant : devis créé SANS variateur)."""
+        self._pompe_3cv_mono()
+        lead = self._lead(raccordement='monophase',
+                          besoin_eau_m3j=Decimal('10'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.variateur')
+        self.assertEqual(
+            rep.data['detail'],
+            'Variateur : aucun modèle compatible au catalogue (2,2 kW mono)')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_pompe_3cv_mono_cv_seul_retient_le_variateur_2_2_kw(self):
+        pompe = self._pompe_3cv_mono()
+        si22 = self._produit(
+            'VARIATEUR VEICHI SI22 2.2KW 220V', '1580',
+            role_pompage='variateur_pompage', alimentation='mono',
+            pompe_kw=Decimal('2.2'), tension_v=220)
+        lead = self._lead(raccordement='monophase',
+                          besoin_eau_m3j=Decimal('10'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertTrue(devis.lignes.filter(produit=pompe).exists())
+        self.assertTrue(devis.lignes.filter(produit=si22).exists())
+
+    def test_etude_calculee_une_fois_sans_tmy(self):
+        """AGQ24 (C-AGQ-023) — le devis automatique calcule l'étude UNE fois
+        (le rafraîchisseur relit l'étude écrite) et n'appelle jamais la TMY."""
+        self._pompe('15000')
+        lead = self._lead()
+        with mock.patch.object(pompage, 'etudier_pompage',
+                               wraps=pompage.etudier_pompage) as espion:
+            rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        self.assertEqual(espion.call_count, 1)
+        self.assertTrue(espion.call_args.kwargs.get('sans_tmy'))
+        for appel in pompage.temperatures_du_site.call_args_list:
+            self.assertTrue(appel.kwargs.get('sans_tmy'))
+        etude = Devis.objects.get(pk=rep.data['id']).etude_params
+        self.assertIn('_empreinte', etude['provenance_pompage'])
+
+    def test_raccordement_inconnu_409_nommant_le_raccordement(self):
+        """AGQ7 (C-AGQ-006) — raccordement inconnu : 409 qui nomme la saisie
+        (champ ``raccordement``), jamais « aucune pompe compatible »."""
+        self._pompe('15000')
+        lead = self._lead(raccordement='inconnu')
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'raccordement')
+        self.assertIn('Alimentation de la pompe inconnue', rep.data['detail'])
+        self.assertNotIn('catalogue', rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_besoin_incouvrable_sous_le_plafond_du_forage_409(self):
+        """AGQ40 (D-AGQ-9) — forage 25 m³/h × 90 % = 22,5 m³/h : 320 m³/j
+        deviennent incouvrables ⇒ 409 qui nomme le forage, aucun devis ;
+        l'étude porte le plafond et l'alerte."""
+        CompanyProfile.objects.filter(company=self.co).update(
+            agricole_part_debit_forage_pct=Decimal('90'))
+        self._pompe('15000')
+        lead = self._lead(besoin_eau_m3j=Decimal('320'),
+                          debit_forage_m3h=Decimal('25'))
+        sortie = pompage.etudier_pompage(self.co, {'alim': 'tri'}, lead=lead)
+        self.assertEqual(sortie['production']['plafond_forage_m3h'], 22.5)
+        self.assertEqual(sortie['controle_conception']['statut'],
+                         'couverture_insuffisante')
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'debit_forage_m3h')
+        self.assertIn('forage', rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_forage_large_plafond_rendu_sans_alerte(self):
+        self._pompe('15000')
+        lead = self._lead()
+        sortie = pompage.etudier_pompage(self.co, {'alim': 'tri'}, lead=lead)
+        self.assertNotIn('debit_limite_forage',
+                         [a['code'] for a in sortie['alertes']])
+        self.assertEqual(sortie['production']['plafond_forage_m3h'], 50)
 
     def test_lead_butane_saisies_economie_provenance_lead(self):
         self._pompe('15000')
