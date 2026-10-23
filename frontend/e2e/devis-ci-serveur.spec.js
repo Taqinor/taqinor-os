@@ -12,7 +12,7 @@
 import { test, expect } from '@playwright/test'
 import {
   choisirMarche, declarerProfilCi, telephoneMobileUnique, uniq, cliquerCreerDevis,
-  retirerLignesPrixARenseigner,
+  retirerLignesPrixARenseigner, executerDansDjango,
 } from './helpers'
 
 const API = '/api/django'
@@ -138,6 +138,21 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
   }), 'lead commercial')
   expect(lead.contrat_electricite).toBe('bt_patente')
   leadIds.push(lead.id)
+  // ADEV79 (D-ACI-6=a, 23/10/2026) — le devis automatique C&I REFUSE tant
+  // qu'un poste fixe n'a pas de prix (« Prix à renseigner … → Paramètres ») ;
+  // le seed livre les articles C&I et les forfaits « à renseigner » par
+  // conception. La société de la démo tarifie donc ses postes ICI, comme Reda
+  // le ferait dans Paramètres › Devis › Prestations C&I et sur les fiches
+  // produit (idempotent ; valeurs d'essai, aucune ligne à 0).
+  executerDansDjango(
+    'from decimal import Decimal; from apps.stock.models import Produit; '
+    + 'from apps.parametres.models import CompanyProfile; from apps.crm.models import Lead; '
+    + `c = Lead.objects.get(pk=${lead.id}).company; p = CompanyProfile.get(company=c); `
+    + "cles = ['etudes_ingenierie','pose_structure','pose_modules','raccordement_ac','mise_en_service',"
+    + "'dossier_raccordement','levage_acces','transport_ci']; "
+    + "p.forfaits_ci = {k: {'fixe_ht': 2500, 'source': 'e2e CIQ127 (valeur d'essai)', 'date': '2026-10-23'} for k in cles}; p.save(); "
+    + "Produit.objects.filter(company=c, prix_vente=0).exclude(role_ci__in=['', None])"
+    + ".exclude(role_ci__in=cles).update(prix_vente=Decimal('900'))")
   await page.goto(`/crm/leads/${lead.id}`)
   const appel = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/auto\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 })
