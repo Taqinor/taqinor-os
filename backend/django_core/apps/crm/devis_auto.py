@@ -10,7 +10,9 @@ avant de pouvoir lancer le générateur de devis automatique :
   - Industriel / Commercial (CIQ404, contrat CIQ1) : l'un de
     conso_mensuelle_kwh, bill_kwh, releve_conso, ou facture_hiver (MAD) —
     pour un commercial si la tension n'est pas « mt », pour un industriel
-    seulement si la basse tension est DÉCLARÉE ;
+    seulement si la basse tension est DÉCLARÉE, avec un contrat BT ; ALEA47 —
+    + le contrat (sauf MT déclarée) et le rythme, par LA règle du moteur
+    (``ventes.selectors.profil_charge_prerequis_ci``, jamais une copie) ;
   - Agricole (pompage, AGR403) : [HMT OU niveau d'eau] ET [débit souhaité,
     besoin en eau (m³/jour) OU débit de la pompe actuelle — ce dernier ne
     comptant qu'avec ses heures, volume déclaré D-AGR-3]. Le CV ne compte
@@ -69,6 +71,12 @@ def _facture_mad_compte(lead):
     return True
 
 
+def _contrat_bt_declare(lead):
+    """ALEA47 — contrat BT déclaré, exigé par le gating pour une facture MAD
+    (le lecteur du moteur sert la facture seule : son refus nomme le contrat)."""
+    return (getattr(lead, 'contrat_electricite', None) or '').startswith('bt_')
+
+
 def _rempli(lead, champ):
     """Même sémantique du vide partout (0 = manquant), plus la règle AGR403 :
     un débit actuel sans ses heures ne fait pas un volume."""
@@ -76,8 +84,10 @@ def _rempli(lead, champ):
         return _releve_rempli(lead)
     if not getattr(lead, champ, None):
         return False
+    if champ == 'contrat_electricite':
+        return lead.contrat_electricite != 'ne_sait_pas'
     if (champ == 'facture_hiver' and lead.type_installation in _MODES_ETUDE
-            and not _facture_mad_compte(lead)):
+            and not (_facture_mad_compte(lead) and _contrat_bt_declare(lead))):
         return False
     compagnon = _COMPTE_SEULEMENT_AVEC.get(champ)
     return not compagnon or bool(getattr(lead, compagnon, None))
@@ -107,11 +117,59 @@ def champs_requis(lead) -> list[list[str]]:
         # CAD166 — conso éditable OU kWh du tunnel : l'un vaut l'autre.
         # CIQ404 (contrat CIQ1) — + le relevé de factures et la facture en
         # MAD (selon la tension, voir :func:`_facture_mad_compte`).
-        return [list(GROUPE_CONSO_PRO)]
+        requis = [list(GROUPE_CONSO_PRO)]
+        # ALEA47 (D-ACI-5=a) — + le contrat (MT déclarée : Tarif Général).
+        if _tension_declaree(lead) != 'mt':
+            requis.append(['contrat_electricite'])
+        return requis + _groupes_rythme(lead)
     requis = [['facture_hiver']]
     if lead.ete_differente:
         requis.append(['facture_ete'])
     return requis
+
+
+def _rythme_ci(lead):
+    """ALEA47 — le bloc ``rythme`` tel que le moteur le lit (jumeau sans
+    requête de ``devis_selectors.entrees_ci_du_lead`` §4, garde de test)."""
+    rythme = {}
+    if lead.jours_ouverture:
+        jours = set(lead.jours_ouverture)
+        rythme['jours_ouverts'] = [j in jours for j in range(1, 8)]
+    if lead.heure_debut is not None and lead.heure_fin is not None:
+        rythme['plages'] = {'ouvre': [[lead.heure_debut, lead.heure_fin]]}
+    elif lead.heure_debut is not None and lead.regime_equipes:
+        rythme['debut_equipe_h'] = lead.heure_debut
+    if lead.regime_equipes:
+        rythme['equipes'] = lead.regime_equipes
+    if lead.type_installation == 'commercial':
+        if lead.categorie_commerciale:
+            rythme['categorie_commerciale'] = lead.categorie_commerciale
+        if lead.reponses_categorie:
+            rythme['reponses_categorie'] = dict(lead.reponses_categorie)
+    return rythme
+
+
+#: ALEA47 — champ du lead rendu par la règle partagée → son groupe requis.
+_GROUPES_RYTHME = {'jours_ouverture': ('jours_ouverture',),
+                   'heure_debut': ('heure_debut', 'regime_equipes')}
+
+
+def _groupes_rythme(lead):
+    """ALEA47 — les groupes de rythme MANQUANTS selon la règle du moteur ; le
+    profil SAISI par la société (D-ACI-7=a) lu seulement s'il peut aider."""
+    from apps.ventes.selectors import profil_charge_prerequis_ci
+
+    mode = lead.type_installation
+    rythme = _rythme_ci(lead)
+    categorie = (rythme.get('categorie_commerciale') if mode == 'commercial'
+                 else 'industriel')
+    champs = profil_charge_prerequis_ci(rythme, categorie, en_champs_lead=True)
+    cle = categorie if mode == 'commercial' else lead.secteur_industriel
+    if champs and cle and getattr(lead, 'company_id', None):
+        champs = profil_charge_prerequis_ci(
+            rythme, categorie, company=lead.company, mode=mode,
+            cle_profil=cle, en_champs_lead=True)
+    return [list(_GROUPES_RYTHME[champ]) for champ in champs]
 
 
 #: CIQ404 (contrat CIQ1 ``regles_devis_auto.groupe_pro``).
@@ -150,20 +208,28 @@ _LIBELLES = {
     # QUE si elle diffère de l'hiver (toggle existant).
     'facture_hiver': 'facture hiver',
     'facture_ete': 'facture été',
+    # ALEA47 (D-ACI-5=a) — un libellé par groupe ; les deux groupes de
+    # rythme partagent le leur (une seule puce).
+    'contrat_electricite': "Contrat d'électricité",
+    'jours_ouverture': "Jours et heures d'ouverture (ou catégorie d'activité)",
+    'heure_debut': "Jours et heures d'ouverture (ou catégorie d'activité)",
 }
 
 
-def champs_manquants_detail(lead) -> list[dict]:
+def champs_manquants_detail(lead, requis=None) -> list[dict]:
     """QJR600 — ``[{champ, label}]`` des groupes requis sans aucun champ
-    rempli (``champ`` = premier champ du groupe, nom du champ ``Lead``)."""
+    rempli (``champ`` = premier champ du groupe, nom du champ ``Lead``) ; un
+    groupe de rythme n'est requis QUE manquant (ALEA47, règle du moteur)."""
     detail = []
     mode = lead.type_installation or 'residentiel'
-    for groupe in champs_requis(lead):
-        if any(_rempli(lead, champ) for champ in groupe):
+    for groupe in champs_requis(lead) if requis is None else requis:
+        rythme = tuple(groupe) in _GROUPES_RYTHME.values()
+        if not rythme and any(_rempli(lead, champ) for champ in groupe):
             continue
         label = (_LIBELLES_PRO[mode] if mode in _MODES_ETUDE
-                 else _LIBELLES[groupe[0]])
-        detail.append({'champ': groupe[0], 'label': label})
+                 and groupe[0] in GROUPE_CONSO_PRO else _LIBELLES[groupe[0]])
+        if all(entree['label'] != label for entree in detail):
+            detail.append({'champ': groupe[0], 'label': label})
     return detail
 
 
