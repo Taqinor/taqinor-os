@@ -49,8 +49,8 @@
       "origine": "grille_officielle",
       "contrat": "bt_patente",
       "tarifs_par_poste": [
-        {"poste": "tranche_1", "tarif_kwh_ht": 1.2622, "tarif_kwh_ttc": 1.5146, "base_publiee": "ttc", "derive_ht_estimation": true, "source": "grille ONEE BT patenté 0-150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)", "releve_le": "2026-10-03"},
-        {"poste": "tranche_2", "tarif_kwh_ht": 1.4242, "tarif_kwh_ttc": 1.709, "base_publiee": "ttc", "derive_ht_estimation": true, "source": "grille ONEE BT patenté > 150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)", "releve_le": "2026-10-03"}
+        {"poste": "tranche_1", "tarif_kwh_ht": 1.2622, "tarif_kwh_ttc": 1.5146, "base_publiee": "ttc", "derive_ht_estimation": true, "source": "grille ONEE BT patenté 0-150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)", "releve_le": "2025-02-16"},
+        {"poste": "tranche_2", "tarif_kwh_ht": 1.4242, "tarif_kwh_ttc": 1.709, "base_publiee": "ttc", "derive_ht_estimation": true, "source": "grille ONEE BT patenté > 150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)", "releve_le": "2025-02-16"}
       ],
       "prime_fixe_annuelle_mad": null,
       "tva_energie_pct": 20,

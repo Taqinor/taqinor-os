@@ -49,45 +49,59 @@ MOTIF_NON_DETERMINE = ("l'électricité déclarée n'atteint pas le seuil ; les 
                        "carburants ne sont pas comptés")
 MOTIF_SANS_KWH = ('aucune consommation en kWh déclarée (une facture en '
                   'dirhams ou une tranche ne sont jamais converties)')
-MOTIF_RELEVE_INCOMPLET = ('relevé de moins de 12 mois et aucun kWh mensuel '
-                          'déclaré')
 
 
 def _nombre(valeur):
+    """Un kWh DÉCLARÉ > 0, sinon ``None`` (ALEA49 : 0 n'est pas une réponse,
+    même règle que le moteur C&I et ``devis_auto._rempli``)."""
     if valeur is None or valeur == '' or isinstance(valeur, bool):
         return None
     try:
         nombre = float(valeur)
     except (TypeError, ValueError):
         return None
-    return nombre if nombre >= 0 else None
+    return nombre if nombre > 0 else None
+
+
+def mention_estimation(nb_mois):
+    """ALEA49 (D-ACI-1=b) — l'étiquette d'une conso estimée sur un relevé
+    partiel, telle qu'elle accompagne le chiffre."""
+    return 'estimation (%d mois relevés)' % nb_mois
 
 
 def conso_annuelle_declaree(entrees_ci):
     """La consommation annuelle en kWh lue dans ``entrees_ci`` (CIQ405) :
-    ``(kwh, provenance, motif)``.
+    ``(kwh, provenance, motif)`` — même lecture que le moteur C&I
+    (``ventes.domain.etude_ci._consommation``, ADEV77) :
 
-    * ``releve_conso`` sur 12 mois → leur somme ;
-    * sinon le kWh mensuel déclaré (``conso_mensuelle_kwh`` ou ``bill_kwh``)
-      × 12 ;
+    * ``releve_conso`` sur 12 mois calendaires DISTINCTS → leur somme ;
+    * sinon le kWh mensuel déclaré (``conso_mensuelle_kwh`` ou ``bill_kwh``,
+      0 = absent) × 12 ;
+    * sinon un relevé PARTIEL → moyenne des mois relevés × 12, ``motif`` =
+      « estimation (n mois relevés) » (D-ACI-1=b) ;
     * JAMAIS une conso inversée depuis des dirhams (``facture_hiver``) ni une
       tranche Meta : ``(None, None, motif)``.
     """
+    from .devis_selectors import mois_distincts_du_releve
+
     entrees = (entrees_ci or {}).get('entrees') or []
     par_colonne = {e.get('colonne'): e for e in entrees}
     releve = par_colonne.get('releve_conso')
+    par_mois = {}
     if releve is not None:
-        mois = [m for m in (releve.get('valeur') or [])
-                if _nombre(m.get('kwh')) is not None]
-        if len(mois) >= 12:
-            total = sum(_nombre(m['kwh']) for m in mois[-12:])
-            return total, releve.get('provenance'), None
-        return None, None, MOTIF_RELEVE_INCOMPLET
+        par_mois = {m: float(v) for m, v in
+                    mois_distincts_du_releve(releve.get('valeur')).items()}
+        if len(par_mois) >= 12:
+            return sum(par_mois.values()), releve.get('provenance'), None
     for colonne in ('conso_mensuelle_kwh', 'bill_kwh'):
         entree = par_colonne.get(colonne)
         if entree is not None and _nombre(entree.get('valeur')) is not None:
             return (_nombre(entree['valeur']) * 12, entree.get('provenance'),
                     None)
+    if par_mois:
+        moyenne = sum(par_mois.values()) / len(par_mois)
+        return (moyenne * 12, releve.get('provenance'),
+                mention_estimation(len(par_mois)))
     return None, None, MOTIF_SANS_KWH
 
 
@@ -107,12 +121,14 @@ def indicateur_audit_47_09(conso_annuelle_kwh, provenance, segment, *,
         return {**base, 'statut': None, 'tep_electricite': None,
                 'motif': motif or MOTIF_SANS_KWH}
     tep = round(conso_annuelle_kwh / 1_000_000 * TEP_PAR_GWH_ELECTRICITE, 1)
+    # ALEA49 — un chiffre ESTIMÉ (relevé partiel) garde son étiquette.
+    suffixe = f' — {motif}' if motif else ''
     if tep >= seuil:
         return {**base, 'statut': STATUT_ATTEINT, 'tep_electricite': tep,
                 'motif': (f"l'électricité déclarée seule atteint {tep:g} tep "
-                          f'pour un seuil de {seuil} tep')}
+                          f'pour un seuil de {seuil} tep{suffixe}')}
     return {**base, 'statut': STATUT_NON_DETERMINE, 'tep_electricite': tep,
-            'motif': MOTIF_NON_DETERMINE}
+            'motif': MOTIF_NON_DETERMINE + suffixe}
 
 
 def indicateur_du_lead(segment, entrees_ci):

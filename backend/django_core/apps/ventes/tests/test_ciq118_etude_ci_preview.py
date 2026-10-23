@@ -27,6 +27,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
+from apps.parametres.models import CompanyProfile
 from apps.parametres.pvgis_profils import (
     SAISONS,
     productible_mensuel,
@@ -78,6 +79,17 @@ class _Base(TestCase):
             pmax_wc=Decimal('710'), vmp_v=Decimal('40'), voc_v=Decimal('48'),
             isc_a=Decimal('18'), imp_a=Decimal('17'))
         cls.onduleur = cls._onduleur(cls.co, 'Onduleur réseau Huawei 50kW Triphasé', 50)
+        # ADEV79 (D-ACI-6=a) — coffret DC, disjoncteur AC et pose sont des
+        # rôles de TAILLE : sans prix, aucune taille. Tarifés pour le test.
+        cls._produit(cls.co, 'Coffret DC C&I', role_ci='coffret_dc', prix_vente=Decimal('1500'))
+        disjoncteur = cls._produit(cls.co, 'Disjoncteur AC 80 A 4P', role_ci='protection_ac',
+                                   prix_vente=Decimal('900'))
+        FicheTechnique.objects.create(
+            company=cls.co, produit=disjoncteur, type_fiche='protection',
+            prot_type='disjoncteur', prot_cote='ac', prot_calibre_a=80, prot_poles=4)
+        CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
+            cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ118 de test'}
+            for cle in ('pose_structure', 'pose_modules')}})
         # Un onduleur d'une AUTRE société, moins cher : jamais lu.
         cls.onduleur_etranger = cls._onduleur(
             cls.autre, 'Onduleur réseau étranger 50kW Triphasé', 50,
@@ -163,6 +175,21 @@ class ContratTests(_Base):
             self.assertEqual(set(entree['provenance']), {'origine', 'detail', 'date'})
         self.assertIsNotNone(data['taille']['retenue_kwc'])
 
+    # ── ADEV82 — bande interne DH/kWc lue ───────────────────────────────────
+
+    def test_bande_prix_kwc_posee_hors_bande_alerte_interne(self):
+        CompanyProfile.objects.filter(company=self.co).update(bande_prix_kwc_ci={
+            'min_ht': 1, 'max_ht': 2, 'source': 'bande de test'})
+        data = self.post(self.corps())
+        alerte = next(a for a in data['alertes'] if a['code'] == 'PRIX_KWC_HORS_BANDE')
+        self.assertTrue(alerte['interne'])
+        self.assertNotEqual(alerte['niveau'], 'bloquant')
+
+    def test_bande_prix_kwc_vide_aucune_alerte(self):
+        CompanyProfile.objects.filter(company=self.co).update(bande_prix_kwc_ci=None)
+        data = self.post(self.corps())
+        self.assertNotIn('PRIX_KWC_HORS_BANDE', [a['code'] for a in data['alertes']])
+
     def test_aucune_cle_prix_achat_ni_marge(self):
         data = self.post(self.corps())
         cles = set(_cles(data))
@@ -225,6 +252,35 @@ class LeadTests(_Base):
         self.assertEqual(data['taille']['retenue_kwc'], direct['taille']['retenue_kwc'])
         self.assertEqual(data['niveau_donnees'], 'estimation')
         self.assertTrue(data['sous_reserve_visite']['valeur'])
+
+    # ── ADEV77 (D-ACI-1=b) — relevé partiel : jamais un masque, une estimation ─
+
+    def test_releve_un_mois_et_kwh_declare_les_deux_resolus_taille_calculee(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('3870'), categorie_commerciale='bureau',
+                          releve_conso={'mois': [{'mois': '2026-08', 'kwh': '3870.00'}]})
+        data = self.post(self._corps_lead(lead))
+        self.assertIn('kwh_mensuel_declare', data['entrees_resolues'])
+        self.assertIn('releve_kwh', data['entrees_resolues'])
+        self.assertIsNotNone(data['taille']['retenue_kwc'])
+
+    def test_releve_trois_mois_seul_moyenne_fois_douze_estimation(self):
+        mois = [{'mois': '2026-06', 'kwh': '3000'}, {'mois': '2026-07', 'kwh': '4000'},
+                {'mois': '2026-08', 'kwh': '5000'}]
+        lead = self._lead(categorie_commerciale='bureau', releve_conso={'mois': mois})
+        data = self.post(self._corps_lead(lead))
+        self.assertAlmostEqual(
+            sum(m['consommation_kwh'] for m in data['bilan']['par_mois']), 4000 * 12, delta=12)
+        hypothese = next(h for h in data['hypotheses'] if h['cle'] == 'consommation')
+        self.assertEqual(hypothese['statut'], 'estimation')
+        self.assertEqual(hypothese['source'], 'relevé partiel (3 mois)')
+
+    def test_zero_kwh_declare_la_facture_est_lue(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('0.00'), facture_hiver=Decimal('3500'),
+                          categorie_commerciale='bureau', tension_raccordement='bt',
+                          contrat_electricite='bt_patente')
+        etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+        self.assertNotIn('consommation_absente', [a['code'] for a in etude['alertes']])
+        self.assertIn('facture_hiver_mad', etude['entrees_resolues'])
 
     def test_lead_dune_autre_societe_ignore(self):
         lead = Lead.objects.create(company=self.autre, nom='Étranger',
