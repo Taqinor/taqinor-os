@@ -161,6 +161,18 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(devis.etude_params['besoin_mensuel']['nature'],
                          'debit_souhaite')
 
+    def test_raccordement_inconnu_409_nommant_le_raccordement(self):
+        """AGQ7 (C-AGQ-006) — raccordement inconnu : 409 qui nomme la saisie
+        (champ ``raccordement``), jamais « aucune pompe compatible »."""
+        self._pompe('15000')
+        lead = self._lead(raccordement='inconnu')
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'raccordement')
+        self.assertIn('Alimentation de la pompe inconnue', rep.data['detail'])
+        self.assertNotIn('catalogue', rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
     def test_lead_butane_saisies_economie_provenance_lead(self):
         self._pompe('15000')
         lead = self._lead(

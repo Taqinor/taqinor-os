@@ -169,6 +169,8 @@ def selection_variateur(variateurs, kw, alim):
 
 ETIQUETTE_A_CONFIRMER = "à confirmer sur la courbe constructeur"
 PREFIXE_PLACEHOLDER = "Pompe — prix à renseigner : "
+#: AGQ7 — placeholder quand l'alimentation (mono / tri) n'est pas connue.
+NOM_ALIMENTATION_INCONNUE = "Pompe — alimentation à renseigner"
 
 
 def prix_connu(produit):
@@ -354,6 +356,17 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
             placeholder_nom=("Pompe — à choisir : HMT ou débit de conception "
                              "inconnu"),
             type_pompe=type_voulu, alimentation=alim), "placeholder")
+
+    if alim is None:
+        # AGQ7 (C-AGQ-006) — alimentation INCONNUE : le catalogue n'est pas
+        # en cause, c'est la saisie (raccordement) qui manque.
+        alerte("alimentation_inconnue", "alim",
+               "Alimentation de la pompe inconnue : renseignez mono ou tri "
+               "(raccordement) — pompe non choisie.")
+        return resultat(_sortie_pompe(
+            None, kw=None, debit_hmt=None, hmt=h,
+            placeholder_nom=NOM_ALIMENTATION_INCONNUE,
+            type_pompe=type_voulu, alimentation=None), "placeholder")
 
     famille = []  # bon type ET bonne alimentation
     for p in pompes or ():

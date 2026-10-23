@@ -382,8 +382,13 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
     corps = {'taille': 'recommandee'}
     alim = {'monophase': 'mono', 'triphase': 'tri'}.get(
         phase_et_isolement_du_lead(lead)[0])
-    if alim:
-        corps['alim'] = alim
+    if not alim:
+        # AGQ7 (C-AGQ-006) — refus AVANT l'étude, qui nomme la saisie
+        # manquante (et non « aucune pompe compatible au catalogue »).
+        raise AutoDevisError(
+            'Alimentation de la pompe inconnue : renseignez mono ou tri '
+            '(raccordement du lead)', field='raccordement')
+    corps['alim'] = alim
     sortie = etudier_pompage(company, corps, lead=lead)
     hmt_m = (sortie.get('hmt') or {}).get('valeur_m')
     debit = (sortie.get('conception') or {}).get('debit_conception_m3h')

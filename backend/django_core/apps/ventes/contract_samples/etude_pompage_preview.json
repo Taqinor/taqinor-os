@@ -1219,7 +1219,7 @@
     "autonomie_reservoir_jours": "{valeur, motif} — volume de réservoir DÉCLARÉ ÷ besoin ; aucun bassin dimensionné, aucun « ×2 »",
     "tailles": "≤ 3, clés recommandee | inferieure | superieure ; défaut = recommandee ; palier absent ⇒ dans `tailles_omises` avec motif ; mode existante ⇒ une seule taille",
     "kit": "inclus = pompe (si neuve), variateur, panneaux, structure (+ prestations) ; options nommées à cocher ; option sans produit pricé ⇒ prix_connu false + motif « prix à renseigner », jamais 0 MAD ; non_inclus = forage, genie_civil ; aucune batterie, aucun onduleur",
-    "alertes": "[{code, champ, message}] — message en français, `champ` nomme la saisie fautive ; jamais bloquant",
+    "alertes": "[{code, champ, message}] — message en français, `champ` nomme la saisie fautive ; jamais bloquant ; codes nommés : `alimentation_inconnue` (champ `alim` : mono/tri non déclaré, pompe « Pompe — alimentation à renseigner », AGQ7)",
     "hypotheses": "[{cle, valeur, statut, source, usage}] — entrées de la table `hypotheses_pompage.json` (AGR110) effectivement utilisées par CE calcul, recopiées telles quelles"
   },
   "interdit": [

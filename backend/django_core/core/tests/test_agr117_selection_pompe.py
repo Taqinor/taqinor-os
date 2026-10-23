@@ -145,6 +145,21 @@ class Gardes(unittest.TestCase):
                             alimentation="tri")
         self.assertTrue(res["pompe"]["placeholder"])
 
+    def test_alim_inconnue_placeholder_nomme(self):
+        """AGQ7 (C-AGQ-006) — alimentation inconnue : placeholder qui nomme
+        l'alimentation, jamais « aucune pompe compatible au catalogue »."""
+        res = choisir_pompe(GENERIQUES + [_petite_courbe()], hmt_m=60,
+                            debit_conception_m3h=10, alimentation=None)
+        self.assertTrue(res["pompe"]["placeholder"])
+        self.assertIsNone(res["pompe"]["produit"])
+        self.assertEqual(res["pompe"]["nom"],
+                         "Pompe — alimentation à renseigner")
+        alertes = {a["code"]: a for a in res["alertes"]}
+        self.assertIn("alimentation_inconnue", alertes)
+        self.assertEqual(alertes["alimentation_inconnue"]["champ"], "alim")
+        self.assertNotIn("aucune_pompe_chiffrable", alertes)
+        self.assertEqual(res["paliers"], [])
+
     def test_diametre_et_immersion_alertes(self):
         p = dict(_petite_courbe(), fiche={"pompe_diametre_ext_mm": 150,
                                           "pompe_immersion_min_m": 5})
