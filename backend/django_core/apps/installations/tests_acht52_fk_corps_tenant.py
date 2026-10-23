@@ -102,7 +102,7 @@ class FkCorpsTenantTests(TestCase):
         r = self.api.post(f'{BASE}/gps-consentements/', {
             'technicien': self.user_b.id, 'consent_ref': 'CONS-1'},
             format='json')
-        self._refus(r, 'technicien')
+        self._refus(r, 'technicien', 404)  # ENF11 : id inconnu/étranger = 404
         r = self.api.post(f'{BASE}/gps-consentements/', {
             'technicien': self.user_a.id, 'consent_ref': 'CONS-2'},
             format='json')

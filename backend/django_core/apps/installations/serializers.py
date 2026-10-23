@@ -1104,7 +1104,7 @@ class ProjetSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCom
     posés côté serveur (jamais lus du corps). Le statut est PROPRE au programme
     (jamais l'entonnoir commercial). Les rattachements sont imbriqués en
     lecture."""
-    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger/inconnu = 404 ENF11, sans écriture)
     # ENF17 — + client (FK cross-app bornées).
     same_company_fields = ('responsable', 'client')
     reference = serializers.CharField(read_only=True)
@@ -1989,7 +1989,7 @@ class PutAwaySerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMi
 class PickListLigneSerializer(SameCompanyFKSerializerMixin,
                               serializers.ModelSerializer):
     """FG321 - ligne de prelevement (SKU + casier + avancement)."""
-    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger/inconnu = 404 ENF11, sans écriture)
     # ENF17 — + produit (FK cross-app bornées).
     same_company_fields = ('bin', 'produit')
     produit_nom = TexteLie(
@@ -2393,7 +2393,7 @@ class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                 serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
-    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger/inconnu = 404 ENF11, sans écriture)
     # ENF17 — + devis, emplacements source/destination, sous-traitant
     # (FK cross-app bornées).
     same_company_fields = (
@@ -2924,7 +2924,7 @@ class LotPrelevementSerializer(SameCompanyFKSerializerMixin,
                                serializers.ModelSerializer):
     """ZSTK10 - lot de prelevement regroupant plusieurs pick-lists du meme
     depot. Societe/`created_by`/reference poses COTE SERVEUR."""
-    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger/inconnu = 404 ENF11, sans écriture)
     same_company_fields = ('operateur',)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None, allow_null=True)
@@ -2946,12 +2946,12 @@ class LotPrelevementSerializer(SameCompanyFKSerializerMixin,
         ]
 
 
-class GpsConsentRecordSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class GpsConsentRecordSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """XFSM23 — trace de consentement GPS (déjà obtenu). company/technicien/
     recorded_by posés côté serveur ; jamais posée/révoquée par le corps client
     mobile — seule une action responsable/admin dédiée révoque."""
-    # ACHT52 — FK inscriptibles bornées à la société (id étranger = 400, sans écriture)
+    # ACHT52 — FK inscriptibles bornées à la société (id étranger/inconnu = 404 ENF11, sans écriture)
     same_company_fields = ('technicien',)
     technicien_nom = TexteLie(
         source='technicien.username', read_only=True, default=None, allow_null=True)

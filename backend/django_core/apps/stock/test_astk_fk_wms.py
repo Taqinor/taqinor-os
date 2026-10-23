@@ -214,7 +214,7 @@ class FkWmsTests(TestCase):
             lignes=[{'produit': self.pa.id, 'quantite': 1}])
         r = self.api.patch(f'{BASE}/retours-client/{retour.id}/', {
             'chantier': self.chantier_b.id}, format='json')
-        self.assertObjetInexistant(r, 'chantier')
+        self.assertObjetInexistant(r, 'chantier', 404)  # ENF11
         retour.refresh_from_db()
         self.assertIsNone(retour.chantier_id)
 

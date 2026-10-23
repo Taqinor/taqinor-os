@@ -84,6 +84,22 @@ class DaLignesTests(TestCase):
         self.da.refresh_from_db()
         self.assertEqual(self.da.montant_estime, Decimal('20'))
 
+    def test_csv_vide_est_un_conflit_409(self):
+        # ENF11 — fichier multipart bien formé mais sans en-tête : 409 (le
+        # schéma publie un FileField, rien n'y distingue un fichier vide) ;
+        # un fichier non UTF-8 reste 400.
+        url = f'{BASE}/demandes-achat/{self.da.id}/importer-lignes-csv/'
+        r = self.api.post(
+            url, {'fichier': SimpleUploadedFile('v.csv', b'')},
+            format='multipart')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('fichier', r.data)
+        r = self.api.post(
+            url, {'fichier': SimpleUploadedFile('b.csv', b'\xff\xfe\x00')},
+            format='multipart')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(self.da.lignes.count(), 0)
+
     def _approuver(self):
         DemandeAchat.objects.filter(pk=self.da.pk).update(
             statut=DemandeAchat.Statut.APPROUVEE)

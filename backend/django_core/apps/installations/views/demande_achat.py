@@ -508,7 +508,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         if reader.fieldnames is None:
             return Response(
                 {'fichier': 'Fichier CSV vide ou sans en-tête.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : fichier lisible mais inexploitable
         entetes = {(h or '').strip().lower(): h for h in reader.fieldnames}
 
         from django.apps import apps as django_apps
