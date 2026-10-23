@@ -97,7 +97,7 @@ class ProduitsCiTests(TestCase):
             role_ci='onduleur_string_mono', prix_vente=Decimal('15000'),
             garantie='10 ans')
         _fiche_onduleur(cls.company, cls.ond_tri_declare_mono,
-                        ond_ac_kw=Decimal('20'))
+                        ond_ac_kw=Decimal('20', ond_bat_aucune=True))
         # ADEV87 — câbles solaires DC : fiche côté DC, rôle de devis déclaré,
         # et le câble seedé H1Z2Z2-K sans fiche ni rôle (repli par le nom).
         cls.cable_dc_fiche = Produit.objects.create(
