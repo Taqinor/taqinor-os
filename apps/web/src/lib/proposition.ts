@@ -3812,7 +3812,84 @@ export interface NextStep {
  * Toujours affichée (pas de dépendance à un champ backend) : c'est un
  * processus, pas un chiffre client — rien à masquer.
  */
-export function nextSteps(): NextStep[] {
+/** AGQ30/AGQ33 — une étape agricole servie (`{cle, textes}`) : jamais de délai. */
+export interface SyntheseEtape {
+  cle: string | null;
+  textes: Lbl3;
+}
+
+/**
+ * AGQ33 (D-AGQ-11) — les 5 étapes agricoles, textes IDENTIQUES à
+ * `quote_engine/agricole/mentions.py::_ETAPES` (parité testée contre le contrat).
+ * Aucun jour, aucune heure : un chantier de pompage se cale sur la visite du
+ * point d'eau et l'accord FDA, jamais sur un délai promis.
+ */
+export const ETAPES_AGRICOLES: ReadonlyArray<{ cle: string; textes: Lbl3 }> = [
+  {
+    cle: 'visite_point_eau',
+    textes: {
+      fr: "Visite du point d'eau : niveau, débit du forage et HMT relevés sur place.",
+      en: 'Water point visit: level, borehole flow and head measured on site.',
+      ar: 'زيارة نقطة الماء: قياس المستوى وصبيب الثقب والارتفاع في عين المكان.',
+    },
+  },
+  {
+    cle: 'accord_fda',
+    textes: {
+      fr: "Accord FDA, si vous demandez l'aide : dossier déposé avant toute commande.",
+      en: 'FDA approval, if you apply for the subsidy: file submitted before any order.',
+      ar: 'موافقة صندوق التنمية الفلاحية، إن طلبتم الدعم: يودع الملف قبل أي طلب.',
+    },
+  },
+  {
+    cle: 'commande',
+    textes: {
+      fr: 'Commande : acompte versé, matériel commandé.',
+      en: 'Order: down payment made, equipment ordered.',
+      ar: 'الطلب: أداء الدفعة المقدمة وطلب المعدات.',
+    },
+  },
+  {
+    cle: 'pose',
+    textes: {
+      fr: 'Pose : pompe, variateur, champ solaire et protections.',
+      en: 'Installation: pump, drive, solar array and protections.',
+      ar: 'التركيب: المضخة والمغير والحقل الشمسي والحمايات.',
+    },
+  },
+  {
+    cle: 'mise_en_service',
+    textes: {
+      fr: 'À la mise en service : débit et HMT mesurés, écart affiché contre ce devis.',
+      en: 'At commissioning: flow and head measured, gap shown against this quote.',
+      ar: 'عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض.',
+    },
+  },
+];
+
+/** « Visite du point d'eau : niveau… » → titre « Visite du point d'eau », corps « niveau… ». */
+function titreEtCorps(texte: string): [string, string] {
+  const i = texte.indexOf(':');
+  if (i <= 0) return [texte, texte];
+  return [texte.slice(0, i).trim(), texte.slice(i + 1).trim()];
+}
+
+function etapesAgricole(servies?: ReadonlyArray<SyntheseEtape> | null): NextStep[] {
+  const source: ReadonlyArray<SyntheseEtape> = servies && servies.length > 0 ? servies : ETAPES_AGRICOLES;
+  return source.map((e, i) => {
+    const [title, body] = titreEtCorps(e.textes.fr);
+    const [titleEn, bodyEn] = titreEtCorps(e.textes.en);
+    const [titleAr, bodyAr] = titreEtCorps(e.textes.ar);
+    return { id: e.cle ?? `etape-${i + 1}`, title, titleAr, titleEn, body, bodyAr, bodyEn };
+  });
+}
+
+export function nextSteps(mode?: string | null, servies?: ReadonlyArray<SyntheseEtape> | null): NextStep[] {
+  // AGQ33 (D-AGQ-11) — agricole : 5 étapes SANS délai chiffré, lues dans
+  // `synthese_agricole.etapes_suivantes` quand le serveur les sert (AGQ30),
+  // sinon les mêmes textes, locaux. Les trois autres modes gardent la frise
+  // WJ32 inchangée.
+  if (mode === 'agricole') return etapesAgricole(servies);
   return [
     {
       id: 'signature',
@@ -4177,8 +4254,65 @@ function objectionFaqCi(ci: SyntheseCi | null): FaqItem[] {
  * CIW304 — `mode` commercial / industriel (+ `ci` = `syntheseCi(p)` pour les faits servis) →
  * la FAQ d'entreprise ci-dessus ; tout autre mode (ou aucun) → la FAQ résidentielle, inchangée.
  */
+/**
+ * AGQ33 (C-AGQ-031) — les objections d'un fermier (plus celles d'un toit) :
+ * puits à sec, jours nuageux, vol, entretien, délai FDA. Aucun chiffre, aucune
+ * promesse datée : chaque réponse renvoie au document (débit mesuré, FDA avant
+ * commande).
+ */
+function objectionFaqAgricole(): FaqItem[] {
+  return [
+    {
+      id: 'puits-sec',
+      question: 'Et si le puits ou le forage donne moins que prévu ?',
+      questionAr: 'وماذا لو أعطى البئر أو الثقب أقل مما هو متوقع؟',
+      questionEn: 'What if the well or borehole yields less than expected?',
+      answer: "Le débit du forage est relevé sur place avant le devis définitif et la pompe est choisie en dessous de ce débit. À la mise en service, le débit réel est mesuré et l'écart avec le devis est écrit.",
+      answerAr: 'يُقاس صبيب الثقب في عين المكان قبل العرض النهائي وتُختار المضخة دون هذا الصبيب. عند التشغيل يُقاس الصبيب الحقيقي ويُكتب الفرق مع العرض.',
+      answerEn: 'The borehole flow is measured on site before the final quote and the pump is chosen below that flow. At commissioning, the real flow is measured and the gap against the quote is written down.',
+    },
+    {
+      id: 'nuages',
+      question: 'Que se passe-t-il les jours nuageux ?',
+      questionAr: 'ماذا يحدث في الأيام الغائمة؟',
+      questionEn: 'What happens on cloudy days?',
+      answer: "La pompe tourne moins vite et livre moins d'eau ce jour-là ; le document montre l'eau livrée mois par mois sur l'ensoleillement réel du site, pas sur une journée idéale. Un bassin de stockage lisse ces journées.",
+      answerAr: 'تدور المضخة أبطأ وتضخ ماءً أقل في ذلك اليوم؛ يعرض المستند الماء المضخوخ شهراً بشهر وفق الإشعاع الحقيقي للموقع، لا وفق يوم مثالي. حوض التخزين يعوض هذه الأيام.',
+      answerEn: 'The pump runs slower and delivers less water that day; the document shows the water delivered month by month on the site’s real sunshine, not an ideal day. A storage basin smooths those days out.',
+    },
+    {
+      id: 'vol',
+      question: 'Les panneaux peuvent-ils être volés ?',
+      questionAr: 'هل يمكن أن تُسرق الألواح؟',
+      questionEn: 'Can the panels be stolen?',
+      answer: "Les panneaux sont fixés sur une structure au sol avec une visserie antivol et le coffret est fermé à clé ; une clôture ou un gardiennage restent de votre côté. Le choix d'une assurance se fait avec votre assureur.",
+      answerAr: 'تُثبت الألواح على هيكل أرضي ببراغي مضادة للسرقة ويُقفل الصندوق بمفتاح؛ أما السياج أو الحراسة فيبقيان على عاتقكم. اختيار التأمين يتم مع شركة التأمين.',
+      answerEn: 'The panels are fixed on a ground structure with anti-theft fasteners and the cabinet is locked; a fence or guarding remains on your side. Insurance is a decision to take with your insurer.',
+    },
+    {
+      id: 'entretien-pompage',
+      question: 'Quel entretien demande une pompe solaire ?',
+      questionAr: 'ما الصيانة التي تتطلبها مضخة شمسية؟',
+      questionEn: 'What maintenance does a solar pump need?',
+      answer: "Nettoyer les panneaux après les vents de sable, vérifier le filtre et la crépine, et faire contrôler la pompe et le variateur chaque année. Il n'y a ni carburant à acheter ni moteur à vidanger.",
+      answerAr: 'تنظيف الألواح بعد الرياح الرملية، وفحص المرشح والمصفاة، ومراقبة المضخة والمغير كل سنة. لا وقود يُشترى ولا محرك يحتاج تغيير الزيت.',
+      answerEn: 'Clean the panels after sandstorms, check the filter and strainer, and have the pump and drive inspected every year. There is no fuel to buy and no engine to service.',
+    },
+    {
+      id: 'delai-fda',
+      question: "Faut-il attendre l'accord FDA avant de commencer ?",
+      questionAr: 'هل يجب انتظار موافقة صندوق التنمية الفلاحية قبل البدء؟',
+      questionEn: 'Do we have to wait for the FDA approval before starting?',
+      answer: "Oui si vous demandez l'aide : le dossier est déposé et l'accord obtenu avant toute commande, sinon l'aide est perdue. Si vous ne demandez pas l'aide, la commande peut partir dès l'acompte.",
+      answerAr: 'نعم إن طلبتم الدعم: يودع الملف وتُحصل الموافقة قبل أي طلب، وإلا ضاع الدعم. وإن لم تطلبوا الدعم فيمكن أن ينطلق الطلب بمجرد الدفعة المقدمة.',
+      answerEn: 'Yes if you apply for the subsidy: the file is submitted and the approval obtained before any order, otherwise the subsidy is lost. If you do not apply, the order can start as soon as the down payment is made.',
+    },
+  ];
+}
+
 export function objectionFaq(mode?: string | null, ci: SyntheseCi | null = null): FaqItem[] {
   if (mode === 'commercial' || mode === 'industriel') return objectionFaqCi(ci);
+  if (mode === 'agricole') return objectionFaqAgricole();
   return [
     {
       id: 'panne-reseau',
@@ -4565,6 +4699,8 @@ export interface SyntheseAgricole {
     moisLePlusSerre: number | null;
     hectaresIrrigables: number | null;
     baseBesoin: string | null;
+    /** AGQ3/AGQ33 — chaque mois d'irrigation sous la tolérance de conception, avec sa couverture (% servi). */
+    moisSousTolerance: Array<{ mois: number; couverturePct: number | null }>;
   } | null;
   pointFonctionnement: {
     courbe: Array<[number, number]>;
@@ -4572,6 +4708,10 @@ export interface SyntheseAgricole {
   } | null;
   /** SVG tel que servi (déjà échappé côté serveur) — inséré tel quel, jamais réécrit. */
   dessinSchema: string | null;
+  /** AGQ30/AGQ33 — les étapes servies (`etapes_suivantes`), sans délai ; [] sinon. */
+  etapesSuivantes: SyntheseEtape[];
+  /** AGQ38/AGQ35 — notes client issues des alertes du noyau (`notes`), textes servis ; [] sinon. */
+  notes: SyntheseNote[];
   omissions: Array<{ bloc: string; motif: string }>;
 }
 
@@ -4601,6 +4741,7 @@ function lireBesoinVsLivre(v: unknown): SyntheseAgricole['besoinVsLivre'] {
     moisLePlusSerre: serre !== null && Number.isInteger(serre) && serre >= 1 && serre <= 12 ? serre : null,
     hectaresIrrigables: nombreServi(v.hectares_irrigables),
     baseBesoin: texteServi(v.base_besoin),
+    moisSousTolerance: lireMoisSousTolerance(v.mois_sous_tolerance),
   };
 }
 
@@ -4685,8 +4826,41 @@ export function syntheseAgricole(
     besoinVsLivre: lireBesoinVsLivre(brut.besoin_vs_livre),
     pointFonctionnement: lirePointFonctionnement(brut.point_fonctionnement),
     dessinSchema: svg !== null && svg.trimStart().startsWith('<svg') ? svg : null,
+    etapesSuivantes: lireListeTextes(brut.etapes_suivantes, 'cle', (cle, textes) => ({ cle, textes })),
+    notes: lireListeTextes(brut.notes, 'code', (code, textes) => ({ code, textes })),
     omissions,
   };
+}
+
+/** AGQ38/AGQ35 — une note client servie (`{code, textes}`), jamais recalculée. */
+export interface SyntheseNote {
+  code: string | null;
+  textes: Lbl3;
+}
+
+/** AGQ33/AGQ35 — une liste `[{<cle>, textes}]` servie en trois voix ; les éléments sans `fr` sont ignorés. */
+function lireListeTextes<T>(v: unknown, cle: string, construire: (nom: string | null, textes: Lbl3) => T): T[] {
+  if (!Array.isArray(v)) return [];
+  const out: T[] = [];
+  for (const e of v) {
+    if (!estRecord(e)) continue;
+    const textes = lireTextesTroisVoix(e.textes);
+    if (!textes) continue;
+    out.push(construire(texteServi(e[cle]), textes));
+  }
+  return out;
+}
+
+function lireMoisSousTolerance(v: unknown): Array<{ mois: number; couverturePct: number | null }> {
+  if (!Array.isArray(v)) return [];
+  const out: Array<{ mois: number; couverturePct: number | null }> = [];
+  for (const m of v) {
+    if (!estRecord(m)) continue;
+    const mois = nombreServi(m.mois);
+    if (mois === null || !Number.isInteger(mois) || mois < 1 || mois > 12) continue;
+    out.push({ mois, couverturePct: nombreServi(m.couverture_pct) });
+  }
+  return out;
 }
 
 /** Le motif d'omission servi pour un bloc (`besoin_vs_livre`, `point_fonctionnement`…), ou `null`. */
@@ -4741,6 +4915,13 @@ export const AGR_LBL = {
     ar: 'الرمادي: حاجتكم اليومية؛ الأزرق: الماء المضخوخ يوميا.',
   },
   moisSerre: { fr: 'Mois le plus serré :', en: 'Tightest month:', ar: 'الشهر الأصعب:' },
+  // AGQ3/AGQ33 — même phrase que la page 2 du PDF (`agr_mois_sous_tolerance`, `agr_mois_couverture`).
+  moisSousTolerance: { fr: 'Mois sous la tolérance de conception :', en: 'Months below the design tolerance:', ar: 'أشهر دون هامش التصميم:' },
+  couverture: { fr: '{mois} : {pct} % de votre besoin', en: '{mois}: {pct} % of your need', ar: '{mois}: {pct} % من حاجتكم' },
+  // AGQ11/AGQ35 — option sans prix (`agr_prix_sur_devis`), notes du noyau (`agr_notes_titre`).
+  prixSurDevis: { fr: 'prix sur devis', en: 'price on request', ar: 'السعر حسب العرض' },
+  notesTitre: { fr: 'Notes de dimensionnement', en: 'Sizing notes', ar: 'ملاحظات التحجيم' },
+  coutM3Solaire: { fr: 'Coût du m³ avec le solaire', en: 'Cost per m³ with solar', ar: 'تكلفة المتر المكعب مع الطاقة الشمسية' },
   surfaceIrrigable: { fr: 'Surface irrigable', en: 'Irrigable area', ar: 'المساحة القابلة للسقي' },
   titreComment: { fr: 'Comment ça marche', en: 'How it works', ar: 'كيف تعمل' },
   pointFonctionnement: { fr: 'Point de fonctionnement', en: 'Operating point', ar: 'نقطة التشغيل' },
@@ -4887,7 +5068,10 @@ export interface SyntheseEconomiesAgricole {
   /** Retour SANS aide (années), tel que servi. */
   retourAns: number | null;
   /** Coût du m³ avant / avec le solaire (MAD). */
-  coutM3: { actuel: number; solaire: number } | null;
+  /** AGQ17/AGQ35 — `actuel` reste `null` pour un NOUVEAU forage (aucune dépense actuelle) : le m³ solaire se dit seul. */
+  coutM3: { actuel: number | null; solaire: number } | null;
+  /** AGQ20/AGQ35 — motif SERVI quand le retour n'est pas publié (au-delà de l'horizon…), sinon `null`. */
+  retourMotif: string | null;
   /** Remplacements COMPTÉS (année + montant TTC servis) ; les autres sont omis. */
   remplacements: SyntheseRemplacement[];
   /** Date de déclaration la plus récente des entrées (ISO), ou `null`. */
@@ -4917,6 +5101,10 @@ export interface SyntheseOptionKit {
   ligneId: number | null;
   designation: string;
   totalTtc: number | null;
+  /** AGQ11/AGQ35 — faux : « prix sur devis » (aucun montant, pas d'ajout en ligne). */
+  prixConnu: boolean;
+  /** AGQ11/AGQ35 — mention servie à côté de l'option (ex. compteur exigé), ou `null`. */
+  mention: string | null;
 }
 
 export interface SyntheseFormalite {
@@ -4934,6 +5122,15 @@ export interface SyntheseAgricoleArgent {
   optionsKit: SyntheseOptionKit[];
   nonInclus: string[];
   formalites: SyntheseFormalite[];
+}
+
+/** AGQ20/AGQ35 — le motif servi de l'omission du retour (`omissions[].cle` commençant par « retour »), seulement sans `retour_ans`. */
+function lireMotifRetour(omissions: unknown, retourAns: number | null): string | null {
+  if (retourAns !== null || !Array.isArray(omissions)) return null;
+  for (const o of omissions) {
+    if (estRecord(o) && typeof o.cle === 'string' && o.cle.startsWith('retour')) return texteServi(o.motif);
+  }
+  return null;
 }
 
 function lireEconomies(v: unknown): SyntheseEconomiesAgricole | null {
@@ -4979,7 +5176,8 @@ function lireEconomies(v: unknown): SyntheseEconomiesAgricole | null {
     economieNetteAn1: estRecord(an1) ? nombreServi(an1.flux_mad) : null,
     horizonAns: nombreServi(eco.horizon_ans),
     retourAns: nombreServi(eco.retour_ans),
-    coutM3: actuel !== null && solaire !== null ? { actuel, solaire } : null,
+    coutM3: solaire !== null ? { actuel, solaire } : null,
+    retourMotif: lireMotifRetour(v.omissions, nombreServi(eco.retour_ans)),
     remplacements,
     declareLe: dates.length > 0 ? dates.sort()[dates.length - 1] : null,
     entreesDeclarees: entrees,
@@ -5042,7 +5240,14 @@ function lireOptionsKit(v: unknown): SyntheseOptionKit[] {
     const designation = texteServi(o.designation);
     if (!designation) continue;
     const id = nombreServi(o.ligne_id);
-    out.push({ ligneId: id !== null && Number.isInteger(id) ? id : null, designation, totalTtc: nombreServi(o.total_ttc) });
+    const totalTtc = nombreServi(o.total_ttc);
+    out.push({
+      ligneId: id !== null && Number.isInteger(id) ? id : null,
+      designation,
+      totalTtc,
+      prixConnu: o.prix_connu === true || (o.prix_connu === undefined && totalTtc !== null),
+      mention: texteServi(o.mention),
+    });
   }
   return out;
 }

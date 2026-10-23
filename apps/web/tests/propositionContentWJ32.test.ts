@@ -2,12 +2,13 @@
 // Contrat central : chaque bloc dégrade proprement (null / tableau vide)
 // quand sa donnée backend est absente — jamais un chiffre inventé.
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   proposalVariants,
   proposalGammes,
   gammeEcartLabel,
   gammeComparatif,
-  nextSteps,
+  nextSteps, ETAPES_AGRICOLES,
   proposalAssumptions,
   monitoringPoints,
   objectionFaq,
@@ -157,6 +158,58 @@ describe('WJ32 — nextSteps (« Et après ? »)', () => {
   it('délais annoncés comme indicatifs (jamais un engagement daté ferme)', () => {
     const visite = nextSteps().find((s) => s.id === 'visite')!;
     expect(visite.body).toMatch(/indicatif/i);
+  });
+});
+
+describe('AGQ33 — nextSteps(agricole) : frise sans délai chiffré (D-AGQ-11)', () => {
+  const contrat = JSON.parse(readFileSync(new URL('../src/contract_samples/proposal_data.json', import.meta.url), 'utf8'));
+  const servies = contrat.exemple_agricole.synthese_agricole.etapes_suivantes as Array<{ cle: string; textes: { fr: string; en: string; ar: string } }>;
+  const DELAI = /\d+\s*(h\b|j\b|jours?|days?|heures?|hours?|semaines?|weeks?)/i;
+
+  it('5 étapes aux clés du contrat (AGQ30), trois voix, aucun jour ni heure promis', () => {
+    const steps = nextSteps('agricole', servies);
+    expect(steps.map((s) => s.id)).toEqual(['visite_point_eau', 'accord_fda', 'commande', 'pose', 'mise_en_service']);
+    for (const s of steps) {
+      for (const t of [s.title, s.body, s.titleEn, s.bodyEn, s.titleAr, s.bodyAr]) {
+        expect(t.length).toBeGreaterThan(0);
+        expect(t).not.toMatch(DELAI);
+      }
+    }
+    expect(steps[0].title).toBe("Visite du point d'eau");
+    expect(steps[0].body).toBe('niveau, débit du forage et HMT relevés sur place.');
+  });
+
+  it('textes locaux IDENTIQUES aux étapes servies (parité PDF ↔ page) ; sans payload, même frise', () => {
+    expect(ETAPES_AGRICOLES.map((e) => ({ cle: e.cle, textes: e.textes }))).toEqual(servies);
+    expect(nextSteps('agricole', null)).toEqual(nextSteps('agricole', servies));
+    expect(nextSteps('agricole', [])).toEqual(nextSteps('agricole', servies));
+  });
+
+  it('les trois autres modes gardent la frise WJ32 au bit près', () => {
+    const base = nextSteps();
+    expect(base.map((s) => s.id)).toEqual(['signature', 'visite', 'installation', 'mise-en-service']);
+    for (const mode of ['residentiel', 'commercial', 'industriel', null, undefined]) {
+      expect(nextSteps(mode)).toEqual(base);
+    }
+  });
+});
+
+describe('AGQ33 — objectionFaq(agricole) : les objections du fermier (C-AGQ-031)', () => {
+  it('5 objections, ids uniques, question + réponse en trois voix, aucun chiffre promis', () => {
+    const faq = objectionFaq('agricole');
+    expect(faq.map((f) => f.id)).toEqual(['puits-sec', 'nuages', 'vol', 'entretien-pompage', 'delai-fda']);
+    for (const item of faq) {
+      for (const t of [item.question, item.questionEn, item.questionAr, item.answer, item.answerEn, item.answerAr]) {
+        expect(t.length).toBeGreaterThan(0);
+        expect(t).not.toMatch(/\d/);
+      }
+    }
+    expect(objectionFaq('agricole').find((f) => f.id === 'delai-fda')!.answer).toMatch(/avant toute commande/);
+  });
+
+  it('les autres modes sont inchangés (résidentiel = défaut ; C&I garde CIW304)', () => {
+    expect(objectionFaq('residentiel')).toEqual(objectionFaq());
+    expect(objectionFaq('agricole')).not.toEqual(objectionFaq());
   });
 });
 

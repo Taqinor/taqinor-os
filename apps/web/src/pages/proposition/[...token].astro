@@ -615,6 +615,14 @@ const raisonSocialeServie = ci?.entrepriseClient?.raisonSociale ?? '';
 const synth: SyntheseAgricole | null = ok ? syntheseAgricole(data!) : null;
 const bvl = synth?.besoinVsLivre ?? null;
 const bvlMax = bvl ? Math.max(...bvl.mois.map((m) => Math.max(m.besoin, m.livre)), 1) : 1;
+// AGQ3/AGQ33 — « octobre : 80 % de votre besoin ; novembre : 72 % … » (valeurs servies, jamais recalculées).
+const moisSousToleranceTexte: Lbl3 = (['fr', 'en', 'ar'] as const).reduce((acc, lg) => {
+  acc[lg] = (bvl?.moisSousTolerance ?? []).map((m) => (m.couverturePct === null
+    ? AGR_MOIS_LONG[lg][m.mois - 1]
+    : AGR_LBL.couverture[lg].replace('{mois}', AGR_MOIS_LONG[lg][m.mois - 1]).replace('{pct}', formatNumber(m.couverturePct, 0))))
+    .join(' ; ');
+  return acc;
+}, { fr: '', en: '', ar: '' } as Lbl3);
 const courbeGeo = courbeGeometrie(synth?.pointFonctionnement ?? null);
 const motifCourbe = omissionSynthese(synth, 'point_fonctionnement');
 // Plaque de la pompe existante, formatée (kW · V · phases) ; `null` = non relevée.
@@ -2096,7 +2104,8 @@ const typeToitLabel = paramSite?.typeToit ? (TYPE_TOIT_LABELS[paramSite.typeToit
  *  jamais une seconde source de vérité sur « ce devis a-t-il un prix ». */
 const estPreVisite = ok && !heroHasRealPrice;
 
-const steps = nextSteps();
+// AGQ33 (D-AGQ-11) — agricole : les étapes servies (AGQ30), sans délai chiffré.
+const steps = nextSteps(installMode, synth?.etapesSuivantes ?? null);
 const assumptions = ok ? proposalAssumptions(data!) : [];
 // (fondateur 2026-08-18) « Suivi de production via l'application de votre
 // onduleur » n'est plus un point inconditionnel : il n'est dit que si le devis
@@ -3246,6 +3255,25 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               {bvl.baseBesoin === 'agronomique_plein' && (
                 <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={AGR_LBL.agronomique.fr} data-en={AGR_LBL.agronomique.en} data-ar={AGR_LBL.agronomique.ar}>{AGR_LBL.agronomique.fr}</p>
               )}
+              {/* AGQ3/AGQ33 — chaque mois sous la tolérance de conception, avec sa couverture servie (même phrase que le PDF). */}
+              {bvl.moisSousTolerance.length > 0 && (
+                <p class="mt-1 text-sm text-lune-soft" data-agri-mois-tolerance data-i18n
+                  data-fr={`${AGR_LBL.moisSousTolerance.fr} ${moisSousToleranceTexte.fr}.`}
+                  data-en={`${AGR_LBL.moisSousTolerance.en} ${moisSousToleranceTexte.en}.`}
+                  data-ar={`${AGR_LBL.moisSousTolerance.ar} ${moisSousToleranceTexte.ar}.`}>{AGR_LBL.moisSousTolerance.fr} {moisSousToleranceTexte.fr}.</p>
+              )}
+            </div>
+          )}
+
+          {/* AGQ38/AGQ35 — notes client du noyau (ratio champ/pompe, variateur retenu, repli d'irradiation…), textes servis. */}
+          {synth && synth.notes.length > 0 && (
+            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-notes>
+              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.notesTitre.fr} data-en={AGR_LBL.notesTitre.en} data-ar={AGR_LBL.notesTitre.ar}>{AGR_LBL.notesTitre.fr}</p>
+              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                {synth.notes.map((n) => (
+                  <li data-agri-note data-code={n.code ?? ''} data-i18n data-fr={n.textes.fr} data-en={n.textes.en} data-ar={n.textes.ar}>{n.textes.fr}</li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -3367,10 +3395,24 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       data-fr={`${formatNumber(argent.economies.retourAns, 1)} ans`} data-en={`${formatNumber(argent.economies.retourAns, 1)} years`} data-ar={`${formatNumber(argent.economies.retourAns, 1)} سنوات`}>{formatNumber(argent.economies.retourAns, 1)} ans</dd>
                   </div>
                 )}
-                {argent.economies.coutM3 && (
+                {argent.economies.coutM3 && argent.economies.coutM3.actuel !== null && (
                   <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="cout-m3">
                     <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.coutM3.fr} data-en={AGR_ARGENT_LBL.coutM3.en} data-ar={AGR_ARGENT_LBL.coutM3.ar}>{AGR_ARGENT_LBL.coutM3.fr}</dt>
                     <dd class="fig text-lune" dir="ltr">{formatNumber(argent.economies.coutM3.actuel, 2)} / {formatNumber(argent.economies.coutM3.solaire, 2)} MAD</dd>
+                  </div>
+                )}
+                {/* AGQ17/AGQ35 — nouveau forage : aucune dépense actuelle, le m³ solaire se dit seul (comme le PDF). */}
+                {argent.economies.coutM3 && argent.economies.coutM3.actuel === null && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="cout-m3-solaire">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_LBL.coutM3Solaire.fr} data-en={AGR_LBL.coutM3Solaire.en} data-ar={AGR_LBL.coutM3Solaire.ar}>{AGR_LBL.coutM3Solaire.fr}</dt>
+                    <dd class="fig text-lune" dir="ltr">{formatNumber(argent.economies.coutM3.solaire, 2)} MAD</dd>
+                  </div>
+                )}
+                {/* AGQ20/AGQ35 — retour non publié : le motif SERVI (au-delà de l'horizon…), jamais un chiffre. */}
+                {argent.economies.retourAns === null && argent.economies.retourMotif && (
+                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="retour-motif">
+                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.retourSansAide.fr} data-en={AGR_ARGENT_LBL.retourSansAide.en} data-ar={AGR_ARGENT_LBL.retourSansAide.ar}>{AGR_ARGENT_LBL.retourSansAide.fr}</dt>
+                    <dd class="text-sm text-lune-soft">{argent.economies.retourMotif}</dd>
                   </div>
                 )}
                 {argent.economies.remplacements.map((r) => {
@@ -3428,8 +3470,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2" data-agri-option-kit data-ligne-id={o.ligneId ?? ''}>
                       <span class="text-lune">{o.designation}</span>
                       <span class="flex flex-wrap items-baseline gap-3">
-                        {o.totalTtc !== null && <span class="fig text-lune" dir="ltr">+ {formatMAD(o.totalTtc)} TTC</span>}
-                        {etat !== 'masque' && (
+                        {o.prixConnu && o.totalTtc !== null
+                          ? <span class="fig text-lune" dir="ltr">+ {formatMAD(o.totalTtc)} TTC</span>
+                          : <span class="text-xs text-lune-faint" data-agri-prix-sur-devis data-i18n data-fr={AGR_LBL.prixSurDevis.fr} data-en={AGR_LBL.prixSurDevis.en} data-ar={AGR_LBL.prixSurDevis.ar}>{AGR_LBL.prixSurDevis.fr}</span>}
+                        {o.mention && <span class="basis-full text-xs text-lune-faint" data-agri-option-mention>{o.mention}</span>}
+                        {etat !== 'masque' && o.prixConnu && (
                           <button type="button" data-option-ajouter data-ligne-id={o.ligneId ?? ''}
                             data-confirm-fr={conf.fr} data-confirm-en={conf.en} data-confirm-ar={conf.ar}
                             disabled={etat === 'apercu'} aria-disabled={etat === 'apercu' ? 'true' : undefined}
