@@ -381,6 +381,11 @@ def pumping_cycle_yield(*, debit_hmt_m3h, pumping_hours=None,
 ESTIMATION_SIMILITUDE = ("vitesse relative n = min(1, (P/P_plaque)^(1/3)) : "
                          "hypothèse P ∝ n³ (lois de similitude) — estimation")
 
+#: AGQ8 (D-AGQ-8) — étiquette posée quand la fiche du variateur ne publie pas
+#: son rendement MPPT (``var_rendement_mppt_pct``).
+ETIQUETTE_RENDEMENT_NON_PUBLIE = ("rendement non publié : production en borne "
+                                  "haute (aucune perte variateur comptée)")
+
 
 def mois_critique(besoin_m3_jour_mois, production_m3_jour_mois):
     """Mois critique (1 = janvier … 12 = décembre) = argmax(besoin/production).
@@ -517,6 +522,10 @@ def production_mensuelle(*, kwc=None, profils_horaires=None, courbe_pompe=None,
     eta = _flottant(rendement_mppt)
     if eta is not None and 0 < eta <= 1:
         facteur *= eta
+    else:
+        # AGQ8 (D-AGQ-8) — aucun rendement inventé : sans rendement MPPT
+        # publié, la puissance PV entre telle quelle (borne haute), et c'est dit.
+        sortie["etiquettes"].append(ETIQUETTE_RENDEMENT_NON_PUBLIE)
     salissure = _flottant(salissure_pct)
     if salissure is not None and 0 < salissure < 100:
         facteur *= 1 - salissure / 100.0

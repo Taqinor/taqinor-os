@@ -398,27 +398,42 @@ def choisir_pompe(pompes, *, hmt_m, debit_conception_m3h, alimentation,
         paliers = [e for e in a_courbe if prix_connu(e["p"])
                    and e["debit"] is not None and e["debit"] > 0]
 
+    from core.pompage.champ import rendement_systeme
+
     cles.update({"energie_hydraulique_wh_par_m3_m", "rendement_groupe"})
-    kw_min = (q * h * valeur("energie_hydraulique_wh_par_m3_m")
-              / (1000.0 * valeur("rendement_groupe")))
+    hydraulique_kw = q * h * valeur("energie_hydraulique_wh_par_m3_m") / 1000.0
     sans_courbe = sorted([e for e in famille if not e["courbe"] and e["kw"]],
                          key=_cle)
+    # AGQ8 (D-AGQ-8) — kW min de CHAQUE pompe = hydraulique ÷ son rendement
+    # PUBLIÉ (``pompe_rendement_pct``), sinon ÷ η EST. (règle d'avant).
+    for e in sans_courbe:
+        eta = rendement_systeme(e["p"], pompe_seule=True)
+        e["kw_min"] = hydraulique_kw / eta["valeur"]
+        e["rendement_publie"] = eta["cle_hypothese"] is None
     if choisie is None:
         pre = [e for e in sans_courbe
-               if e["kw"] >= kw_min and prix_connu(e["p"])]
+               if e["kw"] >= e["kw_min"] and prix_connu(e["p"])]
         if pre:
             choisie = pre[0]
             etape = "pre_dimensionnement"
             paliers = [e for e in sans_courbe if prix_connu(e["p"])]
             alerte("pompe_sans_courbe", "pompe",
                    "Pompe pré-dimensionnée (kW min %s = Q × HMT × 2,725 / "
-                   "(1000 × η EST.)) : %s ; aucun m³/jour publié tant que la "
-                   "courbe manque." % (_fr(kw_min), ETIQUETTE_A_CONFIRMER))
+                   "(1000 × η %s)) : %s ; aucun m³/jour publié tant que la "
+                   "courbe manque." % (
+                       _fr(choisie["kw_min"]),
+                       "publié" if choisie["rendement_publie"] else "EST.",
+                       ETIQUETTE_A_CONFIRMER))
+            if not choisie["rendement_publie"]:
+                alerte("rendement_non_publie", "pompe.fiche",
+                       "Rendement de « %s » non publié sur sa fiche : kW "
+                       "minimal calculé sur le rendement de groupe EST. "
+                       "(borne basse AMEE)." % choisie["p"].get("nom"))
 
     if choisie is None:
         noms = list(sans_prix_courbe) or [
             e["p"].get("nom") for e in sans_courbe
-            if e["kw"] >= kw_min and not prix_connu(e["p"])]
+            if e["kw"] >= e["kw_min"] and not prix_connu(e["p"])]
         nom = PREFIXE_PLACEHOLDER + (", ".join(noms) if noms else
                                      "aucune pompe compatible au catalogue")
         alerte("aucune_pompe_chiffrable", "pompe",

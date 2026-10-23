@@ -119,6 +119,34 @@ class QuatreCas(unittest.TestCase):
         self.assertEqual(res["puissance_retenue"], {"kw": 7.5, "cv": 10.2})
 
 
+class ChoixPompe(unittest.TestCase):
+    """AGQ8 (D-AGQ-8) — rendements PUBLIÉS des fiches, sinon règle d'avant
+    et alerte nommée."""
+
+    def test_kw_min_lit_le_rendement_pompe_publie(self):
+        # Q 17 / HMT 70 : hydraulique 3,24 kW ; ÷ 0,35 EST. = 9,27 kW (le
+        # 10 CV de 7,36 kW est exclu) ; ÷ 0,55 publié = 5,9 kW ⇒ candidat.
+        dix_cv = dict(GENERIQUES[5], fiche={"pompe_rendement_pct": "55.00"})
+        sans_fiche = choisir_pompe(GENERIQUES, hmt_m=70,
+                                   debit_conception_m3h=17,
+                                   alimentation="tri")
+        self.assertTrue(sans_fiche["pompe"]["placeholder"])
+        res = choisir_pompe(GENERIQUES[:5] + [dix_cv], hmt_m=70,
+                            debit_conception_m3h=17, alimentation="tri")
+        self.assertEqual(res["pompe"]["produit"], 6)
+        self.assertEqual(res["etape"], "pre_dimensionnement")
+        self.assertNotIn("rendement_non_publie",
+                         [a["code"] for a in res["alertes"]])
+
+    def test_sans_fiche_regle_actuelle_et_alerte_rendement_non_publie(self):
+        res = choisir_pompe(GENERIQUES, hmt_m=60, debit_conception_m3h=10,
+                            alimentation="tri")
+        self.assertEqual(res["pompe"]["produit"], 5)  # inchangé
+        alertes = {a["code"]: a for a in res["alertes"]}
+        self.assertEqual(alertes["rendement_non_publie"]["champ"],
+                         "pompe.fiche")
+
+
 class Gardes(unittest.TestCase):
 
     def test_composition_neuve_toujours_pompe_ou_placeholder(self):

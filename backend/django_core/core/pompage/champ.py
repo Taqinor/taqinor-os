@@ -226,13 +226,26 @@ def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
     return sortie
 
 
-def rendement_systeme(pompe=None, variateur=None):
+def rendement_systeme(pompe=None, variateur=None, *, pompe_seule=False):
     """η = rendement pompe × rendement MPPT, PUBLIÉS tous les deux (fiches
     ``pompe_rendement_pct`` / ``var_rendement_mppt_pct``) ; sinon le
     ``rendement_groupe`` « EST. » de la table AGR110.
 
+    AGQ8 (D-AGQ-8) — ``pompe_seule`` : le rendement de la POMPE seule
+    (``pompe_rendement_pct`` publié) pour comparer la puissance hydraulique à
+    la plaque ; non publié ⇒ le même ``rendement_groupe`` « EST. » (règle
+    d'avant, aucune constante nouvelle).
+
     Rend ``{valeur, source, cle_hypothese}``."""
     r_pompe = _flottant(_fiche(pompe).get("pompe_rendement_pct"))
+    if pompe_seule:
+        if r_pompe and 0 < r_pompe <= 100:
+            return {"valeur": r_pompe / 100.0,
+                    "source": "fiche publiée (rendement pompe)",
+                    "cle_hypothese": None}
+        return {"valeur": valeur("rendement_groupe"),
+                "source": "EST. — table AGR110 › rendement_groupe",
+                "cle_hypothese": "rendement_groupe"}
     r_mppt = _flottant(_fiche(variateur).get("var_rendement_mppt_pct"))
     if r_pompe and r_mppt and 0 < r_pompe <= 100 and 0 < r_mppt <= 100:
         return {"valeur": r_pompe / 100.0 * r_mppt / 100.0,
@@ -532,6 +545,15 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
     prod = _production(nb or 1, pmax, **params)
     heure_par_heure = (prod.get("m3_jour_mois") is not None
                        and prod.get("mode") in ("courbe", "debit_declare"))
+    if heure_par_heure and not rendement_mppt:
+        # AGQ8 (D-AGQ-8) — aucun rendement inventé : la production est en
+        # borne haute, et l'alerte nomme la fiche à compléter.
+        alertes.append(_alerte(
+            "rendement_non_publie", "variateur.fiche",
+            "Rendement MPPT du variateur %snon publié sur sa fiche : "
+            "production en borne haute (aucune perte variateur comptée)."
+            % (("%s " % variateur.get("nom")) if variateur
+               and variateur.get("nom") else "")))
     if heure_par_heure and mois:
         nb = nb or 1
         if _couvre(prod, besoin):

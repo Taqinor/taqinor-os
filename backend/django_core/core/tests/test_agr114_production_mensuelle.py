@@ -10,7 +10,8 @@ import unittest
 
 from core.pompage import agronomie
 from core.pompage.volumes import (
-    _CLEARSKY_HOURLY_SHAPE, ESTIMATION_SIMILITUDE, mois_critique,
+    _CLEARSKY_HOURLY_SHAPE, ESTIMATION_SIMILITUDE,
+    ETIQUETTE_RENDEMENT_NON_PUBLIE, mois_critique,
     production_mensuelle,
 )
 
@@ -67,6 +68,41 @@ class ProductionCourbe(unittest.TestCase):
                                  reponse_pvgis={"E_m": [1] * 12}, **BASE)
         self.assertEqual(r["coordonnees_figees"], coords)
         self.assertEqual(r["reponse_pvgis"], {"E_m": [1] * 12})
+
+
+class Rendement(unittest.TestCase):
+    """AGQ8 (D-AGQ-8) — rendement MPPT publié lu ; absent ⇒ borne haute
+    étiquetée."""
+
+    def test_mppt_publie_97_la_vitesse_part_de_p_pv_x_0_97(self):
+        avec = production_mensuelle(hmt_m=60, rendement_mppt=0.97, **BASE)
+        equivalent = production_mensuelle(
+            hmt_m=60, rendement_mppt=None, **dict(BASE, kwc=10.5 * 0.97))
+        self.assertEqual(avec["m3_jour_mois"], equivalent["m3_jour_mois"])
+        self.assertNotIn(ETIQUETTE_RENDEMENT_NON_PUBLIE, avec["etiquettes"])
+
+    def test_sans_mppt_publie_etiquette_borne_haute(self):
+        r = production_mensuelle(hmt_m=60, **BASE)
+        self.assertIn(ETIQUETTE_RENDEMENT_NON_PUBLIE, r["etiquettes"])
+
+    def test_champ_alerte_rendement_non_publie_sur_le_variateur(self):
+        from core.pompage.champ import dimensionner_champ
+        panneau = {"nom": "Panneau 710W", "pmax_wc": 710, "vmp_v": 40.4,
+                   "voc_v": 48.6, "isc_a": 18.6, "imp_a": 17.6}
+        variateur = {"id": 1, "nom": "VARIATEUR VEICHI SI23 7.5KW 380V",
+                     "role_pompage": "variateur_pompage", "pompe_kw": "7.5",
+                     "tension_v": 380, "fiche": None, "prix_connu": True}
+        params = dict(besoin_m3_jour_mois=[135.0] * 12, hmt_m=58.7,
+                      panneau=panneau, pompe={"courbe_pompe": OSP_30_8},
+                      p_plaque_kw=7.5, profils_horaires=PROFILS)
+        res = dimensionner_champ(variateurs_candidats=[variateur], **params)
+        alerte = [a for a in res["alertes"]
+                  if a["code"] == "rendement_non_publie"]
+        self.assertEqual(alerte[0]["champ"], "variateur.fiche")
+        publie = dict(variateur, fiche={"var_rendement_mppt_pct": "97"})
+        res = dimensionner_champ(variateurs_candidats=[publie], **params)
+        self.assertNotIn("rendement_non_publie",
+                         [a["code"] for a in res["alertes"]])
 
 
 class CasDegrades(unittest.TestCase):
