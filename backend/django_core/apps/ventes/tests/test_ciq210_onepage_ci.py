@@ -18,7 +18,9 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from django.test import SimpleTestCase
+from html import unescape
+
+from django.test import SimpleTestCase, tag
 
 from apps.ventes.economie_ci import economie_ci_publique
 from apps.ventes.quote_engine import generate_devis_premium as legacy
@@ -148,3 +150,50 @@ class OnePageCiLitSyntheseCi(SimpleTestCase):
         self.assertEqual(_valeurs(figures, "production_annuelle_kwh"),
                          [Decimal(str(int(data["prod_kwh"])))])
         self.assertNotIn("conomies estim&#233;es / an", html)
+
+
+def _onepage_reserve(mode, reserve, **surcharges):
+    data = _ci(donnees_legacy("deux", pdf_mode="onepage", **surcharges), mode)
+    data["etude"]["etude_ci"]["sous_reserve_visite"] = {
+        "valeur": reserve, "motif": "surface disponible inconnue"}
+    return data, legacy.render_html_for(data)
+
+
+class Amot82OnePageSousReserve(SimpleTestCase):
+    """AMOT82 (D-ACI-10=a) — une-page C&I « sous réserve de visite » : le
+    bandeau de la couverture et la ligne de méthode sous les cartes ; sans
+    réserve, ni l'un ni l'autre ; plus jamais « Prix ONEE en hausse »."""
+
+    BANDEAU = "Estimation sous réserve de la visite technique"
+
+    def test_sous_reserve_bandeau_et_methode(self):
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage_reserve(mode, True)
+                methode = chiffres_cles(synthese_ci(data))["libelle_methode"]
+                self.assertTrue(methode)
+                self.assertIn(self.BANDEAU, unescape(html))
+                self.assertIn(methode, unescape(html))
+
+    def test_sans_reserve_ni_bandeau_ni_methode(self):
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage_reserve(mode, False)
+                methode = chiffres_cles(synthese_ci(data))["libelle_methode"]
+                self.assertNotIn(self.BANDEAU, unescape(html))
+                self.assertNotIn(methode, unescape(html))
+                self.assertNotIn("Prix ONEE en hausse", unescape(html))
+
+    def test_traduit_en_anglais(self):
+        _data, html = _onepage_reserve("industriel", True, langue_sortie="en")
+        self.assertIn("Estimate subject to the technical site visit",
+                      unescape(html))
+        self.assertNotIn(self.BANDEAU, unescape(html))
+
+    @tag("weasyprint")  # rendu PDF réel
+    def test_une_seule_page(self):
+        from weasyprint import HTML
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                _data, html = _onepage_reserve(mode, True)
+                self.assertEqual(len(HTML(string=html).render().pages), 1)

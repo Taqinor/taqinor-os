@@ -393,13 +393,18 @@ def resoudre_tva_recuperable(valeur_lead=None, saisie=None):
             'saisi_le': (lu or {}).get('saisi_le')}
 
 
-def _montant(v):
+def _montant(v, *, strictement_positif=False):
+    """Montant lu (arrondi au centime), ou None. ``strictement_positif``
+    (ADEV81, l'investissement) : 0 est refusé — un investissement nul n'est
+    jamais un investissement chiffré (« retour 0 an »)."""
     try:
         if v is None or isinstance(v, bool):
             return None
         x = float(v)
     except (TypeError, ValueError):
         return None
+    if strictement_positif:
+        return round(x, 2) if x > 0 else None
     return round(x, 2) if x >= 0 else None
 
 
@@ -432,7 +437,8 @@ def base_economique(tva_recuperable, *, investissement=None,
         base, motif, flux = BASE_DEUX, MOTIF_BASE_DEUX, ['flux_ht', 'flux_ttc']
 
     inv = investissement if isinstance(investissement, dict) else {}
-    inv_ht, inv_ttc = _montant(inv.get('ht')), _montant(inv.get('ttc'))
+    inv_ht = _montant(inv.get('ht'), strictement_positif=True)
+    inv_ttc = _montant(inv.get('ttc'), strictement_positif=True)
     eco = economie_annee1 if isinstance(economie_annee1, dict) else {}
     eco_ht = _montant(eco.get('total_mad'))
     eco_ttc = _montant(eco.get('total_mad_ttc'))
@@ -1296,9 +1302,100 @@ def _bloc_omis(motif, tarif, *, alertes, vue_interne):
     return bloc
 
 
+# ── ADEV81 — investissement incomplet : aucun retour, TRI ni coût du kWh ──
+# (D-ACI-8=a). Un investissement nul, sans un seul panneau, ou dont un article
+# de TAILLE (panneau, onduleur) reste « à renseigner » / « à chiffrer après
+# visite » sans ligne au devis n'est pas l'investissement de l'installation :
+# le flux n'est pas construit, l'omission le dit, l'économie reste servie.
+MOTIF_INVESTISSEMENT_NON_CHIFFRE = 'investissement non encore chiffré'
+#: Rôles de la composition qui FONT la taille (``moteur_ci.composition``) :
+#: le panneau et tout rôle onduleur.
+ROLES_TAILLE_CI = ('panneau',)
+PREFIXE_ROLE_ONDULEUR = 'onduleur'
+
+
+def motif_investissement_non_chiffre(n_sans_prix):
+    """« investissement non encore chiffré (N articles sans prix) »."""
+    n = int(n_sans_prix or 0)
+    if n <= 0:
+        return MOTIF_INVESTISSEMENT_NON_CHIFFRE
+    return '%s (%d article%s sans prix)' % (
+        MOTIF_INVESTISSEMENT_NON_CHIFFRE, n, 's' if n > 1 else '')
+
+
+def _norme(texte):
+    return ' '.join(str(texte or '').lower().split())
+
+
+def _noms_composition(composition, cle):
+    sortie = []
+    for item in (composition or {}).get(cle) or []:
+        nom = item.get('designation') if isinstance(item, dict) else item
+        if _norme(nom):
+            sortie.append(_norme(nom))
+    return sortie
+
+
+def investissement_non_chiffre(investissement, lignes, apercu, *,
+                               controle_lignes=False):
+    """Le motif d'omission de l'investissement, ou None s'il est chiffré.
+
+    Toujours : total HT et TTC ≤ 0 (ou illisibles) alors qu'un investissement
+    est transmis. ``controle_lignes`` (lecture d'un devis,
+    :func:`lignes_pour_economie_ci`) : aucune ligne panneau comptée, ou un
+    article de taille de la composition listé en ``prix_a_renseigner`` /
+    ``a_chiffrer_visite`` sans ligne au devis. N = articles de la
+    composition sans prix et absents des lignes du devis."""
+    composition = (apercu or {}).get('composition')
+    composition = composition if isinstance(composition, dict) else {}
+    lignes = [li for li in (lignes or []) if isinstance(li, dict)]
+    au_devis = {_norme(li.get('designation')) for li in lignes
+                if not li.get('optionnelle')} - {''}
+    sans_prix = []
+    for nom in (_noms_composition(composition, 'prix_a_renseigner')
+                + _noms_composition(composition, 'a_chiffrer_visite')):
+        if nom not in au_devis and nom not in sans_prix:
+            sans_prix.append(nom)
+    motif = motif_investissement_non_chiffre(len(sans_prix))
+    if isinstance(investissement, dict):
+        ht = _montant(investissement.get('ht'), strictement_positif=True)
+        ttc = _montant(investissement.get('ttc'), strictement_positif=True)
+        if ht is None and ttc is None:
+            return motif
+    if not controle_lignes:
+        return None
+    if not any(li.get('panneau') and not li.get('optionnelle')
+               for li in lignes):
+        return motif
+    for ligne in composition.get('lignes') or []:
+        if not isinstance(ligne, dict):
+            continue
+        role = str(ligne.get('role') or '')
+        if role not in ROLES_TAILLE_CI and \
+                not role.startswith(PREFIXE_ROLE_ONDULEUR):
+            continue
+        if _norme(ligne.get('designation')) in sans_prix:
+            return motif
+    return None
+
+
+def _sans_investissement(flux, motif):
+    """Les blocs de flux d'un investissement non chiffré : l'omission
+    générique de ``flux_de_tresorerie`` porte le motif nommé."""
+    for cle in ('flux_ht', 'flux_ttc'):
+        bloc = flux.get(cle)
+        if not isinstance(bloc, dict):
+            continue
+        bloc['omissions'] = [
+            dict(o, motif=motif) if o.get('cle') == 'investissement_mad'
+            else o for o in bloc.get('omissions') or []]
+    return flux
+
+
 def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                           investissement=None, lignes=None,
-                          mode_installation=None, reglages=None):
+                          mode_installation=None, reglages=None,
+                          controle_lignes=False):
     """Le bloc ``economie_ci`` INTERNE (avec ``vue_interne`` et
     ``alertes_internes``) — forme ``exemple`` du contrat ``economie_ci.json``.
 
@@ -1307,8 +1404,9 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
     l'aperçu) ; ``saisies`` : ``saisies_economie_ci`` ; ``investissement`` :
     ``{ht, ttc}`` CLIENT de l'option retenue ; ``lignes`` : voir
     :func:`onduleur_et_om` ; ``reglages`` : ``{mention_credit_bail_autorisee}``
-    (``TariffSettings``, CIQ211). Refus nommés par
-    :class:`SaisieEconomieCiInvalide`. Aucune écriture.
+    (``TariffSettings``, CIQ211). ``controle_lignes`` (ADEV81) : contrôle
+    de complétude de l'investissement sur ``lignes`` (lecture d'un devis).
+    Refus nommés par :class:`SaisieEconomieCiInvalide`. Aucune écriture.
     """
     apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
     saisies = saisies if isinstance(saisies, dict) else {}
@@ -1335,8 +1433,11 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
 
     tva = resoudre_tva_recuperable(_resolue(apercu, 'tva_recuperable'),
                                    saisies.get('tva_recuperable'))
-    base = base_economique(tva, investissement=investissement,
-                           economie_annee1=valo['economie_annee1'])
+    motif_investissement = investissement_non_chiffre(
+        investissement, lignes, apercu, controle_lignes=controle_lignes)
+    base = base_economique(
+        tva, investissement=None if motif_investissement else investissement,
+        economie_annee1=valo['economie_annee1'])
     production = _montant((apercu.get('bilan') or {}).get('production_kwh'))
     kwh_evites = sum(_f(p.get('kwh_evites'))
                      for p in valo['economie_annee1']['par_poste'])
@@ -1347,6 +1448,8 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                    taux_actualisation_client=saisies.get(
                        'taux_actualisation_client'),
                    collecteur=collecteur)
+    if motif_investissement:
+        flux = _sans_investissement(flux, motif_investissement)
     revente = valo['revente']
     tension_revente = tension or (
         'mt' if tarif.get('contrat') == 'mt_general' else None)
@@ -1363,6 +1466,9 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
     vue_interne['comparaison_cse'] = comparaison_cse(
         flux['flux_ht'], saisies.get('offre_cse_concurrente'), production)
     omissions = []
+    if motif_investissement:
+        omissions.append({'cle': 'investissement_mad',
+                          'motif': motif_investissement})
     if flux['indicateurs'] and flux['indicateurs'].get('van_motif'):
         omissions.append({'cle': 'van_mad',
                           'motif': flux['indicateurs']['van_motif']})
@@ -1691,6 +1797,23 @@ def _est_onduleur(produit):
     return getattr(categorie, 'type_equipement', None) == 'onduleur'
 
 
+#: ADEV81 — mot-clé panneau, aligné sur ``quote_engine/builder.py`` et
+#: ``frontend/src/features/ventes/solar.js`` (classification des lignes).
+MOTS_PANNEAU = ('panneau', 'module pv', 'module photovolta')
+
+
+def _est_panneau(produit, designation=None):
+    """Ligne panneau : rôle déclaré, catégorie typée, sinon mot-clé."""
+    if produit is not None:
+        if getattr(produit, 'role_devis', None) == 'panneau':
+            return True
+        categorie = getattr(produit, 'categorie', None)
+        if getattr(categorie, 'type_equipement', None) == 'panneau':
+            return True
+    nom = _norme(designation or getattr(produit, 'nom', ''))
+    return any(mot in nom for mot in MOTS_PANNEAU)
+
+
 def lignes_pour_economie_ci(devis):
     """Les lignes de l'option RETENUE à la forme de :func:`onduleur_et_om` —
     totaux CLIENT (remise de ligne ET remise globale), jamais ``prix_achat``.
@@ -1719,6 +1842,7 @@ def lignes_pour_economie_ci(devis):
             'ttc': round(ht * (1.0 + _f(tva) / 100.0), 2),
             'optionnelle': bool(getattr(ligne, 'optionnelle', False)),
             'onduleur': _est_onduleur(produit),
+            'panneau': _est_panneau(produit, ligne.designation),
             'role_ci': (getattr(produit, 'role_ci', '') or None)
             if produit is not None else None,
         })
@@ -1758,6 +1882,7 @@ def economie_ci_pour_devis(devis, company):
     if not isinstance(tarif_declare, dict):
         tarif_declare = params.get('tarif') if isinstance(
             params.get('tarif'), dict) else None
+    from apps.ventes.domain.regles_calcul import calcul_corrige
     totaux = option_totaux(devis)
     return assembler_economie_ci(
         apercu if isinstance(apercu, dict) else {},
@@ -1766,4 +1891,7 @@ def economie_ci_pour_devis(devis, company):
         investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},
         lignes=lignes_pour_economie_ci(devis),
         mode_installation=getattr(devis, 'mode_installation', None),
-        reglages=reglages_economie_ci(company))
+        reglages=reglages_economie_ci(company),
+        # ADEV81 — nouveaux rendus seulement (``regles_calcul``) : un devis
+        # envoyé sous les règles d'origine garde ce que le client a reçu.
+        controle_lignes=calcul_corrige(devis))

@@ -185,3 +185,65 @@ class Ciq331EcheancierN(SimpleTestCase):
         ech = synthese_ci(data)["echeancier"]
         self.assertEqual([j["jalon"] for j in ech],
                          ["commande", "livraison", "mise_en_service"])
+
+
+class Amot81OrigineDuTarif(SimpleTestCase):
+    """AMOT81 — la couverture commerciale dit l'origine du prix du kWh quand
+    c'est la grille de repli (jamais sur une facture déclarée) ; la tension
+    d'un brouillon auto (clé ``tension``) est lue comme la saisie d'écran."""
+
+    def _page1(self, data):
+        return _html(data).split('class="page"')[1]
+
+    def test_ligne_grille_sur_repli_absente_sur_facture(self):
+        p1 = self._page1(_data())
+        self.assertIn("Prix du kWh : grille ONEE publiée (repli, HT estimé", p1)
+        self.assertIn("à confirmer sur votre facture", p1)
+        data = _data()
+        data["economie_ci"]["tarif"]["origine"] = "declare_facture"
+        self.assertNotIn("grille ONEE publiée", _html(data))
+
+    def test_capture_non_reconfirmee_dite(self):
+        data = _data()
+        for poste in data["economie_ci"]["tarif"]["tarifs_par_poste"]:
+            poste["releve_le"] = "2025-02-16"
+        self.assertIn("capture du 16/02/2025, non reconfirmée 2026",
+                      self._page1(data))
+
+    def test_tension_lue_sous_ses_deux_cles(self):
+        for tension in ("mt", "bt"):
+            data = _data(argent=False, etude_ci=False)
+            data["etude"]["tension"] = tension
+            html = _html(data)
+            with self.subTest(tension=tension):
+                if tension == "mt":
+                    self.assertIn(MOTIF_ARGENT_MT, html)
+                else:
+                    self.assertNotIn(MOTIF_ARGENT_MT, html)
+                    self.assertIn("vos 12 dernières factures", html)
+
+
+class Amot83Raccordement8221(SimpleTestCase):
+    """AMOT83 (D-ACI-11=a) — régime 82-21 calculé ⇒ la phrase fixe « dossier
+    monté et suivi par » la société (jamais le texte de loi) ; sans régime ⇒
+    absente ; la pose se fait « en coordination avec votre activité »."""
+
+    PHRASE = ("Raccordement et autorisations du site&#160;: dossier monté et "
+              "suivi par TAQINOR")
+
+    def test_accord_de_raccordement_ligne_imprimee(self):
+        self.assertEqual(_data()["etude"]["etude_ci"]["regime_8221_suggere"][
+            "regime"], "accord_raccordement")
+        html = _html(_data())
+        self.assertIn(self.PHRASE, html)
+        self.assertNotIn("décret 2.25.100", html)
+
+    def test_sans_regime_ligne_absente(self):
+        data = _data()
+        data["etude"]["etude_ci"]["regime_8221_suggere"] = {"regime": None}
+        self.assertNotIn("dossier monté et suivi", _html(data))
+
+    def test_en_coordination_avec_votre_activite(self):
+        html = _html(_data())
+        self.assertIn("en coordination avec votre activité", html)
+        self.assertNotIn("sans interrompre", html)

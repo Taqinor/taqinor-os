@@ -37,7 +37,7 @@ def build(ctx):
         ("1", L("ci_etape_etude_t", "Étude &amp; validation"),
          L("ci_etape_etude_s", "Dimensionnement, visite technique et validation du projet.")),
         ("2", L("ci_etape_installation_t", "Installation"),
-         L("ci_etape_installation_s", "Pose des équipements par nos équipes, sans interrompre votre activité.")),
+         L("ci_etape_installation_s", "Pose des équipements par nos équipes, en coordination avec votre activité.")),
         ("3", L("ci_etape_mes_t", "Mise en service"),
          L("ci_etape_mes_s", "Raccordement, tests et réception — votre production démarre.")),
     ]

@@ -152,6 +152,17 @@ def bloc_services(synthese, prefixe, couleur_titre, couleur_texte, doc=None):
             + libelle(doc, "ci_intervention_sous",
                       "intervention sous {heures}&#160;h",
                       heures=f"{suivi['delai_intervention']:g}"))
+    elif isinstance(suivi, dict):
+        # AMOT83 (D-ACI-12=a) — nommé, sans délai inventé.
+        lignes.append(libelle(doc, "ci_suivi_production_inclus",
+                              "Suivi de production inclus"))
+    if isinstance(services.get("raccordement"), dict):
+        # AMOT83 (D-ACI-11=a) — phrase fixe, au nom de la société émettrice.
+        from ..residential import theme
+        lignes.append(libelle(
+            doc, "ci_dossier_raccordement", "Raccordement et autorisations "
+            "du site&#160;: dossier monté et suivi par {societe}",
+            societe=theme.company_identity(doc or {})["brand_name"]))
     if not lignes:
         return ""
     items = "".join(f'<div style="margin-top:2px;">{li}</div>'

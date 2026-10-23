@@ -68,7 +68,9 @@ class TestFluxServi(SimpleTestCase):
 
     def test_les_hypotheses_du_moteur_avec_leur_source(self):
         self.assertIn("Hypothèses du moteur", self.txt)
-        self.assertIn("D-CIQ-10 : 25 ans", self.txt)
+        # AMOT80 — la source en mots du client, jamais « D-CIQ-10 ».
+        self.assertIn("durée d'analyse : 25 ans", self.txt)
+        self.assertNotIn("D-CIQ", self.txt)
         self.assertIn("Remplacement onduleur en année 11", self.txt)
         self.assertNotIn("économies maintenues constantes", self.txt)
 
@@ -191,7 +193,7 @@ class TestEtudePerimeeQjr625(TestCase):
         self.assertEqual(data['etude'].get('kwc'), 100.11)
         self.assertNotIn('taux_autoconso', data['etude'])
         self.assertNotIn('62 %', txt)
-        self.assertIn('étude du moteur C&I à faire', txt)
+        self.assertIn('étude détaillée de votre site à finaliser', txt)
         self.assertNotIn("étude industrielle périmée — relancer l'étude",
                          data.get('avertissements_internes') or [])
 
