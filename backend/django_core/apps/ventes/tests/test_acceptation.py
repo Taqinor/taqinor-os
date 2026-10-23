@@ -142,7 +142,7 @@ class TestDevisAcceptation(TestCase):
         # libre de la vue ; une date conforme est acceptée.
         from apps.ventes.views import openapi_docs as D
         self.assertEqual(
-            type(D.AccepterRequest().fields['date']).__name__, 'DateStricte')
+            type(D.AccepterRequest.fields['date']).__name__, 'DateStricte')
         devis = self._devis(num=31)
         for brut in ('2026-1-5', '20260610', 'Ý-oH', '2026-02-30'):
             r = self.api.post(

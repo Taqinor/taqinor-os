@@ -728,7 +728,7 @@ class FacturerVenteEndpointVNT31(_BaseVente):
         hors liste = 400 du sérialiseur déclaré, aucune facture."""
         from apps.ventes.domain.facturation_vente import NATURES
         from apps.ventes.views import openapi_docs as D
-        champ = D.FacturerVenteRequest().fields['nature']
+        champ = D.FacturerVenteRequest.fields['nature']
         self.assertEqual(tuple(champ.choices), NATURES)
         devis = self._388('DEV-VNT31-NATURE')
         for brut in ('0', 'Acompte', '', 7):

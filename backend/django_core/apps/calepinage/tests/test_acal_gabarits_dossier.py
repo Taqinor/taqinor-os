@@ -223,7 +223,7 @@ class RefusTest(BaseGabarits):
     def test_bornes_de_colonne_400_nomme_jamais_500(self):
         # CI #993 api-fuzz-pr (Qay0Hc) : un intitulé de 201 caractères en
         # JSON (``fichier`` vide) cassait à l'INSERT (500) — 400 nommé.
-        corps = {'fichier': '', 'pays': 'AA', 'code': '0', 'genre': '0',
+        corps = {'pays': 'AA', 'code': '0', 'genre': '0',
                  'intitule': '0' * 201, 'version': '', 'actif': False,
                  'pieces_attendues': [], 'champs': []}
         reponse = self.api.post(URL, corps, format='json')
@@ -237,7 +237,7 @@ class RefusTest(BaseGabarits):
             self.assertEqual(refus.status_code, 400, (champ, refus.data))
             self.assertIn(champ, refus.data)
         self.assertFalse(GabaritDossierReglementaire.objects.exists())
-        # Le même corps à intitulé borné passe (``fichier`` vide = absent).
+        # Le même corps à intitulé borné passe (sans ``fichier``).
         ok = self.api.post(URL, dict(corps, intitule='0' * 200),
                            format='json')
         self.assertEqual(ok.status_code, 201, ok.data)

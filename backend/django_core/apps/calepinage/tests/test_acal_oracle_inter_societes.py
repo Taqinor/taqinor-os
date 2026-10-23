@@ -1,7 +1,8 @@
 """ACAL298 — un id d'une autre société et un id absent : la MÊME réponse.
 
 Constat C-ACAL-015 (C5, S3). Deux sociétés réelles en base de test, aucun
-mock : pour chaque paire (id voisin, id absent), les deux 400 sont
+mock : pour chaque paire (id voisin, id absent), les deux réponses (400 ; 404
+pour un id de sérialiseur, IdInconnu404Mixin) sont
 octet-identiques hors l'id cité — même clé de champ, même texte, même code.
 
 * ``devis`` / ``client`` au POST, ``responsable`` au PATCH : bornés par
@@ -90,11 +91,11 @@ class OracleInterSocietesTest(TestCase):
             quantite_stock=1)
 
     # ── utilitaires ─────────────────────────────────────────────────────
-    def _paire(self, envoi, etranger):
+    def _paire(self, envoi, etranger, statut=400):
         r1 = envoi(etranger)
         r2 = envoi(ABSENT)
-        self.assertEqual(r1.status_code, 400, r1.data)
-        self.assertEqual(r2.status_code, 400, r2.data)
+        self.assertEqual(r1.status_code, statut, r1.data)
+        self.assertEqual(r2.status_code, statut, r2.data)
         self.assertEqual(_normalise(r1.data, etranger),
                          _normalise(r2.data, ABSENT))
         return r1
@@ -131,7 +132,7 @@ class OracleInterSocietesTest(TestCase):
     def test_client_etranger_et_absent_meme_reponse(self):
         r = self._paire(lambda pk: self.api.post(URL, {
             'titre': 'Nouveau', 'client': pk}, format='json'),
-            self.client_voisin.pk)
+            self.client_voisin.pk, statut=404)
         self.assertEqual(_champs(r.data), ['client'])
         self.assertEqual(r.data['client'][0].code, 'does_not_exist')
 
@@ -139,7 +140,7 @@ class OracleInterSocietesTest(TestCase):
         avant = self._instantane()
         r = self._paire(lambda pk: self.api.patch(
             f'{URL}{self.calepinage.pk}/', {'responsable': pk},
-            format='json'), self.user_voisin.pk)
+            format='json'), self.user_voisin.pk, statut=404)
         self.assertEqual(_champs(r.data), ['responsable'])
         self.assertEqual(r.data['responsable'][0].code, 'does_not_exist')
         self.assertEqual(self._instantane(), avant)

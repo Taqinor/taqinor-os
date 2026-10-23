@@ -3,7 +3,7 @@ import re
 
 from drf_spectacular.utils import extend_schema_field
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
+    ChaineStricte, ChampsStrictsMixin, DecimalSouple, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
 )
 from rest_framework import serializers
 
@@ -58,15 +58,11 @@ class ConfigRegleJSON(ObjetJSON):
         return super().to_internal_value(data)
 
 
-class SeuilDecimal(serializers.DecimalField):
-    """ENF11 — seuil décimal dont le motif publié exclut la chaîne vide : DRF
-    lisait ``""`` comme ``null`` en silence (201 hors schéma). ``""`` est un 400
-    nommé ; ``null`` reste le « non renseigné » publié."""
-
-    def run_validation(self, data=serializers.empty):
-        if isinstance(data, str) and not data.strip():
-            self.fail('invalid')
-        return super().run_validation(data)
+class SeuilDecimal(DecimalSouple):
+    """ENF11 — seuil décimal accepté en CHAÎNE **ou** en NOMBRE JSON (l'écran
+    Automatisations envoie un nombre) et PUBLIÉ ainsi (``anyOf`` motif | nombre,
+    ``DecimalSouple``). ``""`` est un 400 nommé (motif publié, jamais lu
+    ``null`` en silence) ; ``null`` reste le « non renseigné » publié."""
 
 
 class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,

@@ -1816,6 +1816,25 @@ class ConfigRegleNormaliseeTests(TestCase):
             approval_threshold=None), format='json')
         self.assertEqual(res.status_code, 201, res.content)
 
+    def test_seuil_nombre_json_accepte_et_publie(self):
+        """api-fuzz : un seuil NOMBRE (``0``, ``12.5``) est accepté — l'écran
+        l'envoie ainsi — et le schéma le publie (``anyOf`` chaîne | nombre) ;
+        un booléen reste un 400 nommé."""
+        from apps.automation.serializers import SeuilDecimal
+        for valeur, attendu in ((0, '0.00'), (12.5, '12.50'), ('7', '7.00')):
+            res = self.api.post('/api/django/automation/rules/', self._corps(
+                approval_threshold=valeur), format='json')
+            self.assertEqual(res.status_code, 201, (valeur, res.content))
+            regle = AutomationRule.objects.get(pk=res.data['id'])
+            self.assertEqual(str(regle.approval_threshold), attendu)
+        res = self.api.post('/api/django/automation/rules/', self._corps(
+            approval_threshold=True), format='json')
+        self.assertEqual(res.status_code, 400, res.content)
+        self.assertIn('approval_threshold', res.json())
+        self.assertEqual(
+            SeuilDecimal(max_digits=12, decimal_places=2).run_validation(0),
+            __import__('decimal').Decimal('0.00'))
+
     def test_config_non_objet_400_nomme(self):
         for champ in ('action_config', 'trigger_config'):
             for valeur in ([1], 'texte', 5, None):
