@@ -1265,7 +1265,8 @@ def fiscalite_depuis_reglages(reglages):
 
 #: Bases de calcul admises pour la règle FDA.
 REGLE_FDA_BASES = ('ht', 'ttc', 'a_confirmer')
-#: Clés numériques de la règle FDA (toutes ≥ 0, nullables).
+#: Clés numériques de la règle FDA (toutes ≥ 0, OBLIGATOIRES dès qu'une règle
+#: est enregistrée — AGQ21).
 REGLE_FDA_NOMBRES = ('taux_pct', 'plafond_mad_par_ha', 'plafond_mad_par_kwc',
                      'plafond_mad_par_projet')
 REGLE_FDA_CLES = REGLE_FDA_NOMBRES + ('base', 'source', 'releve_le')
@@ -1316,6 +1317,13 @@ def erreurs_regle_fda(regle):
     if _vide(regle.get('source')):
         return {champ: f"{champ} : la source de la règle FDA est obligatoire "
                        "(édition et pages du Guide FDA)."}
+    # AGQ21 — une règle imprimée au client porte ses QUATRE nombres : jamais
+    # « — % … — DH » sur le document.
+    manquants = [cle for cle in REGLE_FDA_NOMBRES if _vide(regle.get(cle))]
+    if manquants:
+        return {champ: f"{champ} : {', '.join(manquants)} obligatoire(s) — "
+                       "taux, plafond par hectare, par kWc et par projet du "
+                       "Guide FDA."}
     for cle in REGLE_FDA_NOMBRES:
         valeur = regle.get(cle)
         if _vide(valeur):
