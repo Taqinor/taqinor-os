@@ -226,6 +226,7 @@
   "specialites_partenaire_cles": "specialites_partenaire_cles",
   "stats_equipe": "stats_equipe",
   "trier_file_du_jour": "trier_file_du_jour",
-  "ville_effective": "ville_effective"
+  "ville_effective": "ville_effective",
+  "visite_point_eau_du_lead": "visite_point_eau_du_lead"
  }
 }
