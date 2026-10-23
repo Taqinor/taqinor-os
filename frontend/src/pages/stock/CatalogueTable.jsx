@@ -12,6 +12,7 @@ import {
   SEV_BAS, SEV_OK, SEV_RUPTURE,
   produitsPompageACompleter, kitPompageChiffrable, roleDuProduitPompage,
   produitCiACompleter, raisonCiACompleter,
+  etatPrixCi, TEXTE_TARIF_PARAMETRES_CI, ROUTE_PARAMETRES_PRESTATIONS_CI,
 } from '../../features/stock/catalogue'
 import { formatMAD } from '../../lib/format'
 import {
@@ -326,9 +327,22 @@ export function CatalogueTable({
       // le prix) ne le voyait jamais, juste une cellule éditable à « 0.00 HT ».
       // Le format de la colonne porte désormais la même règle des DEUX côtés.
       cell: (value, p) => {
-        const fmt = (v, r) => (sansPrix(r)
-          ? <Badge tone="warning">prix à renseigner</Badge>
-          : `${formatMAD(v, { withSymbol: false })} HT`)
+        // ASTK254 (D-ACI-4=a) — une prestation C&I n'est tarifée que dans
+        // Paramètres › Devis › Prestations C&I : le badge le dit (avec le lien)
+        // au lieu d'inviter à saisir un prix que le moteur ignore.
+        const fmt = (v, r) => {
+          if (!sansPrix(r)) return `${formatMAD(v, { withSymbol: false })} HT`
+          if (etatPrixCi(r) === 'parametres') {
+            return (
+              <a href={ROUTE_PARAMETRES_PRESTATIONS_CI}
+                 data-testid="tarif-parametres-ci"
+                 onClick={(e) => e.stopPropagation()}>
+                <Badge tone="info">{TEXTE_TARIF_PARAMETRES_CI}</Badge>
+              </a>
+            )
+          }
+          return <Badge tone="warning">prix à renseigner</Badge>
+        }
         if (!editable || !canEditPrix) return <span className="tabular-nums">{fmt(value, p)}</span>
         return (
           <EditableCell

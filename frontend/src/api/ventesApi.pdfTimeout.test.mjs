@@ -48,3 +48,19 @@ test('APXTMO : le panneau lead transmet le signal et le hook partagé ANNULE le 
   assert.match(hook, /controllerRef\.current\?\.abort\(\)/)
   assert.match(hook, /fetchBlob\(controller\.signal\)/)
 })
+
+// ADEV80 (C-ACI-009) — le « Devis automatique » calcule 4 études : sous le
+// timeout global de 20 s (VX55) l'écran avortait (nginx 499) et le commercial
+// recliquait => un second brouillon. creerDevisAuto porte donc le même budget
+// de 120 s que accepterDevis (le serveur est idempotent : un re-clic rejoue).
+test('ADEV80 : creerDevisAuto porte un timeout dédié de 120 s, comme accepterDevis', () => {
+  const start = VENTES_API_SRC.indexOf('creerDevisAuto:')
+  assert.notEqual(start, -1, 'creerDevisAuto introuvable')
+  const block = VENTES_API_SRC.slice(start, start + 200)
+  assert.match(block, /api\.post\('\/ventes\/devis\/auto\/'/)
+  const m = block.match(/timeout:\s*(\d+)/)
+  assert.ok(m, 'creerDevisAuto ne porte aucun timeout dédié — le global 20 s avorte le calcul des études')
+  assert.equal(Number(m[1]), 120000)
+  const accepter = VENTES_API_SRC.indexOf('accepterDevis:')
+  assert.match(VENTES_API_SRC.slice(accepter, accepter + 250), /timeout:\s*120000/)
+})
