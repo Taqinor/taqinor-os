@@ -40,6 +40,11 @@ CE QU'ELLE NE FAIT JAMAIS :
 """
 from __future__ import annotations
 
+import re
+import unicodedata
+
+from core.pompage.kit import MENTION_COMPTEUR
+
 from ..lecture_pure import nombre_normalise
 from .garanties import garanties_pompage_et_omissions
 from .mentions import formalites, regle_fda
@@ -315,16 +320,96 @@ def _bloc_schema(etude, eau):
     }
 
 
-def _bloc_options_kit(options):
-    sortie = []
-    for o in options or []:
-        if not isinstance(o, dict):
+def _norme(texte):
+    """Texte comparable : sans accents, sans parenthèse, minuscules."""
+    texte = re.sub(r"\s*\(.*?\)", "", str(texte or ""))
+    texte = unicodedata.normalize("NFKD", texte)
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    return " ".join(texte.lower().replace("’", "'").split())
+
+
+def _ligne_de_l_option(cle, libelle, proposees, prises):
+    """L'index de la ligne optionnelle chiffrée (``options_proposees``) qui
+    porte l'option ``cle`` du kit : par son ``role_pompage`` quand la ligne en
+    porte un, sinon par sa désignation qui commence par le libellé du kit
+    (« Compteur d'eau / débitmètre » ↔ « Compteur d'eau ») ; None sinon."""
+    base = _norme(libelle)
+    for i, o in enumerate(proposees):
+        if i in prises:
             continue
+        if o.get("role_pompage") == cle or (
+                base and _norme(o.get("designation")).startswith(base)):
+            return i
+    return None
+
+
+def _roles_des_lignes(items):
+    return {it.get("role_pompage") for it in items or []
+            if isinstance(it, dict) and it.get("role_pompage")}
+
+
+def _bloc_options_kit(etude, items, options):
+    """AGQ11 (D-AGR-8) — les options NOMMÉES du kit figé par le moteur
+    (``etude['kit']['options']``, libellés de ``core.pompage.kit.OPTIONS``)
+    fusionnées aux lignes optionnelles chiffrées (``options_proposees``,
+    supplément canonique QJR616) : chaque option du kit est listée, avec son
+    supplément quand une ligne le chiffre, sinon ``prix_connu`` faux (« prix
+    sur devis » au rendu) — jamais omise. Une option déjà ligne du devis
+    (comptée) n'est pas reproposée ; une ligne optionnelle sans option du
+    kit reste listée telle quelle. Aucun prix recalculé."""
+    proposees = [o for o in options or [] if isinstance(o, dict)]
+    roles = _roles_des_lignes(items)
+    sortie, prises = [], set()
+    for opt in _dict(etude.get("kit")).get("options") or []:
+        cle = opt.get("cle") if isinstance(opt, dict) else None
+        if not cle or cle in roles:
+            continue
+        i = _ligne_de_l_option(cle, opt.get("libelle"), proposees, prises)
+        ligne = proposees[i] if i is not None else {}
+        if i is not None:
+            prises.add(i)
+        total = _num(ligne.get("total_ttc"))
         sortie.append({
+            "cle": cle,
+            "ligne_id": ligne.get("id"),
+            "designation": ligne.get("designation") or opt.get("libelle"),
+            "total_ttc": total,
+            "prix_connu": total is not None,
+            "mention": MENTION_COMPTEUR if cle == "compteur_eau" else None,
+        })
+    for i, o in enumerate(proposees):
+        if i in prises:
+            continue
+        total = _num(o.get("total_ttc"))
+        sortie.append({
+            "cle": None,
             "ligne_id": o.get("id"),
             "designation": o.get("designation"),
-            "total_ttc": _num(o.get("total_ttc")),
+            "total_ttc": total,
+            "prix_connu": total is not None,
+            "mention": None,
         })
+    return sortie
+
+
+def _non_inclus(etude, items):
+    """AGQ11 — « non inclus » : forage et génie civil (D-AGR-8), puis les
+    éléments du kit absents des lignes du devis — un élément du kit minimum
+    resté SANS prix (omis du devis), et chaque option non retenue."""
+    roles = _roles_des_lignes(items)
+    kit = _dict(etude.get("kit"))
+    sortie = list(NON_INCLUS)
+    for ligne in kit.get("inclus") or []:
+        if not isinstance(ligne, dict):
+            continue
+        role = ligne.get("role_pompage")
+        if (role and role not in roles and not ligne.get("prix_connu")
+                and ligne.get("cle") and ligne["cle"] not in sortie):
+            sortie.append(ligne["cle"])
+    for opt in kit.get("options") or []:
+        cle = opt.get("cle") if isinstance(opt, dict) else None
+        if cle and cle not in roles and cle not in sortie:
+            sortie.append(cle)
     return sortie
 
 
@@ -483,8 +568,9 @@ def synthese_agricole(data):
     else:
         omissions.append({"bloc": "energie_actuelle",
                           "motif": MOTIF_ENERGIE_NON_DECLAREE})
-    synthese["options_kit"] = _bloc_options_kit(data.get("options_proposees"))
-    synthese["non_inclus"] = list(NON_INCLUS)
+    synthese["options_kit"] = _bloc_options_kit(
+        etude, items, data.get("options_proposees"))
+    synthese["non_inclus"] = _non_inclus(etude, items)
     # AGR306 — les formalités du client (82-21 hors réseau, 36-15 eau).
     synthese["formalites"] = formalites()
 

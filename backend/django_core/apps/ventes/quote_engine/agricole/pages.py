@@ -629,13 +629,24 @@ def _formalites(synthese, lg):
             f'<div class="ag-box">{"".join(items)}</div>')
 
 
+def _libelle_non_inclus(lg, cle):
+    """AGQ11 — forage, génie civil, puis les éléments du kit absents des
+    lignes (libellé de l'option, en minuscule dans la phrase)."""
+    if f"agr_non_inclus_{cle}" in i18n_labels.LIBELLES:
+        return _t(lg, f"agr_non_inclus_{cle}")
+    if f"agr_option_{cle}" in i18n_labels.LIBELLES:
+        texte = _t(lg, f"agr_option_{cle}")
+        # « DC/AC » reste un sigle : minuscule seulement devant un mot.
+        return (texte[:1].lower() + texte[1:] if texte[1:2].islower()
+                else texte)
+    return str(cle).replace("_", " ")
+
+
 def page3(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
     lg = _langue(d)
     non_inclus = ", ".join(
-        _t(lg, f"agr_non_inclus_{c}")
-        if f"agr_non_inclus_{c}" in i18n_labels.LIBELLES else str(c)
-        for c in synthese.get("non_inclus") or [])
+        _libelle_non_inclus(lg, c) for c in synthese.get("non_inclus") or [])
     non_inclus_html = (f'<div class="ag-small" style="margin-top:4px;">'
                        f'<b>{_t(lg, "agr_non_inclus")}</b> : {non_inclus}.'
                        f'</div>' if non_inclus else "")
@@ -691,6 +702,16 @@ def _lien_signature(d):
     return lien if "/proposition/" in lien else None
 
 
+def _libelle_option(lg, o):
+    """AGQ11 — une option du kit SANS ligne chiffrée est nommée par son
+    libellé structurel traduit ; une ligne saisie garde sa désignation."""
+    cle = o.get("cle")
+    if (cle and o.get("ligne_id") is None
+            and f"agr_option_{cle}" in i18n_labels.LIBELLES):
+        return _t(lg, f"agr_option_{cle}")
+    return o.get("designation")
+
+
 def _options_a_cocher(synthese, lg):
     options = [o for o in synthese.get("options_kit") or []
                if isinstance(o, dict) and o.get("designation")]
@@ -699,9 +720,15 @@ def _options_a_cocher(synthese, lg):
     cases = []
     for o in options:
         prix = _mad(o.get("total_ttc"))
-        supplement = (f'<b>+ {prix} MAD TTC</b>' if prix is not None else "")
+        # AGQ11 — jamais omise : supplément chiffré, sinon « prix sur devis ».
+        supplement = (f'<b>+ {prix} MAD TTC</b>' if prix is not None
+                      else f'<i>{_t(lg, "agr_prix_sur_devis")}</i>')
+        cle_mention = f"agr_option_mention_{o.get('cle')}"
+        mention = (f' <span class="ag-mq">{_t(lg, cle_mention)}</span>'
+                   if o.get("mention") and cle_mention in i18n_labels.LIBELLES
+                   else "")
         cases.append(f'<td class="ag-opt"><span class="ag-case"></span>'
-                     f'{o.get("designation")} {supplement}</td>')
+                     f'{_libelle_option(lg, o)} {supplement}{mention}</td>')
     lignes = "".join(
         "<tr>" + "".join(cases[i:i + 2])
         + ("<td></td>" if len(cases[i:i + 2]) == 1 else "") + "</tr>"

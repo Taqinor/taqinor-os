@@ -945,14 +945,26 @@
       ],
       "options_kit": [
         {
+          "cle": "afficheur_variateur",
           "ligne_id": 90311,
           "designation": "Afficheur du variateur",
-          "total_ttc": 950.0
+          "total_ttc": 950.0,
+          "prix_connu": true,
+          "mention": null
+        },
+        {
+          "cle": "compteur_eau",
+          "ligne_id": null,
+          "designation": "Compteur d'eau",
+          "total_ttc": null,
+          "prix_connu": false,
+          "mention": "exigé par la loi 36-15 et le dossier FDA 2024"
         }
       ],
       "non_inclus": [
         "forage",
-        "genie_civil"
+        "genie_civil",
+        "compteur_eau"
       ],
       "formalites": [
         {

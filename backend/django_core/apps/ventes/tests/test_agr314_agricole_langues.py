@@ -104,6 +104,28 @@ class Agr314LanguesTests(SimpleTestCase):
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, html)
 
+    def test_options_du_kit_traduites(self):
+        """AGQ11 — les options NOMMÉES du kit (sans ligne chiffrée) et le
+        « non inclus » complété sont des libellés structurels traduits."""
+        from core.pompage.kit import OPTIONS
+        for langue in ('ar', 'en'):
+            d = _data(langue)
+            d['etude']['kit'] = {'inclus': [], 'options': [
+                {'cle': cle, 'libelle': libelle, 'prix_connu': False}
+                for cle, _role, libelle in OPTIONS]}
+            texte = _texte_visible(_html_sans_donnees(d))
+            with self.subTest(langue=langue):
+                self.assertIn(L.libelle('agr_option_cable_descente', langue),
+                              texte)
+                self.assertIn(L.libelle('agr_prix_sur_devis', langue), texte)
+                self.assertIn(
+                    L.libelle('agr_option_mention_compteur_eau', langue),
+                    texte)
+                for cle in ('agr_prix_sur_devis', 'agr_option_cable_descente',
+                            'agr_option_mention_compteur_eau'):
+                    for morceau in _morceaux_francais(cle, langue):
+                        self.assertNotIn(morceau, texte)
+
     def test_chaque_cle_agr_porte_les_trois_langues(self):
         for cle in CLES_AGR:
             for langue in L.LANGUES:
