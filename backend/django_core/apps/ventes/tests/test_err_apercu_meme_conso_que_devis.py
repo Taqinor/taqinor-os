@@ -162,17 +162,35 @@ class ApercuMemeConsoQueLeDevisTests(TestCase):
         self.assertEqual(appels, [])
 
     def test_ecran_qui_explore_recalcule(self):
-        """Une autre batterie, une autre ville, des coordonnées ou un autre
-        marché (donc une autre occupation) demandés à l'écran : le bloc rangé
-        ne décrit plus l'écran, l'aperçu recalcule comme avant."""
+        """Une autre batterie, une autre ville ou des coordonnées demandées à
+        l'écran : le bloc rangé ne décrit plus l'écran, l'aperçu recalcule
+        comme avant."""
         bloc = self._bloc_range()
         for corps in ({'batterie_kwh': 5}, {'ville': 'Agadir'},
-                      {'lat': 30.42, 'lon': -9.6},
-                      {'mode_installation': 'industriel'}):
+                      {'lat': 30.42, 'lon': -9.6}):
             etude, appels = self._poster_avec_bloc_range(
                 {'devis': self.devis.pk, 'kwc': 4.26, **corps}, bloc)
             self.assertIsNone(etude, corps)
             self.assertEqual(len(appels), 1, corps)
+
+    def test_un_autre_marche_sans_signal_garde_la_meme_occupation(self):
+        """Décision fondateur du 23/10/2026 : la présence en journée est le
+        défaut PARTOUT. Demander « industriel » à l'écran, sans réponse du
+        lead ni profil d'activité, ne change donc plus l'occupation — le bloc
+        rangé décrit toujours l'écran et il est servi tel quel (avant le
+        23/10, le repli ``absence_jour`` hors résidentiel forçait un recalcul)."""
+        from apps.ventes.courbes_journalieres import occupation_du_devis
+        bloc = self._bloc_range()
+        self.assertEqual(
+            occupation_du_devis(self.devis,
+                                {'mode_installation': 'industriel'})[0],
+            bloc['occupation'])
+        etude, appels = self._poster_avec_bloc_range(
+            {'devis': self.devis.pk, 'kwc': 4.26,
+             'mode_installation': 'industriel'}, bloc)
+        attendu = {k: v for k, v in bloc.items() if k != '_empreinte_entrees'}
+        self.assertEqual(etude, attendu)
+        self.assertEqual(appels, [])
 
 
 class BlocHoraireEnregistrePourTests(TestCase):
