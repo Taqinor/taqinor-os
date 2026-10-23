@@ -781,6 +781,23 @@ def _reglage(reglages, cle):
     return entree[0] if entree else None
 
 
+def _parametres_kit(res, reglages, catalogue, produits):
+    """Paramètres de ``core.pompage.kit.composer_kit`` lus une fois (AGQ5 :
+    socle et installation de repli viennent du catalogue par rôle)."""
+    return dict(
+        structure=_par_role(produits, 'structure_sol'),
+        installation_pompage=_par_role(produits, 'installation_pompage'),
+        installation_toiture=catalogue['installation_toiture'],
+        socle=catalogue.get('socle'),
+        transport=catalogue['transport'], produits_options=produits,
+        distance_champ_m=_num(res.valeur('distance_champ_m')),
+        profondeur_calage_m=_num(res.valeur('source.profondeur_calage_m')),
+        marge_cable_m=_reglage(reglages, 'agricole_marge_cable_descente_m'),
+        longueur_conduite_m=_num(res.valeur('hmt.conduite.longueur_m')),
+        volume_bassin_m3=_num(res.valeur('source.volume_reservoir_m3')),
+        options_cochees=res.valeur('options_cochees'))
+
+
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
                     facture=None, sans_tmy=False):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
@@ -860,18 +877,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     variateurs = [p for p in produits
                   if p.get('role_pompage') == 'variateur_pompage']
     panneau = catalogue['panneau']
-    kit_params = dict(
-        structure=_par_role(produits, 'structure_sol'),
-        installation_pompage=_par_role(produits, 'installation_pompage'),
-        installation_toiture=catalogue['installation_toiture'],
-        socle=catalogue.get('socle'),
-        transport=catalogue['transport'], produits_options=produits,
-        distance_champ_m=_num(res.valeur('distance_champ_m')),
-        profondeur_calage_m=_num(res.valeur('source.profondeur_calage_m')),
-        marge_cable_m=_reglage(reglages, 'agricole_marge_cable_descente_m'),
-        longueur_conduite_m=_num(res.valeur('hmt.conduite.longueur_m')),
-        volume_bassin_m3=_num(res.valeur('source.volume_reservoir_m3')),
-        options_cochees=res.valeur('options_cochees'))
+    kit_params = _parametres_kit(res, reglages, catalogue, produits)
     # AGQ40 (D-AGQ-9) — la production de chaque heure est plafonnée au
     # plafond RETENU de la passe 1 (forage × part du réglage, ou ABH).
     plafond_m3h = passe1['conception']['plafonds']['plafond_retenu_m3h']
