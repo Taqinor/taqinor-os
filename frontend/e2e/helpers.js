@@ -492,6 +492,36 @@ export async function retirerLignesPrixARenseigner(page) {
   return cles.length
 }
 
+/** ADEV79 (D-ACI-6=a, 23/10/2026) — le moteur C&I REFUSE (devis automatique)
+ *  ou laisse l'investissement NON chiffré (générateur, D-ACI-8 : aucun retour,
+ *  TRI ni VAN imprimés) tant qu'un poste fixe n'a pas de prix ; le seed livre
+ *  les articles C&I et les forfaits « à renseigner » par conception. La société
+ *  de la démo tarifie donc ses postes ICI, par l'API (comme Reda dans
+ *  Paramètres › Devis › Prestations C&I et sur les fiches produit) :
+ *  idempotent, valeurs d'essai, aucune ligne à 0. */
+export async function tariferPostesCiDemo(request) {
+  const forfaits = Object.fromEntries(['etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
+    'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci']
+    .map((k) => [k, { fixe_ht: 2500, source: 'e2e C&I (valeur d’essai)', date: '2026-10-23' }]))
+  let profil = await request.patch(`${API_DJANGO}/parametres/update/`, { data: { forfaits_ci: forfaits } })
+  if (profil.status() === 405) profil = await request.put(`${API_DJANGO}/parametres/update/`, { data: { forfaits_ci: forfaits } })
+  if (!profil.ok()) throw new Error(`forfaits C&I → HTTP ${profil.status()} ${await profil.text()}`)
+  let suivant = `${API_DJANGO}/stock/produits/?page_size=200`
+  let tarifes = 0
+  while (suivant) {
+    const page_ = await lireJson(await request.get(suivant), 'catalogue')
+    const items = Array.isArray(page_) ? page_ : (page_.results || [])
+    for (const p of items) {
+      if (p.role_ci && !(parseFloat(p.prix_vente) > 0)) {
+        await lireJson(await request.patch(`${API_DJANGO}/stock/produits/${p.id}/`, { data: { prix_vente: '900' } }), `prix ${p.nom}`)
+        tarifes += 1
+      }
+    }
+    suivant = Array.isArray(page_) ? null : page_.next
+  }
+  return tarifes
+}
+
 /** CAD177 — « Créer le devis » (bouton du formulaire) puis l'issue : la réponse
  *  attendue (`attente`, un `page.waitForResponse` posé AVANT le clic), ou le
  *  refus affiché sous le formulaire (`erreur-enregistrement`), dont le TEXTE fait

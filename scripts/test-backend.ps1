@@ -140,6 +140,9 @@ try {
     # recette des docstrings test_moteur_golden_*) : la variable doit traverser jusqu'au
     # conteneur, `docker compose run` ne la transmet pas d'elle-meme.
     if ($env:UPDATE_GOLDEN) { $testArgs += @('-e', "UPDATE_GOLDEN=$($env:UPDATE_GOLDEN)") }
+    # Idem pour les goldens de scission (`SPLIT_GOLDEN_CAPTURE=1`, split_golden.py) — sans ce relais la
+    # capture tournait sur le poste sans jamais écrire dans le conteneur (23/10/2026).
+    if ($env:SPLIT_GOLDEN_CAPTURE) { $testArgs += @('-e', "SPLIT_GOLDEN_CAPTURE=$($env:SPLIT_GOLDEN_CAPTURE)") }
     $testArgs += @(
         'django_core', 'sh', '-c', "pip install -q -r requirements-dev.txt && $DjangoCmd"
     )

@@ -149,6 +149,10 @@ CLES_HORS_RENDU_ORIGINE = (
     ('entreprise', 'capital_social'), ('entreprise', 'forme_juridique'),
     ('regles_calcul_origine',),
     ('libelles_document', 'agr_base_besoin_agronomique'),
+    # ACI (23/10/2026) — le CATALOGUE de libellés entier : un libellé ajouté,
+    # renommé ou retiré (AMOT80/82/83/84) n'est jamais un chiffre et bouge le
+    # dict de TOUS les devis ; les chiffres d'un devis envoyé restent gardés.
+    ('libelles_document',),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
     ('libelles_document', 'ci_cgv_suite'),
     *_LIBELLES_APDF)

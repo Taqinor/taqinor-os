@@ -1,0 +1,18 @@
+Rejeu orchestrateur en navigateur (Playwright MCP, pile locale, société « TAQINOR Démo », demo_admin), code à 9ce97f9d4, 2026-10-23.
+Préparation (données de démo locales, persistantes) : seed_catalogue société 2, fiche module (Panneau mono 450W) + fiches onduleur Huawei 20/25/50/100 kW ; forfaits C&I et articles sans prix VOLONTAIREMENT laissés vides pour l'étape 1.
+
+ADEV84 — /ventes/devis/nouveau?lead=<lead commercial> (lead « ACI Replay Commerce », 10 000 kWh/mois, triphasé, 200 m²) :
+OK  marché Commercial coché ; jours lun→sam, plage 8 h → 18 h, contrat BT patenté, taille 20 kWc saisis
+OK  « Auto-remplir depuis le stock » → POST /ventes/etude-ci/preview/ 200 (après redémarrage du conteneur : le processus Django datait d'AVANT le fold ADEV87 → ImportError ROLES_ONDULEUR_CI, artefact de pile, pas de code)
+OK  17 lignes posées depuis la composition serveur : « Panneau … — prix à renseigner » ×29, « Onduleur réseau Huawei 20kW Triphasé — prix à renseigner », « Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre) — à chiffrer après visite » (qté 0), « Câble AC … → TGBT — à chiffrer après visite » (qté 0), « Structure C&I — à chiffrer après visite » (qté 29), coffrets/disjoncteur/Smart Meter/8 prestations « — prix à renseigner »
+OK  avertissement de useCompositionEcran : « Prix à renseigner : … — devis incomplet. À chiffrer après visite : Câble solaire …, Câble AC …, Structure C&I. »
+OK  chaque poste du bandeau porte son lien : articles → /stock (Coffret DC C&I, Disjoncteur AC 32 A tétrapolaire (C&I), Coffret AC C&I), prestations → /parametres (Études et ingénierie C&I, Pose de la structure C&I, Pose des modules C&I, Raccordement AC C&I, Mise en service C&I, Dossier de raccordement C&I, Levage et accès C&I, Transport C&I)
+OK  repères à TVA 20 (tva_standard de la société de démo = 20) — capture ACI-P5-generateur.png
+OK  aucune erreur console après l'auto-remplissage (0 errors)
+
+ALEA48 — fiche lead, panneau devis :
+OK  lead non prêt (sans contrat ni rythme) : bouton « Devis auto » désactivé, badge « Devis non prêt », groupe « À compléter » = « Contrat d'électricité », « Jours et heures d'ouverture (ou catégorie d'activité) »
+OK  clic « Compléter : Contrat d'électricité » → la section Professionnel se déplie et le combobox « Contrat d'électricité * » prend le focus ([active]) — même mécanisme jumpToField(missingFieldTarget(field)) que le bouton de la boîte 409
+OK  lead « prêt » (contrat BT patenté + catégorie commerce, sans jours) : POST /ventes/devis/auto/ → 409 field='composition' tant que les postes n'ont pas de prix (détail « Prix à renseigner … → Paramètres › Devis › Prestations C&I ou fiche produit. »), aucun bouton « Compléter » (champ non-lead, missingFieldTarget null) ; postes tarifés → 201 brouillon 14 lignes, 65,32 kWc
+ÉCART  le 409 à `field` lead (contrat_electricite / jours_ouverture / heure_debut) n'est plus atteignable depuis l'écran : ALEA47 (prêt = prérequis du moteur) désactive le bouton avant l'appel — le bouton de la boîte 409 reste couvert par LeadDevisPanelSorties.test.jsx et par le 409 API de P-ACI-1
+Nettoyage : lead 2566, lead 2567 et devis 1038 supprimés.

@@ -114,6 +114,12 @@ class InvestissementCanoniqueTests(TestCase):
             apercu = _apercu('mt')
             apercu['entrees_resolues']['tva_recuperable'] = {
                 'valeur': 'non', 'provenance': None}
+            # ADEV81 (D-ACI-8, 23/10/2026) : un article sans prix dans la
+            # composition rend l'investissement NON chiffré (aucun flux) ; le
+            # contrat porte des « prix à renseigner » par conception — ici
+            # l'investissement est complet.
+            apercu['composition']['prix_a_renseigner'] = []
+            apercu['composition']['a_chiffrer_visite'] = []
             devis.etude_params = {
                 'etude_ci': apercu,
                 'saisies_economie_ci': {'tva_recuperable': 'non'}}

@@ -12,7 +12,7 @@
 import { test, expect } from '@playwright/test'
 import {
   choisirMarche, declarerProfilCi, telephoneMobileUnique, uniq, cliquerCreerDevis,
-  retirerLignesPrixARenseigner,
+  retirerLignesPrixARenseigner, tariferPostesCiDemo,
 } from './helpers'
 
 const API = '/api/django'
@@ -138,29 +138,8 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
   }), 'lead commercial')
   expect(lead.contrat_electricite).toBe('bt_patente')
   leadIds.push(lead.id)
-  // ADEV79 (D-ACI-6=a, 23/10/2026) — le devis automatique C&I REFUSE tant
-  // qu'un poste fixe n'a pas de prix (« Prix à renseigner … → Paramètres ») ;
-  // le seed livre les articles C&I et les forfaits « à renseigner » par
-  // conception. La société de la démo tarifie donc ses postes ICI, par l'API
-  // (comme Reda dans Paramètres › Devis › Prestations C&I et sur les fiches
-  // produit) : idempotent, valeurs d'essai, aucune ligne à 0.
-  const forfaits = Object.fromEntries(['etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
-    'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci']
-    .map((k) => [k, { fixe_ht: 2500, source: 'e2e CIQ127 (valeur d’essai)', date: '2026-10-23' }]))
-  let profil = await request.patch(`${API}/parametres/update/`, { data: { forfaits_ci: forfaits } })
-  if (profil.status() === 405) profil = await request.put(`${API}/parametres/update/`, { data: { forfaits_ci: forfaits } })
-  expect(profil.ok(), `forfaits C&I → HTTP ${profil.status()} ${await profil.text()}`).toBeTruthy()
-  let suivant = `${API}/stock/produits/?page_size=200`
-  while (suivant) {
-    const page_ = await json(await request.get(suivant), 'catalogue')
-    const items = Array.isArray(page_) ? page_ : (page_.results || [])
-    for (const p of items) {
-      if (p.role_ci && !(parseFloat(p.prix_vente) > 0)) {
-        await json(await request.patch(`${API}/stock/produits/${p.id}/`, { data: { prix_vente: '900' } }), `prix ${p.nom}`)
-      }
-    }
-    suivant = Array.isArray(page_) ? null : page_.next
-  }
+  // ADEV79 (D-ACI-6=a) — postes C&I de la démo tarifés par l'API (helper partagé).
+  await tariferPostesCiDemo(request)
   await page.goto(`/crm/leads/${lead.id}`)
   const appel = page.waitForResponse((r) => r.request().method() === 'POST'
     && /\/ventes\/devis\/auto\/$/.test(new URL(r.url()).pathname), { timeout: 60_000 })

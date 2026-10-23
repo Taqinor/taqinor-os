@@ -220,11 +220,17 @@ class InvestissementNonChiffreTest(SimpleTestCase):
                          'sans prix)')
 
     def test_investissement_complet_toujours_chiffre(self):
+        # D-ACI-2 (a) : « complet » = aucun article de la composition laissé
+        # hors devis (ni « prix à renseigner », ni « à chiffrer après visite »).
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        apercu = _apercu('mt')
+        apercu['composition']['prix_a_renseigner'] = []
+        apercu['composition']['a_chiffrer_visite'] = []
         lignes = [_ligne('Panneau 550W', 700000.0, panneau=True),
                   _ligne('Onduleur réseau Huawei 50kW Triphasé', 200000.0,
                          onduleur=True)]
         bloc = _assembler({'ht': 900000.0, 'ttc': 1080000.0}, lignes,
-                          controle_lignes=True)
+                          controle_lignes=True, apercu=apercu)
         self.assertIsNone(_omission_investissement(bloc))
         self.assertIsNotNone(bloc['indicateurs']['retour_ans'])
         self.assertTrue(bloc['flux_ht']['flux'])
