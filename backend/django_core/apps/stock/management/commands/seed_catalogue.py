@@ -590,12 +590,6 @@ SKU_POMPAGE_PRIX_A_RENSEIGNER = [
 # « panneau » ni « module » (lu comme un panneau : puissance crête faussée) ;
 # la quantité suit le nombre de panneaux du kit (dit dans la description,
 # sans chiffre). Le prix reste au fondateur (AGRM5).
-STRUCTURE_SOL_POMPAGE = [
-    ('Structure au sol pompage', 'STR-SOL-PMP', 'structure_sol', 999, 0,
-     'Structure de pose au sol du champ solaire de pompage, quantité au '
-     'nombre de capteurs du champ', False),
-]
-
 # ── PVLV2 — HISTORIQUE des SKU « Basse Tension » (créés 18/08, ARCHIVÉS
 # 21/08/2026) ─────────────────────────────────────────────────────────────
 # La recherche PVG4 avait identifié OND-H-DEY-15T/20T comme des SG01HP3
@@ -2080,8 +2074,10 @@ class Command(BaseCommand):
         # PRIX VIDES (0), barème forfaitaire VIDE, périodicité VIDE. Additif :
         # un SKU ou un nom déjà présent est sauté, jamais réécrit.
         for (nom, sku, role_pompage, qte, seuil, description,
-             recurrent) in (SKU_POMPAGE_PRIX_A_RENSEIGNER
-                            + STRUCTURE_SOL_POMPAGE):
+             recurrent) in (SKU_POMPAGE_PRIX_A_RENSEIGNER + [
+                 ('Structure au sol pompage', 'STR-SOL-PMP', 'structure_sol',
+                  999, 0, 'Structure de pose au sol du champ solaire de '
+                  'pompage, quantité au nombre de capteurs du champ', False)]):
             if (Produit.objects.filter(company=company, sku=sku).exists()
                     or Produit.objects.filter(
                         company=company, nom__iexact=nom,

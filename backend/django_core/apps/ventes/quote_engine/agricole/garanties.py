@@ -157,3 +157,30 @@ def garanties_de_la_ligne(it):
 def garanties_pompage(items):
     """La liste des garanties par composant (voir le module)."""
     return garanties_pompage_et_omissions(items)[0]
+
+
+def garantie_ligne_onepage(it, libelle, agricole):
+    """AGQ14 (D-AGQ-4) — la garantie d'une ligne du une-page : texte libre
+    hors agricole ; en AGRICOLE, les seules durées STRUCTURÉES
+    (:func:`garanties_de_la_ligne`, la même source que les 3 pages) :
+    « 12 ans produit · 25 ans production », « garantie 3 ans », ou
+    « garantie selon fiche fournisseur » — jamais le texte libre ``garantie``
+    (« 30 ans »). ``libelle`` = le lecteur de libellés du moteur legacy."""
+    if not agricole:
+        return (it.get("garantie") or "").strip()
+    morceaux = []
+    for composant, mois in garanties_de_la_ligne(it):
+        if mois is None:
+            morceaux.append(libelle("agr_annexe_garantie").format(
+                duree=libelle("agr_selon_fiche_fournisseur")))
+            continue
+        if mois % 12:
+            duree = libelle("agr_n_mois").format(n=mois)
+        else:
+            duree = libelle("agr_n_an" if mois == 12 else "agr_n_ans").format(
+                n=mois // 12)
+        cle = {"panneaux": "agr_gar_court_produit",
+               "performance_panneaux": "agr_gar_court_production"}.get(
+                   composant, "agr_annexe_garantie")
+        morceaux.append(libelle(cle).format(duree=duree))
+    return " · ".join(morceaux)

@@ -1654,31 +1654,6 @@ def _gar_de_la_fiche(it):
     return _L("res_n_ans").format(n=n) if n else ""
 
 
-def _garantie_agricole_ligne(it):
-    """AGQ14 (D-AGQ-4) — la garantie d'une ligne du une-page AGRICOLE, lue
-    sur les champs STRUCTURÉS (``agricole.garanties.garanties_de_la_ligne``,
-    la même source que les 3 pages) : « 12 ans produit · 25 ans
-    production », « garantie 3 ans », ou « garantie selon fiche
-    fournisseur » — jamais le texte libre ``garantie`` (« 30 ans »)."""
-    from .agricole.garanties import garanties_de_la_ligne
-    morceaux = []
-    for composant, mois in garanties_de_la_ligne(it):
-        if mois is None:
-            morceaux.append(_L("agr_annexe_garantie").format(
-                duree=_L("agr_selon_fiche_fournisseur")))
-            continue
-        if mois % 12:
-            duree = _L("agr_n_mois").format(n=mois)
-        else:
-            duree = _L("agr_n_an" if mois == 12 else "agr_n_ans").format(
-                n=mois // 12)
-        cle = {"panneaux": "agr_gar_court_produit",
-               "performance_panneaux": "agr_gar_court_production"}.get(
-                   composant, "agr_annexe_garantie")
-        morceaux.append(_L(cle).format(duree=duree))
-    return " · ".join(morceaux)
-
-
 def _garanties_du_devis():
     """Garanties RÉELLES des lignes rendues : [(années, libellé), …] (M6).
 
@@ -2949,7 +2924,8 @@ def _bankable_pct(valeur):
 #: arrondis kWc/panneaux sans laisser passer un vrai changement de taille (un
 #: panneau de plus pèse déjà bien davantage).
 # AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
-from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .bankable import TOLERANCE_KWC_SIMULATION, TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
+from .agricole.garanties import garantie_ligne_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _bankable_decrit_ce_champ(bank):
@@ -2973,7 +2949,6 @@ def _bankable_decrit_ce_champ(bank):
 #: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
 #: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
 #: l'entier de la carte, jamais les ~10 % que produisait le double derate.
-from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _bankable_concorde_avec_la_page(bank):
@@ -4048,14 +4023,6 @@ def _bon_pour_accord_compact_html():
         f'{_L("bon_pour_accord")} &#8212; {_L("bpa_signature")}</div></div>')
 
 
-def _garantie_ligne_onepage(it):
-    """La garantie d'une ligne du une-page : texte libre, sauf en AGRICOLE où
-    seules les durées STRUCTURÉES sortent (AGQ14, D-AGQ-4), comme les 3 pages."""
-    if (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole":
-        return _garantie_agricole_ligne(it)
-    return (it.get("garantie") or "").strip()
-
-
 def page_onepage(items, tronquees=0):
     """Single A4 page: header + summary strip + client block + HT product table + footer.
 
@@ -4247,7 +4214,8 @@ def page_onepage(items, tronquees=0):
         qty_str = str(int(qty)) if qty == int(qty) else fnum(qty)
         marque_html = badge(marque) if marque else ""
         detail_html = _desc_lines_html(it, max_lines=max_desc, font_pt=desc_pt) if max_desc else ""
-        gar = _garantie_ligne_onepage(it)
+        gar = garantie_ligne_onepage(
+            it, _L, (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole")
         if gar and show_gar:
             detail_html += (
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'
