@@ -1,10 +1,10 @@
 // AGR128 — générateur agricole : besoin, point d'eau, HMT détaillée, cas de
 // pompe ; plus de CV / distance / région / culture / énergie pré-remplis.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, renderHook, act, cleanup } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import { MemoryRouter } from 'react-router-dom'
@@ -13,7 +13,7 @@ import authReducer from '../../../features/auth/store/authSlice'
 import ventesReducer from '../../../features/ventes/store/ventesSlice'
 import PanneauAgricole from './PanneauAgricole'
 import { ECO_POMPAGE_VIDE } from '../../../features/ventes/quote/etudeMarcheBloc'
-import { documentContrat } from '../../../test/fixtures/contractSamples'
+import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples'
 import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie,
   construireCorpsPompage, manquantsPompage,
@@ -23,6 +23,7 @@ vi.mock('../../../api/crmApi', () => ({
   default: {
     getClients: vi.fn(() => Promise.resolve({ data: [] })),
     getLeads: vi.fn(() => Promise.resolve({ data: [] })),
+    getLead: vi.fn(() => new Promise(() => {})),
   },
 }))
 vi.mock('../../../api/stockApi', () => ({
@@ -37,7 +38,14 @@ vi.mock('../../../api/ventesApi', () => ({
     getParametresGammes: vi.fn(() => Promise.resolve({ data: {} })),
     getOffresTaillesDevis: vi.fn(() => Promise.resolve({ data: { editable: false } })),
     lireOverrides: vi.fn(() => Promise.resolve({ data: {} })),
+    getPrefillSite: vi.fn(() => new Promise(() => {})),
   },
+}))
+// AGQ25 (C-AGQ-024) — `createAutoQuote` espionné (le reste du module intact).
+const { createAutoQuote } = vi.hoisted(() => ({ createAutoQuote: vi.fn() }))
+vi.mock('../../../features/ventes/autoQuote', async (importOriginal) => ({
+  ...(await importOriginal()),
+  createAutoQuote: (...a) => createAutoQuote(...a),
 }))
 // L'aperçu serveur n'est jamais appelé tant que l'essentiel manque.
 vi.mock('../../../api/axios', () => ({
@@ -47,11 +55,14 @@ vi.mock('../../../api/axios', () => ({
 import api from '../../../api/axios'
 import { installerCalesJsdom } from '../../../test/fixtures/calesJsdom'
 import DevisGenerator from '../DevisGenerator'
+import { useLeadClientEcran } from './hooks/useLeadClientEcran'
+import AlertesDevisAuto from '../../crm/leads/AlertesDevisAuto'
 
 beforeEach(() => {
   vi.clearAllMocks()
   installerCalesJsdom()
 })
+afterEach(() => cleanup())
 
 const PROPS_VIDES = {
   marche: 'agricole',
@@ -346,5 +357,55 @@ describe('attestation d’usage agricole (AGR218)', () => {
     expect(screen.getByLabelText(CASE).checked).toBe(true)
     expect(screen.getByLabelText('Date de l’attestation').value).toBe(a.le)
     expect(screen.getByLabelText('Signataire').value).toBe(a.signataire)
+  })
+})
+
+/* AGQ25 (C-AGQ-024) — le devis automatique lancé depuis le GÉNÉRATEUR
+   transmet `onAlertes` : le journal `alertes` du serveur (articles « prix à
+   renseigner » omis, PVGIS, alertes internes) est conservé par le hook et
+   rendu par LE composant de la fiche lead (`AlertesDevisAuto`).
+   Logé ici (module existant du générateur agricole, garde AMET84) : le hook
+   n'avait aucun module de test.
+   Test-du-test : retirer `onAlertes: setAlertesAuto` de `runAutoQuote` fait
+   repasser « journal_affiche_apres_creation » au rouge. */
+
+const ctx = () => ({
+  leads: [], structuresCatalogue: [], setSaving: vi.fn(), setErrors: vi.fn(),
+  dispatchSizing: vi.fn(), finish: vi.fn(), leadId: '', setLeadId: vi.fn(),
+  clientId: '', setClientId: vi.fn(), setFHiver: vi.fn(), setFEte: vi.fn(),
+  setMonthly: vi.fn(), setConsoMensuelle: vi.fn(), setHorsReseau: vi.fn(),
+  horsReseauTouched: false, setPompeCv: vi.fn(), setPompeHmt: vi.fn(),
+  setPompeDebit: vi.fn(), appliquerEntreesPompage: vi.fn(),
+  facturesProtegeesRef: { current: false }, reinitialiserFactures: vi.fn(),
+  setAvisFactures: vi.fn(), consoMensuelle: '', pompeCv: '', pompeHmt: '',
+  pompeDebit: '', baremeSociete: null,
+})
+
+describe('alertes du devis automatique (AGQ25)', () => {
+  it('test_journal_affiche_apres_creation', async () => {
+    const alertes = exempleContrat('ventes', 'etude_ci_preview').alertes
+    createAutoQuote.mockImplementation(async ({ onAlertes }) => {
+      onAlertes?.(alertes)
+      return 615
+    })
+    const contexte = ctx()
+    const { result } = renderHook(() => useLeadClientEcran(contexte))
+    await act(async () => {
+      await result.current.runAutoQuote({ id: 91, type_installation: 'agricole' }, '0')
+    })
+    expect(typeof createAutoQuote.mock.calls[0][0].onAlertes).toBe('function')
+    expect(contexte.finish).toHaveBeenCalledWith(615)
+    expect(result.current.alertesAuto).toEqual(alertes)
+
+    render(<AlertesDevisAuto alertes={result.current.alertesAuto} />)
+    const bloc = screen.getByTestId('ldp-alertes-auto')
+    for (const a of alertes) expect(bloc).toHaveTextContent(a.message)
+    expect(screen.queryAllByTestId('ldp-alerte-interne'))
+      .toHaveLength(alertes.filter((a) => a.interne === true).length)
+  })
+
+  it('aucune alerte : rien n’est rendu', () => {
+    const { container } = render(<AlertesDevisAuto alertes={[]} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })

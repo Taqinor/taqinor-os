@@ -557,9 +557,9 @@ const REGION_AGRICOLE = {
 }
 // source-choix: crm.Lead.pompe_actuelle_type
 const POMPE_ACTUELLE_TYPE = { immergee: 'Immergée', surface: 'De surface', ne_sait_pas: 'Ne sait pas' }
-// source-choix: crm.Lead.mode_pompe
+// source-choix: crm.LeadPompageMixin.mode_pompe
 const MODE_POMPE = { neuve: 'Pompe neuve', existante: 'Pompe actuelle conservée' }
-// source-choix: crm.Lead.pompe_actuelle_phases
+// source-choix: crm.LeadPompageMixin.pompe_actuelle_phases
 const POMPE_ACTUELLE_PHASES = { mono: 'Monophasé', tri: 'Triphasé' }
 // source-choix: crm.Lead.pompe_alim_actuelle
 const POMPE_ALIM_ACTUELLE = {

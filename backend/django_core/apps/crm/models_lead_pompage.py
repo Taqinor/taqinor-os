@@ -10,6 +10,30 @@ héritage. Aucun défaut : un champ vide veut dire « pas encore posée ».
 from django.db import models
 
 
+def valider_mois_irrigation(valeur):
+    """AGR400 — ``Lead.mois_irrigation`` : liste d'entiers 1-12 DISTINCTS.
+
+    Déplacé ici avec les colonnes pompage (AGQ10) ; la migration 0118 le lit
+    toujours via ``apps.crm.models`` (même objet, ré-importé).
+
+    Vide (None ou liste vide) = question pas encore posée. Toute autre forme
+    est refusée avec un message qui nomme les mois.
+    """
+    from django.core.exceptions import ValidationError
+    if valeur in (None, []):
+        return
+    message = ("« Mois d'irrigation » : une liste de mois distincts, "
+               'chacun entre 1 et 12.')
+    if not isinstance(valeur, list):
+        raise ValidationError(message)
+    for mois in valeur:
+        if isinstance(mois, bool) or not isinstance(mois, int) \
+                or not 1 <= mois <= 12:
+            raise ValidationError(message)
+    if len(set(valeur)) != len(valeur):
+        raise ValidationError(message)
+
+
 class LeadPompageMixin(models.Model):
     """Mode de pompe, plaque de la pompe actuelle et jours d'irrigation."""
 
@@ -57,6 +81,29 @@ class LeadPompageMixin(models.Model):
         verbose_name="Jours d'irrigation par semaine",
         help_text="Question à l'appel : « Vous irriguez combien de jours par "
                   "semaine en saison ? » (1 à 7, vide = pas encore posée).")
+
+    # AGR4xx — énergie ACTUELLE du pompage (butane/gasoil) : déclarations du
+    # client, jamais pré-remplies (déplacées ici avec les colonnes pompage).
+    butane_bouteilles_jour = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        verbose_name='Butane — bouteilles par jour',
+        help_text="Question à l'appel : « Combien de bouteilles de butane "
+                  'par jour en saison ? » (bouteilles de 12 kg par jour '
+                  "d'irrigation, vide = pas encore posée).")
+    carburant_prix_unitaire_mad = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Prix payé (bouteille ou litre, MAD)',
+        help_text="Question à l'appel : « Vous la payez combien, la "
+                  'bouteille (ou le litre de gasoil) ? » (MAD, vide = pas '
+                  'encore posée). Prix PAYÉ déclaré, jamais pré-rempli.')
+    carburant_prix_declare_le = models.DateField(
+        null=True, blank=True, verbose_name='Prix du carburant déclaré le')
+    depense_carburant_mad_mois = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Dépense carburant (MAD/mois)',
+        help_text="Question à l'appel : « Combien dépensez-vous en "
+                  'carburant par mois ? » (MAD/mois, vide = pas encore '
+                  'posée). Information : jamais convertie en consommation.')
 
     class Meta:
         abstract = True

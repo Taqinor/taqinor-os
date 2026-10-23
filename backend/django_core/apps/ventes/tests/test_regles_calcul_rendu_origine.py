@@ -150,6 +150,9 @@ _LIBELLES_APDF = tuple(
 #: annexe) : des TEXTES de ``libelles_document``, jamais un chiffre.
 _CLES_AGQ = frozenset((
     'agr_schema_distance_champ_coffret',
+    # AGQ3 (D-AGQ-2) — mois de conception, plus bas, mois sous tolérance.
+    'agr_heures_equivalentes_mois', 'agr_hero_mois_conception',
+    'agr_au_plus_bas', 'agr_mois_sous_tolerance', 'agr_mois_couverture',
     'agr_acompte_apres_fda', 'agr_au_dela_de_n_ans',
     'agr_controle_forage_depasse', 'agr_controle_forage_ok',
     'agr_cout_eau_solaire', 'agr_declares_par_vous_le',
