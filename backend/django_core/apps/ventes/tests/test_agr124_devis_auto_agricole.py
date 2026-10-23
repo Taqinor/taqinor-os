@@ -58,6 +58,14 @@ class DevisAutoAgricoleTests(TestCase):
             company=cls.co, produit=cls.panneau, type_fiche='module',
             pmax_wc=Decimal('710'), vmp_v=Decimal('40'), voc_v=Decimal('48'),
             isc_a=Decimal('18'), imp_a=Decimal('17'))
+        # AGQ4 (D-AGQ-3) — le kit minimum : structure au sol chiffrée et
+        # installation pompage à BARÈME (prix de vente 0, AGQ5).
+        cls.structure = cls._produit('Structure au sol acier', '700',
+                                     role_pompage='structure_sol')
+        cls.installation = cls._produit(
+            'Installation pompage solaire', '0',
+            role_pompage='installation_pompage',
+            prix_fixe_ht=Decimal('3000'), prix_par_panneau_ht=Decimal('150'))
 
     @classmethod
     def _produit(cls, nom, prix, **kw):
@@ -126,6 +134,15 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(devis.mode_installation, 'agricole')
         self.assertTrue(devis.lignes.filter(produit=pompe).exists())
         self.assertTrue(devis.lignes.filter(produit=self.variateur).exists())
+        # AGQ4 — une ligne par rôle du kit minimum ; l'installation est
+        # chiffrée par son barème (3 000 + 150 × panneaux).
+        self.assertTrue(devis.lignes.filter(produit=self.structure).exists())
+        installation = devis.lignes.get(produit=self.installation)
+        nb = sum(int(ligne.quantite) for ligne in devis.lignes.filter(
+            produit=self.panneau))
+        self.assertGreater(nb, 0)
+        self.assertEqual(installation.prix_unitaire,
+                         Decimal('3000') + Decimal('150') * nb)
         # Aucune distance saisie ⇒ aucune ligne câble DC.
         self.assertFalse(devis.lignes.filter(
             designation__icontains='câble dc').exists())
@@ -160,6 +177,30 @@ class DevisAutoAgricoleTests(TestCase):
         devis.refresh_from_db()
         self.assertEqual(devis.etude_params['besoin_mensuel']['nature'],
                          'debit_souhaite')
+
+    def test_structure_sans_prix_refuse_en_la_nommant(self):
+        """AGQ4 (D-AGQ-3) — structure au sol sans prix : 409 qui nomme
+        l'article du kit minimum, aucun devis (avant : 201 sans structure)."""
+        Produit.objects.filter(pk=self.structure.pk).update(
+            prix_vente=Decimal('0'))
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['detail'],
+                         'Structure au sol : prix à renseigner au catalogue')
+        self.assertEqual(rep.data['field'], 'kit.structure')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
+    def test_installation_absente_refuse_en_la_nommant(self):
+        Produit.objects.filter(pk=self.installation.pk).update(
+            is_archived=True)
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.installation')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
     def test_raccordement_inconnu_409_nommant_le_raccordement(self):
         """AGQ7 (C-AGQ-006) — raccordement inconnu : 409 qui nomme la saisie

@@ -1400,15 +1400,55 @@ def saisies_economie_pompage_du_lead(lead):
     return saisies or None
 
 
+#: AGQ4 (D-AGQ-3) — LE kit minimum du devis automatique agricole (D-AGR-8) :
+#: ``(clé de kit.inclus, libellé)``. Un rôle absent ou sans prix REFUSE le
+#: devis automatique en le nommant ; les options restent facultatives. La
+#: pompe ne compte pas en mode « existante » (aucune ligne pompe, D-AGR-7).
+ROLES_KIT_MINIMUM = (
+    ('pompe', 'Pompe'),
+    ('variateur', 'Variateur'),
+    ('panneaux', 'Panneaux'),
+    ('structure', 'Structure au sol'),
+    ('installation', 'Installation'),
+)
+
+
+def roles_minimum_manquants(sortie):
+    """AGQ4 — ``[{cle, libelle, motif}]`` des rôles du kit minimum absents
+    de ``kit.inclus`` ou sans prix connu (barème compris, AGQ5)."""
+    kit = (sortie or {}).get('kit') or {}
+    existante = ((sortie or {}).get('pompe') or {}).get('mode') == 'existante'
+    inclus = {ligne.get('cle'): ligne for ligne in kit.get('inclus') or ()}
+    champ_vide = ((sortie or {}).get('champ') or {}).get('nb_panneaux') is None
+    manquants = []
+    for cle, libelle in ROLES_KIT_MINIMUM:
+        if cle == 'pompe' and existante:
+            continue
+        ligne = inclus.get(cle)
+        if ligne is None:
+            if cle in ('panneaux', 'structure') and champ_vide:
+                motif = 'champ solaire non dimensionné (voir les alertes)'
+            else:
+                motif = 'aucun article au catalogue'
+        elif not ligne.get('prix_connu') or not ligne.get('produit'):
+            motif = 'prix à renseigner au catalogue'
+        else:
+            continue
+        manquants.append({'cle': cle, 'libelle': libelle, 'motif': motif})
+    return manquants
+
+
 def lignes_kit_auto(sortie):
     """AGR124 — le KIT MINIMUM de l'étude (``kit.inclus`` + options cochées
     par défaut, dont l'afficheur d'un variateur VEICHI) en lignes de devis
     ``[{produit_id, designation, quantite, role_pompage, cle}]``.
 
-    Seuls les articles PRICÉS deviennent des lignes ; une ligne « prix à
-    renseigner » ou sans quantité n'est JAMAIS un article gratuit : elle est
-    rendue dans ``omises`` (désignations) pour être nommée dans les alertes.
-    Rend ``(lignes, omises)``."""
+    Seuls les articles PRICÉS (prix ou barème) deviennent des lignes ; une
+    ligne « prix à renseigner » ou sans quantité n'est JAMAIS un article
+    gratuit : elle est rendue dans ``omises`` (désignations) pour être nommée
+    dans les alertes. AGQ4 — rend aussi ``manquants`` =
+    :func:`roles_minimum_manquants` (le kit minimum, qui REFUSE le devis).
+    Rend ``(lignes, omises, manquants)``."""
     kit = (sortie or {}).get('kit') or {}
     candidates = list(kit.get('inclus') or [])
     for option in kit.get('options') or []:
@@ -1431,4 +1471,4 @@ def lignes_kit_auto(sortie):
                        'quantite': Decimal(str(quantite)),
                        'role_pompage': ligne.get('role_pompage') or '',
                        'cle': ligne.get('cle') or ''})
-    return lignes, omises
+    return lignes, omises, roles_minimum_manquants(sortie)

@@ -430,11 +430,30 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
                     'mois_sous_tolerance') or ()) or '?'),
             field='debit_forage_m3h')
 
-    lignes, omises = lignes_kit_auto(sortie)
-    prix = {p.id: p.prix_vente for p in catalogue_de_la_societe(company)}
-    lignes = [dict(ligne, prix_unitaire=Decimal(str(prix[ligne['produit_id']])))
-              for ligne in lignes
-              if prix.get(ligne['produit_id']) and prix[ligne['produit_id']] > 0]
+    lignes, omises, manquants = lignes_kit_auto(sortie)
+    # AGQ4/AGQ5 — prix unitaire : le BARÈME de l'installation (prix fixe +
+    # par panneau, ``prix_forfait_ht``) s'il en porte un, sinon le prix de
+    # vente du produit.
+    from apps.ventes.domain.catalogue import (
+        porte_bareme_par_panneau, prix_forfait_ht)
+    produits = {p.id: p for p in catalogue_de_la_societe(company)}
+    nb_panneaux = sum(int(ligne['quantite']) for ligne in lignes
+                      if ligne.get('cle') == 'panneaux')
+    chiffrees = []
+    for ligne in lignes:
+        produit = produits.get(ligne['produit_id'])
+        if produit is None:
+            continue
+        # Barème appliqué à la seule ligne FORFAIT (installation, quantité 1),
+        # jamais à une ligne vendue à la quantité (double comptage).
+        forfait = (ligne.get('cle') == 'installation'
+                   and porte_bareme_par_panneau(produit))
+        montant = (prix_forfait_ht(produit, nb_panneaux) if forfait
+                   else produit.prix_vente)
+        if montant and montant > 0:
+            chiffrees.append(dict(ligne,
+                                  prix_unitaire=Decimal(str(montant))))
+    lignes = chiffrees
     if mode_pompe != 'existante' and (
             pompe.get('placeholder')
             or not any(ligne['role_pompage'] == 'pompe' for ligne in lignes)):
@@ -444,6 +463,13 @@ def _build_devis_auto_agricole(*, lead, user, company, taux_tva=None,
         if noms:
             message += ' — pompes à courbe sans prix : %s' % ', '.join(noms)
         raise AutoDevisError(message + '.', field='pompe')
+    # AGQ4 (D-AGQ-3) — kit minimum : un rôle absent ou sans prix refuse le
+    # devis en NOMMANT l'article (jamais un devis sans structure ni pose).
+    if manquants:
+        premier = manquants[0]
+        raise AutoDevisError(
+            '%s : %s' % (premier['libelle'], premier['motif']),
+            field='kit.%s' % premier['cle'])
 
     client = resolve_client_for_lead(lead)
     etude = dict(corps)
