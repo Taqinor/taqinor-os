@@ -324,8 +324,13 @@ class AgregateursChangesTests(unittest.TestCase):
     def test_lane_api_fuzz_pr_declaree(self):
         job = self.jobs["api-fuzz-pr"]
         self.assertIn("backend == 'true'", job["if"])
+        # CI-5MIN (23/10/2026) — la portee est calculee UNE fois par `changes`
+        # (sortie `fuzz_owners`) ; la matrice saute quand elle est vide.
+        self.assertIn("api_fuzz_scope.py proprietaires", _detect_step_script())
+        self.assertIn("fuzz_owners", self.jobs["changes"]["outputs"])
+        self.assertIn("needs.changes.outputs.fuzz_owners != ''", job["if"])
         script = " ".join(s.get("run", "") for s in job["steps"])
-        for fragment in ("api_fuzz_scope.py proprietaires", "api_fuzz_scope.py schema",
+        for fragment in ("api_fuzz_scope.py schema",
                          "api_fuzz_scope.py verdict", "--checks all",
                          "--phases coverage", "--max-time 1500",
                          "--shard \"${{ matrix.shard }}/8\""):
