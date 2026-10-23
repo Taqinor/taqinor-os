@@ -315,6 +315,34 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(saisies['mois_irrigation']['provenance']['origine'],
                          'lead')
 
+    def test_lead_butane_jours_irrigation_economie_calculee(self):
+        """AGQ10 (D-AGQ-6) — avec les jours d'irrigation par semaine du lead,
+        la dépense butane « par jour d'irrigation » se chiffre : le bloc
+        économie du devis automatique est ``calcule`` (plus ``omis``)."""
+        self._pompe('15000')
+        lead = self._lead(
+            pompe_alim_actuelle='butane',
+            butane_bouteilles_jour=Decimal('2'),
+            carburant_prix_unitaire_mad=Decimal('50'),
+            carburant_prix_declare_le=date(2026, 9, 12),
+            mois_irrigation=[4, 5, 6, 7, 8, 9, 10],
+            jours_irrigation_semaine=Decimal('5'))
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        saisies = Devis.objects.get(
+            pk=rep.data['id']).etude_params['saisies_economie_pompage']
+        self.assertEqual(
+            saisies['consommation']['jours_irrigation_par_semaine'], 5)
+        eco = self.api.get(
+            f"/api/django/ventes/devis/{rep.data['id']}/economie-pompage/")
+        self.assertEqual(eco.status_code, 200, eco.content[:500])
+        corps = eco.json()
+        self.assertEqual(corps['statut'], 'calcule', corps.get('omissions'))
+        # Σ mois cochés : 2 bouteilles × 5 j ÷ 7 × jours du mois × 50 MAD.
+        jours_du_mois = (30, 31, 30, 31, 31, 30, 31)  # avril → octobre
+        attendu = round(sum(2 * 5 * j / 7.0 * 50 for j in jours_du_mois), 2)
+        self.assertEqual(corps['depense_actuelle']['annuelle_mad'], attendu)
+
     def test_agnr39_cible_kwc_refusee_400_nommant_target_kwc(self):
         """AGNR39 — une puissance cible envoyée pour un lead agricole est
         refusée en la nommant, jamais ignorée en silence ; aucun devis."""

@@ -626,6 +626,12 @@
   },
   {
    "classe": "LeadDecimalField",
+   "nom": "jours_irrigation_semaine",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
    "nom": "distance_forage_champ_m",
    "read_only": false,
    "required": false

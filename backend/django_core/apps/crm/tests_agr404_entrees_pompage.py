@@ -168,6 +168,24 @@ class EntreesPompage(TestCase):
                 self.assertEqual(servie[cle], entree[cle],
                                  f"{entree['colonne']}.{cle}")
 
+    def test_jours_irrigation_semaine_servis_au_bloc_economie(self):
+        """AGQ10 (D-AGQ-6) — les jours d'irrigation par semaine du lead sont
+        servis vers ``saisies_economie_pompage.consommation`` : sans eux une
+        conso butane « par jour d'irrigation » laisse « Votre argent » omis."""
+        lead = self._lead(
+            pompe_alim_actuelle='butane', butane_bouteilles_jour=Decimal('2'),
+            jours_irrigation_semaine=Decimal('5'))
+        servies = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        jours = servies['jours_irrigation_semaine']
+        self.assertEqual(jours['valeur'], 5)
+        self.assertEqual(jours['cle_etude'], 'saisies_economie_pompage')
+        self.assertEqual(
+            jours['chemin'],
+            'saisies_economie_pompage.consommation.jours_irrigation_par_semaine')
+        # Champ vide : listé manquant, jamais un défaut.
+        vide = selectors.entrees_pompage_du_lead(self._lead())
+        self.assertIn('jours_irrigation_semaine', vide['manquants'])
+
     def test_lecture_filtree_par_societe(self):
         lead = self._lead(niveau_statique_m=Decimal('20'))
         autre, _ = Company.objects.get_or_create(
@@ -201,3 +219,21 @@ class EntreesPompageServiesAuDetail(TestCase):
         liste = self.api.get('/api/django/crm/leads/').data
         lignes = liste['results'] if 'results' in liste else liste
         self.assertNotIn('entrees_pompage', lignes[0])
+
+    def test_jours_irrigation_semaine_persiste_et_journalise(self):
+        """AGQ10 — enregistrer → rouvrir : valeur identique, chatter old→new ;
+        une valeur hors 0-7 est refusée en la nommant."""
+        url = f'/api/django/crm/leads/{self.lead.id}/'
+        rep = self.api.patch(url, {'jours_irrigation_semaine': '5'},
+                             format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        relu = self.api.get(url).data
+        self.assertEqual(Decimal(str(relu['jours_irrigation_semaine'])),
+                         Decimal('5'))
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.MODIFICATION,
+            field='jours_irrigation_semaine').exists())
+        trop = self.api.patch(url, {'jours_irrigation_semaine': '8'},
+                              format='json')
+        self.assertEqual(trop.status_code, 400, trop.data)
+        self.assertIn('jours_irrigation_semaine', trop.data)

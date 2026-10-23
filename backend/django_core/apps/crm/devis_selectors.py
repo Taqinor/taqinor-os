@@ -195,6 +195,10 @@ ENTREES_POMPAGE_CIBLES = (
      'saisies_economie_pompage.depense_unitaire_payee.valeur'),
     ('mois_irrigation', 'saisies_economie_pompage',
      'saisies_economie_pompage.mois_irrigation.mois'),
+    # AGQ10 (D-AGQ-6) — sans eux, une conso « par jour d'irrigation » (butane)
+    # laisse le bloc « Votre argent » omis.
+    ('jours_irrigation_semaine', 'saisies_economie_pompage',
+     'saisies_economie_pompage.consommation.jours_irrigation_par_semaine'),
 )
 
 

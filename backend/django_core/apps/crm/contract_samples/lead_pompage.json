@@ -188,6 +188,13 @@
       "question": "« Quels mois de l'année irriguez-vous ? »"
     },
     {
+      "nom": "jours_irrigation_semaine",
+      "type": "décimal",
+      "unite": "jours / semaine",
+      "question": "« Vous irriguez combien de jours par semaine en saison ? »",
+      "note": "AGQ10 (D-AGQ-6) : sans défaut ; exigé par une consommation « par jour d'irrigation » (butane) pour chiffrer la dépense actuelle"
+    },
+    {
       "nom": "distance_forage_champ_m",
       "type": "décimal",
       "unite": "m",
@@ -488,7 +495,8 @@
       "butane_bouteilles_jour": "saisies_economie_pompage.consommation (unite bouteille_12kg, periode jour_irrigation)",
       "carburant_litres_mois": "saisies_economie_pompage.consommation (unite litre, periode mois)",
       "carburant_prix_unitaire_mad": "saisies_economie_pompage.depense_unitaire_payee (saisi_le = carburant_prix_declare_le)",
-      "mois_irrigation": "saisies_economie_pompage.mois_irrigation (provenance déclarée)"
+      "mois_irrigation": "saisies_economie_pompage.mois_irrigation (provenance déclarée)",
+      "jours_irrigation_semaine": "saisies_economie_pompage.consommation.jours_irrigation_par_semaine (AGQ10, D-AGQ-6)"
     },
     "entrees_pompage.sans_cible": {
       "source_eau": "information affichée (fiche, visite) ; aucune entrée de calcul",

@@ -164,6 +164,7 @@ const fieldLabels = {
   carburant_prix_unitaire_mad: { label: 'Prix payé (MAD par bouteille ou par litre)', section: 'pompage', inputId: 'lf-carburant-prix' },
   depense_carburant_mad_mois: { label: 'Dépense carburant (MAD/mois)', section: 'pompage', inputId: 'lf-depense-carburant' },
   mois_irrigation: { label: 'Mois d’irrigation', section: 'pompage', inputId: 'lf-mois-irrigation' },
+  jours_irrigation_semaine: { label: 'Jours d’irrigation par semaine', section: 'pompage', inputId: 'lf-jours-irrigation-semaine' },
   distance_forage_champ_m: { label: 'Distance forage → champ (m)', section: 'pompage', inputId: 'lf-distance-forage-champ' },
   electricite_sur_place: { label: 'Électricité sur place', section: 'pompage', inputId: 'lf-electricite-sur-place' },
   autorisation_prelevement: { label: 'Autorisation de prélèvement (ABH)', section: 'pompage', inputId: 'lf-autorisation-prelevement' },

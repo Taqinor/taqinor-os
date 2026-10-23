@@ -120,7 +120,8 @@
     "butane_bouteilles_jour",
     "carburant_litres_mois",
     "carburant_prix_unitaire_mad",
-    "mois_irrigation"
+    "mois_irrigation",
+    "jours_irrigation_semaine"
    ]
   },
   "equip_chauffe_eau_creneau": null,
@@ -184,6 +185,7 @@
   "irrigation_methode": null,
   "is_archived": false,
   "is_deleted": false,
+  "jours_irrigation_semaine": null,
   "jours_ouverture": null,
   "langue_preferee": null,
   "lien_maps": "",

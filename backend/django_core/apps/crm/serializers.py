@@ -704,6 +704,14 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def validate_whatsapp(self, value):
         return self._canonical_phone(value)
 
+    def validate_jours_irrigation_semaine(self, value):
+        """AGQ10 (D-AGQ-6) — 0 < jours ≤ 7 ; vide reste vide (jamais un
+        défaut). Refus nommé, jamais un arrondi silencieux."""
+        if value is not None and not (0 < value <= 7):
+            raise serializers.ValidationError(
+                "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu).")
+        return value
+
     def validate_ville(self, value):
         """VREF — auto-correction de la ville à l'écriture (même règle que
         le webhook site et la sync Odoo) : une graphie connue, une forme

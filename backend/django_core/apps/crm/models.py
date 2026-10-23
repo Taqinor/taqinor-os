@@ -1096,8 +1096,8 @@ class Lead(SoftDeleteModel):
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text="Question à l'appel : « Quel débit voulez-vous, en m³ par "
                   'heure ? » (débit SOUHAITÉ, vide = pas encore posée). '
-                  'Servi à côté du débit livré, il ne fixe jamais seul le '
-                  'besoin.')
+                  'Débit souhaité (m³/h) : devient le débit de conception '
+                  "quand aucun volume n'est déclaré (D-AGQ-1).")
 
     # ── AGR400 — Pompage : les colonnes du contrat AGR1 (``lead_pompage.json``).
     # Toutes ``null=True`` : vide = « la question n'a pas encore été posée »,
@@ -1199,6 +1199,14 @@ class Lead(SoftDeleteModel):
         verbose_name="Mois d'irrigation",
         help_text="Question à l'appel : « Vous irriguez quels mois ? » "
                   '(liste de mois 1 à 12, vide = pas encore posée).')
+    # AGQ10 (D-AGQ-6) — la dépense butane « par jour d'irrigation » exige les
+    # jours d'irrigation par semaine : sans eux, le bloc « Votre argent » d'un
+    # devis automatique reste omis. Aucun défaut (vide = pas encore posée).
+    jours_irrigation_semaine = models.DecimalField(
+        max_digits=3, decimal_places=1, null=True, blank=True,
+        verbose_name="Jours d'irrigation par semaine",
+        help_text="Question à l'appel : « Vous irriguez combien de jours par "
+                  "semaine en saison ? » (1 à 7, vide = pas encore posée).")
     distance_forage_champ_m = models.DecimalField(
         max_digits=8, decimal_places=2, null=True, blank=True,
         verbose_name='Distance forage — panneaux (m)',

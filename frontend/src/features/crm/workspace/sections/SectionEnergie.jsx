@@ -607,6 +607,7 @@ const QUESTIONS_POMPAGE = {
   carburant_prix_unitaire_mad: "« Combien payez-vous la bouteille (ou le litre) ? »",
   depense_carburant_mad_mois: "« Combien dépensez-vous en carburant par mois ? »",
   mois_irrigation: "« Quels mois de l'année irriguez-vous ? »",
+  jours_irrigation_semaine: "« Vous irriguez combien de jours par semaine en saison ? »",
   distance_forage_champ_m: "« Quelle distance entre le forage et l'endroit où on poserait les panneaux ? »",
   electricite_sur_place: "« Avez-vous l'électricité sur place : monophasé, triphasé, ou pas du tout ? »",
   autorisation_prelevement: "« Avez-vous une autorisation de prélèvement de l'agence de bassin (ABH) ? »",
@@ -801,6 +802,10 @@ export function SectionPompage({ state, setField, errors = {} }) {
           <PompChoix data-field-anchor="lf-region-agricole" cle="region_agricole" ctx={ctx} choix={REGION_AGRICOLE} />
         </div>
         <PompMois data-field-anchor="lf-mois-irrigation" cle="mois_irrigation" ctx={ctx} />
+        {/* AGQ10 (D-AGQ-6) — sans eux, une conso butane « par jour d'irrigation » laisse « Votre argent » omis. */}
+        <div className="form-row">
+          <PompNombre data-field-anchor="lf-jours-irrigation-semaine" cle="jours_irrigation_semaine" ctx={ctx} placeholder="ex: 5" />
+        </div>
       </BlocPompage>
 
       <BlocPompage titre="Pompe actuelle & site">
