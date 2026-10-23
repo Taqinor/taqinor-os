@@ -97,15 +97,16 @@ class PreviewAvecLeadTests(_LeadPreviewBase):
         # Parité avec le chemin devis automatique : UNE occupation par lead.
         self.assertEqual(resp.data['profil']['occupation'],
                          occupation_du_lead(lead)[0])
-        # Un lead NON résidentiel garde le défaut pro (aucun signal) : le
-        # correctif n'impose pas la présence hors résidentiel.
+        # Décision fondateur du 23/10/2026 : la présence en journée est le
+        # défaut PARTOUT — un lead non résidentiel sans réponse ni profil
+        # d'activité la reçoit aussi (plus de repli ``absence_jour``).
         lead.type_installation = 'commercial'
         lead.save(update_fields=['type_installation'])
         resp = self.api.post('/api/django/ventes/etude-horaire/preview/', {
             'lead': lead.id, 'dimensionner': False,
         }, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertEqual(resp.data['profil']['occupation'], 'absence_jour')
+        self.assertEqual(resp.data['profil']['occupation'], 'presence_jour')
 
     def test_lead_seul_ancre_la_consommation_sans_facture_dans_le_corps(self):
         """Le lead porte sa PROPRE facture d'hiver : aucune facture à
