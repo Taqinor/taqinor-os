@@ -65,3 +65,39 @@ class ProposalErreurNeutreTests(TestCase):
         self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('onduleur', resp.json()['detail'])
         self.assertNotIn('DEV-ADEV31-1', resp.content.decode())
+
+    def test_refus_ci_premium_409_nomme(self):
+        # ADEV88 (C-ACI-012) — le refus nommé du rendu C&I (AMOT79) devient
+        # un 409 « Devis commercial incomplet : <motif> », journalisé en
+        # warning ; jamais le 500 neutre, jamais le texte brut (réf. devis).
+        from apps.ventes.quote_engine.builder import FRAGMENT_REFUS_CI
+        api = APIClient()
+        api.force_authenticate(self.user)
+        refus = ValueError(
+            f'{FRAGMENT_REFUS_CI} — devis DEV-ADEV31-1 : nomenclature trop '
+            'longue ; aucun repli legacy pour un devis commercial / '
+            'industriel')
+        with self.assertLogs('apps.ventes.views.devis_pdf', level='WARNING'):
+            with mock.patch(
+                    'apps.ventes.quote_engine.generate_premium_devis_pdf',
+                    side_effect=refus):
+                resp = api.get(
+                    '/api/django/ventes/devis/%s/proposal/' % self.devis.pk)
+        self.assertEqual(resp.status_code, 409, resp.content)
+        detail = resp.json()['detail']
+        self.assertTrue(detail.startswith('Devis commercial incomplet'), detail)
+        self.assertIn('nomenclature trop longue', detail)
+        self.assertNotIn('legacy', detail)
+        self.assertNotIn('DEV-ADEV31-1', detail)
+
+    def test_autre_erreur_reste_500_neutre_meme_avec_mot_ci(self):
+        # ADEV88 — une RuntimeError (même au texte proche) n'est PAS un refus
+        # C&I : le 500 neutre est inchangé.
+        api = APIClient()
+        api.force_authenticate(self.user)
+        with mock.patch(
+                'apps.ventes.quote_engine.generate_premium_devis_pdf',
+                side_effect=RuntimeError('Rendu premium C&I refusé — x')):
+            resp = api.get(
+                '/api/django/ventes/devis/%s/proposal/' % self.devis.pk)
+        self.assertEqual(resp.status_code, 500)
