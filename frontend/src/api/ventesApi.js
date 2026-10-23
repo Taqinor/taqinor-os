@@ -165,8 +165,7 @@ const ventesApi = {
   // ADEV80 — 4 études à calculer : budget de 120 s comme accepterDevis (le
   // timeout global de 20 s avortait → nginx 499 → re-clic → 2e brouillon) ;
   // le serveur est idempotent (rejeu < 120 s, verrou par lead).
-  creerDevisAuto: (data) => api.post('/ventes/devis/auto/', data,
-    { timeout: 120000 }),
+  creerDevisAuto: (data) => api.post('/ventes/devis/auto/', data, { timeout: 120000 }),
   // U3COMPOSE (26/08/2026) — DRY-RUN de la composition résidentielle : compose
   // le kit et rend les lignes SANS RIEN CRÉER (aucun devis, aucun statut,
   // règle #4). Même catalogue, même fonction pure, mêmes règles de gamme que
