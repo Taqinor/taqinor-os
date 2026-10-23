@@ -208,6 +208,16 @@ class DevisPdfActionsMixin:
                     and FRAGMENT_REFUS_SANS_ONDULEUR in str(exc)):
                 return Response({'detail': MSG_PROPOSITION_SANS_ONDULEUR},
                                 status=status.HTTP_409_CONFLICT)
+            # ADEV88 (C-ACI-012) — refus NOMMÉ du rendu premium C&I (AMOT79,
+            # repli legacy fermé) : 409 + motif du builder, jamais un 500.
+            from ..quote_engine.builder import FRAGMENT_REFUS_CI
+            if isinstance(exc, ValueError) and FRAGMENT_REFUS_CI in str(exc):
+                logger.warning('/proposal : rendu C&I refusé (devis %s) : %s',
+                               devis.pk, exc)
+                motif = str(exc).partition(' : ')[2].split(' ; aucun repli')[0]
+                return Response(
+                    {'detail': f'Devis commercial incomplet : {motif}'},
+                    status=status.HTTP_409_CONFLICT)
             # ADEV31 (C-ADEV-043) — jamais le texte brut de l'exception au
             # client (hôte, bucket, chemin) : message neutre, pile au journal.
             logger.warning("devis_pdf.DevisPdfActionsMixin.proposal : erreur ignorée (mode dégradé)", exc_info=True)

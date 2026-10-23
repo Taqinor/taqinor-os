@@ -146,3 +146,36 @@ class Ciq341Synthese(SimpleTestCase):
             with self.subTest(etude=etude, eco=eco):
                 doc = HTML(string=_html(_data(etude, eco))).render()
                 self.assertEqual(len(doc.pages), 4)
+
+
+class Amot80OffreFermeEtTitresCfo(SimpleTestCase):
+    """AMOT80 — « offre ferme » seulement sans réserve de visite ET sur un
+    tarif lu sur la facture du client ; titres CFO seulement avec un flux."""
+
+    def _sans_reserve(self, etude, economie):
+        d = _data(etude, economie)
+        d["etude"]["etude_ci"]["sous_reserve_visite"] = {"valeur": False,
+                                                         "motif": None}
+        return _texte(_page1(d))
+
+    def test_offre_ferme_jamais_sur_une_grille_de_repli(self):
+        # ``exemple`` : tarif d'origine grille_officielle (repli).
+        self.assertNotIn("offre ferme", self._sans_reserve("exemple",
+                                                           "exemple"))
+
+    def test_offre_ferme_sur_facture_declaree_sans_reserve(self):
+        p1 = self._sans_reserve("exemple_industriel_mt",
+                                "exemple_industriel_mt")
+        self.assertIn("Statut de l'étude offre ferme", p1)
+
+    def test_jamais_offre_ferme_sous_reserve(self):
+        p1 = _texte(_page1(_data("exemple_industriel_mt",
+                                 "exemple_industriel_mt")))
+        self.assertIn("Estimation sous réserve de la visite technique", p1)
+        self.assertNotIn("offre ferme", p1)
+
+    def test_titres_cfo_seulement_avec_un_flux(self):
+        self.assertIn("Analyse de rentabilité (CFO)", _texte(_html(_data())))
+        sans = _texte(_html(_data(economie=None)))
+        self.assertNotIn("Analyse de rentabilité (CFO)", sans)
+        self.assertNotIn("Rentabilité sur 25 ans", sans)

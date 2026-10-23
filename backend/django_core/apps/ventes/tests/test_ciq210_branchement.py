@@ -296,7 +296,11 @@ class BuilderEconomieCiTest(_BaseDevis):
         data = self._data(devis)
         self.assertEqual(data['economie_ci']['tarif']['origine'],
                          tarif_ci.ORIGINE_FACTURE)
-        self.assertEqual(data['tarif_mt_mention'], MENTION_MT)
+        # AMOT81 (C-ACI-016) — un tarif MT lu sur la FACTURE du client ne porte
+        # plus la mention ONEE (réservée à l'origine grille) : la mention dit
+        # que les prix sont ceux de sa facture.
+        self.assertNotEqual(data['tarif_mt_mention'], MENTION_MT)
+        self.assertIn('votre facture', data['tarif_mt_mention'])
 
     def test_economie_du_calepinage_n_apparait_nulle_part(self):
         from apps.ventes.models import Devis

@@ -61,5 +61,5 @@ test('CIQ126 — plus aucun composeur JavaScript : le C&I passe par le moteur se
   const res = CODE.indexOf("if (modeInstallation === 'residentiel') {\n      if (kwp <= 0) {")
   const ci = CODE.indexOf('await ventesApi.etudeCiPreview(corps)')
   assert.ok(res > -1 && ci > res)
-  assert.match(CODE.slice(ci, ci + 300), /lignesDepuisCompositionCi\(data\?\.composition, produits\)/)
+  assert.match(CODE.slice(ci, ci + 300), /lignesDepuisCompositionCi\(data\?\.composition, produits, tvaStandard\)/)
 })

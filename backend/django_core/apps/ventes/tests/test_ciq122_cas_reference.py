@@ -23,6 +23,7 @@ import json
 import unittest
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from apps.stock.management.commands.seed_catalogue import CATALOGUE, ht_at
@@ -48,13 +49,32 @@ MODULE = {'produit': 9001, 'designation': 'Panneau Jinko 710W', 'pmax_wc': 710,
 STRUCTURE = {'id': 9002, 'nom': 'Structure bac acier (test)', 'role_ci': 'structure_ci',
              'role_devis': '', 'type_pose': 'bac_acier', 'fiche': {}, 'prix_connu': True,
              'eligible_ci': True, 'prix_vente_ht': _prix_seed('STR-ACIER')}
+#: ADEV79 (D-ACI-6=a) — coffrets DC et disjoncteurs AC sont des rôles de
+#: TAILLE : sans prix, aucune taille. Articles de TEST tarifés, un disjoncteur
+#: par calibre des onduleurs Huawei seedés (16 → 250 A).
+COFFRET_DC = {'id': 9003, 'nom': 'Coffret DC (test)', 'role_ci': 'coffret_dc',
+              'role_devis': '', 'type_pose': '', 'fiche': {}, 'prix_connu': True,
+              'eligible_ci': True, 'prix_vente_ht': Decimal('1500')}
+DISJONCTEURS = [{'id': 9100 + i, 'nom': 'Disjoncteur AC %g A 4P (test)' % calibre,
+                 'role_ci': 'protection_ac', 'role_devis': '', 'type_pose': '',
+                 'fiche': {'prot_type': 'disjoncteur', 'prot_cote': 'ac',
+                           'prot_calibre_a': calibre, 'prot_poles': 4},
+                 'prix_connu': True, 'eligible_ci': True, 'prix_vente_ht': Decimal('900')}
+                for i, calibre in enumerate((16.0, 25.0, 32.0, 40.0, 80.0, 160.0, 250.0))]
 CATALOGUE_TEST = {
-    'elements': [STRUCTURE],
+    'elements': [STRUCTURE, COFFRET_DC] + DISJONCTEURS,
     'onduleurs': _catalogue_huawei(),
     'module': MODULE,
     'prix_par_id': {MODULE['produit']: MODULE['prix_vente_ht'],
-                    STRUCTURE['id']: STRUCTURE['prix_vente_ht']},
+                    STRUCTURE['id']: STRUCTURE['prix_vente_ht'],
+                    COFFRET_DC['id']: COFFRET_DC['prix_vente_ht'],
+                    **{d['id']: d['prix_vente_ht'] for d in DISJONCTEURS}},
 }
+#: ADEV79 — la pose (structure, modules) est un rôle de taille : forfaits de
+#: TEST sourcés (réglage société injecté, aucune base).
+REGLAGES_TEST = SimpleNamespace(tva_standard=None, forfaits_ci={
+    cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ122 de test'}
+    for cle in ('pose_structure', 'pose_modules')})
 
 
 def _corps(**extra):
@@ -73,7 +93,7 @@ def _corps(**extra):
 
 def _etudier(**extra):
     with mock.patch.object(etude_ci, 'lire_catalogue_ci', return_value=CATALOGUE_TEST), \
-            mock.patch.object(etude_ci, '_reglages_societe', return_value=None), \
+            mock.patch.object(etude_ci, '_reglages_societe', return_value=REGLAGES_TEST), \
             mock.patch.object(etude_ci, '_aujourdhui', return_value=datetime.date(2026, 10, 5)), \
             mock.patch.object(etude_ci, 'lire_production', return_value=(
                 PVGIS['productible_mensuel'], PVGIS['formes_saison'], PVGIS['source'])):

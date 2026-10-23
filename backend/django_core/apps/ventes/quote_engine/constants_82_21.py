@@ -158,6 +158,25 @@ MENTION_MT = (
     "2026 : 20 %)"
 )
 
+#: AMOT84 — MENTION_MT dans la langue du document (le français EST la
+#: constante ci-dessus ; en/ar = traductions, mêmes dates, mêmes taux).
+TEXTES_MENTION_MT = {
+    "fr": MENTION_MT,
+    "en": ('ONEE "General Tariff (MT)" schedule, prices incl. VAT as '
+           "published on one.org.ma (recorded on 03/10/2026; the page states "
+           "18 % VAT, 2026 legal rate: 20 %)"),
+    "ar": ("تعريفة المكتب الوطني للكهرباء « التعريفة العامة (الجهد "
+           "المتوسط) »، أثمنة شاملة للضريبة كما نُشرت على one.org.ma (بتاريخ "
+           "03/10/2026؛ تشير الصفحة إلى ضريبة 18 %، والسعر القانوني لسنة 2026: "
+           "20 %)"),
+}
+
+
+def mention_mt(langue=None):
+    """AMOT84 — ``MENTION_MT`` dans la langue du document (repli français)."""
+    return TEXTES_MENTION_MT.get(langue) or MENTION_MT
+
+
 #: Fonction de référence des postes (ré-export de la fondation).
 poste_horaire = _officiels.poste_horaire
 

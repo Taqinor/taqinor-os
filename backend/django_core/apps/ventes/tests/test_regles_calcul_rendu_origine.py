@@ -151,6 +151,24 @@ CLES_HORS_RENDU_ORIGINE = (
     ('libelles_document', 'agr_base_besoin_agronomique'),
     # Libellé « suite » des CGV tronquées, ajouté au catalogue sans chiffre.
     ('libelles_document', 'ci_cgv_suite'),
+    # Groupe ACI (AMOT80/82/83/84, 23/10/2026) — libellés du catalogue sans
+    # chiffre : 22 ajoutés (ci_*, op_reserve_visite, op_unite_ans), 1 retiré
+    # (lg_prix_onee_hausse, D-ACI-10=a) et 2 reformulés (ci_confirmer_etude_ci,
+    # ci_etape_installation_s). Le catalogue entier est servi à CHAQUE devis :
+    # ces clés sont retirées des deux côtés et le golden a été repris au code
+    # d'origine (origin/main 07c1b78c9) avec ce masque — HEAD et origin/main
+    # rendent les 162 cas à l'identique hors ces libellés (vérifié par dump).
+    *(('libelles_document', cle) for cle in (
+        'ci_dossier_raccordement', 'ci_ind_lcoe_non_actualise',
+        'ci_ind_motif_invest', 'ci_ind_sens_motif_sans_charge',
+        'ci_invest_non_chiffre', 'ci_invest_non_chiffre_1',
+        'ci_invest_non_chiffre_n', 'ci_non_chiffre_sans_motif',
+        'ci_reserve_profil', 'ci_reserve_puissance', 'ci_reserve_site_mt',
+        'ci_reserve_surface', 'ci_reserve_tension', 'ci_retour_estime_base',
+        'ci_src_economie', 'ci_src_horizon', 'ci_src_methode',
+        'ci_src_onduleur', 'ci_src_production', 'ci_suivi_production_inclus',
+        'op_reserve_visite', 'op_unite_ans', 'lg_prix_onee_hausse',
+        'ci_confirmer_etude_ci', 'ci_etape_installation_s')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

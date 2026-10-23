@@ -1839,13 +1839,16 @@ class TestQjr154EchappementEtudeEtAcceptation(SimpleTestCase):
 
     # ── le legacy garde son propre échappement (il reçoit les données brutes) ─
     def test_le_legacy_echappe_le_nom_d_acceptation_a_l_ingestion(self):
-        """ERR37 échappait le nom et l'adresse du client, PAS celui-ci."""
+        # ERR37 échappait le nom et l'adresse du client, PAS celui-ci.
         from ._moteur_fixtures import html_legacy
         html = html_legacy("deux", accepte_par_nom=self.PIEGE,
                            date_acceptation=self.DATE_ACC)
         self.assertIn(self.DATE_ACC, html)
         self._sans_chevron_brut(html)
         self.assertNotIn("&amp;lt;", html)
+        # AMOT82 (D-ACI-10=a, QRES54) — plus aucun badge « Prix ONEE en
+        # hausse » sur le document résidentiel legacy (tarif constant).
+        self.assertNotIn("Prix ONEE en hausse", html)
 
     # ── la garde ne change rien à un devis normal ───────────────────────────
     def test_une_etude_sans_caractere_dangereux_traverse_au_bit_pres(self):

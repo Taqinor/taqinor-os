@@ -20,7 +20,7 @@
 import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, uniq,
-  nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner,
+  nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner, tariferPostesCiDemo,
 } from './helpers'
 
 const ANNEE_FACTURES = new Date().getFullYear() - 1
@@ -71,6 +71,9 @@ test.afterAll(async ({ request }) => {
 test('CIQ346 — créer (MT, 12 factures, taux d’actualisation déclaré), rouvrir, ré-enregistrer : objet identique', async ({ page, request }) => {
   test.setTimeout(300_000)
   const lead = await premierLead(request)
+  // ADEV81 / D-ACI-8 (23/10/2026) — un investissement non chiffré n'imprime
+  // ni retour, ni TRI, ni VAN : la démo tarifie ses postes C&I d'abord.
+  await tariferPostesCiDemo(request)
   await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })

@@ -1,0 +1,36 @@
+{
+  "sha": "9ce97f9d4050a5759763165b55474287fe415cae",
+  "date": "2026-10-23",
+  "groupe": "ADEV",
+  "verdict": "PASS",
+  "couvre": [
+    "ADEV84"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-ACI-5",
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ADEV/traces/2026-10-23/ACI-P5-generateur.txt",
+      "taches": [
+        "ADEV84"
+      ],
+      "notes": [
+        "générateur commercial : 17 lignes depuis la composition serveur, repères « à chiffrer après visite » (qté 0) et « prix à renseigner », bandeau avec un lien par poste (/stock, /parametres), TVA société"
+      ]
+    }
+  ]
+}

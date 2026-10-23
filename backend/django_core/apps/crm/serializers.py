@@ -725,14 +725,16 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         # structurée : ``manquants_detail`` [{champ, label}] (champ = nom du
         # champ Lead, cible de la puce) et ``requis`` (groupes « l'un des »).
         # ``manquants`` et ``message`` inchangés.
-        detail = champs_manquants_detail(obj)
+        # ALEA47 — `requis` calculé UNE fois (la règle du rythme y est lue).
+        requis = champs_requis(obj)
+        detail = champs_manquants_detail(obj, requis)
         manquants = [entree['label'] for entree in detail]
         return {
             'pret': not manquants,
             'manquants': manquants,
             'message': message_manquants(manquants) if manquants else None,
             'manquants_detail': detail,
-            'requis': champs_requis(obj),
+            'requis': requis,
             # AGR403 (D-AGR-4) — {requise, motifs} pour un agricole, null
             # ailleurs : une information, jamais un blocage de `pret`.
             'visite_point_eau_avant_devis': visite_point_eau_avant_devis(obj),

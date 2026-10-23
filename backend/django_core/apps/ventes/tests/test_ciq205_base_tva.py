@@ -108,3 +108,129 @@ class ResolutionTest(SimpleTestCase):
         deux = eco.lire_saisie_tva(une)
         self.assertEqual(une, saisie)
         self.assertEqual(deux, une)
+
+
+# ── ADEV81 — investissement incomplet (D-ACI-8=a) ───────────────────────────
+
+def _assembler(investissement, lignes=None, *, controle_lignes=False,
+               apercu=None):
+    from apps.ventes.tests.test_ciq210_branchement import _apercu
+    return eco.assembler_economie_ci(
+        apercu if apercu is not None else _apercu('mt'),
+        investissement=investissement, lignes=lignes,
+        mode_installation='industriel', controle_lignes=controle_lignes)
+
+
+def _ligne(designation, ht, *, panneau=False, onduleur=False):
+    return {'designation': designation, 'ht': ht, 'ttc': round(ht * 1.2, 2),
+            'optionnelle': False, 'onduleur': onduleur, 'panneau': panneau,
+            'role_ci': None}
+
+
+def _omission_investissement(bloc):
+    return next((o for o in bloc['omissions']
+                 if o['cle'] == 'investissement_mad'), None)
+
+
+class InvestissementNonChiffreTest(SimpleTestCase):
+    """ADEV81 — jamais « retour 0 an » ni « TRI 895 % » sur un investissement
+    nul ou partiel : flux vides, indicateurs nuls, omission nommée ;
+    l'économie de l'année 1, elle, reste servie."""
+
+    def _assert_non_chiffre(self, bloc):
+        self.assertEqual(bloc['statut'], 'calcule')
+        omis = _omission_investissement(bloc)
+        self.assertIsNotNone(omis)
+        self.assertTrue(omis['motif'].startswith(
+            'investissement non encore chiffré'), omis['motif'])
+        for cle in ('flux_ht', 'flux_ttc'):
+            if bloc[cle] is not None:
+                self.assertEqual(bloc[cle]['flux'], [])
+                self.assertIsNone(bloc[cle]['retour_ans'])
+        ind = bloc['indicateurs']
+        self.assertIsNone(ind['retour_ans'])
+        self.assertIsNone(ind['tri_pct'])
+        self.assertIsNone(ind['lcoe_mad_kwh'])
+        self.assertEqual(bloc['jalons'], [])
+        self.assertGreater(bloc['economie_annee1']['total_mad'], 0)
+
+    def test_montant_refuse_zero_pour_l_investissement(self):
+        self.assertIsNone(eco._montant(0, strictement_positif=True))
+        self.assertIsNone(eco._montant('0.00', strictement_positif=True))
+        self.assertEqual(eco._montant(0), 0.0)
+        res = eco.base_economique('oui', investissement={'ht': 0, 'ttc': 0})
+        self.assertIsNone(res['investissement_ht_mad'])
+        self.assertIsNone(res['base_amortissable_mad'])
+
+    def test_investissement_nul_aucun_flux_omission_posee(self):
+        bloc = _assembler({'ht': 0.0, 'ttc': 0.0})
+        self._assert_non_chiffre(bloc)
+        self.assertEqual(_omission_investissement(bloc)['motif'],
+                         'investissement non encore chiffré (3 articles '
+                         'sans prix)')
+
+    def test_mille_mad_sur_deux_lignes_sans_panneau_idem(self):
+        lignes = [_ligne('Onduleur réseau Huawei 50kW Triphasé', 800.0,
+                         onduleur=True),
+                  _ligne('Smart Meter', 200.0)]
+        bloc = _assembler({'ht': 1000.0, 'ttc': 1200.0}, lignes,
+                          controle_lignes=True)
+        self._assert_non_chiffre(bloc)
+
+    def test_sans_controle_des_lignes_le_meme_devis_est_chiffre(self):
+        """Test-du-test : le contrôle des lignes est ce qui retient le
+        « retour 1 an » de 1 000 MAD (sinon il est imprimé)."""
+        lignes = [_ligne('Smart Meter', 1000.0)]
+        bloc = _assembler({'ht': 1000.0, 'ttc': 1200.0}, lignes)
+        self.assertIsNone(_omission_investissement(bloc))
+        self.assertIsNotNone(bloc['indicateurs']['retour_ans'])
+
+    def test_article_de_taille_a_renseigner_absent_du_devis(self):
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        apercu = _apercu('mt')
+        composition = apercu['composition']
+        composition['lignes'].insert(0, {
+            'role': 'panneau', 'produit': 7, 'designation': 'Module 580 Wc',
+            'quantite': 91, 'unite': 'u', 'prix_connu': False,
+            'motif': 'prix à renseigner', 'a_confirmer_visite': False})
+        composition['prix_a_renseigner'].insert(0, 'Module 580 Wc')
+        lignes = [_ligne('Panneau 550W générique', 400000.0, panneau=True),
+                  _ligne('Onduleur réseau Huawei 50kW Triphasé', 60000.0,
+                         onduleur=True)]
+        bloc = _assembler({'ht': 460000.0, 'ttc': 552000.0}, lignes,
+                          controle_lignes=True, apercu=apercu)
+        self._assert_non_chiffre(bloc)
+        self.assertEqual(_omission_investissement(bloc)['motif'],
+                         'investissement non encore chiffré (4 articles '
+                         'sans prix)')
+
+    def test_article_de_taille_a_chiffrer_apres_visite(self):
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        apercu = _apercu('mt')
+        composition = apercu['composition']
+        composition['prix_a_renseigner'] = []
+        composition['a_chiffrer_visite'] = [
+            'Onduleur réseau Huawei 50kW Triphasé']
+        lignes = [_ligne('Panneau 550W', 400000.0, panneau=True)]
+        bloc = _assembler({'ht': 400000.0, 'ttc': 480000.0}, lignes,
+                          controle_lignes=True, apercu=apercu)
+        self._assert_non_chiffre(bloc)
+        self.assertEqual(_omission_investissement(bloc)['motif'],
+                         'investissement non encore chiffré (1 article '
+                         'sans prix)')
+
+    def test_investissement_complet_toujours_chiffre(self):
+        # D-ACI-2 (a) : « complet » = aucun article de la composition laissé
+        # hors devis (ni « prix à renseigner », ni « à chiffrer après visite »).
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        apercu = _apercu('mt')
+        apercu['composition']['prix_a_renseigner'] = []
+        apercu['composition']['a_chiffrer_visite'] = []
+        lignes = [_ligne('Panneau 550W', 700000.0, panneau=True),
+                  _ligne('Onduleur réseau Huawei 50kW Triphasé', 200000.0,
+                         onduleur=True)]
+        bloc = _assembler({'ht': 900000.0, 'ttc': 1080000.0}, lignes,
+                          controle_lignes=True, apercu=apercu)
+        self.assertIsNone(_omission_investissement(bloc))
+        self.assertIsNotNone(bloc['indicateurs']['retour_ans'])
+        self.assertTrue(bloc['flux_ht']['flux'])
