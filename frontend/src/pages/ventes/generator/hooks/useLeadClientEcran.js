@@ -9,7 +9,7 @@ import { estimerMois } from '../../../../features/ventes/solar'
 import ventesApi from '../../../../api/ventesApi'
 // AGQ22 — libellé du champ du lead nommé par un 409 (carte unique).
 import fieldLabels from '../../../../features/crm/workspace/fieldLabels'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export function useLeadClientEcran(ctx) {
   const {
@@ -159,8 +159,13 @@ export function useLeadClientEcran(ctx) {
   // agricole (pompage, mêmes appels que le flux manuel) ou industriel
   // (dimensionnement factures + étude d'autoconsommation comme en manuel).
   // On lit le lead DIRECTEMENT (l'état posé par applyLead est asynchrone).
+  // AGQ25 (C-AGQ-024) — le journal `alertes` du devis automatique serveur
+  // (étude pompage, articles « prix à renseigner » omis, internes C&I) : le
+  // même que celui de la fiche lead, plus jamais perdu sur ce chemin.
+  const [alertesAuto, setAlertesAuto] = useState([])
   const runAutoQuote = async (lead, discountStr) => {
     setSaving(true)
+    setAlertesAuto([])
     // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
     // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
     try {
@@ -168,7 +173,7 @@ export function useLeadClientEcran(ctx) {
       // les quatre marchés sont créés par le SERVEUR, qui lit lui-même le
       // catalogue, les marques épinglées (PVMRQ) et l'ordre des lignes de la
       // société (PVORD) : rien de cela ne part d'ici.
-      const devisId = await createAutoQuote({ lead, discountStr, bareme: baremeSociete })
+      const devisId = await createAutoQuote({ lead, discountStr, bareme: baremeSociete, onAlertes: setAlertesAuto })
       finish(devisId)
     } catch (err) {
       // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ du lead (`field` du
@@ -185,6 +190,6 @@ export function useLeadClientEcran(ctx) {
   }
 
   return {
-    applyLead, applyClient, runAutoQuote,
+    applyLead, applyClient, runAutoQuote, alertesAuto,
   }
 }

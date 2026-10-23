@@ -32,6 +32,8 @@ import { estGesteHorsPanneau } from './gesteHorsPanneau'
 // AGQ22 — un 409 qui nomme un champ de la fiche : même saut que les puces.
 import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
+// AGQ25 — le journal du devis automatique, même rendu que le générateur.
+import AlertesDevisAuto from './AlertesDevisAuto'
 import {
   Button, Input, Spinner, Segmented, Checkbox, Sheet, SheetContent, StatusPill,
 } from '../../../ui'
@@ -537,22 +539,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'preview' && (
             <div className="ldp-preview">
               {/* AGR126 — ce que le devis automatique serveur signale (jamais
-                  un chiffre inventé : le message du serveur, tel quel). */}
-              {alertes.length > 0 && (
-                <div className="form-error-box" role="status" data-testid="ldp-alertes-auto">
-                  <strong>Alertes du devis automatique :</strong>
-                  <ul>
-                    {alertes.map((a, i) => (
-                      <li key={`${a.code || 'alerte'}-${i}`}>
-                        {/* CIQ127 — une alerte INTERNE du moteur (C&I) n'atteint
-                            jamais le client : marquée pour le vendeur. */}
-                        {a.interne === true && <strong data-testid="ldp-alerte-interne">Vendeur seulement — </strong>}
-                        {a.message || a.code}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                  un chiffre inventé : le message du serveur, tel quel).
+                  AGQ25 — rendu UNIQUE, partagé avec le générateur. */}
+              <AlertesDevisAuto alertes={alertes} />
               {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
                   (envoyé : le client verra la version corrigée) ; figé →
                   « Réviser ». Le détail est déjà lu (getDevisById). */}

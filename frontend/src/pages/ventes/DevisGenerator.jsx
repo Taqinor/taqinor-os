@@ -41,6 +41,8 @@ import {
   POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
 } from '../../features/ventes/etudePompagePreviewPur'
 import { entreesPompageDuLead } from '../../features/ventes/quote/entreesPompageLead'
+// AGQ25 — journal du devis automatique, rendu unique partagé avec la fiche lead.
+import AlertesDevisAuto from '../crm/leads/AlertesDevisAuto'
 import {
   ECO_POMPAGE_VIDE, ATTESTATION_VIDE,
 } from '../../features/ventes/quote/etudeMarcheBloc'
@@ -1202,7 +1204,7 @@ export default function DevisGenerator({
 
   // SPL50 — lien lead/client du devis (déplacé tel quel dans le hook ; l'effet d'arrivée du lead reste plus bas).
   const {
-    applyLead, applyClient, runAutoQuote,
+    applyLead, applyClient, runAutoQuote, alertesAuto,
   } = useLeadClientEcran({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
@@ -1719,6 +1721,8 @@ export default function DevisGenerator({
                 <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
               )}
             </div>
+            {/* AGQ25 — le journal du devis automatique (même rendu que la fiche lead). */}
+            <AlertesDevisAuto alertes={alertesAuto} />
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
               <Button
                 onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}
