@@ -1192,7 +1192,7 @@
               "base_publiee": "ttc",
               "derive_ht_estimation": true,
               "source": "grille ONEE BT patenté 0-150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)",
-              "releve_le": "2026-10-03"
+              "releve_le": "2025-02-16"
             },
             {
               "poste": "tranche_2",
@@ -1201,7 +1201,7 @@
               "base_publiee": "ttc",
               "derive_ht_estimation": true,
               "source": "grille ONEE BT patenté > 150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)",
-              "releve_le": "2026-10-03"
+              "releve_le": "2025-02-16"
             }
           ],
           "prime_fixe_annuelle_mad": null,

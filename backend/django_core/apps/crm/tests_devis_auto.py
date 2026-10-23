@@ -68,30 +68,42 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
         return Lead(nom='Pro', **kw)
 
     def test_commercial_mad_sans_kwh_pret_source_facture(self):
+        # ALEA47 — la facture en MAD ne compte qu'avec un contrat BT déclaré
+        # (et le moteur exige aussi une activité : bureau = archétype).
         lead = self._lead(type_installation='commercial',
-                          facture_hiver=Decimal('25000'))
+                          facture_hiver=Decimal('25000'),
+                          contrat_electricite='bt_patente',
+                          categorie_commerciale='bureau')
         self.assertEqual(champs_manquants(lead), [])
         self.assertEqual(source_conso(lead), 'facture_hiver')
+        lead.contrat_electricite = None
+        self.assertIsNone(source_conso(lead))
 
     def test_commercial_mt_et_mad_seul_pas_pret(self):
         lead = self._lead(type_installation='commercial',
                           tension_raccordement='mt',
-                          facture_hiver=Decimal('25000'))
+                          facture_hiver=Decimal('25000'),
+                          categorie_commerciale='bureau')
         self.assertEqual(champs_manquants(lead), [LIB_PRO['commercial']])
         self.assertIsNone(source_conso(lead))
 
     def test_industriel_mad_seul_tension_vide_pas_pret(self):
         lead = self._lead(type_installation='industriel',
-                          facture_hiver=Decimal('40000'))
+                          facture_hiver=Decimal('40000'),
+                          contrat_electricite='bt_patente')
         detail = champs_manquants_detail(lead)
+        # ALEA47 — + le rythme (aucun archétype industriel).
         self.assertEqual([e['champ'] for e in detail],
-                         ['conso_mensuelle_kwh'])
+                         ['conso_mensuelle_kwh', 'jours_ouverture'])
         self.assertEqual(detail[0]['label'], LIB_PRO['industriel'])
 
     def test_industriel_bt_declaree_et_mad_pret(self):
         lead = self._lead(type_installation='industriel',
                           tension_raccordement='bt', tension_source='declare',
-                          facture_hiver=Decimal('40000'))
+                          facture_hiver=Decimal('40000'),
+                          contrat_electricite='bt_force_motrice',
+                          regime_equipes='continu',
+                          jours_ouverture=[1, 2, 3, 4, 5, 6, 7])
         self.assertEqual(champs_manquants(lead), [])
         # Défaut visible du site : la basse tension n'est PAS déclarée.
         lead.tension_source = 'site_defaut_visible'
@@ -100,7 +112,8 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
     def test_industriel_releve_seul_pret(self):
         lead = self._lead(type_installation='industriel', releve_conso={
             'mois': [{'mois': '2026-08', 'kwh': '40000.00'}],
-            'source': 'lu_sur_facture'})
+            'source': 'lu_sur_facture'}, contrat_electricite='bt_patente',
+            regime_equipes='3x8', jours_ouverture=[1, 2, 3, 4, 5, 6])
         self.assertEqual(champs_manquants(lead), [])
         self.assertEqual(source_conso(lead), 'releve_conso')
 
@@ -131,10 +144,11 @@ class TestDevisAutoProCIQ404(SimpleTestCase):
         self.assertEqual(champs_requis(self._lead()), [['facture_hiver']])
 
     def test_exemples_commercial_et_industriel_du_contrat(self):
+        # ALEA47 — contrat BT déclaré, rythme manquant (aucune activité).
         commercial = self._lead(
             type_installation='commercial', tension_raccordement='bt',
             tension_source='declare', facture_hiver=Decimal('4000'),
-            type_surface='toiture')
+            type_surface='toiture', contrat_electricite='bt_patente')
         self.assertEqual(
             _bloc_pro(commercial),
             CONTRAT_DEVIS_AUTO['exemple_commercial']['devis_auto'])
@@ -225,10 +239,13 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             champs_requis(Lead(nom='x', ete_differente=True)),
             [['facture_hiver'], ['facture_ete']])
         for mode in ('industriel', 'commercial'):
-            # CIQ404 — groupe pro du contrat CIQ1.
+            # CIQ404 — groupe pro du contrat CIQ1 ; ALEA47 — + le contrat et
+            # le rythme que le moteur exige (ici tout manque).
             self.assertEqual(champs_requis(Lead(nom='x', type_installation=mode)),
                              [['conso_mensuelle_kwh', 'bill_kwh',
-                               'releve_conso', 'facture_hiver']])
+                               'releve_conso', 'facture_hiver'],
+                              ['contrat_electricite'], ['jours_ouverture'],
+                              ['heure_debut', 'regime_equipes']])
 
     def test_sortie_reelle_egale_l_exemple_agricole_du_contrat(self):
         attendu = CONTRAT_DEVIS_AUTO['exemple_agricole']['devis_auto']
@@ -288,12 +305,19 @@ class TestChampsManquants(TestCase):
                          ['facture hiver', 'facture été'])
 
     def test_industriel_and_commercial_need_conso(self):
+        # ALEA47 — kWh seul ≠ prêt : contrat + rythme exigés aussi.
         for mode in ('industriel', 'commercial'):
-            lead = self._lead(type_installation=mode)
+            lead = self._lead(type_installation=mode,
+                              contrat_electricite='bt_patente',
+                              regime_equipes='3x8',
+                              jours_ouverture=[1, 2, 3, 4, 5, 6, 7])
             self.assertEqual(champs_manquants(lead),
                              [LIB_PRO[mode]], mode)
             lead.conso_mensuelle_kwh = 1234.5
             self.assertEqual(champs_manquants(lead), [], mode)
+            lead.contrat_electricite = None
+            self.assertEqual(champs_manquants(lead),
+                             ["Contrat d'électricité"], mode)
 
     def test_agricole_needs_the_two_hydraulic_groups(self):
         lead = self._lead(type_installation='agricole')
