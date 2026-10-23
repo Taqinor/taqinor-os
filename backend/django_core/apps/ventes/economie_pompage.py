@@ -1060,6 +1060,10 @@ def economie_pompage_publique(bloc):
 
 # ── Le bloc ─────────────────────────────────────────────────────────────────
 
+#: AGQ15 — motif quand aucune ligne chiffrée ne fonde l'investissement.
+MOTIF_SANS_LIGNE = 'aucune ligne chiffrée : investissement inconnu'
+
+
 def _bloc_vide():
     return {
         'statut': 'omis', 'publiable_client': False,
@@ -1125,6 +1129,17 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     investissement = (investissement_ttc(lignes)
                       if investissement_ttc_canonique is None
                       else float(investissement_ttc_canonique))
+    if investissement <= 0 and (dep['statut'] == 'calcule'
+                                or dep['cas'] == CAS_NOUVEAU_FORAGE):
+        # AGQ15 — aucune ligne chiffrée : l'investissement est INCONNU,
+        # jamais 0 — ni retour « 0 an », ni coût du m³ publié (une saisie
+        # manquante garde son seul motif, plus bas).
+        motifs.append(MOTIF_SANS_LIGNE)
+        bloc['statut'] = 'omis'
+        bloc['economie'] = _economie_vide(MOTIF_SANS_LIGNE)
+        bloc['omissions'].append({'cle': 'investissement',
+                                  'motif': MOTIF_SANS_LIGNE})
+        return bloc
     publies, remplacements, omis_rempl = _remplacements(
         lignes, mode_pompe(sortie_etude))
     bloc['remplacements'] = publies

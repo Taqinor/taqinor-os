@@ -720,3 +720,32 @@ class VueInterneEtFinancementTests(SimpleTestCase):
             self.assertNotIn(interdit, texte)
         self.assertIsNone(publique['economie']['van_mad'])
         self.assertIn('vue_interne', bloc)
+
+
+# ── AGQ15-AGQ20 — audit agricole du 23/10/2026 ─────────────────────────────
+
+class EconomiePompage(SimpleTestCase):
+    """AGQ15 — sans ligne chiffrée, l'investissement est inconnu : jamais
+    « retour 0 an » publié."""
+
+    def test_sans_ligne_non_publiable(self):
+        for lignes in ([], None):
+            bloc = E.economie_pompage(
+                saisies_12000(), sortie_etude=etude_declaree(),
+                lignes=lignes, reglages=CHARGES)
+            self.assertEqual(bloc['statut'], 'omis')
+            self.assertFalse(bloc['publiable_client'])
+            self.assertIn('aucune ligne chiffrée : investissement inconnu',
+                          bloc['motifs_non_publiable'])
+            self.assertIsNone(bloc['economie']['retour_ans'])
+            self.assertEqual(bloc['economie']['flux'], [])
+            self.assertIsNone(bloc['mad_par_m3']['solaire'])
+            self.assertEqual(bloc['sensibilite_carburant'], [])
+
+    def test_avec_lignes_chiffrees_inchange(self):
+        bloc = E.economie_pompage(
+            saisies_12000(), sortie_etude=ETUDE_COUVERTE,
+            lignes=lignes_reference(), reglages=CHARGES)
+        self.assertEqual(bloc['statut'], 'calcule')
+        self.assertTrue(bloc['publiable_client'])
+        self.assertEqual(bloc['economie']['retour_ans'], 5)

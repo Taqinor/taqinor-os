@@ -67,7 +67,7 @@
   },
   "regles_sortie": {
     "statut": "calcule | omis",
-    "publiable_client": "false tant qu'un motif existe (barème des charges non saisi, cohérence non confirmée…) ; les motifs dans `motifs_non_publiable`",
+    "publiable_client": "false tant qu'un motif existe (barème des charges non saisi, cohérence non confirmée…) ; les motifs dans `motifs_non_publiable` ; AGQ15 : investissement ≤ 0 (aucune ligne chiffrée) ⇒ statut omis, motif « aucune ligne chiffrée : investissement inconnu », economie vide (retour_ans null), jamais « retour 0 an »",
     "cas": "carburant | reseau | nouveau_forage | null (rien déclaré)",
     "entrees_declarees": "[{cle, valeur, unite, provenance, saisi_le}] — publiées « déclaré par le client le JJ/MM »",
     "depense_actuelle": "{par_mois[12], entretien_mad_an, annuelle_mad, formule} — jamais × 12 ; null si une saisie manque (motif nommé)",
