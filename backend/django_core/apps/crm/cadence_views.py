@@ -326,7 +326,10 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                                sd.param('statut', enum=[*STATUTS_SUIVI])],
                    responses={200: sd.OBJ,
                               409: inline_serializer('CrmSuiviConflit', {  # ENF11 : écart > 62 j = 409 d'état
-                                  'detail': drf_serializers.CharField()})})
+                                  # Corps réel : le dict levé par ConflitEtat
+                                  # (clé `date_fin`) + l'enveloppe `error`.
+                                  'date_fin': drf_serializers.CharField(),
+                                  'error': drf_serializers.DictField()})})
     @action(detail=False, methods=['get'], url_path='suivi',
             pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])

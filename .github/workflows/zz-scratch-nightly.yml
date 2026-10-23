@@ -163,6 +163,18 @@ jobs:
                   txt = page.get_text()[:300].replace(chr(10), ' | ')
                   print(f'--- {langue} p{i}: {txt}')
           EOF
+      - name: Régénérer la baseline OpenAPI (docs/openapi-schema.yml)
+        if: always()
+        run: |
+          python scripts/check_openapi_schema.py --write || echo "::warning::--write en échec"
+          git diff --stat docs/openapi-schema.yml
+          python scripts/check_openapi_schema.py
+          mkdir -p /tmp/openapi-out && cp docs/openapi-schema.yml /tmp/openapi-out/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scratch-openapi
+          path: /tmp/openapi-out
       - uses: actions/upload-artifact@v4
         if: always()
         with:
