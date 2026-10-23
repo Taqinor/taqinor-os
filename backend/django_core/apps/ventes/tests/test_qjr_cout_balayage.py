@@ -155,11 +155,11 @@ class VolumeDuBalayageTests(SimpleTestCase):
         # plafond (``tailles_max_evaluees``), chacune avec une composition sans
         # batterie et au plus MAX_PALIERS_STOCKAGE paliers.
         note = chiffres_de_la_note()
-        self.assertEqual(B.tailles_max_evaluees(),
+        self.assertEqual(B.tailles_max_evaluees(D.MAX_PANNEAUX_BALAYAGE),
                          int(note['TAILLES_MAX_EVALUEES']),
                          'le pire cas du balayage a bougé : la note de résidu '
                          'le chiffre, elle doit bouger aussi.')
-        pire_cas = B.tailles_max_evaluees() * (1 + D.MAX_PALIERS_STOCKAGE)
+        pire_cas = B.tailles_max_evaluees(D.MAX_PANNEAUX_BALAYAGE) * (1 + D.MAX_PALIERS_STOCKAGE)
         self.assertEqual(pire_cas, 237 * 17)
 
     def test_les_douze_jours_types_sont_PARTAGES_entre_les_capacites(self):

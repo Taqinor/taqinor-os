@@ -50,8 +50,8 @@ from decimal import Decimal
 # « hors résidentiel », plafond dur) vit dans son module PUR ; ce fichier-ci
 # (> 2 000 lignes, budget de croissance nul) ne fait que l'appeler.
 from apps.ventes.balayage_adaptatif import (
-    PLAFOND_DUR_BALAYAGE, monter_champ_ve, motivation_hors_residentiel,
-    pas_balayage, tableau_adaptatif)
+    monter_champ_ve, motivation_hors_residentiel, pas_balayage,
+    tableau_adaptatif)
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ RATIO_ONDULEUR_MIN = 0.80
 #: (taille recommandée ET marquée « étude sur mesure conseillée »). Atteindre
 #: ce plafond produit un avertissement et retire la recommandation (QJR411) —
 #: on ne tronque jamais en silence.
-MAX_PANNEAUX_BALAYAGE = PLAFOND_DUR_BALAYAGE
+MAX_PANNEAUX_BALAYAGE = 2000
 
 #: DIM2 — GARDE-FOU du mini-balayage de stockage : nombre maximal de paliers
 #: explorés PAR TAILLE DE CHAMP. Ce n'est PAS une règle métier — les vraies
@@ -1483,7 +1483,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     # et byte-identique sous le seuil, grille grossière + raffinement au-delà ;
     # le marquage QJR411 d'un balayage tronqué y vit aussi.
     choisirs = (choisir_recommandation, choisir_recommandation_avec)
-    tableau = tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs)
+    tableau = tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs,
+                                MAX_PANNEAUX_BALAYAGE)
     if (etude_kwargs_sans_ve is not None and etat_plancher['candidats_vus']
             and not plafond_atteint
             and not any(ligne.get('balayage_stockage') for ligne in tableau)):
@@ -1492,7 +1493,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         # banque relevée (``balayage_adaptatif.monter_champ_ve``). Jamais pour
         # un lead sans recharge nocturne (``etude_kwargs_sans_ve`` = ``None``).
         tableau = monter_champ_ve(
-            evaluer, tableau, debut, fin, plafond_atteint, choisirs)
+            evaluer, tableau, debut, fin, plafond_atteint, choisirs,
+            MAX_PANNEAUX_BALAYAGE)
     if (etude_kwargs_sans_ve is not None and etat_plancher['candidats_vus']
             and not any(ligne.get('balayage_stockage') for ligne in tableau)):
         # QJR612 — REPLI : le plancher VE nocturne n'est rempli à AUCUNE taille
@@ -1501,7 +1503,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         etat_plancher['repli'] = True
         cache.clear()
         tableau = tableau_adaptatif(
-            evaluer, debut, fin, plafond_atteint, choisirs)
+            evaluer, debut, fin, plafond_atteint, choisirs,
+            MAX_PANNEAUX_BALAYAGE)
     return tableau
 
 

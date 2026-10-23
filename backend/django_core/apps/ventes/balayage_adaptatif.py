@@ -6,7 +6,8 @@ and the sizing calculator should find the right sizing for those clients »).
 Module PUR : des nombres et des listes, aucune base, aucun import de
 ``apps.ventes.dimensionnement`` (qui l'importe, lui — le cycle est interdit
 par construction). Les deux « choisisseurs » (recommandation sans / avec
-batterie) sont REÇUS en argument, jamais importés.
+batterie) et le PLAFOND DUR (``dimensionnement.MAX_PANNEAUX_BALAYAGE``, dont
+ce module-là reste propriétaire) sont REÇUS en argument, jamais importés.
 
 CE QUE LE FONDATEUR A DÉCIDÉ, EN TROIS POINTS :
 
@@ -16,10 +17,10 @@ CE QUE LE FONDATEUR A DÉCIDÉ, EN TROIS POINTS :
    motivation de la taille retenue répète le signal
    (:data:`MOTIVATION_HORS_RESIDENTIEL`) — mais elle est RECOMMANDÉE
    (« recommend + flag », jamais un refus).
-2. **Le plafond dur monte à 2 000 panneaux** — :data:`PLAFOND_DUR_BALAYAGE`.
-   Ce n'est pas une règle métier : c'est le garde-fou du zéro de trop
-   (1 200 000 au lieu de 1 200). Lui seul tronque encore le balayage et retire
-   la recommandation (QJR411, inchangé).
+2. **Le plafond dur monte à 2 000 panneaux** (``MAX_PANNEAUX_BALAYAGE``). Ce
+   n'est pas une règle métier : c'est le garde-fou du zéro de trop (1 200 000
+   au lieu de 1 200). Lui seul tronque encore le balayage et retire la
+   recommandation (QJR411, inchangé — :func:`message_plafond_atteint`).
 3. **Le balayage est ADAPTATIF.** Jusqu'à :data:`SEUIL_BALAYAGE_DENSE` panneaux
    il évalue CHAQUE taille — byte-identique à l'historique pour tout le
    résidentiel courant (39 tailles pour 6 000 MAD/mois). Au-delà, une GRILLE
@@ -44,13 +45,6 @@ volume borné, exactitude au panneau, dense sans clé nouvelle) et
 """
 import math
 
-#: PLAFOND DUR du balayage (nombre de panneaux) — le garde-fou du zéro de trop.
-#: 2 000 panneaux ≈ 1,4 MWc en 710 Wc : au-delà de toute facture BT réelle
-#: (100 000 MAD/mois ≈ 660 panneaux à Casablanca). L'atteindre produit un
-#: avertissement et retire la recommandation — on ne tronque jamais en silence.
-#: ``dimensionnement.MAX_PANNEAUX_BALAYAGE`` est ce nom-ci, ré-exposé.
-PLAFOND_DUR_BALAYAGE = 2000
-
 #: SEUIL « hors résidentiel » — l'ancien plafond dur (≈ 85 kWc en 710 Wc),
 #: devenu un SIGNAL : au-dessus, taille signalée ET recommandable.
 SEUIL_PANNEAUX_RESIDENTIEL = 120
@@ -73,11 +67,12 @@ MOTIVATION_HORS_RESIDENTIEL = (
     'recommandée sur le catalogue, étude sur mesure conseillée (décision '
     'fondateur du 23/10/2026)' % SEUIL_PANNEAUX_RESIDENTIEL)
 
-#: QJR411 (DR4, 31/08/2026) — le message d'un balayage TRONQUÉ par le plafond
-#: dur : il nomme l'étude sur mesure, jamais une facture douteuse.
-MESSAGE_PLAFOND_ATTEINT = (
-    'Balayage plafonné à %d panneaux : profil au-delà du dimensionnement '
-    'résidentiel — étude sur mesure.' % PLAFOND_DUR_BALAYAGE)
+
+def message_plafond_atteint(plafond):
+    """QJR411 (DR4, 31/08/2026) — le message d'un balayage TRONQUÉ par le
+    plafond dur : il nomme l'étude sur mesure, jamais une facture douteuse."""
+    return ('Balayage plafonné à %d panneaux : profil au-delà du '
+            'dimensionnement résidentiel — étude sur mesure.' % int(plafond))
 
 
 def pas_balayage(fin):
@@ -118,20 +113,20 @@ def tailles_raffinees(tailles, centres, pas, debut, fin):
     return sorted(retenues)
 
 
-def tailles_max_evaluees():
+def tailles_max_evaluees(plafond):
     """Le PIRE CAS du balayage adaptatif, en tailles évaluées : la grille sur
     tout le plafond dur plus les deux voisinages de raffinement. Chiffre LU par
     la note de résidu QJR112 (``test_qjr_cout_balayage``)."""
-    pas = pas_balayage(PLAFOND_DUR_BALAYAGE)
-    grille = len(tailles_grille(1, PLAFOND_DUR_BALAYAGE, pas))
+    pas = pas_balayage(plafond)
+    grille = len(tailles_grille(1, plafond, pas))
     return grille + 2 * (2 * pas - 2)
 
 
-def plafond_montee_ve(fin):
+def plafond_montee_ve(fin, plafond):
     """Jusqu'où le champ peut MONTER pour remplir une banque VE nocturne
     (QJR612) : le seuil résidentiel ou le double de la borne, jamais plus que
     le plafond dur — identique à l'historique (120) sous le seuil dense."""
-    return min(PLAFOND_DUR_BALAYAGE, max(SEUIL_PANNEAUX_RESIDENTIEL, 2 * int(fin)))
+    return min(int(plafond), max(SEUIL_PANNEAUX_RESIDENTIEL, 2 * int(fin)))
 
 
 def motivation_hors_residentiel(ligne, motivation):
@@ -143,7 +138,8 @@ def motivation_hors_residentiel(ligne, motivation):
     return '%s — %s' % (motivation, MOTIVATION_HORS_RESIDENTIEL)
 
 
-def construire_tableau_tailles(evaluer, tailles, plafond_atteint, pas=1):
+def construire_tableau_tailles(evaluer, tailles, plafond_atteint, pas=1,
+                               plafond=None):
     """Les lignes du balayage pour EXACTEMENT ces tailles, dans cet ordre.
 
     ``evaluer(panneaux)`` rend la ligne (ou ``None``) ; elle est mémoïsée par
@@ -151,9 +147,10 @@ def construire_tableau_tailles(evaluer, tailles, plafond_atteint, pas=1):
     de :data:`SEUIL_PANNEAUX_RESIDENTIEL` est SIGNALÉE (clé structurée
     ``hors_residentiel`` + avertissement, jamais un texte à reconnaître) ;
     ``pas > 1`` est noté sur chaque ligne ; un balayage TRONQUÉ par le plafond
-    dur garde le marquage QJR411 (``plafond_panneaux_atteint``, message en
-    tête) que :func:`dimensionnement.choisir_recommandation` lit pour ne plus
-    étiqueter ce résultat « recommandé ».
+    dur (``plafond_atteint``, ``plafond`` = sa valeur) garde le marquage QJR411
+    (``plafond_panneaux_atteint``, message en tête) que
+    ``dimensionnement.choisir_recommandation`` lit pour ne plus étiqueter ce
+    résultat « recommandé ».
     """
     tableau = []
     for panneaux in tailles:
@@ -167,32 +164,37 @@ def construire_tableau_tailles(evaluer, tailles, plafond_atteint, pas=1):
         if pas > 1:
             ligne['pas_balayage'] = pas
         if plafond_atteint:
-            if MESSAGE_PLAFOND_ATTEINT not in ligne['avertissements']:
-                ligne['avertissements'].insert(0, MESSAGE_PLAFOND_ATTEINT)
+            message = message_plafond_atteint(plafond or 0)
+            if message not in ligne['avertissements']:
+                ligne['avertissements'].insert(0, message)
             ligne['plafond_panneaux_atteint'] = True
         tableau.append(ligne)
     return tableau
 
 
-def construire_tableau(evaluer, debut, fin, plafond_atteint, pas=1):
+def construire_tableau(evaluer, debut, fin, plafond_atteint, pas=1,
+                       plafond=None):
     """Les lignes du balayage, de ``debut`` à ``fin`` panneaux inclus (par
     ``pas``, ``fin`` toujours incluse)."""
     return construire_tableau_tailles(
-        evaluer, tailles_grille(debut, fin, pas), plafond_atteint, pas)
+        evaluer, tailles_grille(debut, fin, pas), plafond_atteint, pas, plafond)
 
 
-def tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs):
+def tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs,
+                      plafond=None):
     """LE TABLEAU : dense si ``pas_balayage(fin) == 1`` (historique) ; sinon la
     grille grossière, puis le RAFFINEMENT autour des deux recommandations
     grossières pour que la taille retenue soit exacte au panneau.
 
     ``choisirs`` = ``(choisir_recommandation, choisir_recommandation_avec)``
     — chacun rend ``(ligne | None, motivation)`` ; reçus en argument, jamais
-    importés (anti-cycle). ``evaluer`` est mémoïsé par l'appelant : les
-    tailles de la grille ne sont jamais recalculées au second passage.
+    importés (anti-cycle). ``plafond`` = le plafond dur, pour le message QJR411
+    d'un balayage tronqué. ``evaluer`` est mémoïsé par l'appelant : les tailles
+    de la grille ne sont jamais recalculées au second passage.
     """
     pas = pas_balayage(fin)
-    tableau = construire_tableau(evaluer, debut, fin, plafond_atteint, pas)
+    tableau = construire_tableau(evaluer, debut, fin, plafond_atteint, pas,
+                                 plafond)
     if pas <= 1 or not tableau:
         return tableau
     centres = [int(retenu['panneaux']) for retenu, _motivation
@@ -202,10 +204,12 @@ def tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs):
         return tableau
     tailles = tailles_raffinees(
         [ligne['panneaux'] for ligne in tableau], centres, pas, debut, fin)
-    return construire_tableau_tailles(evaluer, tailles, plafond_atteint, pas)
+    return construire_tableau_tailles(evaluer, tailles, plafond_atteint, pas,
+                                      plafond)
 
 
-def monter_champ_ve(evaluer, tableau, debut, fin, plafond_atteint, choisirs):
+def monter_champ_ve(evaluer, tableau, debut, fin, plafond_atteint, choisirs,
+                    plafond):
     """QJR612 — « add more panels so battery is always charged » : la borne
     haute (parité + 1, falaise) ignore le plancher VE nocturne, si bien
     qu'aucune taille balayée ne remplissait la banque relevée. Le CHAMP MONTE
@@ -213,13 +217,13 @@ def monter_champ_ve(evaluer, tableau, debut, fin, plafond_atteint, choisirs):
     banque ≥ plancher se remplit chaque jour (+ un panneau de marge, comme la
     parité), bornée par :func:`plafond_montee_ve`. Rend le tableau étendu, ou
     ``tableau`` tel quel si aucune taille n'y parvient."""
-    pas, plafond = pas_balayage(fin), plafond_montee_ve(fin)
+    pas, borne = pas_balayage(fin), plafond_montee_ve(fin, plafond)
     taille = int(fin)
-    while taille < plafond:
-        taille = min(taille + pas, plafond)
+    while taille < borne:
+        taille = min(taille + pas, borne)
         ligne = evaluer(taille)
         if ligne is not None and ligne.get('balayage_stockage'):
             return tableau_adaptatif(
-                evaluer, debut, min(taille + 1, PLAFOND_DUR_BALAYAGE),
-                plafond_atteint, choisirs)
+                evaluer, debut, min(taille + 1, int(plafond)),
+                plafond_atteint, choisirs, plafond)
     return tableau
