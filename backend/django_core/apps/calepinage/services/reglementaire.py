@@ -1043,16 +1043,24 @@ def gabarit_publie(gabarit):
 
 
 def _liste_saisie(valeur, champ):
-    """Une liste reçue en JSON (multipart) ou déjà décodée."""
+    """Une liste reçue en JSON (multipart) ou déjà décodée — et RIEN d'autre :
+    un nombre, un objet ou un texte JSON (« 0 », « {} ») était accepté puis
+    rangé en liste vide en silence (CI #1021 api-fuzz (5)) ; refus 400 nommé."""
     if isinstance(valeur, str):
         import json
 
         try:
-            return json.loads(valeur) if valeur.strip() else []
+            valeur = json.loads(valeur) if valeur.strip() else []
         except ValueError:
             raise GabaritRefuse({champ: (
                 f"« {champ} » se donne en liste JSON : le texte reçu "
                 "n'est pas lisible.")})
+    if valeur is None:
+        return []
+    if not isinstance(valeur, list):
+        raise GabaritRefuse({champ: (
+            f"« {champ} » se donne en liste JSON (reçu : "
+            f"{type(valeur).__name__}).")})
     return valeur
 
 

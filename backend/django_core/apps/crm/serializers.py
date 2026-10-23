@@ -470,6 +470,9 @@ def incoherence_segment(type_lead, devis):
     }
 
 
+_MSG_JOURS_IRRIGATION = "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu)."
+
+
 class LeadSerializer(SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
@@ -539,6 +542,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # accepterait null, que la base refuse.
     web_questionnaire = serializers.DictField(required=False)
     web_estimate = serializers.DictField(required=False)
+    # AGQ10 (D-AGQ-6) — bornes DANS le schéma publié (api-fuzz CI #1021 : un
+    # corps conforme au schéma était refusé) : 0 < jours ≤ 7, message nommé.
+    jours_irrigation_semaine = serializers.DecimalField(
+        max_digits=3, decimal_places=1, required=False, allow_null=True,
+        min_value=Decimal('0.1'), max_value=Decimal('7'),
+        error_messages={'min_value': _MSG_JOURS_IRRIGATION,
+                        'max_value': _MSG_JOURS_IRRIGATION})
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
@@ -709,8 +719,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         """AGQ10 (D-AGQ-6) — 0 < jours ≤ 7 ; vide reste vide (jamais un
         défaut). Refus nommé, jamais un arrondi silencieux."""
         if value is not None and not (0 < value <= 7):
-            raise serializers.ValidationError(
-                "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu).")
+            raise serializers.ValidationError(_MSG_JOURS_IRRIGATION)
         return value
 
     def validate_ville(self, value):

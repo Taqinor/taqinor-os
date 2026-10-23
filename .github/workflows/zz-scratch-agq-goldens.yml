@@ -89,6 +89,8 @@ jobs:
           UPDATE_GOLDEN=1 python manage.py test apps.ventes.tests.test_moteur_golden_build_quote_data apps.crm.tests_scission_golden --keepdb -v 2 2>&1 | tail -40 || true
           SPLIT_GOLDEN_CAPTURE=1 python manage.py test apps.ventes.tests.test_split_devis_public.ComportementPublicTests --keepdb -v 2 2>&1 | tail -20 || true
           git status --short -- apps/ventes/tests/golden apps/crm/golden | head -40
+      - name: Regenerer l'instantane OpenAPI (PACT6 — le generateur importe weasyprint, absent de l'hote)
+        run: python scripts/check_openapi_schema.py --write 2>&1 | tail -3
       - name: Rejouer les modules rouges de la PR (verdict apres recapture)
         working-directory: backend/django_core
         run: |
@@ -100,4 +102,5 @@ jobs:
           path: |
             backend/django_core/apps/ventes/tests/golden/
             backend/django_core/apps/crm/golden/
+            docs/openapi-schema.yml
           if-no-files-found: error

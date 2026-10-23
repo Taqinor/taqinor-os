@@ -189,11 +189,11 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         cleIdempotenceRef.current = globalThis.crypto?.randomUUID?.()
           || `auto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
       }
+      // AGQ23 — `idempotencyKey` : une clé par ouverture du panneau.
       const id = await createAutoQuote({
-        lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
-        marques: marquesRef.current || undefined,
-        onAlertes: setAlertes,
-        idempotencyKey: cleIdempotenceRef.current,
+        lead, produits: produitsRef.current, discountStr, dispatch,
+        marques: marquesRef.current || undefined, onAlertes: setAlertes,
+        idempotencyKey: cleIdempotenceRef.current, targetKwc,
       })
       setDevisId(id)
       onDevisChanged?.()

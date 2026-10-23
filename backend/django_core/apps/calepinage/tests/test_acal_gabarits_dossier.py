@@ -188,6 +188,19 @@ class RefusTest(BaseGabarits):
         self.assertIn('PDF', word.data['fichier'])
         self.assertFalse(GabaritDossierReglementaire.objects.exists())
 
+    def test_liste_json_qui_n_est_pas_une_liste_400_nommee(self):
+        """CI #1021 api-fuzz (5) — ``champs=0`` / ``champs={}`` en multipart
+        étaient ACCEPTÉS (201, liste vide en silence) : refus 400 nommé, rien
+        n'est créé."""
+        for brut in ('0', '{}', '"texte"'):
+            reponse = self._deposer(champs=brut)
+            self.assertEqual(reponse.status_code, 400, (brut, reponse.data))
+            self.assertIn('liste JSON', reponse.data['champs'])
+        reponse = self._deposer(pieces_attendues='5')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('pieces_attendues', reponse.data)
+        self.assertFalse(GabaritDossierReglementaire.objects.exists())
+
     def test_id_d_une_autre_societe_meme_message_qu_un_id_absent(self):
         etranger = GabaritDossierReglementaire.objects.create(
             company=self.autre, pays='ma', code='voisin',

@@ -22,7 +22,7 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.devis_auto import (
     champs_manquants, champs_manquants_detail, champs_requis,
-    message_manquants, source_conso, visite_avant_devis,
+    message_manquants, mode_pompe_du_lead, source_conso, visite_avant_devis,
     visite_point_eau_avant_devis)
 from apps.crm.models import Lead, LeadActivity
 from apps.ventes.models import Devis
@@ -253,6 +253,8 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             'manquants_detail': detail,
             'requis': champs_requis(lead),
             'visite_point_eau_avant_devis': visite_point_eau_avant_devis(lead),
+            # AGQ39 (D-AGQ-10) — le mode de pompe servi avec son drapeau.
+            'mode_pompe': mode_pompe_du_lead(lead),
         }, attendu)
 
 

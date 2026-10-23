@@ -303,6 +303,12 @@ tenant_exempt_models:
     - "compta.EcritureLiaisonInterSociete"
     - "automation.AutomationRunArchive"
     - "crm.LeadActivityArchive"
+    # AGQ10/AGQ39 (23/10/2026) — `crm.LeadPompageMixin` est un modèle ABSTRAIT
+    # (`Meta.abstract = True`, aucune table) : il porte les colonnes pompage du
+    # lead, qui vivent dans `crm_lead` — scopé société par `Lead.company`. Le
+    # fichier-mur `apps/crm/models.py` (C20) ne grossit plus : chaque groupe de
+    # colonnes neuves vit dans son module. Reviewed abstract-mixin 2026-10-23.
+    - "crm.LeadPompageMixin"
     - "publicapi.WebhookDeliveryArchive"
     - "extensions.ExtensionPackage"
     - "adminops.AnnonceProduit"
