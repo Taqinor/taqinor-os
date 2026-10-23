@@ -845,8 +845,10 @@ class Retour(SimpleTestCase):
         from apps.ventes.economie import _retour
         cumuls = [-60000, -50000, -40000, -30000, -20000, -10000, 0,
                   -10000, 0, 10000, 20000]
-        self.assertEqual(_retour('retour_ans', cumuls, 10, []), 8)
-        self.assertIsNone(_retour('retour_ans', cumuls[:8], 7, []))
+        self.assertEqual(_retour('retour_ans', cumuls, 10, [], dernier_passage=True), 8)
+        self.assertIsNone(_retour('retour_ans', cumuls[:8], 7, [], dernier_passage=True))
+        # Les autres marchés gardent le premier passage (devis envoyés inchangés).
+        self.assertEqual(_retour('retour_ans', cumuls, 10, []), 6)
         # Investissement 60 000 TTC (pompe 20 000 remplacée en année 7),
         # 12 000 économisés − 2 000 de charges = 10 000 nets par an.
         lignes = [ligne('Pompe', 20000, type_equipement='pompe'),

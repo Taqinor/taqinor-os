@@ -149,6 +149,7 @@ _LIBELLES_APDF = tuple(
 #: après le merge-base (options du kit, étapes suivantes, unités, notes,
 #: annexe) : des TEXTES de ``libelles_document``, jamais un chiffre.
 _CLES_AGQ = frozenset((
+    'agr_schema_distance_champ_coffret',
     'agr_acompte_apres_fda', 'agr_au_dela_de_n_ans',
     'agr_controle_forage_depasse', 'agr_controle_forage_ok',
     'agr_cout_eau_solaire', 'agr_declares_par_vous_le',

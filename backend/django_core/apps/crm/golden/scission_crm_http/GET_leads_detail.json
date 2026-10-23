@@ -35,6 +35,7 @@
   "compteur_eau": null,
   "compteur_puissance_kva": null,
   "conception": {
+   "calepinage": null,
    "image_url": null,
    "kwc": null
   },

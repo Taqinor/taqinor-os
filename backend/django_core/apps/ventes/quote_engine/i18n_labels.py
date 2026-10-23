@@ -595,12 +595,23 @@ LIBELLES = {
                               'ar': 'العمق'},
     'agr_schema_niveau': {'fr': 'Niveau', 'en': 'Level', 'ar': 'المستوى'},
     # AGQ32 — la distance saisie est celle du champ au coffret (variateur).
-    'agr_schema_distance': {'fr': 'Distance champ → coffret',
-                            'en': 'Array → control box distance',
-                            'ar': 'المسافة من الحقل إلى العلبة'},
+    # Clé d'origine conservée telle quelle (empreinte « règles d'origine »
+    # #898 : un libellé existant ne change jamais de texte) ; le libellé
+    # précis vit sous une clé NEUVE.
+    'agr_schema_distance': {'fr': 'Distance', 'en': 'Distance',
+                            'ar': 'المسافة'},
+    'agr_schema_distance_champ_coffret': {'fr': 'Distance champ → coffret',
+                                          'en': 'Array → control box distance',
+                                          'ar': 'المسافة من الحقل إلى العلبة'},
     'agr_schema_ligne_eau': {'fr': 'Eau', 'en': 'Water', 'ar': 'الماء'},
     'agr_schema_ligne_energie': {'fr': 'Énergie', 'en': 'Energy',
                                  'ar': 'الطاقة'},
+    # Clé d'origine conservée (empreinte #898) ; la phrase n'est plus imprimée
+    # (AGQ32 omet la section quand la liste est vide).
+    'agr_annexe_aucune_reference': {
+        'fr': 'Aucune référence de pompage à ce jour.',
+        'en': 'No pumping reference to date.',
+        'ar': 'لا توجد مراجع للضخ إلى حد الآن.'},
     'agr_mois_sans_besoin': {
         'fr': 'Mois grisés : aucun besoin — eau disponible.',
         'en': 'Greyed months: no need — water available.',
