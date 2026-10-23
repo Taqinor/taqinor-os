@@ -90,11 +90,55 @@ def _fr(v):
     return f"{f:.1f}".rstrip("0").rstrip(".").replace(".", ",")
 
 
+def _arabe(texte):
+    return any("؀" <= c <= "ۿ" for c in str(texte))
+
+
+def legende(x, y, texte, cadre, taille=13, couleur=INK, graisse="normal",
+            ancre="middle"):
+    """AGQ13 — une légende HTML (position en % du viewBox, taille en pt) ;
+    ``cadre`` = (largeur imprimée en mm, largeur et hauteur du viewBox)."""
+    largeur_mm, l_vb, h_vb = cadre
+    return {"texte": str(texte), "ancre": ancre, "couleur": couleur,
+            "graisse": graisse, "x_pct": round(x / l_vb * 100, 2),
+            "y_pct": round(y / h_vb * 100, 2),
+            "taille_pt": round(taille * largeur_mm / l_vb * 2.835, 1)}
+
+
 def _texte(x, y, contenu, taille=13, couleur=INK, graisse="normal",
-           ancre="middle", attrs=""):
+           ancre="middle", attrs="", legendes=None, cadre=None):
+    """Un ``<text>`` SVG — sauf AGQ13 : un texte ARABE quand ``legendes``
+    est une liste part en légende HTML positionnée (WeasyPrint ne façonne
+    pas l'arabe d'un ``<text>`` SVG : lettres non liées, inversées).
+    ``cadre`` = (largeur_mm, largeur viewBox, hauteur viewBox)."""
+    if legendes is not None and cadre and _arabe(contenu):
+        legendes.append(legende(x, y, contenu, cadre, taille=taille,
+                                couleur=couleur, graisse=graisse,
+                                ancre=ancre))
+        return ""
     return (f'<text x="{x:.1f}" y="{y:.1f}" font-family="{FONT}" '
             f'font-size="{taille}" font-weight="{graisse}" fill="{couleur}" '
             f'text-anchor="{ancre}"{attrs}>{html.escape(str(contenu))}</text>')
+
+
+def superposer(svg, legendes):
+    """AGQ13 — le SVG et ses légendes en HTML positionné par-dessus (texte
+    bidi façonné par le moteur HTML) ; sans légende, le SVG tel quel."""
+    if not svg or not legendes:
+        return svg
+    divs = []
+    for lg in legendes:
+        x = lg["x_pct"]
+        gauche, aligne = {"start": (x, "left"), "end": (x - 30, "right")}.get(
+            lg.get("ancre"), (x - 15, "center"))
+        divs.append(
+            f'<div style="position:absolute;left:{gauche:.2f}%;'
+            f'top:{lg["y_pct"]:.2f}%;width:30%;margin-top:-1em;'
+            f'line-height:1.2;text-align:{aligne};white-space:nowrap;'
+            f'font-size:{lg["taille_pt"]}pt;color:{lg["couleur"]};'
+            f'font-weight:{lg["graisse"]}">{html.escape(lg["texte"])}</div>')
+    return (f'<div class="ag-sch" style="position:relative">{svg}'
+            f'{"".join(divs)}</div>')
 
 
 def _svg(largeur_mm, l_vb, h_vb, corps, titre):
@@ -107,21 +151,32 @@ def _svg(largeur_mm, l_vb, h_vb, corps, titre):
 
 # ── schéma ──────────────────────────────────────────────────────────────────
 
-def schema_svg(synthese, langue="fr", libelle_pompe=None):
+def schema_svg(synthese, langue="fr", libelle_pompe=None, legendes=None):
     """Le schéma du système, en SVG (chaîne). Toujours rendu : les étapes
-    sont des faits du kit ; seules les VALEURS absentes sont omises."""
+    sont des faits du kit ; seules les VALEURS absentes sont omises.
+
+    AGQ13 — en arabe la chaîne forage → irrigation se lit de droite à
+    gauche (flèches miroir) ; ``legendes`` (liste) reçoit alors les textes
+    arabes, rendus en HTML par :func:`superposer`."""
     schema = (synthese or {}).get("schema") or {}
     langue = _langue(langue)
+    rtl = _i18n.est_rtl(langue)
+    cadre = (170, _SCHEMA_L, _SCHEMA_H)
     etapes = ["forage", "pompe", "variateur", "panneaux"]
     if _num(schema.get("bassin")) is not None:
         etapes.append("bassin")
     etapes.append("irrigation")
 
     pas = (_SCHEMA_L - 40 - _BOITE_L) / max(len(etapes) - 1, 1)
+
+    def _x(i):
+        x = 20 + i * pas
+        return _SCHEMA_L - x - _BOITE_L if rtl else x
+
     corps = []
     centres = {}
     for i, cle in enumerate(etapes):
-        x = 20 + i * pas
+        x = _x(i)
         cx = x + _BOITE_L / 2
         centres[cle] = cx
         couleur = GOLD if cle == "panneaux" else (
@@ -132,16 +187,22 @@ def schema_svg(synthese, langue="fr", libelle_pompe=None):
             f'stroke="{couleur}" stroke-width="2"/>')
         corps.append(_texte(cx, _BOITE_Y + _BOITE_H / 2 + 5, _lib(cle, langue),
                             taille=15, couleur=couleur, graisse="bold",
-                            attrs=f' data-etape="{cle}"'))
+                            attrs=f' data-etape="{cle}"', legendes=legendes,
+                            cadre=cadre))
         if i:
-            x_prec = 20 + (i - 1) * pas + _BOITE_L
             y = _BOITE_Y + _BOITE_H / 2
+            # Départ au bord de la boîte précédente, pointe au bord de
+            # celle-ci ; ``s`` = sens de lecture (miroir en arabe).
+            s = -1 if rtl else 1
+            depart = _x(i - 1) + (0 if rtl else _BOITE_L) + 4 * s
+            bord = x + (_BOITE_L if rtl else 0)
             corps.append(
-                f'<line x1="{x_prec + 4:.1f}" y1="{y}" x2="{x - 10:.1f}" '
+                f'<line x1="{depart:.1f}" y1="{y}" x2="{bord - 10 * s:.1f}" '
                 f'y2="{y}" stroke="{LINE}" stroke-width="2"/>')
             corps.append(
-                f'<polygon points="{x - 2:.1f},{y} {x - 12:.1f},{y - 6} '
-                f'{x - 12:.1f},{y + 6}" fill="{LINE}"/>')
+                f'<polygon points="{bord - 2 * s:.1f},{y} '
+                f'{bord - 12 * s:.1f},{y - 6} {bord - 12 * s:.1f},{y + 6}" '
+                f'fill="{LINE}"/>')
 
     # Valeurs SAISIES seulement, sous l'étape qu'elles décrivent.
     def _valeur(cle_etape, rang, cle_lib, valeur, unite, attr):
@@ -152,7 +213,8 @@ def schema_svg(synthese, langue="fr", libelle_pompe=None):
         corps.append(_texte(centres[cle_etape], y,
                             f"{_lib(cle_lib, langue)} {txt} {unite}",
                             taille=12, couleur=MUTED,
-                            attrs=f' data-valeur="{attr}"'))
+                            attrs=f' data-valeur="{attr}"',
+                            legendes=legendes, cadre=cadre))
 
     _valeur("forage", 0, "profondeur", schema.get("profondeur_m"), "m",
             "profondeur_m")
@@ -167,7 +229,8 @@ def schema_svg(synthese, langue="fr", libelle_pompe=None):
                             attrs=' data-valeur="bassin"'))
     if libelle_pompe:
         corps.append(_texte(centres["pompe"], _BOITE_Y - 14, libelle_pompe,
-                            taille=11, couleur=MUTED))
+                            taille=11, couleur=MUTED, legendes=legendes,
+                            cadre=cadre))
 
     titre = " → ".join(_lib(c, langue) for c in etapes)
     return _svg(170, _SCHEMA_L, _SCHEMA_H, "".join(corps), titre)
@@ -201,14 +264,16 @@ def _courbe_valide(pf):
     return points if len(points) >= 2 else None
 
 
-def courbe_svg(synthese, langue="fr", libelle_pompe=None):
+def courbe_svg(synthese, langue="fr", libelle_pompe=None, legendes=None):
     """Courbe débit → HMT du constructeur + point retenu, en SVG ; ``None``
-    sans courbe (la page imprime alors ``TEXTE_COURBE_ABSENTE``)."""
+    sans courbe (la page imprime alors ``TEXTE_COURBE_ABSENTE``).
+    ``legendes`` (AGQ13) : reçoit les titres d'axes arabes (HTML)."""
     pf = (synthese or {}).get("point_fonctionnement")
     courbe = _courbe_valide(pf)
     if courbe is None:
         return None
     langue = _langue(langue)
+    cadre = (120, _COURBE_L, _COURBE_H)
     q_borne, h_borne = _bornes(courbe)
     corps = [
         f'<line x1="{_X0}" y1="{_Y0}" x2="{_X1}" y2="{_Y0}" '
@@ -216,9 +281,10 @@ def courbe_svg(synthese, langue="fr", libelle_pompe=None):
         f'<line x1="{_X0}" y1="{_Y0}" x2="{_X0}" y2="{_Y1}" '
         f'stroke="{INK}" stroke-width="1.5"/>',
         _texte((_X0 + _X1) / 2, _Y0 + 32,
-               f"{_lib('debit', langue)} (m³/h)", taille=13, couleur=MUTED),
+               f"{_lib('debit', langue)} (m³/h)", taille=13, couleur=MUTED,
+               legendes=legendes, cadre=cadre),
         _texte(_X0 - 12, _Y1 - 10, f"{_lib('hmt', langue)} (m)", taille=13,
-               couleur=MUTED, ancre="start"),
+               couleur=MUTED, ancre="start", legendes=legendes, cadre=cadre),
     ]
     # Graduations : les débits et HMT de la courbe constructeur eux-mêmes.
     for q, h in courbe:
@@ -244,7 +310,8 @@ def courbe_svg(synthese, langue="fr", libelle_pompe=None):
                             couleur=NAVY, graisse="bold", ancre="start"))
     if libelle_pompe:
         corps.append(_texte(_X1, _Y1 - 10, libelle_pompe, taille=11,
-                            couleur=MUTED, ancre="end"))
+                            couleur=MUTED, ancre="end", legendes=legendes,
+                            cadre=cadre))
     titre = f"{_lib('pompe', langue)} — {_lib('debit', langue)} / " \
             f"{_lib('hmt', langue)}"
     return _svg(120, _COURBE_L, _COURBE_H, "".join(corps), titre)

@@ -45,6 +45,7 @@ import unicodedata
 
 from core.pompage.kit import MENTION_COMPTEUR
 
+from ..i18n_labels import est_rtl
 from ..lecture_pure import nombre_normalise
 from .garanties import garanties_pompage_et_omissions
 from .mentions import formalites, regle_fda
@@ -555,6 +556,13 @@ def synthese_agricole(data):
     # tracé sur les seules valeurs saisies, servi tel quel.
     synthese["schema_svg"] = schema_svg(
         synthese, langue=data.get("langue_sortie") or "fr")
+    # AGQ13 — en arabe, les textes du schéma en légendes HTML positionnées
+    # (le PDF ne façonne pas l'arabe d'un ``<text>`` SVG) ; [] sinon.
+    legendes = []
+    if est_rtl(data.get("langue_sortie")):
+        schema_svg(synthese, langue=data.get("langue_sortie"),
+                   legendes=legendes)
+    synthese["schema_legendes"] = legendes
     # AGR307 — l'argent : le bloc public AGR3 tel quel (posé par le builder
     # dans ``data['_economie_pompage']``), sinon absent et motivé.
     economies, motif = _bloc_economies(data.get("_economie_pompage"))

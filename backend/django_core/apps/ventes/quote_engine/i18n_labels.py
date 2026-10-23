@@ -224,6 +224,11 @@ LIBELLES = {
                        'en': 'at {hmt} m of head',
                        'ar': 'على ارتفاع {hmt} م'},
     'agr_debit': {'fr': 'Débit', 'en': 'Flow', 'ar': 'الصبيب'},
+    # AGQ13 — unités des cartes (le français est le littéral d'hier).
+    'unite_ha': {'fr': 'ha', 'en': 'ha', 'ar': 'هكتار'},
+    'unite_cv': {'fr': 'CV', 'en': 'HP', 'ar': 'حصان'},
+    'unite_kwc': {'fr': 'kWc', 'en': 'kWp', 'ar': 'كيلوواط ذروة'},
+    'unite_m3h': {'fr': 'm³/h', 'en': 'm³/h', 'ar': 'م³/س'},
     'agr_panneaux_n': {'fr': '{n} panneaux', 'en': '{n} panels',
                        'ar': '{n} لوحا'},
     'agr_surface_irrigable': {'fr': 'Surface irrigable',

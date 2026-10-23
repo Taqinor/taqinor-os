@@ -137,6 +137,59 @@ class Agr314LanguesTests(SimpleTestCase):
                         sorted(_GABARIT.findall(L.LIBELLES[cle]['fr'])))
 
 
+_ARABE = re.compile('[؀-ۿ]')
+
+
+def _data_agronomique(langue):
+    """Besoin AGRONOMIQUE (cultures connues) : la carte hectares s'imprime."""
+    d = _data(langue)
+    etude = d['etude']
+    etude['besoin'] = {'mode': 'fao', 'region': 'souss-massa',
+                       'cultures': [{'crop': 'agrumes', 'surface_ha': 5,
+                                     'irrigation': 'goutte'}]}
+    etude['besoin_mensuel'] = {'m3_jour_mois': [120] * 12,
+                               'nature': 'agronomique_plein',
+                               'source_et0': 'FAO-56'}
+    etude['ha_irrigables'] = {'valeur': 4.4}
+    return d
+
+
+class Arabe(SimpleTestCase):
+    """AGQ13 (C-AGQ-012) — l'arabe lisible en page 2 et unités traduites."""
+
+    def test_unites_traduites_et_legendes_hors_svg(self):
+        html = pages.build_html(renderer._augment(_data_agronomique('ar')))
+        p1, p2 = html.split('<div class="page">')[1:3]
+        self.assertIn('10,2 حصان', p1)
+        self.assertIn('4,4 هكتار', p1)
+        self.assertIn(L.libelle('unite_kwc', 'ar'), p1)
+        self.assertNotIn(' CV<', p1)
+        self.assertNotIn(' ha<', p1)
+        # Aucun texte arabe dans un <text> SVG de la page 2 ...
+        for texte in re.findall(r'<text[^>]*>(.*?)</text>', p2, flags=re.S):
+            with self.subTest(texte=texte):
+                self.assertIsNone(_ARABE.search(texte))
+        # ... mais en légendes HTML : boîtes du schéma, axes, mois.
+        hors_svg = re.sub(r'<svg.*?</svg>', ' ', p2, flags=re.S)
+        for cle in ('agr_schema_pompe', 'agr_schema_forage', 'agr_moisc_1'):
+            with self.subTest(cle=cle):
+                self.assertIn(L.libelle(cle, 'ar'), hors_svg)
+        self.assertIn('position:absolute', hors_svg)
+
+    def test_francais_identique(self):
+        d = _data_agronomique('fr')
+        aug = renderer._augment(d)
+        html = pages.build_html(aug)
+        p1, p2 = html.split('<div class="page">')[1:3]
+        self.assertIn(aug['synthese']['schema_svg'], p2)
+        self.assertNotIn('ag-sch', html)
+        self.assertNotIn('position:absolute', p2)
+        self.assertIn('10,2 CV', p1)
+        self.assertIn('kWc', p1)
+        self.assertIn('>Jan</text>', p2)
+        self.assertEqual(aug['synthese']['schema_legendes'], [])
+
+
 @tag('pdf')
 class Agr314PdfReelTests(SimpleTestCase):
 

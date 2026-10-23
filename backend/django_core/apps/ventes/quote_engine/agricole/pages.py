@@ -30,7 +30,8 @@ from ..textes import tronquer_au_mot
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
-from .schema import TEXTE_COURBE_ABSENTE, courbe_svg
+from .schema import (TEXTE_COURBE_ABSENTE, courbe_svg, legende, schema_svg,
+                     superposer)
 from .synthese import CONDITION_ECONOMIES, debit_declare_sans_courbe
 
 NB_PAGES = 3
@@ -238,25 +239,29 @@ def _cartes(synthese, lg):
     pompe = synthese.get("pompe") or {}
     champ = synthese.get("champ") or {}
     cartes = []
+    # AGQ13 — unités traduites (« 10,2 حصان », « 4,4 هكتار »).
+    u_cv, u_m3h = _t(lg, "unite_cv"), _t(lg, "unite_m3h")
     cv, kw = _n(pompe.get("cv")), _n(pompe.get("kw"))
     if cv is not None or kw is not None:
-        v = f"{cv} CV" if cv is not None else f"{kw} kW"
+        v = f"{cv} {u_cv}" if cv is not None else f"{kw} kW"
         s = f"{kw} kW" if cv is not None and kw is not None else ""
         cartes.append((_t(lg, "puissance_pompe"), v, s))
     debit, hmt = _n(eau.get("debit_hmt_m3h")), _n(eau.get("hmt_m"))
     if debit is not None:
         cartes.append((_t(lg, "debit_a_hmt", hmt=hmt) if hmt
                        else _t(lg, "agr_debit"),
-                       f'{debit} m³/h{ancre("pompe_debit_m3h", debit)}', ""))
+                       f'{debit} {u_m3h}{ancre("pompe_debit_m3h", debit)}',
+                       ""))
     kwc = _n(champ.get("kwc"), 2)
     if kwc is not None:
         nb = _n(champ.get("nb_panneaux"), 0)
-        cartes.append((_t(lg, "champ_pv"), f"{kwc} kWc",
+        cartes.append((_t(lg, "champ_pv"), f'{kwc} {_t(lg, "unite_kwc")}',
                        _t(lg, "agr_panneaux_n", n=nb) if nb else ""))
     ha = _n(((synthese.get("besoin_vs_livre") or {})
              .get("hectares_irrigables")))
     if ha is not None:
-        cartes.append((_t(lg, "agr_surface_irrigable"), f"{ha} ha", ""))
+        cartes.append((_t(lg, "agr_surface_irrigable"),
+                       f'{ha} {_t(lg, "unite_ha")}', ""))
     if not cartes:
         return ""
     cellules = "".join(
@@ -394,7 +399,8 @@ def page1(ctx):
 # ── page 2 — comment ça marche ──────────────────────────────────────────────
 
 def _barres_besoin(bvl, lg):
-    """Barres « besoin / livré » par mois, en SVG (mise à l'échelle seule)."""
+    """Barres « besoin / livré » par mois, en SVG (mise à l'échelle seule).
+    AGQ13 — en arabe, mois de droite à gauche et noms des mois en HTML."""
     mois = bvl.get("mois") or []
     valeurs = [(_num(m.get("besoin_m3_jour")), _num(m.get("livre_m3_jour")))
                for m in mois if isinstance(m, dict)]
@@ -403,21 +409,30 @@ def _barres_besoin(bvl, lg):
     haut = max(max(b, q) for b, q in valeurs) or 1.0
     l_vb, h_vb, x0, y0, y1 = 600, 260, 40, 220, 20
     pas = (l_vb - x0 - 10) / 12
+    rtl = i18n_labels.est_rtl(lg)
+    legendes = [] if rtl else None
     corps = [f'<line x1="{x0}" y1="{y0}" x2="{l_vb - 10}" y2="{y0}" '
              f'stroke="#1F2937" stroke-width="1.2"/>']
     for i, (b, q) in enumerate(valeurs):
-        x = x0 + i * pas + 4
+        x = x0 + (11 - i if rtl else i) * pas + 4
         for j, (v, coul) in enumerate(((b, "#9CA3AF"), (q, "#2C5F8A"))):
             h = (v / haut) * (y0 - y1)
             corps.append(f'<rect x="{x + j * (pas / 2 - 3):.1f}" '
                          f'y="{y0 - h:.1f}" width="{pas / 2 - 5:.1f}" '
                          f'height="{h:.1f}" fill="{coul}"/>')
+        nom = _t(lg, f"agr_moisc_{i + 1}")
+        if rtl:
+            legendes.append(legende(x + pas / 2 - 4, y0 + 16, nom,
+                                    (88, l_vb, h_vb + 10), taille=12,
+                                    couleur="#6B7280"))
+            continue
         corps.append(f'<text x="{x + pas / 2 - 4:.1f}" y="{y0 + 16}" '
                      f'font-size="12" text-anchor="middle" fill="#6B7280" '
                      f'font-family="DejaVu Sans, Arial, sans-serif">'
-                     f'{_t(lg, f"agr_moisc_{i + 1}")}</text>')
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {l_vb} '
-            f'{h_vb + 10}" width="100%">{"".join(corps)}</svg>')
+                     f'{nom}</text>')
+    return superposer(
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {l_vb} '
+        f'{h_vb + 10}" width="100%">{"".join(corps)}</svg>', legendes)
 
 
 def page2(ctx):
@@ -425,6 +440,15 @@ def page2(ctx):
     lg = _langue(d)
     schema = synthese.get("schema_svg") or ""
     courbe = courbe_svg(synthese, langue=lg)
+    if i18n_labels.est_rtl(lg):
+        # AGQ13 — l'arabe quitte les ``<text>`` SVG (non façonnés par
+        # WeasyPrint) pour des légendes HTML superposées ; même dessin.
+        leg_schema, leg_courbe = [], []
+        if schema:
+            schema = superposer(schema_svg(synthese, lg, legendes=leg_schema),
+                                leg_schema)
+        courbe = superposer(courbe_svg(synthese, langue=lg,
+                                       legendes=leg_courbe), leg_courbe)
     if courbe:
         bloc_courbe = f'<div class="ag-svg">{courbe}</div>'
     else:
@@ -1045,7 +1069,10 @@ def build_html(d: dict, elastic: dict | None = None) -> str:
     # APDF6 — LA CSS arabe partagée (police système, letter-spacing 0) ;
     # ``theme.css_langue`` porte déjà la part « libellés ».
     from ..premium_base import css_arabe as _css_arabe_partagee
+    # AGQ13 — le SVG porteur de légendes HTML est un bloc (aucun jeu de
+    # ligne de base sous le dessin : les positions en % tombent juste).
     css_arabe = (_css_arabe_partagee(libelles=True, document=True)
+                 + ".ag-sch svg{display:block;}"
                  if i18n_labels.est_rtl(langue) else "")
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{theme.css_langue(d)}"
