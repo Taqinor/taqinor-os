@@ -426,13 +426,54 @@ def mois_distincts_du_releve(lignes):
     return par_mois
 
 
+def _entrees_consommation(lead, _entree, manquants):
+    """§1 d'`entrees_ci_du_lead` (extraction C20) : la consommation du lead pro."""
+    from .devis_auto import _facture_mad_compte, _releve_rempli
+    # 1. Consommation : le relevé prime, puis le kWh mensuel, puis la
+    # facture en MAD (convertie par le moteur, jamais ici). ADEV77
+    # (D-ACI-1=b) : 0 n'est pas une réponse (même règle que
+    # ``devis_auto._rempli``) ; un relevé de MOINS de 12 mois distincts ne
+    # masque plus le kWh déclaré — les deux sont servis, le moteur choisit
+    # (relevé partiel seul = moyenne × 12, estimation).
+    mois_distincts = 0
+    if _releve_rempli(lead):
+        releve = lead.releve_conso
+        mois = []
+        for ligne in releve.get('mois') or []:
+            if _ci_nombre(ligne.get('kwh')) is None:
+                continue
+            m = {'mois': ligne.get('mois'), 'kwh': _ci_nombre(ligne['kwh'])}
+            for registre in _CI_REGISTRES_MT:
+                if ligne.get(registre) not in (None, ''):
+                    m[registre] = _ci_nombre(ligne[registre])
+            mois.append(m)
+        mois_distincts = len(mois_distincts_du_releve(mois))
+        _entree('releve_conso', mois, 'consommation',
+                'consommation.factures_mad',
+                detail=_CI_DETAIL_SOURCE.get(releve.get('source'), 'client'))
+    if mois_distincts >= 12:
+        pass                  # un relevé complet garde seul la priorité
+    elif _kwh_positif(lead.conso_mensuelle_kwh) is not None:
+        _entree('conso_mensuelle_kwh', _entree_valeur(lead.conso_mensuelle_kwh),
+                'consommation', 'consommation.kwh_mensuels')
+    elif _kwh_positif(lead.bill_kwh) is not None:
+        _entree('bill_kwh', _entree_valeur(lead.bill_kwh), 'consommation',
+                'consommation.kwh_mensuels')
+    elif _kwh_positif(lead.facture_hiver) is not None \
+            and _facture_mad_compte(lead):
+        _entree('facture_hiver', _entree_valeur(lead.facture_hiver),
+                'consommation', 'consommation.facture_mad',
+                source_conso='facture_mad')
+    elif not mois_distincts:
+        manquants.append('conso_mensuelle_kwh')
+
+
 def entrees_ci_du_lead(lead):
     """CIQ405 — ``{entrees, manquants, informations}`` d'un lead commercial
     ou industriel (``None`` ailleurs). Lecture SEULE ; UNE requête au plus
     (l'historique des colonnes renseignées, pour dater et dire qui a saisi).
     C'est la SEULE source lue par le moteur serveur C&I (D-CIQ-0) et par
     l'écran."""
-    from .devis_auto import _facture_mad_compte, _releve_rempli
     from .models import Lead, LeadActivity
 
     if lead is None:
@@ -488,43 +529,8 @@ def entrees_ci_du_lead(lead):
         entree.update(extra)
         entrees.append(entree)
 
-    # 1. Consommation : le relevé prime, puis le kWh mensuel, puis la
-    # facture en MAD (convertie par le moteur, jamais ici). ADEV77
-    # (D-ACI-1=b) : 0 n'est pas une réponse (même règle que
-    # ``devis_auto._rempli``) ; un relevé de MOINS de 12 mois distincts ne
-    # masque plus le kWh déclaré — les deux sont servis, le moteur choisit
-    # (relevé partiel seul = moyenne × 12, estimation).
-    mois_distincts = 0
-    if _releve_rempli(lead):
-        releve = lead.releve_conso
-        mois = []
-        for ligne in releve.get('mois') or []:
-            if _ci_nombre(ligne.get('kwh')) is None:
-                continue
-            m = {'mois': ligne.get('mois'), 'kwh': _ci_nombre(ligne['kwh'])}
-            for registre in _CI_REGISTRES_MT:
-                if ligne.get(registre) not in (None, ''):
-                    m[registre] = _ci_nombre(ligne[registre])
-            mois.append(m)
-        mois_distincts = len(mois_distincts_du_releve(mois))
-        _entree('releve_conso', mois, 'consommation',
-                'consommation.factures_mad',
-                detail=_CI_DETAIL_SOURCE.get(releve.get('source'), 'client'))
-    if mois_distincts >= 12:
-        pass                  # un relevé complet garde seul la priorité
-    elif _kwh_positif(lead.conso_mensuelle_kwh) is not None:
-        _entree('conso_mensuelle_kwh', _entree_valeur(lead.conso_mensuelle_kwh),
-                'consommation', 'consommation.kwh_mensuels')
-    elif _kwh_positif(lead.bill_kwh) is not None:
-        _entree('bill_kwh', _entree_valeur(lead.bill_kwh), 'consommation',
-                'consommation.kwh_mensuels')
-    elif _kwh_positif(lead.facture_hiver) is not None \
-            and _facture_mad_compte(lead):
-        _entree('facture_hiver', _entree_valeur(lead.facture_hiver),
-                'consommation', 'consommation.facture_mad',
-                source_conso='facture_mad')
-    elif not mois_distincts:
-        manquants.append('conso_mensuelle_kwh')
+    # 1. Consommation (extraction C20 : voir ``_entrees_consommation``).
+    _entrees_consommation(lead, _entree, manquants)
 
     # 2. Tension : trois états, jamais « bt » par défaut.
     tension = lead.tension_raccordement

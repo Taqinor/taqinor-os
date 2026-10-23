@@ -950,6 +950,35 @@ def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
             'motif': None, 'alertes': [], 'hypotheses': []}
 
 
+def _jours_types_de_charge(company, res, mode, categorie, rythme, mesuree, registres,
+                           conso, production):
+    """Extraction C20 d'``etudier_ci`` : ``(jours_types, provenance, alertes)`` de la
+    courbe de charge — mesurée > registres MT > déclarée (archétype / profil société)."""
+    from apps.ventes.moteur_ci.charge import courbe_declaree
+    if mesuree:
+        # CIQ133 — priorité : courbe mesurée > registres MT > déclaré > archétype.
+        from apps.ventes.moteur_ci.charge import courbe_mesuree_jours_types
+        valeurs, debut, source_mesure = mesuree
+        jours_types, prov_charge, al_charge = courbe_mesuree_jours_types(
+            valeurs, debut, annee_reference=_aujourdhui().year - 1,
+            kwh_mensuels=conso if isinstance(conso, list) else None, source=source_mesure)
+    elif registres:
+        # CIQ132 — priorité : registres MT > profil déclaré > archétype.
+        from apps.ventes.moteur_ci.charge import courbe_registres_mt
+        jours_types, prov_charge, al_charge = courbe_registres_mt(
+            {k: v for k, v in rythme.items() if v is not None}, registres,
+            annee_reference=_aujourdhui().year - 1)
+    else:
+        jours_types, prov_charge, al_charge = courbe_declaree(
+            {k: v for k, v in rythme.items() if v is not None}, conso,
+            annee_reference=_aujourdhui().year - 1, archetype=categorie,
+            profil_societe=_profil_societe(
+                company, mode, categorie if mode == 'commercial'
+                else res.valeur('secteur_industriel')),
+            production_jours_types=production['jours_types'])
+    return jours_types, prov_charge, al_charge
+
+
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
                onduleurs_imposes=None, source_production_figee=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
@@ -962,7 +991,6 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     production reprise rend les MÊMES hypothèses/alertes que son calcul.
     """
     from apps.ventes import economie_ci, tarif_ci
-    from apps.ventes.moteur_ci.charge import courbe_declaree
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import bloc_production_ci, traces_production
@@ -1043,27 +1071,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     rythme = {k: res.valeur(k) for k in (
         'jours_ouverts', 'plages', 'equipes', 'debut_equipe_h', 'fermetures',
         'ramadan', 'talon', 'categorie_commerciale', 'reponses_categorie')}
-    if mesuree:
-        # CIQ133 — priorité : courbe mesurée > registres MT > déclaré > archétype.
-        from apps.ventes.moteur_ci.charge import courbe_mesuree_jours_types
-        valeurs, debut, source_mesure = mesuree
-        jours_types, prov_charge, al_charge = courbe_mesuree_jours_types(
-            valeurs, debut, annee_reference=_aujourdhui().year - 1,
-            kwh_mensuels=conso if isinstance(conso, list) else None, source=source_mesure)
-    elif registres:
-        # CIQ132 — priorité : registres MT > profil déclaré > archétype.
-        from apps.ventes.moteur_ci.charge import courbe_registres_mt
-        jours_types, prov_charge, al_charge = courbe_registres_mt(
-            {k: v for k, v in rythme.items() if v is not None}, registres,
-            annee_reference=_aujourdhui().year - 1)
-    else:
-        jours_types, prov_charge, al_charge = courbe_declaree(
-            {k: v for k, v in rythme.items() if v is not None}, conso,
-            annee_reference=_aujourdhui().year - 1, archetype=categorie,
-            profil_societe=_profil_societe(
-                company, mode, categorie if mode == 'commercial'
-                else res.valeur('secteur_industriel')),
-            production_jours_types=production['jours_types'])
+    jours_types, prov_charge, al_charge = _jours_types_de_charge(
+        company, res, mode, categorie, rythme, mesuree, registres, conso, production)
     alertes.extend(al_charge)
     niveau = (prov_charge or {}).get('niveau_donnees')
     sous_reserve = _sous_reserve_visite(res, lead, niveau)
