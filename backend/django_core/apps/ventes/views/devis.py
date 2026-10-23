@@ -44,6 +44,9 @@ from .devis_calepinage import DevisCalepinageActionsMixin  # SPL140
 from .devis_facturation import DevisFacturationActionsMixin  # SPL141
 from .devis_cadence import DevisCadenceActionsMixin  # SPL142
 from authentication.scoping import visible_user_ids
+import logging
+
+logger = logging.getLogger(__name__)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -541,6 +544,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         try:
             trace = cache.get(cle_rejeu)
         except Exception:  # cache indisponible : pas de rejeu
+            logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
             trace = None
         if isinstance(trace, dict) and trace.get('id'):
             deja = Devis.objects.filter(
@@ -554,6 +558,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         try:
             pose = cache.add(cle_verrou, 1, 180)
         except Exception:  # cache indisponible : pas de verrou
+            logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
             pose = None
         if pose is False:
             return Response(
@@ -579,12 +584,14 @@ class DevisViewSet(DevisEditionActionsMixin,
                 try:
                     cache.delete(cle_verrou)
                 except Exception:
+                    logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
                     pass
 
         alertes = list(journal.get('alertes') or [])
         try:
             cache.set(cle_rejeu, {'id': devis.id, 'alertes': alertes}, 120)
         except Exception:
+            logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
             pass
         return reponse_auto(devis, alertes, status.HTTP_201_CREATED)
 
