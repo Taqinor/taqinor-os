@@ -734,10 +734,25 @@ résidu à absorber.
 douze jours types cesse d'être partagé entre les capacités. Le test le dit alors, et pointe cette
 section.
 
+**Rouvert par le fondateur le 23/10/2026 (lead 1635, « residential clients above 100 kDH must be
+resolved »)** : le plafond de 120 panneaux devient un SEUIL (`SEUIL_PANNEAUX_RESIDENTIEL`, taille
+signalée « étude sur mesure conseillée » mais recommandée), le plafond dur passe à 2 000 panneaux
+(`MAX_PANNEAUX_BALAYAGE`, seul le zéro de trop le touche), et le balayage devient ADAPTATIF : dense
+(taille par taille, byte-identique) jusqu'à `SEUIL_BALAYAGE_DENSE` = 60 panneaux, sinon une grille
+d'environ `POINTS_GRILLE_GROSSIERE` = 40 tailles puis le raffinement panneau par panneau autour des
+deux recommandations. Le pire cas n'est plus « plafond × paliers » mais `TAILLES_MAX_EVALUEES`
+tailles évaluées (grille sur tout le plafond + deux voisinages), chacune avec ses paliers. Mesuré sur
+prod le 23/10/2026 : 0,05-0,10 s par taille — 4 s pour 39 tailles (6 000 MAD/mois), ~5-10 s pour
+100 000 MAD/mois au lieu d'un refus.
+
 <!-- QJR112-CHIFFRES — bloc LU par apps/ventes/tests/test_qjr_cout_balayage.py.
      Ces valeurs et le code ne peuvent pas diverger : le test échoue si l'une bouge
      sans que cette note bouge avec elle. Ne pas reformater ce bloc.
-MAX_PANNEAUX_BALAYAGE=120
+MAX_PANNEAUX_BALAYAGE=2000
+SEUIL_PANNEAUX_RESIDENTIEL=120
+SEUIL_BALAYAGE_DENSE=60
+POINTS_GRILLE_GROSSIERE=40
+TAILLES_MAX_EVALUEES=237
 MAX_PALIERS_STOCKAGE=16
 FACTEUR_MAX_FALAISE=2.0
 JOURS_TYPES=12

@@ -699,7 +699,9 @@ def echelle_paliers_batterie(devis):
     quand le devis porte un calepinage (:func:`contenance_toit_du_devis` — on ne
     propose pas des panneaux qui ne tiennent pas), ET :data:`FACTEUR_MAX_FALAISE`
     × la taille de parité de CE client, plafonnée par
-    :data:`MAX_PANNEAUX_BALAYAGE`.
+    :data:`SEUIL_PANNEAUX_RESIDENTIEL` (l'ancien plafond de 120 panneaux —
+    23/10/2026 : le balayage des TAILLES monte désormais au-delà, pas cette
+    échelle de stockage, qui tire le champ panneau par panneau).
 
     LA BORNE DE TOIT SE MESURE, ELLE NE SE DÉCLARE PAS (26/08/2026). Elle lisait
     :func:`plafond_toit_du_devis`, qui rend le nombre de panneaux DESSINÉS par
@@ -826,7 +828,11 @@ def _echelle_paliers_batterie(devis):
     # ── LES BORNES DU CHAMP ──────────────────────────────────────────────────
     panneaux_parite = max(1, int(math.ceil(
         (conso_annuelle / productible_annuel) * 1000.0 / panel_watt)))
-    max_champ = min(MAX_PANNEAUX_BALAYAGE,
+    # 23/10/2026 — borne INCHANGÉE à 120 (``SEUIL_PANNEAUX_RESIDENTIEL``, l'ex-
+    # ``MAX_PANNEAUX_BALAYAGE``) : ``champ_minimal`` tire le champ panneau par
+    # panneau, et le plafond dur du balayage des tailles (2 000) n'est pas une
+    # borne pour cette échelle — le comportement reste byte-identique.
+    max_champ = min(SEUIL_PANNEAUX_RESIDENTIEL,
                     int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
     # LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (fondateur, 26/08/2026).
     #
@@ -1086,7 +1092,6 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
 from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     FACTEUR_MAX_FALAISE,
     MAX_PALIERS_STOCKAGE,
-    MAX_PANNEAUX_BALAYAGE,
     _arrondi,
     _lire_composition,
     _num,
@@ -1094,3 +1099,4 @@ from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-
     capacite_utile_batterie,
     paliers_stockage_candidats,
 )
+from apps.ventes.balayage_adaptatif import SEUIL_PANNEAUX_RESIDENTIEL  # noqa: E402 — fin de module (D-ENF22)
