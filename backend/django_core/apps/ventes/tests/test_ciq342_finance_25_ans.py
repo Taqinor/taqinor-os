@@ -114,3 +114,45 @@ class Ciq342SiteMT(SimpleTestCase):
             with self.subTest(exemple=exemple):
                 html = render.build_html(renderer._augment(_data(exemple)))
                 self.assertEqual(len(HTML(string=html).render().pages), 4)
+
+
+#: AMOT80 — codes et chemins INTERNES jamais lus par un client.
+CHAINES_INTERNES = ("D-CIQ", "economie_ci.", "etude_ci.", "Groupe CIQ",
+                    "décision Q1", ".json")
+
+
+class Amot80PageFinance(SimpleTestCase):
+    """AMOT80 (D-ACI-8=a) — page 3 : motif vrai quand l'investissement n'est
+    pas chiffré, LCOE « non actualisé » étiqueté, aucun code interne."""
+
+    def test_investissement_non_chiffre_le_motif_remplace_la_phrase(self):
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        d = sample_data.build()
+        d["economie_ci"] = eco.economie_ci_publique(eco.assembler_economie_ci(
+            _apercu("mt"), investissement={"ht": 0.0, "ttc": 0.0},
+            mode_installation="industriel"))
+        texte = _texte(_pages(d)[3])
+        self.assertIn("Investissement non encore chiffré (3 articles sans "
+                      "prix)", texte)
+        self.assertNotIn("n'ont pas encore été calculées", texte)
+        self.assertNotIn("12 dernières factures", texte)
+        self.assertNotIn("Rentabilité sur 25 ans", texte)
+        self.assertNotIn("TRI sur", texte)
+
+    def test_lcoe_non_actualise_etiquete(self):
+        texte = _texte(_pages(_data())[3])
+        self.assertIn("Coût moyen non actualisé du kWh produit (HT)", texte)
+        self.assertNotIn("Coût du kWh solaire", texte)
+
+    def test_aucun_code_interne(self):
+        for exemple in ("exemple", "exemple_industriel_mt"):
+            texte = _texte(_pages(_data(exemple))[3])
+            for interne in CHAINES_INTERNES:
+                with self.subTest(exemple=exemple, interne=interne):
+                    self.assertNotIn(interne, texte)
+        # Les sources restent dites, en mots du client.
+        texte = _texte(_pages(_data())[3])
+        self.assertIn("valorisation heure par heure au tarif de chaque poste",
+                      texte)
+        self.assertIn("durée d'analyse : 25 ans", texte)

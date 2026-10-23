@@ -2028,3 +2028,137 @@ decisions:
     date: "2026-10-11"
     source: "question interactive du 11/10/2026 (session loop work on all plans, dev-all-laptop) — le mode auto avait refusé la suppression à la lane ENF23"
     taches: [ENF23]
+
+  # ── Moteur de devis C&I : investigation L3 du 23/10/2026 (dossier docs/audits/2026-10-23-moteur-ci.md) ──
+  - id: D-ACI-1
+    question: "Lead pro avec un relevé de consommation incomplet (< 12 mois) et aucun autre kWh : que fait le devis automatique ?"
+    options:
+      - cle: a
+        texte: "refuser en nommant le champ (« relevé incomplet n/12 : saisir la conso mensuelle »)"
+      - cle: b
+        texte: "estimer : moyenne des mois relevés × 12, étiquetée « estimation (n mois relevés) » à l'écran et au document"
+    reponse: b
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 (session moteur C&I, go-deep L3) ; constat C-ACI-002 (lead prod 1650)"
+    taches: [ADEV77, ALEA49]
+  - id: D-ACI-2
+    question: "Lignes dépendant de la visite (structure sans type de toit, câbles sans longueurs) sans prix : que fait le devis automatique C&I ?"
+    options:
+      - cle: a
+        texte: "devis indicatif SANS ces lignes, « estimation sous réserve de visite » (D-CIQ-5) ; lignes « à chiffrer après visite » hors total ; retour non imprimé tant que le total est incomplet"
+      - cle: b
+        texte: "refuser jusqu'à la visite technique"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-005"
+    taches: [ADEV79]
+  - id: D-ACI-3
+    question: "Lead commercial en monophasé (petit commerce) alors que le catalogue C&I n'a que des onduleurs triphasés : que fait-on ?"
+    options:
+      - cle: a
+        texte: "refuser en le disant (passer la fiche en résidentiel ou déclarer le triphasé)"
+      - cle: b
+        texte: "ouvrir le C&I au monophasé : rôle onduleur C&I monophasé au catalogue et à la combinaison, même document commercial"
+    reponse: b
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-010 (lead anonymisé 1307)"
+    taches: [ADEV86]
+  - id: D-ACI-4
+    question: "Les prestations C&I ont un prix saisi en Stock mais le moteur ne lit que les forfaits de Paramètres › Devis : quelle source ?"
+    options:
+      - cle: a
+        texte: "Paramètres seuls ; la fiche Stock de ces articles dit « tarif réglé dans Paramètres › Devis › Prestations C&I » et sort du filtre « à compléter »"
+      - cle: b
+        texte: "repli sur le prix de vente Stock comme forfait fixe"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-007"
+    taches: [ASTK254]
+  - id: D-ACI-5
+    question: "La fiche lead dit « devis auto prêt » dès que la consommation est connue (CIQ404) alors que le moteur exige aussi le contrat BT et le rythme : que doit dire la fiche ?"
+    options:
+      - cle: a
+        texte: "prêt = tout ce que le moteur exige (une règle partagée calculée par le moteur) ; remplace CIQ404 « conso seule »"
+      - cle: b
+        texte: "garder « prêt = conso », corriger seulement le 409 (champ nommé + bouton Compléter)"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-001 (lead prod 1637)"
+    taches: [ADEV76, ALEA47]
+  - id: D-ACI-6
+    question: "Postes FIXES sans prix (coffrets, protections, forfaits non saisis) : le devis automatique C&I…"
+    options:
+      - cle: a
+        texte: "refuse en nommant les postes et le chemin Paramètres › Devis › Prestations C&I / fiche produit (CIQ105 : rien d'inventé, jamais un 0)"
+      - cle: b
+        texte: "crée le brouillon sans ces lignes avec alertes ; PDF client bloqué tant que le total est incomplet"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constats C-ACI-004, C-ACI-006"
+    taches: [ADEV79]
+  - id: D-ACI-7
+    question: "Profil de charge SAISI par la société pour un lead industriel : quand le moteur l'utilise-t-il ?"
+    options:
+      - cle: a
+        texte: "seulement si sa clé = secteur industriel déclaré du lead (ou catégorie commerciale) ; sinon profil déclaré exigé"
+      - cle: b
+        texte: "jamais pour l'industriel"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-003"
+    taches: [ADEV76]
+  - id: D-ACI-8
+    question: "Investissement du devis incomplet (lignes sans prix) : la page finance et le retour sur investissement…"
+    options:
+      - cle: a
+        texte: "sont omis avec le motif « investissement non encore chiffré (N articles sans prix) » (D-CIQ-10, QJR119)"
+      - cle: b
+        texte: "sont imprimés sur le total partiel avec la mention « investissement partiel »"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-008 (TRI 895 % sur 2 lignes)"
+    taches: [ADEV81, AMOT80]
+  - id: D-ACI-9
+    question: "Quand le rendu premium commercial/industriel refuse un devis, le moteur sert le document RÉSIDENTIEL legacy au client C&I : que faire ?"
+    options:
+      - cle: a
+        texte: "refuser : erreur nommée, jamais un document résidentiel à une entreprise (étend AMOT36 à tous les motifs)"
+      - cle: b
+        texte: "garder le repli en retirant les textes résidentiels"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-012"
+    taches: [AMOT79]
+  - id: D-ACI-10
+    question: "Badge « Prix ONEE en hausse » du document legacy (contredit QRES54 tarif constant, aucune source) : que faire ?"
+    options:
+      - cle: a
+        texte: "le retirer de tous les documents"
+      - cle: b
+        texte: "le garder seulement avec une indexation sourcée saisie"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-013"
+    taches: [AMOT82]
+  - id: D-ACI-11
+    question: "Ligne 82-21 du document C&I (D-CIQ-18) : quel texte ?"
+    options:
+      - cle: a
+        texte: "phrase fixe « Raccordement et autorisations du site : dossier monté et suivi par TAQINOR », imprimée quand le régime calculé n'est pas « aucun » (jamais le texte de loi, D-CIQ-6)"
+      - cle: b
+        texte: "texte saisi par Reda dans Paramètres, rien tant qu'il est vide"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-014"
+    taches: [AMOT83]
+  - id: D-ACI-12
+    question: "Suivi de production sur le devis C&I sans délai d'intervention saisi (D-CIQ-12) : que faire ?"
+    options:
+      - cle: a
+        texte: "nommer le service sans délai (« Suivi de production inclus ») ; l'option O&M nommée s'imprime « tarif à renseigner » tant qu'elle n'a pas de prix"
+      - cle: b
+        texte: "rien tant que le délai manque"
+    reponse: a
+    date: "2026-10-23"
+    source: "question interactive du 23/10/2026 ; constat C-ACI-015"
+    taches: [AMOT83]

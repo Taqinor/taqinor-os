@@ -99,6 +99,40 @@ class GrilleBtTest(SimpleTestCase):
         self.assertEqual(t.BT_PATENTE[0]['valeur'], 1.5146)
 
 
+class DateVraieGrilleBtTest(SimpleTestCase):
+    """APAR68 (C-ACI-019) : la grille BT vient d'une capture Wayback du
+    16/02/2025 ; « relevé le » = cette date, jamais celle de la lecture du
+    code, et « non reconfirmée 2026 » est un drapeau explicite."""
+
+    def _toutes_lignes_bt(self):
+        return (t.grille_bt('bt_patente') + t.grille_bt('bt_force_motrice')
+                + t.grille_bt('bt_force_motrice', option_bi_horaire=True))
+
+    def test_releve_le_bt_est_la_date_de_capture(self):
+        for ligne in self._toutes_lignes_bt():
+            self.assertEqual(ligne['releve_le'], '2025-02-16', ligne['cle'])
+            self.assertNotEqual(ligne['releve_le'], t.RELEVE_LE)
+
+    def test_drapeau_non_reconfirme_2026_sur_toute_ligne_bt(self):
+        for ligne in self._toutes_lignes_bt():
+            self.assertIn('reconfirme_2026', ligne, ligne['cle'])
+            self.assertIs(ligne['reconfirme_2026'], False, ligne['cle'])
+
+    def test_lignes_mt_gardent_leur_date_et_inchange_depuis(self):
+        for ligne in t.grille_mt().values():
+            self.assertEqual(ligne['releve_le'], t.RELEVE_LE)
+            self.assertEqual(ligne['inchange_depuis'], '2023-11-30')
+            self.assertNotIn('reconfirme_2026', ligne)
+
+    def test_valeurs_de_la_grille_inchangees(self):
+        self.assertEqual(
+            [x['valeur'] for x in t.grille_bt('bt_patente')],
+            [1.5146, 1.7090])
+        self.assertEqual(
+            [x['valeur'] for x in t.grille_bt('bt_force_motrice')],
+            [1.3639, 1.4663, 1.6758])
+
+
 class PureteTest(SimpleTestCase):
     def test_aucun_import_d_app(self):
         with open(t.__file__, encoding='utf-8') as fh:

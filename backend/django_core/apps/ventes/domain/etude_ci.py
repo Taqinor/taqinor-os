@@ -88,6 +88,10 @@ CHEMINS_LEAD = {
     'puissance_souscrite_kva': 'puissance_souscrite_kva',
     'rythme.jours_ouverts': 'jours_ouverts', 'rythme.plages': 'plages',
     'rythme.equipes': 'equipes', 'rythme.fermetures': 'fermetures',
+    # ADEV76 — heure de début d'un régime 1x8 / 2x8 sans heure de fin, et le
+    # secteur industriel (clé du profil société retenu, D-ACI-7=a).
+    'rythme.debut_equipe_h': 'debut_equipe_h',
+    'rythme.secteur_industriel': 'secteur_industriel',
     'rythme.categorie_commerciale': 'categorie_commerciale',
     'rythme.reponses_categorie': 'reponses_categorie',
     'toit.surface_utile_m2': 'surface_utile_m2',
@@ -445,6 +449,7 @@ def _consommation(res, tarif, alertes, hypotheses):
     annuel = _num(res.valeur('kwh_annuel'))
     if annuel and annuel > 0:
         return annuel, 'kwh_annuel'
+    partiel = None
     for feuille in ('factures_mad', 'releve_kwh'):
         lignes = res.valeur(feuille)
         if isinstance(lignes, list):
@@ -457,9 +462,23 @@ def _consommation(res, tarif, alertes, hypotheses):
                     numero = int(mois.split('-')[-1])
                 except ValueError:
                     continue
-                par_mois[numero] = _num(ligne['kwh'])
+                if 1 <= numero <= 12:
+                    par_mois[numero] = _num(ligne['kwh'])
             if len(par_mois) == 12:
                 return [par_mois[m] for m in range(1, 13)], feuille
+            if par_mois and partiel is None:
+                partiel = (par_mois, feuille)
+    bill = _num(res.valeur('bill_kwh'))
+    if partiel is not None and not (bill and bill > 0):
+        # ADEV77 (D-ACI-1=b) — relevé de n < 12 mois DISTINCTS et aucun autre
+        # kWh : moyenne des mois relevés × 12, étiquetée estimation.
+        par_mois, feuille = partiel
+        moyenne = sum(par_mois.values()) / len(par_mois)
+        hypotheses.append({
+            'cle': 'consommation', 'valeur': round(moyenne * 12, 1),
+            'statut': 'estimation',
+            'source': 'relevé partiel (%d mois)' % len(par_mois)})
+        return [moyenne] * 12, feuille
     td = res.valeur('tarif_declare')
     lignes = res.valeur('factures_mad')
     montants = {}
@@ -487,7 +506,6 @@ def _consommation(res, tarif, alertes, hypotheses):
             'conversion_mad_impossible', 'consommation.factures_mad',
             'Facture en MAD sans tarif BT sourcé applicable : aucune conversion en '
             'kWh (jamais un prix moyen supposé).'))
-    bill = _num(res.valeur('bill_kwh'))
     if bill and bill > 0:
         hypotheses.append({'cle': 'consommation', 'valeur': bill, 'statut': 'estimation',
                            'source': 'bill_kwh (lecture seule, QJR662)'})
@@ -590,9 +608,13 @@ def lire_production(site):
     return productibles, formes, source
 
 
-def _profil_societe(company, mode, categorie):
-    """Profil SAISI par la société (famille du mode), par la façade calepinage."""
-    if company is None:
+def _profil_societe(company, mode, cle):
+    """Profil SAISI par la société (famille du mode), par la façade calepinage.
+
+    ADEV76 (D-ACI-7=a) — retenu SEULEMENT si sa clé = ``cle`` (catégorie
+    commerciale, ou secteur industriel déclaré du lead) : jamais le premier
+    profil venu à la place de l'archétype ou d'un profil déclaré exigé."""
+    if company is None or _vide(cle):
         return None
     from apps.calepinage import services as calepinage_services
     try:
@@ -600,10 +622,10 @@ def _profil_societe(company, mode, categorie):
     except Exception:  # lecture best-effort : l'archétype sourcé prend le relais
         logger.warning('CIQ118 — profils société illisibles', exc_info=True)
         return None
-    candidats = [p for p in profils if p.get('famille') == mode]
-    if not candidats:
+    choisi = next((p for p in profils
+                   if p.get('famille') == mode and p.get('cle') == cle), None)
+    if choisi is None:
         return None
-    choisi = next((p for p in candidats if p.get('cle') == categorie), candidats[0])
     return {'cle': choisi.get('cle'), 'libelle': choisi.get('libelle'),
             'courbe': choisi.get('courbes'), 'provenance': choisi.get('provenance')}
 
@@ -623,7 +645,9 @@ def lire_catalogue_ci(company):
         if produit is not None and produit.prix_vente and produit.prix_vente > 0:
             element = dict(element, prix_vente_ht=produit.prix_vente,
                            paliers_prix_vente=list(
-                               getattr(produit, 'paliers_prix_vente', None) or []))
+                               getattr(produit, 'paliers_prix_vente', None) or []),
+                           # ADEV79 — la TVA de l'article (TTC des paliers → HT).
+                           tva_pct=getattr(produit, 'tva', None))
         elements.append(element)
 
     onduleurs = []
@@ -662,7 +686,9 @@ def lire_catalogue_ci(company):
             specs = {}
         pmax = _num(specs.get('pmax_wc'))
         prix = bool(produit.prix_vente and produit.prix_vente > 0)
-        candidats.append(((prix, bool(pmax), pmax or 0, -produit.id), produit, specs))
+        # ADEV78 — un module à puissance PUBLIÉE passe devant un module tarifé
+        # sans Pmax (sans Pmax, aucun panneau ne se compte).
+        candidats.append(((bool(pmax), prix, pmax or 0, -produit.id), produit, specs))
     if candidats:
         _cle, produit, specs = max(candidats, key=lambda c: c[0])
         module = {
@@ -670,6 +696,9 @@ def lire_catalogue_ci(company):
             'pmax_wc': _num(specs.get('pmax_wc')),
             'prix_connu': bool(produit.prix_vente and produit.prix_vente > 0),
             'prix_vente_ht': produit.prix_vente,
+            'tva_pct': getattr(produit, 'tva', None),
+            # ADEV82 — le module porte aussi ses paliers (prix de la taille).
+            'paliers_prix_vente': list(getattr(produit, 'paliers_prix_vente', None) or []),
             'longueur_mm': _num(specs.get('longueur_mm')),
             'largeur_mm': _num(specs.get('largeur_mm')),
             'poids_kg': _num(specs.get('poids_kg')),
@@ -786,9 +815,13 @@ def _regime(kwc, puissance_ac, tension):
     return {'regime': regime, 'seuil': seuil, 'source': SOURCE_REGIME}
 
 
-def _completer_prix(composition, prix_par_id):
+def _completer_prix(composition, prix_par_id, tva_defaut=None):
     """Les lignes dont l'article a un prix de vente connu mais que la
-    composition n'a pas chiffré (panneau) reçoivent ce prix unitaire HT."""
+    composition n'a pas chiffré (panneau) reçoivent ce prix unitaire HT.
+    ADEV82 — une ligne au prix de PALIER porte le HT de ce palier (même règle
+    que la taille, ``moteur_ci.taille.prix_palier_ht``) : taille et devis au
+    même prix."""
+    from apps.ventes.moteur_ci.composition import prix_palier_ht
     for ligne in composition.get('lignes') or []:
         prix = prix_par_id.get(ligne.get('produit'))
         if prix is not None and not ligne.get('prix_unitaire_ht') \
@@ -797,10 +830,14 @@ def _completer_prix(composition, prix_par_id):
             ligne['prix_connu'] = True
             if ligne.get('motif') and 'prix' in ligne['motif']:
                 ligne['motif'] = None
-    composition['prix_a_renseigner'] = [ligne['designation']
-                                        for ligne in composition.get('lignes') or []
-                                        if not ligne['prix_connu']]
-    composition['incomplet'] = bool(composition['prix_a_renseigner'])
+        palier_ht = prix_palier_ht(ligne, tva_defaut)
+        if palier_ht is not None and ligne.get('role') != 'onduleur_string_tri':
+            ligne['prix_unitaire_ht'] = str(palier_ht)
+    from apps.ventes.moteur_ci.composition import postes_non_chiffres
+    a_renseigner, visite = postes_non_chiffres(composition.get('lignes'))
+    composition['prix_a_renseigner'] = a_renseigner
+    composition['a_chiffrer_visite'] = visite
+    composition['incomplet'] = bool(a_renseigner or visite)
     return composition
 
 
@@ -826,6 +863,29 @@ def _alertes_reactif(res, tension, bilan, registres):
         provenance_cos_phi=res.provenance('_cos_phi'))['alertes']
 
 
+def _alerte_bande_prix_kwc(reglages, evaluation):
+    """ADEV82 — total HT/kWc hors de la bande INTERNE saisie par la société
+    (``CompanyProfile.bande_prix_kwc_ci``) ⇒ alerte interne (jamais au
+    document) ; bande vide ⇒ rien."""
+    bande = getattr(reglages, 'bande_prix_kwc_ci', None)
+    kwc = _num((evaluation or {}).get('kwc'))
+    if not isinstance(bande, dict) or not kwc:
+        return []
+    bas, haut = _num(bande.get('min_ht')), _num(bande.get('max_ht'))
+    if bas is None and haut is None:
+        return []
+    prix = float(evaluation.get('cout') or 0) / kwc
+    if (bas is not None and prix < bas) or (haut is not None and prix > haut):
+        return [_alerte(
+            'PRIX_KWC_HORS_BANDE', 'composition',
+            'Total HT %.0f DH/kWc hors de la bande interne %s–%s DH/kWc%s.' % (
+                prix, '%.0f' % bas if bas is not None else '…',
+                '%.0f' % haut if haut is not None else '…',
+                ' (%s)' % bande['source'] if bande.get('source') else ''),
+            interne=True)]
+    return []
+
+
 def _apercu_valorisation(bilan, jours_types, tension):
     return {'bilan': bilan, 'profil_charge': {'jours_types': jours_types},
             'entrees_resolues': {'tension': {'valeur': tension}}}
@@ -835,7 +895,8 @@ def _forme_composition(composition):
     if composition is None:
         return None
     return {k: composition.get(k) for k in
-            ('lignes', 'onduleurs', 'prix_a_renseigner', 'incomplet', 'options')}
+            ('lignes', 'onduleurs', 'prix_a_renseigner', 'a_chiffrer_visite', 'incomplet',
+             'options')}
 
 
 def _vide_etude(res, alertes, hypotheses, sous_reserve=None):
@@ -889,6 +950,35 @@ def _combinaison_imposee(onduleurs_imposes, catalogue_onduleurs):
             'motif': None, 'alertes': [], 'hypotheses': []}
 
 
+def _jours_types_de_charge(company, res, mode, categorie, rythme, mesuree, registres,
+                           conso, production):
+    """Extraction C20 d'``etudier_ci`` : ``(jours_types, provenance, alertes)`` de la
+    courbe de charge — mesurée > registres MT > déclarée (archétype / profil société)."""
+    from apps.ventes.moteur_ci.charge import courbe_declaree
+    if mesuree:
+        # CIQ133 — priorité : courbe mesurée > registres MT > déclaré > archétype.
+        from apps.ventes.moteur_ci.charge import courbe_mesuree_jours_types
+        valeurs, debut, source_mesure = mesuree
+        jours_types, prov_charge, al_charge = courbe_mesuree_jours_types(
+            valeurs, debut, annee_reference=_aujourdhui().year - 1,
+            kwh_mensuels=conso if isinstance(conso, list) else None, source=source_mesure)
+    elif registres:
+        # CIQ132 — priorité : registres MT > profil déclaré > archétype.
+        from apps.ventes.moteur_ci.charge import courbe_registres_mt
+        jours_types, prov_charge, al_charge = courbe_registres_mt(
+            {k: v for k, v in rythme.items() if v is not None}, registres,
+            annee_reference=_aujourdhui().year - 1)
+    else:
+        jours_types, prov_charge, al_charge = courbe_declaree(
+            {k: v for k, v in rythme.items() if v is not None}, conso,
+            annee_reference=_aujourdhui().year - 1, archetype=categorie,
+            profil_societe=_profil_societe(
+                company, mode, categorie if mode == 'commercial'
+                else res.valeur('secteur_industriel')),
+            production_jours_types=production['jours_types'])
+    return jours_types, prov_charge, al_charge
+
+
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
                onduleurs_imposes=None, source_production_figee=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
@@ -901,7 +991,6 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     production reprise rend les MÊMES hypothèses/alertes que son calcul.
     """
     from apps.ventes import economie_ci, tarif_ci
-    from apps.ventes.moteur_ci.charge import courbe_declaree
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import bloc_production_ci, traces_production
@@ -922,6 +1011,11 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             'Longueurs de câble non relevées — à confirmer à la visite.'))
     tension = res.valeur('tension')
     tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension)
+    # ADEV76 — dit dès la résolution : un refus nomme le contrat du lead même
+    # quand le profil de charge arrête l'étude plus loin.
+    if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:
+        alertes.append(_alerte('tarif_omis', 'tarif', tarif_ci.MENTION_OMIS,
+                               niveau='bloquant'))
     conso, _feuille = _consommation(res, tarif, alertes, hypotheses)
     registres = _registres_resolus(res)
     mesuree = _courbe_mesuree_resolue(res.valeur('courbe_mesuree'), _aujourdhui().year - 1)
@@ -977,25 +1071,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     rythme = {k: res.valeur(k) for k in (
         'jours_ouverts', 'plages', 'equipes', 'debut_equipe_h', 'fermetures',
         'ramadan', 'talon', 'categorie_commerciale', 'reponses_categorie')}
-    if mesuree:
-        # CIQ133 — priorité : courbe mesurée > registres MT > déclaré > archétype.
-        from apps.ventes.moteur_ci.charge import courbe_mesuree_jours_types
-        valeurs, debut, source_mesure = mesuree
-        jours_types, prov_charge, al_charge = courbe_mesuree_jours_types(
-            valeurs, debut, annee_reference=_aujourdhui().year - 1,
-            kwh_mensuels=conso if isinstance(conso, list) else None, source=source_mesure)
-    elif registres:
-        # CIQ132 — priorité : registres MT > profil déclaré > archétype.
-        from apps.ventes.moteur_ci.charge import courbe_registres_mt
-        jours_types, prov_charge, al_charge = courbe_registres_mt(
-            {k: v for k, v in rythme.items() if v is not None}, registres,
-            annee_reference=_aujourdhui().year - 1)
-    else:
-        jours_types, prov_charge, al_charge = courbe_declaree(
-            {k: v for k, v in rythme.items() if v is not None}, conso,
-            annee_reference=_aujourdhui().year - 1, archetype=categorie,
-            profil_societe=_profil_societe(company, mode, categorie),
-            production_jours_types=production['jours_types'])
+    jours_types, prov_charge, al_charge = _jours_types_de_charge(
+        company, res, mode, categorie, rythme, mesuree, registres, conso, production)
     alertes.extend(al_charge)
     niveau = (prov_charge or {}).get('niveau_donnees')
     sous_reserve = _sous_reserve_visite(res, lead, niveau)
@@ -1032,7 +1109,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     def composer(kwc, onduleurs):
         return _completer_prix(composer_ci(kwc, catalogue['elements'], onduleurs=onduleurs,
                                            entrees=entrees_compo, forfaits=forfaits),
-                               catalogue['prix_par_id'])
+                               catalogue['prix_par_id'],
+                               getattr(reglages, 'tva_standard', None))
 
     td = res.valeur('tarif_declare')
 
@@ -1041,9 +1119,6 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             _apercu_valorisation(bilan, jours_types, tension), tarif, tarif_declare=td)
         return (resultat.get('economie_annee1') or {}).get('total_mad')
 
-    if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:
-        alertes.append(_alerte('tarif_omis', 'tarif', tarif_ci.MENTION_OMIS,
-                               niveau='bloquant'))
     hypotheses.append({'cle': 'base_taille', 'valeur': 'HT', 'statut': 'estimation',
                        'source': 'coût de vente HT ÷ économie HT (la base HT/TTC du '
                                  'document suit D-CIQ-3, economie_ci)'})
@@ -1059,7 +1134,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         revente_choisie=revente,
         taille_explicite_kwc=_taille_en_panneaux_entiers(
             res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
-        taux_tva_pct=20)
+        # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
+        # standard SAISI de la société (lecture seule), jamais un 20 codé.
+        taux_tva_pct=getattr(reglages, 'tva_standard', None))
     alertes.extend(resultat['alertes'])
     hypotheses.extend(resultat['hypotheses'])
     evaluation = resultat['evaluation']
@@ -1076,16 +1153,27 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             _apercu_valorisation(bilan, jours_types, tension), tarif, tarif_declare=td)
         regime = _regime(evaluation['kwc'], evaluation['puissance_ac'], tension)
         alertes.extend(_alertes_reactif(res, tension, bilan, registres))
+        alertes.extend(_alerte_bande_prix_kwc(reglages, evaluation))
     elif resultat.get('prix_manquants'):
+        # ADEV79 (D-ACI-6=a) — les postes de taille ET les postes fixes sans
+        # prix : le refus les nomme tous, une seule fois.
+        a_renseigner = list(resultat['prix_manquants'])
+        a_renseigner += [p for p in resultat.get('postes_fixes_sans_prix') or []
+                         if p not in a_renseigner]
         composition = {'lignes': [], 'onduleurs': {'combinaison': [], 'ratio_dc_ac': {
             'valeur': None, 'bornes': None, 'source': None}, 'chaines': None},
-            'prix_a_renseigner': resultat['prix_manquants'], 'incomplet': True,
-            'options': []}
+            'prix_a_renseigner': a_renseigner, 'a_chiffrer_visite': [],
+            'incomplet': True, 'options': []}
     if composition is not None and composition.get('prix_a_renseigner'):
         alertes.append(_alerte(
             'prix_a_renseigner', 'composition.lignes',
             '%d articles C&I sans prix de vente : devis incomplet.'
             % len(composition['prix_a_renseigner'])))
+    if composition is not None and composition.get('a_chiffrer_visite'):
+        alertes.append(_alerte(
+            'a_chiffrer_visite', 'composition.lignes',
+            'À chiffrer après la visite technique, hors total (estimation sous réserve '
+            'de visite) : %s.' % ', '.join(composition['a_chiffrer_visite'])))
 
     etude = {
         'entrees_resolues': res.entrees_resolues(),
@@ -1138,33 +1226,100 @@ def entrees_pour_etude_params(entrees_resolues):
     return arbre
 
 
+#: ADEV76 (D-ACI-5=a) — champ d'une alerte BLOQUANTE du moteur → champ du
+#: LEAD qui la lève (un 409 nomme toujours ce que la fiche lead sait poser).
+CHAMP_LEAD_DES_ALERTES = {
+    'tarif': 'contrat_electricite',
+    'rythme.jours_ouverts': 'jours_ouverture',
+    'rythme.plages': 'heure_debut',
+}
+#: L'ordre dans lequel un refus nomme le premier champ manquant du lead.
+ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut')
+MESSAGES_CHAMP_LEAD_CI = {
+    'jours_ouverture': ("Jours d'ouverture du site à déclarer sur le lead : profil de "
+                        'charge déclaré exigé (aucun week-end supposé).'),
+    'heure_debut': ("Heures d'ouverture (ou régime d'équipes) à déclarer sur le lead : "
+                    'aucun archétype sourcé pour cette activité, profil déclaré exigé.'),
+}
+#: ADEV78 — champs d'alerte (racine) dont le refus porte sur la composition.
+CHAMPS_COMPOSITION = frozenset({'composition', 'onduleurs', 'taille_explicite_kwc'})
+#: ADEV78 — refus d'une étude SANS taille et sans alerte bloquante, par
+#: raison d'arrêt : « aucune taille rentable » est réservé à l'horizon.
+MESSAGES_ARRET = {
+    'horizon_marginal': ('Aucune taille C&I rentable dans l’horizon de 10 ans.', 'taille'),
+    'toit': ('Contenance du toit inférieure à la première tranche de 5 kWc : '
+             'aucune taille C&I.', 'surface_toiture_m2'),
+    'puissance_souscrite': ('Puissance souscrite déclarée inférieure à la première '
+                            'tranche de 5 kWc : aucune taille C&I.', 'compteur_puissance_kva'),
+}
+MESSAGE_PRIX_A_RENSEIGNER = (
+    'Prix à renseigner avant un devis automatique C&I : %s → Paramètres › Devis › '
+    'Prestations C&I ou fiche produit.')
+MESSAGE_MAD_SANS_CONTRAT = (
+    "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
+    '(BT patenté / force motrice) ou saisissez la conso en kWh.')
+
+
+def _champ_lead_manquant(alertes):
+    """``(champ du lead, alerte)`` du PREMIER manquant (ordre fixe), ou ``None``."""
+    trouves = {}
+    for alerte in alertes:
+        if alerte.get('niveau') != 'bloquant':
+            continue
+        champ = CHAMP_LEAD_DES_ALERTES.get(alerte.get('champ'))
+        if champ is not None:
+            trouves.setdefault(champ, alerte)
+    for champ in ORDRE_CHAMPS_LEAD_CI:
+        if champ in trouves:
+            return champ, trouves[champ]
+    return None
+
+
 def refus_devis_auto_ci(etude):
     """``(message, champ)`` qui interdit un devis automatique C&I, ou ``None``.
 
-    Les refus nomment la donnée manquante de la règle « devis auto prêt » pro
-    (contrat CIQ1 : le groupe consommation) ou la cause du moteur."""
-    codes = {a.get('code'): a for a in etude.get('alertes') or []}
+    Les refus nomment un CHAMP DU LEAD (ADEV76) : la consommation, puis le
+    contrat d'électricité, les jours et les heures d'ouverture (dans cet
+    ordre, la règle des prérequis ``moteur_ci.charge.profil_charge_prerequis``)
+    — testés AVANT « prix à renseigner » — ou la cause du moteur."""
+    alertes = etude.get('alertes') or []
+    codes = {a.get('code'): a for a in alertes}
     if 'mode_inconnu' in codes:
         return codes['mode_inconnu']['message'], 'type_installation'
     if 'kwh_incoherent_factures' in codes:
         return codes['kwh_incoherent_factures']['message'], 'conso_mensuelle_kwh'
-    if 'consommation_absente' in codes or 'conversion_mad_impossible' in codes:
+    if 'conversion_mad_impossible' in codes:
+        return MESSAGE_MAD_SANS_CONTRAT, 'contrat_electricite'
+    if 'consommation_absente' in codes:
         return ('Consommation (kWh) ou facture mensuelle (MAD) manquante : '
                 'aucun devis automatique sans consommation.', 'conso_mensuelle_kwh')
     if 'production_indisponible' in codes:
         return codes['production_indisponible']['message'], 'ville'
+    manquant = _champ_lead_manquant(alertes)
+    if manquant is not None:
+        champ, alerte = manquant
+        return MESSAGES_CHAMP_LEAD_CI.get(champ) or alerte.get('message'), champ
     taille = etude.get('taille') or {}
-    if taille.get('raison_arret') == 'prix_manquants':
-        manquants = (etude.get('composition') or {}).get('prix_a_renseigner') or []
-        return ('Prix à renseigner : %s.' % ', '.join(str(m) for m in manquants),
+    bloquants = [a for a in alertes if a.get('niveau') == 'bloquant']
+    # ADEV78 — la VRAIE cause d'un arrêt « module » ou « onduleurs ».
+    for code in ('CI_MODULE_FICHE', 'OND_AUCUN_CANDIDAT'):
+        alerte = next((a for a in bloquants if a.get('code') == code), None)
+        if alerte is not None:
+            return alerte['message'], 'composition'
+    # ADEV79 (D-ACI-6=a) — un poste de taille OU un poste fixe sans prix fait
+    # refuser en nommant les postes et le chemin où les régler (jamais un 0).
+    manquants = (etude.get('composition') or {}).get('prix_a_renseigner') or []
+    if taille.get('raison_arret') == 'prix_manquants' or manquants:
+        return (MESSAGE_PRIX_A_RENSEIGNER % ', '.join(str(m) for m in manquants),
                 'composition')
-    if 'tarif_omis' in codes:
-        return codes['tarif_omis']['message'], 'tarif_declare'
+    # ADEV78 — TOUTE alerte bloquante refuse, même quand une taille existe
+    # (taille saisie aux onduleurs infaisables comprise).
+    if bloquants:
+        champ = bloquants[0].get('champ') or ''
+        return bloquants[0].get('message'), (
+            'composition' if champ.split('.')[0] in CHAMPS_COMPOSITION else 'taille')
     if not taille.get('retenue_kwc'):
-        alerte = next((a for a in etude.get('alertes') or []
-                       if a.get('niveau') == 'bloquant'), None)
-        return ((alerte or {}).get('message')
-                or 'Aucune taille C&I rentable dans l’horizon de 10 ans.', 'taille')
+        return MESSAGES_ARRET.get(taille.get('raison_arret'), MESSAGES_ARRET['horizon_marginal'])
     return None
 
 
@@ -1172,9 +1327,12 @@ def lignes_du_devis_ci(composition):
     """Les lignes du devis : les articles du catalogue que le moteur a
     composés, au prix de VENTE HT. Une ligne sans article (« prix à
     renseigner », « à confirmer à la visite ») reste dans l'étude, jamais une
-    ligne à 0."""
+    ligne à 0 ; une ligne « à chiffrer après visite » (ADEV79, D-ACI-2=a)
+    reste hors du devis, listée dans ``composition.a_chiffrer_visite``."""
     lignes = []
     for ligne in (composition or {}).get('lignes') or []:
+        if ligne.get('a_chiffrer_visite'):
+            continue
         produit = ligne.get('produit')
         quantite = _num(ligne.get('quantite'))
         prix = _num(ligne.get('prix_unitaire_ht'))

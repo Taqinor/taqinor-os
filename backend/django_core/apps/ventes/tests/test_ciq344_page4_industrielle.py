@@ -134,3 +134,40 @@ class Ciq344Jalons(SimpleTestCase):
         for d in (_data(), _data("oui", "ciment")):
             with self.subTest():
                 self.assertEqual(len(HTML(string=_html(d)).render().pages), 4)
+
+
+class Amot81PucesCgvCi(SimpleTestCase):
+    """AMOT81 — CGV de repli d'un devis C&I : UNE puce échéancier (N jalons),
+    jamais les trois créneaux résidentiels ni « barème ONEE/SRM » ; les
+    puces saisies ou gelées par la société restent telles quelles."""
+
+    def test_une_puce_echeancier_jamais_onee(self):
+        d = _data()
+        d["payment_terms"] = {"acompte": 30, "materiel": 40, "solde": 30}
+        texte = _texte(_page4(d))
+        self.assertNotIn("après la mise en marche", texte)
+        self.assertNotIn("à la réception du matériel", texte)
+        self.assertNotIn("barème ONEE/SRM", texte)
+        self.assertEqual(texte.count(
+            "Échéancier de paiement : Commande : 30 % ; Livraison du "
+            "matériel : 40 % ; Mise en service : 20 % ; Réception "
+            "définitive : 10 %"), 1)
+
+    def test_sans_jalons_les_trois_creneaux_en_une_puce(self):
+        from apps.ventes.quote_engine.clauses_cgv import cgv_imprimees
+        d = _data()
+        d.pop("jalons_paiement")
+        puces = cgv_imprimees(d)["puces"]
+        self.assertIn("Échéancier de paiement&#160;: Acompte : 50 % ; "
+                      "Livraison du matériel : 40 % ; Solde : 10 %", puces)
+        self.assertNotIn("barème ONEE/SRM", " ".join(puces))
+
+    def test_puces_societe_et_regles_d_origine_intactes(self):
+        from apps.ventes.quote_engine.clauses_cgv import cgv_imprimees
+        d = _data()
+        d["doc_texts"] = {"cgv_bullets": ["Puce société {acompte}&#37;"]}
+        self.assertEqual(cgv_imprimees(d)["puces"], ["Puce société 50&#37;"])
+        d = _data()
+        d["regles_calcul_origine"] = {"regles": 1}
+        self.assertIn("Tarifs de référence&#160;: barème ONEE/SRM",
+                      cgv_imprimees(d)["puces"])

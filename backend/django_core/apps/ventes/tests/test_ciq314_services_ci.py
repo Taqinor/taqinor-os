@@ -7,7 +7,7 @@ Rendu RÉEL des deux gabarits sur la charge utile du builder
 """
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.ventes.tests._quote_engine_common import (
     make_client, make_company, make_devis, make_user,
@@ -79,7 +79,9 @@ class ServicesCi(TestCase):
                     self.assertNotIn(mot, page)
                 synthese = d.get('com_synthese') or d.get('ind_synthese')
                 self.assertNotIn('om_option', synthese['services'])
-                self.assertNotIn('suivi_production', synthese['services'])
+                # AMOT83 (D-ACI-12=a) — le suivi est NOMMÉ, sans délai inventé.
+                self.assertEqual(synthese['services']['suivi_production'],
+                                 {'delai_intervention': None})
 
     def test_ligne_om_sans_prix_a_renseigner(self):
         for mode in ('commercial', 'industriel'):
@@ -122,3 +124,47 @@ class ServicesCi(TestCase):
         for garantie in d['ind_synthese']['services']['garanties']:
             self.assertEqual(garantie['source'], 'garantie du fabricant')
             self.assertNotEqual(garantie['composant'], 'installation')
+
+
+class Amot83ServicesNommes(SimpleTestCase):
+    """AMOT83 (D-ACI-12=a) — sans ligne ``om_ci`` ni délai saisi : l'option
+    O&M NOMMÉE par la composition (« prix à renseigner ») et « Suivi de
+    production inclus » sans délai ; un délai saisi est imprimé."""
+
+    def _services(self, **surcharges):
+        from apps.ventes.quote_engine.ci import blocs
+        from apps.ventes.quote_engine.ci.synthese import synthese_ci
+        from apps.ventes.tests.test_ciq303_synthese_ci_coeur import _data
+        from apps.ventes.tests.test_ciq331_pdf_commercial_complet import (
+            ETUDE_CI)
+        import copy
+        data = _data(copy.deepcopy(ETUDE_CI["exemple"]), **surcharges)
+        s = synthese_ci(data)
+        return s["services"], blocs.bloc_services(s, "c3", "#000", "#111",
+                                                  doc=data)
+
+    def test_sans_om_ni_delai_option_nommee_et_suivi_sans_delai(self):
+        services, html = self._services()
+        self.assertEqual(services["om_option"]["statut"], "tarif_a_renseigner")
+        self.assertIn("Contrat O&amp;M (nettoyages, inspection, thermographie, "
+                      "test des protections) — prix à renseigner", html)
+        self.assertEqual(services["suivi_production"],
+                         {"delai_intervention": None})
+        self.assertIn("Suivi de production inclus", html)
+        self.assertNotIn("intervention sous", html)
+
+    def test_delai_saisi_imprime(self):
+        services, html = self._services(delai_intervention_suivi_heures=48)
+        self.assertEqual(services["suivi_production"],
+                         {"delai_intervention": 48})
+        self.assertIn("Suivi de production&#160;: intervention sous "
+                      "48&#160;h", html)
+        self.assertNotIn("Suivi de production inclus", html)
+
+    def test_ligne_om_du_devis_prime_sur_la_composition(self):
+        services, html = self._services(om_ci_lignes=[
+            {"designation": "Contrat O&M annuel", "ht": 4800.0,
+             "ttc": 5760.0, "optionnelle": False}])
+        self.assertEqual(services["om_option"]["statut"], "souscrit")
+        self.assertIn("Contrat O&M annuel — 4", html)
+        self.assertNotIn("prix à renseigner", html)

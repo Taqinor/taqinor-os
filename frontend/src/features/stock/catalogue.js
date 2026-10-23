@@ -622,11 +622,44 @@ export function choixDepuisOptions(optionsData, champ) {
     .map((c) => [String(c.value), String(c.display_name ?? c.value)])
 }
 
+/* ASTK254 (D-ACI-4=a, C-ACI-007) — UNE source de prix pour les prestations
+ * C&I : les forfaits de Paramètres › Devis › Prestations C&I (CIQ106). Le
+ * moteur (`moteur_ci/composition.py::_prestation`) ne lit QUE ces forfaits, le
+ * prix de vente Stock de ces articles est ignoré : la fiche Stock ne les invite
+ * donc plus à « compléter » un prix qui ne servirait à rien. Liste figée —
+ * même ordre que `core/product_roles.py::ROLES_CI` (les 9 prestations). */
+export const ROLES_CI_PRESTATION = Object.freeze([
+  'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
+  'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci',
+  'om_ci',
+])
+
+export const TEXTE_TARIF_PARAMETRES_CI =
+  'tarif réglé dans Paramètres › Devis › Prestations C&I'
+
+/** Écran qui porte les forfaits C&I (section Devis de la page Paramètres). */
+export const ROUTE_PARAMETRES_PRESTATIONS_CI = '/parametres'
+
+/** Le rôle C&I d'un article : celui calculé par l'API (`etat_ci`), sinon celui
+ * déclaré (`role_ci`), sinon `null`. */
+export const roleCiDe = (p) => p?.etat_ci?.role_ci ?? p?.role_ci ?? null
+
+export const estPrestationCi = (p) => ROLES_CI_PRESTATION.includes(roleCiDe(p))
+
+/** État du prix d'un article : `'parametres'` (prestation C&I, tarif ailleurs),
+ * `'a_renseigner'` (aucun prix de vente) ou `'ok'`. */
+export function etatPrixCi(p) {
+  if (estPrestationCi(p)) return 'parametres'
+  return sansPrix(p) ? 'a_renseigner' : 'ok'
+}
+
 /** « C&I à compléter » : un rôle C&I sans prix de vente, ou exclu (fiche
- * incomplète…), lu sur `etat_ci` servi par l'API. */
+ * incomplète…), lu sur `etat_ci` servi par l'API. Une PRESTATION C&I n'a pas
+ * besoin de prix Stock (ASTK254) : seule une exclusion la fait compter. */
 export function produitCiACompleter(p) {
   const etat = p?.etat_ci
   if (!etat) return false
+  if (estPrestationCi(p)) return !etat.eligible_ci
   return !etat.prix_connu || !etat.eligible_ci
 }
 
@@ -635,6 +668,6 @@ export function raisonCiACompleter(p) {
   const etat = p?.etat_ci
   if (!etat) return ''
   if (!etat.eligible_ci && etat.motif_exclusion) return etat.motif_exclusion
-  if (!etat.prix_connu) return 'prix à renseigner'
+  if (!etat.prix_connu && !estPrestationCi(p)) return 'prix à renseigner'
   return ''
 }

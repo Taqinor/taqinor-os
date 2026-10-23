@@ -6,7 +6,10 @@ import assert from 'node:assert/strict'
 import {
   profilCiVide, poserProfilCi, corpsCiDepuisProfil, entreesCiV2,
   profilDepuisEtude, CLES_ENTREES_CI_V2, profilCiAncre,
+  lignesDepuisCompositionCi, avertissementsCompositionCi,
 } from './profilCi.js'
+import { withKeys } from './ligneFabrique.js'
+import { lignesEcranVersPayload } from './lignesEcran.js'
 import { devisVersEtat, etatVersEcritures } from './etatDevis.js'
 import { documentContrat } from '../../../test/fixtures/contractSamples.js'
 
@@ -107,4 +110,64 @@ test('factures MAD et total annuel : aller-retour exact', () => {
   const ea = entreesCiV2(a, { mode: 'industriel' })
   assert.equal(ea.consommation.kwh_annuel, 150000.75)
   assert.deepEqual(entreesCiV2(profilDepuisEtude(ea), { mode: 'industriel' }), ea)
+})
+
+// ── ADEV84 — lignes sans quantité : repères NOMMÉS, jamais enregistrés ──
+const COMPOSITION_ADEV84 = {
+  lignes: [
+    { role: 'cable_dc', produit: 9, designation: 'Câble DC panneaux → onduleur', quantite: null,
+      prix_connu: false, a_chiffrer_visite: true },
+    { role: 'cable_ac', produit: null, designation: 'Câble AC onduleur → TGBT',
+      prix_connu: false, a_chiffrer_visite: true },
+    { role: 'pose_modules', produit: null, designation: 'Pose des modules', quantite: 1,
+      prix_connu: false },
+    { role: 'onduleur_string_tri', produit: 48, designation: 'Onduleur 50kW', quantite: 1, prix_connu: true },
+  ],
+  prix_a_renseigner: ['Pose des modules', 'Structure introuvable'],
+  a_chiffrer_visite: ['Câble DC panneaux → onduleur', 'Câble AC onduleur → TGBT'],
+}
+const PRODUITS_84 = [{ id: 48, nom: 'Onduleur 50kW', prix_vente: '10000', tva: 20 }]
+
+test('ADEV84 — une ligne sans quantité devient un repère nommé « à chiffrer après visite »', () => {
+  const rows = lignesDepuisCompositionCi(COMPOSITION_ADEV84, PRODUITS_84, 20)
+  assert.equal(rows.length, 4, 'aucune ligne sautée en silence')
+  const dc = rows[0]
+  assert.equal(dc.designation, 'Câble DC panneaux → onduleur — à chiffrer après visite')
+  assert.equal(dc.produit, '')
+  assert.equal(dc.prix_unit_ttc, 0)
+  assert.equal(dc.a_chiffrer_visite, true)
+  assert.equal(rows[1].designation, 'Câble AC onduleur → TGBT — à chiffrer après visite')
+  // les repères « prix à renseigner » et les lignes tarifées restent inchangés
+  assert.equal(rows[2].designation, 'Pose des modules — prix à renseigner')
+  assert.equal(rows[2].a_chiffrer_visite, undefined)
+  assert.equal(rows[3].produit, '48')
+})
+
+test('ADEV84 — la TVA des repères est celle de la société, plus un 20 codé', () => {
+  const rows = lignesDepuisCompositionCi(COMPOSITION_ADEV84, PRODUITS_84, 22)
+  assert.equal(rows[0].taux_tva, 22)
+  assert.equal(rows[1].taux_tva, 22)
+  assert.equal(rows[2].taux_tva, 22)
+  // taux société inconnu ⇒ le défaut nommé, jamais NaN
+  assert.equal(lignesDepuisCompositionCi(COMPOSITION_ADEV84, PRODUITS_84)[0].taux_tva, 20)
+})
+
+test('ADEV84 — aucun repère n’est enregistré (jamais envoyé au serveur)', () => {
+  const lignes = withKeys(lignesDepuisCompositionCi(COMPOSITION_ADEV84, PRODUITS_84, 20))
+  const payload = lignesEcranVersPayload(lignes)
+  assert.deepEqual(payload.map((l) => l.produit), [48])
+})
+
+test('ADEV84 — l’avertissement lie chaque poste : Paramètres (prestation) ou Stock, puis « à chiffrer après visite »', () => {
+  const w = avertissementsCompositionCi(COMPOSITION_ADEV84)
+  assert.deepEqual(w.aRenseigner, [
+    { nom: 'Pose des modules', lien: '/parametres' },
+    { nom: 'Structure introuvable', lien: '/stock' },
+  ])
+  assert.deepEqual(w.aChiffrerVisite,
+    ['Câble DC panneaux → onduleur', 'Câble AC onduleur → TGBT'])
+  // une ligne sans quantité absente de la liste serveur est quand même nommée
+  const sans = avertissementsCompositionCi({ lignes: COMPOSITION_ADEV84.lignes, prix_a_renseigner: [] })
+  assert.equal(sans.aChiffrerVisite.length, 2)
+  assert.deepEqual(avertissementsCompositionCi(null), { aRenseigner: [], aChiffrerVisite: [] })
 })

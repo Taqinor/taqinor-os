@@ -24,7 +24,9 @@ import datetime
 
 from apps.parametres.pvgis_profils import decalage_maroc_h
 from apps.ventes.moteur_ci.categories import elements_horaire
-from apps.ventes.moteur_ci.profils import forme_archetype
+from apps.ventes.moteur_ci.profils import (
+    MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, forme_archetype,
+)
 
 HEURES = 24
 DUREE_EQUIPES_H = {'1x8': 8, '2x8': 16, '3x8': 24, 'continu': 24}
@@ -574,6 +576,57 @@ def _fusionner_categorie(rythme, categorie, alertes):
     return rythme, non_consommees
 
 
+#: ADEV76 — feuilles du rythme qu'un profil déclaré peut exiger, dans
+#: l'ordre où la fiche lead les pose (les jours, puis les heures).
+FEUILLE_JOURS = 'rythme.jours_ouverts'
+FEUILLE_PLAGES = 'rythme.plages'
+
+
+def _repli_source(categorie, profil_societe):
+    """``(True, None)`` si le profil SAISI par la société ou l'archétype
+    vendorisé couvre TOUS les (type de jour, saison) que lit
+    :func:`_courbes_archetype` ; sinon ``(False, motif)``."""
+    for type_jour in TYPES_JOUR:
+        for saison in SAISONS:
+            forme, motif = forme_archetype(categorie, type_jour, saison,
+                                           profil_societe=profil_societe)
+            if forme is None:
+                return False, str(motif)
+    return True, None
+
+
+def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
+    """ADEV76 (D-ACI-5=a) — LA règle des prérequis du profil de charge.
+
+    Rend la liste ORDONNÉE des feuilles du rythme qui manquent pour que
+    :func:`courbe_declaree` trace un profil (``[]`` = prêt) :
+
+    * plages déclarées = heures (``plages``) OU régime d'équipes placé (3x8 /
+      continu, ou 1x8 / 2x8 avec ``debut_equipe_h``) OU réponses de catégorie
+      qui posent un horaire (CIQ130) ;
+    * dès que des plages existent, les jours ouverts sont exigés ;
+    * sans plage : le profil SAISI par la société ou l'archétype vendorisé de
+      ``categorie`` suffit ; sinon les jours (s'ils manquent) puis les plages.
+
+    ``categorie`` : catégorie commerciale (``industriel`` ⇒ aucun archétype).
+    Pure, sans alerte : :func:`courbe_declaree` l'appelle pour décider, et
+    ``apps.ventes.selectors.profil_charge_prerequis_ci`` l'expose aux autres
+    apps (la fiche lead la lit, jamais une copie).
+    """
+    rythme = rythme or {}
+    fusionne, _non_consommees = _fusionner_categorie(
+        rythme, rythme.get('categorie_commerciale') or categorie, [])
+    jours = fusionne.get('jours_ouverts')
+    jours_declares = jours is not None and len(jours) == 7
+    plages = bool(fusionne.get('plages')) or _plages_equipes(
+        fusionne.get('equipes'), fusionne.get('debut_equipe_h')) is not None
+    if plages:
+        return [] if jours_declares else [FEUILLE_JOURS]
+    if _repli_source(categorie, profil_societe)[0]:
+        return []
+    return ([] if jours_declares else [FEUILLE_JOURS]) + [FEUILLE_PLAGES]
+
+
 def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, feries=None,
                     profil_societe=None, production_jours_types=None):
     """Jours types de charge (heures GMT), provenance et alertes.
@@ -587,6 +640,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     requis seulement pour départager les deux bornes d'un talon inconnu.
     """
     rythme = rythme or {}
+    rythme_saisi = rythme
     alertes = []
     # CIQ130 — les réponses de catégorie deviennent des éléments d'HORAIRE
     # déclarés, fusionnés avec la saisie (la saisie gagne).
@@ -610,18 +664,23 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     talon_kw = talon.get('kw')
     talon_pct = talon.get('part_pct')
 
-    if not plages_declarees:
-        if not archetype and not profil_societe:
+    # ADEV76 — LA règle des prérequis (partagée avec la fiche lead).
+    manquants = profil_charge_prerequis(rythme_saisi, archetype, profil_societe)
+    if FEUILLE_PLAGES in manquants:
+        if FEUILLE_JOURS in manquants:
             alertes.append(_alerte(
-                'profil_declare_exige', 'rythme.plages',
-                'Aucune plage ni équipe déclarée et aucun archétype sourcé : profil déclaré exigé.',
+                'jours_ouverts_non_declares', FEUILLE_JOURS,
+                'Jours ouverts non déclarés : aucun week-end supposé, profil déclaré incomplet.',
                 niveau='bloquant'))
-            return None, provenance, alertes
+        motif = ('Aucune plage ni équipe déclarée et aucun archétype sourcé : profil déclaré exigé.'
+                 if not archetype and not profil_societe
+                 else _repli_source(archetype, profil_societe)[1])
+        alertes.append(_alerte('profil_declare_exige', FEUILLE_PLAGES,
+                               motif or MOTIF_PROFIL_DECLARE, niveau='bloquant'))
+        return None, provenance, alertes
+
+    if not plages_declarees:
         courbes, source = _courbes_archetype(calendrier, niveaux, archetype, profil_societe, talon_kw)
-        if courbes is None:
-            alertes.append(_alerte('profil_declare_exige', 'rythme.plages', str(source),
-                                   niveau='bloquant'))
-            return None, provenance, alertes
         provenance.update({
             'methode': 'archetype',
             'archetype': {'cle': source.get('cle'), 'source': source.get('jeu_de_donnees')
@@ -641,9 +700,9 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
             'pour un chiffre déclaré.', niveau='info'))
         return _jours_types(calendrier, courbes, annee_reference), provenance, alertes
 
-    if not jours_declares:
+    if FEUILLE_JOURS in manquants:
         alertes.append(_alerte(
-            'jours_ouverts_non_declares', 'rythme.jours_ouverts',
+            'jours_ouverts_non_declares', FEUILLE_JOURS,
             'Jours ouverts non déclarés : aucun week-end supposé, profil déclaré incomplet.',
             niveau='bloquant'))
         return None, provenance, alertes
