@@ -276,6 +276,56 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
             proposee.critere, ib, calibre, proposee.chute_pct)})
 
 
+MOTIF_MPPT = ("nombre de MPPT non publié sur la fiche onduleur : une "
+              "protection par onduleur, à confirmer")
+
+
+def _est_parafoudre(fiche, article):
+    return (fiche.get('prot_type') == 'parafoudre'
+            or 'parafoudre' in (article.get('nom') or '').lower())
+
+
+def _protections_dc_et_terre(catalogue, unitaires, lignes, alertes):
+    """ADEV83 — dès qu'un article porte le rôle : protection DC (fusibles /
+    sectionneur) PAR MPPT, parafoudre DC PAR ONDULEUR, parafoudre AC et mise
+    à la terre par installation, au prix du catalogue. Aucun article du
+    rôle ⇒ alerte INTERNE ``POSTE_ABSENT_CATALOGUE`` nommant le poste : ni
+    ligne « prix à renseigner », ni refus (on ne bloque pas sur un article
+    que la société n'a pas créé)."""
+    par_id = _par_id(catalogue)
+    nb_ond = len(unitaires)
+    mppt, mppt_connus = 0, True
+    for ondu in unitaires:
+        fiche = (par_id.get(ondu.get('produit')) or {}).get('fiche') or {}
+        n = _f(fiche.get('ond_n_mppt'))
+        if n and n > 0:
+            mppt += int(n)
+        else:
+            mppt += 1
+            mppt_connus = False
+    postes = (
+        ('protection_dc', 'protection_dc', lambda f, p: not _est_parafoudre(f, p),
+         'Protection DC (fusibles / sectionneur) par MPPT', mppt,
+         None if mppt_connus else MOTIF_MPPT, not mppt_connus),
+        ('parafoudre_dc', 'protection_dc', _est_parafoudre,
+         'Parafoudre DC par onduleur', nb_ond, None, False),
+        ('parafoudre_ac', 'protection_ac', _est_parafoudre,
+         'Parafoudre AC', 1, None, False),
+        ('mise_a_la_terre', 'mise_a_la_terre', None,
+         'Mise à la terre du champ PV', 1, None, False),
+    )
+    for cle, role, filtre, libelle, quantite, motif, a_confirmer in postes:
+        article = _du_role(catalogue, role, filtre)
+        if article is None:
+            alertes.append(_alerte(
+                'POSTE_ABSENT_CATALOGUE',
+                '%s : aucun article de ce rôle au catalogue (poste non composé, '
+                'à créer en Stock).' % libelle, champ='composition.%s' % cle))
+            continue
+        lignes.append(_ligne(role, article, libelle, quantite, 'u',
+                             motif=motif, a_confirmer=a_confirmer))
+
+
 def _du_role_tous(catalogue, role):
     """Tous les articles ÉLIGIBLES du rôle, ordre déterministe (id)."""
     return [p for p in sorted(catalogue, key=lambda x: (x.get('id') or 0))
@@ -446,6 +496,9 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     for ondu in unitaires:
         _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
                                 hypotheses)
+    # ── ADEV83 — protections DC, parafoudres DC / AC, mise à la terre
+    if nb_ond:
+        _protections_dc_et_terre(catalogue, unitaires, lignes, alertes)
 
     # ── Structure par type de pose du toit
     type_pose = (entrees.get('type_pose') or '').strip()
