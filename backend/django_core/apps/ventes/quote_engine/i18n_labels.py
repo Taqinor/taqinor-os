@@ -238,6 +238,15 @@ LIBELLES = {
         'en': 'over {heures} equivalent full-sun hours per day (design '
               'month)',
         'ar': 'على مدى {heures} ساعات مكافئة من الشمس الكاملة يوميا (شهر التصميم)'},
+    # AGQ30 — étapes suivantes (textes des étapes : agricole/mentions.py).
+    'agr_etapes_suivantes': {'fr': 'Étapes suivantes', 'en': 'Next steps',
+                             'ar': 'الخطوات التالية'},
+    'agr_acompte_apres_fda': {
+        'fr': "Acompte à la commande — après l'accord FDA si vous demandez "
+              "l'aide.",
+        'en': 'Down payment on order — after the FDA approval if you apply '
+              'for the subsidy.',
+        'ar': 'الدفعة المقدمة عند الطلب — بعد موافقة صندوق التنمية الفلاحية إن طلبتم الدعم.'},
     'agr_estimation_fao56': {'fr': 'estimation FAO-56',
                              'en': 'FAO-56 estimate',
                              'ar': 'تقدير FAO-56'},

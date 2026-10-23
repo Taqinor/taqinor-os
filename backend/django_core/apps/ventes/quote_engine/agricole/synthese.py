@@ -48,7 +48,7 @@ from core.pompage.kit import MENTION_COMPTEUR
 from ..i18n_labels import est_rtl
 from ..lecture_pure import nombre_normalise
 from .garanties import garanties_pompage_et_omissions
-from .mentions import formalites, regle_fda
+from .mentions import etapes_suivantes, formalites, regle_fda
 from .schema import schema_svg
 
 #: Version de la forme servie (contrat AGR4).
@@ -618,6 +618,8 @@ def synthese_agricole(data):
     synthese["non_inclus"] = _non_inclus(etude, items)
     # AGR306 — les formalités du client (82-21 hors réseau, 36-15 eau).
     synthese["formalites"] = formalites()
+    # AGQ30 — les étapes suivantes, sans délai chiffré (D-AGR-10).
+    synthese["etapes_suivantes"] = etapes_suivantes()
 
     omissions.extend(dict(o) for o in OMISSIONS_DE_PRINCIPE)
     synthese["omissions"] = omissions

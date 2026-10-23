@@ -410,6 +410,23 @@ def _provenance(synthese, lg, nom_societe):
             f'<div class="ag-box">{"".join(lignes)}{bloc_visite}</div>')
 
 
+def _etapes_suivantes(synthese, lg):
+    """AGQ30 — les 5 étapes (visite → FDA si demandé → commande → pose →
+    mise en service mesurée) et l'entretien, SANS délai chiffré
+    (D-AGR-10) ; texte compact (``ag-small``) : la page 1 tient."""
+    etapes = [((e or {}).get("textes") or {}) for e in
+              synthese.get("etapes_suivantes") or []]
+    lignes = [f'<div>{i}. {t.get(lg) or t.get("fr")}</div>'
+              for i, t in enumerate(etapes, start=1)
+              if t.get(lg) or t.get("fr")]
+    if not lignes:
+        return ""
+    entretien = mentions.ENTRETIEN.get(lg) or mentions.ENTRETIEN["fr"]
+    return (f'<div class="ag-sec">{_t(lg, "agr_etapes_suivantes")}</div>'
+            f'<div class="ag-box ag-small">{"".join(lignes)}'
+            f'<div class="ag-note">{entretien}</div></div>')
+
+
 def page1(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
     lg = _langue(d)
@@ -428,7 +445,8 @@ def page1(ctx):
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{_argent(synthese, lg)}{_qj(25)}'
-            f'{_provenance(synthese, lg, ctx["nom_societe"])}'
+            f'{_provenance(synthese, lg, ctx["nom_societe"])}{_qj(15)}'
+            f'{_etapes_suivantes(synthese, lg)}'
             f'</div>')
 
 
@@ -820,7 +838,13 @@ def _echeancier(d, lg):
                      + '</div></td>')
     if not cases:
         return ""
-    return f'<table class="ag-ech"><tr>{"".join(cases)}</tr></table>'
+    # AGQ30 — l'acompte suit l'accord FDA quand le client demande l'aide
+    # (accord AVANT travaux, D-AGR-6).
+    fda = (f'<div class="ag-sig-h" style="margin:-2px 0 3px;">'
+           f'{_t(lg, "agr_acompte_apres_fda")}</div>'
+           if _num(termes.get("acompte")) else "")
+    return (f'<table class="ag-ech"><tr>{"".join(cases)}</tr></table>'
+            f'{fda}')
 
 
 def cloture(ctx):

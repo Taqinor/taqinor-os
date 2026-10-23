@@ -199,6 +199,39 @@ class Agr310HtmlTests(SimpleTestCase):
         self.assertFalse(renderer.is_agricole(_D(), {'pdf_mode': 'full'}))
 
 
+class Renderer(SimpleTestCase):
+    """AGQ30 (C-AGQ-028, D-AGQ-11, D-AGR-10) — « Étapes suivantes » sans
+    délai chiffré, mise en service mesurée, entretien, acompte après FDA."""
+
+    def test_etapes_suivantes_sans_delai_chiffre(self):
+        import re
+        for langue in ('fr', 'en', 'ar'):
+            d = data_complete()
+            d['langue_sortie'] = langue
+            aug = renderer._augment(d)
+            html = pages.build_html(aug)
+            p1, _p2, p3 = html.split('<div class="page">')[1:4]
+            etapes = aug['synthese']['etapes_suivantes']
+            with self.subTest(langue=langue):
+                self.assertEqual(len(etapes), 5)
+                for e in etapes:
+                    self.assertIn(e['textes'][langue], p1)
+                texte = re.sub(r'<style>.*?</style>', ' ', html, flags=re.S)
+                texte = re.sub(r'data:[^"\')]+', ' ', texte)
+                texte = re.sub(r'<[^>]+>', ' ', texte)
+                self.assertIsNone(re.search(
+                    r'\b\d+\s*(jours?|semaines?|days?|weeks?|يوم|أيام|أسبوع)',
+                    texte, flags=re.I))
+        html = pages.build_html(renderer._augment(data_complete()))
+        p1, _p2, p3 = html.split('<div class="page">')[1:4]
+        self.assertIn('Étapes suivantes', p1)
+        self.assertIn('débit et HMT mesurés, écart affiché contre ce devis',
+                      p1)
+        self.assertIn('Entretien : nettoyage des panneaux et contrôle '
+                      'annuel (contrat en option)', p1)
+        self.assertIn("après l'accord FDA si vous demandez l'aide", p3)
+
+
 def pages_et_debordements(pdf_bytes):
     """``(nb_pages, [(page, y1_mm, footer_top_mm)])`` — un bloc de texte qui
     commence au-dessus de la bande de pied (13 mm) et finit dedans déborde."""
