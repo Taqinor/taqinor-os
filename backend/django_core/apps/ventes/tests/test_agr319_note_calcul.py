@@ -173,9 +173,11 @@ class Agr319NoteCalculTests(SimpleTestCase):
         « FAO-56 » ; la ville persistée (``ville_calcul``) est imprimée."""
         d = _data()
         d['etude']['besoin_mensuel']['nature'] = 'debit_souhaite'
-        d['etude']['ville_calcul'] = 'Rabat'
+        # forme servie par le moteur : un objet {ville, reference}
+        d['etude']['ville_calcul'] = {'ville': 'Rabat', 'reference': 'Rabat'}
         annexe = _annexe(_html(d))
         self.assertIn('Site : Rabat', annexe)
+        self.assertNotIn("{'ville'", annexe)
         self.assertIn('débit souhaité déclaré par vous', annexe)
         self.assertNotIn('FAO-56', annexe)
 

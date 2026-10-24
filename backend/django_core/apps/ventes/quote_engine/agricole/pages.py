@@ -1224,7 +1224,12 @@ def _site_et_besoin_annexe(d, lg):
     if not isinstance(loc, dict):
         loc = etude.get("localisation") if isinstance(
             etude.get("localisation"), dict) else {}
-    ville = etude.get("ville_calcul") or loc.get("ville")
+    # ``ville_calcul`` est servie en objet {ville, reference} (vu au rejeu
+    # live du 24/10 : « Site : {'ville': …} » imprimé tel quel).
+    vc = etude.get("ville_calcul")
+    if isinstance(vc, dict):
+        vc = vc.get("ville") or vc.get("reference")
+    ville = vc or loc.get("ville")
     if ville:
         lignes.append(_t(lg, "agr_annexe_site", ville=theme._esc(str(ville))))
     cultures = [c for c in ((etude.get("besoin") or {}).get("cultures") or [])
