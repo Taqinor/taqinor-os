@@ -131,3 +131,12 @@ class LeadsRechercheTests(TestCase):
         ids = [ligne['id'] for ligne in
                auth(self.bureau).get(URL, {'q': 'Ben'}).data['results']]
         self.assertNotIn(supprime.id, ids)
+
+    def test_nocturne_2410_nul_refuse_limite_vide_acceptee(self):
+        # api-fuzz-full 24/10 : un caractère nul dans ``q`` (Postgres : 500) ->
+        # 400 nommé ; ``limit=`` vide = défaut (le schéma le publie).
+        resp = auth(self.bureau).get(URL, {'q': 'Ben' + chr(0)})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('q', resp.data)
+        resp = auth(self.bureau).get(URL, {'q': 'Ben', 'limit': ''})
+        self.assertEqual(resp.status_code, 200, resp.content)

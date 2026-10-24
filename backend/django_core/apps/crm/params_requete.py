@@ -76,6 +76,34 @@ def texte_param(request, nom):
     return brut
 
 
+def rejeter_param_repete(request, *noms):
+    """400 nommant le paramètre de requête ``nom`` répété (``?a=1&a=2``) :
+    le schéma publie une valeur unique, DRF lisait silencieusement la
+    dernière (api-fuzz « accepted schema-violating request »)."""
+    for nom in noms:
+        if len(request.query_params.getlist(nom)) > 1:
+            raise ValidationError(
+                {nom: f'Le paramètre « {nom} » ne doit figurer qu’une fois.'})
+
+
+def periode_param(request, nom='periode'):
+    """``?periode=AAAA-MM`` → ``{'period_type': 'month', 'period_year': …,
+    'period_month': …}`` ; absent ou VIDE → ``None`` ; autre forme → 400
+    nommant le paramètre. Même prédicat que le motif publié
+    (``schema_docs.MOTIF_PERIODE_MOIS``)."""
+    from .schema_docs import MOTIF_PERIODE_MOIS
+
+    rejeter_param_repete(request, nom)
+    brut = request.query_params.get(nom)
+    if brut is None or brut == '':
+        return None
+    if not re.fullmatch(MOTIF_PERIODE_MOIS, brut):
+        raise ValidationError({nom: 'Format AAAA-MM attendu.'})
+    annee, mois = brut.split('-', 1)
+    return {'period_type': 'month', 'period_year': int(annee),
+            'period_month': int(mois)}
+
+
 def valider_pagination(request):
     """ERR-ENF11-FUZZ-CRM — ``page``/``page_size`` d'une action qui rend un
     tableau NU (sans pagination) mais que le schéma publie entiers (actions de

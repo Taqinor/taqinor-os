@@ -114,7 +114,8 @@ class Ntmig26CertificationTests(TestCase):
             'date_certification': '2026-06-01',
             'date_expiration_certification': '2026-01-01',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # Nocturne 24/10 : règle entre deux champs = refus d'état, 409.
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('date_expiration_certification', resp.data)
 
     def test_compteur_de_deploiements_non_modifiable_par_requete(self):

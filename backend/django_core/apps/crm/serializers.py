@@ -27,7 +27,8 @@ from .champs_lead import (
 )
 from .params_requete import UniciteEn409Mixin
 from .champs_api import (
-    MAPPING_DATE_HEURE_RFC3339, MAPPING_TEXTE_STRICT, DateHeureRfc3339,
+    MAPPING_DATE_HEURE_RFC3339, MAPPING_TEXTE_STRICT, CoordonneeGps,
+    DateHeureRfc3339,
 )
 from .models import (
     Appointment, Client, Lead, LeadActivity, PointContact, SavedView, SiteProfile,
@@ -931,6 +932,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
 
         return _is(last.old_value, target) and _is(last.new_value, current)
 
+    def to_internal_value(self, data):
+        # Nocturne 24/10 : un NUL dans un champ JSON libre du lead (releve_conso,
+        # custom_data, web_*…) n'est pas stockable en jsonb (DataError : 500) ;
+        # les textes simples le refusent déjà (400) — seuls les JSON sont purgés.
+        from core.parseurs import sans_nul
+        return sans_nul(super().to_internal_value(data))
+
     def validate(self, attrs):
         # LB39 — marqueur d'annulation : jamais persisté (champ hors modèle),
         # retiré ici pour ne jamais atteindre ``.save()``.
@@ -1582,6 +1590,8 @@ class SiteProfileSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
     — un nombre JSON pour un décimal-chaîne (``pompe_debit_m3h: 0``) est un 400,
     et ``""`` (non renseigné) est publié au schéma d'un décimal nullable."""
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    gps_lat = CoordonneeGps(90)
+    gps_lng = CoordonneeGps(180)
 
     class Meta:
         model = SiteProfile
@@ -1742,7 +1752,9 @@ class SavedViewSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
     d'un 400 propre).
     """
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
-    payload = serializers.DictField(required=False)
+    # Nocturne 24/10 : un NUL dans le JSON libre est retiré (jsonb le refuse :
+    # 500) ; ``ObjetJSON`` publie ``type: object``.
+    payload = ObjetJSON(required=False)
 
     class Meta:
         model = SavedView
