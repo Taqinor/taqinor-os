@@ -170,7 +170,17 @@ CLES_HORS_RENDU_ORIGINE = (
         'op_reserve_visite', 'op_unite_ans', 'lg_prix_onee_hausse',
         'ci_confirmer_etude_ci', 'ci_etape_installation_s',
         # AMOT85 (rejeu humain) — « à compléter après la visite ».
-        'ci_invest_apres_visite_1', 'ci_invest_apres_visite_n')),
+        'ci_invest_apres_visite_1', 'ci_invest_apres_visite_n',
+        # AMOT86-94 (lane document C&I, 24/10/2026) — libellés AJOUTÉS au
+        # catalogue, sans chiffre ; aucun libellé existant n'est reformulé
+        # (les nouveaux mots vivent sous de nouvelles clés) : le golden
+        # d'origine reste valable avec ce masque, sans recapture.
+        'ci_invest_hv', 'ci_invest_ht_hv', 'ci_invest_ttc_hv',
+        'ci_a_chiffrer_apres_visite', 'ci_postes_hors_total',
+        'ci_retour_prix_complet', 'ci_role_cable_dc', 'ci_role_cable_ac',
+        'ci_role_structure_ci', 'ci_role_coffret_dc', 'ci_role_coffret_ac',
+        'ci_role_protection_ac', 'ci_role_onduleur_string_tri',
+        'ci_role_onduleur_string_mono')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

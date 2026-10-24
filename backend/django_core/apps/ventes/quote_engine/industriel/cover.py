@@ -89,7 +89,11 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
                f"{fmt_mad(ht)}&nbsp;MAD {l_ht})")
     else:
         inv = f"{fmt_mad(invest)}&nbsp;MAD {l_ttc}"
-    lignes = [(L("ci_ind_investissement", "Investissement"), inv)]
+    # AMOT86 — postes hors total : « Investissement hors postes à chiffrer
+    # après la visite » (base dite dans le montant).
+    lignes = [(ci_couverture.titre_investissement(d, synthese, "deux")
+               if ci_couverture.postes_hors_total(synthese)
+               else L("ci_ind_investissement", "Investissement"), inv)]
     if isinstance(argent, dict) and not d.get("ind_masquer_economies"):
         eco = d.get("ind_economies")
         if eco is not None:

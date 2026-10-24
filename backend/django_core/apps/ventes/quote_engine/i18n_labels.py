@@ -2301,6 +2301,55 @@ LIBELLES = {
         'fr': 'Investissement à compléter après la visite technique ({n} postes hors total)',
         'en': 'Investment to be completed after the site visit ({n} items outside the total)',
         'ar': 'الاستثمار يُستكمل بعد الزيارة التقنية ({n} بنود خارج الإجمالي)'},
+    # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors total :
+    # jamais « clé en main », lignes sans montant, retour sur le prix complet.
+    'ci_invest_hv': {
+        'fr': 'Investissement hors postes à chiffrer après la visite',
+        'en': 'Investment excluding items to be priced after the site visit',
+        'ar': 'الاستثمار دون البنود التي تُسعَّر بعد الزيارة التقنية'},
+    'ci_invest_ht_hv': {
+        'fr': 'Investissement HT hors postes à chiffrer après la visite',
+        'en': 'Investment excl. VAT, excluding items to be priced after the '
+              'site visit',
+        'ar': 'الاستثمار دون احتساب الضريبة، دون البنود التي تُسعَّر بعد '
+              'الزيارة التقنية'},
+    'ci_invest_ttc_hv': {
+        'fr': 'Investissement TTC hors postes à chiffrer après la visite',
+        'en': 'Investment incl. VAT, excluding items to be priced after the '
+              'site visit',
+        'ar': 'الاستثمار شامل الضريبة، دون البنود التي تُسعَّر بعد الزيارة '
+              'التقنية'},
+    'ci_a_chiffrer_apres_visite': {
+        'fr': 'à chiffrer après la visite technique',
+        'en': 'to be priced after the site visit',
+        'ar': 'يُسعَّر بعد الزيارة التقنية'},
+    'ci_postes_hors_total': {
+        'fr': 'Postes à chiffrer après la visite technique (hors total)',
+        'en': 'Items to be priced after the site visit (not in the total)',
+        'ar': 'بنود تُسعَّر بعد الزيارة التقنية (خارج المجموع)'},
+    'ci_retour_prix_complet': {
+        'fr': 'retour calculé sur le prix complet, après la visite',
+        'en': 'payback calculated on the full price, after the site visit',
+        'ar': 'مدة الاسترداد تُحسب على السعر الكامل، بعد الزيارة'},
+    # AMOT88 — rôle d'un poste hors total, en mots du client
+    # (``ci.synthese.ROLES_POSTES_CLIENT``, le français y est servi).
+    'ci_role_cable_dc': {'fr': 'câble DC', 'en': 'DC cable',
+                         'ar': 'كابل التيار المستمر'},
+    'ci_role_cable_ac': {'fr': 'câble AC', 'en': 'AC cable',
+                         'ar': 'كابل التيار المتردد'},
+    'ci_role_structure_ci': {'fr': 'structure de fixation',
+                             'en': 'mounting structure',
+                             'ar': 'هيكل التثبيت'},
+    'ci_role_coffret_dc': {'fr': 'coffret DC', 'en': 'DC box',
+                           'ar': 'علبة التيار المستمر'},
+    'ci_role_coffret_ac': {'fr': 'coffret AC', 'en': 'AC box',
+                           'ar': 'علبة التيار المتردد'},
+    'ci_role_protection_ac': {'fr': 'protection AC', 'en': 'AC protection',
+                              'ar': 'حماية التيار المتردد'},
+    'ci_role_onduleur_string_tri': {'fr': 'onduleur', 'en': 'inverter',
+                                    'ar': 'العاكس'},
+    'ci_role_onduleur_string_mono': {'fr': 'onduleur', 'en': 'inverter',
+                                     'ar': 'العاكس'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

@@ -322,14 +322,81 @@ def _systeme(data, etude_ci, option):
     }
 
 
-def _statut_et_a_confirmer(etude_ci, lead):
+#: AMOT88 — rôle d'un poste « à chiffrer après la visite » (``composition.
+#: lignes[].role``) → ses mots pour le client (le texte servi est français ;
+#: les gabarits le traduisent par ``i18n_labels['ci_role_<rôle>']``).
+ROLES_POSTES_CLIENT = {
+    "cable_dc": "câble DC", "cable_ac": "câble AC",
+    "structure_ci": "structure de fixation", "coffret_dc": "coffret DC",
+    "coffret_ac": "coffret AC", "protection_ac": "protection AC",
+    "onduleur_string_tri": "onduleur", "onduleur_string_mono": "onduleur",
+}
+PREFIXE_HORS_TOTAL = "À chiffrer après la visite technique, hors total : "
+
+
+def _norme(texte):
+    return " ".join(str(texte or "").split()).casefold()
+
+
+def postes_hors_total(data, etude_ci):
+    """AMOT86 (D-ACI-2=a) — les postes de la composition « à chiffrer après
+    la visite » (``composition.a_chiffrer_visite``) restés HORS des lignes du
+    devis (même règle que ``economie_ci`` : une ligne ajoutée au devis n'est
+    plus hors total), avec leur rôle, leur quantité et leur unité lus sur
+    ``composition.lignes`` — jamais un prix. Rend ``[]`` sans poste."""
+    composition = _dict(_dict(etude_ci).get("composition"))
+    noms = [str(x.get("designation") if isinstance(x, dict) else x)
+            for x in composition.get("a_chiffrer_visite") or [] if x]
+    au_devis = {_norme(it.get("designation"))
+                for it in _dict(data).get("all_items") or []
+                if isinstance(it, dict) and not it.get("optionnelle")}
+    lignes = {}
+    for li in composition.get("lignes") or []:
+        if isinstance(li, dict) and li.get("designation"):
+            lignes.setdefault(_norme(li["designation"]), li)
+    postes = []
+    for nom in noms:
+        if _norme(nom) in au_devis:
+            continue
+        ligne = lignes.get(_norme(nom)) or {}
+        postes.append({"role": ligne.get("role"), "designation": nom,
+                       "quantite": _num(ligne.get("quantite")),
+                       "unite": ligne.get("unite"),
+                       "catalogue": ligne.get("produit") is not None})
+    return postes
+
+
+def libelle_poste(poste, roles=None):
+    """AMOT88 — « câble DC — Câble solaire Nexans… » (article du catalogue)
+    ou « structure de fixation » (libellé générique du moteur) ; un rôle
+    inconnu garde la désignation telle quelle. ``roles`` : la table des mots
+    du client (français par défaut)."""
+    role = (roles or ROLES_POSTES_CLIENT).get(poste.get("role"))
+    if role is None:
+        return poste.get("designation") or ""
+    return f"{role} — {poste['designation']}" if poste.get("catalogue") \
+        else role
+
+
+def texte_postes(postes, roles=None):
+    """Les postes dans l'ordre, sans doublon (deux câbles AC génériques ne
+    font qu'un « câble AC »)."""
+    vus = []
+    for poste in postes:
+        texte_poste = libelle_poste(poste, roles)
+        if texte_poste and texte_poste not in vus:
+            vus.append(texte_poste)
+    return ", ".join(vus)
+
+
+def _statut_et_a_confirmer(etude_ci, lead, data=None):
     a_confirmer = []
     vus = set()
 
-    def _ajoute(cle, libelle):
+    def _ajoute(cle, libelle, **extra):
         if cle not in vus:
             vus.add(cle)
-            a_confirmer.append({"cle": cle, "libelle": libelle})
+            a_confirmer.append(dict({"cle": cle, "libelle": libelle}, **extra))
 
     if not etude_ci:
         statut = STATUT_SOUS_RESERVE
@@ -341,15 +408,15 @@ def _statut_et_a_confirmer(etude_ci, lead):
             _ajoute("visite", reserve.get("motif") or LIBELLE_VISITE)
         # ADEV79 (D-ACI-2=a) — des lignes « à chiffrer après la visite »
         # (structure, câbles) hors total : le document est une estimation sous
-        # réserve de visite et DIT ce qui reste à chiffrer.
-        hors_total = [str(x.get("designation") if isinstance(x, dict) else x)
-                      for x in (_dict(etude_ci.get("composition")).get("a_chiffrer_visite") or [])
-                      if x]
+        # réserve de visite et DIT ce qui reste à chiffrer. AMOT88 — chaque
+        # poste dit son rôle en mots simples (« câble DC », « structure de
+        # fixation ») ; ``postes`` sert la forme structurée aux gabarits.
+        hors_total = postes_hors_total(data, etude_ci)
         if hors_total:
             statut = STATUT_SOUS_RESERVE
             _ajoute("a_chiffrer_visite",
-                    "À chiffrer après la visite technique, hors total : "
-                    + ", ".join(hors_total))
+                    PREFIXE_HORS_TOTAL + texte_postes(hors_total),
+                    postes=hors_total)
     for manquant in _dict(lead).get("manquants") or []:
         if manquant in A_CONFIRMER_LEAD:
             _ajoute(*A_CONFIRMER_LEAD[manquant])
@@ -578,7 +645,7 @@ def synthese_ci(data):
     omissions = []
 
     statut, a_confirmer = _statut_et_a_confirmer(
-        etude_ci, data.get("_entrees_ci_lead"))
+        etude_ci, data.get("_entrees_ci_lead"), data)
     option = _option_servie(data)
 
     synthese = {
@@ -694,6 +761,10 @@ def chiffres_cles(synthese):
         (o.get("motif") for o in argent.get("omissions") or []
          if isinstance(o, dict) and o.get("cle") == "investissement_mad"),
         None)
+    # AMOT86 — postes « à chiffrer après la visite » restés hors total.
+    hors_total = next(
+        (a.get("postes") for a in s.get("a_confirmer") or []
+         if isinstance(a, dict) and a.get("cle") == "a_chiffrer_visite"), None)
     return {
         "kwc": _num(systeme.get("kwc")),
         "production_kwh_an": _num(systeme.get("production_kwh_an")),
@@ -715,5 +786,6 @@ def chiffres_cles(synthese):
         "motif_argent": motif_argent,
         "argent_mt": motif_argent == MOTIF_ARGENT_MT,
         "motif_investissement": motif_investissement,
+        "postes_hors_total": list(hors_total or []),
         "note_pointe": _dict(_dict(pointe).get("textes")).get("fr"),
     }

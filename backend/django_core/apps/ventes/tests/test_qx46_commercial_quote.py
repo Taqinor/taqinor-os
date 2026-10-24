@@ -10,14 +10,22 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qx46_commercial_quote -v 2
 """
+import copy
+import json
 import re
 from decimal import Decimal
+from html import unescape
+from pathlib import Path
 
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase, tag
 
+from apps.ventes.economie_ci import economie_ci_publique
+from apps.ventes.quote_engine.ci.synthese import chiffres_cles, synthese_ci
 from apps.ventes.quote_engine.commercial import render, renderer, sample_data
+
+from ._moteur_fixtures import etude_ci_au_kwc_servi
 
 
 class _Devis:
@@ -271,3 +279,129 @@ class TestCiq332CommercialAvecEtude(TestCase):
         pages, legacy = self._rendu({'pdf_mode': 'onepage'})
         self.assertTrue(legacy)
         self.assertEqual(len(pages), 1)
+
+
+# ── Lane document C&I (AMOT86-93) — HTML RÉEL de ``build_html`` sur la
+# fixture commerciale + la sortie du moteur C&I (contrat
+# ``etude_ci_preview.json``) et le bloc PUBLIC ``economie_ci``. ──────────────
+
+_CONTRATS_CI = Path(__file__).resolve().parents[1] / "contract_samples"
+_ETUDE_CI = json.loads((_CONTRATS_CI / "etude_ci_preview.json").read_text(
+    encoding="utf-8"))["exemple"]
+_ECONOMIE_CI = json.loads((_CONTRATS_CI / "economie_ci.json").read_text(
+    encoding="utf-8"))["exemple"]
+#: Trois postes de la composition « à chiffrer après la visite » (ADEV79) :
+#: un article du catalogue, deux libellés génériques du moteur.
+POSTES_VISITE = [
+    {"role": "cable_dc", "produit": 9, "quantite": None, "unite": "m",
+     "designation": "Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)",
+     "prix_connu": False, "a_chiffrer_visite": True},
+    {"role": "cable_ac", "produit": None, "quantite": 35, "unite": "m",
+     "designation": "Câble AC Onduleur réseau Huawei 50kW Triphasé → TGBT",
+     "prix_connu": False, "a_chiffrer_visite": True},
+    {"role": "structure_ci", "produit": None, "quantite": 100,
+     "unite": "module", "designation": "Structure C&I",
+     "prix_connu": False, "a_chiffrer_visite": True},
+]
+MOTIF_VISITE = ("investissement à compléter après la visite technique "
+                "(3 postes hors total)")
+
+
+def _data_ci(categorie="hotel", *, hors_total=False, langue=None):
+    data = copy.deepcopy(sample_data.build(categorie))
+    etude_ci = copy.deepcopy(_ETUDE_CI)
+    economie = copy.deepcopy(_ECONOMIE_CI)
+    if hors_total:
+        composition = etude_ci["composition"]
+        composition["lignes"] = [
+            li for li in composition["lignes"]
+            if li["role"] not in ("structure_ci", "cable_ac")
+        ] + copy.deepcopy(POSTES_VISITE)
+        composition["a_chiffrer_visite"] = [
+            p["designation"] for p in POSTES_VISITE]
+        # D-ACI-8=a — le moteur omet le retour sur un prix incomplet.
+        economie["omissions"] = [{"cle": "investissement_mad",
+                                  "motif": MOTIF_VISITE}]
+        economie["flux_ht"] = dict(economie["flux_ht"], flux=[],
+                                   retour_ans=None)
+        economie["indicateurs"] = dict(economie["indicateurs"],
+                                       retour_ans=None, tri_pct=None)
+        economie["jalons"] = []
+    data["etude"] = dict(data["etude"], etude_ci=etude_ci)
+    data["economie_ci"] = economie_ci_publique(economie)
+    if langue:
+        data["langue_sortie"] = langue
+    return etude_ci_au_kwc_servi(data)
+
+
+def _pages_ci(data):
+    return render.build_html(renderer._augment(data)).split('class="page"')
+
+
+def _texte_ci(fragment):
+    texte = re.sub(r"<style>.*?</style>", "", fragment, flags=re.S)
+    texte = unescape(re.sub(r"<[^>]+>", " ", texte))
+    return re.sub(r"\s+", " ", texte.replace(" ", " ")
+                  .replace("\xa0", " "))
+
+
+class TestAmot86PrixHorsTotal(SimpleTestCase):
+    """AMOT86 (D-ACI-2=a) — des postes « à chiffrer après la visite » hors
+    total : jamais « clé en main », les postes listés SANS montant page 2,
+    la légende du retour sur le prix complet, aucun retour imprimé."""
+
+    def test_titre_hors_postes_jamais_cle_en_main(self):
+        pages = _pages_ci(_data_ci(hors_total=True))
+        self.assertIn("Investissement hors postes à chiffrer après la visite",
+                      _texte_ci(pages[1]))
+        self.assertNotIn("clé en main", _texte_ci("".join(pages)))
+
+    def test_sans_poste_hors_total_titre_d_hier(self):
+        texte = _texte_ci("".join(_pages_ci(_data_ci())))
+        self.assertIn("Investissement (clé en main)", texte)
+        self.assertNotIn("hors postes à chiffrer", texte)
+        self.assertNotIn("Postes à chiffrer après la visite", texte)
+
+    def test_page2_postes_sans_montant_hors_totaux(self):
+        p2 = _pages_ci(_data_ci(hors_total=True))[2]
+        bloc = p2[p2.index("Postes à chiffrer après la visite technique"):
+                  p2.index("</table>")]
+        texte = _texte_ci(bloc)
+        for nom in ("Câble DC — Câble solaire Nexans H1Z2Z2-K 4 mm² "
+                    "(au mètre)", "Câble AC", "Structure de fixation"):
+            self.assertIn(nom, texte)
+        # Intertitre + une mention par poste.
+        self.assertEqual(texte.count("à chiffrer après la visite technique"),
+                         4)
+        # Aucun montant (ni « 0,00 ») sur ces lignes ; les totaux d'hier.
+        self.assertIsNone(re.search(r"\d+,\d{2}", texte), texte)
+        self.assertIn("640 000,00", _texte_ci(p2))
+
+    def test_legende_retour_et_aucun_retour(self):
+        data = _data_ci(hors_total=True)
+        p1 = _pages_ci(data)[1]
+        self.assertIn("retour calculé sur le prix complet, après la visite",
+                      _texte_ci(p1))
+        self.assertIsNone(chiffres_cles(synthese_ci(data))["payback_ans"])
+        self.assertNotIn('data-figure="payback_ans', p1)
+
+    def test_poste_ajoute_au_devis_n_est_plus_hors_total(self):
+        data = _data_ci(hors_total=True)
+        data["all_items"].append({
+            "designation": "Structure C&I", "quantite": 100,
+            "prix_unit_ht": 300.0, "prix_unit_ttc": 360.0, "taux_tva": 20})
+        postes = chiffres_cles(synthese_ci(data))["postes_hors_total"]
+        self.assertEqual([p["role"] for p in postes],
+                         ["cable_dc", "cable_ac"])
+
+    def test_anglais_et_arabe_traduits(self):
+        for langue, titre in (
+                ("en", "Investment excluding items to be priced after the "
+                       "site visit"),
+                ("ar", "الاستثمار دون البنود التي تُسعَّر بعد الزيارة")):
+            with self.subTest(langue=langue):
+                texte = _texte_ci("".join(_pages_ci(
+                    _data_ci(hors_total=True, langue=langue))))
+                self.assertIn(titre, texte)
+                self.assertNotIn("à chiffrer après la visite technique",
+                                 texte)

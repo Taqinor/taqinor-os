@@ -14,7 +14,7 @@ from . import categories
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
 from ..ci.mentions import texte_revente
-from ..ci.synthese import chiffres_cles
+from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
@@ -127,6 +127,37 @@ def pdf_adaptatif(d, build_html, rendre, index_page=1):
         if _tient(html, doc):
             return doc.write_pdf()
     return None
+
+
+def rangees_hors_total(d, L, navy, muted, wash):
+    """AMOT86 (D-ACI-2=a) — les postes « à chiffrer après la visite » restés
+    hors total : une ligne chacun sous un intertitre, « à chiffrer après la
+    visite technique » SANS montant (jamais un 0), hors de la chaîne de
+    totaux. Aucun poste ⇒ ''."""
+    import html as _html
+    from ..ci.couverture import postes_hors_total, roles_client
+    postes = postes_hors_total(d.get("com_synthese") or d.get("ind_synthese"))
+    if not postes:
+        return ""
+    roles = roles_client(d)
+    mention = L("ci_a_chiffrer_apres_visite",
+                "à chiffrer après la visite technique")
+    rangees = (
+        f'<tr><td class="c2-d" colspan="5" style="font-weight:700;'
+        f'color:{navy};text-transform:uppercase;letter-spacing:.5px;'
+        f'background:{wash};">'
+        + L("ci_postes_hors_total",
+            "Postes à chiffrer après la visite technique (hors total)")
+        + '</td></tr>')
+    for poste in postes:
+        nom = _html.escape(libelle_poste(poste, roles), quote=False)
+        qte = poste.get("quantite")
+        rangees += (
+            f'<tr><td class="c2-d">{nom[:1].upper() + nom[1:]}</td>'
+            f'<td class="c2-q">{f"{qte:g}" if qte else ""}</td>'
+            f'<td class="c2-p" colspan="3" style="font-style:italic;'
+            f'color:{muted};">{mention}</td></tr>')
+    return rangees
 
 
 def build(ctx):
@@ -342,7 +373,7 @@ def build(ctx):
 
   <table class="c2-tbl">
     <tr><th>{L("designation", "Désignation")}</th><th class="c2-rr">{L("qte", "Qté")}</th><th class="c2-rr">{L("pu_ht", "P.U. HT")}</th><th class="c2-rr">{L("ci_tva_pct", "TVA %")}</th><th class="c2-rr">{L("total_ht", "Total HT")}</th></tr>
-    {rows}
+    {rows}{rangees_hors_total(d, L, navy, muted, wash)}
   </table>
 
   <div class="c2-tot">

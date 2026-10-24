@@ -317,14 +317,16 @@ def _pied_investissement(d, argent, fmt_mad, L):
     ht = (d.get("totaux_all") or {}).get("ht_net")
     ttc = d.get("_invest_ttc") or 0
     l_ht, l_ttc = L("ci_ht", "HT"), L("ci_ttc", "TTC")
+    # AMOT86 — jamais « clé en main » quand des postes sont hors total.
+    synthese = d.get("ind_synthese")
     if base == "ht" and ht is not None:
-        return (L("ci_invest_ht", "Investissement HT (clé en main)")
+        return (ci_couverture.titre_investissement(d, synthese, "ht")
                 + f" : <b>{fmt_mad(ht)} MAD {l_ht}</b>")
     if base == "deux" and ht is not None:
-        return (L("ci_invest", "Investissement (clé en main)")
+        return (ci_couverture.titre_investissement(d, synthese, "deux")
                 + f" : <b>{fmt_mad(ttc)} MAD {l_ttc}</b> "
                   f"({L('ci_soit', 'soit')} {fmt_mad(ht)} MAD {l_ht})")
-    return (L("ci_invest_ttc", "Investissement (TTC, clé en main)")
+    return (ci_couverture.titre_investissement(d, synthese, "ttc")
             + f" : <b>{fmt_mad(ttc)} MAD</b>")
 
 

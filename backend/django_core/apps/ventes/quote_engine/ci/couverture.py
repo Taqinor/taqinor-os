@@ -229,6 +229,47 @@ def ans(valeur):
 NOTE_TVA_RECUPERABLE = ("TVA récupérable selon votre régime fiscal — à "
                         "confirmer avec votre comptable.")
 
+#: AMOT86 (D-ACI-2=a) — titre du bloc investissement par base servie :
+#: ``(clé, littéral)`` « clé en main » d'hier, puis la version « hors postes
+#: à chiffrer après la visite » quand des postes restent hors total.
+TITRES_INVESTISSEMENT = {
+    "ht": (("ci_invest_ht", "Investissement HT (clé en main)"),
+           ("ci_invest_ht_hv", "Investissement HT hors postes à chiffrer "
+                               "après la visite")),
+    "deux": (("ci_invest", "Investissement (clé en main)"),
+             ("ci_invest_hv", "Investissement hors postes à chiffrer après "
+                              "la visite")),
+    "ttc": (("ci_invest_ttc", "Investissement (TTC, clé en main)"),
+            ("ci_invest_ttc_hv", "Investissement TTC hors postes à chiffrer "
+                                 "après la visite")),
+}
+
+
+def postes_hors_total(synthese):
+    """AMOT86 — les postes « à chiffrer après la visite » restés hors total
+    (``chiffres_cles(synthese)['postes_hors_total']``), ou []."""
+    from .synthese import chiffres_cles
+    return chiffres_cles(synthese if isinstance(synthese, dict) else {})[
+        "postes_hors_total"]
+
+
+def roles_client(d):
+    """AMOT88 — la table « rôle → mots du client » dans la langue du
+    document (``ci_role_<rôle>``), pour ``synthese.libelle_poste``."""
+    from .synthese import ROLES_POSTES_CLIENT
+    return {role: libelle(d, f"ci_role_{role}", fr)
+            for role, fr in ROLES_POSTES_CLIENT.items()}
+
+
+def titre_investissement(d, synthese, base):
+    """AMOT86 — le titre du bloc investissement : jamais « clé en main »
+    quand des postes sont hors total (« Investissement hors postes à chiffrer
+    après la visite »). ``base`` : ``ht`` / ``deux`` / ``ttc``."""
+    sans_reserve, hors_visite = TITRES_INVESTISSEMENT.get(
+        base, TITRES_INVESTISSEMENT["ttc"])
+    cle, fr = hors_visite if postes_hors_total(synthese) else sans_reserve
+    return libelle(d, cle, fr)
+
 
 def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     """CIQ315 — le bloc « Investissement » de la couverture, sur la base de
@@ -255,8 +296,7 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     if base in ("ht", "deux") and ht is not None:
         ht_txt = fmt_mad(ht)
         if base == "ht":
-            titre = libelle(d, "ci_invest_ht",
-                            "Investissement HT (clé en main)")
+            titre = titre_investissement(d, synthese, "ht")
             return (
                 f'<div class="{prefixe}-inv">\n'
                 f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
@@ -266,7 +306,7 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
                 f'{ttc_txt}&nbsp;MAD {l_ttc}{ancre("total_affiche", ttc_txt)}'
                 f' · {note_tva}</div>\n'
                 f'    </div>')
-        titre = libelle(d, "ci_invest", "Investissement (clé en main)")
+        titre = titre_investissement(d, synthese, "deux")
         return (
             f'<div class="{prefixe}-inv">\n'
             f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
@@ -276,7 +316,7 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
             f'{ht_txt}&nbsp;MAD {l_ht}{ancre("total_ht", ht_txt)} · '
             f'{note_tva}</div>\n'
             f'    </div>')
-    titre = libelle(d, "ci_invest_ttc", "Investissement (TTC, clé en main)")
+    titre = titre_investissement(d, synthese, "ttc")
     return (
         f'<div class="{prefixe}-inv">\n'
         f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
@@ -319,6 +359,13 @@ def tuiles_argent(d, cle, kpi, fmt):
         libelle_eco = (libelle(d, "ci_economies_estimees",
                                "Économies estimées / an")
                        + (f" ({base})" if base else ""))
+        if postes_hors_total(d.get(f"{cle}_synthese")):
+            # AMOT86 (D-ACI-2=a) — postes hors total : le retour n'est pas
+            # imprimé, la légende dit sur quel prix il le sera.
+            libelle_eco += (
+                '<div style="font-size:6.3pt;margin-top:1px;">'
+                + libelle(d, "ci_retour_prix_complet", "retour calculé sur "
+                          "le prix complet, après la visite") + "</div>")
         tuiles.append(kpi(fmt(economies), "&nbsp;MAD", libelle_eco,
                           "economie_annuelle"))
     payback = d.get(f"{cle}_payback")
