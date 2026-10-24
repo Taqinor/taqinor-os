@@ -34,15 +34,16 @@ const DG = read('../../ventes/DevisGenerator.jsx')
 const LDP_CODE = codeSansCommentaires(LDP)
 const DG_CODE = codeSansCommentaires(DG)
 
-test('LeadDevisPanel importe fetchAllPages (VX54)', () => {
-  assert.match(LDP, /import\s*\{\s*fetchAllPages\s*\}\s*from\s*'\.\.\/\.\.\/\.\.\/utils\/fetchAllPages'/)
-})
-
-test('LeadDevisPanel ne rappelle plus stockApi.getProduits() SANS paramètre (code réel, hors commentaires)', () => {
-  // On tolère `stockApi.getProduits({ page })` (celui que fetchAllPages
-  // construit) — seul l'appel NU (sans argument) est banni.
-  assert.doesNotMatch(LDP_CODE, /stockApi\.getProduits\(\)/)
-  assert.match(LDP_CODE, /fetchAllPages\(\s*\n?\s*\(page\)\s*=>\s*stockApi\.getProduits\(\{\s*page\s*\}\)/)
+// ALEA55 — le panneau ne PRÉCHARGE plus le catalogue (ni les gammes) avant le devis
+// automatique : `createAutoQuote` les ignorait et le serveur les lit lui-même.
+// Garde plus forte que l'ancienne (qui exigeait fetchAllPages) : plus AUCUNE
+// lecture du catalogue ici — donc, a fortiori, plus d'appel nu à getProduits().
+test('LeadDevisPanel ne lit plus le catalogue ni les gammes avant le devis auto (code réel)', () => {
+  assert.doesNotMatch(LDP_CODE, /stockApi/)
+  assert.doesNotMatch(LDP_CODE, /fetchAllPages/)
+  assert.doesNotMatch(LDP_CODE, /getProduits/)
+  assert.doesNotMatch(LDP_CODE, /getParametresGammes/)
+  assert.doesNotMatch(LDP_CODE, /produitsRef|marquesRef/)
 })
 
 test('DevisGenerator importe fetchAllPages (VX54) — même bug, même correctif', () => {

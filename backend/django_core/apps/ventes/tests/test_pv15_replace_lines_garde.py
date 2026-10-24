@@ -142,8 +142,10 @@ class TestReplaceLinesGardeStatut(TestCase):
         devis = self._devis(Devis.Statut.BROUILLON)
         resp = self.api.post(
             self._url(devis), self._corps(etranger), format='json')
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn('inconnu', resp.data['detail'])
+        # api-fuzz 24/10/2026 — id bien formé d'une autre société : 404 (contrat
+        # ``IdInconnu404Mixin``), identique à un id inexistant.
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('inconnu', str(resp.data))
         # Rollback complet : les lignes d'origine sont préservées.
         self.assertEqual(devis.lignes.count(), 1)
         self.assertEqual(devis.lignes.first().designation, 'Ligne initiale')

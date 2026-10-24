@@ -59,7 +59,7 @@ class TestIndustrielContent(SimpleTestCase):
         self.assertIn("Total TTC", self.html)
 
     def test_cfo_blocks_present(self):
-        self.assertIn("Baseline énergétique", self.html)   # P1
+        self.assertIn("Votre consommation et votre production", self.html)
         # CIQ301 — la page finance ne se remplit que d'une série SERVIE
         # (``synthese_ci.argent``, CIQ307), jamais du repli BT du builder.
         self.assertNotIn("Cashflow cumulé", self.html)

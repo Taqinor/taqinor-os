@@ -65,6 +65,7 @@
     "depense_carburant_mad_mois": null,
     "devis": [],
     "devis_auto": {
+     "catalogue_ci": null,
      "manquants": [
       "facture hiver"
      ],
@@ -344,6 +345,7 @@
     "depense_carburant_mad_mois": null,
     "devis": [],
     "devis_auto": {
+     "catalogue_ci": null,
      "manquants": [
       "facture hiver"
      ],
@@ -623,6 +625,7 @@
     "depense_carburant_mad_mois": null,
     "devis": [],
     "devis_auto": {
+     "catalogue_ci": null,
      "manquants": [
       "facture hiver"
      ],

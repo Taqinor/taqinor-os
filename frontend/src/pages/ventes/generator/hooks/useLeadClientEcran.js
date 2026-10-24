@@ -168,6 +168,12 @@ export function useLeadClientEcran(ctx) {
   const runAutoQuote = async (lead, discountStr) => {
     setSaving(true)
     setAlertesAuto([])
+    // ALEA51 — MÊME gestionnaire que le panneau devis de la fiche lead
+    // (LeadDevisPanel) : les alertes du serveur et le retour (réf., TTC,
+    // économie…) suivent le devis jusqu'au panneau de succès, et le champ du
+    // lead nommé par un refus (`field`) est relayé à l'écran.
+    let alertes = []
+    let resultat = null
     // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
     // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
     try {
@@ -175,8 +181,12 @@ export function useLeadClientEcran(ctx) {
       // les quatre marchés sont créés par le SERVEUR, qui lit lui-même le
       // catalogue, les marques épinglées (PVMRQ) et l'ordre des lignes de la
       // société (PVORD) : rien de cela ne part d'ici.
-      const devisId = await createAutoQuote({ lead, discountStr, bareme: baremeSociete, onAlertes: setAlertesAuto })
-      finish(devisId)
+      const devisId = await createAutoQuote({
+        lead, discountStr, bareme: baremeSociete,
+        onAlertes: (a) => { alertes = a; setAlertesAuto(a) },
+        onResultat: (r) => { resultat = r },
+      })
+      finish(devisId, { reference: resultat?.reference, total_ttc: resultat?.total_ttc, alertes, resultat })
     } catch (err) {
       // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ du lead (`field` du
       // 409) dit lequel corriger sur la fiche ; un seul message (le toast
@@ -186,7 +196,11 @@ export function useLeadClientEcran(ctx) {
         ? err.detail
         : 'Le devis automatique a échoué — vérifiez le lead et réessayez.')
         + (champ ? ` — à corriger sur la fiche lead : ${champ}.` : '')
-      setErrors(prev => ({ ...prev, submit: msg }))
+      setErrors(prev => ({
+        ...prev,
+        submit: msg,
+        submitField: typeof err?.field === 'string' ? { field: err.field, leadId: lead.id } : null,
+      }))
       setSaving(false)
     }
   }

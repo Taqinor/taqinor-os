@@ -42,6 +42,7 @@ suit pas un patch posé ici, et réciproquement. D'où la règle :
   la façade au moment de l'appel (import fonction-local), continue de se patcher
   sur ``apps.ventes.services.X`` — inchangé.
 """
+from django.core.exceptions import ObjectDoesNotExist
 import logging
 import os
 # QJR146 (i) — comparaison d'OTP à temps constant (``compare_digest``).
@@ -79,6 +80,18 @@ VALIDATION_REQUISE_REFUS = (
     'signée.')
 
 
+#: C (revue du 24/10/2026) — 409 ``validation_requise`` quand l'étude C&I
+#: d'un devis commercial / industriel ne se lit pas à l'acceptation (le sceau
+#: ne la couvrirait pas) : message CLIENT (lien public, portail)…
+ETUDE_ILLISIBLE_REFUS = (
+    'Votre proposition doit être revalidée par votre conseiller avant '
+    'signature : contactez-le.')
+#: … et message de l'acceptation INTERNE (vendeur).
+ETUDE_ILLISIBLE_REFUS_INTERNE = (
+    "L'étude de ce devis commercial / industriel ne peut pas être relue : "
+    "corrigez-la (ou régénérez le devis) avant d'enregistrer l'acceptation.")
+
+
 class AcceptationBloquee(AcceptError):
     """ADEV13 (C-ADEV-005) — acceptation refusée par un blocage crédit
     (XFAC28) ou un avertissement de vente bloquant (ZSAL9).
@@ -108,13 +121,23 @@ def peut_passer_outre(user):
 
 
 def _garde_blocages_acceptation(devis, *, user, override_credit=False,
-                                override_avertissement=False):
+                                override_avertissement=False,
+                                empreinte_attendue=None, lien=None):
     """ADEV13 — LA garde unique des trois portes d'acceptation (interne,
     signature publique, portail) : blocage crédit dur (XFAC28) puis
     avertissement de vente bloquant (ZSAL9). Lève ``AcceptationBloquee`` ;
     un override n'est honoré que s'il est demandé (les portes client ne le
     demandent jamais) ET que ``peut_passer_outre(user)`` (ADEV14) — un
-    drapeau posé par un Commercial est ignoré, le refus tombe."""
+    drapeau posé par un Commercial est ignoré, le refus tombe.
+
+    ADEV51 (C-ADEV-018) — d'abord, CE QUE LE CLIENT SIGNE = CE QU'IL A LU,
+    revu SOUS LE VERROU d'``accept_devis`` (appelée sur le devis relu
+    verrouillé) : la vue compare l'empreinte AVANT le service (voie rapide),
+    mais une correction commitée entre cette garde-là et le
+    ``select_for_update`` passait. Même calcul que la lecture
+    (``empreinte_contenu_signable``, lignes relues en base) ; écart ⇒
+    ``AcceptError`` 409 ``empreinte_perimee``. ``None`` : aucun contrôle."""
+    _garde_empreinte_sous_verrou(devis, empreinte_attendue, lien)
     from apps.ventes.domain.recouvrement import (
         CreditHoldError, SaleWarningError, verifier_credit_hold,
         verifier_sale_warnings,
@@ -135,6 +158,18 @@ def _garde_blocages_acceptation(devis, *, user, override_credit=False,
             chatter_target=devis)
     except SaleWarningError as exc:
         raise AcceptationBloquee('sale_warning', exc.motif) from exc
+
+
+def _garde_empreinte_sous_verrou(devis, empreinte_attendue, lien):
+    """ADEV51 — voir :func:`_garde_blocages_acceptation`."""
+    from apps.ventes.models import Devis
+    if empreinte_attendue is None or devis.statut != Devis.Statut.ENVOYE:
+        return
+    from apps.ventes.domain.modifiabilite import (
+        EMPREINTE_PERIMEE, empreinte_contenu_signable)
+    if empreinte_attendue != empreinte_contenu_signable(devis, link=lien):
+        raise AcceptError(EMPREINTE_PERIMEE, conflict=True,
+                          code='empreinte_perimee')
 
 
 #: ADEV11 — message du 409 ``brouillon`` (contrat ``proposal_accept.json``,
@@ -624,7 +659,11 @@ def validate_otp_lecture(link, otp_code):
 def otp_lecture_verified(link):
     """True si la lecture de ``link`` a déjà été déverrouillée par un OTP
     valide dans la dernière heure. Toujours True si ``link.otp_lecture`` est
-    False (rien à déverrouiller — comportement d'aujourd'hui)."""
+    False (rien à déverrouiller — comportement d'aujourd'hui).
+
+    LA garde unique des lectures et actions publiques (QJR417/QJR418 — aucun
+    second helper). L'exemplaire SIGNÉ d'un accepté suit la règle du lien,
+    sans règle propre (hors périmètre ADEV97 : « otp_lecture inchangé »)."""
     if not getattr(link, 'otp_lecture', False):
         return True
     from django.core.cache import cache
@@ -689,8 +728,17 @@ def _send_otp_email(email, code, devis_ref, company=None):
 
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
-                         on_behalf_of='', lignes=None, entreprise=None):
+                         on_behalf_of='', lignes=None, entreprise=None,
+                         langue='', refus_etude=None):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
+
+    ADEV96 — les chiffres de l'étude C&I scellés sont lus ici et stockés sur
+    la signature (``figures_scellees``) : la vérification rejoue le sceau
+    depuis eux, jamais depuis le moteur. ``refus_etude`` (``accept_devis``) —
+    REFUS FERMÉ : l'étude d'un devis C&I illisible lève
+    ``AcceptError(refus_etude, conflict=True, code='validation_requise')``
+    AVANT le best-effort ci-dessous (qui, lui, n'arrête jamais rien) ; sans
+    lui (avenant VNT61), l'étude illisible donne ``etude=null`` comme hier.
 
     Idempotent : un enregistrement existant n'est jamais écrasé (la première
     signature fait foi). Best-effort : une exception ne remonte jamais —
@@ -708,14 +756,35 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     migrera jamais vers ``core.esign``. Voir ``core/esign.py`` et
     ``docs/esign-socle.md``.
     """
+    from apps.ventes.models import DevisSignature
+    from apps.ventes.domain.modifiabilite import (
+        SyntheseCiIllisible, figures_sceau)
+    figures = None
+    # Refus fermé SEULEMENT quand le devis PORTE une étude C&I illisible :
+    # un devis commercial / industriel composé à la main, sans étude
+    # (``etude_params`` sans ``etude_ci``), se scelle sans chiffres d'étude
+    # comme avant — sinon le portail et le lien refusaient toute acceptation
+    # de ces devis (CI #1022 : ciq409 / ciq321 en 409 ``validation_requise``).
+    porte_etude = isinstance(
+        (getattr(devis, 'etude_params', None) or {}).get('etude_ci'), dict)
+    if refus_etude is not None and porte_etude \
+            and not DevisSignature.objects.filter(devis=devis).exists():
+        try:
+            figures = figures_sceau(devis, strict=True)
+        except SyntheseCiIllisible:
+            raise AcceptError(refus_etude, conflict=True,
+                              code='validation_requise') from None
     try:
         from django.utils import timezone
-        from apps.ventes.models import DevisSignature
         if DevisSignature.objects.filter(devis=devis).exists():
             return
         # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
         # est identique : elles sont retriées par ``id`` côté modèle).
-        content_hash = DevisSignature.compute_content_hash(devis, lignes=lignes)
+        if figures is None:
+            figures = figures_sceau(devis)
+        figures = DevisSignature.figures_canoniques(figures)
+        content_hash = DevisSignature.compute_content_hash(
+            devis, lignes=lignes, figures=figures)
         # ``signature_image`` peut être une data-URL volumineuse — on la borne
         # raisonnablement (les payloads canvas font ~quelques Ko).
         img = (signature_image or '')
@@ -736,6 +805,10 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             on_behalf_of=(on_behalf_of or '')[:150],
             # CIQ319 — identité de l'entreprise signataire (vide hors C&I).
             **_champs_signature_entreprise(entreprise),
+            # ADEV99 — langue de la page (confirmation FR, EN si 'en').
+            langue_page=str(langue or '')[:5],
+            # ADEV96 — les chiffres scellés, pour un sceau reproductible.
+            figures_scellees={'etude': figures},
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -752,9 +825,16 @@ def signature_entreprise(devis):
     ``None``. Lecture seule."""
     if not exige_identite_entreprise(devis):
         return None
+    # L3 (24/10/2026) — un devis SANS signature est le cas normal de toute
+    # lecture publique avant acceptation : ``RelatedObjectDoesNotExist``
+    # (sous-classe d'``ObjectDoesNotExist``) se lit en silence ; seul un
+    # vrai incident est journalisé (chaque GET d'un envoyé écrivait une
+    # trace complète dans les journaux, qui noyait les vraies).
     try:
         sig = devis.signature
-    except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist (D-ENF22-BLE001)
+    except ObjectDoesNotExist:
+        return None
+    except Exception:  # noqa: BLE001 — lecture dégradée (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'signature_entreprise', exc_info=True)
         return None
     if sig is None or not (sig.raison_sociale or sig.signataire_qualite
@@ -798,6 +878,22 @@ def _copier_exemplaire_signe(cle_rendu, *, devis):
     return cle_signee
 
 
+def _empreinte_pdf(cle, devis=None):
+    """ADEV96 — SHA-256 hex des OCTETS stockés sous ``cle`` (l'exemplaire
+    signé remis au client) ; ``''`` sans clé ou stockage illisible (jamais une
+    empreinte inventée)."""
+    if not cle:
+        return ''
+    try:
+        import hashlib
+        from apps.ventes.utils.pdf import download_pdf
+        return hashlib.sha256(download_pdf(cle)).hexdigest()
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
+        logger.warning('ADEV96 : empreinte du PDF signé illisible (devis %s)',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return ''
+
+
 def _store_signed_pdf(*, devis):
     """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
 
@@ -820,7 +916,9 @@ def _store_signed_pdf(*, devis):
         key = generate_premium_devis_pdf(
             devis.id, clean_pdf_options({}), persist=True)
         key = _copier_exemplaire_signe(key, devis=devis)
-        DevisSignature.objects.filter(pk=sig.pk).update(signed_pdf_key=key)
+        # ADEV96 — le SHA-256 des octets figés, posé avec la clé (certificat).
+        DevisSignature.objects.filter(pk=sig.pk).update(
+            signed_pdf_key=key, signed_pdf_sha256=_empreinte_pdf(key, devis))
         logger.info(
             'QJ22: PDF signé stocké pour devis %s → %s',
             devis.reference, key)
@@ -875,72 +973,20 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
     Le PDF joint est récupéré depuis MinIO si disponible ; sinon l'email part
     sans pièce jointe (comportement réseau conforme à email_service.py).
     Jamais de prix_achat / marge dans les emails (règle #4).
+
+    ADEV99 — confirmation aux DEUX parties (``domain.confirmation_acceptation``) :
+    signataire ET contact du lead (à défaut le client), copie PDF au vendeur,
+    raison sociale / ICE / horodatage Casablanca / empreinte dans le corps,
+    anglais quand la page était lue en anglais. QJR134 / ES11 tient : sans
+    enregistrement de signature, aucune signature ni exemplaire n'est promis.
     """
     try:
-        from apps.ventes.email_service import send_document_email
-        from apps.ventes.email_service import _signature as _signature_societe
-        client = getattr(devis, 'client', None)
-        dest = (getattr(client, 'email', '') or '').strip()
-        nom_client = ''
-        if client is not None:
-            nom_client = (
-                f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
-            )
-        salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        from apps.ventes.domain.confirmation_acceptation import envoyer_confirmations
         # QX33be — bloc acompte (tranche 1 sur le TTC REMISÉ per QX1) + RIB si
-        # configuré. Vide (aucune ligne) quand rien n'est configurable → texte
-        # de confirmation inchangé.
-        acompte_bloc = _acceptance_deposit_block(devis, lignes=lignes)
-        # ── QJR134 / ES11 — L'EMAIL NE PROMET QUE CE QUI EXISTE ────────────
-        #
-        # CE QUI ÉTAIT FAUX. ``_create_esign_record`` est best-effort : son
-        # échec est avalé en WARNING, ``_store_signed_pdf`` sort alors
-        # silencieusement, et cet email affirmait INCONDITIONNELLEMENT « Votre
-        # signature électronique a été enregistrée » — au client, par écrit,
-        # alors qu'il pouvait n'exister ni image, ni IP, ni empreinte, ni PDF
-        # scellé. Le devis étant gelé à l'édition après acceptation, la
-        # situation n'était même pas rattrapable.
-        #
-        # La phrase (et la mention de l'exemplaire signé joint) ne part
-        # désormais que si l'enregistrement de signature EXISTE vraiment. Sur
-        # le chemin nominal — celui de toutes les signatures en ligne — il
-        # existe, et l'email est byte-identique à celui d'hier.
-        preuve = False
-        try:
-            from apps.ventes.models import DevisSignature
-            preuve = DevisSignature.objects.filter(devis=devis).exists()
-        except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien (D-ENF22-BLE001)
-            logger.warning('%s : échec ignoré (dégradé)', '_send_acceptance_emails', exc_info=True)
-            preuve = False
-        bloc_signature = (
-            "Votre signature électronique a été enregistrée conformément "
-            "à la loi 43-20 relative à l'échange électronique de données "
-            "juridiques.\n\n"
-        ) if preuve else ''
-        bloc_exemplaire = (
-            "Vous trouverez ci-joint votre exemplaire signé pour vos "
-            "archives.\n\n"
-        ) if preuve else ''
-        corps = (
-            f"{salut}\n\n"
-            f"Nous avons bien reçu votre acceptation du devis "
-            f"{devis.reference}.\n\n"
-            f"{bloc_signature}"
-            f"{acompte_bloc}"
-            f"{bloc_exemplaire}"
-            f"Merci pour votre confiance.\n\n"
-            f"Cordialement,\n{_signature_societe(devis.company)}"
-        )
-        if dest:
-            send_document_email(
-                devis,
-                to_email=dest,
-                sujet=f'Proposition acceptée — {devis.reference}',
-                corps=corps,
-                user=user,
-                attach_pdf=True,
-                log_activity=False,  # l'acceptation a déjà son propre chatter
-            )
+        # configuré. Vide (aucune ligne) quand rien n'est configurable.
+        envoyer_confirmations(
+            devis=devis, user=user,
+            acompte_bloc=_acceptance_deposit_block(devis, lignes=lignes))
     except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QJ10: email client échec pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
@@ -1048,6 +1094,12 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
             'statut', 'date_refus', 'motif_refus', 'is_active'])
         activity.log_devis_refusal(
             soeur, user, 'variante non retenue', date_acc)
+        # E (revue du 24/10/2026) — l'effondrement pose REFUSE SANS émettre
+        # ``devis_refused`` : les liens publics de la sœur restaient vivants.
+        # Même révocation que l'abonné du refus (point de sauvegarde inclus,
+        # jamais un devis accepté).
+        from apps.ventes.domain.suivi import MOTIF_VARIANTE, revoquer_en_fin_de_vie
+        revoquer_en_fin_de_vie(soeur, MOTIF_VARIANTE)
 
     # AMET2 (D-ECH-FIGE) — échéancier figé AVANT ``devis_accepted`` (les trois
     # portes d'``accept_devis`` passent ici) : les abonnés lisent le plan figé.
@@ -1066,7 +1118,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
                  entreprise=None, override_credit=False,
-                 override_avertissement=False, canal=''):
+                 override_avertissement=False, canal='', langue='',
+                 empreinte_attendue=None, lien=None):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1090,6 +1143,13 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     restent APRÈS le commit (entrées-sorties best-effort). ``rejouer_aval=True``
     rejoue l'aval d'un devis DÉJÀ accepté — le geste de réparation d'un devis
     accepté AVANT ce lot, quand le statut pouvait être commité seul.
+
+    ADEV51 — ``empreinte_attendue`` (signature publique) : l'empreinte du
+    contenu que le client a LU (``modifiabilite.empreinte_contenu_signable``
+    sur ``lien``). Elle est re-comparée SOUS le verrou du groupe : une
+    correction sur place commitée entre la garde de la vue et ce verrou donne
+    ``AcceptError(conflict=True, code='empreinte_perimee')`` — rien n'est
+    écrit. ``None`` (défaut, toutes les autres portes) : aucun contrôle.
 
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
@@ -1150,7 +1210,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             .order_by('pk'))
         courant = next((d for d in groupe if d.pk == devis.pk), None)
         if courant is None:
-            raise AcceptError('Devis introuvable.', conflict=True)
+            # D (revue du 24/10/2026) — code du contrat ``proposal_accept.json``.
+            raise AcceptError('Devis introuvable.', conflict=True,
+                              code='inactive')
         devis = courant
 
         # Re-submit on an already-accepted devis: a no-op for the tokenized
@@ -1211,16 +1273,19 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             raise AcceptError(
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
-                conflict=True)
+                conflict=True, code='statut')  # D — code du contrat
 
         # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
         # bloquant : UNE garde, ici, pour les trois portes (vue interne,
         # signature publique, portail client). Auparavant seule la vue
         # interne la posait — le lien public et le portail acceptaient un
         # client bloqué (chantier créé). Rien n'est écrit sur refus.
+        # ADEV51 — la garde re-compare aussi, SOUS CE VERROU, l'empreinte du
+        # contenu lu par le client (``empreinte_attendue``).
         _garde_blocages_acceptation(
             devis, user=user, override_credit=override_credit,
-            override_avertissement=override_avertissement)
+            override_avertissement=override_avertissement,
+            empreinte_attendue=empreinte_attendue, lien=lien)
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).
@@ -1359,6 +1424,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # on ne crée pas de second enregistrement — la signature d'origine fait
         # foi.
         if not avenant:
+            # C (revue du 24/10/2026) — REFUS FERMÉ (``refus_etude``) : un
+            # devis commercial / industriel dont l'étude ne se lit pas ne se
+            # scelle pas sans elle — 409 ``validation_requise`` levé AVANT le
+            # best-effort, qui annule la transaction entière (rien d'écrit).
             _create_esign_record(
                 devis=devis, nom=nom, ip=ip,
                 user_agent=user_agent, consentement=consentement,
@@ -1366,7 +1435,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 on_behalf_of=on_behalf_of, lignes=lignes_devis,
                 # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
                 # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
-                entreprise=entreprise,
+                entreprise=entreprise, langue=langue,
+                refus_etude=(ETUDE_ILLISIBLE_REFUS
+                             if _acceptation_par_le_client(user)
+                             else ETUDE_ILLISIBLE_REFUS_INTERNE),
             )
         # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
         # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE

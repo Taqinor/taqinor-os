@@ -39,22 +39,24 @@ from ..lecture_pure import nombre_normalise
 LANGUES = ("fr", "en", "ar")
 
 #: AMOT81 — l'origine du prix du kWh dite sur le document commercial quand
-#: c'est la grille ONEE de repli ({date} : sa capture, jamais inventée).
+#: c'est la grille ONEE publiée ({date} : la date de la grille, jamais
+#: inventée). AMOT88 — en mots du client : ni « repli », ni « capture »,
+#: ni « non reconfirmée » ; la grille est datée sous une forme neutre.
 TEXTES_TARIF_GRILLE = {
-    "fr": ("Prix du kWh : grille ONEE publiée (repli, HT estimé{date}) — à "
-           "confirmer sur votre facture."),
-    "en": ("kWh prices: published ONEE tariff (fallback, estimated excl. "
-           "VAT{date}) — to be confirmed on your bill."),
-    "ar": ("أثمنة الكيلوواط ساعة: التعريفة المنشورة للمكتب الوطني (احتياطي، "
-           "دون احتساب الضريبة تقديرياً{date}) — تُؤكَّد على فاتورتكم."),
+    "fr": "Tarif ONEE {tension}publié — à confirmer sur votre facture{date}.",
+    "en": "Published ONEE {tension}tariff — to be confirmed on your bill"
+          "{date}.",
+    "ar": "تعريفة المكتب الوطني {tension}المنشورة — تُؤكَّد على فاتورتكم"
+          "{date}.",
 }
-TEXTES_CAPTURE_NON_RECONFIRMEE = {
-    "fr": " ; capture du {date}, non reconfirmée 2026",
-    "en": "; captured on {date}, not reconfirmed for 2026",
-    "ar": "؛ نسخة بتاريخ {date}، غير مؤكدة لسنة 2026",
+TEXTES_GRILLE_DATEE = {"fr": " (grille du {date})",
+                       "en": " (tariff of {date})",
+                       "ar": " (تعريفة بتاريخ {date})"}
+#: Tension de la grille (``tarif.contrat`` : ``bt_*`` / ``mt_*``).
+TEXTES_TENSION_GRILLE = {
+    "bt": {"fr": "BT ", "en": "low-voltage ", "ar": "للجهد المنخفض "},
+    "mt": {"fr": "MT ", "en": "medium-voltage ", "ar": "للجهد المتوسط "},
 }
-TEXTES_RELEVEE = {"fr": " ; relevée le {date}", "en": "; recorded on {date}",
-                  "ar": "؛ بتاريخ {date}"}
 
 #: Date de la décision ANRE 04/26 (début de validité, ``ANRE_PERIODE``).
 DATE_ANRE = ANRE_PERIODE[0].isoformat()
@@ -257,12 +259,12 @@ def _mention_tarif(tarif):
         }
     elif origine == "grille_officielle":
         textes = {
-            "fr": ("Prix du kWh : grille officielle ONEE publiée (repli), en "
-                   "attendant la lecture de votre facture."),
-            "en": ("kWh prices: published official ONEE tariff (fallback), "
-                   "until your bill is read."),
+            "fr": ("Prix du kWh : tarif officiel ONEE publié, en attendant "
+                   "la lecture de votre facture."),
+            "en": ("kWh prices: published official ONEE tariff, until your "
+                   "bill is read."),
             "ar": ("أثمنة الكيلوواط ساعة: التعريفة الرسمية المنشورة للمكتب "
-                   "الوطني (احتياطي) إلى حين قراءة فاتورتكم."),
+                   "الوطني إلى حين قراءة فاتورتكم."),
         }
     else:
         return None
@@ -285,12 +287,11 @@ def mention_tarif_mt(tarif, mention_grille=None, langue=None):
 
 
 def ligne_tarif_grille(tarif, langue=None):
-    """AMOT81 — « Prix du kWh : grille ONEE publiée (repli, HT estimé ;
-    capture du 16/02/2025, non reconfirmée 2026) — à confirmer sur votre
-    facture. » quand la grille de repli est la source, sinon None. La date
-    est celle de la ligne de grille (``releve_le``) ; non reconfirmée quand
-    la ligne le dit (``reconfirme_2026`` faux) ou quand la capture précède
-    2026."""
+    """AMOT81 / AMOT88 — « Tarif ONEE BT publié — à confirmer sur votre
+    facture (grille du 16/02/2025). » quand la grille ONEE publiée est la
+    source, sinon None. La date est celle de la ligne de grille
+    (``releve_le``) ; la tension, celle du contrat servi (``bt_*`` /
+    ``mt_*``, sinon rien)."""
     tarif = _dict(tarif)
     if tarif.get("origine") != "grille_officielle":
         return None
@@ -300,12 +301,34 @@ def ligne_tarif_grille(tarif, langue=None):
                   "")
     date = ""
     if len(releve) == 10 and releve[4] == releve[7] == "-":
-        non_reconfirmee = releve < "2026" or any(
-            p.get("reconfirme_2026") is False for p in postes)
-        date = texte(TEXTES_CAPTURE_NON_RECONFIRMEE if non_reconfirmee
-                     else TEXTES_RELEVEE, langue).format(
+        date = texte(TEXTES_GRILLE_DATEE, langue).format(
             date=f"{releve[8:]}/{releve[5:7]}/{releve[:4]}")
-    return texte(TEXTES_TARIF_GRILLE, langue).format(date=date)
+    tension = TEXTES_TENSION_GRILLE.get(
+        str(tarif.get("contrat") or "")[:2])
+    return texte(TEXTES_TARIF_GRILLE, langue).format(
+        date=date, tension=texte(tension, langue) if tension else "")
+
+
+#: AMOT91 — le prix du kWh lu sur la facture du client (valeur d'une rangée
+#: « Prix du kWh » : sans le préfixe de la mention complète).
+TEXTES_TARIF_FACTURE = {
+    "fr": "ceux de votre facture d'électricité",
+    "en": "those of your electricity bill",
+    "ar": "تلك الواردة في فاتورة الكهرباء الخاصة بكم",
+}
+
+
+def ligne_tarif_client(tarif, langue=None):
+    """AMOT88 — le prix du kWh en mots du client : la grille ONEE publiée et
+    sa date (``ligne_tarif_grille``) ou « ceux de votre facture
+    d'électricité » ; None sans tarif servi. Remplace la valeur interne
+    « grille ONEE …, repli » d'``economie_ci.hypotheses``."""
+    grille = ligne_tarif_grille(tarif, langue)
+    if grille:
+        return grille
+    if _dict(tarif).get("origine") == "declare_facture":
+        return texte(TEXTES_TARIF_FACTURE, langue)
+    return None
 
 
 def _batterie_servie(data):

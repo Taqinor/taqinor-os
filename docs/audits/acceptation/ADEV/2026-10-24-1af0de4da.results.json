@@ -1,0 +1,42 @@
+{
+  "sha": "1af0de4dac77d404c95ab36ffa53c74ec0dc8c96",
+  "date": "2026-10-24",
+  "groupe": "ADEV",
+  "verdict": "PASS",
+  "couvre": [
+    "ADEV100",
+    "ADEV101",
+    "ADEV102",
+    "ADEV103"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-L3-4",
+      "taches": [
+        "ADEV100",
+        "ADEV101",
+        "ADEV102",
+        "ADEV103"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ADEV/traces/2026-10-24/L3-P4-generateur.txt",
+      "notes": [
+        "générateur pré-rempli, synthèse 4 chiffres, Affiner replié, carte technique masquée"
+      ]
+    }
+  ]
+}

@@ -53,8 +53,10 @@ test('le payload reste une CHAÎNE sans cible, et devient un objet avec cible', 
   assert.match(tab, /export function devisIntent\(mode, kwcCible\) \{/)
   assert.match(tab, /if \(!cible \|\| mode === 'edit'\) return mode/)
   assert.match(tab, /return \{ mode, targetKwc: cible \}/)
-  // Les 4 modes qui DIMENSIONNENT passent par elle…
-  for (const mode of ['auto', 'remise', 'onepage', 'premium']) {
+  // Les modes qui CRÉENT un devis passent par elle… ALEA55 — « onepage » et
+  // « premium » n'en font plus partie : ce sont des FORMATS du PDF d'un devis
+  // existant (menu « PDF » de la carte), jamais un second devis.
+  for (const mode of ['auto', 'remise']) {
     assert.match(tab, new RegExp(`devisIntent\\('${mode}', kwcCible\\)`),
       `le mode ${mode} doit passer par devisIntent`)
   }
@@ -88,15 +90,16 @@ test('la cible traverse le panneau jusqu’au calcul partagé', () => {
   assert.match(panel, /targetKwc = null/)
   // PVMRQ (18/08) — `marques` suit `targetKwc` dans l'appel : la cible traverse
   // toujours, accompagnée des marques épinglées.
-  assert.match(panel, /createAutoQuote\(\{[\s\S]{0,200}?targetKwc,[\s\S]{0,120}?\}\)/)
+  assert.match(panel, /createAutoQuote\(\{[\s\S]{0,200}?targetKwc,[\s\S]{0,200}?\}\)/)
   // PVMRQ (18/08) — la signature porte aussi `marques` après `targetKwc` ;
   // PVORD (19/08) — puis `ordreLignes` (ordre par défaut des lignes).
   // AGR126 — `pumpHours` a quitté la signature (plus de pompage JS) ;
   // `onAlertes` reçoit les alertes du devis créé par le serveur.
   // CIQ127 — tout part au serveur (qui lit marques et ordre de la société) :
   // la signature ne garde que lead, remise, alertes et la cible.
+  // ALEA51 — `onResultat` reçoit le retour du serveur (bannière de succès) ;
   // AGQ23 — la signature porte aussi `idempotencyKey` (une clé par ouverture du panneau).
-  assert.match(autoQuote, /createAutoQuote\(\{ lead, discountStr, onAlertes, targetKwc, idempotencyKey \}\)/)
+  assert.match(autoQuote, /createAutoQuote\(\{ lead, discountStr, onAlertes, onResultat, targetKwc, idempotencyKey \}\)/)
 })
 
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {

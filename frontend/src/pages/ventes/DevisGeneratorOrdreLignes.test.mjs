@@ -97,9 +97,13 @@ test('CIQ127 — runAutoQuote et createAutoQuote ne transmettent plus l’ordre 
   const idx = DG.indexOf('const runAutoQuote = async')
   assert.ok(idx > -1, 'runAutoQuote introuvable')
   const appel = DG.indexOf('createAutoQuote({', idx)
-  // AGNR35 — seul le barème société s'ajoute (jamais l'ordre des lignes) ;
-  // AGQ25 — plus le rappel du journal `alertes` (jamais une donnée de corps).
-  assert.match(DG.slice(appel, appel + 120), /createAutoQuote\(\{ lead, discountStr(, bareme: baremeSociete)?(, onAlertes: setAlertesAuto)? \}\)/)
+  // AGNR35 — seul le barème société s'ajoute (jamais l'ordre des lignes).
+  // ALEA51 — + `onAlertes` / `onResultat` (alertes et bannière de succès du
+  // même gestionnaire que le panneau de la fiche lead) : toujours jamais l'ordre.
+  const appelTexte = DG.slice(appel, DG.indexOf('finish(', appel))
+  assert.match(appelTexte, /^createAutoQuote\(\{\s*lead, discountStr(, bareme: baremeSociete)?,\s*onAlertes:/)
+  assert.match(appelTexte, /onResultat:/)
+  assert.doesNotMatch(appelTexte, /ordre/i)
   // Le devis auto ne compose plus rien à l'écran (aucun autoFillLines).
   assert.doesNotMatch(AQ, /autoFillLines\(|ordreLignes,\s*\}\)\s*\{/)
 })

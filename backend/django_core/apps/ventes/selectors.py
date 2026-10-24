@@ -1929,3 +1929,64 @@ def profil_charge_prerequis_ci(rythme, categorie=None, *, company=None, mode=Non
     if not en_champs_lead:
         return feuilles
     return [CHAMP_LEAD_DES_ALERTES[f] for f in feuilles]
+
+
+#: ALEA50 (D-ACI-5=a / D-ACI-6=a) — postes FIXES du moteur C&I qu'un devis
+#: automatique doit pouvoir CHIFFRER : chaque groupe est un « l'un des » de
+#: rôles d'article (``core.product_roles.ROLES_CI``) dont au moins un article
+#: actif doit porter un prix de vente > 0. Les 8 prestations viennent de
+#: ``moteur_ci.composition.PRESTATIONS_CI`` (forfaits société).
+_POSTES_FIXES_CI = (('coffret_dc',), ('coffret_ac',), ('protection_ac',),
+                    ('compteur_injection', 'controleur_injection'))
+_TTL_CATALOGUE_CI_S = 300
+
+
+def catalogue_ci_pret(company_id):
+    """ALEA50 — ``{pret, manquants}`` : les postes fixes C&I SANS prix (forfaits
+    de ``CompanyProfile.forfaits_ci`` non réglés, rôles d'article sans aucun
+    article actif à prix de vente > 0). Mis en cache 5 min par société (le TTL
+    suffit, rien ne l'invalide) ; prend l'ID (une liste de leads ne charge pas
+    N sociétés). Lecture seule, jamais ``prix_achat``."""
+    from django.core.cache import cache
+
+    cle = 'ventes:catalogue_ci_pret:%s' % company_id
+    resultat = cache.get(cle)
+    if resultat is None:
+        resultat = _calculer_catalogue_ci_pret(company_id)
+        cache.set(cle, resultat, _TTL_CATALOGUE_CI_S)
+    return resultat
+
+
+def _forfait_regle(forfait, _d):
+    """Même règle que ``moteur_ci.composition._prestation`` : une source ET au
+    moins un montant."""
+    forfait = forfait or {}
+    return bool((forfait.get('source') or '').strip()) and any(
+        _d(forfait.get(k)) is not None
+        for k in ('fixe_ht', 'par_kwc_ht', 'par_panneau_ht'))
+
+
+def _calculer_catalogue_ci_pret(company_id):
+    from apps.stock.selectors import produits_ci
+    from authentication.models import Company
+    from core.product_roles import LIBELLES_ROLES_CI
+
+    from .domain.etude_ci import _reglages_societe
+    from .moteur_ci.composition import PRESTATIONS_CI, _d
+
+    company = Company.objects.get(pk=company_id)
+    manquants = []
+    forfaits = getattr(_reglages_societe(company), 'forfaits_ci', None) or {}
+    for cle, _libelle in PRESTATIONS_CI:
+        if not _forfait_regle(forfaits.get(cle), _d):
+            manquants.append('Forfait « %s » (Paramètres › Devis › Prestations '
+                             'C&I)' % LIBELLES_ROLES_CI[cle])
+    tarifes = {role for p in produits_ci(company, avec_prix=True)
+               if p.get('eligible_ci') is not False
+               for role in (p.get('role_ci'), p.get('role_devis'))}
+    for groupe in _POSTES_FIXES_CI:
+        if not tarifes.intersection(groupe):
+            noms = [LIBELLES_ROLES_CI[r] for r in groupe]
+            manquants.append('%s C&I (fiche produit)' % ' ou '.join(
+                [noms[0]] + [n[0].lower() + n[1:] for n in noms[1:]]))
+    return {'pret': not manquants, 'manquants': manquants}

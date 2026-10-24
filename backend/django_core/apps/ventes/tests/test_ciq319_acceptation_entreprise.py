@@ -90,6 +90,53 @@ class AcceptationEntreprise(TestCase):
                 self.assertFalse(
                     DevisSignature.objects.filter(devis=devis).exists())
 
+    def test_ci_etude_illisible_409_validation_requise_rien_ecrit(self):
+        """C (revue du 24/10/2026) — REFUS FERMÉ : l'étude C&I ne se lit pas
+        à l'acceptation ⇒ 409 ``validation_requise`` (message client), aucune
+        signature, le devis reste « envoyé » — jamais un sceau C&I sans son
+        étude en silence."""
+        from apps.ventes.domain.cycle_vie import ETUDE_ILLISIBLE_REFUS
+        for mode in ('commercial', 'industriel'):
+            with self.subTest(mode=mode):
+                devis = self._devis(mode)
+                # Le refus fermé ne vaut que pour un devis qui PORTE une étude.
+                Devis.objects.filter(pk=devis.pk).update(
+                    etude_params={'etude_ci': {'statut': 'ok', 'kwc': 10}})
+                with patch('apps.ventes.quote_engine.ci.synthese.synthese_ci',
+                           side_effect=RuntimeError('moteur C&I en panne')):
+                    resp = self._post(devis, ENTREPRISE)
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(resp.data, {
+                    'detail': ETUDE_ILLISIBLE_REFUS,
+                    'code': 'validation_requise'})
+                devis.refresh_from_db()
+                self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+                self.assertFalse(
+                    DevisSignature.objects.filter(devis=devis).exists())
+
+    def test_ci_sans_etude_s_accepte_sans_refus_ferme(self):
+        """CI #1022 — un devis C&I composé à la main, SANS étude
+        (``etude_params`` sans ``etude_ci``), s'accepte comme avant : aucun
+        refus fermé, signature enregistrée, sceau sans chiffres d'étude."""
+        devis = self._devis('commercial')
+        with patch('apps.ventes.quote_engine.ci.synthese.synthese_ci',
+                   side_effect=RuntimeError('moteur C&I en panne')):
+            resp = self._post(devis, ENTREPRISE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertTrue(sig.content_hash)
+        self.assertFalse((sig.figures_scellees or {}).get('etude'))
+
+    def test_ci_signature_porte_ses_chiffres_scelles(self):
+        """C — la signature C&I stocke les chiffres de l'étude scellés."""
+        devis = self._devis('commercial')
+        resp = self._post(devis, ENTREPRISE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertIn('etude', sig.figures_scellees)
+        self.assertEqual(sig.verifier_contenu(),
+                         (True, DevisSignature.CONTENT_HASH_V3))
+
     def test_ci_bloc_absent_nomme_le_premier_champ(self):
         resp = self._post(self._devis())
         self.assertEqual(resp.status_code, 400, resp.data)
@@ -134,16 +181,62 @@ class AcceptationEntreprise(TestCase):
                          'A &amp; &lt;B&gt; SARL')
 
     def test_ice_different_deja_present_divergence(self):
+        """ADEV95 — un ICE différent de celui du Client n'est plus accepté en
+        silence : 409 ``ice_divergent`` qui nomme les deux, rien n'est écrit."""
         from apps.ventes.domain.cycle_vie import divergence_ice
         self.client_obj.ice = '111111111111111'
         self.client_obj.save(update_fields=['ice'])
         devis = self._devis()
-        self.assertEqual(self._post(devis, ENTREPRISE).status_code, 200)
+        resp = self._post(devis, ENTREPRISE)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(set(resp.data), {'detail', 'code'})
+        self.assertEqual(resp.data['code'], 'ice_divergent')
+        self.assertIn('111111111111111', resp.data['detail'])
+        self.assertIn(ENTREPRISE['ice'], resp.data['detail'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertFalse(DevisSignature.objects.filter(devis=devis).exists())
         self.client_obj.refresh_from_db()
         # Jamais écrasé.
         self.assertEqual(self.client_obj.ice, '111111111111111')
         self.assertTrue(divergence_ice(devis, ENTREPRISE['ice']))
         self.assertFalse(divergence_ice(devis, '111111111111111'))
+        # Le même ICE que celui du Client passe.
+        resp = self._post(devis, dict(ENTREPRISE, ice='111111111111111'))
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_signataire_b2b_exige_email_pouvoir_et_nom(self):
+        """ADEV95 — lien public C&I : e-mail valide, attestation de pouvoir
+        (booléen vrai) et nom = celui tapé pour signer ; 400 qui nomme le
+        champ, rien n'est écrit."""
+        cas = (
+            (dict(ENTREPRISE, signataire_email=''), 'entreprise.signataire_email'),
+            (dict(ENTREPRISE, signataire_email='pas-un-email'),
+             'entreprise.signataire_email'),
+            (dict(ENTREPRISE, pouvoir_engager=False), 'entreprise.pouvoir_engager'),
+            (dict(ENTREPRISE, pouvoir_engager='true'), 'entreprise.pouvoir_engager'),
+            (dict(ENTREPRISE, signataire_nom='Autre Personne'),
+             'entreprise.signataire_nom'),
+            ({k: v for k, v in ENTREPRISE.items() if k != 'signataire_nom'},
+             'entreprise.signataire_nom'),
+        )
+        for corps, champ in cas:
+            with self.subTest(champ=champ, corps=corps):
+                devis = self._devis()
+                resp = self._post(devis, corps)
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data['champ'], champ)
+                self.assertFalse(
+                    DevisSignature.objects.filter(devis=devis).exists())
+
+    def test_signataire_b2b_enregistre_sur_la_signature(self):
+        devis = self._devis('commercial')
+        resp = self._post(devis, dict(ENTREPRISE, signataire_nom=' karim  exemple '))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertEqual(sig.signataire_email, ENTREPRISE['signataire_email'])
+        self.assertIs(sig.pouvoir_engager, True)
+        self.assertEqual(sig.signataire_nom, 'Karim Exemple')
 
     def test_residentiel_inchange(self):
         devis = self._devis('residentiel')

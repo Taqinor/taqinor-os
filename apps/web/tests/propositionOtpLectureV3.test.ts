@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { mapAcceptResponseToUiState, OTP_LECTURE_DETAIL } from '../src/lib/proposition';
+import { lireReponseAccesPdf } from '../src/lib/propositionPdfSigne';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const PROPOSITION = read('../src/pages/proposition/[...token].astro');
@@ -64,5 +65,24 @@ describe('audit C5 — l’OTP de LECTURE a enfin son écran', () => {
   it('la fonction pure d’acceptation garde son verdict (aucune régression)', () => {
     expect(mapAcceptResponseToUiState(403, 'otp_required')).toEqual({ kind: 'otp-lecture' });
     expect(mapAcceptResponseToUiState(200)).toEqual({ kind: 'ok' });
+  });
+});
+
+describe('ADEV97 — l’exemplaire SIGNÉ se télécharge avec le code de lecture', () => {
+  it('« aucun code requis » (`code_requis: false`) ouvre le PDF ; sinon un code est demandé', () => {
+    expect(lireReponseAccesPdf(200, { ok: true, detail: 'Aucun code requis pour ce lien.', code_requis: false })).toEqual({
+      ok: true,
+      codeRequis: false,
+      detail: 'Aucun code requis pour ce lien.',
+    });
+    expect(lireReponseAccesPdf(200, { ok: true, detail: 'Code envoyé.' }).codeRequis).toBe(true);
+    expect(lireReponseAccesPdf(400, { ok: false, detail: 'Code incorrect.' }).ok).toBe(false);
+  });
+
+  it('le proxy relaie `code_requis: false` ; la page installe la garde sur le flux `/pdf/`', () => {
+    expect(PROXY).toContain('payload.code_requis === false ? { code_requis: false } : {}');
+    expect(PROPOSITION).toContain('installerGardePdfSigne({');
+    expect(PROPOSITION).toContain('id="pdf-otp-block"');
+    expect(PROPOSITION).toContain('estAccepte: () => cfg.accepted || propositionAcceptee');
   });
 });

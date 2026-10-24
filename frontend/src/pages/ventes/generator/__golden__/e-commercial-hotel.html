@@ -246,6 +246,7 @@
 <div class="mt-3.5 grid gap-4" data-testid="ci-profil">
 <fieldset class="grid gap-2">
 <legend class="text-sm font-semibold">Consommation du site</legend>
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-conso">« Combien payez-vous d'électricité par mois, à peu près ? Ou combien de kWh, si vous l'avez sous les yeux ? »</p>
 <div class="flex flex-wrap gap-3 text-sm" role="radiogroup" aria-label="Forme de la consommation">
 <label class="flex items-center gap-1.5 cursor-pointer">
 <input data-testid="ci-saisie-mensuel" type="radio" value="mensuel" name="ci-saisie-conso">12 mois (kWh)</label>
@@ -259,8 +260,81 @@
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-kwh-annuel" min="0" step="any" placeholder="ex: 150000" data-testid="gen-ci-kwh-annuel" type="number" value="96000">
 </div>
 </fieldset>
+<fieldset class="grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
+<legend class="text-sm font-semibold">Contrat d'électricité</legend>
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-contrat">« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. »</p>
+<div class="grid gap-1.5 sm:max-w-xs">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-contrat">Contrat</label>
+<select id="gen-tarif-contrat" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="bt_domestique">BT domestique</option>
+<option value="bt_patente">BT patenté</option>
+<option value="bt_force_motrice">BT force motrice</option>
+<option value="mt_general">MT (Tarif Général)</option>
+</select>
+</div>
+<p class="text-xs text-muted-foreground" data-testid="ci-tarif-repli">Aucun tarif saisi : la grille ONEE officielle sert en repli.</p>
+</fieldset>
+<fieldset class="grid gap-2 sm:grid-cols-3">
+<legend class="text-sm font-semibold">Phase du compteur</legend>
+<div class="sm:col-span-3">
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-phase">« Votre compteur est-il monophasé ou triphasé ? »</p>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-phases">Phases</label>
+<select id="gen-ci-phases" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="mono">Monophasé</option>
+<option value="tri">Triphasé</option>
+<option value="inconnu">Inconnu</option>
+</select>
+</div>
+</fieldset>
 <fieldset class="grid gap-2">
-<legend class="text-sm font-semibold">Calendrier d'activité</legend>
+<legend class="text-sm font-semibold">Activité et horaires</legend>
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-horaires">« Quelle est votre activité ? Quels jours et à quelles heures êtes-vous ouverts ? Fermez-vous certains mois de l’année ? »</p>
+<div class="mt-3.5">
+<div class="grid gap-4 sm:grid-cols-2">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Catégorie commerciale</label>
+<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left">
+<span style="pointer-events: none;">Hôtel / Riad</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
+<path d="m6 9 6 6 6-6">
+</path>
+</svg>
+</button>
+<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
+<option value="non_precisee">Non précisée</option>
+<option value="hotel" selected="">Hôtel / Riad</option>
+<option value="restaurant">Restaurant / Café</option>
+<option value="commerce">Commerce / Supermarché</option>
+<option value="bureau">Bureau / Siège</option>
+<option value="sante">Santé (clinique / cabinet)</option>
+<option value="ecole">École privée</option>
+<option value="hammam">Hammam / Spa / Gym</option>
+<option value="boulangerie">Boulangerie</option>
+<option value="froid">Entrepôt froid</option>
+<option value="autre">Autre commerce</option>
+</select>
+</div>
+</div>
+<div class="mt-3 grid gap-4 sm:grid-cols-2">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-chambres">Nombre de chambres</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-com-chambres" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-occupation_pct">Taux d'occupation annuel (%)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-com-occupation_pct" min="0" step="any" type="number" value="">
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-piscine">Piscine chauffée</label>
+<label class="flex items-center gap-2 text-sm cursor-pointer">
+<input id="gen-com-piscine" type="checkbox">Oui</label>
+</div>
+</div>
+</div>
 <div class="flex flex-wrap gap-3 text-sm">
 <label class="flex items-center gap-1.5 cursor-pointer">
 <input data-testid="gen-ci-jour-0" type="checkbox" checked="">Lun</label>
@@ -305,17 +379,12 @@
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">Ajouter une fermeture</button>
 </div>
 </div>
-<div class="grid gap-4 sm:grid-cols-2">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-talon">Talon de consommation (kW)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-talon" min="0" step="any" type="number" value="">
-<label class="flex items-center gap-2 text-xs cursor-pointer">
-<input data-testid="gen-ci-talon-inconnu" type="checkbox">Je ne sais pas</label>
-</div>
-</div>
 </fieldset>
 <fieldset class="grid gap-4 sm:grid-cols-3">
-<legend class="text-sm font-semibold">Toit</legend>
+<legend class="text-sm font-semibold">Surface disponible</legend>
+<div class="sm:col-span-3">
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-surface">« Où pourrait-on poser les panneaux, et quelle surface est disponible, à peu près ? »</p>
+</div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-type-pose">Type de pose</label>
 <select id="gen-ci-type-pose" class="form-control form-control-sm">
@@ -334,63 +403,12 @@
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-surface" min="0" step="any" data-testid="gen-ci-surface" type="number" value="">
 </div>
 </div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-couverture">Couverture</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-couverture" placeholder="ex: béton, bac acier…" type="text" value="">
-</div>
 </fieldset>
-<fieldset class="grid gap-4 sm:grid-cols-3">
-<legend class="text-sm font-semibold">Raccordement</legend>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-tension">Tension</label>
-<select id="gen-ci-tension" data-testid="gen-tension" class="form-control form-control-sm">
-<option value="">—</option>
-<option value="bt">Basse tension (BT)</option>
-<option value="mt">Moyenne tension (MT)</option>
-<option value="inconnue">Inconnue</option>
-</select>
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-phases">Phases</label>
-<select id="gen-ci-phases" class="form-control form-control-sm">
-<option value="">—</option>
-<option value="mono">Monophasé</option>
-<option value="tri">Triphasé</option>
-<option value="inconnu">Inconnu</option>
-</select>
-</div>
-<div class="grid gap-1.5">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-puissance">Puissance souscrite (kVA)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-puissance" min="0" step="any" data-testid="gen-ci-puissance" type="number" value="60">
-</div>
-</div>
-<div class="grid gap-1.5 sm:col-span-2">
-<label class="flex items-center gap-2 text-sm cursor-pointer">
-<input data-testid="gen-ci-revente" disabled="" type="checkbox">Revente du surplus</label>
-<p class="text-xs text-muted-foreground" data-testid="ci-revente-bt">Revente du surplus non ouverte en basse tension — ANRE décision 04/26.</p>
-</div>
-<div class="grid gap-1.5">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc, optionnelle)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-taille" min="0" step="any" data-testid="gen-ci-taille" type="number" value="">
-</div>
-</div>
-</fieldset>
-</div>
-<fieldset class="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
-<legend class="text-sm font-semibold">Tarif de la facture</legend>
+<details class="rounded-lg border border-border p-3" data-testid="ci-affiner">
+<summary class="cursor-pointer text-sm font-semibold">Affiner l'étude (facultatif)</summary>
+<div class="mt-3 grid gap-4">
+<div class="grid gap-3" data-testid="ci-tarif-affiner">
 <div class="grid gap-4 sm:grid-cols-3">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-contrat">Contrat</label>
-<select id="gen-tarif-contrat" class="form-control form-control-sm">
-<option value="">—</option>
-<option value="bt_domestique">BT domestique</option>
-<option value="bt_patente">BT patenté</option>
-<option value="bt_force_motrice">BT force motrice</option>
-<option value="mt_general">MT (Tarif Général)</option>
-</select>
-</div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-base">Prix imprimés</label>
 <select id="gen-tarif-base" class="form-control form-control-sm">
@@ -412,48 +430,50 @@
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-tarif-date" type="date" value="">
 </div>
 </div>
-<p class="text-xs text-muted-foreground" data-testid="ci-tarif-repli">Aucun tarif saisi : la grille ONEE officielle sert en repli.</p>
-</fieldset>
-<div class="mt-3.5">
+</div>
 <div class="grid gap-4 sm:grid-cols-2">
 <div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Catégorie commerciale</label>
-<button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left">
-<span style="pointer-events: none;">Hôtel / Riad</span>
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chevron-down size-4 shrink-0 opacity-60" aria-hidden="true">
-<path d="m6 9 6 6 6-6">
-</path>
-</svg>
-</button>
-<select aria-hidden="true" tabindex="-1" style="position: absolute; border: 0px; width: 1px; height: 1px; padding: 0px; margin: -1px; overflow: hidden; clip: rect(0px, 0px, 0px, 0px); white-space: nowrap; word-wrap: normal;">
-<option value="non_precisee">Non précisée</option>
-<option value="hotel" selected="">Hôtel / Riad</option>
-<option value="restaurant">Restaurant / Café</option>
-<option value="commerce">Commerce / Supermarché</option>
-<option value="bureau">Bureau / Siège</option>
-<option value="sante">Santé (clinique / cabinet)</option>
-<option value="ecole">École privée</option>
-<option value="hammam">Hammam / Spa / Gym</option>
-<option value="boulangerie">Boulangerie</option>
-<option value="froid">Entrepôt froid</option>
-<option value="autre">Autre commerce</option>
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-talon">Talon de consommation (kW)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-talon" min="0" step="any" type="number" value="">
+<label class="flex items-center gap-2 text-xs cursor-pointer">
+<input data-testid="gen-ci-talon-inconnu" type="checkbox">Je ne sais pas</label>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-couverture">Couverture</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-couverture" placeholder="ex: béton, bac acier…" type="text" value="">
+</div>
+</div>
+<fieldset class="grid gap-4 sm:grid-cols-3">
+<legend class="text-sm font-semibold">Raccordement</legend>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-tension">Tension</label>
+<select id="gen-ci-tension" data-testid="gen-tension" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="bt">Basse tension (BT)</option>
+<option value="mt">Moyenne tension (MT)</option>
+<option value="inconnue">Inconnue</option>
 </select>
 </div>
-</div>
-<div class="mt-3 grid gap-4 sm:grid-cols-2">
 <div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-chambres">Nombre de chambres</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-com-chambres" min="0" step="any" type="number" value="">
-</div>
 <div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-occupation_pct">Taux d'occupation annuel (%)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-com-occupation_pct" min="0" step="any" type="number" value="">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-puissance">Puissance souscrite (kVA)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-puissance" min="0" step="any" data-testid="gen-ci-puissance" type="number" value="60">
+</div>
 </div>
 <div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-com-piscine">Piscine chauffée</label>
 <label class="flex items-center gap-2 text-sm cursor-pointer">
-<input id="gen-com-piscine" type="checkbox">Oui</label>
+<input data-testid="gen-ci-revente" disabled="" type="checkbox">Revente du surplus</label>
+<p class="text-xs text-muted-foreground" data-testid="ci-revente-bt">Revente du surplus non ouverte en basse tension — ANRE décision 04/26.</p>
 </div>
+</fieldset>
+</div>
+</details>
+<div class="grid gap-1.5 sm:max-w-xs">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-taille" min="0" step="any" data-testid="gen-ci-taille" type="number" value="">
+</div>
+<p class="text-xs text-muted-foreground" data-testid="ci-taille-aide">vide = taille calculée par la règle des 10 ans</p>
 </div>
 </div>
 <p class="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul du moteur C&amp;I…</p>
@@ -575,47 +595,10 @@
 <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
 </path>
 </svg>
-<span class="font-display text-base font-semibold tracking-tight">Paramètres Techniques</span>
+<span class="font-display text-base font-semibold tracking-tight">Composition du devis</span>
 </div>
 <div class="p-4 sm:p-5 sm:pt-0 pt-4">
-<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-kwc-cible">Puissance cible (kWc)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-kwc-cible" min="0" step="any" placeholder="ex: 3" data-testid="gen-kwc-cible" type="number" value="28.6">
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-nbpanneaux">Nombre de panneaux<span class="ml-0.5 text-destructive" aria-hidden="true">*</span>
-</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-nbpanneaux" min="1" max="500" step="any" placeholder="ex: 14" type="number" value="40">
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-panelw">Puissance Panneau (W)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-panelw" min="100" max="1000" step="any" type="number" value="715">
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Puissance PV (kWp) — calculée</label>
-<div class="gen-kwp">28,60 kWp</div>
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Type de Structure</label>
-<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
-<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">Acier galvanisé</button>
-<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">Aluminium</button>
-</div>
-</div>
-</div>
 <div class="mt-3 flex flex-wrap items-center justify-end gap-3">
-<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" disabled="" type="button" data-testid="btn-recalculer-dimensionnement">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw" aria-hidden="true">
-<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8">
-</path>
-<path d="M21 3v5h-5">
-</path>
-<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16">
-</path>
-<path d="M8 16H3v5">
-</path>
-</svg> Recalculer le dimensionnement</button>
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4 bg-brass-400 text-nuit hover:bg-brass-500" type="button" data-testid="btn-auto-remplir">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap" aria-hidden="true">
 <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">

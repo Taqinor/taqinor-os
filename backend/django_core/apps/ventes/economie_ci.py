@@ -479,6 +479,18 @@ MENTION_INDEXATION_CONSTANTE = 'tarif de vente constant (hypothèse)'
 #: Dégradation annuelle des modules : médiane publiée, source unique
 #: ``quote_engine.pricing.PANEL_DEGRADATION``.
 DEGRADATION_CI_SOURCE = 'médiane Jordan & Kurtz, NREL/JA-5200-51664, 2012'
+#: AMOT84 — code machine STABLE servi À CÔTÉ de chaque texte français
+#: qu'un document client imprime (``source_code`` d'une hypothèse du flux,
+#: ``valeur_code`` d'une hypothèse de l'argent) : le gabarit en imprime le
+#: libellé ``ci_code_<code>`` dans la langue du document ; le texte
+#: français reste servi tel quel (lecteurs d'hier, repli sans code).
+CODE_INDEXATION_CONSTANTE = 'indexation_constante'
+CODE_DEGRADATION_NREL = 'degradation_nrel_2012'
+CODE_METHODE_HORAIRE = 'methode_horaire_poste'
+CODES_SOURCES_FLUX = {
+    MENTION_INDEXATION_CONSTANTE: CODE_INDEXATION_CONSTANTE,
+    DEGRADATION_CI_SOURCE: CODE_DEGRADATION_NREL,
+}
 #: Remplacement de l'onduleur à mi-vie (``pricing.INVERTER_REPLACE_YEAR`` ;
 #: principe IEA PVPS), au montant RÉEL de sa ligne (décision Q1 du 20/08).
 ONDULEUR_MOTIF = "remplacement à mi-vie (principe IEA PVPS, décision Q1 du " \
@@ -558,6 +570,28 @@ def _om(om, cle_base):
                      'source': source}
 
 
+def _codes_sources(hypotheses):
+    """AMOT84 — pose ``source_code`` (``CODES_SOURCES_FLUX``) à côté de
+    chaque source servie connue ; la source française reste intacte."""
+    for h in hypotheses or []:
+        if isinstance(h, dict) and h.get('source') in CODES_SOURCES_FLUX:
+            h['source_code'] = CODES_SOURCES_FLUX[h['source']]
+
+
+def _production_par_annee(bloc, production_annee1, deg_pct):
+    """AMOT94 — la production de CHAQUE année du flux servi (``production_kwh``
+    sur chaque ligne ; ``None`` en année 0) : la production de l'année 1 du
+    moteur × (1 − dégradation)^(t − 1), la MÊME dégradation que
+    ``economie.flux_de_tresorerie`` applique à l'économie. Lue par le tableau
+    25 ans du document industriel (jamais recalculée par un gabarit)."""
+    prod = _montant(production_annee1)
+    for ligne in bloc.get('flux') or []:
+        annee = ligne.get('annee')
+        ligne['production_kwh'] = (
+            None if not prod or not annee else
+            int(round(prod * (1.0 - deg_pct / 100.0) ** (annee - 1))))
+
+
 def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
              om_bloc, cle_base, collecteur=None):
     from apps.ventes import economie as eco_mod
@@ -604,6 +638,8 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
         # :func:`sensibilites_ci` en ne changeant qu'UNE grandeur.
         collecteur[cle_base] = entrees
     bloc = eco_mod.flux_de_tresorerie(**entrees)
+    _codes_sources(bloc.get('hypotheses'))
+    _production_par_annee(bloc, production['valeur'], deg_pct)
     omissions = [o for o in bloc['omissions']
                  if o['cle'] not in ('remplacements', 'charges_annuelles_mad')]
     if montant_onduleur is None:
@@ -1186,6 +1222,7 @@ MOTIF_AIDE_AUTRE = ("parcours d'aide « autre » déclaré — non évalué, jam
 HYPOTHESE_VALORISATION = {
     'cle': 'valorisation',
     'valeur': 'tarif du poste horaire couvert, heure par heure',
+    'valeur_code': CODE_METHODE_HORAIRE,
     'statut': 'source', 'source': 'conventions Groupe CIQ'}
 #: Ordre des clés du contrat (``exemple``).
 CLES_BLOC = ('statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
@@ -1308,6 +1345,20 @@ def _bloc_omis(motif, tarif, *, alertes, vue_interne):
 # sans ligne au devis n'est pas l'investissement de l'installation :
 # le flux n'est pas construit, l'omission le dit, l'économie reste servie.
 MOTIF_INVESTISSEMENT_NON_CHIFFRE = 'investissement non encore chiffré'
+#: AMOT85 (rejeu « humain » 23/10/2026) — quand SEULS des postes « à chiffrer
+#: après la visite » (hors total : câbles, structure) manquent, le client lit
+#: « à compléter après la visite technique », jamais « sans prix » à côté d'un
+#: investissement imprimé.
+MOTIF_INVESTISSEMENT_APRES_VISITE = ('investissement à compléter après la visite '
+                                     'technique')
+
+
+def motif_investissement_apres_visite(n_postes):
+    """« investissement à compléter après la visite technique (N postes hors
+    total) »."""
+    n = int(n_postes or 0)
+    return '%s (%d poste%s hors total)' % (
+        MOTIF_INVESTISSEMENT_APRES_VISITE, n, 's' if n > 1 else '')
 
 
 def motif_investissement_non_chiffre(n_sans_prix):
@@ -1347,12 +1398,16 @@ def investissement_non_chiffre(investissement, lignes, apercu, *,
     lignes = [li for li in (lignes or []) if isinstance(li, dict)]
     au_devis = {_norme(li.get('designation')) for li in lignes
                 if not li.get('optionnelle')} - {''}
-    sans_prix = []
-    for nom in (_noms_composition(composition, 'prix_a_renseigner')
-                + _noms_composition(composition, 'a_chiffrer_visite')):
-        if nom not in au_devis and nom not in sans_prix:
-            sans_prix.append(nom)
-    motif = motif_investissement_non_chiffre(len(sans_prix))
+    sans_prix, a_renseigner = [], []
+    for cle in ('prix_a_renseigner', 'a_chiffrer_visite'):
+        for nom in _noms_composition(composition, cle):
+            if nom not in au_devis and nom not in sans_prix:
+                sans_prix.append(nom)
+                if cle == 'prix_a_renseigner':
+                    a_renseigner.append(nom)
+    motif = (motif_investissement_apres_visite(len(sans_prix))
+             if sans_prix and not a_renseigner
+             else motif_investissement_non_chiffre(len(sans_prix)))
     if isinstance(investissement, dict):
         ht = _montant(investissement.get('ht'), strictement_positif=True)
         ttc = _montant(investissement.get('ttc'), strictement_positif=True)

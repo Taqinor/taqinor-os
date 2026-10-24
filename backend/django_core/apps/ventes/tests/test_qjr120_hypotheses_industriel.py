@@ -67,9 +67,13 @@ class TestFluxServi(SimpleTestCase):
                          len(self.d["economie_ci"]["flux_ht"]["flux"]))
 
     def test_les_hypotheses_du_moteur_avec_leur_source(self):
-        self.assertIn("Hypothèses du moteur", self.txt)
+        self.assertIn("Hypothèses de l'estimation", self.txt)
+        self.assertNotIn("moteur", self.txt)
         # AMOT80 — la source en mots du client, jamais « D-CIQ-10 ».
-        self.assertIn("durée d'analyse : 25 ans", self.txt)
+        # « Horizon : 25 ans » — une seule mention, la source servie le
+        # répétait (« durée d'analyse : 25 ans »).
+        self.assertIn("Horizon : 25 ans", self.txt)
+        self.assertNotIn("durée d'analyse", self.txt)
         self.assertNotIn("D-CIQ", self.txt)
         self.assertIn("Remplacement onduleur en année 11", self.txt)
         self.assertNotIn("économies maintenues constantes", self.txt)
@@ -77,7 +81,7 @@ class TestFluxServi(SimpleTestCase):
     def test_aucune_hypothese_sans_sa_donnee(self):
         """Sans argent servi : ni table, ni hypothèses, ni KPI."""
         txt = _visible(_page_finance(sample_data.build()))
-        self.assertNotIn("Hypothèses du moteur", txt)
+        self.assertNotIn("Hypothèses de l'estimation", txt)
         self.assertNotIn("Cumul net", txt)
         self.assertNotIn("TRI sur", txt)
 

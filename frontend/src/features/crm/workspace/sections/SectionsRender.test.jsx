@@ -1,8 +1,9 @@
+import { useReducer } from 'react'
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { axe } from 'vitest-axe'
 import * as axeMatchers from 'vitest-axe/matchers'
-import { initState, dirtyKeys } from '../draftCore'
+import { initState, dirtyKeys, reducer } from '../draftCore'
 import fieldLabels from '../fieldLabels'
 import { documentContrat } from '../../../../test/fixtures/contractSamples'
 import SectionContact from './SectionContact'
@@ -24,6 +25,10 @@ vi.mock('../../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite
 vi.mock('../../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
 vi.mock('../../../../components/CustomFieldsInput', () => ({ default: () => null }))
 vi.mock('../../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => <div data-testid="booker" /> }))
+// ALEA55 — la modale de planification (module visites) : seul son ouverture compte ici.
+vi.mock('../../relances/PlanifierVisiteModal', () => ({
+  default: ({ open, leadId }) => (open ? <div data-testid="modal-planifier-visite" data-lead={leadId} /> : null),
+}))
 
 // Le repli des sections est PERSISTÉ (localStorage `taqinor.lw.collapsed`) et
 // les choix de l'utilisatrice priment sur le repli automatique : sans ce
@@ -811,6 +816,23 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
       .toContain('puissance souscrite inconnue')
   })
 
+  // ALEA55 — la note « Visite avant devis » porte le geste : « Planifier la visite »
+  // ouvre la modale de planification du lead (module visites), sans quitter la fiche.
+  it('« Planifier la visite » à côté de la note « Visite avant devis » ouvre la planification', () => {
+    monterPro()
+    const note = document.querySelector('[data-visite-avant-devis]')
+    const bouton = note.querySelector('[data-planifier-visite]')
+    expect(bouton).toHaveTextContent('Planifier la visite')
+    expect(screen.queryByTestId('modal-planifier-visite')).toBeNull()
+    fireEvent.click(bouton)
+    expect(screen.getByTestId('modal-planifier-visite')).toHaveAttribute('data-lead', String(leadCommercial.id))
+  })
+
+  it('pas de note « Visite avant devis » (rien à planifier) ⇒ pas de bouton', () => {
+    monterPro({ ...leadCommercial, devis_auto: { ...leadCommercial.devis_auto, visite_avant_devis: { requise: false, motifs: [] } } })
+    expect(document.querySelector('[data-planifier-visite]')).toBeNull()
+  })
+
   it('les provenances servies s’affichent en lecture seule', () => {
     monterPro()
     expect(document.querySelector('[data-provenance="tension_raccordement"]').textContent).toContain('facture')
@@ -837,9 +859,37 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
   it('pro : les sections résidentielles s’ouvrent repliées, « Professionnel » ouverte', () => {
     const { container } = monterPane(leadCommercial)
     expect(tete(container, 'pro')).toHaveAttribute('aria-expanded', 'true')
-    for (const id of ['energie', 'equipements', 'toiture']) {
+    for (const id of ['energie', 'toiture']) {
       expect(tete(container, id), id).toHaveAttribute('aria-expanded', 'false')
     }
+  })
+
+  // ALEA53 — le questionnaire d'appel RÉSIDENTIEL (présence en journée, piscine,
+  // VE, clim, chauffe-eau) n'est pas monté pour un lead pro ; « Tarif / tranche
+  // ONEE » et le second « Raccordement » non plus (phase = section Professionnel).
+  it.each([['commercial', leadCommercial], ['industriel', leadIndustriel]])(
+    'lead %s : ni questionnaire d’appel résidentiel, ni tranche ONEE, ni second « Raccordement »',
+    (segment, lead) => {
+      toutDeplier()
+      const { container } = monterPane(lead)
+      expect(container.querySelector('[data-nav-id="equipements"]')).toBeNull()
+      expect(document.getElementById('lf-occupation-jour')).toBeNull()
+      expect(document.getElementById('lf-tranche-onee')).toBeNull()
+      // UN seul champ « Phase » (id lf-raccordement), dans la section Professionnel.
+      const phase = document.querySelectorAll('#lf-raccordement')
+      expect(phase).toHaveLength(1)
+      expect(phase[0].closest('[data-nav-id]').dataset.navId).toBe('pro')
+      // …et un renvoi « Saisi ailleurs » dans le profil énergétique.
+      expect(container.querySelector('[data-nav-id="energie"] [data-renvoi="raccordement"]')).not.toBeNull()
+    },
+  )
+
+  it('lead résidentiel : « Tarif / tranche ONEE » et « Raccordement » restent dans le profil énergétique', () => {
+    toutDeplier()
+    const { container } = monterPane({ id: 9, nom: 'Villa', type_installation: 'residentiel' })
+    expect(document.getElementById('lf-tranche-onee')).toBeInTheDocument()
+    expect(document.getElementById('lf-raccordement').closest('[data-nav-id]').dataset.navId).toBe('energie')
+    expect(container.querySelector('[data-nav-id="equipements"]')).not.toBeNull()
   })
 
   it('un lead résidentiel est rendu à l’identique : aucune section « Professionnel »', () => {
@@ -850,6 +900,101 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
       'Contact', 'Suivi commercial', 'Profil énergétique', "Questionnaire d'appel",
       'Toiture & site', 'Visite technique', 'Compléments',
     ])
+  })
+})
+
+/* ALEA53 — les questions C&I de l'appel au MÊME endroit : la phase du site dans
+   « Raccordement », la provenance « Déclarée » par défaut et repliée, la tension
+   déduite du contrat, le raccourci « Lun–Sam, 8 h–18 h ». Un vrai réducteur (pas
+   un setField simulé) : on voit ce que l'ouvrier voit après chaque geste. */
+describe('ALEA53 — SectionPro : phase, provenance repliée, tension du contrat, raccourci', () => {
+  const contrat = documentContrat('crm', 'lead_pro')
+  const vierge = (segment, extra = {}) => ({
+    id: 5, nom: 'Site', type_installation: segment, tension_raccordement: '', tension_source: '',
+    contrat_electricite: '', compteur_puissance_kva: '', puissance_souscrite_source: '',
+    type_surface: '', surface_source: '', raccordement: '', jours_ouverture: null,
+    heure_debut: null, heure_fin: null, ...extra,
+  })
+  function Banc({ lead }) {
+    const [state, dispatch] = useReducer(reducer, lead, (l) => initState({ lead: l, mode: 'edit' }))
+    const setField = (key, value) => dispatch({ type: 'SET_FIELD', key, value })
+    return <SectionPro state={state} setField={setField} errors={{}} />
+  }
+  const monter = (lead) => render(<Banc lead={lead} />)
+  const choisir = (id, valeur) => fireEvent.change(document.getElementById(id), { target: { value: valeur } })
+  const valeur = (id) => document.getElementById(id).value
+
+  it.each(['commercial', 'industriel'])('lead %s : « Phase du site » dans Raccordement, écrit `raccordement`', (segment) => {
+    monter(vierge(segment))
+    const bloc = document.querySelector('[aria-label="Raccordement"]')
+    const phase = bloc.querySelector('#lf-raccordement')
+    expect(phase).toBeInTheDocument()
+    expect(bloc).toHaveTextContent('Phase du site (monophasé / triphasé)')
+    expect(Array.from(phase.options).map((o) => o.value).filter(Boolean)).toEqual(['monophase', 'triphase', 'inconnu'])
+    choisir('lf-raccordement', 'triphase')
+    expect(valeur('lf-raccordement')).toBe('triphase')
+    // Plus de renvoi « Phase : monophasé ou triphasé ? » vers un autre bloc.
+    expect(document.querySelector('[data-renvoi="raccordement"]')).toBeNull()
+  })
+
+  it('provenance : « Déclarée » posée à la saisie, selects repliés sous « Préciser la provenance »', () => {
+    monter(vierge('commercial'))
+    // Repliés (hidden) mais présents : une ancre par champ, atteignable.
+    for (const id of ['lf-tension-source', 'lf-puissance-souscrite-source', 'lf-surface-source']) {
+      expect(document.getElementById(id).closest('[hidden]'), id).not.toBeNull()
+      expect(valeur(id), id).toBe('')
+    }
+    choisir('lf-tension-raccordement', 'bt')
+    choisir('lf-compteur-puissance-kva', '60')
+    choisir('lf-type-surface', 'toiture')
+    expect(valeur('lf-tension-source')).toBe('declare')
+    expect(valeur('lf-puissance-souscrite-source')).toBe('declare')
+    expect(valeur('lf-surface-source')).toBe('declare')
+    // Le résumé dit ce qui sera enregistré.
+    expect(document.querySelector('[data-provenance-resume]').textContent).toContain('Tension : Déclarée')
+    // Un clic sur le bouton les déplie ; une provenance déjà posée n'est jamais écrasée.
+    fireEvent.click(screen.getAllByRole('button', { name: /Préciser la provenance/ })[0])
+    expect(document.getElementById('lf-tension-source').closest('[hidden]')).toBeNull()
+    choisir('lf-tension-source', 'facture')
+    choisir('lf-tension-raccordement', 'mt')
+    expect(valeur('lf-tension-source')).toBe('facture')
+  })
+
+  it('contrat « BT … » / « MT » + tension vide ⇒ tension remplie, et dite', () => {
+    monter(vierge('industriel'))
+    choisir('lf-contrat-electricite', 'bt_force_motrice')
+    expect(valeur('lf-tension-raccordement')).toBe('bt')
+    expect(valeur('lf-tension-source')).toBe('declare')
+    expect(document.querySelector('[data-tension-deduite]').textContent)
+      .toContain("Tension remplie d'après le contrat (Basse tension (BT))")
+  })
+
+  it('contrat MT ⇒ tension « mt » ; tension déjà posée ⇒ jamais écrasée ; « ne sait pas » ⇒ rien', () => {
+    monter(vierge('commercial'))
+    choisir('lf-contrat-electricite', 'ne_sait_pas')
+    expect(valeur('lf-tension-raccordement')).toBe('')
+    choisir('lf-contrat-electricite', 'mt_general')
+    expect(valeur('lf-tension-raccordement')).toBe('mt')
+    cleanup()
+    monter(vierge('commercial', { tension_raccordement: 'mt' }))
+    choisir('lf-contrat-electricite', 'bt_patente')
+    expect(valeur('lf-tension-raccordement')).toBe('mt')
+    expect(document.querySelector('[data-tension-deduite]')).toBeNull()
+  })
+
+  it('« Lun–Sam, 8 h–18 h » remplit jours et heures, visibles et modifiables', () => {
+    monter(vierge('commercial'))
+    fireEvent.click(screen.getByRole('button', { name: 'Lun–Sam, 8 h–18 h' }))
+    expect(valeur('lf-heure-debut')).toBe('8')
+    expect(valeur('lf-heure-fin')).toBe('18')
+    const jours = Array.from(document.querySelectorAll('input[type="checkbox"][id^="lf-jours-ouverture"]')).map((c) => c.checked)
+    expect(jours).toEqual([true, true, true, true, true, true, false])
+    choisir('lf-heure-fin', '19')
+    expect(valeur('lf-heure-fin')).toBe('19')
+  })
+
+  it('le contrat partage les questions de la tension et du contrat (sanity)', () => {
+    expect(contrat.colonnes_pro.map((c) => c.nom)).toEqual(expect.arrayContaining(['tension_source', 'contrat_electricite']))
   })
 })
 

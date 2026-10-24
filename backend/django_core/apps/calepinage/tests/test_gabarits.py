@@ -221,3 +221,21 @@ class LaSectionEstBranchee(SimpleTestCase):
         from apps.calepinage.selectors import SECTIONS_PARAMETRES
 
         self.assertIn(SECTION, SECTIONS_PARAMETRES)
+
+
+class SchemaGabaritsTests(SimpleTestCase):
+    """api-fuzz (24/10/2026) — le schéma publié de ``gabarits_disposition``
+    est dérivé des constantes du service : mêmes clés admises, choix fermés,
+    et aucune clé inconnue tolérée (le serveur la refuse 400)."""
+
+    def test_schema_derive_des_reglages(self):
+        from drf_spectacular.drainage import get_override
+        from apps.calepinage.services import gabarits as g
+        from apps.calepinage.views.parametres import _GabaritsDispositionField
+        schema = get_override(_GabaritsDispositionField(), 'field')
+        gabarit = schema['additionalProperties']
+        self.assertFalse(gabarit['additionalProperties'])
+        self.assertEqual(set(gabarit['properties']), {c for c, _l in g.REGLAGES})
+        self.assertEqual(gabarit['properties']['orientation']['enum'], list(g.ORIENTATIONS))
+        self.assertEqual(set(gabarit['properties']['rives']['properties']), set(g.RIVES))
+        self.assertEqual(gabarit['properties']['rangees'], {'type': 'integer', 'minimum': 1})

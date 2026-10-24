@@ -134,6 +134,23 @@ class OnePageCiLitSyntheseCi(SimpleTestCase):
                     _valeurs(figures, "production_annuelle_kwh"),
                     [Decimal(str(ETUDE_CI["bilan"]["production_kwh"]))])
 
+    def test_postes_hors_total_sans_prix_par_kwc(self):
+        """AMOT86 (D-ACI-2=a) — un poste « à chiffrer après la visite » hors
+        total : le une-page n'imprime plus « Prix par kWc » (prix
+        incomplet) ; sans poste hors total, la vignette reste."""
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data = _ci(donnees_legacy("deux", pdf_mode="onepage"), mode)
+                data["etude"]["etude_ci"]["composition"][
+                    "a_chiffrer_visite"] = ["Structure C&I"]
+                html = legacy.render_html_for(data)
+                self.assertEqual(_valeurs(extract_figures(html), "prix_kwc"),
+                                 [])
+                self.assertNotIn("Prix par kWc", unescape(html))
+                _data, html_ok = _onepage(mode)
+                self.assertEqual(
+                    len(_valeurs(extract_figures(html_ok), "prix_kwc")), 1)
+
     def test_etude_absente_production_omise(self):
         data = donnees_legacy("deux", pdf_mode="onepage",
                               mode_installation="industriel")
@@ -197,3 +214,116 @@ class Amot82OnePageSousReserve(SimpleTestCase):
             with self.subTest(mode=mode):
                 _data, html = _onepage_reserve(mode, True)
                 self.assertEqual(len(HTML(string=html).render().pages), 1)
+
+
+def _onepage_hors_total(mode, postes=("Structure C&I", "Câble DC"),
+                        **surcharges):
+    data = _ci(donnees_legacy("deux", pdf_mode="onepage", **surcharges), mode)
+    data["etude"]["etude_ci"]["composition"]["a_chiffrer_visite"] = list(
+        postes)
+    return data, legacy.render_html_for(data)
+
+
+class Amot86OnePagePostesHorsTotal(SimpleTestCase):
+    """AMOT86 (D-ACI-2=a, clause « ou la une-page C&I ») — des postes « à
+    chiffrer après la visite » hors total : le bloc de totaux porte le titre
+    SERVI de la couverture (``titre_investissement``), une ligne nomme les
+    postes SANS montant et la vignette économie porte la légende « retour
+    calculé sur le prix complet » ; sans poste, rien de tout cela."""
+
+    PREFIXE = "À chiffrer après la visite technique (hors total) : "
+
+    def test_titre_postes_et_legende(self):
+        from apps.ventes.quote_engine.ci.couverture import (
+            titre_investissement,
+        )
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage_hors_total(mode)
+                texte = unescape(html)
+                syn = synthese_ci(data)
+                titre = titre_investissement(
+                    {"langue_sortie": "fr"}, syn,
+                    (syn.get("argent") or {}).get("base"))
+                self.assertIn("hors postes à chiffrer après la visite", titre)
+                self.assertIn(titre, texte)
+                self.assertNotIn("clé en main", texte)
+                self.assertIn(self.PREFIXE + "Structure C&I, Câble DC",
+                              texte)
+                ligne = texte.split(self.PREFIXE, 1)[1].split("<", 1)[0]
+                self.assertNotIn("MAD", ligne)
+                self.assertIn("retour calculé sur le prix complet, après "
+                              "la visite", texte)
+
+    def test_sans_poste_rien(self):
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                _data, html = _onepage(mode)
+                texte = unescape(html)
+                self.assertNotIn("hors postes à chiffrer", texte)
+                self.assertNotIn(self.PREFIXE, texte)
+                self.assertNotIn("retour calculé sur le prix complet",
+                                 texte)
+
+    def test_traduit_en_anglais(self):
+        _data, html = _onepage_hors_total("commercial", langue_sortie="en")
+        texte = unescape(html)
+        self.assertIn("excluding items to be priced after the site visit",
+                      texte)
+        self.assertIn("To be priced after the site visit (not in the "
+                      "total): ", texte)
+        self.assertIn("payback calculated on the full price", texte)
+        self.assertNotIn(self.PREFIXE, texte)
+
+    def test_telephone_mis_en_forme(self):
+        """AMOT92 — le une-page C&I imprime le téléphone comme les
+        couvertures (« +212 6 61 23 45 93 »), jamais les chiffres bruts."""
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                _data, html = _onepage(mode, client_phone="212661234593")
+                self.assertIn("+212 6 61 23 45 93", unescape(html))
+                self.assertNotIn("212661234593", html)
+
+    @tag("weasyprint")  # rendu PDF réel
+    def test_une_seule_page(self):
+        from weasyprint import HTML
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                _data, html = _onepage_hors_total(mode)
+                self.assertEqual(len(HTML(string=html).render().pages), 1)
+
+
+class Amot84UnitesDuUnePageCi(SimpleTestCase):
+    """AMOT84 — le une-page C&I anglais imprime « kWp » et « kWh/yr » (comme
+    son titre) ; le français garde « kWc » / « kWh/an », octet pour octet,
+    et le résidentiel est inchangé."""
+
+    def _texte(self, html):
+        import re
+        texte = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        texte = unescape(re.sub(r"<[^>]+>", " ", texte))
+        return re.sub(r"\s+", " ", texte.replace(" ", " "))
+
+    def test_anglais_kwp_kwh_yr(self):
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage(mode, langue_sortie="en")
+                texte = self._texte(html)
+                kwc = legacy.kwc_fr(float(data["puissance_kwc"]))
+                self.assertIn(f"{kwc} kWp", texte)
+                self.assertNotIn(f"{kwc} kWc", texte)
+                self.assertIn("MAD/kWp", texte)
+                self.assertNotIn("MAD/kWc", texte)
+                self.assertIn(" kWh/yr", texte)
+                self.assertNotIn(" kWh/an", texte)
+
+    def test_francais_inchange(self):
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage(mode)
+                texte = self._texte(html)
+                kwc = legacy.kwc_fr(float(data["puissance_kwc"]))
+                self.assertIn(f"{kwc} kWc", texte)
+                self.assertIn("MAD/kWc", texte)
+                self.assertIn(" kWh/an", texte)
+                self.assertNotIn("kWp", texte)

@@ -430,7 +430,16 @@ def categorie_ci(data, synthese=None):
     data = data if isinstance(data, dict) else {}
     etude = _dict(data.get("etude"))
     langue = data.get("langue_sortie") or "fr"
-    cle = str(etude.get("categorie_commerciale") or "").strip().lower()
+    # ACI (23/10/2026, rejeu « humain ») — le devis AUTOMATIQUE range la
+    # catégorie dans ``rythme.categorie_commerciale`` (entrées v2 du moteur,
+    # ``entrees_resolues`` de l'étude), jamais à plat : un hôtel sortait
+    # « Autre commerce ». Lue à plat (générateur), puis dans le rythme, puis
+    # dans l'étude résolue — jamais « autre » quand une catégorie est déclarée.
+    resolue = _dict(_dict(_dict(etude.get("etude_ci")).get("entrees_resolues"))
+                    .get("categorie_commerciale"))
+    cle = str(etude.get("categorie_commerciale")
+              or _dict(etude.get("rythme")).get("categorie_commerciale")
+              or resolue.get("valeur") or "").strip().lower()
     if cle not in CATEGORIES:
         cle = "autre"
     meta = CATEGORIES[cle]

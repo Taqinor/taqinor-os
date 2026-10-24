@@ -38,7 +38,10 @@ class DevisAutoContratDuLead(_Base):
                           taille_souhaitee_kwc=Decimal('20'),
                           jours_ouverture=[1, 2, 3, 4, 5, 6],
                           heure_debut=8, heure_fin=18,
-                          tension_raccordement=None, raccordement=None,
+                          tension_raccordement=None,
+                          # ADEV89 — la phase du site est un prérequis du
+                          # devis automatique (le lead e2e la déclare aussi).
+                          raccordement='triphase',
                           categorie_commerciale=None, type_toiture=None,
                           contrat_electricite='bt_patente')
         devis = self._auto_reel(lead)

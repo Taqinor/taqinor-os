@@ -13,7 +13,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, SimpleTestCase
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
@@ -89,7 +89,7 @@ class _Base(TestCase):
         kw.setdefault('ville', 'Casablanca')
         kw.setdefault('categorie_commerciale', 'bureau')
         kw.setdefault('tension_raccordement', 'bt')
-        kw.setdefault('raccordement', 'triphase')
+        kw.setdefault('raccordement', 'triphase')  # ADEV89 — phase du site
         kw.setdefault('type_toiture', 'bac_acier')
         return Lead.objects.create(company=self.co, nom='Pro CIQ120', **kw)
 
@@ -143,6 +143,17 @@ class DevisAutoCITests(_Base):
         self.assertEqual(ctx.exception.field, 'conso_mensuelle_kwh')
         self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
 
+    def test_phase_inconnue_refus_nomme_le_raccordement(self):
+        # ADEV89 — la phase du site est un prérequis du moteur C&I : « je ne
+        # sais pas » (ou vide) refuse en nommant `raccordement`, rien n'est créé.
+        for phase in ('inconnu', ''):
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement=phase)
+            avant = Devis.objects.filter(company=self.co).count()
+            with self.assertRaises(AutoDevisError) as ctx:
+                self._auto(lead)
+            self.assertEqual(ctx.exception.field, 'raccordement', phase)
+            self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+
     def test_structure_sans_prix_422_prix_a_renseigner(self):
         Produit.objects.filter(pk=self.structure.pk).update(prix_vente=0)
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
@@ -183,12 +194,18 @@ class DevisAutoCITests(_Base):
 
     def test_sans_categorie_ni_heures_nomme_les_jours_puis_les_heures(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None)
-        self.assertEqual(self._refus(lead).field, 'jours_ouverture')
+        erreur = self._refus(lead)
+        self.assertEqual(erreur.field, 'jours_ouverture')
+        # ALEA54 — une consigne à la commerciale, pas le jargon du moteur.
+        self.assertTrue(erreur.message.startswith('Demandez au client quels jours'))
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None,
                           jours_ouverture=[1, 2, 3, 4, 5])
         erreur = self._refus(lead)
         self.assertEqual(erreur.field, 'heure_debut')
-        self.assertIn("Heures d'ouverture", erreur.message)
+        self.assertIn("heures d'ouverture", erreur.message)
+        self.assertTrue(erreur.message.startswith('Demandez au client'))
+        for jargon in ('profil', 'archétype', 'sourcé', 'sur le lead'):
+            self.assertNotIn(jargon, erreur.message)
 
     def test_facture_mad_seule_sans_contrat_nomme_le_contrat(self):
         lead = self._lead(facture_hiver=Decimal('3500'))
@@ -327,3 +344,77 @@ class DevisAutoCITests(_Base):
             build_devis_auto(lead=lead, user=self.user, company=self.co,
                              origine='tunnel')
         self.assertEqual(ctx.exception.field, 'type_installation')
+
+
+class ReponseAutoALEA51Tests(_Base):
+    """ALEA51 — ``POST /ventes/devis/auto/`` rend de quoi dire le SUCCÈS :
+    ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (null si
+    l'investissement est incomplet) et ``postes_apres_visite`` — lus du devis
+    créé (aucun recalcul, aucun statut touché)."""
+
+    URL = '/api/django/ventes/devis/auto/'
+
+    def _post(self, lead):
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            return api.post(self.URL, {'lead': lead.id}, format='json')
+
+    def test_reponse_dit_total_economie_retour_et_postes_apres_visite(self):
+        from apps.ventes.economie_ci import economie_ci_pour_devis
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), type_toiture=None)
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertEqual(rep.data['total_ttc'], float(devis.total_ttc))
+        self.assertGreater(rep.data['total_ttc'], 0)
+        self.assertIn('Structure C&I', rep.data['postes_apres_visite'])
+        self.assertEqual(
+            rep.data['postes_apres_visite'],
+            devis.etude_params['etude_ci']['composition']['a_chiffrer_visite'])
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            bloc = economie_ci_pour_devis(devis, self.co)
+        self.assertEqual(rep.data['economie_an_1_ht'],
+                         (bloc.get('economie_annee1') or {}).get('total_mad'))
+        self.assertEqual(rep.data['retour_ans'],
+                         (bloc.get('indicateurs') or {}).get('retour_ans'))
+
+    def test_rejeu_200_porte_les_memes_champs(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        premiere = self._post(lead)
+        rejeu = self._post(lead)
+        self.assertEqual(premiere.status_code, 201, premiere.data)
+        self.assertEqual(rejeu.status_code, 200, rejeu.data)
+        for cle in ('total_ttc', 'economie_an_1_ht', 'retour_ans',
+                    'postes_apres_visite'):
+            self.assertIn(cle, rejeu.data)
+            self.assertEqual(rejeu.data[cle], premiere.data[cle])
+
+
+class PostesNonChiffresUniques(SimpleTestCase):
+    """C-L3-MOT-02 (24/10/2026) — les postes « après visite » et « prix à
+    renseigner » sont listés UNE fois chacun : un câble AC ajouté au devis sous
+    le nom de l'onduleur qu'il dessert multipliait la liste (une entrée par
+    mètre de câble pris pour un onduleur)."""
+
+    def test_designations_uniques_ordre_garde(self):
+        from apps.ventes.moteur_ci.composition import postes_non_chiffres
+        lignes = [{'designation': 'Câble AC X - TGBT', 'a_chiffrer_visite': True}] * 200
+        lignes += [{'designation': 'Structure C&I', 'a_chiffrer_visite': True},
+                   {'designation': 'Coffret DC', 'prix_connu': False},
+                   {'designation': 'Coffret DC', 'prix_connu': False}]
+        a_renseigner, visite = postes_non_chiffres(lignes)
+        self.assertEqual(visite, ['Câble AC X - TGBT', 'Structure C&I'])
+        self.assertEqual(a_renseigner, ['Coffret DC'])
+
+    def test_un_cable_nomme_d_apres_l_onduleur_n_est_pas_un_onduleur(self):
+        from apps.ventes.domain.catalogue import classer_produit
+        from apps.stock.selectors import _role_ci_par_nom
+
+        class _P:
+            nom = 'Câble AC Onduleur réseau Huawei 150kW Triphasé - TGBT'
+        self.assertEqual(classer_produit(_P.nom), 'cable_dc')
+        self.assertIsNone(_role_ci_par_nom(_P()))
+        self.assertEqual(classer_produit('Onduleur réseau Huawei 150kW Triphasé'), 'onduleur_reseau')

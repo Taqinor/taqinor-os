@@ -1,0 +1,6 @@
+Rejeu orchestrateur 2026-10-24, navigateur (Playwright MCP), front reconstruit sur l'hôte depuis 1af0de4da et déposé dans le conteneur ; lead 2574 (boulangerie, kWh mensuel seul, contrat BT patenté, phase triphasée, catégorie boulangerie).
+OK  5 badges « repris du lead », #gen-tarif-contrat = bt_patente, question phase « Votre compteur est-il monophasé ou triphasé ? », jours non semés (lead sans jours)
+OK  « Affiner l'étude (facultatif) » replié (#gen-ci-tension non visible) ; aucune carte « Recalculer le dimensionnement » ; carte « Composition du devis »
+OK  Auto-remplir 200 → synthèse « Économie estimée / an (HT) », « Autoconsommation », « Couverture » en tête, « Détails du calcul » replié, aucune clé brute (ratio_marginal/raison_arret/admis/archetype absents)
+OK  aucune erreur de formulaire
+Écart : « kWc retenue » non repéré par le grep (libellé à relire) ; garde-fou kWh↔factures sur l'entrée annuelle ajouté côté serveur (etude_ci._garde_kwh_factures), test ciq118 à suivre.
