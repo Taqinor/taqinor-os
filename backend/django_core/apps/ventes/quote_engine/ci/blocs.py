@@ -124,7 +124,8 @@ def _montant(valeur):
 def bloc_services(synthese, prefixe, couleur_titre, couleur_texte, doc=None):
     """``<div>`` des services RÉELLEMENT portés par le devis
     (``synthese_ci['services']``) : la ligne O&M nommée et son prix (ou
-    « prix à renseigner »), le délai d'intervention saisi. Rien d'autre :
+    « tarif sur demande » — AMOT98, D-ACI-17=a : l'alerte interne « prix à
+    renseigner » reste à l'ERP), le délai d'intervention saisi. Rien d'autre :
     aucune « supervision », aucune « performance garantie » (D-CIQ-12).
     '' quand le devis ne porte aucun service. ``doc`` : la charge utile
     (langue du document, CIQ333)."""
@@ -140,8 +141,8 @@ def bloc_services(synthese, prefixe, couleur_titre, couleur_texte, doc=None):
             nom = _txt(li.get("designation")) if isinstance(li, dict) else ""
             prix = (f"{_montant(ht)} MAD " + libelle(doc, "ci_ht", "HT")
                     if ht and ht > 0
-                    else libelle(doc, "ci_prix_a_renseigner",
-                                 "prix à renseigner"))
+                    else libelle(doc, "ci_tarif_sur_demande",
+                                 "tarif sur demande"))
             detail.append(f"{nom} — {prix}")
         statut = om.get("statut")
         suffixe = (libelle(doc, "ci_propose_non_inclus",

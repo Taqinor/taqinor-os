@@ -1046,3 +1046,23 @@ class TestAmot97ScenarioPrudent(SimpleTestCase):
             {"cle": "production", "variation_pct": -7.7, "source": "P90",
              "retour_ans": 6, "tri_pct": 20.0}], langue="en"))[1])
         self.assertIn("cautious scenario: payback ≈ 6 years", p1)
+
+
+class TestAmot98TarifSurDemande(SimpleTestCase):
+    """AMOT98 (D-ACI-17=a) — l'option O&M sans prix s'imprime « tarif sur
+    demande » (fr/en/ar) sur le document ; le statut servi reste l'alerte
+    interne « tarif à renseigner » (l'ERP la garde)."""
+
+    def test_trois_langues(self):
+        attendus = {None: "tarif sur demande", "en": "price on request",
+                    "ar": "السعر عند الطلب"}
+        for langue, attendu in attendus.items():
+            with self.subTest(langue=langue):
+                data = _data_ci(langue=langue)
+                self.assertEqual(synthese_ci(data)["services"]["om_option"][
+                    "statut"], "tarif_a_renseigner")
+                html = "".join(_pages_ci(data))
+                self.assertIn(attendu, html)
+                for interne in ("prix à renseigner", "price to be set",
+                                "السعر في انتظار التحديد"):
+                    self.assertNotIn(interne, html)
