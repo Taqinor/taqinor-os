@@ -1,0 +1,12 @@
+ADEV104 — P-L3-5 — rejeu orchestrateur, pile locale (backend monté à e48cfad21), 2026-10-24.
+Sonde manage.py shell (APIClient sur les VRAIES routes publiques, EMAIL_BACKEND locmem, transaction.atomic + rollback : rien ne reste).
+Devis C&I envoyé DEV-202610-0090 (étude C&I présente) ; lien public avec la section « economies » masquée (`ShareLink.sections = {'economies': False}`).
+
+1. Lecture GET /api/django/ventes/proposal/<jeton>/ → 200 ; défi servi `empreinte_contenu` = 550fe0d5d27157daec8f889d35caadcddf4700fc6ac96388ee71bb0d9dda7ddc
+   = empreinte_contenu_signable(devis, link) 550fe0d5d27157daec8f889d35caadcddf4700fc6ac96388ee71bb0d9dda7ddc ; ≠ empreinte sans lien (étude complète) 7cb07c7c2d2f8359239b83dda3ae73d487bdfdb637f72dcc316998b518a19773 → l'argent caché n'entre pas dans le défi.
+2. Garde « sceau d'un lien sur un autre » : POST …/accept/ avec l'empreinte de l'étude COMPLÈTE sur ce lien masqué → 409 {'detail': 'La proposition a changé depuis votre lecture : rechargez la page avant de signer.', 'code': 'empreinte_perimee'}
+3. POST …/accept/ avec le défi lu (+ entreprise signataire) → 200 « Proposition acceptée. Merci ! », statut accepte.
+   Reçu : empreinte_lue = 550fe0d5d27157daec8f889d35caadcddf4700fc6ac96388ee71bb0d9dda7ddc (= défi envoyé) ; empreinte_scellee = 7594e96b24bda5fdd84109fa9082c6fcdf73d553b5a4e2ebbaa6ec0bfc6d1929 ; empreinte_contenu (alias) = 7594e96b24bda5fdd84109fa9082c6fcdf73d553b5a4e2ebbaa6ec0bfc6d1929.
+   DevisSignature.content_hash = 7594e96b24bda5fdd84109fa9082c6fcdf73d553b5a4e2ebbaa6ec0bfc6d1929 (= empreinte_scellee) ; figures_scellees.lien = {"niveau": "standard", "sections_masquees": ["economies"]}.
+4. Recalcul : sig.verifier_contenu() → [True, 3] (intact, sceau v3, rejoué depuis les chiffres STOCKÉS) ; étude scellée == figures_sceau(devis, link=lien masqué) : True ; == étude complète : False.
+Verdict : PASS.
