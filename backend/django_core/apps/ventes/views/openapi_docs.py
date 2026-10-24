@@ -519,12 +519,19 @@ def _pourcent_souple(**kwargs):
                   required=False, allow_null=True, **kwargs)
 
 
+#: api-fuzz — plafond publié ET appliqué de la puissance cible d'un devis
+#: automatique (10 MWc). Le schéma annonçait tout flottant : ``2.27e16`` kWc
+#: composait des quantités qui débordent ``DecimalField(10, 2)`` à l'écriture
+#: des lignes (``DataError`` → 500).
+TARGET_KWC_MAX = 10_000
+
 AutoDevisRequest = _ser('DevisAutoRequest', {
     # CI #997 fuzz — corps validé tel que publié (la vue le relisait à la
     # main) ; « un lead OU un client » publié (``CORPS_LEAD_OU_CLIENT``).
     'lead': EntierStrict(required=False, allow_null=True, min_value=1),
     'client': EntierStrict(required=False, allow_null=True, min_value=1),
-    'target_kwc': NombreStrict(required=False, allow_null=True),
+    'target_kwc': NombreStrict(required=False, allow_null=True,
+                               max_value=TARGET_KWC_MAX),
     'scenario': ChaineStricte(required=False, allow_blank=True,
                               allow_null=True),
     'etude_params': s.DictField(required=False, allow_null=True),

@@ -137,3 +137,16 @@ class AutoMontants(TestCase):
             format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('taux_tva', resp.data)
+
+    def test_target_kwc_demesure_400_nomme(self):
+        """api-fuzz — ``2.27e16`` kWc composait des quantités qui débordent
+        ``DecimalField(10, 2)`` à l'écriture des lignes (``DataError`` →
+        500) : la puissance cible est plafonnée (10 000 kWc), publiée et
+        appliquée avant toute composition."""
+        avant = Devis.objects.count()
+        resp = self.api.post(
+            AUTO_URL, {'lead': self.lead.id, 'target_kwc': 2.26620970670974e+16},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('target_kwc', resp.data)
+        self.assertEqual(Devis.objects.count(), avant)
