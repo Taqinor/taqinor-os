@@ -69,7 +69,7 @@ with no rate column at all — mono-MAD in practice.
 | installations | OrdreSousTraitance | `apps/installations/models_ordre_soustraitance.py:66` | montant, montant_realise |
 | installations | RFQOffre | `apps/installations/models_rfq.py:82` | montant_ht |
 | monitoring | AbonnementMonitoring | `apps/monitoring/models.py:435` | montant |
-| parametres | TariffSettings | `apps/parametres/models_tariff.py:74` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
+| parametres | TariffSettings | `apps/parametres/models_tariff.py:76` | force_motrice_prix_kwh_ttc, prix_incluent_taxes, prix_unique_kwh, surplus_prix_kwh_ttc |
 | portail | PaiementFacturePortail | `apps/portail/models.py:229` | montant |
 | publicapi | BulkJob | `apps/publicapi/models.py:541` | total |
 | sav | Ticket | `apps/sav/models.py:656` | cout |
