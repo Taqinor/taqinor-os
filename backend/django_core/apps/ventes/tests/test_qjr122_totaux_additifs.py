@@ -63,12 +63,17 @@ class TestChaineAdditive(SimpleTestCase):
 
     def _rendu(self, cle):
         totaux, remise_pct = FIXTURES[cle]
-        ancien = moteur.DISCOUNT_PCT
+        # La langue du document vit dans des globales du moteur, posées au début de
+        # chaque rendu complet : un rendu arabe d'un test précédent (même processus)
+        # les laissait en « ar » et ce bloc s'imprimait en arabe. Français épinglé.
+        anciens = (moteur.DISCOUNT_PCT, moteur.LANGUE_SORTIE, moteur.LIBELLES_DOC)
         moteur.DISCOUNT_PCT = remise_pct
+        moteur.LANGUE_SORTIE = moteur.i18n_labels.LANGUE_DE_REPLI
+        moteur.LIBELLES_DOC = moteur.i18n_labels.libelles(moteur.i18n_labels.LANGUE_DE_REPLI)
         try:
             return _lignes(moteur._totals_block_rows(totaux, 3))
         finally:
-            moteur.DISCOUNT_PCT = ancien
+            moteur.DISCOUNT_PCT, moteur.LANGUE_SORTIE, moteur.LIBELLES_DOC = anciens
 
     def test_les_trois_fixtures_additionnent(self):
         for cle in FIXTURES:
