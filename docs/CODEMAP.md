@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: d0218b820c702eac703639ba001613fe881c360ae87afc8a0213150fd562d885
+Structure fingerprint: 9fe6a0a5fe7eecd4a7c4d8b06d5e16477c3f466b57f0543232fa2d4407a4b97c
 Plan fingerprint: c906b1250447f67969432495cfe436d272971157d08bd90fea8f0ba5ab4e9e3c
 
 
@@ -344,7 +344,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 - **visites** : gabarit `ci` (CIQ600, migrations 0006-0007 : zones de toiture, relevé C&I, `validee_le`).
 - **core** : `core/reglementaire/` (`regime_8221.py` : régime loi 82-21) ; `core/calepinage/contenance_declaree.py` + `ilots.py` (contenance déclarée, îlots de toiture).
 - **frontend** : `features/crm/workspace/sections/SectionPro.jsx` (section PRO du lead), `features/ventes/etudePompagePreview.js` + `etudePompagePreviewPur.js` (client de l'aperçu serveur ; remplace le jumeau JS `agronomy.js`, SUPPRIMÉ — AGR131), `PanneauAgricole.jsx` consomme l'aperçu.
-- **Groupe AGQ (audit agricole L3, 23/10/2026, `docs/audits/2026-10-23-agricole.md`)** : `apps/crm/models_lead_pompage.py` (`LeadPompageMixin`, base abstraite de `Lead` : `mode_pompe`, plaque de la pompe actuelle, `jours_irrigation_semaine`, validateur `valider_mois_irrigation` ; migrations crm 0138-0139) ; `quote_engine/agricole/garanties.py::garantie_ligne_onepage` ; frontend `pages/crm/leads/AlertesDevisAuto.jsx` (journal du devis auto, partagé fiche lead ↔ générateur), `features/ventes/quote/entreesPompageLead.js` (saisie pompage du lead → générateur).
+- **Groupe AGQ (audit agricole L3, 23/10/2026, `docs/audits/2026-10-23-agricole.md`)** : `apps/crm/models_lead_pompage.py` (`LeadPompageMixin`, base abstraite de `Lead` : `mode_pompe`, plaque de la pompe actuelle, `jours_irrigation_semaine`, validateur `valider_mois_irrigation` ; migrations crm 0138-0139) ; `quote_engine/agricole/garanties.py::garantie_ligne_onepage` ; frontend `pages/crm/leads/AlertesDevisAuto.jsx` (journal du devis auto, partagé fiche lead ↔ générateur), `features/ventes/quote/entreesPompageLead.js` (saisie pompage du lead → générateur) ; phase 2 (24/10, `docs/audits/2026-10-24-agricole-phase2.md`) : `features/ventes/quote/forfaitsPanneau.js` (prix des forfaits au panneau à l'écran = `catalogue.py::prix_forfait_ht`, re-tarif au compte de panneaux, jumeau de `lignes.py::retarifer_forfaits_par_panneau`).
 
 ### crm / apps/web — Suivi Google Ads (06/10/2026)
 

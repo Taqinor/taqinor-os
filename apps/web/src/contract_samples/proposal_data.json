@@ -1029,9 +1029,9 @@
         {
           "cle": "mise_en_service",
           "textes": {
-            "fr": "À la mise en service : débit et HMT mesurés, écart affiché contre ce devis.",
-            "en": "At commissioning: flow and head measured, gap shown against this quote.",
-            "ar": "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض."
+            "fr": "À la mise en service : débit et HMT mesurés, écart affiché contre ce devis ; dossier remis (fiches techniques, schéma électrique) et formation à l'utilisation et à l'entretien.",
+            "en": "At commissioning: flow and head measured, gap shown against this quote; documentation handed over (data sheets, wiring diagram) and training in operation and maintenance.",
+            "ar": "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض؛ تسليم الملف (البطاقات التقنية، المخطط الكهربائي) والتكوين على الاستعمال والصيانة."
           }
         }
       ],

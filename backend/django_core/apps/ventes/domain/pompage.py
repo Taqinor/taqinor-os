@@ -32,6 +32,7 @@ Appelants de :func:`etudier_pompage` (``git grep -n etudier_pompage``) :
 """
 from __future__ import annotations
 
+import re
 import contextlib
 import contextvars
 import logging
@@ -875,10 +876,9 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
     plaque_kw = _num((plaque or {}).get('kw'))
     passe1 = _conception(res, besoin, reglages, profils=profils, hmt_m=None)
     debit_conception = passe1['conception']['debit_conception_m3h']
-    # Passe 1 : mois des heures-pic = simple indication de départ du champ ;
-    # AGQ2 (D-AGQ-2) — les tailles et la passe 2 lisent le mois critique
-    # RECALCULÉ sur la production (pire mois production ÷ besoin).
-    mois_critique = passe1['conception']['mois_critique']
+    # AGQ2 (D-AGQ-2) — le mois critique de la passe 1 (heures-pic) n'est qu'une
+    # indication : les tailles ET le champ lisent le mois RECALCULÉ sur la
+    # production (pire mois production ÷ besoin), la passe 2 aussi.
 
     # HMT au débit de conception (pertes Hazen-Williams à ce débit).
     debit_hmt = debit_conception or _num(res.valeur(
@@ -914,7 +914,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             plaque=plaque, variateurs=variateurs, panneau=panneau,
             besoin_m3_jour_mois=serie, hmt_m=hmt_m,
             debit_declare_m3h=_num(res.valeur('besoin.debit_actuel_m3h')),
-            type_pompe=type_pompe, mois_critique=mois_critique, **commun)
+            type_pompe=type_pompe, **commun)
         tailles = proposer_tailles(
             mode_pompe='existante', plaque=plaque,
             debit_declare_m3h=_num(res.valeur('besoin.debit_actuel_m3h')),
@@ -922,15 +922,21 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             type_pompe=type_pompe, variateurs=variateurs, panneau=panneau,
             besoin_agronomique=agro, kit=kit_params, **commun)
         pompe = existante['pompe']
-        champ_complet = existante['champ']
         variateur = existante['variateur']
         puissance = existante['puissance_retenue']
         prix_a_renseigner = []
         alertes_moteur.extend(existante['alertes'])
         hypotheses_moteur.extend(existante['hypotheses'])
+        choisie = tailles['tailles'][0] if tailles['tailles'] else None
+        # Rejeu live AGQ41 (24/10) — la ligne « Champ » du résumé ET la carte
+        # « Recommandée » lisent le MÊME champ : celui de la taille retenue
+        # (comme pour une pompe neuve). Avant, ``pompe_existante`` recevait le
+        # mois critique de la passe 1 et ``proposer_tailles`` non : sans kW de
+        # plaque, 4,95 kWc (9 panneaux) d'un côté, 5,5 kWc (10) de l'autre.
+        champ_complet = ((choisie or {}).get('champ')
+                         or existante['champ'])
         if champ_complet:
             hypotheses_moteur.extend(champ_complet.get('hypotheses') or [])
-        choisie = tailles['tailles'][0] if tailles['tailles'] else None
         taille_retenue = 'recommandee'
         methode = ("Pompe existante conservée (D-AGR-7) : variateur et champ "
                    "dimensionnés sur la PLAQUE ; production estimée sur le "
@@ -1096,6 +1102,10 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
         'hypotheses': _hypotheses_uniques(hypotheses_moteur),
         'methode': methode,
     }
+    # Rejeu live AGQ41 (24/10) — le kit minimum manquant est SERVI : l'écran
+    # refuse « Auto-remplir » (comme le devis automatique) en nommant la cause
+    # au lieu de poser un kit sans variateur.
+    sortie['roles_minimum_manquants'] = roles_minimum_manquants(sortie)
     return _sans_cles_interdites(_json(sortie))
 
 
@@ -1267,10 +1277,13 @@ def _au_mois_critique(serie, mois):
 #: AMOT63 — entrées RÉSOLUES persistées (``etude_params['entrees_pompage']``,
 #: forme figée dans ``contract_samples/etude_pompage_preview.json``) : ce que
 #: le schéma et la comparaison besoin/livré impriment.
+#: Rejeu live AGQ41 (24/10) — ``debit_exploitation_m3h`` en fait partie : sans
+#: lui, un débit du forage venu du LEAD s'imprimait « déclaré par vous le … »
+#: SANS sa valeur (« D'où viennent ces chiffres », AGQ28).
 CLES_ENTREES_POMPAGE = (
     'cultures', 'region', 'niveau_statique_m', 'niveau_dynamique_m',
-    'profondeur_forage_m', 'volume_reservoir_m3', 'distance_champ_m',
-    'plaque',
+    'debit_exploitation_m3h', 'profondeur_forage_m', 'volume_reservoir_m3',
+    'distance_champ_m', 'plaque',
 )
 
 
@@ -1480,9 +1493,30 @@ ROLES_KIT_MINIMUM = (
 )
 
 
+#: Rejeu live AGQ41 (24/10) — les alertes du noyau qui laissent le champ
+#: solaire non dimensionné : leur message EST la cause dite au vendeur (le 409
+#: ne sert aucune alerte, « voir les alertes » ne menait nulle part).
+CODES_CHAMP_NON_DIMENSIONNE = ('panneau_sans_fiche', 'besoin_inconnu',
+                               'irradiation_inconnue', 'aucun_variateur',
+                               'chaine_non_verifiable')
+
+
+def _cause_champ_vide(sortie):
+    for alerte in (sortie or {}).get('alertes') or ():
+        if (alerte.get('code') in CODES_CHAMP_NON_DIMENSIONNE
+                and alerte.get('message')):
+            # « … : champ non dimensionné. » — la conséquence est déjà dite.
+            return re.sub(r'\s*:\s*champ (solaire )?non dimensionné\.?$', '',
+                          alerte['message'].strip()).rstrip('. ')
+    motif = (((sortie or {}).get('champ') or {}).get('chaines') or {}).get(
+        'motif')
+    return motif or 'cause non servie par le moteur'
+
+
 def roles_minimum_manquants(sortie):
     """AGQ4 — ``[{cle, libelle, motif}]`` des rôles du kit minimum absents
-    de ``kit.inclus`` ou sans prix connu (barème compris, AGQ5)."""
+    de ``kit.inclus`` ou sans prix connu (barème compris, AGQ5) ; un champ
+    non dimensionné dit SA cause (alerte du noyau), jamais « voir les alertes »."""
     kit = (sortie or {}).get('kit') or {}
     existante = ((sortie or {}).get('pompe') or {}).get('mode') == 'existante'
     inclus = {ligne.get('cle'): ligne for ligne in kit.get('inclus') or ()}
@@ -1494,7 +1528,8 @@ def roles_minimum_manquants(sortie):
         ligne = inclus.get(cle)
         if ligne is None:
             if cle in ('panneaux', 'structure') and champ_vide:
-                motif = 'champ solaire non dimensionné (voir les alertes)'
+                motif = 'champ solaire non dimensionné — %s' % (
+                    _cause_champ_vide(sortie))
             else:
                 motif = 'aucun article au catalogue'
         elif not ligne.get('prix_connu') or not ligne.get('produit'):

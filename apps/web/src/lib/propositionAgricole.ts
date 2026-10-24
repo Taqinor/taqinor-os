@@ -60,9 +60,9 @@ export const ETAPES_AGRICOLES: ReadonlyArray<{ cle: string; textes: Lbl3 }> = [
   {
     cle: 'mise_en_service',
     textes: {
-      fr: 'À la mise en service : débit et HMT mesurés, écart affiché contre ce devis.',
-      en: 'At commissioning: flow and head measured, gap shown against this quote.',
-      ar: 'عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض.',
+      fr: 'À la mise en service : débit et HMT mesurés, écart affiché contre ce devis ; dossier remis (fiches techniques, schéma électrique) et formation à l\'utilisation et à l\'entretien.',
+      en: 'At commissioning: flow and head measured, gap shown against this quote; documentation handed over (data sheets, wiring diagram) and training in operation and maintenance.',
+      ar: 'عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض؛ تسليم الملف (البطاقات التقنية، المخطط الكهربائي) والتكوين على الاستعمال والصيانة.',
     },
   },
 ];
@@ -115,9 +115,9 @@ export function objectionFaqAgricole(): FaqItem[] {
       question: 'Les panneaux peuvent-ils être volés ?',
       questionAr: 'هل يمكن أن تُسرق الألواح؟',
       questionEn: 'Can the panels be stolen?',
-      answer: "Les panneaux sont fixés sur une structure au sol avec une visserie antivol et le coffret est fermé à clé ; une clôture ou un gardiennage restent de votre côté. Le choix d'une assurance se fait avec votre assureur.",
-      answerAr: 'تُثبت الألواح على هيكل أرضي ببراغي مضادة للسرقة ويُقفل الصندوق بمفتاح؛ أما السياج أو الحراسة فيبقيان على عاتقكم. اختيار التأمين يتم مع شركة التأمين.',
-      answerEn: 'The panels are fixed on a ground structure with anti-theft fasteners and the cabinet is locked; a fence or guarding remains on your side. Insurance is a decision to take with your insurer.',
+      answer: "Les panneaux sont fixés sur une structure au sol ; des fixations antivol et une clôture du champ sont proposées en option dans ce devis, le gardiennage reste de votre côté. Le choix d'une assurance se fait avec votre assureur.",
+      answerAr: 'تُثبت الألواح على هيكل أرضي؛ وتُقترح في هذا العرض تثبيتات مضادة للسرقة وسياج للحقل كخيارات، أما الحراسة فتبقى على عاتقكم. اختيار التأمين يتم مع شركة التأمين.',
+      answerEn: 'The panels are fixed on a ground structure; anti-theft fasteners and a field fence are offered as options in this quote, guarding remains on your side. Insurance is a decision to take with your insurer.',
     },
     {
       id: 'entretien-pompage',
@@ -149,4 +149,82 @@ export const AGR_LBL_AGQ = {
   prixSurDevis: { fr: 'prix sur devis', en: 'price on request', ar: 'السعر حسب العرض' },
   notesTitre: { fr: 'Notes de dimensionnement', en: 'Sizing notes', ar: 'ملاحظات التحجيم' },
   coutM3Solaire: { fr: 'Coût du m³ avec le solaire', en: 'Cost per m³ with solar', ar: 'تكلفة المتر المكعب مع الطاقة الشمسية' },
+  // AGQ42 — la page d'un pompage parle d'eau, pas de toit.
+  eauJour: { fr: 'm³ d’eau par jour', en: 'm³ of water per day', ar: 'م³ من الماء يومياً' },
+  kitTitre: { fr: 'Votre kit de pompage solaire', en: 'Your solar pumping kit', ar: 'عدة الضخ الشمسي الخاصة بكم' },
+  revisionEau: { fr: 'Ajuster le volume d’eau ou la pompe', en: 'Adjust the water volume or the pump', ar: 'تعديل كمية الماء أو المضخة' },
+  etEnsuite: { fr: 'Et ensuite : accord FDA si vous demandez l’aide, commande, pose, mise en service', en: 'And then: FDA approval if you apply for the grant, order, installation, commissioning', ar: 'ثم: موافقة صندوق التنمية الفلاحية إن طلبتم الدعم، الطلبية، التركيب، التشغيل' },
+  hypotheses: { fr: 'Chaque chiffre est étudié sur vos propres données — point d’eau, besoin en eau, énergie actuelle —, pas promis.', en: 'Every figure is studied from your own data — water source, water need, current energy — not promised.', ar: 'كل رقم مدروس انطلاقاً من معطياتكم — نقطة الماء، الحاجة إلى الماء، الطاقة الحالية — وليس وعداً.' },
+} as const satisfies Record<string, Lbl3>;
+
+/** Rejeu live AGQ41 — libellés des options du kit listées dans « Non inclus » (clés servies par
+ *  `synthese_agricole.non_inclus`, AGQ11) : MÊMES textes que le PDF (`i18n_labels.agr_option_<clé>`). */
+const AGR_OPTIONS_NON_INCLUS_LBL: Record<string, Lbl3> = {
+  protection_dc: { fr: "Protections DC/AC", en: "DC/AC protection devices", ar: "حمايات التيار المستمر والمتناوب" },
+  sonde_niveau: { fr: "Sonde de niveau (marche à sec)", en: "Level probe (dry-run protection)", ar: "مسبار المستوى (الحماية من التشغيل الجاف)" },
+  compteur_eau: { fr: "Compteur d'eau", en: "Water meter", ar: "عداد الماء" },
+  cable_descente: { fr: "Câble de descente", en: "Drop cable", ar: "كابل النزول" },
+  colonne_refoulement: { fr: "Colonne de refoulement", en: "Rising main", ar: "أنبوب الدفع" },
+  clapet: { fr: "Clapet anti-retour", en: "Non-return valve", ar: "صمام عدم الرجوع" },
+  tuyauterie: { fr: "Tuyauterie", en: "Pipework", ar: "الأنابيب" },
+  bassin: { fr: "Bassin", en: "Storage tank", ar: "الحوض" },
+  entretien_pompage: { fr: "Contrat d'entretien", en: "Maintenance contract", ar: "عقد الصيانة" },
+  antivol: { fr: "Fixations antivol", en: "Anti-theft fixings", ar: "تثبيتات مضادة للسرقة" },
+  cloture: { fr: "Clôture du champ", en: "Array fence", ar: "سياج الحقل" },
+  afficheur_variateur: { fr: "Afficheur du variateur", en: "Drive display", ar: "شاشة المغير" },
+};
+
+/** AGW304 — « Non inclus » : forage, génie civil et chaque option du kit (jamais une clé brute). */
+export const AGR_NON_INCLUS_LBL: Record<string, Lbl3> = {
+  forage: { fr: 'le forage', en: 'the borehole', ar: 'الثقب' },
+  genie_civil: { fr: 'le génie civil', en: 'civil works', ar: 'الهندسة المدنية' },
+  ...AGR_OPTIONS_NON_INCLUS_LBL,
+};
+
+/** Rejeu AGQ41 — unité d'une entrée de provenance (mêmes unités que le PDF, `_UNITE_ENTREE`). */
+const UNITE_ENTREE: Record<string, Lbl3> = {
+  volume_m3_jour: { fr: 'm³/j', en: 'm³/day', ar: 'م³/يوم' },
+  niveau_statique_m: { fr: 'm', en: 'm', ar: 'م' },
+  niveau_dynamique_m: { fr: 'm', en: 'm', ar: 'م' },
+  profondeur_forage_m: { fr: 'm', en: 'm', ar: 'م' },
+  hmt_m: { fr: 'm', en: 'm', ar: 'م' },
+  debit_exploitation_m3h: { fr: 'm³/h', en: 'm³/h', ar: 'م³/س' },
+};
+
+/** « 36 m³/h » à côté de la provenance (AGQ28, parité PDF) ; `null` sans valeur servie. */
+export function valeurProvenance(cle: string, valeur: number | null | undefined, format: (n: number) => string): Lbl3 | null {
+  if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return null;
+  const u = UNITE_ENTREE[cle];
+  const n = format(valeur);
+  return u ? { fr: `${n} ${u.fr}`, en: `${n} ${u.en}`, ar: `${n} ${u.ar}` } : { fr: n, en: n, ar: n };
+}
+
+/** D-AGQ-13 — « Service après-vente : intervention sous N h » lu dans
+ *  `synthese_agricole.sav` (délai SAISI par la société, même texte que la page 3 du PDF,
+ *  `i18n_labels.agr_sav_delai`) ; `null` quand il n'est pas servi — jamais inventé. */
+export function savAgricole(payload: unknown): Lbl3 | null {
+  const synth = (payload as { synthese_agricole?: { sav?: { delai_intervention_heures?: unknown } } } | null)
+    ?.synthese_agricole;
+  const h = Number(synth?.sav?.delai_intervention_heures);
+  if (!Number.isFinite(h) || h <= 0) return null;
+  return {
+    fr: `Service après-vente : intervention sous ${h} h après votre appel.`,
+    en: `After-sales service: intervention within ${h} h of your call.`,
+    ar: `خدمة ما بعد البيع: التدخل في أجل ${h} ساعة بعد اتصالكم.`,
+  };
+}
+
+/** D-AGQ-12 — l'acceptation d'un pompage : ferme et acompte dû APRÈS l'accord FDA quand
+ *  le client demande l'aide (même règle que les conditions du PDF, `agr_acompte_fda`). */
+export const AGR_ACCEPTATION_LBL = {
+  ferme: {
+    fr: 'Si vous demandez l’aide FDA, votre signature vaut accord sur ce devis : la commande devient ferme et l’acompte n’est dû qu’après l’accord préalable FDA. Sans demande d’aide, votre commande est ferme dès votre acceptation.',
+    en: 'If you apply for the FDA grant, your signature is an agreement on this quote: the order becomes firm and the down payment is due only after the FDA prior approval. Without a grant application, your order is firm upon acceptance.',
+    ar: 'إن طلبتم دعم صندوق التنمية الفلاحية، فتوقيعكم موافقة على هذا العرض: يصبح الطلب نهائياً ولا تستحق الدفعة المقدمة إلا بعد الموافقة المسبقة للصندوق. بدون طلب دعم، يصبح طلبكم نهائياً بمجرد قبولكم.',
+  },
+  acompte: {
+    fr: 'à la commande — après l’accord FDA si vous demandez l’aide',
+    en: 'on order — after the FDA approval if you apply for the grant',
+    ar: 'عند الطلب — بعد موافقة صندوق التنمية الفلاحية إن طلبتم الدعم',
+  },
 } as const satisfies Record<string, Lbl3>;

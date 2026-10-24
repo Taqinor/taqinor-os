@@ -84,6 +84,15 @@ export function lignesEconomieDepuisEcran(lignes, remiseGlobalePct) {
     })
 }
 
+// Rejeu live AGQ41 (24/10) — le serveur sert l'unité de consommation avec la
+// CLÉ de l'unité (« bouteille_12kg par jour d'irrigation ») : la ligne
+// imprime le libellé du vendeur, jamais la clé brute.
+const LIBELLES_UNITE_CONSO = {
+  bouteille_12kg: 'bouteille(s) de 12 kg', litre: 'litre(s)',
+}
+export const libelleUniteConso = (unite) => String(unite || '').replace(
+  /^(bouteille_12kg|litre)(?=\s|$)/, (cle) => LIBELLES_UNITE_CONSO[cle])
+
 /** « N bouteilles × P DH × M mois, déclaré le JJ/MM » — lu des entrées DÉCLARÉES. */
 export function detailDeclare(reponse) {
   const entrees = Array.isArray(reponse?.entrees_declarees) ? reponse.entrees_declarees : []
@@ -92,7 +101,7 @@ export function detailDeclare(reponse) {
   const prix = par.depense_unitaire_payee
   const mois = par.mois_irrigation
   if (!conso || !prix) return null
-  const morceaux = [`${conso.valeur} ${conso.unite || ''}`.trim(),
+  const morceaux = [`${conso.valeur} ${libelleUniteConso(conso.unite)}`.trim(),
     `${prix.valeur} ${prix.unite || 'MAD'}`]
   if (Array.isArray(mois?.valeur)) morceaux.push(`${mois.valeur.length} mois`)
   const date = conso.saisi_le || prix.saisi_le

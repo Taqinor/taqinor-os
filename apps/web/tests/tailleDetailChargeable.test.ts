@@ -450,7 +450,9 @@ describe('page — le récapitulatif « Recommandé » quand une seule option es
   it('chaque item est GARDÉ : jamais un zéro de remplissage', () => {
     const debut = CODE.indexOf('id="prop-fold-figures"');
     const bloc = CODE.slice(debut, CODE.indexOf('id="prop-fold-cta"', debut));
-    for (const garde of ['{heroTtc !== null ? (', '{heroKwc ? (', '{prodKwh ? (',
+    // AGQ42 — en pompage, l'eau par jour remplace les kWh / an (chacun gardé).
+    for (const garde of ['{heroTtc !== null ? (', '{heroKwc ? (', '{prodKwh && !isAgricole ? (',
+      '{isAgricole && synth?.eau?.m3Jour ? (',
       '{showCouvertureDonut && couverture ? (']) {
       expect(bloc, garde).toContain(garde);
     }

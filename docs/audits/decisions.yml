@@ -2162,6 +2162,56 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 (apps/web/src/lib/proposition.ts nextSteps() sans argument de mode)"
     taches: [AGQ33]
+  - id: D-AGQ-12
+    question: "Page /proposition d'un pompage : « commande ferme des votre acceptation » + acompte 30 % a l'acceptation, alors que l'etape 2 dit « dossier FDA depose avant toute commande ». Que dit l'acceptation ?"
+    options:
+      - cle: a
+        texte: "accord sur le devis ; commande ferme et acompte du seulement apres l'accord prealable FDA quand l'aide est demandee ; sans aide, ferme a l'acceptation"
+      - cle: b
+        texte: "garder commande ferme + acompte a l'acceptation"
+      - cle: c
+        texte: "case « je demande l'aide FDA » qui change le texte et l'acompte"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 (phase 2 de l'audit agricole, docs/audits/2026-10-24-agricole-phase2.md)"
+    taches: [AGQ52]
+  - id: D-AGQ-13
+    question: "Le document agricole n'a aucun service apres-vente (delai d'intervention, pieces, entretien), item standard des devis de pompage de reference (GIZ/FAO SPIS). L'imprimer ?"
+    options:
+      - cle: a
+        texte: "oui, depuis un reglage societe (Parametres), imprime seulement s'il est saisi, jamais invente"
+      - cle: b
+        texte: "non"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 (phase 2 de l'audit agricole, docs/audits/2026-10-24-agricole-phase2.md)"
+    taches: [AGQ50]
+  - id: D-AGQ-14
+    question: "Etape « mise en service » : ajouter « dossier remis (fiches, schema) et formation a l'utilisation et a l'entretien » (protocole de reception de reference) ?"
+    options:
+      - cle: a
+        texte: "oui, les deux"
+      - cle: b
+        texte: "dossier remis seulement"
+      - cle: c
+        texte: "non"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 (phase 2 de l'audit agricole, docs/audits/2026-10-24-agricole-phase2.md)"
+    taches: [AGQ51]
+  - id: D-AGQ-15
+    question: "Message WhatsApp du lien de devis pour un lead de pompage (aujourd'hui le texte toiture « proposition d'installation solaire ») ?"
+    options:
+      - cle: a
+        texte: "texte pompage en francais"
+      - cle: b
+        texte: "francais + darija"
+      - cle: c
+        texte: "garder le texte actuel"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 (phase 2 de l'audit agricole, docs/audits/2026-10-24-agricole-phase2.md)"
+    taches: [AGQ53]
   # ── Moteur de devis C&I : investigation L3 du 23/10/2026 (dossier docs/audits/2026-10-23-moteur-ci.md) ──
   - id: D-ACI-1
     question: "Lead pro avec un relevé de consommation incomplet (< 12 mois) et aucun autre kWh : que fait le devis automatique ?"

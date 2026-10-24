@@ -6,6 +6,7 @@
 // porte, nom par nom, ce que le corps lit du composant.
 import { roleLabel, tauxTvaOf, tauxTvaOuDefaut, ttcExactFromHt } from '../../../../features/ventes/solar'
 import { lignesDepuisKit } from '../../../../features/ventes/quote/etudeMarcheBloc'
+import { refusAutoRemplirPompage } from '../../../../features/ventes/etudePompagePreviewPur'
 import { SCENARIO_AVEC, SCENARIO_LES_DEUX } from '../../../../features/ventes/quote/sizingReducer'
 import ventesApi from '../../../../api/ventesApi'
 import {
@@ -148,6 +149,13 @@ export function useCompositionEcran(ctx) {
       // telles que le serveur les a composées (aperçu AGR127) : aucune
       // composition JavaScript. Sans aperçu, rien n'est inventé.
       const kit = apercuPompage?.donnees?.kit
+      // Rejeu live AGQ41 (24/10) — jamais un kit sans l'un de ses rôles
+      // minimum (variateur…) : refus NOMMÉ, comme le devis automatique.
+      const refus = refusAutoRemplirPompage(apercuPompage?.donnees)
+      if (refus) {
+        setErrors(e => ({ ...e, autofill: refus }))
+        return
+      }
       const generated = lignesDepuisKit(kit, produits)
       if (!generated.length) {
         setErrors(e => ({ ...e, autofill: 'Le dimensionnement du serveur n\'est pas encore disponible : '
