@@ -484,6 +484,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             qs = facture.paiements.select_related('created_by').all()
             return Response(
                 PaiementFournisseurSerializer(qs, many=True).data)
+        # api-fuzz : un corps JSON non objet (``""``, ``[]``) faisait un TypeError (500).
+        donnees = corps_objet(request)
         # XPUR1/XPUR4/XPUR10 — mêmes gates que PaiementFournisseurViewSet.
         # create (fournisseur bloqué, conformité expirée, exception 3 voies).
         from ..services import (
@@ -501,7 +503,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         # POST — enregistre un paiement, company posée serveur.
         serializer = PaiementFournisseurSerializer(
-            data={**request.data, 'facture': facture.id},
+            data={**donnees, 'facture': facture.id},
             context={'request': request})
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():

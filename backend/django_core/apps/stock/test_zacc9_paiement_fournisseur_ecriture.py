@@ -86,6 +86,12 @@ class TestGardeSurPaiement(Zacc9Base):
             'montant': '150', 'mode': 'virement'}, format='json')
         self.assertEqual(resp.status_code, 409, resp.data)
 
+    def test_corps_non_objet_400_jamais_500(self):
+        # api-fuzz : ``""`` / ``[]`` / nombre faisaient ``{**request.data}`` -> TypeError (500).
+        for corps in ('', [], 3.5):
+            resp = self.api.post(self._paiements_url(), corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
     def test_paiement_egal_au_solde_du_accepte(self):
         resp = self.api.post(self._paiements_url(), {
             'montant': '120', 'mode': 'virement'}, format='json')
